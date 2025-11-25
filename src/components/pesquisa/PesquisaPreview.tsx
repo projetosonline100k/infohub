@@ -13,9 +13,10 @@ interface Pergunta {
 interface PesquisaPreviewProps {
   titulo: string;
   perguntas: Pergunta[];
+  bannerUrl?: string;
 }
 
-export function PesquisaPreview({ titulo, perguntas }: PesquisaPreviewProps) {
+export function PesquisaPreview({ titulo, perguntas, bannerUrl }: PesquisaPreviewProps) {
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 border-b">
@@ -23,6 +24,16 @@ export function PesquisaPreview({ titulo, perguntas }: PesquisaPreviewProps) {
       </div>
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-6">
+          {bannerUrl && (
+            <div className="w-full">
+              <img
+                src={bannerUrl}
+                alt="Banner"
+                className="w-full h-32 object-cover rounded-md"
+              />
+            </div>
+          )}
+
           {titulo && (
             <div>
               <h2 className="text-2xl font-bold">{titulo}</h2>

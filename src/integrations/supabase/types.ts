@@ -122,6 +122,7 @@ export type Database = {
       }
       pesquisas: {
         Row: {
+          banner_url: string | null
           cliente_id: string
           created_at: string
           id: string
@@ -132,6 +133,7 @@ export type Database = {
           titulo_pergunta: string
         }
         Insert: {
+          banner_url?: string | null
           cliente_id: string
           created_at?: string
           id?: string
@@ -142,6 +144,7 @@ export type Database = {
           titulo_pergunta: string
         }
         Update: {
+          banner_url?: string | null
           cliente_id?: string
           created_at?: string
           id?: string
