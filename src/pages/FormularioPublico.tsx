@@ -20,6 +20,7 @@ interface Pergunta {
 interface Pesquisa {
   id: string;
   titulo: string;
+  banner_url: string | null;
 }
 
 export default function FormularioPublico() {
@@ -42,7 +43,7 @@ export default function FormularioPublico() {
 
       const { data: pesquisaData, error: pesquisaError } = await supabase
         .from("pesquisas")
-        .select("id, titulo")
+        .select("id, titulo, banner_url")
         .eq("link_publico", `/formulario/${slug}`)
         .single();
 
@@ -207,6 +208,16 @@ export default function FormularioPublico() {
   return (
     <div className="min-h-screen bg-background py-12 px-4">
       <div className="max-w-2xl mx-auto space-y-8">
+        {pesquisa.banner_url && (
+          <div className="w-full rounded-lg overflow-hidden">
+            <img
+              src={pesquisa.banner_url}
+              alt="Banner da pesquisa"
+              className="w-full h-48 object-cover"
+            />
+          </div>
+        )}
+
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">{pesquisa.titulo}</h1>
         </div>

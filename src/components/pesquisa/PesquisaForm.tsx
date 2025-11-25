@@ -31,6 +31,8 @@ interface Pergunta {
 
 export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormProps) {
   const [titulo, setTitulo] = useState("");
+  const [bannerUrl, setBannerUrl] = useState("");
+  const [uploadingBanner, setUploadingBanner] = useState(false);
   const [perguntas, setPerguntas] = useState<Pergunta[]>([
     { titulo: "", tipo: "aberta", opcoes: [] },
   ]);
@@ -51,11 +53,13 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
 
       const { data: pesquisaData, error: pesquisaError } = await supabase
         .from("pesquisas")
-        .select("titulo")
+        .select("titulo, banner_url")
         .eq("id", pesquisaId)
         .single();
 
       if (pesquisaError) throw pesquisaError;
+
+      setBannerUrl(pesquisaData.banner_url || "");
 
       const { data: perguntasData, error: perguntasError } = await supabase
         .from("perguntas_pesquisa")
@@ -110,6 +114,68 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
     }
 
     setPerguntas(novasPerguntas);
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast({
+        title: "Erro",
+        description: "Por favor, selecione uma imagem válida",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast({
+        title: "Erro",
+        description: "A imagem deve ter no máximo 5MB",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setUploadingBanner(true);
+
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const filePath = `${clienteId}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("survey-banners")
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from("survey-banners")
+        .getPublicUrl(filePath);
+
+      setBannerUrl(publicUrl);
+
+      toast({
+        title: "Banner enviado!",
+        description: "A imagem foi carregada com sucesso.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao enviar banner",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingBanner(false);
+    }
+  };
+
+  const removeBanner = () => {
+    setBannerUrl("");
   };
 
   const gerarSlug = (text: string) => {
@@ -173,7 +239,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
         // Update existing survey
         const { error: updateError } = await supabase
           .from("pesquisas")
-          .update({ titulo })
+          .update({ titulo, banner_url: bannerUrl || null })
           .eq("id", pesquisaId);
 
         if (updateError) throw updateError;
@@ -220,6 +286,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
             link_publico: linkPublico,
             tipo: "aberta",
             opcoes: [],
+            banner_url: bannerUrl || null,
           })
           .select()
           .single();
@@ -271,7 +338,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
         <form onSubmit={salvarPesquisa} className="flex gap-4 h-[70vh]">
           {/* Preview Column */}
           <div className="w-1/3 border rounded-lg flex flex-col">
-            <PesquisaPreview titulo={titulo} perguntas={perguntas} />
+            <PesquisaPreview titulo={titulo} perguntas={perguntas} bannerUrl={bannerUrl} />
           </div>
 
           {/* Form Column */}
@@ -284,6 +351,54 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
                 onChange={(e) => setTitulo(e.target.value)}
                 placeholder="Ex: Pesquisa de satisfação 2024"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="banner">Banner (opcional)</Label>
+              {bannerUrl ? (
+                <div className="mt-2 relative">
+                  <img
+                    src={bannerUrl}
+                    alt="Banner"
+                    className="w-full h-32 object-cover rounded-md"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={removeBanner}
+                    className="absolute top-2 right-2"
+                  >
+                    Remover
+                  </Button>
+                </div>
+              ) : (
+                <div className="mt-2">
+                  <input
+                    type="file"
+                    id="banner"
+                    accept="image/*"
+                    onChange={handleBannerUpload}
+                    disabled={uploadingBanner}
+                    className="hidden"
+                  />
+                  <Label
+                    htmlFor="banner"
+                    className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
+                  >
+                    {uploadingBanner ? (
+                      <span className="text-muted-foreground">Enviando...</span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Clique para selecionar uma imagem
+                      </span>
+                    )}
+                  </Label>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-1">
+                Recomendado: 1200x400px, máximo 5MB
+              </p>
             </div>
 
             <div className="flex items-center justify-between">
