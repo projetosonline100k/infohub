@@ -14,7 +14,65 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      clientes: {
+        Row: {
+          created_at: string | null
+          id: string
+          idade: number
+          nicho: string
+          nome_especialista: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          idade: number
+          nicho: string
+          nome_especialista: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          idade?: number
+          nicho?: string
+          nome_especialista?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      equipe_cliente: {
+        Row: {
+          cliente_id: string
+          created_at: string | null
+          id: string
+          nome_pessoa: string
+          papel: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string | null
+          id?: string
+          nome_pessoa: string
+          papel: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string | null
+          id?: string
+          nome_pessoa?: string
+          papel?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipe_cliente_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
