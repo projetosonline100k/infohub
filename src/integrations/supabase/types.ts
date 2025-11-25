@@ -79,6 +79,47 @@ export type Database = {
           },
         ]
       }
+      perguntas_pesquisa: {
+        Row: {
+          created_at: string
+          id: string
+          obrigatoria: boolean | null
+          opcoes: Json | null
+          ordem: number
+          pesquisa_id: string
+          tipo: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          obrigatoria?: boolean | null
+          opcoes?: Json | null
+          ordem: number
+          pesquisa_id: string
+          tipo: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          obrigatoria?: boolean | null
+          opcoes?: Json | null
+          ordem?: number
+          pesquisa_id?: string
+          tipo?: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "perguntas_pesquisa_pesquisa_id_fkey"
+            columns: ["pesquisa_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pesquisas: {
         Row: {
           cliente_id: string
@@ -87,6 +128,7 @@ export type Database = {
           link_publico: string
           opcoes: Json | null
           tipo: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo: string | null
           titulo_pergunta: string
         }
         Insert: {
@@ -96,6 +138,7 @@ export type Database = {
           link_publico: string
           opcoes?: Json | null
           tipo: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo?: string | null
           titulo_pergunta: string
         }
         Update: {
@@ -105,6 +148,7 @@ export type Database = {
           link_publico?: string
           opcoes?: Json | null
           tipo?: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo?: string | null
           titulo_pergunta?: string
         }
         Relationships: [
@@ -156,25 +200,38 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          pergunta_id: string | null
           pesquisa_id: string
+          respondente_id: string | null
           resposta_texto: string | null
           respostas_selecionadas: Json | null
         }
         Insert: {
           created_at?: string
           id?: string
+          pergunta_id?: string | null
           pesquisa_id: string
+          respondente_id?: string | null
           resposta_texto?: string | null
           respostas_selecionadas?: Json | null
         }
         Update: {
           created_at?: string
           id?: string
+          pergunta_id?: string | null
           pesquisa_id?: string
+          respondente_id?: string | null
           resposta_texto?: string | null
           respostas_selecionadas?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "respostas_pesquisa_pergunta_id_fkey"
+            columns: ["pergunta_id"]
+            isOneToOne: false
+            referencedRelation: "perguntas_pesquisa"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "respostas_pesquisa_pesquisa_id_fkey"
             columns: ["pesquisa_id"]
