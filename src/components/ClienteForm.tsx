@@ -6,6 +6,7 @@ import { X, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 
@@ -13,6 +14,8 @@ const clienteSchema = z.object({
   nomeEspecialista: z.string().min(1, "Nome do especialista é obrigatório"),
   idade: z.number().min(18, "Idade mínima é 18 anos"),
   nicho: z.string().min(1, "Nicho é obrigatório"),
+  metaAtual: z.string().optional(),
+  linkPainelReceita: z.string().optional(),
 });
 
 type ClienteFormData = z.infer<typeof clienteSchema>;
@@ -28,6 +31,8 @@ interface ClienteFormProps {
     nome_especialista: string;
     idade: number;
     nicho: string;
+    meta_atual?: string;
+    link_painel_receita?: string;
   };
   equipe?: Array<{
     id: string;
@@ -54,6 +59,8 @@ const ClienteForm = ({ cliente, equipe = [], onClose, onSave }: ClienteFormProps
       nomeEspecialista: cliente?.nome_especialista || "",
       idade: cliente?.idade || 18,
       nicho: cliente?.nicho || "",
+      metaAtual: cliente?.meta_atual || "",
+      linkPainelReceita: cliente?.link_painel_receita || "",
     },
   });
 
@@ -139,6 +146,26 @@ const ClienteForm = ({ cliente, equipe = [], onClose, onSave }: ClienteFormProps
             {errors.nicho && (
               <p className="text-sm text-destructive">{errors.nicho.message}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="metaAtual">Meta Atual</Label>
+            <Textarea
+              id="metaAtual"
+              {...register("metaAtual")}
+              placeholder="Ex: Bater 100k de faturamento"
+              rows={3}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="linkPainelReceita">Link do Painel de Receita</Label>
+            <Input
+              id="linkPainelReceita"
+              {...register("linkPainelReceita")}
+              placeholder="https://..."
+              type="url"
+            />
           </div>
 
           <div className="space-y-4">

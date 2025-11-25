@@ -19,6 +19,8 @@ export type Database = {
           created_at: string | null
           id: string
           idade: number
+          link_painel_receita: string | null
+          meta_atual: string | null
           nicho: string
           nome_especialista: string
           updated_at: string | null
@@ -27,6 +29,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           idade: number
+          link_painel_receita?: string | null
+          meta_atual?: string | null
           nicho: string
           nome_especialista: string
           updated_at?: string | null
@@ -35,6 +39,8 @@ export type Database = {
           created_at?: string | null
           id?: string
           idade?: number
+          link_painel_receita?: string | null
+          meta_atual?: string | null
           nicho?: string
           nome_especialista?: string
           updated_at?: string | null
@@ -66,6 +72,41 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "equipe_cliente_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      produtos_cliente: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          id: string
+          nome_produto: string
+          preco: string | null
+          status: string | null
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          id?: string
+          nome_produto: string
+          preco?: string | null
+          status?: string | null
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          nome_produto?: string
+          preco?: string | null
+          status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produtos_cliente_cliente_id_fkey"
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
