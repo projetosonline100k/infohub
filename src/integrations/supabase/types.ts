@@ -79,6 +79,44 @@ export type Database = {
           },
         ]
       }
+      pesquisas: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          id: string
+          link_publico: string
+          opcoes: Json | null
+          tipo: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo_pergunta: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          id?: string
+          link_publico: string
+          opcoes?: Json | null
+          tipo: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo_pergunta: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          link_publico?: string
+          opcoes?: Json | null
+          tipo?: Database["public"]["Enums"]["tipo_pesquisa"]
+          titulo_pergunta?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pesquisas_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       produtos_cliente: {
         Row: {
           cliente_id: string
@@ -114,6 +152,38 @@ export type Database = {
           },
         ]
       }
+      respostas_pesquisa: {
+        Row: {
+          created_at: string
+          id: string
+          pesquisa_id: string
+          resposta_texto: string | null
+          respostas_selecionadas: Json | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pesquisa_id: string
+          resposta_texto?: string | null
+          respostas_selecionadas?: Json | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pesquisa_id?: string
+          resposta_texto?: string | null
+          respostas_selecionadas?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "respostas_pesquisa_pesquisa_id_fkey"
+            columns: ["pesquisa_id"]
+            isOneToOne: false
+            referencedRelation: "pesquisas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -122,7 +192,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      tipo_pesquisa: "aberta" | "multipla" | "unica"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -249,6 +319,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      tipo_pesquisa: ["aberta", "multipla", "unica"],
+    },
   },
 } as const
