@@ -1,241 +1,332 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { X, Plus } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Plus } from "lucide-react";
+import { PerguntaCard } from "./PerguntaCard";
+import { PesquisaPreview } from "./PesquisaPreview";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface PesquisaFormProps {
   clienteId: string;
+  pesquisaId?: string;
   onClose: () => void;
 }
 
 type TipoPesquisa = "aberta" | "multipla" | "unica";
 
-export function PesquisaForm({ clienteId, onClose }: PesquisaFormProps) {
+interface Pergunta {
+  titulo: string;
+  tipo: TipoPesquisa;
+  opcoes: string[];
+}
+
+export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormProps) {
   const [titulo, setTitulo] = useState("");
-  const [tipo, setTipo] = useState<TipoPesquisa>("aberta");
-  const [opcoes, setOpcoes] = useState<string[]>(["", ""]);
-  const [saving, setSaving] = useState(false);
+  const [perguntas, setPerguntas] = useState<Pergunta[]>([
+    { titulo: "", tipo: "aberta", opcoes: [] },
+  ]);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  const adicionarOpcao = () => {
-    setOpcoes([...opcoes, ""]);
-  };
+  useEffect(() => {
+    if (pesquisaId) {
+      carregarPesquisa();
+    }
+  }, [pesquisaId]);
 
-  const removerOpcao = (index: number) => {
-    if (opcoes.length > 2) {
-      setOpcoes(opcoes.filter((_, i) => i !== index));
+  const carregarPesquisa = async () => {
+    if (!pesquisaId) return;
+
+    try {
+      setLoading(true);
+
+      const { data: pesquisaData, error: pesquisaError } = await supabase
+        .from("pesquisas")
+        .select("titulo")
+        .eq("id", pesquisaId)
+        .single();
+
+      if (pesquisaError) throw pesquisaError;
+
+      const { data: perguntasData, error: perguntasError } = await supabase
+        .from("perguntas_pesquisa")
+        .select("*")
+        .eq("pesquisa_id", pesquisaId)
+        .order("ordem");
+
+      if (perguntasError) throw perguntasError;
+
+      setTitulo(pesquisaData.titulo || "");
+      setPerguntas(
+        perguntasData.map((p) => ({
+          titulo: p.titulo,
+          tipo: p.tipo as TipoPesquisa,
+          opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
+        }))
+      );
+    } catch (error: any) {
+      toast({
+        title: "Erro ao carregar pesquisa",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const atualizarOpcao = (index: number, valor: string) => {
-    const novasOpcoes = [...opcoes];
-    novasOpcoes[index] = valor;
-    setOpcoes(novasOpcoes);
+  const adicionarPergunta = () => {
+    setPerguntas([...perguntas, { titulo: "", tipo: "aberta", opcoes: [] }]);
   };
 
-  const gerarSlug = () => {
-    return crypto.randomUUID().slice(0, 8);
+  const removerPergunta = (index: number) => {
+    setPerguntas(perguntas.filter((_, i) => i !== index));
   };
 
-  const salvarPesquisa = async () => {
+  const atualizarPergunta = (index: number, field: string, value: any) => {
+    const novasPerguntas = [...perguntas];
+    novasPerguntas[index] = {
+      ...novasPerguntas[index],
+      [field]: value,
+    };
+
+    if (field === "tipo" && value === "aberta") {
+      novasPerguntas[index].opcoes = [];
+    } else if (
+      field === "tipo" &&
+      (value === "multipla" || value === "unica") &&
+      novasPerguntas[index].opcoes.length === 0
+    ) {
+      novasPerguntas[index].opcoes = [""];
+    }
+
+    setPerguntas(novasPerguntas);
+  };
+
+  const gerarSlug = (text: string) => {
+    return text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "");
+  };
+
+  const salvarPesquisa = async (e: React.FormEvent) => {
+    e.preventDefault();
+
     if (!titulo.trim()) {
       toast({
         title: "Erro",
-        description: "Digite o título da pergunta",
+        description: "Digite um título para a pesquisa",
         variant: "destructive",
       });
       return;
     }
 
-    if ((tipo === "multipla" || tipo === "unica") && opcoes.filter(o => o.trim()).length < 2) {
+    if (perguntas.length === 0) {
       toast({
         title: "Erro",
-        description: "Adicione pelo menos 2 opções",
+        description: "Adicione pelo menos uma pergunta",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const perguntasInvalidas = perguntas.some((p) => {
+      if (!p.titulo.trim()) return true;
+      if ((p.tipo === "multipla" || p.tipo === "unica") && p.opcoes.length === 0) {
+        return true;
+      }
+      if (
+        (p.tipo === "multipla" || p.tipo === "unica") &&
+        p.opcoes.some((op) => !op.trim())
+      ) {
+        return true;
+      }
+      return false;
+    });
+
+    if (perguntasInvalidas) {
+      toast({
+        title: "Erro",
+        description:
+          "Todas as perguntas devem ter título e opções (se aplicável)",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      setSaving(true);
-      const opcoesLimpas = tipo === "aberta" ? [] : opcoes.filter(o => o.trim());
-      
-      const { error } = await supabase.from("pesquisas").insert({
-        cliente_id: clienteId,
-        titulo_pergunta: titulo,
-        tipo,
-        opcoes: opcoesLimpas,
-        link_publico: gerarSlug(),
-      });
+      setLoading(true);
 
-      if (error) throw error;
+      if (pesquisaId) {
+        // Update existing survey
+        const { error: updateError } = await supabase
+          .from("pesquisas")
+          .update({ titulo })
+          .eq("id", pesquisaId);
 
-      toast({
-        title: "Pesquisa criada!",
-        description: "A pesquisa foi criada com sucesso.",
-      });
-      
+        if (updateError) throw updateError;
+
+        // Delete old questions
+        const { error: deleteError } = await supabase
+          .from("perguntas_pesquisa")
+          .delete()
+          .eq("pesquisa_id", pesquisaId);
+
+        if (deleteError) throw deleteError;
+
+        // Insert new questions
+        const perguntasData = perguntas.map((p, index) => ({
+          pesquisa_id: pesquisaId,
+          titulo: p.titulo,
+          tipo: p.tipo,
+          opcoes: p.opcoes,
+          ordem: index + 1,
+          obrigatoria: true,
+        }));
+
+        const { error: insertError } = await supabase
+          .from("perguntas_pesquisa")
+          .insert(perguntasData);
+
+        if (insertError) throw insertError;
+
+        toast({
+          title: "Pesquisa atualizada!",
+          description: "As alterações foram salvas com sucesso.",
+        });
+      } else {
+        // Create new survey
+        const slug = `${gerarSlug(titulo)}-${Date.now()}`;
+        const linkPublico = `/formulario/${slug}`;
+
+        const { data: pesquisaData, error: pesquisaError } = await supabase
+          .from("pesquisas")
+          .insert({
+            cliente_id: clienteId,
+            titulo_pergunta: titulo,
+            titulo,
+            link_publico: linkPublico,
+            tipo: "aberta",
+            opcoes: [],
+          })
+          .select()
+          .single();
+
+        if (pesquisaError) throw pesquisaError;
+
+        const perguntasData = perguntas.map((p, index) => ({
+          pesquisa_id: pesquisaData.id,
+          titulo: p.titulo,
+          tipo: p.tipo,
+          opcoes: p.opcoes,
+          ordem: index + 1,
+          obrigatoria: true,
+        }));
+
+        const { error: perguntasError } = await supabase
+          .from("perguntas_pesquisa")
+          .insert(perguntasData);
+
+        if (perguntasError) throw perguntasError;
+
+        toast({
+          title: "Pesquisa criada!",
+          description: "A pesquisa foi gerada com sucesso.",
+        });
+      }
+
       onClose();
     } catch (error: any) {
       toast({
-        title: "Erro ao criar pesquisa",
+        title: "Erro ao salvar pesquisa",
         description: error.message,
         variant: "destructive",
       });
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   };
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Criar Pesquisa</DialogTitle>
+          <DialogTitle>
+            {pesquisaId ? "Editar pesquisa" : "Criar nova pesquisa"}
+          </DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-          {/* Preview */}
-          <div>
-            <h3 className="font-semibold mb-3">Prévia</h3>
-            <Card className="p-6 space-y-4 min-h-[300px]">
-              <div>
-                <h2 className="text-xl font-semibold mb-4">
-                  {titulo || "Avatar ou expert?"}
-                </h2>
-
-                {tipo === "aberta" && (
-                  <Textarea
-                    placeholder="Sua resposta..."
-                    disabled
-                    className="min-h-[120px]"
-                  />
-                )}
-
-                {tipo === "multipla" && (
-                  <div className="space-y-2">
-                    {opcoes.filter(o => o.trim()).map((opcao, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <input type="checkbox" disabled className="h-4 w-4" />
-                        <span>{opcao || `Opção ${index + 1}`}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {tipo === "unica" && (
-                  <div className="space-y-2">
-                    {opcoes.filter(o => o.trim()).map((opcao, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <input type="radio" disabled className="h-4 w-4" name="preview" />
-                        <span>{opcao || `Opção ${index + 1}`}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </Card>
+        <form onSubmit={salvarPesquisa} className="flex gap-4 h-[70vh]">
+          {/* Preview Column */}
+          <div className="w-1/3 border rounded-lg flex flex-col">
+            <PesquisaPreview titulo={titulo} perguntas={perguntas} />
           </div>
 
-          {/* Configuration */}
-          <div>
-            <h3 className="font-semibold mb-3">3 Modos</h3>
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant={tipo === "aberta" ? "default" : "outline"}
-                  onClick={() => setTipo("aberta")}
-                  className="flex-1"
-                >
-                  Pergunta (aberta)
-                </Button>
-                <Button
-                  type="button"
-                  variant={tipo === "multipla" ? "default" : "outline"}
-                  onClick={() => setTipo("multipla")}
-                  className="flex-1"
-                >
-                  Caixinha de perguntas
-                </Button>
-                <Button
-                  type="button"
-                  variant={tipo === "unica" ? "default" : "outline"}
-                  onClick={() => setTipo("unica")}
-                  className="flex-1"
-                >
-                  Seleção única
-                </Button>
-              </div>
+          {/* Form Column */}
+          <div className="flex-1 flex flex-col gap-4">
+            <div>
+              <Label htmlFor="titulo">Nome da pesquisa</Label>
+              <Input
+                id="titulo"
+                value={titulo}
+                onChange={(e) => setTitulo(e.target.value)}
+                placeholder="Ex: Pesquisa de satisfação 2024"
+              />
+            </div>
 
-              <div>
-                <Label htmlFor="titulo">Texto da pergunta</Label>
-                <Input
-                  id="titulo"
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                  placeholder="Digite sua pergunta..."
-                />
-              </div>
+            <div className="flex items-center justify-between">
+              <Label>Perguntas</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={adicionarPergunta}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar pergunta
+              </Button>
+            </div>
 
-              {(tipo === "multipla" || tipo === "unica") && (
-                <div>
-                  <Label>Alternativas</Label>
-                  <div className="space-y-2 mt-2">
-                    {opcoes.map((opcao, index) => (
-                      <div key={index} className="flex gap-2">
-                        <Input
-                          value={opcao}
-                          onChange={(e) => atualizarOpcao(index, e.target.value)}
-                          placeholder={`Opção ${index + 1}`}
-                        />
-                        {opcoes.length > 2 && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => removerOpcao(index)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={adicionarOpcao}
-                      className="w-full"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Adicionar opção
-                    </Button>
-                  </div>
-                </div>
-              )}
+            <ScrollArea className="flex-1">
+              <div className="space-y-4 pr-4">
+                {perguntas.map((pergunta, index) => (
+                  <PerguntaCard
+                    key={index}
+                    pergunta={pergunta}
+                    index={index}
+                    onUpdate={atualizarPergunta}
+                    onRemove={removerPergunta}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
+
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button type="button" variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button type="submit" disabled={loading}>
+                {loading
+                  ? "Salvando..."
+                  : pesquisaId
+                  ? "Salvar alterações"
+                  : "Criar pesquisa"}
+              </Button>
             </div>
           </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose} disabled={saving}>
-            Cancelar
-          </Button>
-          <Button onClick={salvarPesquisa} disabled={saving}>
-            {saving ? "Salvando..." : "Gerar pesquisa"}
-          </Button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );

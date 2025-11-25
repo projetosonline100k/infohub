@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { Copy, Eye, Plus } from "lucide-react";
+import { Copy, Eye, Plus, Pencil } from "lucide-react";
 import { PesquisaForm } from "./PesquisaForm";
 import { RespostasModal } from "./RespostasModal";
 
@@ -24,6 +24,7 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
   const [pesquisas, setPesquisas] = useState<Pesquisa[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editPesquisaId, setEditPesquisaId] = useState<string | undefined>(undefined);
   const [selectedPesquisa, setSelectedPesquisa] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -67,7 +68,7 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
   };
 
   const copiarLink = (linkPublico: string) => {
-    const fullUrl = `${window.location.origin}/formulario/${linkPublico}`;
+    const fullUrl = `${window.location.origin}${linkPublico}`;
     navigator.clipboard.writeText(fullUrl);
     toast({
       title: "Link copiado!",
@@ -75,13 +76,15 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
     });
   };
 
-  const getTipoLabel = (tipo: string) => {
-    const labels = {
-      aberta: "Aberta",
-      multipla: "Múltipla",
-      unica: "Única",
-    };
-    return labels[tipo as keyof typeof labels] || tipo;
+  const editarPesquisa = (pesquisaId: string) => {
+    setEditPesquisaId(pesquisaId);
+    setShowForm(true);
+  };
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditPesquisaId(undefined);
+    carregarPesquisas();
   };
 
   if (loading) {
@@ -92,7 +95,7 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
     <div className="space-y-4">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">Pesquisa</h2>
-        <Button onClick={() => setShowForm(true)}>
+        <Button onClick={() => { setEditPesquisaId(undefined); setShowForm(true); }}>
           <Plus className="mr-2 h-4 w-4" />
           Gerar pesquisa
         </Button>
@@ -101,7 +104,7 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
       {pesquisas.length === 0 ? (
         <Card className="p-8 text-center">
           <p className="text-muted-foreground mb-4">Nenhuma pesquisa criada ainda</p>
-          <Button onClick={() => setShowForm(true)}>
+          <Button onClick={() => { setEditPesquisaId(undefined); setShowForm(true); }}>
             <Plus className="mr-2 h-4 w-4" />
             Criar primeira pesquisa
           </Button>
@@ -113,12 +116,18 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <h3 className="font-semibold">{pesquisa.titulo_pergunta}</h3>
-                  <div className="flex gap-4 mt-1 text-sm text-muted-foreground">
-                    <span>Tipo: {getTipoLabel(pesquisa.tipo)}</span>
-                    <span>Respostas: {pesquisa.respostas_count}</span>
+                  <div className="text-sm text-muted-foreground">
+                    {pesquisa.respostas_count || 0} resposta{pesquisa.respostas_count !== 1 ? "s" : ""}
                   </div>
                 </div>
                 <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => editarPesquisa(pesquisa.id)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
@@ -143,10 +152,8 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
       {showForm && (
         <PesquisaForm
           clienteId={clienteId}
-          onClose={() => {
-            setShowForm(false);
-            carregarPesquisas();
-          }}
+          pesquisaId={editPesquisaId}
+          onClose={handleCloseForm}
         />
       )}
 

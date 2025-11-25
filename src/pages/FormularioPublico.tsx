@@ -2,30 +2,34 @@ import { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle } from "lucide-react";
+import { Loader2 } from "lucide-react";
+
+interface Pergunta {
+  id: string;
+  titulo: string;
+  tipo: "aberta" | "multipla" | "unica";
+  opcoes: string[];
+  obrigatoria: boolean;
+}
 
 interface Pesquisa {
   id: string;
-  titulo_pergunta: string;
-  tipo: "aberta" | "multipla" | "unica";
-  opcoes: string[];
+  titulo: string;
 }
 
 export default function FormularioPublico() {
-  const { slug } = useParams<{ slug: string }>();
+  const { slug } = useParams();
   const [pesquisa, setPesquisa] = useState<Pesquisa | null>(null);
+  const [perguntas, setPerguntas] = useState<Pergunta[]>([]);
+  const [respostas, setRespostas] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
-  const [respostaTexto, setRespostaTexto] = useState("");
-  const [respostaSelecionada, setRespostaSelecionada] = useState("");
-  const [respostasMultiplas, setRespostasMultiplas] = useState<string[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -33,25 +37,50 @@ export default function FormularioPublico() {
   }, [slug]);
 
   const carregarPesquisa = async () => {
-    if (!slug) return;
-
     try {
       setLoading(true);
-      const { data, error } = await supabase
+
+      const { data: pesquisaData, error: pesquisaError } = await supabase
         .from("pesquisas")
-        .select("id, titulo_pergunta, tipo, opcoes")
-        .eq("link_publico", slug)
+        .select("id, titulo")
+        .eq("link_publico", `/formulario/${slug}`)
         .single();
 
-      if (error) throw error;
-      setPesquisa({
-        ...data,
-        opcoes: Array.isArray(data.opcoes) ? data.opcoes as string[] : []
+      if (pesquisaError) throw pesquisaError;
+      setPesquisa(pesquisaData);
+
+      const { data: perguntasData, error: perguntasError } = await supabase
+        .from("perguntas_pesquisa")
+        .select("*")
+        .eq("pesquisa_id", pesquisaData.id)
+        .order("ordem");
+
+      if (perguntasError) throw perguntasError;
+
+      setPerguntas(
+        (perguntasData || []).map((p) => ({
+          ...p,
+          opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
+        }))
+      );
+
+      // Initialize responses object
+      const initialRespostas: Record<string, any> = {};
+      perguntasData?.forEach((p) => {
+        if (p.tipo === "aberta") {
+          initialRespostas[p.id] = "";
+        } else if (p.tipo === "multipla") {
+          initialRespostas[p.id] = [];
+        } else {
+          initialRespostas[p.id] = "";
+        }
       });
+      setRespostas(initialRespostas);
     } catch (error: any) {
+      console.error("Erro ao carregar pesquisa:", error);
       toast({
         title: "Erro",
-        description: "Pesquisa não encontrada",
+        description: "Não foi possível carregar a pesquisa.",
         variant: "destructive",
       });
     } finally {
@@ -59,68 +88,79 @@ export default function FormularioPublico() {
     }
   };
 
-  const toggleOpcaoMultipla = (opcao: string) => {
-    setRespostasMultiplas((prev) =>
-      prev.includes(opcao)
-        ? prev.filter((o) => o !== opcao)
-        : [...prev, opcao]
-    );
+  const toggleOpcaoMultipla = (perguntaId: string, opcao: string) => {
+    const respostasAtuais = respostas[perguntaId] || [];
+    const novasRespostas = respostasAtuais.includes(opcao)
+      ? respostasAtuais.filter((o: string) => o !== opcao)
+      : [...respostasAtuais, opcao];
+
+    setRespostas({ ...respostas, [perguntaId]: novasRespostas });
   };
 
   const enviarResposta = async () => {
     if (!pesquisa) return;
 
-    // Validate
-    if (pesquisa.tipo === "aberta" && !respostaTexto.trim()) {
-      toast({
-        title: "Erro",
-        description: "Por favor, escreva sua resposta",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (pesquisa.tipo === "unica" && !respostaSelecionada) {
-      toast({
-        title: "Erro",
-        description: "Por favor, selecione uma opção",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (pesquisa.tipo === "multipla" && respostasMultiplas.length === 0) {
-      toast({
-        title: "Erro",
-        description: "Por favor, selecione pelo menos uma opção",
-        variant: "destructive",
-      });
-      return;
+    // Validate required questions
+    for (const pergunta of perguntas) {
+      if (pergunta.obrigatoria) {
+        const resposta = respostas[pergunta.id];
+        if (
+          !resposta ||
+          (Array.isArray(resposta) && resposta.length === 0) ||
+          (typeof resposta === "string" && !resposta.trim())
+        ) {
+          toast({
+            title: "Campo obrigatório",
+            description: `Por favor, responda: ${pergunta.titulo}`,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
     }
 
     try {
       setEnviando(true);
 
-      const payload: any = {
-        pesquisa_id: pesquisa.id,
-      };
+      // Generate unique respondent ID
+      const respondente_id = `resp_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
 
-      if (pesquisa.tipo === "aberta") {
-        payload.resposta_texto = respostaTexto;
-      } else if (pesquisa.tipo === "unica") {
-        payload.respostas_selecionadas = [respostaSelecionada];
-      } else {
-        payload.respostas_selecionadas = respostasMultiplas;
-      }
+      // Prepare responses for each question
+      const respostasParaSalvar = perguntas.map((pergunta) => {
+        const resposta = respostas[pergunta.id];
 
-      const { error } = await supabase.from("respostas_pesquisa").insert(payload);
+        return {
+          pesquisa_id: pesquisa.id,
+          pergunta_id: pergunta.id,
+          respondente_id,
+          resposta_texto:
+            pergunta.tipo === "aberta" ? resposta || null : null,
+          respostas_selecionadas:
+            pergunta.tipo === "multipla"
+              ? resposta
+              : pergunta.tipo === "unica"
+              ? [resposta]
+              : [],
+        };
+      });
+
+      const { error } = await supabase
+        .from("respostas_pesquisa")
+        .insert(respostasParaSalvar);
 
       if (error) throw error;
 
       setEnviado(true);
-    } catch (error: any) {
       toast({
-        title: "Erro ao enviar resposta",
+        title: "Resposta enviada!",
+        description: "Obrigado por participar da pesquisa.",
+      });
+    } catch (error: any) {
+      console.error("Erro ao enviar resposta:", error);
+      toast({
+        title: "Erro ao enviar",
         description: error.message,
         variant: "destructive",
       });
@@ -131,82 +171,143 @@ export default function FormularioPublico() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground">Carregando pesquisa...</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   if (!pesquisa) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Card className="p-8 max-w-md">
-          <p className="text-center text-muted-foreground">Pesquisa não encontrada</p>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-2">Pesquisa não encontrada</h1>
+          <p className="text-muted-foreground">
+            O link que você acessou não é válido ou a pesquisa foi removida.
+          </p>
+        </div>
       </div>
     );
   }
 
   if (enviado) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Card className="p-8 max-w-md text-center">
-          <CheckCircle className="h-16 w-16 text-primary mx-auto mb-4" />
-          <h2 className="text-2xl font-bold mb-2">Obrigado por responder!</h2>
-          <p className="text-muted-foreground">Sua resposta foi registrada com sucesso.</p>
-        </Card>
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <div className="max-w-md w-full text-center space-y-4">
+          <div className="text-6xl">✓</div>
+          <h1 className="text-2xl font-bold">Resposta enviada!</h1>
+          <p className="text-muted-foreground">
+            Obrigado por participar da nossa pesquisa.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="p-8 max-w-2xl w-full">
-        <h1 className="text-2xl font-bold mb-6">{pesquisa.titulo_pergunta}</h1>
+    <div className="min-h-screen bg-background py-12 px-4">
+      <div className="max-w-2xl mx-auto space-y-8">
+        <div className="text-center space-y-2">
+          <h1 className="text-3xl font-bold">{pesquisa.titulo}</h1>
+        </div>
 
-        {pesquisa.tipo === "aberta" && (
-          <Textarea
-            value={respostaTexto}
-            onChange={(e) => setRespostaTexto(e.target.value)}
-            placeholder="Digite sua resposta..."
-            className="min-h-[150px] mb-4"
-          />
-        )}
+        <div className="bg-card border rounded-lg p-6 space-y-8">
+          {perguntas.map((pergunta, index) => (
+            <div key={pergunta.id} className="space-y-3">
+              <Label className="text-base font-medium">
+                {index + 1}. {pergunta.titulo}
+                {pergunta.obrigatoria && (
+                  <span className="text-destructive ml-1">*</span>
+                )}
+              </Label>
 
-        {pesquisa.tipo === "multipla" && (
-          <div className="space-y-3 mb-4">
-            {pesquisa.opcoes.map((opcao, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Checkbox
-                  id={`opcao-${index}`}
-                  checked={respostasMultiplas.includes(opcao)}
-                  onCheckedChange={() => toggleOpcaoMultipla(opcao)}
+              {pergunta.tipo === "aberta" && (
+                <Textarea
+                  value={respostas[pergunta.id] || ""}
+                  onChange={(e) =>
+                    setRespostas({
+                      ...respostas,
+                      [pergunta.id]: e.target.value,
+                    })
+                  }
+                  placeholder="Digite sua resposta..."
+                  className="min-h-[100px]"
                 />
-                <Label htmlFor={`opcao-${index}`} className="cursor-pointer">
-                  {opcao}
-                </Label>
-              </div>
-            ))}
-          </div>
-        )}
+              )}
 
-        {pesquisa.tipo === "unica" && (
-          <RadioGroup value={respostaSelecionada} onValueChange={setRespostaSelecionada} className="mb-4">
-            {pesquisa.opcoes.map((opcao, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <RadioGroupItem value={opcao} id={`opcao-${index}`} />
-                <Label htmlFor={`opcao-${index}`} className="cursor-pointer">
-                  {opcao}
-                </Label>
-              </div>
-            ))}
-          </RadioGroup>
-        )}
+              {pergunta.tipo === "multipla" && (
+                <div className="space-y-3">
+                  {pergunta.opcoes.map((opcao, opcaoIndex) => (
+                    <div
+                      key={opcaoIndex}
+                      className="flex items-center space-x-2"
+                    >
+                      <Checkbox
+                        id={`${pergunta.id}-${opcaoIndex}`}
+                        checked={(respostas[pergunta.id] || []).includes(
+                          opcao
+                        )}
+                        onCheckedChange={() =>
+                          toggleOpcaoMultipla(pergunta.id, opcao)
+                        }
+                      />
+                      <Label
+                        htmlFor={`${pergunta.id}-${opcaoIndex}`}
+                        className="font-normal cursor-pointer"
+                      >
+                        {opcao}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              )}
 
-        <Button onClick={enviarResposta} disabled={enviando} className="w-full">
-          {enviando ? "Enviando..." : "Enviar resposta"}
-        </Button>
-      </Card>
+              {pergunta.tipo === "unica" && (
+                <RadioGroup
+                  value={respostas[pergunta.id] || ""}
+                  onValueChange={(value) =>
+                    setRespostas({ ...respostas, [pergunta.id]: value })
+                  }
+                >
+                  {pergunta.opcoes.map((opcao, opcaoIndex) => (
+                    <div
+                      key={opcaoIndex}
+                      className="flex items-center space-x-2"
+                    >
+                      <RadioGroupItem
+                        value={opcao}
+                        id={`${pergunta.id}-radio-${opcaoIndex}`}
+                      />
+                      <Label
+                        htmlFor={`${pergunta.id}-radio-${opcaoIndex}`}
+                        className="font-normal cursor-pointer"
+                      >
+                        {opcao}
+                      </Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+              )}
+            </div>
+          ))}
+
+          <Button
+            onClick={enviarResposta}
+            disabled={enviando}
+            className="w-full"
+            size="lg"
+          >
+            {enviando ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Enviando...
+              </>
+            ) : (
+              "Enviar resposta"
+            )}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
