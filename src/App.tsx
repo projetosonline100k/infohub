@@ -8,6 +8,7 @@ import DashGeral from "./pages/DashGeral";
 import Clientes from "./pages/Clientes";
 import ClienteDetalhe from "./pages/ClienteDetalhe";
 import Atividades from "./pages/Atividades";
+import FormularioPublico from "./pages/FormularioPublico";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -18,16 +19,19 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <DashboardLayout>
-          <Routes>
-            <Route path="/" element={<DashGeral />} />
-            <Route path="/clientes" element={<Clientes />} />
-            <Route path="/clientes/:id" element={<ClienteDetalhe />} />
-            <Route path="/atividades" element={<Atividades />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </DashboardLayout>
+        <Routes>
+          {/* Public route without layout */}
+          <Route path="/formulario/:slug" element={<FormularioPublico />} />
+          
+          {/* Protected routes with layout */}
+          <Route path="/" element={<DashboardLayout><DashGeral /></DashboardLayout>} />
+          <Route path="/clientes" element={<DashboardLayout><Clientes /></DashboardLayout>} />
+          <Route path="/clientes/:id" element={<DashboardLayout><ClienteDetalhe /></DashboardLayout>} />
+          <Route path="/atividades" element={<DashboardLayout><Atividades /></DashboardLayout>} />
+          
+          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="*" element={<DashboardLayout><NotFound /></DashboardLayout>} />
+        </Routes>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

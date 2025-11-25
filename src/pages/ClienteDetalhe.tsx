@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Plus, Edit, Trash } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
+import { PesquisaList } from "@/components/pesquisa/PesquisaList";
 
 interface Cliente {
   id: string;
@@ -312,11 +313,7 @@ export default function ClienteDetalhe() {
           )}
 
           {abaAtiva === "pesquisa" && (
-            <div className="flex items-center justify-center h-64">
-              <p className="text-muted-foreground">
-                Em breve: área de pesquisa do cliente
-              </p>
-            </div>
+            <PesquisaList clienteId={id!} />
           )}
 
           {abaAtiva === "atividades" && (
