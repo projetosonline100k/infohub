@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Plus, Edit } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ interface EquipeMembro {
 }
 
 const Clientes = () => {
+  const navigate = useNavigate();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<Cliente | undefined>();
@@ -80,7 +82,7 @@ const Clientes = () => {
   };
 
   const salvarCliente = async (
-    data: { nomeEspecialista: string; idade: number; nicho: string },
+    data: { nomeEspecialista: string; idade: number; nicho: string; metaAtual?: string; linkPainelReceita?: string },
     equipe: Array<{ nomePessoa: string; papel: string }>,
     clienteId?: string
   ) => {
@@ -95,6 +97,8 @@ const Clientes = () => {
             nome_especialista: data.nomeEspecialista,
             idade: data.idade,
             nicho: data.nicho,
+            meta_atual: data.metaAtual || null,
+            link_painel_receita: data.linkPainelReceita || null,
           })
           .eq("id", clienteId);
 
@@ -110,6 +114,8 @@ const Clientes = () => {
             nome_especialista: data.nomeEspecialista,
             idade: data.idade,
             nicho: data.nicho,
+            meta_atual: data.metaAtual || null,
+            link_painel_receita: data.linkPainelReceita || null,
           })
           .select()
           .single();
@@ -178,7 +184,11 @@ const Clientes = () => {
       ) : (
         <div className="space-y-3">
           {clientes.map((cliente) => (
-            <Card key={cliente.id} className="p-4 shadow-sm hover:shadow-md transition-shadow">
+            <Card 
+              key={cliente.id} 
+              className="p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => navigate(`/clientes/${cliente.id}`)}
+            >
               <div className="flex items-center gap-4">
                 <Avatar className="h-12 w-12">
                   <AvatarFallback className="bg-primary/10 text-primary font-semibold">
@@ -194,7 +204,10 @@ const Clientes = () => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => abrirFormularioEditar(cliente)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    abrirFormularioEditar(cliente);
+                  }}
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Editar
