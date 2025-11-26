@@ -68,7 +68,9 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
   };
 
   const copiarLink = (linkPublico: string) => {
-    const fullUrl = `${window.location.origin}${linkPublico}`;
+    // Usar URL publicada se disponível, ou origin atual
+    const baseUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+    const fullUrl = `${baseUrl}${linkPublico}`;
     navigator.clipboard.writeText(fullUrl);
     toast({
       title: "Link copiado!",
