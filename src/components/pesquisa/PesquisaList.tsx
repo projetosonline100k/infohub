@@ -43,15 +43,20 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
 
       if (error) throw error;
 
-      // Count responses for each survey
+      // Count unique respondents for each survey
       const pesquisasComRespostas = await Promise.all(
         (data || []).map(async (pesquisa) => {
-          const { count } = await supabase
+          const { data: respondentes } = await supabase
             .from("respostas_pesquisa")
-            .select("*", { count: "exact", head: true })
+            .select("respondente_id")
             .eq("pesquisa_id", pesquisa.id);
 
-          return { ...pesquisa, respostas_count: count || 0 };
+          // Count unique respondent IDs
+          const uniqueRespondentes = new Set(
+            respondentes?.map((r) => r.respondente_id) || []
+          );
+
+          return { ...pesquisa, respostas_count: uniqueRespondentes.size };
         })
       );
 
@@ -119,7 +124,7 @@ export function PesquisaList({ clienteId }: PesquisaListProps) {
                 <div className="flex-1">
                   <h3 className="font-semibold">{pesquisa.titulo_pergunta}</h3>
                   <div className="text-sm text-muted-foreground">
-                    {pesquisa.respostas_count || 0} resposta{pesquisa.respostas_count !== 1 ? "s" : ""}
+                    {pesquisa.respostas_count || 0} pessoa{pesquisa.respostas_count !== 1 ? "s" : ""}
                   </div>
                 </div>
                 <div className="flex gap-2">
