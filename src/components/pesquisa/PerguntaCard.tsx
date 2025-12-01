@@ -10,6 +10,7 @@ interface PerguntaCardProps {
     titulo: string;
     tipo: "aberta" | "multipla" | "unica";
     opcoes: string[];
+    secao: number;
   };
   index: number;
   onUpdate: (index: number, field: string, value: any) => void;
@@ -61,32 +62,46 @@ export function PerguntaCard({ pergunta, index, onUpdate, onRemove }: PerguntaCa
             </Button>
           </div>
 
-          <div>
-            <Label>Tipo de resposta</Label>
-            <RadioGroup
-              value={pergunta.tipo}
-              onValueChange={(value) => onUpdate(index, "tipo", value)}
-              className="flex gap-4 mt-1"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="aberta" id={`aberta-${index}`} />
-                <Label htmlFor={`aberta-${index}`} className="font-normal cursor-pointer">
-                  Aberta
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="multipla" id={`multipla-${index}`} />
-                <Label htmlFor={`multipla-${index}`} className="font-normal cursor-pointer">
-                  Múltipla escolha
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="unica" id={`unica-${index}`} />
-                <Label htmlFor={`unica-${index}`} className="font-normal cursor-pointer">
-                  Única escolha
-                </Label>
-              </div>
-            </RadioGroup>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Tipo de resposta</Label>
+              <RadioGroup
+                value={pergunta.tipo}
+                onValueChange={(value) => onUpdate(index, "tipo", value)}
+                className="flex flex-col gap-2 mt-1"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="aberta" id={`aberta-${index}`} />
+                  <Label htmlFor={`aberta-${index}`} className="font-normal cursor-pointer">
+                    Aberta
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="multipla" id={`multipla-${index}`} />
+                  <Label htmlFor={`multipla-${index}`} className="font-normal cursor-pointer">
+                    Múltipla escolha
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="unica" id={`unica-${index}`} />
+                  <Label htmlFor={`unica-${index}`} className="font-normal cursor-pointer">
+                    Única escolha
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
+            <div>
+              <Label htmlFor={`secao-${index}`}>Seção</Label>
+              <Input
+                id={`secao-${index}`}
+                type="number"
+                min="1"
+                value={pergunta.secao}
+                onChange={(e) => onUpdate(index, "secao", parseInt(e.target.value) || 1)}
+                className="mt-1"
+              />
+            </div>
           </div>
 
           {(pergunta.tipo === "multipla" || pergunta.tipo === "unica") && (

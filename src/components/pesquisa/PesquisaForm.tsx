@@ -27,6 +27,7 @@ interface Pergunta {
   titulo: string;
   tipo: TipoPesquisa;
   opcoes: string[];
+  secao: number;
 }
 
 export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormProps) {
@@ -34,7 +35,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
   const [bannerUrl, setBannerUrl] = useState("");
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [perguntas, setPerguntas] = useState<Pergunta[]>([
-    { titulo: "", tipo: "aberta", opcoes: [] },
+    { titulo: "", tipo: "aberta", opcoes: [], secao: 1 },
   ]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -75,6 +76,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           titulo: p.titulo,
           tipo: p.tipo as TipoPesquisa,
           opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
+          secao: p.secao || 1,
         }))
       );
     } catch (error: any) {
@@ -89,7 +91,9 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
   };
 
   const adicionarPergunta = () => {
-    setPerguntas([...perguntas, { titulo: "", tipo: "aberta", opcoes: [] }]);
+    // Add to the highest section number
+    const maxSecao = Math.max(...perguntas.map(p => p.secao), 0);
+    setPerguntas([...perguntas, { titulo: "", tipo: "aberta", opcoes: [], secao: maxSecao || 1 }]);
   };
 
   const removerPergunta = (index: number) => {
@@ -260,6 +264,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           opcoes: p.opcoes,
           ordem: index + 1,
           obrigatoria: true,
+          secao: p.secao,
         }));
 
         const { error: insertError } = await supabase
@@ -300,6 +305,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           opcoes: p.opcoes,
           ordem: index + 1,
           obrigatoria: true,
+          secao: p.secao,
         }));
 
         const { error: perguntasError } = await supabase

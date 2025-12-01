@@ -15,6 +15,7 @@ interface Pergunta {
   tipo: "aberta" | "multipla" | "unica";
   opcoes: string[];
   obrigatoria: boolean;
+  secao: number;
 }
 
 interface Pesquisa {
@@ -31,6 +32,8 @@ export default function FormularioPublico() {
   const [loading, setLoading] = useState(true);
   const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+  const [secaoAtual, setSecaoAtual] = useState(1);
+  const [totalSecoes, setTotalSecoes] = useState(1);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -58,12 +61,17 @@ export default function FormularioPublico() {
 
       if (perguntasError) throw perguntasError;
 
-      setPerguntas(
-        (perguntasData || []).map((p) => ({
-          ...p,
-          opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
-        }))
-      );
+      const perguntasComSecao = (perguntasData || []).map((p) => ({
+        ...p,
+        opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
+        secao: p.secao || 1,
+      }));
+
+      setPerguntas(perguntasComSecao);
+
+      // Calculate total sections
+      const maxSecao = Math.max(...perguntasComSecao.map((p) => p.secao), 1);
+      setTotalSecoes(maxSecao);
 
       // Initialize responses object
       const initialRespostas: Record<string, any> = {};
@@ -98,11 +106,10 @@ export default function FormularioPublico() {
     setRespostas({ ...respostas, [perguntaId]: novasRespostas });
   };
 
-  const enviarResposta = async () => {
-    if (!pesquisa) return;
+  const validarSecaoAtual = () => {
+    const perguntasSecao = perguntas.filter((p) => p.secao === secaoAtual);
 
-    // Validate required questions
-    for (const pergunta of perguntas) {
+    for (const pergunta of perguntasSecao) {
       if (pergunta.obrigatoria) {
         const resposta = respostas[pergunta.id];
         if (
@@ -115,10 +122,28 @@ export default function FormularioPublico() {
             description: `Por favor, responda: ${pergunta.titulo}`,
             variant: "destructive",
           });
-          return;
+          return false;
         }
       }
     }
+    return true;
+  };
+
+  const avancarSecao = () => {
+    if (validarSecaoAtual()) {
+      setSecaoAtual((s) => Math.min(totalSecoes, s + 1));
+    }
+  };
+
+  const voltarSecao = () => {
+    setSecaoAtual((s) => Math.max(1, s - 1));
+  };
+
+  const enviarResposta = async () => {
+    if (!pesquisa) return;
+
+    // Validate all required questions
+    if (!validarSecaoAtual()) return;
 
     try {
       setEnviando(true);
@@ -205,6 +230,9 @@ export default function FormularioPublico() {
     );
   }
 
+  const perguntasSecaoAtual = perguntas.filter((p) => p.secao === secaoAtual);
+  const progressoPercentual = (secaoAtual / totalSecoes) * 100;
+
   return (
     <div className="min-h-screen bg-background py-12 px-4">
       <div className="max-w-2xl mx-auto space-y-8">
@@ -220,103 +248,143 @@ export default function FormularioPublico() {
 
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">{pesquisa.titulo}</h1>
+          {totalSecoes > 1 && (
+            <div className="space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Seção {secaoAtual} de {totalSecoes}
+              </p>
+              <div className="w-full bg-muted rounded-full h-2">
+                <div
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${progressoPercentual}%` }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-card border rounded-lg p-6 space-y-8">
-          {perguntas.map((pergunta, index) => (
-            <div key={pergunta.id} className="space-y-3">
-              <Label className="text-base font-medium">
-                {index + 1}. {pergunta.titulo}
-                {pergunta.obrigatoria && (
-                  <span className="text-destructive ml-1">*</span>
+          {perguntasSecaoAtual.map((pergunta) => {
+            const perguntaIndex = perguntas.findIndex((p) => p.id === pergunta.id);
+            return (
+              <div key={pergunta.id} className="space-y-3">
+                <Label className="text-base font-medium">
+                  {perguntaIndex + 1}. {pergunta.titulo}
+                  {pergunta.obrigatoria && (
+                    <span className="text-destructive ml-1">*</span>
+                  )}
+                </Label>
+
+                {pergunta.tipo === "aberta" && (
+                  <Textarea
+                    value={respostas[pergunta.id] || ""}
+                    onChange={(e) =>
+                      setRespostas({
+                        ...respostas,
+                        [pergunta.id]: e.target.value,
+                      })
+                    }
+                    placeholder="Digite sua resposta..."
+                    className="min-h-[100px]"
+                  />
                 )}
-              </Label>
 
-              {pergunta.tipo === "aberta" && (
-                <Textarea
-                  value={respostas[pergunta.id] || ""}
-                  onChange={(e) =>
-                    setRespostas({
-                      ...respostas,
-                      [pergunta.id]: e.target.value,
-                    })
-                  }
-                  placeholder="Digite sua resposta..."
-                  className="min-h-[100px]"
-                />
-              )}
-
-              {pergunta.tipo === "multipla" && (
-                <div className="space-y-3">
-                  {pergunta.opcoes.map((opcao, opcaoIndex) => (
-                    <div
-                      key={opcaoIndex}
-                      className="flex items-center space-x-2"
-                    >
-                      <Checkbox
-                        id={`${pergunta.id}-${opcaoIndex}`}
-                        checked={(respostas[pergunta.id] || []).includes(
-                          opcao
-                        )}
-                        onCheckedChange={() =>
-                          toggleOpcaoMultipla(pergunta.id, opcao)
-                        }
-                      />
-                      <Label
-                        htmlFor={`${pergunta.id}-${opcaoIndex}`}
-                        className="font-normal cursor-pointer"
+                {pergunta.tipo === "multipla" && (
+                  <div className="space-y-3">
+                    {pergunta.opcoes.map((opcao, opcaoIndex) => (
+                      <div
+                        key={opcaoIndex}
+                        className="flex items-center space-x-2"
                       >
-                        {opcao}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              )}
+                        <Checkbox
+                          id={`${pergunta.id}-${opcaoIndex}`}
+                          checked={(respostas[pergunta.id] || []).includes(
+                            opcao
+                          )}
+                          onCheckedChange={() =>
+                            toggleOpcaoMultipla(pergunta.id, opcao)
+                          }
+                        />
+                        <Label
+                          htmlFor={`${pergunta.id}-${opcaoIndex}`}
+                          className="font-normal cursor-pointer"
+                        >
+                          {opcao}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
-              {pergunta.tipo === "unica" && (
-                <RadioGroup
-                  value={respostas[pergunta.id] || ""}
-                  onValueChange={(value) =>
-                    setRespostas({ ...respostas, [pergunta.id]: value })
-                  }
-                >
-                  {pergunta.opcoes.map((opcao, opcaoIndex) => (
-                    <div
-                      key={opcaoIndex}
-                      className="flex items-center space-x-2"
-                    >
-                      <RadioGroupItem
-                        value={opcao}
-                        id={`${pergunta.id}-radio-${opcaoIndex}`}
-                      />
-                      <Label
-                        htmlFor={`${pergunta.id}-radio-${opcaoIndex}`}
-                        className="font-normal cursor-pointer"
+                {pergunta.tipo === "unica" && (
+                  <RadioGroup
+                    value={respostas[pergunta.id] || ""}
+                    onValueChange={(value) =>
+                      setRespostas({ ...respostas, [pergunta.id]: value })
+                    }
+                  >
+                    {pergunta.opcoes.map((opcao, opcaoIndex) => (
+                      <div
+                        key={opcaoIndex}
+                        className="flex items-center space-x-2"
                       >
-                        {opcao}
-                      </Label>
-                    </div>
-                  ))}
-                </RadioGroup>
-              )}
-            </div>
-          ))}
+                        <RadioGroupItem
+                          value={opcao}
+                          id={`${pergunta.id}-radio-${opcaoIndex}`}
+                        />
+                        <Label
+                          htmlFor={`${pergunta.id}-radio-${opcaoIndex}`}
+                          className="font-normal cursor-pointer"
+                        >
+                          {opcao}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                )}
+              </div>
+            );
+          })}
 
-          <Button
-            onClick={enviarResposta}
-            disabled={enviando}
-            className="w-full"
-            size="lg"
-          >
-            {enviando ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Enviando...
-              </>
+          <div className="flex justify-between gap-4 pt-4 border-t">
+            {secaoAtual > 1 ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={voltarSecao}
+                className="flex-1"
+              >
+                Voltar
+              </Button>
             ) : (
-              "Enviar resposta"
+              <div className="flex-1" />
             )}
-          </Button>
+
+            {secaoAtual < totalSecoes ? (
+              <Button
+                type="button"
+                onClick={avancarSecao}
+                className="flex-1"
+              >
+                Avançar
+              </Button>
+            ) : (
+              <Button
+                onClick={enviarResposta}
+                disabled={enviando}
+                className="flex-1"
+              >
+                {enviando ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Enviando...
+                  </>
+                ) : (
+                  "Enviar resposta"
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

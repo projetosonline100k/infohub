@@ -87,6 +87,7 @@ export type Database = {
           opcoes: Json | null
           ordem: number
           pesquisa_id: string
+          secao: number
           tipo: Database["public"]["Enums"]["tipo_pesquisa"]
           titulo: string
         }
@@ -97,6 +98,7 @@ export type Database = {
           opcoes?: Json | null
           ordem: number
           pesquisa_id: string
+          secao?: number
           tipo: Database["public"]["Enums"]["tipo_pesquisa"]
           titulo: string
         }
@@ -107,6 +109,7 @@ export type Database = {
           opcoes?: Json | null
           ordem?: number
           pesquisa_id?: string
+          secao?: number
           tipo?: Database["public"]["Enums"]["tipo_pesquisa"]
           titulo?: string
         }
