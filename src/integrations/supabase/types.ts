@@ -129,7 +129,11 @@ export type Database = {
           cliente_id: string
           created_at: string
           id: string
+          link_final: string | null
+          link_final_texto: string | null
           link_publico: string
+          mensagem_final: string | null
+          mensagem_inicial: string | null
           opcoes: Json | null
           tipo: Database["public"]["Enums"]["tipo_pesquisa"]
           titulo: string | null
@@ -140,7 +144,11 @@ export type Database = {
           cliente_id: string
           created_at?: string
           id?: string
+          link_final?: string | null
+          link_final_texto?: string | null
           link_publico: string
+          mensagem_final?: string | null
+          mensagem_inicial?: string | null
           opcoes?: Json | null
           tipo: Database["public"]["Enums"]["tipo_pesquisa"]
           titulo?: string | null
@@ -151,7 +159,11 @@ export type Database = {
           cliente_id?: string
           created_at?: string
           id?: string
+          link_final?: string | null
+          link_final_texto?: string | null
           link_publico?: string
+          mensagem_final?: string | null
+          mensagem_inicial?: string | null
           opcoes?: Json | null
           tipo?: Database["public"]["Enums"]["tipo_pesquisa"]
           titulo?: string | null

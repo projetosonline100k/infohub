@@ -2,7 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { Trash2, GripVertical, Plus, X } from "lucide-react";
+import { Trash2, GripVertical, Plus, X, ChevronUp, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
 interface PerguntaCardProps {
@@ -13,11 +13,14 @@ interface PerguntaCardProps {
     secao: number;
   };
   index: number;
+  totalPerguntas: number;
   onUpdate: (index: number, field: string, value: any) => void;
   onRemove: (index: number) => void;
+  onMoveUp: (index: number) => void;
+  onMoveDown: (index: number) => void;
 }
 
-export function PerguntaCard({ pergunta, index, onUpdate, onRemove }: PerguntaCardProps) {
+export function PerguntaCard({ pergunta, index, totalPerguntas, onUpdate, onRemove, onMoveUp, onMoveDown }: PerguntaCardProps) {
   const adicionarOpcao = () => {
     onUpdate(index, "opcoes", [...pergunta.opcoes, ""]);
   };
@@ -37,10 +40,32 @@ export function PerguntaCard({ pergunta, index, onUpdate, onRemove }: PerguntaCa
   };
 
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-6 space-y-5">
       <div className="flex items-start gap-2">
-        <GripVertical className="h-5 w-5 text-muted-foreground mt-2 cursor-move" />
-        <div className="flex-1 space-y-4">
+        <div className="flex flex-col gap-1 mt-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onMoveUp(index)}
+            disabled={index === 0}
+            className="h-6 w-6"
+          >
+            <ChevronUp className="h-4 w-4" />
+          </Button>
+          <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onMoveDown(index)}
+            disabled={index === totalPerguntas - 1}
+            className="h-6 w-6"
+          >
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex-1 space-y-5">
           <div className="flex items-start gap-2">
             <div className="flex-1">
               <Label>Pergunta {index + 1}</Label>
