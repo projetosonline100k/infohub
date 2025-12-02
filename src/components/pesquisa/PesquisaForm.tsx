@@ -392,150 +392,152 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           </div>
 
           {/* Form Column */}
-          <div className="flex-1 flex flex-col gap-6">
-            <div>
-              <Label htmlFor="titulo">Nome da pesquisa</Label>
-              <Input
-                id="titulo"
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ex: Pesquisa de satisfação 2024"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="banner">Banner (opcional)</Label>
-              {bannerUrl ? (
-                <div className="mt-2 relative">
-                  <img
-                    src={bannerUrl}
-                    alt="Banner"
-                    className="w-full h-32 object-cover rounded-md"
+          <div className="flex-1 flex flex-col">
+            <ScrollArea className="flex-1">
+              <div className="space-y-6 pr-4 pb-4">
+                <div>
+                  <Label htmlFor="titulo">Nome da pesquisa</Label>
+                  <Input
+                    id="titulo"
+                    value={titulo}
+                    onChange={(e) => setTitulo(e.target.value)}
+                    placeholder="Ex: Pesquisa de satisfação 2024"
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="banner">Banner (opcional)</Label>
+                  {bannerUrl ? (
+                    <div className="mt-2 relative">
+                      <img
+                        src={bannerUrl}
+                        alt="Banner"
+                        className="w-full h-32 object-cover rounded-md"
+                      />
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={removeBanner}
+                        className="absolute top-2 right-2"
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <input
+                        type="file"
+                        id="banner"
+                        accept="image/*"
+                        onChange={handleBannerUpload}
+                        disabled={uploadingBanner}
+                        className="hidden"
+                      />
+                      <Label
+                        htmlFor="banner"
+                        className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
+                      >
+                        {uploadingBanner ? (
+                          <span className="text-muted-foreground">Enviando...</span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Clique para selecionar uma imagem
+                          </span>
+                        )}
+                      </Label>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Recomendado: 1200x400px, máximo 5MB
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="mensagem-inicial">Mensagem inicial (opcional)</Label>
+                  <Textarea
+                    id="mensagem-inicial"
+                    value={mensagemInicial}
+                    onChange={(e) => setMensagemInicial(e.target.value)}
+                    placeholder="Ex: Parabéns pela sua inscrição! Para me ajudar a personalizar sua experiência, responda algumas perguntas..."
+                    className="mt-1 min-h-[80px]"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Será exibida antes das perguntas
+                  </p>
+                </div>
+
+                <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+                  <Label className="text-base font-semibold">Configurações de Conclusão</Label>
+                  
+                  <div>
+                    <Label htmlFor="mensagem-final">Mensagem final (opcional)</Label>
+                    <Textarea
+                      id="mensagem-final"
+                      value={mensagemFinal}
+                      onChange={(e) => setMensagemFinal(e.target.value)}
+                      placeholder="Ex: Obrigado por participar! Agora você pode acessar seu presente..."
+                      className="mt-1 min-h-[80px]"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="link-final">Link do botão (opcional)</Label>
+                    <Input
+                      id="link-final"
+                      value={linkFinal}
+                      onChange={(e) => setLinkFinal(e.target.value)}
+                      placeholder="https://exemplo.com/presente"
+                      className="mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="link-final-texto">Texto do botão (opcional)</Label>
+                    <Input
+                      id="link-final-texto"
+                      value={linkFinalTexto}
+                      onChange={(e) => setLinkFinalTexto(e.target.value)}
+                      placeholder="Ex: Acesse seu presente"
+                      className="mt-1"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      O link só aparece se você preencher a URL acima
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label>Perguntas</Label>
                   <Button
                     type="button"
-                    variant="destructive"
+                    variant="outline"
                     size="sm"
-                    onClick={removeBanner}
-                    className="absolute top-2 right-2"
+                    onClick={adicionarPergunta}
                   >
-                    Remover
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar pergunta
                   </Button>
                 </div>
-              ) : (
-                <div className="mt-2">
-                  <input
-                    type="file"
-                    id="banner"
-                    accept="image/*"
-                    onChange={handleBannerUpload}
-                    disabled={uploadingBanner}
-                    className="hidden"
-                  />
-                  <Label
-                    htmlFor="banner"
-                    className="flex items-center justify-center w-full h-32 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
-                  >
-                    {uploadingBanner ? (
-                      <span className="text-muted-foreground">Enviando...</span>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        Clique para selecionar uma imagem
-                      </span>
-                    )}
-                  </Label>
+
+                <div className="space-y-6">
+                  {perguntas.map((pergunta, index) => (
+                    <PerguntaCard
+                      key={index}
+                      pergunta={pergunta}
+                      index={index}
+                      totalPerguntas={perguntas.length}
+                      onUpdate={atualizarPergunta}
+                      onRemove={removerPergunta}
+                      onMoveUp={moverPerguntaParaCima}
+                      onMoveDown={moverPerguntaParaBaixo}
+                    />
+                  ))}
                 </div>
-              )}
-              <p className="text-xs text-muted-foreground mt-1">
-                Recomendado: 1200x400px, máximo 5MB
-              </p>
-            </div>
-
-            <div>
-              <Label htmlFor="mensagem-inicial">Mensagem inicial (opcional)</Label>
-              <Textarea
-                id="mensagem-inicial"
-                value={mensagemInicial}
-                onChange={(e) => setMensagemInicial(e.target.value)}
-                placeholder="Ex: Parabéns pela sua inscrição! Para me ajudar a personalizar sua experiência, responda algumas perguntas..."
-                className="mt-1 min-h-[80px]"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Será exibida antes das perguntas
-              </p>
-            </div>
-
-            <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
-              <Label className="text-base font-semibold">Configurações de Conclusão</Label>
-              
-              <div>
-                <Label htmlFor="mensagem-final">Mensagem final (opcional)</Label>
-                <Textarea
-                  id="mensagem-final"
-                  value={mensagemFinal}
-                  onChange={(e) => setMensagemFinal(e.target.value)}
-                  placeholder="Ex: Obrigado por participar! Agora você pode acessar seu presente..."
-                  className="mt-1 min-h-[80px]"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="link-final">Link do botão (opcional)</Label>
-                <Input
-                  id="link-final"
-                  value={linkFinal}
-                  onChange={(e) => setLinkFinal(e.target.value)}
-                  placeholder="https://exemplo.com/presente"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="link-final-texto">Texto do botão (opcional)</Label>
-                <Input
-                  id="link-final-texto"
-                  value={linkFinalTexto}
-                  onChange={(e) => setLinkFinalTexto(e.target.value)}
-                  placeholder="Ex: Acesse seu presente"
-                  className="mt-1"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  O link só aparece se você preencher a URL acima
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <Label>Perguntas</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={adicionarPergunta}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Adicionar pergunta
-              </Button>
-            </div>
-
-            <ScrollArea className="flex-1">
-              <div className="space-y-6 pr-4">
-                {perguntas.map((pergunta, index) => (
-                  <PerguntaCard
-                    key={index}
-                    pergunta={pergunta}
-                    index={index}
-                    totalPerguntas={perguntas.length}
-                    onUpdate={atualizarPergunta}
-                    onRemove={removerPergunta}
-                    onMoveUp={moverPerguntaParaCima}
-                    onMoveDown={moverPerguntaParaBaixo}
-                  />
-                ))}
               </div>
             </ScrollArea>
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
+            <div className="flex justify-end gap-2 pt-4 border-t mt-4">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
