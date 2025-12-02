@@ -22,6 +22,10 @@ interface Pesquisa {
   id: string;
   titulo: string;
   banner_url: string | null;
+  mensagem_inicial: string | null;
+  mensagem_final: string | null;
+  link_final: string | null;
+  link_final_texto: string | null;
 }
 
 export default function FormularioPublico() {
@@ -46,7 +50,7 @@ export default function FormularioPublico() {
 
       const { data: pesquisaData, error: pesquisaError } = await supabase
         .from("pesquisas")
-        .select("id, titulo, banner_url")
+        .select("id, titulo, banner_url, mensagem_inicial, mensagem_final, link_final, link_final_texto")
         .eq("link_publico", `/formulario/${slug}`)
         .single();
 
@@ -219,12 +223,37 @@ export default function FormularioPublico() {
   if (enviado) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="max-w-md w-full text-center space-y-4">
-          <div className="text-6xl">✓</div>
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="text-6xl text-primary">✓</div>
           <h1 className="text-2xl font-bold">Resposta enviada!</h1>
-          <p className="text-muted-foreground">
-            Obrigado por participar da nossa pesquisa.
-          </p>
+          
+          {pesquisa.mensagem_final ? (
+            <div className="bg-card border rounded-lg p-6">
+              <p className="text-foreground whitespace-pre-wrap">
+                {pesquisa.mensagem_final}
+              </p>
+            </div>
+          ) : (
+            <p className="text-muted-foreground">
+              Obrigado por participar da nossa pesquisa.
+            </p>
+          )}
+
+          {pesquisa.link_final && (
+            <Button
+              asChild
+              size="lg"
+              className="w-full"
+            >
+              <a
+                href={pesquisa.link_final}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {pesquisa.link_final_texto || "Acesse aqui"}
+              </a>
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -262,6 +291,14 @@ export default function FormularioPublico() {
             </div>
           )}
         </div>
+
+        {pesquisa.mensagem_inicial && secaoAtual === 1 && (
+          <div className="bg-card border rounded-lg p-6">
+            <p className="text-foreground whitespace-pre-wrap">
+              {pesquisa.mensagem_inicial}
+            </p>
+          </div>
+        )}
 
         <div className="bg-card border rounded-lg p-6 space-y-8">
           {perguntasSecaoAtual.map((pergunta) => {

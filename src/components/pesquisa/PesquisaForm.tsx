@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -33,6 +34,10 @@ interface Pergunta {
 export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormProps) {
   const [titulo, setTitulo] = useState("");
   const [bannerUrl, setBannerUrl] = useState("");
+  const [mensagemInicial, setMensagemInicial] = useState("");
+  const [mensagemFinal, setMensagemFinal] = useState("");
+  const [linkFinal, setLinkFinal] = useState("");
+  const [linkFinalTexto, setLinkFinalTexto] = useState("");
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [perguntas, setPerguntas] = useState<Pergunta[]>([
     { titulo: "", tipo: "aberta", opcoes: [], secao: 1 },
@@ -54,13 +59,17 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
 
       const { data: pesquisaData, error: pesquisaError } = await supabase
         .from("pesquisas")
-        .select("titulo, banner_url")
+        .select("titulo, banner_url, mensagem_inicial, mensagem_final, link_final, link_final_texto")
         .eq("id", pesquisaId)
         .single();
 
       if (pesquisaError) throw pesquisaError;
 
       setBannerUrl(pesquisaData.banner_url || "");
+      setMensagemInicial(pesquisaData.mensagem_inicial || "");
+      setMensagemFinal(pesquisaData.mensagem_final || "");
+      setLinkFinal(pesquisaData.link_final || "");
+      setLinkFinalTexto(pesquisaData.link_final_texto || "");
 
       const { data: perguntasData, error: perguntasError } = await supabase
         .from("perguntas_pesquisa")
@@ -117,6 +126,22 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
       novasPerguntas[index].opcoes = [""];
     }
 
+    setPerguntas(novasPerguntas);
+  };
+
+  const moverPerguntaParaCima = (index: number) => {
+    if (index === 0) return;
+    const novasPerguntas = [...perguntas];
+    [novasPerguntas[index - 1], novasPerguntas[index]] = 
+      [novasPerguntas[index], novasPerguntas[index - 1]];
+    setPerguntas(novasPerguntas);
+  };
+
+  const moverPerguntaParaBaixo = (index: number) => {
+    if (index === perguntas.length - 1) return;
+    const novasPerguntas = [...perguntas];
+    [novasPerguntas[index], novasPerguntas[index + 1]] = 
+      [novasPerguntas[index + 1], novasPerguntas[index]];
     setPerguntas(novasPerguntas);
   };
 
@@ -243,7 +268,14 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
         // Update existing survey
         const { error: updateError } = await supabase
           .from("pesquisas")
-          .update({ titulo, banner_url: bannerUrl || null })
+          .update({ 
+            titulo, 
+            banner_url: bannerUrl || null,
+            mensagem_inicial: mensagemInicial || null,
+            mensagem_final: mensagemFinal || null,
+            link_final: linkFinal || null,
+            link_final_texto: linkFinalTexto || null,
+          })
           .eq("id", pesquisaId);
 
         if (updateError) throw updateError;
@@ -292,6 +324,10 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
             tipo: "aberta",
             opcoes: [],
             banner_url: bannerUrl || null,
+            mensagem_inicial: mensagemInicial || null,
+            mensagem_final: mensagemFinal || null,
+            link_final: linkFinal || null,
+            link_final_texto: linkFinalTexto || null,
           })
           .select()
           .single();
@@ -341,14 +377,22 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={salvarPesquisa} className="flex gap-4 h-[70vh]">
+        <form onSubmit={salvarPesquisa} className="flex gap-6 h-[70vh]">
           {/* Preview Column */}
           <div className="w-1/3 border rounded-lg flex flex-col">
-            <PesquisaPreview titulo={titulo} perguntas={perguntas} bannerUrl={bannerUrl} />
+            <PesquisaPreview 
+              titulo={titulo} 
+              perguntas={perguntas} 
+              bannerUrl={bannerUrl}
+              mensagemInicial={mensagemInicial}
+              mensagemFinal={mensagemFinal}
+              linkFinal={linkFinal}
+              linkFinalTexto={linkFinalTexto}
+            />
           </div>
 
           {/* Form Column */}
-          <div className="flex-1 flex flex-col gap-4">
+          <div className="flex-1 flex flex-col gap-6">
             <div>
               <Label htmlFor="titulo">Nome da pesquisa</Label>
               <Input
@@ -407,6 +451,60 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
               </p>
             </div>
 
+            <div>
+              <Label htmlFor="mensagem-inicial">Mensagem inicial (opcional)</Label>
+              <Textarea
+                id="mensagem-inicial"
+                value={mensagemInicial}
+                onChange={(e) => setMensagemInicial(e.target.value)}
+                placeholder="Ex: Parabéns pela sua inscrição! Para me ajudar a personalizar sua experiência, responda algumas perguntas..."
+                className="mt-1 min-h-[80px]"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Será exibida antes das perguntas
+              </p>
+            </div>
+
+            <div className="space-y-4 border rounded-lg p-4 bg-muted/20">
+              <Label className="text-base font-semibold">Configurações de Conclusão</Label>
+              
+              <div>
+                <Label htmlFor="mensagem-final">Mensagem final (opcional)</Label>
+                <Textarea
+                  id="mensagem-final"
+                  value={mensagemFinal}
+                  onChange={(e) => setMensagemFinal(e.target.value)}
+                  placeholder="Ex: Obrigado por participar! Agora você pode acessar seu presente..."
+                  className="mt-1 min-h-[80px]"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="link-final">Link do botão (opcional)</Label>
+                <Input
+                  id="link-final"
+                  value={linkFinal}
+                  onChange={(e) => setLinkFinal(e.target.value)}
+                  placeholder="https://exemplo.com/presente"
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="link-final-texto">Texto do botão (opcional)</Label>
+                <Input
+                  id="link-final-texto"
+                  value={linkFinalTexto}
+                  onChange={(e) => setLinkFinalTexto(e.target.value)}
+                  placeholder="Ex: Acesse seu presente"
+                  className="mt-1"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  O link só aparece se você preencher a URL acima
+                </p>
+              </div>
+            </div>
+
             <div className="flex items-center justify-between">
               <Label>Perguntas</Label>
               <Button
@@ -421,14 +519,17 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
             </div>
 
             <ScrollArea className="flex-1">
-              <div className="space-y-4 pr-4">
+              <div className="space-y-6 pr-4">
                 {perguntas.map((pergunta, index) => (
                   <PerguntaCard
                     key={index}
                     pergunta={pergunta}
                     index={index}
+                    totalPerguntas={perguntas.length}
                     onUpdate={atualizarPergunta}
                     onRemove={removerPergunta}
+                    onMoveUp={moverPerguntaParaCima}
+                    onMoveDown={moverPerguntaParaBaixo}
                   />
                 ))}
               </div>
