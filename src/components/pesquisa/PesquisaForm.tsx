@@ -25,6 +25,7 @@ interface PesquisaFormProps {
 type TipoPesquisa = "aberta" | "multipla" | "unica";
 
 interface Pergunta {
+  id?: string;
   titulo: string;
   tipo: TipoPesquisa;
   opcoes: string[];
@@ -83,6 +84,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
       setTitulo(pesquisaData.titulo || "");
       setPerguntas(
         perguntasData.map((p) => ({
+          id: p.id,
           titulo: p.titulo,
           tipo: p.tipo as TipoPesquisa,
           opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
@@ -282,30 +284,72 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
 
         if (updateError) throw updateError;
 
-        // Delete old questions
-        const { error: deleteError } = await supabase
+        // Separate existing questions from new ones
+        const perguntasExistentes = perguntas.filter(p => p.id);
+        const perguntasNovas = perguntas.filter(p => !p.id);
+        const idsAtuais = perguntasExistentes.map(p => p.id);
+
+        // Get current questions in database to find removed ones
+        const { data: perguntasAntigas } = await supabase
           .from("perguntas_pesquisa")
-          .delete()
+          .select("id")
           .eq("pesquisa_id", pesquisaId);
 
-        if (deleteError) throw deleteError;
+        const idsRemovidos = perguntasAntigas
+          ?.filter(p => !idsAtuais.includes(p.id))
+          .map(p => p.id) || [];
 
-        // Insert new questions
-        const perguntasData = perguntas.map((p, index) => ({
-          pesquisa_id: pesquisaId,
-          titulo: p.titulo,
-          tipo: p.tipo,
-          opcoes: p.opcoes,
-          ordem: index + 1,
-          obrigatoria: p.obrigatoria,
-          secao: p.secao,
-        }));
+        // Delete only removed questions
+        if (idsRemovidos.length > 0) {
+          const { error: deleteError } = await supabase
+            .from("perguntas_pesquisa")
+            .delete()
+            .in("id", idsRemovidos);
 
-        const { error: insertError } = await supabase
-          .from("perguntas_pesquisa")
-          .insert(perguntasData);
+          if (deleteError) throw deleteError;
+        }
 
-        if (insertError) throw insertError;
+        // Update existing questions (preserving IDs and linked responses)
+        for (let i = 0; i < perguntasExistentes.length; i++) {
+          const p = perguntasExistentes[i];
+          const ordemAtual = perguntas.findIndex(perg => perg.id === p.id) + 1;
+          
+          const { error: updatePerguntaError } = await supabase
+            .from("perguntas_pesquisa")
+            .update({
+              titulo: p.titulo,
+              tipo: p.tipo,
+              opcoes: p.opcoes,
+              ordem: ordemAtual,
+              obrigatoria: p.obrigatoria,
+              secao: p.secao,
+            })
+            .eq("id", p.id);
+
+          if (updatePerguntaError) throw updatePerguntaError;
+        }
+
+        // Insert only new questions
+        if (perguntasNovas.length > 0) {
+          const perguntasNovasData = perguntasNovas.map((p) => {
+            const ordemAtual = perguntas.findIndex(perg => perg === p) + 1;
+            return {
+              pesquisa_id: pesquisaId,
+              titulo: p.titulo,
+              tipo: p.tipo,
+              opcoes: p.opcoes,
+              ordem: ordemAtual,
+              obrigatoria: p.obrigatoria,
+              secao: p.secao,
+            };
+          });
+
+          const { error: insertError } = await supabase
+            .from("perguntas_pesquisa")
+            .insert(perguntasNovasData);
+
+          if (insertError) throw insertError;
+        }
 
         toast({
           title: "Pesquisa atualizada!",
