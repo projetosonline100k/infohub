@@ -2,6 +2,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Trash2, GripVertical, Plus, X, ChevronUp, ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 
@@ -11,6 +12,7 @@ interface PerguntaCardProps {
     tipo: "aberta" | "multipla" | "unica";
     opcoes: string[];
     secao: number;
+    obrigatoria: boolean;
   };
   index: number;
   totalPerguntas: number;
@@ -116,16 +118,28 @@ export function PerguntaCard({ pergunta, index, totalPerguntas, onUpdate, onRemo
               </RadioGroup>
             </div>
 
-            <div>
-              <Label htmlFor={`secao-${index}`}>Seção</Label>
-              <Input
-                id={`secao-${index}`}
-                type="number"
-                min="1"
-                value={pergunta.secao}
-                onChange={(e) => onUpdate(index, "secao", parseInt(e.target.value) || 1)}
-                className="mt-1"
-              />
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor={`secao-${index}`}>Seção</Label>
+                <Input
+                  id={`secao-${index}`}
+                  type="number"
+                  min="1"
+                  value={pergunta.secao}
+                  onChange={(e) => onUpdate(index, "secao", parseInt(e.target.value) || 1)}
+                  className="mt-1"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id={`obrigatoria-${index}`}
+                  checked={pergunta.obrigatoria}
+                  onCheckedChange={(checked) => onUpdate(index, "obrigatoria", checked)}
+                />
+                <Label htmlFor={`obrigatoria-${index}`} className="cursor-pointer font-normal">
+                  Resposta obrigatória
+                </Label>
+              </div>
             </div>
           </div>
 
