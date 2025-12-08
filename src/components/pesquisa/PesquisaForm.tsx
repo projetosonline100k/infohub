@@ -29,6 +29,7 @@ interface Pergunta {
   tipo: TipoPesquisa;
   opcoes: string[];
   secao: number;
+  obrigatoria: boolean;
 }
 
 export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormProps) {
@@ -40,7 +41,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
   const [linkFinalTexto, setLinkFinalTexto] = useState("");
   const [uploadingBanner, setUploadingBanner] = useState(false);
   const [perguntas, setPerguntas] = useState<Pergunta[]>([
-    { titulo: "", tipo: "aberta", opcoes: [], secao: 1 },
+    { titulo: "", tipo: "aberta", opcoes: [], secao: 1, obrigatoria: true },
   ]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -86,6 +87,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           tipo: p.tipo as TipoPesquisa,
           opcoes: Array.isArray(p.opcoes) ? (p.opcoes as string[]) : [],
           secao: p.secao || 1,
+          obrigatoria: p.obrigatoria ?? true,
         }))
       );
     } catch (error: any) {
@@ -102,7 +104,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
   const adicionarPergunta = () => {
     // Add to the highest section number
     const maxSecao = Math.max(...perguntas.map(p => p.secao), 0);
-    setPerguntas([...perguntas, { titulo: "", tipo: "aberta", opcoes: [], secao: maxSecao || 1 }]);
+    setPerguntas([...perguntas, { titulo: "", tipo: "aberta", opcoes: [], secao: maxSecao || 1, obrigatoria: true }]);
   };
 
   const removerPergunta = (index: number) => {
@@ -295,7 +297,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           tipo: p.tipo,
           opcoes: p.opcoes,
           ordem: index + 1,
-          obrigatoria: true,
+          obrigatoria: p.obrigatoria,
           secao: p.secao,
         }));
 
@@ -340,7 +342,7 @@ export function PesquisaForm({ clienteId, pesquisaId, onClose }: PesquisaFormPro
           tipo: p.tipo,
           opcoes: p.opcoes,
           ordem: index + 1,
-          obrigatoria: true,
+          obrigatoria: p.obrigatoria,
           secao: p.secao,
         }));
 
