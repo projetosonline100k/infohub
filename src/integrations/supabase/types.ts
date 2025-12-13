@@ -425,6 +425,7 @@ export type Database = {
           descricao: string | null
           id: string
           ordem: number
+          roteiro: string | null
           status: string
           titulo: string
         }
@@ -434,6 +435,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           ordem?: number
+          roteiro?: string | null
           status?: string
           titulo: string
         }
@@ -443,6 +445,40 @@ export type Database = {
           descricao?: string | null
           id?: string
           ordem?: number
+          roteiro?: string | null
+          status?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
+      videos_youtube: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          descricao: string | null
+          id: string
+          ordem: number
+          roteiro: string | null
+          status: string
+          titulo: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          ordem?: number
+          roteiro?: string | null
+          status?: string
+          titulo: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          ordem?: number
+          roteiro?: string | null
           status?: string
           titulo?: string
         }

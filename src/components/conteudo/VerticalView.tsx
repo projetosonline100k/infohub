@@ -27,6 +27,7 @@ interface VideoVertical {
   id: string;
   titulo: string;
   descricao: string | null;
+  roteiro: string | null;
   status: string;
   ordem: number;
 }
@@ -49,6 +50,12 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   const [novoVideoKanban, setNovoVideoKanban] = useState({ titulo: "", descricao: "" });
   const [dialogRefOpen, setDialogRefOpen] = useState(false);
   const [dialogKanbanOpen, setDialogKanbanOpen] = useState(false);
+  
+  // Edit roteiro states
+  const [editingVideo, setEditingVideo] = useState<VideoVertical | null>(null);
+  const [editTitulo, setEditTitulo] = useState("");
+  const [editDescricao, setEditDescricao] = useState("");
+  const [editRoteiro, setEditRoteiro] = useState("");
 
   useEffect(() => {
     fetchVideos();
@@ -132,6 +139,43 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       toast.success("Item removido");
       fetchVideos();
     }
+  };
+
+  const openEditModal = (video: VideoVertical) => {
+    setEditingVideo(video);
+    setEditTitulo(video.titulo);
+    setEditDescricao(video.descricao || "");
+    setEditRoteiro(video.roteiro || "");
+  };
+
+  const handleSaveRoteiro = async () => {
+    if (!editingVideo) return;
+
+    // Se está salvando roteiro e video está em "ideia", move para "roteiro"
+    const novoStatus = editRoteiro.trim() && editingVideo.status === "ideia" 
+      ? "roteiro" 
+      : editingVideo.status;
+
+    const { error } = await supabase
+      .from("videos_vertical")
+      .update({
+        titulo: editTitulo,
+        descricao: editDescricao || null,
+        roteiro: editRoteiro || null,
+        status: novoStatus,
+      })
+      .eq("id", editingVideo.id);
+
+    if (error) {
+      toast.error("Erro ao salvar");
+      return;
+    }
+
+    toast.success(novoStatus !== editingVideo.status 
+      ? "Roteiro salvo! Movido para 'Criando roteiro'" 
+      : "Salvo com sucesso!");
+    setEditingVideo(null);
+    fetchVideos();
   };
 
   const handleDragEnd = async (result: DropResult) => {
@@ -394,14 +438,16 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              className={`bg-card border rounded-md p-3 group ${
+                              className={`bg-card border rounded-md p-3 group cursor-pointer hover:border-primary/50 transition-colors ${
                                 snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
                               }`}
+                              onClick={() => openEditModal(video)}
                             >
                               <div className="flex items-start gap-2">
                                 <div
                                   {...provided.dragHandleProps}
                                   className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                  onClick={(e) => e.stopPropagation()}
                                 >
                                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                                 </div>
@@ -412,12 +458,20 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                       {video.descricao}
                                     </p>
                                   )}
+                                  {video.roteiro && (
+                                    <span className="inline-flex items-center gap-1 text-xs text-green-600 mt-1">
+                                      <Check className="h-3 w-3" /> Roteiro
+                                    </span>
+                                  )}
                                 </div>
                                 <Button
                                   size="icon"
                                   variant="ghost"
                                   className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={() => handleDeleteVideoKanban(video.id)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteVideoKanban(video.id);
+                                  }}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
@@ -435,6 +489,53 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
           </div>
         </DragDropContext>
       </div>
+
+      {/* Modal de edição com roteiro */}
+      <Dialog open={!!editingVideo} onOpenChange={(open) => !open && setEditingVideo(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Editar ideia de vídeo</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Título</label>
+              <Input
+                value={editTitulo}
+                onChange={(e) => setEditTitulo(e.target.value)}
+                placeholder="Título do vídeo"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Descrição</label>
+              <Textarea
+                value={editDescricao}
+                onChange={(e) => setEditDescricao(e.target.value)}
+                placeholder="Descrição do vídeo..."
+                rows={2}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Roteiro</label>
+              <Textarea
+                value={editRoteiro}
+                onChange={(e) => setEditRoteiro(e.target.value)}
+                placeholder="Escreva o roteiro do vídeo aqui..."
+                rows={10}
+                className="font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditingVideo(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveRoteiro}>Salvar</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
