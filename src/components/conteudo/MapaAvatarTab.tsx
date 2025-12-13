@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { PerfilCard } from "./PerfilCard";
 import { NucleoInfluencia } from "./NucleoInfluencia";
+import { Button } from "@/components/ui/button";
 
 interface Perfil {
   id: string;
@@ -10,15 +11,20 @@ interface Perfil {
   descricao?: string;
   imagem_url?: string;
   ordem: number;
+  link_perfil?: string;
+  plataforma?: string;
 }
 
 interface MapaAvatarTabProps {
   clienteId: string;
 }
 
+type FiltroPlataforma = "todos" | "youtube" | "conteudo_curto";
+
 export function MapaAvatarTab({ clienteId }: MapaAvatarTabProps) {
   const [perfis, setPerfis] = useState<Perfil[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filtro, setFiltro] = useState<FiltroPlataforma>("todos");
 
   useEffect(() => {
     carregarPerfis();
@@ -41,7 +47,7 @@ export function MapaAvatarTab({ clienteId }: MapaAvatarTabProps) {
     }
   };
 
-  const adicionarPerfil = async () => {
+  const adicionarPerfil = async (plataforma: string) => {
     const novaOrdem = perfis.length + 1;
     
     try {
@@ -51,6 +57,7 @@ export function MapaAvatarTab({ clienteId }: MapaAvatarTabProps) {
           cliente_id: clienteId,
           nome: `Perfil ${novaOrdem}`,
           ordem: novaOrdem,
+          plataforma,
         })
         .select()
         .single();
@@ -98,14 +105,44 @@ export function MapaAvatarTab({ clienteId }: MapaAvatarTabProps) {
     }
   };
 
+  // Filtrar perfis por plataforma
+  const perfisFiltrados = filtro === "todos" 
+    ? perfis 
+    : perfis.filter(p => p.plataforma === filtro);
+
   // Garantir 5 slots de cards
-  const slots = Array.from({ length: 5 }, (_, i) => perfis[i] || null);
+  const slots = Array.from({ length: 5 }, (_, i) => perfisFiltrados[i] || null);
 
   return (
     <div className="space-y-8">
       {/* Perfis parecidos */}
       <div>
-        <h3 className="text-lg font-semibold mb-4">Perfis parecidos</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Perfis parecidos</h3>
+          <div className="flex gap-2">
+            <Button
+              variant={filtro === "todos" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFiltro("todos")}
+            >
+              Todos
+            </Button>
+            <Button
+              variant={filtro === "youtube" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFiltro("youtube")}
+            >
+              YouTube
+            </Button>
+            <Button
+              variant={filtro === "conteudo_curto" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setFiltro("conteudo_curto")}
+            >
+              Conteúdo Curto
+            </Button>
+          </div>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {slots.map((perfil, index) => (
             <PerfilCard
@@ -114,6 +151,7 @@ export function MapaAvatarTab({ clienteId }: MapaAvatarTabProps) {
               onAdd={adicionarPerfil}
               onUpdate={atualizarPerfil}
               onDelete={excluirPerfil}
+              filtroAtual={filtro}
             />
           ))}
         </div>

@@ -146,8 +146,10 @@ export type Database = {
           descricao: string | null
           id: string
           imagem_url: string | null
+          link_perfil: string | null
           nome: string
           ordem: number
+          plataforma: string | null
         }
         Insert: {
           cliente_id: string
@@ -155,8 +157,10 @@ export type Database = {
           descricao?: string | null
           id?: string
           imagem_url?: string | null
+          link_perfil?: string | null
           nome: string
           ordem?: number
+          plataforma?: string | null
         }
         Update: {
           cliente_id?: string
@@ -164,8 +168,10 @@ export type Database = {
           descricao?: string | null
           id?: string
           imagem_url?: string | null
+          link_perfil?: string | null
           nome?: string
           ordem?: number
+          plataforma?: string | null
         }
         Relationships: []
       }
