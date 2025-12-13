@@ -7,6 +7,7 @@ import { ArrowLeft, Plus, Edit, Trash } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
+import { ConteudoSection } from "@/components/conteudo/ConteudoSection";
 
 interface Cliente {
   id: string;
@@ -146,6 +147,16 @@ export default function ClienteDetalhe() {
             }`}
           >
             Atividades
+          </button>
+          <button
+            onClick={() => setAbaAtiva("conteudo")}
+            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+              abaAtiva === "conteudo"
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
+            }`}
+          >
+            Conteúdo
           </button>
         </div>
       </div>
@@ -322,6 +333,10 @@ export default function ClienteDetalhe() {
                 Em breve: atividades e tarefas deste cliente
               </p>
             </div>
+          )}
+
+          {abaAtiva === "conteudo" && (
+            <ConteudoSection clienteId={id!} />
           )}
         </div>
       </div>
