@@ -79,6 +79,90 @@ export type Database = {
           },
         ]
       }
+      ideias_conteudo: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          descricao: string | null
+          id: string
+          status: string | null
+          titulo: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          status?: string | null
+          titulo: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          status?: string | null
+          titulo?: string
+        }
+        Relationships: []
+      }
+      nucleo_influencia: {
+        Row: {
+          categoria: string
+          cliente_id: string
+          created_at: string
+          id: string
+          ordem: number
+          texto: string
+        }
+        Insert: {
+          categoria: string
+          cliente_id: string
+          created_at?: string
+          id?: string
+          ordem?: number
+          texto: string
+        }
+        Update: {
+          categoria?: string
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          ordem?: number
+          texto?: string
+        }
+        Relationships: []
+      }
+      perfis_parecidos: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          descricao: string | null
+          id: string
+          imagem_url: string | null
+          nome: string
+          ordem: number
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          nome: string
+          ordem?: number
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          imagem_url?: string | null
+          nome?: string
+          ordem?: number
+        }
+        Relationships: []
+      }
       perguntas_pesquisa: {
         Row: {
           created_at: string
