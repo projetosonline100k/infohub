@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Sparkles, Check, MessageSquare } from "lucide-react";
+import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Sparkles, Check, MessageSquare, Tag, X, Settings } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -32,6 +33,17 @@ interface VideoVertical {
   ordem: number;
 }
 
+interface TagVideo {
+  id: string;
+  nome: string;
+  cor: string;
+}
+
+interface VideoTagRelation {
+  video_id: string;
+  tag_id: string;
+}
+
 const KANBAN_COLUMNS = [
   { id: "ideia", label: "Ideias de vídeos", color: "bg-blue-500/10 border-blue-500/30", borderColor: "border-l-blue-500" },
   { id: "roteiro", label: "Criando roteiro", color: "bg-yellow-500/10 border-yellow-500/30", borderColor: "border-l-yellow-500" },
@@ -39,11 +51,42 @@ const KANBAN_COLUMNS = [
   { id: "pronto", label: "Prontos para postar", color: "bg-green-500/10 border-green-500/30", borderColor: "border-l-green-500" },
 ];
 
+const TAG_COLORS = [
+  { id: "blue", label: "Azul", class: "bg-blue-500" },
+  { id: "green", label: "Verde", class: "bg-green-500" },
+  { id: "red", label: "Vermelho", class: "bg-red-500" },
+  { id: "purple", label: "Roxo", class: "bg-purple-500" },
+  { id: "orange", label: "Laranja", class: "bg-orange-500" },
+  { id: "pink", label: "Rosa", class: "bg-pink-500" },
+  { id: "yellow", label: "Amarelo", class: "bg-yellow-500" },
+  { id: "cyan", label: "Ciano", class: "bg-cyan-500" },
+];
+
+const getTagColorClass = (cor: string) => {
+  const colorMap: Record<string, string> = {
+    blue: "bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/30",
+    green: "bg-green-500/20 text-green-700 dark:text-green-300 border-green-500/30",
+    red: "bg-red-500/20 text-red-700 dark:text-red-300 border-red-500/30",
+    purple: "bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-500/30",
+    orange: "bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-500/30",
+    pink: "bg-pink-500/20 text-pink-700 dark:text-pink-300 border-pink-500/30",
+    yellow: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border-yellow-500/30",
+    cyan: "bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-500/30",
+  };
+  return colorMap[cor] || colorMap.blue;
+};
+
 export function VerticalView({ clienteId }: VerticalViewProps) {
   const [videosReferencia, setVideosReferencia] = useState<VideoReferencia[]>([]);
   const [videosKanban, setVideosKanban] = useState<VideoVertical[]>([]);
   const [selectedVideos, setSelectedVideos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Tags state
+  const [tags, setTags] = useState<TagVideo[]>([]);
+  const [videoTags, setVideoTags] = useState<VideoTagRelation[]>([]);
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [novaTag, setNovaTag] = useState({ nome: "", cor: "blue" });
   
   // Form states
   const [novoVideoRef, setNovoVideoRef] = useState({ titulo: "", link_video: "", thumbnail_url: "" });
@@ -56,14 +99,16 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   const [editTitulo, setEditTitulo] = useState("");
   const [editDescricao, setEditDescricao] = useState("");
   const [editRoteiro, setEditRoteiro] = useState("");
+  const [editVideoTags, setEditVideoTags] = useState<string[]>([]);
 
   useEffect(() => {
     fetchVideos();
+    fetchTags();
   }, [clienteId]);
 
   const fetchVideos = async () => {
     setLoading(true);
-    const [refResult, kanbanResult] = await Promise.all([
+    const [refResult, kanbanResult, videoTagsResult] = await Promise.all([
       supabase
         .from("videos_referencia")
         .select("*")
@@ -74,11 +119,64 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         .select("*")
         .eq("cliente_id", clienteId)
         .order("ordem"),
+      supabase
+        .from("videos_vertical_tags")
+        .select("video_id, tag_id"),
     ]);
 
     if (refResult.data) setVideosReferencia(refResult.data);
     if (kanbanResult.data) setVideosKanban(kanbanResult.data);
+    if (videoTagsResult.data) setVideoTags(videoTagsResult.data);
     setLoading(false);
+  };
+
+  const fetchTags = async () => {
+    const { data } = await supabase
+      .from("tags_video")
+      .select("*")
+      .eq("cliente_id", clienteId)
+      .order("created_at");
+    
+    if (data) setTags(data);
+  };
+
+  const handleAddTag = async () => {
+    if (!novaTag.nome.trim()) return;
+    
+    const { error } = await supabase.from("tags_video").insert({
+      cliente_id: clienteId,
+      nome: novaTag.nome,
+      cor: novaTag.cor,
+    });
+
+    if (error) {
+      toast.error("Erro ao criar tag");
+      return;
+    }
+
+    toast.success("Tag criada!");
+    setNovaTag({ nome: "", cor: "blue" });
+    fetchTags();
+  };
+
+  const handleDeleteTag = async (tagId: string) => {
+    const { error } = await supabase.from("tags_video").delete().eq("id", tagId);
+    if (!error) {
+      toast.success("Tag removida");
+      fetchTags();
+      fetchVideos(); // Refresh video tags
+    }
+  };
+
+  const getVideoTagIds = (videoId: string): string[] => {
+    return videoTags
+      .filter(vt => vt.video_id === videoId)
+      .map(vt => vt.tag_id);
+  };
+
+  const getTagsForVideo = (videoId: string): TagVideo[] => {
+    const tagIds = getVideoTagIds(videoId);
+    return tags.filter(t => tagIds.includes(t.id));
   };
 
   const handleAddVideoRef = async () => {
@@ -146,6 +244,15 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     setEditTitulo(video.titulo);
     setEditDescricao(video.descricao || "");
     setEditRoteiro(video.roteiro || "");
+    setEditVideoTags(getVideoTagIds(video.id));
+  };
+
+  const toggleVideoTag = (tagId: string) => {
+    setEditVideoTags(prev => 
+      prev.includes(tagId)
+        ? prev.filter(id => id !== tagId)
+        : [...prev, tagId]
+    );
   };
 
   const handleSaveRoteiro = async () => {
@@ -169,6 +276,22 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     if (error) {
       toast.error("Erro ao salvar");
       return;
+    }
+
+    // Update tags - first remove all existing tags for this video
+    await supabase
+      .from("videos_vertical_tags")
+      .delete()
+      .eq("video_id", editingVideo.id);
+
+    // Then add the selected tags
+    if (editVideoTags.length > 0) {
+      await supabase.from("videos_vertical_tags").insert(
+        editVideoTags.map(tagId => ({
+          video_id: editingVideo.id,
+          tag_id: tagId,
+        }))
+      );
     }
 
     toast.success(novoStatus !== editingVideo.status 
@@ -384,32 +507,104 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
-          <Dialog open={dialogKanbanOpen} onOpenChange={setDialogKanbanOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Plus className="h-4 w-4 mr-1" />
-                Nova ideia
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Nova ideia de vídeo</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <Input
-                  placeholder="Título da ideia"
-                  value={novoVideoKanban.titulo}
-                  onChange={e => setNovoVideoKanban(prev => ({ ...prev, titulo: e.target.value }))}
-                />
-                <Textarea
-                  placeholder="Descrição (opcional)"
-                  value={novoVideoKanban.descricao}
-                  onChange={e => setNovoVideoKanban(prev => ({ ...prev, descricao: e.target.value }))}
-                />
-                <Button onClick={handleAddVideoKanban} className="w-full">Adicionar</Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <div className="flex gap-2">
+            {/* Gerenciar Tags */}
+            <Dialog open={tagsDialogOpen} onOpenChange={setTagsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Tag className="h-4 w-4 mr-1" />
+                  Tags
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Gerenciar Tags</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  {/* Create new tag */}
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Nome da tag"
+                      value={novaTag.nome}
+                      onChange={e => setNovaTag(prev => ({ ...prev, nome: e.target.value }))}
+                      className="flex-1"
+                    />
+                    <Button onClick={handleAddTag} size="sm">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Color picker */}
+                  <div className="flex flex-wrap gap-2">
+                    {TAG_COLORS.map((color) => (
+                      <button
+                        key={color.id}
+                        onClick={() => setNovaTag(prev => ({ ...prev, cor: color.id }))}
+                        className={`w-8 h-8 rounded-full ${color.class} transition-all ${
+                          novaTag.cor === color.id ? "ring-2 ring-offset-2 ring-primary" : ""
+                        }`}
+                        title={color.label}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Existing tags */}
+                  <div className="border-t pt-4">
+                    <p className="text-sm text-muted-foreground mb-3">Tags existentes:</p>
+                    {tags.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        Nenhuma tag criada ainda
+                      </p>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {tags.map((tag) => (
+                          <div
+                            key={tag.id}
+                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${getTagColorClass(tag.cor)}`}
+                          >
+                            {tag.nome}
+                            <button
+                              onClick={() => handleDeleteTag(tag.id)}
+                              className="ml-1 hover:opacity-70"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={dialogKanbanOpen} onOpenChange={setDialogKanbanOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <Plus className="h-4 w-4 mr-1" />
+                  Nova ideia
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Nova ideia de vídeo</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <Input
+                    placeholder="Título da ideia"
+                    value={novoVideoKanban.titulo}
+                    onChange={e => setNovoVideoKanban(prev => ({ ...prev, titulo: e.target.value }))}
+                  />
+                  <Textarea
+                    placeholder="Descrição (opcional)"
+                    value={novoVideoKanban.descricao}
+                    onChange={e => setNovoVideoKanban(prev => ({ ...prev, descricao: e.target.value }))}
+                  />
+                  <Button onClick={handleAddVideoKanban} className="w-full">Adicionar</Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <DragDropContext onDragEnd={handleDragEnd}>
@@ -453,6 +648,21 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                   <p className="font-medium text-base leading-snug">{video.titulo}</p>
+                                  
+                                  {/* Tags do vídeo */}
+                                  {getTagsForVideo(video.id).length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mt-2">
+                                      {getTagsForVideo(video.id).map((tag) => (
+                                        <span
+                                          key={tag.id}
+                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getTagColorClass(tag.cor)}`}
+                                        >
+                                          {tag.nome}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  
                                   {video.descricao && (
                                     <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
                                       {video.descricao}
@@ -514,6 +724,37 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                 rows={2}
               />
             </div>
+            
+            {/* Tags selection */}
+            <div>
+              <label className="text-sm font-medium">Tags</label>
+              {tags.length === 0 ? (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Nenhuma tag disponível. Crie tags primeiro clicando no botão "Tags".
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {tags.map((tag) => {
+                    const isSelected = editVideoTags.includes(tag.id);
+                    return (
+                      <button
+                        key={tag.id}
+                        onClick={() => toggleVideoTag(tag.id)}
+                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                          isSelected 
+                            ? getTagColorClass(tag.cor) + " ring-2 ring-primary ring-offset-1"
+                            : "bg-muted/50 text-muted-foreground border-muted hover:bg-muted"
+                        }`}
+                      >
+                        {isSelected && <Check className="h-3 w-3" />}
+                        {tag.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            
             <div>
               <label className="text-sm font-medium">Roteiro</label>
               <Textarea
