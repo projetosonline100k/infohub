@@ -413,9 +413,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         </div>
 
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="grid grid-cols-4 gap-4">
+          <div className="flex gap-4 overflow-x-auto pb-4">
             {KANBAN_COLUMNS.map((column) => (
-              <div key={column.id} className={`rounded-lg border p-3 ${column.color}`}>
+              <div key={column.id} className={`flex-shrink-0 min-w-[260px] w-72 rounded-lg border p-3 ${column.color}`}>
                 <h4 className="font-medium text-sm mb-3 flex items-center justify-between">
                   {column.label}
                   <span className="text-xs bg-background/50 px-2 py-0.5 rounded-full">
