@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { Plus, X, Lightbulb } from "lucide-react";
+import { Plus, X, Lightbulb, Instagram, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +18,8 @@ interface Ideia {
   titulo: string;
   descricao?: string;
   status: string;
+  plataformas: string[];
+  link_referencia?: string;
 }
 
 interface IdeiasTabProps {
@@ -30,6 +32,8 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
   const [showModal, setShowModal] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [plataformas, setPlataformas] = useState<string[]>([]);
+  const [linkReferencia, setLinkReferencia] = useState("");
 
   useEffect(() => {
     carregarIdeias();
@@ -52,6 +56,14 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
     }
   };
 
+  const togglePlataforma = (plataforma: string) => {
+    setPlataformas((prev) =>
+      prev.includes(plataforma)
+        ? prev.filter((p) => p !== plataforma)
+        : [...prev, plataforma]
+    );
+  };
+
   const adicionarIdeia = async () => {
     if (!titulo.trim()) return;
 
@@ -62,6 +74,8 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
           cliente_id: clienteId,
           titulo: titulo.trim(),
           descricao: descricao.trim() || null,
+          plataformas: plataformas,
+          link_referencia: linkReferencia.trim() || null,
         })
         .select()
         .single();
@@ -69,14 +83,20 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
       if (error) throw error;
 
       setIdeias([data, ...ideias]);
-      setTitulo("");
-      setDescricao("");
+      resetForm();
       setShowModal(false);
       toast({ title: "Ideia adicionada!" });
     } catch (error) {
       console.error("Erro ao adicionar ideia:", error);
       toast({ title: "Erro ao adicionar ideia", variant: "destructive" });
     }
+  };
+
+  const resetForm = () => {
+    setTitulo("");
+    setDescricao("");
+    setPlataformas([]);
+    setLinkReferencia("");
   };
 
   const excluirIdeia = async (id: string) => {
@@ -115,32 +135,49 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="space-y-3">
           {ideias.map((ideia) => (
-            <Card key={ideia.id} className="group relative">
+            <div
+              key={ideia.id}
+              className="flex items-center gap-3 p-3 border rounded-lg bg-card hover:bg-accent/5 transition-colors"
+            >
               <Button
                 size="icon"
                 variant="ghost"
-                className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={() => excluirIdeia(ideia.id)}
               >
-                <X className="h-3 w-3" />
+                <X className="h-4 w-4" />
               </Button>
-              <CardContent className="pt-4">
-                <h4 className="font-medium mb-2">{ideia.titulo}</h4>
+              
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{ideia.titulo}</p>
                 {ideia.descricao && (
-                  <p className="text-sm text-muted-foreground line-clamp-3">
+                  <p className="text-sm text-muted-foreground truncate">
                     {ideia.descricao}
                   </p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {ideia.plataformas?.includes("instagram") && (
+                  <div className="w-7 h-7 rounded-md bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                    <Instagram className="h-4 w-4 text-white" />
+                  </div>
+                )}
+                {ideia.plataformas?.includes("youtube") && (
+                  <div className="w-7 h-7 rounded-md bg-red-600 flex items-center justify-center">
+                    <Youtube className="h-4 w-4 text-white" />
+                  </div>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}
 
       {/* Modal de nova ideia */}
-      <Dialog open={showModal} onOpenChange={setShowModal}>
+      <Dialog open={showModal} onOpenChange={(open) => { setShowModal(open); if (!open) resetForm(); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nova ideia de conteúdo</DialogTitle>
@@ -151,7 +188,7 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
               <Input
                 value={titulo}
                 onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ex: Vídeo sobre produtividade"
+                placeholder="Ex: 3 livros para ler em 2025"
               />
             </div>
             <div>
@@ -160,11 +197,52 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
                 value={descricao}
                 onChange={(e) => setDescricao(e.target.value)}
                 placeholder="Descreva a ideia em mais detalhes..."
-                rows={4}
+                rows={3}
               />
             </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Qual plataforma?</label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={plataformas.includes("instagram")}
+                    onCheckedChange={() => togglePlataforma("instagram")}
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                      <Instagram className="h-3 w-3 text-white" />
+                    </div>
+                    <span className="text-sm">Instagram</span>
+                  </div>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <Checkbox
+                    checked={plataformas.includes("youtube")}
+                    onCheckedChange={() => togglePlataforma("youtube")}
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-5 h-5 rounded bg-red-600 flex items-center justify-center">
+                      <Youtube className="h-3 w-3 text-white" />
+                    </div>
+                    <span className="text-sm">Youtube</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Possui link de referência?</label>
+              <Input
+                value={linkReferencia}
+                onChange={(e) => setLinkReferencia(e.target.value)}
+                placeholder="https://..."
+                type="url"
+              />
+            </div>
+
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowModal(false)}>
+              <Button variant="outline" onClick={() => { setShowModal(false); resetForm(); }}>
                 Cancelar
               </Button>
               <Button onClick={adicionarIdeia}>Salvar</Button>
