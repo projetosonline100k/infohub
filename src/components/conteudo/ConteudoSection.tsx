@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { BrainstormView } from "./BrainstormView";
+import { VerticalView } from "./VerticalView";
 
 interface ConteudoSectionProps {
   clienteId: string;
@@ -40,13 +41,7 @@ export function ConteudoSection({ clienteId }: ConteudoSectionProps) {
       <div className="flex-1 overflow-y-auto p-6">
         {subAba === "brainstorm" && <BrainstormView clienteId={clienteId} />}
         
-        {subAba === "vertical" && (
-          <div className="flex items-center justify-center h-64">
-            <p className="text-muted-foreground">
-              Em breve: Estratégia de conteúdo vertical
-            </p>
-          </div>
-        )}
+        {subAba === "vertical" && <VerticalView clienteId={clienteId} />}
         
         {subAba === "youtube" && (
           <div className="flex items-center justify-center h-64">

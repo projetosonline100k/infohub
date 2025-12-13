@@ -385,6 +385,69 @@ export type Database = {
           },
         ]
       }
+      videos_referencia: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          id: string
+          link_video: string | null
+          ordem: number
+          plataforma: string | null
+          thumbnail_url: string | null
+          titulo: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          id?: string
+          link_video?: string | null
+          ordem?: number
+          plataforma?: string | null
+          thumbnail_url?: string | null
+          titulo: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          link_video?: string | null
+          ordem?: number
+          plataforma?: string | null
+          thumbnail_url?: string | null
+          titulo?: string
+        }
+        Relationships: []
+      }
+      videos_vertical: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          descricao: string | null
+          id: string
+          ordem: number
+          status: string
+          titulo: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          ordem?: number
+          status?: string
+          titulo: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          descricao?: string | null
+          id?: string
+          ordem?: number
+          status?: string
+          titulo?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
