@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { toast } from "sonner";
 import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Sparkles, Check } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RoteiroChat } from "./RoteiroChat";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -491,60 +490,47 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         </DragDropContext>
       </div>
 
-      {/* Modal de edição com roteiro e Chat IA side-by-side */}
+      {/* Modal de edição de roteiro */}
       <Dialog open={!!editingVideo} onOpenChange={(open) => !open && setEditingVideo(null)}>
-        <DialogContent className="max-w-[95vw] w-full h-[90vh] flex flex-col">
-          <DialogHeader className="shrink-0">
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
             <DialogTitle>Editar ideia de vídeo</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
-            {/* Left column - Form */}
-            <div className="flex flex-col gap-4 overflow-hidden">
-              <div className="shrink-0">
-                <label className="text-sm font-medium">Título</label>
-                <Input
-                  value={editTitulo}
-                  onChange={(e) => setEditTitulo(e.target.value)}
-                  placeholder="Título do vídeo"
-                />
-              </div>
-              <div className="shrink-0">
-                <label className="text-sm font-medium">Descrição</label>
-                <Textarea
-                  value={editDescricao}
-                  onChange={(e) => setEditDescricao(e.target.value)}
-                  placeholder="Descrição do vídeo..."
-                  rows={2}
-                />
-              </div>
-              <div className="flex-1 flex flex-col min-h-0">
-                <label className="text-sm font-medium shrink-0">Roteiro</label>
-                <Textarea
-                  value={editRoteiro}
-                  onChange={(e) => setEditRoteiro(e.target.value)}
-                  placeholder="Escreva o roteiro do vídeo aqui..."
-                  className="flex-1 font-mono text-sm resize-none min-h-0"
-                />
-                <p className="text-xs text-muted-foreground mt-1 shrink-0">
-                  Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
-                </p>
-              </div>
-              <div className="flex justify-end gap-2 shrink-0">
-                <Button variant="outline" onClick={() => setEditingVideo(null)}>
-                  Cancelar
-                </Button>
-                <Button onClick={handleSaveRoteiro}>Salvar</Button>
-              </div>
-            </div>
-
-            {/* Right column - AI Chat */}
-            <div className="min-h-0 overflow-hidden">
-              <RoteiroChat
-                clienteId={clienteId}
-                titulo={editTitulo}
-                descricao={editDescricao}
-                onInsertText={(text) => setEditRoteiro(prev => prev ? `${prev}\n\n${text}` : text)}
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Título</label>
+              <Input
+                value={editTitulo}
+                onChange={(e) => setEditTitulo(e.target.value)}
+                placeholder="Título do vídeo"
               />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Descrição</label>
+              <Textarea
+                value={editDescricao}
+                onChange={(e) => setEditDescricao(e.target.value)}
+                placeholder="Descrição do vídeo..."
+                rows={2}
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Roteiro</label>
+              <Textarea
+                value={editRoteiro}
+                onChange={(e) => setEditRoteiro(e.target.value)}
+                placeholder="Escreva o roteiro do vídeo aqui..."
+                className="font-mono text-sm min-h-[200px]"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
+              </p>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setEditingVideo(null)}>
+                Cancelar
+              </Button>
+              <Button onClick={handleSaveRoteiro}>Salvar</Button>
             </div>
           </div>
         </DialogContent>
