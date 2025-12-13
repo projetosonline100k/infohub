@@ -82,6 +82,27 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
 
       if (error) throw error;
 
+      // Integração automática: cria no Kanban da plataforma selecionada
+      if (plataformas.includes("instagram")) {
+        await supabase.from("videos_vertical").insert({
+          cliente_id: clienteId,
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || null,
+          status: "ideia",
+          ordem: 1,
+        });
+      }
+
+      if (plataformas.includes("youtube")) {
+        await supabase.from("videos_youtube").insert({
+          cliente_id: clienteId,
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || null,
+          status: "ideia",
+          ordem: 1,
+        });
+      }
+
       setIdeias([data, ...ideias]);
       resetForm();
       setShowModal(false);
