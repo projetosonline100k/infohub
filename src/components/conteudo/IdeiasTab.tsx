@@ -5,7 +5,8 @@ import { Plus, X, Lightbulb, Instagram, Youtube } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -22,18 +23,28 @@ interface Ideia {
   link_referencia?: string;
 }
 
+interface NovaIdeia {
+  headline: string;
+  link: string;
+  plataforma: "instagram" | "youtube" | "";
+  descricao: string;
+}
+
 interface IdeiasTabProps {
   clienteId: string;
 }
+
+const createEmptyIdeias = (): NovaIdeia[] => [
+  { headline: "", link: "", plataforma: "", descricao: "" },
+  { headline: "", link: "", plataforma: "", descricao: "" },
+  { headline: "", link: "", plataforma: "", descricao: "" },
+];
 
 export function IdeiasTab({ clienteId }: IdeiasTabProps) {
   const [ideias, setIdeias] = useState<Ideia[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [titulo, setTitulo] = useState("");
-  const [descricao, setDescricao] = useState("");
-  const [plataformas, setPlataformas] = useState<string[]>([]);
-  const [linkReferencia, setLinkReferencia] = useState("");
+  const [novasIdeias, setNovasIdeias] = useState<NovaIdeia[]>(createEmptyIdeias());
 
   useEffect(() => {
     carregarIdeias();
@@ -56,68 +67,69 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
     }
   };
 
-  const togglePlataforma = (plataforma: string) => {
-    setPlataformas((prev) =>
-      prev.includes(plataforma)
-        ? prev.filter((p) => p !== plataforma)
-        : [...prev, plataforma]
+  const updateIdeia = (index: number, field: keyof NovaIdeia, value: string) => {
+    setNovasIdeias((prev) =>
+      prev.map((ideia, i) =>
+        i === index ? { ...ideia, [field]: value } : ideia
+      )
     );
   };
 
-  const adicionarIdeia = async () => {
-    if (!titulo.trim()) return;
+  const adicionarIdeias = async () => {
+    const ideiasValidas = novasIdeias.filter((i) => i.headline.trim());
+    if (ideiasValidas.length === 0) return;
 
     try {
-      const { data, error } = await supabase
-        .from("ideias_conteudo")
-        .insert({
-          cliente_id: clienteId,
-          titulo: titulo.trim(),
-          descricao: descricao.trim() || null,
-          plataformas: plataformas,
-          link_referencia: linkReferencia.trim() || null,
-        })
-        .select()
-        .single();
+      const novasIdeiasDb: Ideia[] = [];
 
-      if (error) throw error;
+      for (const ideia of ideiasValidas) {
+        const plataformas = ideia.plataforma ? [ideia.plataforma] : [];
 
-      // Integração automática: cria no Kanban da plataforma selecionada
-      if (plataformas.includes("instagram")) {
-        await supabase.from("videos_vertical").insert({
-          cliente_id: clienteId,
-          titulo: titulo.trim(),
-          descricao: descricao.trim() || null,
-          status: "ideia",
-          ordem: 1,
-        });
+        const { data, error } = await supabase
+          .from("ideias_conteudo")
+          .insert({
+            cliente_id: clienteId,
+            titulo: ideia.headline.trim(),
+            descricao: ideia.descricao.trim() || null,
+            plataformas: plataformas,
+            link_referencia: ideia.link.trim() || null,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (ideia.plataforma === "instagram") {
+          await supabase.from("videos_vertical").insert({
+            cliente_id: clienteId,
+            titulo: ideia.headline.trim(),
+            descricao: ideia.descricao.trim() || null,
+            status: "ideia",
+            ordem: 1,
+          });
+        }
+
+        if (ideia.plataforma === "youtube") {
+          await supabase.from("videos_youtube").insert({
+            cliente_id: clienteId,
+            titulo: ideia.headline.trim(),
+            descricao: ideia.descricao.trim() || null,
+            status: "ideia",
+            ordem: 1,
+          });
+        }
+
+        novasIdeiasDb.push(data);
       }
 
-      if (plataformas.includes("youtube")) {
-        await supabase.from("videos_youtube").insert({
-          cliente_id: clienteId,
-          titulo: titulo.trim(),
-          descricao: descricao.trim() || null,
-          status: "ideia",
-          ordem: 1,
-        });
-      }
-
-      setIdeias([data, ...ideias]);
-      resetForm();
+      setIdeias([...novasIdeiasDb.reverse(), ...ideias]);
+      setNovasIdeias(createEmptyIdeias());
       setShowModal(false);
-      toast({ title: "Ideia adicionada!" });
+      toast({ title: `${ideiasValidas.length} ideia(s) adicionada(s)!` });
     } catch (error) {
-      console.error("Erro ao adicionar ideia:", error);
-      toast({ title: "Erro ao adicionar ideia", variant: "destructive" });
+      console.error("Erro ao adicionar ideias:", error);
+      toast({ title: "Erro ao adicionar ideias", variant: "destructive" });
     }
-  };
-
-  const resetForm = () => {
-    setTitulo("");
-    setDescricao("");
-    setPlataformas([]);
-    setLinkReferencia("");
   };
 
   const excluirIdeia = async (id: string) => {
@@ -197,76 +209,77 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
         </div>
       )}
 
-      {/* Modal de nova ideia */}
-      <Dialog open={showModal} onOpenChange={(open) => { setShowModal(open); if (!open) resetForm(); }}>
-        <DialogContent>
+      {/* Modal de novas ideias */}
+      <Dialog open={showModal} onOpenChange={(open) => { setShowModal(open); if (!open) setNovasIdeias(createEmptyIdeias()); }}>
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>Nova ideia de conteúdo</DialogTitle>
+            <DialogTitle>Novas ideias de conteúdo</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Título</label>
-              <Input
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="Ex: 3 livros para ler em 2025"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Descrição (opcional)</label>
-              <Textarea
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                placeholder="Descreva a ideia em mais detalhes..."
-                rows={3}
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium mb-2 block">Qual plataforma?</label>
-              <div className="flex gap-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={plataformas.includes("instagram")}
-                    onCheckedChange={() => togglePlataforma("instagram")}
+          <div className="space-y-6">
+            {novasIdeias.map((ideia, index) => (
+              <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/30">
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Headline</Label>
+                  <Input
+                    value={ideia.headline}
+                    onChange={(e) => updateIdeia(index, "headline", e.target.value)}
+                    placeholder="Ex: 3 livros para ler"
                   />
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
-                      <Instagram className="h-3 w-3 text-white" />
-                    </div>
-                    <span className="text-sm">Instagram</span>
-                  </div>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <Checkbox
-                    checked={plataformas.includes("youtube")}
-                    onCheckedChange={() => togglePlataforma("youtube")}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Link</Label>
+                  <Input
+                    value={ideia.link}
+                    onChange={(e) => updateIdeia(index, "link", e.target.value)}
+                    placeholder="https://..."
+                    type="url"
                   />
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-5 h-5 rounded bg-red-600 flex items-center justify-center">
-                      <Youtube className="h-3 w-3 text-white" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Qual plataforma?</Label>
+                  <RadioGroup
+                    value={ideia.plataforma}
+                    onValueChange={(value) => updateIdeia(index, "plataforma", value)}
+                    className="flex gap-4 pt-1"
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <RadioGroupItem value="instagram" id={`instagram-${index}`} />
+                      <Label htmlFor={`instagram-${index}`} className="flex items-center gap-1 cursor-pointer text-sm">
+                        <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                          <Instagram className="h-2.5 w-2.5 text-white" />
+                        </div>
+                        Instagram
+                      </Label>
                     </div>
-                    <span className="text-sm">Youtube</span>
-                  </div>
-                </label>
+                    <div className="flex items-center gap-1.5">
+                      <RadioGroupItem value="youtube" id={`youtube-${index}`} />
+                      <Label htmlFor={`youtube-${index}`} className="flex items-center gap-1 cursor-pointer text-sm">
+                        <div className="w-4 h-4 rounded bg-red-600 flex items-center justify-center">
+                          <Youtube className="h-2.5 w-2.5 text-white" />
+                        </div>
+                        Youtube
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-medium">Descrição (opcional)</Label>
+                  <Textarea
+                    value={ideia.descricao}
+                    onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
+                    placeholder="Descreva a ideia..."
+                    rows={2}
+                    className="resize-none"
+                  />
+                </div>
               </div>
-            </div>
-
-            <div>
-              <label className="text-sm font-medium">Possui link de referência?</label>
-              <Input
-                value={linkReferencia}
-                onChange={(e) => setLinkReferencia(e.target.value)}
-                placeholder="https://..."
-                type="url"
-              />
-            </div>
+            ))}
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setShowModal(false); resetForm(); }}>
+              <Button variant="outline" onClick={() => { setShowModal(false); setNovasIdeias(createEmptyIdeias()); }}>
                 Cancelar
               </Button>
-              <Button onClick={adicionarIdeia}>Salvar</Button>
+              <Button onClick={adicionarIdeias}>Salvar</Button>
             </div>
           </div>
         </DialogContent>
