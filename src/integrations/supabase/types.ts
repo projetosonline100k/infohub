@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      categorias_nucleo: {
+        Row: {
+          cliente_id: string
+          cor: string
+          created_at: string
+          id: string
+          ordem: number
+          subtitulo: string | null
+          titulo: string
+        }
+        Insert: {
+          cliente_id: string
+          cor?: string
+          created_at?: string
+          id?: string
+          ordem?: number
+          subtitulo?: string | null
+          titulo: string
+        }
+        Update: {
+          cliente_id?: string
+          cor?: string
+          created_at?: string
+          id?: string
+          ordem?: number
+          subtitulo?: string | null
+          titulo?: string
+        }
+        Relationships: []
+      }
       clientes: {
         Row: {
           created_at: string | null
