@@ -480,8 +480,10 @@ export type Database = {
           cliente_id: string
           created_at: string
           descricao: string | null
+          escalado: boolean
           id: string
           ordem: number
+          referencia_id: string | null
           roteiro: string | null
           status: string
           titulo: string
@@ -490,8 +492,10 @@ export type Database = {
           cliente_id: string
           created_at?: string
           descricao?: string | null
+          escalado?: boolean
           id?: string
           ordem?: number
+          referencia_id?: string | null
           roteiro?: string | null
           status?: string
           titulo: string
@@ -500,13 +504,23 @@ export type Database = {
           cliente_id?: string
           created_at?: string
           descricao?: string | null
+          escalado?: boolean
           id?: string
           ordem?: number
+          referencia_id?: string | null
           roteiro?: string | null
           status?: string
           titulo?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "videos_vertical_referencia_id_fkey"
+            columns: ["referencia_id"]
+            isOneToOne: false
+            referencedRelation: "videos_referencia"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       videos_vertical_tags: {
         Row: {

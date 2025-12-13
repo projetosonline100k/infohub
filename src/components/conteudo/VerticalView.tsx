@@ -33,6 +33,14 @@ interface VideoVertical {
   roteiro: string | null;
   status: string;
   ordem: number;
+  escalado?: boolean;
+  referencia_id?: string | null;
+}
+
+interface EscalarItem {
+  id: string;
+  tituloOriginal: string;
+  novaHeadline: string;
 }
 
 interface TagVideo {
@@ -110,6 +118,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   // Nova ideia modal states
   const [showIdeiasModal, setShowIdeiasModal] = useState(false);
   const [novasIdeias, setNovasIdeias] = useState<NovaIdeia[]>(createEmptyIdeias());
+  
+  // Escalar modal states
+  const [showEscalarModal, setShowEscalarModal] = useState(false);
+  const [escalarItems, setEscalarItems] = useState<EscalarItem[]>([]);
+  const [escalarTabAtivo, setEscalarTabAtivo] = useState(0);
   
   // Edit roteiro states
   const [editingVideo, setEditingVideo] = useState<VideoVertical | null>(null);
@@ -397,21 +410,47 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       return;
     }
     
-    // Create ideas from selected videos
+    // Prepara os itens para o modal de escalar
     const selectedVideoData = videosReferencia.filter(v => selectedVideos.includes(v.id));
-    selectedVideoData.forEach(async (video) => {
-      await supabase.from("videos_vertical").insert({
-        cliente_id: clienteId,
-        titulo: `Baseado em: ${video.titulo}`,
-        descricao: video.link_video ? `Referência: ${video.link_video}` : null,
-        status: "ideia",
-        ordem: videosKanban.filter(v => v.status === "ideia").length + 1,
-      });
-    });
+    const items: EscalarItem[] = selectedVideoData.map(video => ({
+      id: video.id,
+      tituloOriginal: video.titulo,
+      novaHeadline: video.titulo, // inicia com o mesmo título
+    }));
+    
+    setEscalarItems(items);
+    setEscalarTabAtivo(0);
+    setShowEscalarModal(true);
+  };
 
-    toast.success(`${selectedVideos.length} ideia(s) criada(s) no Kanban!`);
-    setSelectedVideos([]);
-    fetchVideos();
+  const handleSalvarEscalar = async () => {
+    try {
+      for (const item of escalarItems) {
+        await supabase.from("videos_vertical").insert({
+          cliente_id: clienteId,
+          titulo: item.novaHeadline.trim() || item.tituloOriginal,
+          status: "ideia",
+          ordem: videosKanban.filter(v => v.status === "ideia").length + 1,
+          escalado: true,
+          referencia_id: item.id,
+        });
+      }
+
+      toast.success(`${escalarItems.length} ideia(s) escalada(s)!`);
+      setShowEscalarModal(false);
+      setSelectedVideos([]);
+      setEscalarItems([]);
+      fetchVideos();
+    } catch (error) {
+      console.error("Erro ao escalar:", error);
+      toast.error("Erro ao escalar vídeos");
+    }
+  };
+
+  const updateEscalarHeadline = (index: number, value: string) => {
+    setEscalarItems(prev => 
+      prev.map((item, i) => i === index ? { ...item, novaHeadline: value } : item)
+    );
   };
 
   const getVideosByStatus = (status: string) => 
@@ -716,6 +755,81 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
           </DialogContent>
         </Dialog>
 
+        {/* Modal de Escalar */}
+        <Dialog open={showEscalarModal} onOpenChange={(open) => { 
+          setShowEscalarModal(open); 
+          if (!open) { setEscalarItems([]); setEscalarTabAtivo(0); }
+        }}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-amber-500" />
+                Escalar vídeos
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Tabs para cada vídeo */}
+              {escalarItems.length > 1 && (
+                <div className="flex flex-wrap gap-2 pb-2 border-b">
+                  {escalarItems.map((item, index) => (
+                    <button
+                      key={item.id}
+                      onClick={() => setEscalarTabAtivo(index)}
+                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors truncate max-w-[180px] ${
+                        escalarTabAtivo === index
+                          ? "bg-amber-500 text-white"
+                          : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                      }`}
+                    >
+                      {item.tituloOriginal.length > 20 
+                        ? item.tituloOriginal.substring(0, 20) + "..." 
+                        : item.tituloOriginal}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Conteúdo do vídeo selecionado */}
+              {escalarItems[escalarTabAtivo] && (
+                <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Headline original</Label>
+                    <p className="font-medium text-base mt-1">
+                      {escalarItems[escalarTabAtivo].tituloOriginal}
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Nova headline</Label>
+                    <Input
+                      value={escalarItems[escalarTabAtivo].novaHeadline}
+                      onChange={(e) => updateEscalarHeadline(escalarTabAtivo, e.target.value)}
+                      placeholder="Digite a nova headline..."
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => { 
+                  setShowEscalarModal(false); 
+                  setEscalarItems([]); 
+                  setEscalarTabAtivo(0); 
+                }}>
+                  Cancelar
+                </Button>
+                <Button 
+                  onClick={handleSalvarEscalar}
+                  className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white"
+                >
+                  <Sparkles className="h-4 w-4 mr-1" />
+                  Criar ideias ({escalarItems.length})
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
             {KANBAN_COLUMNS.map((column) => (
@@ -736,15 +850,22 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                         snapshot.isDraggingOver ? "bg-primary/5" : ""
                       }`}
                     >
-                      {getVideosByStatus(column.id).map((video, index) => (
+                      {getVideosByStatus(column.id).map((video, index) => {
+                        const isEscalado = video.escalado === true;
+                        const cardBorderClass = isEscalado ? "border-l-amber-500" : column.borderColor;
+                        const cardBgClass = isEscalado 
+                          ? "bg-gradient-to-r from-amber-50 to-yellow-50/80 dark:from-amber-950/30 dark:to-yellow-950/20" 
+                          : "bg-card";
+                        
+                        return (
                         <Draggable key={video.id} draggableId={video.id} index={index}>
                           {(provided, snapshot) => (
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              className={`bg-card border-l-4 ${column.borderColor} rounded-lg p-4 group cursor-pointer hover:bg-muted/50 transition-colors ${
+                              className={`${cardBgClass} border-l-4 ${cardBorderClass} rounded-lg p-4 group cursor-pointer hover:bg-muted/50 transition-colors ${
                                 snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
-                              }`}
+                              } ${isEscalado ? "ring-1 ring-amber-300/50" : ""}`}
                               onClick={() => openEditModal(video)}
                             >
                               <div className="flex items-start gap-3">
@@ -798,7 +919,8 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                             </div>
                           )}
                         </Draggable>
-                      ))}
+                      );
+                      })}
                       {provided.placeholder}
                     </div>
                   )}
