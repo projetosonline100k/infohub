@@ -13,15 +13,15 @@ const menuItems = [
 
 export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   return (
-    <div className="flex min-h-screen w-full bg-background">
-      {/* Sidebar */}
-      <aside className="w-64 bg-sidebar border-r border-sidebar-border flex-shrink-0">
-        <div className="p-6">
-          <h1 className="text-xl font-bold text-sidebar-foreground mb-8">
+    <div className="min-h-screen w-full bg-background">
+      {/* Header horizontal */}
+      <header className="bg-sidebar border-b border-sidebar-border">
+        <div className="px-6 py-4">
+          <h1 className="text-xl font-bold text-sidebar-foreground mb-4">
             Painel do Infoprodutor
           </h1>
           
-          <nav className="space-y-2">
+          <nav className="flex items-center gap-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
               return (
@@ -29,21 +29,21 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
                   key={item.path}
                   to={item.path}
                   end
-                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200"
-                  activeClassName="bg-sidebar-accent font-semibold text-sidebar-primary border-l-4 border-sidebar-primary"
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200"
+                  activeClassName="bg-sidebar-accent font-semibold"
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon className="w-4 h-4" />
                   <span>{item.title}</span>
                 </NavLink>
               );
             })}
           </nav>
         </div>
-      </aside>
+      </header>
 
       {/* Main content area */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
+      <main className="overflow-auto">
+        <div className="p-6">
           {children}
         </div>
       </main>
