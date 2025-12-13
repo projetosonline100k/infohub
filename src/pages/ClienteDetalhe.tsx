@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Plus, Edit, Trash } from "lucide-react";
+import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronRight } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
@@ -39,6 +39,8 @@ export default function ClienteDetalhe() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState("informacoes");
+  const [conteudoExpandido, setConteudoExpandido] = useState(false);
+  const [subAbaConteudo, setSubAbaConteudo] = useState("brainstorm");
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
 
@@ -116,8 +118,8 @@ export default function ClienteDetalhe() {
   return (
     <div className="flex h-screen">
       {/* Sidebar interno */}
-      <div className="w-48 border-r border-border bg-background p-4">
-        <div className="space-y-2">
+      <div className="w-52 border-r border-border bg-background p-4">
+        <div className="space-y-1">
           <button
             onClick={() => setAbaAtiva("informacoes")}
             className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
@@ -148,16 +150,57 @@ export default function ClienteDetalhe() {
           >
             Atividades
           </button>
-          <button
-            onClick={() => setAbaAtiva("conteudo")}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-              abaAtiva === "conteudo"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            Conteúdo
-          </button>
+          
+          {/* Conteúdo com sub-itens expansíveis */}
+          <div>
+            <button
+              onClick={() => {
+                setConteudoExpandido(!conteudoExpandido);
+                if (!conteudoExpandido) {
+                  setAbaAtiva("conteudo");
+                }
+              }}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${
+                abaAtiva === "conteudo"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <span>Conteúdo</span>
+              {conteudoExpandido ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+            </button>
+            
+            {/* Sub-itens */}
+            {conteudoExpandido && (
+              <div className="ml-3 mt-1 space-y-1 border-l border-border pl-2">
+                {[
+                  { id: "brainstorm", label: "Brainstorm" },
+                  { id: "vertical", label: "Vertical" },
+                  { id: "youtube", label: "Youtube" },
+                  { id: "cronograma", label: "Cronograma" },
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setAbaAtiva("conteudo");
+                      setSubAbaConteudo(item.id);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+                      abaAtiva === "conteudo" && subAbaConteudo === item.id
+                        ? "bg-primary/20 text-primary font-medium"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -336,7 +379,7 @@ export default function ClienteDetalhe() {
           )}
 
           {abaAtiva === "conteudo" && (
-            <ConteudoSection clienteId={id!} />
+            <ConteudoSection clienteId={id!} subAba={subAbaConteudo} />
           )}
         </div>
       </div>
