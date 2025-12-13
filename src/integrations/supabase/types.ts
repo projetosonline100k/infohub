@@ -418,6 +418,30 @@ export type Database = {
           },
         ]
       }
+      tags_video: {
+        Row: {
+          cliente_id: string
+          cor: string
+          created_at: string
+          id: string
+          nome: string
+        }
+        Insert: {
+          cliente_id: string
+          cor?: string
+          created_at?: string
+          id?: string
+          nome: string
+        }
+        Update: {
+          cliente_id?: string
+          cor?: string
+          created_at?: string
+          id?: string
+          nome?: string
+        }
+        Relationships: []
+      }
       videos_referencia: {
         Row: {
           cliente_id: string
@@ -483,6 +507,42 @@ export type Database = {
           titulo?: string
         }
         Relationships: []
+      }
+      videos_vertical_tags: {
+        Row: {
+          created_at: string
+          id: string
+          tag_id: string
+          video_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          tag_id: string
+          video_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          tag_id?: string
+          video_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "videos_vertical_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags_video"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "videos_vertical_tags_video_id_fkey"
+            columns: ["video_id"]
+            isOneToOne: false
+            referencedRelation: "videos_vertical"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       videos_youtube: {
         Row: {
