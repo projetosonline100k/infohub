@@ -90,9 +90,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   
   // Form states
   const [novoVideoRef, setNovoVideoRef] = useState({ titulo: "", link_video: "", thumbnail_url: "" });
-  const [novoVideoKanban, setNovoVideoKanban] = useState({ titulo: "", descricao: "" });
   const [dialogRefOpen, setDialogRefOpen] = useState(false);
-  const [dialogKanbanOpen, setDialogKanbanOpen] = useState(false);
   
   // Edit roteiro states
   const [editingVideo, setEditingVideo] = useState<VideoVertical | null>(null);
@@ -209,27 +207,6 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     }
   };
 
-  const handleAddVideoKanban = async () => {
-    if (!novoVideoKanban.titulo.trim()) return;
-    
-    const { error } = await supabase.from("videos_vertical").insert({
-      cliente_id: clienteId,
-      titulo: novoVideoKanban.titulo,
-      descricao: novoVideoKanban.descricao || null,
-      status: "ideia",
-      ordem: videosKanban.filter(v => v.status === "ideia").length + 1,
-    });
-
-    if (error) {
-      toast.error("Erro ao adicionar ideia");
-      return;
-    }
-
-    toast.success("Ideia adicionada!");
-    setNovoVideoKanban({ titulo: "", descricao: "" });
-    setDialogKanbanOpen(false);
-    fetchVideos();
-  };
 
   const handleDeleteVideoKanban = async (id: string) => {
     const { error } = await supabase.from("videos_vertical").delete().eq("id", id);
@@ -578,32 +555,6 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
               </DialogContent>
             </Dialog>
 
-            <Dialog open={dialogKanbanOpen} onOpenChange={setDialogKanbanOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Plus className="h-4 w-4 mr-1" />
-                  Nova ideia
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Nova ideia de vídeo</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <Input
-                    placeholder="Título da ideia"
-                    value={novoVideoKanban.titulo}
-                    onChange={e => setNovoVideoKanban(prev => ({ ...prev, titulo: e.target.value }))}
-                  />
-                  <Textarea
-                    placeholder="Descrição (opcional)"
-                    value={novoVideoKanban.descricao}
-                    onChange={e => setNovoVideoKanban(prev => ({ ...prev, descricao: e.target.value }))}
-                  />
-                  <Button onClick={handleAddVideoKanban} className="w-full">Adicionar</Button>
-                </div>
-              </DialogContent>
-            </Dialog>
           </div>
         </div>
 
