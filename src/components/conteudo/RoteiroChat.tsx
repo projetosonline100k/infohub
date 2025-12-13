@@ -2,15 +2,25 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Sparkles, Copy, Check, Loader2 } from "lucide-react";
+import { Send, Sparkles, Copy, Check, Loader2, Settings } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { AgentConfigModal } from "./AgentConfig";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
+interface AgentConfig {
+  nome: string;
+  persona: string;
+  instrucoes: string;
+  tom_voz: string;
+}
+
 interface RoteiroChatProps {
+  clienteId: string;
   titulo: string;
   descricao: string;
   onInsertText: (text: string) => void;
@@ -18,18 +28,41 @@ interface RoteiroChatProps {
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProps) {
+export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: RoteiroChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null);
+  const [showAgentConfig, setShowAgentConfig] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (clienteId) {
+      fetchAgentConfig();
     }
+  }, [clienteId]);
+
+  useEffect(() => {
+    scrollToBottom();
   }, [messages]);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const fetchAgentConfig = async () => {
+    const { data } = await supabase
+      .from("agentes_ia")
+      .select("nome, persona, instrucoes, tom_voz")
+      .eq("cliente_id", clienteId)
+      .maybeSingle();
+
+    if (data) {
+      setAgentConfig(data);
+    }
+  };
 
   const streamChat = async (userMessages: Message[]) => {
     const resp = await fetch(CHAT_URL, {
@@ -41,6 +74,7 @@ export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProp
       body: JSON.stringify({
         messages: userMessages,
         context: { titulo, descricao },
+        agentConfig: agentConfig,
       }),
     });
 
@@ -142,20 +176,38 @@ export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProp
   };
 
   return (
-    <div className="flex flex-col h-full bg-muted/30 rounded-lg border">
+    <div className="flex flex-col h-full bg-muted/30 rounded-lg border overflow-hidden">
       {/* Header */}
-      <div className="flex items-center gap-2 p-3 border-b bg-background/50">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span className="font-medium text-sm">Chat I.A</span>
+      <div className="flex items-center justify-between p-3 border-b bg-background/50 shrink-0">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <span className="font-medium text-sm">
+            {agentConfig?.nome || "Chat I.A"}
+          </span>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setShowAgentConfig(true)}
+          title="Configurar agente"
+        >
+          <Settings className="h-4 w-4" />
+        </Button>
       </div>
 
-      {/* Messages */}
-      <ScrollArea className="flex-1 p-3" ref={scrollRef}>
+      {/* Messages - scrollable area */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-3" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
             <Sparkles className="h-8 w-8 mx-auto mb-3 opacity-50" />
             <p>Use a IA para criar roteiros</p>
             <p className="text-xs mt-1">Clique em "Gerar roteiro" ou escreva sua dúvida</p>
+            {agentConfig && (
+              <p className="text-xs mt-3 text-primary">
+                Agente configurado: {agentConfig.nome}
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -166,7 +218,7 @@ export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProp
                     ? "bg-primary text-primary-foreground" 
                     : "bg-background border"
                 }`}>
-                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                   {msg.role === "assistant" && msg.content && (
                     <div className="flex gap-1 mt-2 pt-2 border-t border-border/50">
                       <Button
@@ -198,12 +250,13 @@ export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProp
                 </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Quick actions */}
-      <div className="px-3 py-2 border-t flex gap-2 flex-wrap">
+      <div className="px-3 py-2 border-t flex gap-2 flex-wrap shrink-0">
         <Button
           size="sm"
           variant="secondary"
@@ -235,7 +288,7 @@ export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProp
       </div>
 
       {/* Input */}
-      <div className="p-3 border-t">
+      <div className="p-3 border-t shrink-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -255,6 +308,14 @@ export function RoteiroChat({ titulo, descricao, onInsertText }: RoteiroChatProp
           </Button>
         </form>
       </div>
+
+      {/* Agent Config Modal */}
+      <AgentConfigModal
+        clienteId={clienteId}
+        open={showAgentConfig}
+        onOpenChange={setShowAgentConfig}
+        onSave={(config) => setAgentConfig(config)}
+      />
     </div>
   );
 }

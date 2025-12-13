@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      agentes_ia: {
+        Row: {
+          cliente_id: string
+          created_at: string
+          id: string
+          instrucoes: string | null
+          nome: string
+          persona: string | null
+          tom_voz: string | null
+          updated_at: string
+        }
+        Insert: {
+          cliente_id: string
+          created_at?: string
+          id?: string
+          instrucoes?: string | null
+          nome?: string
+          persona?: string | null
+          tom_voz?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          instrucoes?: string | null
+          nome?: string
+          persona?: string | null
+          tom_voz?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       categorias_nucleo: {
         Row: {
           cliente_id: string

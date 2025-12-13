@@ -493,14 +493,14 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
       {/* Modal de edição com roteiro e Chat IA side-by-side */}
       <Dialog open={!!editingVideo} onOpenChange={(open) => !open && setEditingVideo(null)}>
-        <DialogContent className="max-w-6xl h-[80vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-[95vw] w-full h-[90vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Editar ideia de vídeo</DialogTitle>
           </DialogHeader>
-          <div className="grid grid-cols-[1fr,400px] gap-6 h-[calc(100%-60px)]">
+          <div className="grid grid-cols-2 gap-6 flex-1 min-h-0 overflow-hidden">
             {/* Left column - Form */}
-            <div className="space-y-4 overflow-y-auto pr-2">
-              <div>
+            <div className="flex flex-col gap-4 overflow-hidden">
+              <div className="shrink-0">
                 <label className="text-sm font-medium">Título</label>
                 <Input
                   value={editTitulo}
@@ -508,7 +508,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                   placeholder="Título do vídeo"
                 />
               </div>
-              <div>
+              <div className="shrink-0">
                 <label className="text-sm font-medium">Descrição</label>
                 <Textarea
                   value={editDescricao}
@@ -517,20 +517,19 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                   rows={2}
                 />
               </div>
-              <div className="flex-1">
-                <label className="text-sm font-medium">Roteiro</label>
+              <div className="flex-1 flex flex-col min-h-0">
+                <label className="text-sm font-medium shrink-0">Roteiro</label>
                 <Textarea
                   value={editRoteiro}
                   onChange={(e) => setEditRoteiro(e.target.value)}
                   placeholder="Escreva o roteiro do vídeo aqui..."
-                  rows={14}
-                  className="font-mono text-sm"
+                  className="flex-1 font-mono text-sm resize-none min-h-0"
                 />
-                <p className="text-xs text-muted-foreground mt-1">
+                <p className="text-xs text-muted-foreground mt-1 shrink-0">
                   Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
                 </p>
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+              <div className="flex justify-end gap-2 shrink-0">
                 <Button variant="outline" onClick={() => setEditingVideo(null)}>
                   Cancelar
                 </Button>
@@ -539,8 +538,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             </div>
 
             {/* Right column - AI Chat */}
-            <div className="h-full">
+            <div className="min-h-0 overflow-hidden">
               <RoteiroChat
+                clienteId={clienteId}
                 titulo={editTitulo}
                 descricao={editDescricao}
                 onInsertText={(text) => setEditRoteiro(prev => prev ? `${prev}\n\n${text}` : text)}

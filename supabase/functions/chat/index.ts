@@ -11,7 +11,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, context } = await req.json();
+    const { messages, context, agentConfig } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     
     if (!LOVABLE_API_KEY) {
@@ -21,11 +21,43 @@ serve(async (req) => {
 
     console.log("Chat request received with", messages.length, "messages");
     console.log("Context:", context);
+    console.log("Agent Config:", agentConfig);
 
-    const systemPrompt = `Você é um especialista em criação de roteiros para vídeos curtos (Reels, TikTok, Shorts). Seu papel é ajudar o usuário a criar roteiros envolventes e virais.
+    // Build system prompt based on agent config
+    let systemPrompt = `Você é um especialista em criação de roteiros para vídeos curtos (Reels, TikTok, Shorts). Seu papel é ajudar o usuário a criar roteiros envolventes e virais.`;
 
-${context?.titulo ? `O vídeo em questão tem o título: "${context.titulo}"` : ""}
-${context?.descricao ? `Descrição: "${context.descricao}"` : ""}
+    // Apply agent customization if available
+    if (agentConfig) {
+      if (agentConfig.persona) {
+        systemPrompt = agentConfig.persona;
+      }
+      
+      if (agentConfig.tom_voz) {
+        const tomDescricao: Record<string, string> = {
+          informal: "Use um tom informal e descontraído, como se estivesse conversando com um amigo.",
+          profissional: "Use um tom profissional e sério, com linguagem clara e direta.",
+          tecnico: "Use um tom técnico e detalhado, com informações precisas.",
+          divertido: "Use um tom divertido e animado, com energia e entusiasmo.",
+          inspirador: "Use um tom inspirador e motivacional, que desperte emoções.",
+        };
+        systemPrompt += `\n\nTom de voz: ${tomDescricao[agentConfig.tom_voz] || agentConfig.tom_voz}`;
+      }
+      
+      if (agentConfig.instrucoes) {
+        systemPrompt += `\n\nInstruções específicas:\n${agentConfig.instrucoes}`;
+      }
+    }
+
+    // Add context about current video
+    if (context?.titulo) {
+      systemPrompt += `\n\nO vídeo em questão tem o título: "${context.titulo}"`;
+    }
+    if (context?.descricao) {
+      systemPrompt += `\nDescrição: "${context.descricao}"`;
+    }
+
+    // Add default formatting guidelines
+    systemPrompt += `
 
 Diretrizes para criar bons roteiros:
 1. GANCHO FORTE nos primeiros 3 segundos - capture atenção imediatamente
