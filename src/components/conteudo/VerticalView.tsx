@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Sparkles, Check } from "lucide-react";
+import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Sparkles, Check, MessageSquare } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 
 interface VerticalViewProps {
@@ -33,10 +33,10 @@ interface VideoVertical {
 }
 
 const KANBAN_COLUMNS = [
-  { id: "ideia", label: "Ideias de vídeos", color: "bg-blue-500/10 border-blue-500/30" },
-  { id: "roteiro", label: "Criando roteiro", color: "bg-yellow-500/10 border-yellow-500/30" },
-  { id: "gravacao", label: "Gravação", color: "bg-purple-500/10 border-purple-500/30" },
-  { id: "pronto", label: "Prontos para postar", color: "bg-green-500/10 border-green-500/30" },
+  { id: "ideia", label: "Ideias de vídeos", color: "bg-blue-500/10 border-blue-500/30", borderColor: "border-l-blue-500" },
+  { id: "roteiro", label: "Criando roteiro", color: "bg-yellow-500/10 border-yellow-500/30", borderColor: "border-l-yellow-500" },
+  { id: "gravacao", label: "Gravação", color: "bg-purple-500/10 border-purple-500/30", borderColor: "border-l-purple-500" },
+  { id: "pronto", label: "Prontos para postar", color: "bg-green-500/10 border-green-500/30", borderColor: "border-l-green-500" },
 ];
 
 export function VerticalView({ clienteId }: VerticalViewProps) {
@@ -428,7 +428,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`min-h-[200px] space-y-2 transition-colors rounded-md ${
+                      className={`min-h-[300px] space-y-3 transition-colors rounded-md ${
                         snapshot.isDraggingOver ? "bg-primary/5" : ""
                       }`}
                     >
@@ -438,42 +438,42 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              className={`bg-card border rounded-md p-3 group cursor-pointer hover:border-primary/50 transition-colors ${
+                              className={`bg-card border-l-4 ${column.borderColor} rounded-lg p-4 group cursor-pointer hover:bg-muted/50 transition-colors ${
                                 snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
                               }`}
                               onClick={() => openEditModal(video)}
                             >
-                              <div className="flex items-start gap-2">
+                              <div className="flex items-start gap-3">
                                 <div
                                   {...provided.dragHandleProps}
-                                  className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                  className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-sm truncate">{video.titulo}</p>
+                                  <p className="font-medium text-base leading-snug">{video.titulo}</p>
                                   {video.descricao && (
-                                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
                                       {video.descricao}
                                     </p>
                                   )}
                                   {video.roteiro && (
-                                    <span className="inline-flex items-center gap-1 text-xs text-green-600 mt-1">
-                                      <Check className="h-3 w-3" /> Roteiro
-                                    </span>
+                                    <div className="mt-3">
+                                      <MessageSquare className="h-5 w-5 text-blue-500" />
+                                    </div>
                                   )}
                                 </div>
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteVideoKanban(video.id);
                                   }}
                                 >
-                                  <Trash2 className="h-3 w-3" />
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
                             </div>
