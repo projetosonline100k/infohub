@@ -7,9 +7,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Sparkles, Check, MessageSquare, Tag, X, Settings } from "lucide-react";
+import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Youtube, Sparkles, Check, MessageSquare, Tag, X, Settings } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -43,6 +45,19 @@ interface VideoTagRelation {
   video_id: string;
   tag_id: string;
 }
+
+interface NovaIdeia {
+  headline: string;
+  link: string;
+  plataforma: "instagram" | "youtube" | "";
+  descricao: string;
+}
+
+const createEmptyIdeias = (): NovaIdeia[] => [
+  { headline: "", link: "", plataforma: "", descricao: "" },
+  { headline: "", link: "", plataforma: "", descricao: "" },
+  { headline: "", link: "", plataforma: "", descricao: "" },
+];
 
 const KANBAN_COLUMNS = [
   { id: "ideia", label: "Ideias de vídeos", color: "bg-blue-500/10 border-blue-500/30", borderColor: "border-l-blue-500" },
@@ -91,6 +106,10 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   // Form states
   const [novoVideoRef, setNovoVideoRef] = useState({ titulo: "", link_video: "", thumbnail_url: "" });
   const [dialogRefOpen, setDialogRefOpen] = useState(false);
+  
+  // Nova ideia modal states
+  const [showIdeiasModal, setShowIdeiasModal] = useState(false);
+  const [novasIdeias, setNovasIdeias] = useState<NovaIdeia[]>(createEmptyIdeias());
   
   // Edit roteiro states
   const [editingVideo, setEditingVideo] = useState<VideoVertical | null>(null);
@@ -213,6 +232,64 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     if (!error) {
       toast.success("Item removido");
       fetchVideos();
+    }
+  };
+
+  // Nova ideia functions
+  const updateIdeia = (index: number, field: keyof NovaIdeia, value: string) => {
+    setNovasIdeias((prev) =>
+      prev.map((ideia, i) =>
+        i === index ? { ...ideia, [field]: value } : ideia
+      )
+    );
+  };
+
+  const adicionarIdeias = async () => {
+    const ideiasValidas = novasIdeias.filter((i) => i.headline.trim());
+    if (ideiasValidas.length === 0) return;
+
+    try {
+      for (const ideia of ideiasValidas) {
+        const plataformas = ideia.plataforma ? [ideia.plataforma] : [];
+
+        await supabase
+          .from("ideias_conteudo")
+          .insert({
+            cliente_id: clienteId,
+            titulo: ideia.headline.trim(),
+            descricao: ideia.descricao.trim() || null,
+            plataformas: plataformas,
+            link_referencia: ideia.link.trim() || null,
+          });
+
+        if (ideia.plataforma === "instagram") {
+          await supabase.from("videos_vertical").insert({
+            cliente_id: clienteId,
+            titulo: ideia.headline.trim(),
+            descricao: ideia.descricao.trim() || null,
+            status: "ideia",
+            ordem: videosKanban.filter(v => v.status === "ideia").length + 1,
+          });
+        }
+
+        if (ideia.plataforma === "youtube") {
+          await supabase.from("videos_youtube").insert({
+            cliente_id: clienteId,
+            titulo: ideia.headline.trim(),
+            descricao: ideia.descricao.trim() || null,
+            status: "ideia",
+            ordem: 1,
+          });
+        }
+      }
+
+      setNovasIdeias(createEmptyIdeias());
+      setShowIdeiasModal(false);
+      toast.success(`${ideiasValidas.length} ideia(s) adicionada(s)!`);
+      fetchVideos();
+    } catch (error) {
+      console.error("Erro ao adicionar ideias:", error);
+      toast.error("Erro ao adicionar ideias");
     }
   };
 
@@ -555,8 +632,89 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
               </DialogContent>
             </Dialog>
 
+            {/* Nova ideia button */}
+            <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
+              <Plus className="h-4 w-4 mr-1" />
+              Nova ideia
+            </Button>
           </div>
         </div>
+
+        {/* Modal de novas ideias */}
+        <Dialog open={showIdeiasModal} onOpenChange={(open) => { setShowIdeiasModal(open); if (!open) setNovasIdeias(createEmptyIdeias()); }}>
+          <DialogContent className="max-w-4xl">
+            <DialogHeader>
+              <DialogTitle>Novas ideias de conteúdo</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-6">
+              {novasIdeias.map((ideia, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/30">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Headline</Label>
+                    <Input
+                      value={ideia.headline}
+                      onChange={(e) => updateIdeia(index, "headline", e.target.value)}
+                      placeholder="Ex: 3 livros para ler"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Link</Label>
+                    <Input
+                      value={ideia.link}
+                      onChange={(e) => updateIdeia(index, "link", e.target.value)}
+                      placeholder="https://..."
+                      type="url"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Qual plataforma?</Label>
+                    <RadioGroup
+                      value={ideia.plataforma}
+                      onValueChange={(value) => updateIdeia(index, "plataforma", value)}
+                      className="flex gap-4 pt-1"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <RadioGroupItem value="instagram" id={`ig-vertical-${index}`} />
+                        <Label htmlFor={`ig-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-sm">
+                          <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                            <Instagram className="h-2.5 w-2.5 text-white" />
+                          </div>
+                          Instagram
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <RadioGroupItem value="youtube" id={`yt-vertical-${index}`} />
+                        <Label htmlFor={`yt-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-sm">
+                          <div className="w-4 h-4 rounded bg-red-600 flex items-center justify-center">
+                            <Youtube className="h-2.5 w-2.5 text-white" />
+                          </div>
+                          Youtube
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Descrição (opcional)</Label>
+                    <Textarea
+                      value={ideia.descricao}
+                      onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
+                      placeholder="Descreva a ideia..."
+                      rows={2}
+                      className="resize-none"
+                    />
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
+                  Cancelar
+                </Button>
+                <Button onClick={adicionarIdeias}>Salvar</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
