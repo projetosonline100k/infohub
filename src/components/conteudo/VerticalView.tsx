@@ -544,40 +544,47 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
               Nenhum vídeo adicionado ainda
             </p>
           ) : (
-            <div className="flex gap-4 overflow-x-auto pb-4">
+            <div className="flex gap-3 overflow-x-auto pb-4">
               {videosReferencia.map((video) => (
                 <div
                   key={video.id}
-                  className={`relative flex-shrink-0 w-32 group ${
+                  className={`relative flex-shrink-0 w-36 group ${
                     selectedVideos.includes(video.id) ? "ring-2 ring-primary rounded-lg" : ""
                   }`}
                 >
-                  <div className="aspect-[9/16] bg-muted rounded-lg overflow-hidden relative">
-                    {/* Área clicável para abrir o vídeo */}
-                    <div 
-                      className={`w-full h-full ${video.link_video ? "cursor-pointer" : ""}`}
-                      onClick={() => {
-                        if (video.link_video) {
-                          window.open(video.link_video, "_blank");
-                        }
-                      }}
-                    >
-                      {video.thumbnail_url ? (
-                        <img 
-                          src={video.thumbnail_url} 
-                          alt={video.titulo}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                          <Instagram className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                      )}
-                    </div>
+                  {/* Card clicável */}
+                  <div 
+                    className={`aspect-square bg-muted rounded-lg overflow-hidden relative ${
+                      video.link_video ? "cursor-pointer hover:opacity-90 transition-opacity" : ""
+                    }`}
+                    onClick={() => {
+                      if (video.link_video) {
+                        window.open(video.link_video, "_blank", "noopener,noreferrer");
+                      }
+                    }}
+                    role={video.link_video ? "button" : undefined}
+                    tabIndex={video.link_video ? 0 : undefined}
+                    onKeyDown={(e) => {
+                      if (video.link_video && (e.key === "Enter" || e.key === " ")) {
+                        window.open(video.link_video, "_blank", "noopener,noreferrer");
+                      }
+                    }}
+                  >
+                    {video.thumbnail_url ? (
+                      <img 
+                        src={video.thumbnail_url} 
+                        alt={video.titulo}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20">
+                        <Instagram className="h-6 w-6 text-muted-foreground" />
+                      </div>
+                    )}
                     
-                    {/* Checkbox overlay - clicável separadamente */}
+                    {/* Checkbox overlay */}
                     <div 
-                      className="absolute top-2 left-2 cursor-pointer"
+                      className="absolute top-1.5 left-1.5 cursor-pointer z-10"
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleVideoSelection(video.id);
@@ -595,12 +602,12 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                     </div>
 
                     {/* Delete button overlay */}
-                    <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <div className="flex justify-end gap-1">
+                    <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex justify-end">
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-6 w-6 text-white hover:bg-white/20"
+                          className="h-5 w-5 text-white hover:bg-white/20"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteVideoRef(video.id);
@@ -611,7 +618,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       </div>
                     </div>
                   </div>
-                  <p className="mt-2 text-xs font-medium truncate">{video.titulo}</p>
+                  <p className="mt-1.5 text-xs font-medium line-clamp-2 leading-tight">{video.titulo}</p>
                 </div>
               ))}
             </div>
