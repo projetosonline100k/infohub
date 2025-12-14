@@ -210,7 +210,7 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
       )}
 
       {/* Modal de novas ideias */}
-      <Dialog open={showModal} onOpenChange={(open) => { setShowModal(open); if (!open) setNovasIdeias(createEmptyIdeias()); }}>
+      <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Novas ideias de conteúdo</DialogTitle>
