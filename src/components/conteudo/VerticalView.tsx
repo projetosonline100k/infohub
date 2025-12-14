@@ -61,11 +61,14 @@ interface NovaIdeia {
   descricao: string;
 }
 
-const createEmptyIdeias = (): NovaIdeia[] => [
-  { headline: "", link: "", plataforma: "", descricao: "" },
-  { headline: "", link: "", plataforma: "", descricao: "" },
-  { headline: "", link: "", plataforma: "", descricao: "" },
-];
+const createEmptyIdeia = (): NovaIdeia => ({
+  headline: "",
+  link: "",
+  plataforma: "",
+  descricao: "",
+});
+
+const createEmptyIdeias = (): NovaIdeia[] => [createEmptyIdeia()];
 
 const KANBAN_COLUMNS = [
   { id: "ideia", label: "Ideias de vídeos", color: "bg-blue-500/10 border-blue-500/30", borderColor: "border-l-blue-500" },
@@ -715,11 +718,26 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             <DialogHeader>
               <DialogTitle>Novas ideias de conteúdo</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[55vh]">
               {novasIdeias.map((ideia, index) => (
-                <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4">
+                <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+                  {/* Botão remover */}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => {
+                      if (novasIdeias.length > 1) {
+                        setNovasIdeias((prev) => prev.filter((_, i) => i !== index));
+                      }
+                    }}
+                    disabled={novasIdeias.length === 1}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+
                   {/* Linha 1: Headline e Link */}
-                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 pr-8">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-medium">Headline</Label>
                       <Input
@@ -784,6 +802,15 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                 </div>
               ))}
             </div>
+
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setNovasIdeias((prev) => [...prev, createEmptyIdeia()])}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Adicionar mais uma linha
+            </Button>
 
             <div className="flex justify-end gap-2 pt-4 border-t">
               <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
