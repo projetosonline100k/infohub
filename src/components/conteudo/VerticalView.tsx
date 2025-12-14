@@ -12,6 +12,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { SlashCommandInput } from "./SlashCommandInput";
+import { SlashCommandTextarea } from "./SlashCommandTextarea";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -740,10 +742,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                   <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 pr-8">
                     <div className="space-y-1.5">
                       <Label className="text-xs font-medium">Headline</Label>
-                      <Input
+                      <SlashCommandInput
+                        clienteId={clienteId}
                         value={ideia.headline}
-                        onChange={(e) => updateIdeia(index, "headline", e.target.value)}
-                        placeholder="Ex: 3 livros para ler"
+                        onValueChange={(val) => updateIdeia(index, "headline", val)}
+                        placeholder="Ex: 3 livros para ler (use / para inserir do núcleo)"
                         className="h-10"
                       />
                     </div>
@@ -866,10 +869,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                   </div>
                   <div>
                     <Label className="text-sm font-medium">Nova headline</Label>
-                    <Input
+                    <SlashCommandInput
+                      clienteId={clienteId}
                       value={escalarItems[escalarTabAtivo].novaHeadline}
-                      onChange={(e) => updateEscalarHeadline(escalarTabAtivo, e.target.value)}
-                      placeholder="Digite a nova headline..."
+                      onValueChange={(val) => updateEscalarHeadline(escalarTabAtivo, val)}
+                      placeholder="Digite a nova headline... (use / para inserir do núcleo)"
                       className="mt-1"
                     />
                   </div>
@@ -1006,10 +1010,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
           <div className="space-y-4">
             <div>
               <label className="text-sm font-medium">Título</label>
-              <Input
+              <SlashCommandInput
+                clienteId={clienteId}
                 value={editTitulo}
-                onChange={(e) => setEditTitulo(e.target.value)}
-                placeholder="Título do vídeo"
+                onValueChange={setEditTitulo}
+                placeholder="Título do vídeo (use / para inserir do núcleo)"
               />
             </div>
             <div>
@@ -1054,10 +1059,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             
             <div>
               <label className="text-sm font-medium">Roteiro</label>
-              <Textarea
+              <SlashCommandTextarea
+                clienteId={clienteId}
                 value={editRoteiro}
-                onChange={(e) => setEditRoteiro(e.target.value)}
-                placeholder="Escreva o roteiro do vídeo aqui..."
+                onValueChange={setEditRoteiro}
+                placeholder="Escreva o roteiro do vídeo aqui... (use / para inserir do núcleo)"
                 className="font-mono text-sm min-h-[200px]"
               />
               <p className="text-xs text-muted-foreground mt-1">
