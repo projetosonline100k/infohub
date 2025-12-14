@@ -681,67 +681,67 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
         {/* Modal de novas ideias */}
         <Dialog open={showIdeiasModal} onOpenChange={(open) => { setShowIdeiasModal(open); if (!open) setNovasIdeias(createEmptyIdeias()); }}>
-          <DialogContent className="max-w-4xl">
+          <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>Novas ideias de conteúdo</DialogTitle>
             </DialogHeader>
-            <div className="space-y-6">
+            <div className="space-y-4 overflow-y-auto flex-1 pr-2">
               {novasIdeias.map((ideia, index) => (
-                <div key={index} className="p-5 border rounded-lg bg-muted/30 space-y-5">
+                <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4">
                   {/* Linha 1: Headline e Link */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Headline</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Headline</Label>
                       <Input
                         value={ideia.headline}
                         onChange={(e) => updateIdeia(index, "headline", e.target.value)}
                         placeholder="Ex: 3 livros para ler"
-                        className="h-11"
+                        className="h-10"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Link</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Link</Label>
                       <Input
                         value={ideia.link}
                         onChange={(e) => updateIdeia(index, "link", e.target.value)}
                         placeholder="https://..."
                         type="url"
-                        className="h-11"
+                        className="h-10"
                       />
                     </div>
                   </div>
                   
                   {/* Linha 2: Plataforma e Descrição */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Qual plataforma?</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Qual plataforma?</Label>
                       <RadioGroup
                         value={ideia.plataforma}
                         onValueChange={(value) => updateIdeia(index, "plataforma", value)}
-                        className="flex gap-6 pt-2"
+                        className="flex gap-4 pt-1"
                       >
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <RadioGroupItem value="instagram" id={`ig-vertical-${index}`} />
-                          <Label htmlFor={`ig-vertical-${index}`} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                            <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
-                              <Instagram className="h-3 w-3 text-white" />
+                          <Label htmlFor={`ig-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-xs">
+                            <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                              <Instagram className="h-2.5 w-2.5 text-white" />
                             </div>
                             Instagram
                           </Label>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1.5">
                           <RadioGroupItem value="youtube" id={`yt-vertical-${index}`} />
-                          <Label htmlFor={`yt-vertical-${index}`} className="flex items-center gap-1.5 cursor-pointer text-sm">
-                            <div className="w-5 h-5 rounded bg-red-600 flex items-center justify-center">
-                              <Youtube className="h-3 w-3 text-white" />
+                          <Label htmlFor={`yt-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-xs">
+                            <div className="w-4 h-4 rounded bg-red-600 flex items-center justify-center">
+                              <Youtube className="h-2.5 w-2.5 text-white" />
                             </div>
                             Youtube
                           </Label>
                         </div>
                       </RadioGroup>
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium">Descrição (opcional)</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Descrição (opcional)</Label>
                       <Textarea
                         value={ideia.descricao}
                         onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
@@ -753,13 +753,13 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                   </div>
                 </div>
               ))}
+            </div>
 
-              <div className="flex justify-end gap-2">
-                <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
-                  Cancelar
-                </Button>
-                <Button onClick={adicionarIdeias}>Salvar</Button>
-              </div>
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
+                Cancelar
+              </Button>
+              <Button onClick={adicionarIdeias}>Salvar</Button>
             </div>
           </DialogContent>
         </Dialog>
