@@ -34,11 +34,14 @@ interface IdeiasTabProps {
   clienteId: string;
 }
 
-const createEmptyIdeias = (): NovaIdeia[] => [
-  { headline: "", link: "", plataforma: "", descricao: "" },
-  { headline: "", link: "", plataforma: "", descricao: "" },
-  { headline: "", link: "", plataforma: "", descricao: "" },
-];
+const createEmptyIdeia = (): NovaIdeia => ({
+  headline: "",
+  link: "",
+  plataforma: "",
+  descricao: "",
+});
+
+const createEmptyIdeias = (): NovaIdeia[] => [createEmptyIdeia()];
 
 export function IdeiasTab({ clienteId }: IdeiasTabProps) {
   const [ideias, setIdeias] = useState<Ideia[]>([]);
@@ -215,9 +218,9 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
           <DialogHeader>
             <DialogTitle>Novas ideias de conteúdo</DialogTitle>
           </DialogHeader>
-          <div className="space-y-6">
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
             {novasIdeias.map((ideia, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 border rounded-lg bg-muted/30">
+              <div key={index} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_1fr_auto] gap-4 p-4 border rounded-lg bg-muted/30 items-end">
                 <div className="space-y-1.5">
                   <Label className="text-sm font-medium">Headline</Label>
                   <Input
@@ -236,7 +239,7 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">Qual plataforma?</Label>
+                  <Label className="text-sm font-medium">Plataforma</Label>
                   <RadioGroup
                     value={ideia.plataforma}
                     onValueChange={(value) => updateIdeia(index, "plataforma", value)}
@@ -263,7 +266,7 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
                   </RadioGroup>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-medium">Descrição (opcional)</Label>
+                  <Label className="text-sm font-medium">Descrição</Label>
                   <Textarea
                     value={ideia.descricao}
                     onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
@@ -272,15 +275,37 @@ export function IdeiasTab({ clienteId }: IdeiasTabProps) {
                     className="resize-none"
                   />
                 </div>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-9 w-9 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    if (novasIdeias.length > 1) {
+                      setNovasIdeias((prev) => prev.filter((_, i) => i !== index));
+                    }
+                  }}
+                  disabled={novasIdeias.length === 1}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
             ))}
+          </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setShowModal(false); setNovasIdeias(createEmptyIdeias()); }}>
-                Cancelar
-              </Button>
-              <Button onClick={adicionarIdeias}>Salvar</Button>
-            </div>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setNovasIdeias((prev) => [...prev, createEmptyIdeia()])}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar mais uma linha
+          </Button>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => { setShowModal(false); setNovasIdeias(createEmptyIdeias()); }}>
+              Cancelar
+            </Button>
+            <Button onClick={adicionarIdeias}>Salvar</Button>
           </div>
         </DialogContent>
       </Dialog>

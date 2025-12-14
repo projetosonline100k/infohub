@@ -1,0 +1,2 @@
+ALTER TABLE nucleo_influencia 
+DROP CONSTRAINT nucleo_influencia_categoria_check;
