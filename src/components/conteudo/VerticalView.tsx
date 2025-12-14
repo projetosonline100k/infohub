@@ -209,14 +209,35 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     return tags.filter(t => tagIds.includes(t.id));
   };
 
+  // Função para buscar thumbnail automaticamente via oEmbed
+  const fetchInstagramThumbnail = async (url: string): Promise<string | null> => {
+    try {
+      const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
+      const data = await response.json();
+      return data.thumbnail_url || null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleAddVideoRef = async () => {
     if (!novoVideoRef.titulo.trim()) return;
+    
+    let thumbnailUrl = novoVideoRef.thumbnail_url;
+    
+    // Tentar buscar thumbnail automaticamente se tiver link e não tiver thumbnail manual
+    if (novoVideoRef.link_video && !thumbnailUrl) {
+      toast.loading("Buscando thumbnail...", { id: "thumbnail-loading" });
+      const autoThumbnail = await fetchInstagramThumbnail(novoVideoRef.link_video);
+      toast.dismiss("thumbnail-loading");
+      if (autoThumbnail) thumbnailUrl = autoThumbnail;
+    }
     
     const { error } = await supabase.from("videos_referencia").insert({
       cliente_id: clienteId,
       titulo: novoVideoRef.titulo,
       link_video: novoVideoRef.link_video || null,
-      thumbnail_url: novoVideoRef.thumbnail_url || null,
+      thumbnail_url: thumbnailUrl || null,
       ordem: videosReferencia.length + 1,
     });
 
@@ -527,30 +548,45 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
               {videosReferencia.map((video) => (
                 <div
                   key={video.id}
-                  className={`relative flex-shrink-0 w-32 group cursor-pointer ${
+                  className={`relative flex-shrink-0 w-32 group ${
                     selectedVideos.includes(video.id) ? "ring-2 ring-primary rounded-lg" : ""
                   }`}
-                  onClick={() => toggleVideoSelection(video.id)}
                 >
                   <div className="aspect-[9/16] bg-muted rounded-lg overflow-hidden relative">
-                    {video.thumbnail_url ? (
-                      <img 
-                        src={video.thumbnail_url} 
-                        alt={video.titulo}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                        <Instagram className="h-8 w-8 text-muted-foreground" />
-                      </div>
-                    )}
+                    {/* Área clicável para abrir o vídeo */}
+                    <div 
+                      className={`w-full h-full ${video.link_video ? "cursor-pointer" : ""}`}
+                      onClick={() => {
+                        if (video.link_video) {
+                          window.open(video.link_video, "_blank");
+                        }
+                      }}
+                    >
+                      {video.thumbnail_url ? (
+                        <img 
+                          src={video.thumbnail_url} 
+                          alt={video.titulo}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20">
+                          <Instagram className="h-8 w-8 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
                     
-                    {/* Checkbox overlay */}
-                    <div className="absolute top-2 left-2">
+                    {/* Checkbox overlay - clicável separadamente */}
+                    <div 
+                      className="absolute top-2 left-2 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleVideoSelection(video.id);
+                      }}
+                    >
                       <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                         selectedVideos.includes(video.id) 
                           ? "bg-primary border-primary" 
-                          : "bg-background/80 border-muted-foreground/50"
+                          : "bg-background/80 border-muted-foreground/50 hover:border-primary/50"
                       }`}>
                         {selectedVideos.includes(video.id) && (
                           <Check className="h-3 w-3 text-primary-foreground" />
@@ -558,22 +594,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       </div>
                     </div>
 
-                    {/* Actions overlay */}
+                    {/* Delete button overlay */}
                     <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex justify-end gap-1">
-                        {video.link_video && (
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-6 w-6 text-white hover:bg-white/20"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.open(video.link_video!, "_blank");
-                            }}
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                          </Button>
-                        )}
                         <Button
                           size="icon"
                           variant="ghost"
