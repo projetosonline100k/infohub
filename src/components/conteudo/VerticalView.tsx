@@ -680,7 +680,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         </div>
 
         {/* Modal de novas ideias */}
-        <Dialog open={showIdeiasModal} onOpenChange={(open) => { setShowIdeiasModal(open); if (!open) setNovasIdeias(createEmptyIdeias()); }}>
+        <Dialog open={showIdeiasModal} onOpenChange={setShowIdeiasModal}>
           <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
             <DialogHeader>
               <DialogTitle>Novas ideias de conteúdo</DialogTitle>
