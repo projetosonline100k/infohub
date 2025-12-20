@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { SlashCommandInput } from "./SlashCommandInput";
 import { SlashCommandTextarea } from "./SlashCommandTextarea";
+import { RoteiroChat } from "./RoteiroChat";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -1001,80 +1002,94 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         </DragDropContext>
       </div>
 
-      {/* Modal de edição de roteiro */}
+      {/* Modal de edição de roteiro com Chat IA */}
       <Dialog open={!!editingVideo} onOpenChange={(open) => !open && setEditingVideo(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
+          <DialogHeader className="shrink-0">
             <DialogTitle>Editar ideia de vídeo</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Título</label>
-              <SlashCommandInput
-                clienteId={clienteId}
-                value={editTitulo}
-                onValueChange={setEditTitulo}
-                placeholder="Título do vídeo (use / para inserir do núcleo)"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Descrição</label>
-              <Textarea
-                value={editDescricao}
-                onChange={(e) => setEditDescricao(e.target.value)}
-                placeholder="Descrição do vídeo..."
-                rows={2}
-              />
-            </div>
-            
-            {/* Tags selection */}
-            <div>
-              <label className="text-sm font-medium">Tags</label>
-              {tags.length === 0 ? (
-                <p className="text-sm text-muted-foreground mt-1">
-                  Nenhuma tag disponível. Crie tags primeiro clicando no botão "Tags".
+          <div className="flex gap-6 flex-1 min-h-0">
+            {/* Coluna esquerda - Campos de edição */}
+            <div className="flex-1 space-y-4 overflow-y-auto pr-2">
+              <div>
+                <label className="text-sm font-medium">Título</label>
+                <SlashCommandInput
+                  clienteId={clienteId}
+                  value={editTitulo}
+                  onValueChange={setEditTitulo}
+                  placeholder="Título do vídeo (use / para inserir do núcleo)"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Descrição</label>
+                <Textarea
+                  value={editDescricao}
+                  onChange={(e) => setEditDescricao(e.target.value)}
+                  placeholder="Descrição do vídeo..."
+                  rows={2}
+                />
+              </div>
+              
+              {/* Tags selection */}
+              <div>
+                <label className="text-sm font-medium">Tags</label>
+                {tags.length === 0 ? (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Nenhuma tag disponível. Crie tags primeiro clicando no botão "Tags".
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {tags.map((tag) => {
+                      const isSelected = editVideoTags.includes(tag.id);
+                      return (
+                        <button
+                          key={tag.id}
+                          onClick={() => toggleVideoTag(tag.id)}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                            isSelected 
+                              ? getTagColorClass(tag.cor) + " ring-2 ring-primary ring-offset-1"
+                              : "bg-muted/50 text-muted-foreground border-muted hover:bg-muted"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-3 w-3" />}
+                          {tag.nome}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex-1">
+                <label className="text-sm font-medium">Roteiro</label>
+                <SlashCommandTextarea
+                  clienteId={clienteId}
+                  value={editRoteiro}
+                  onValueChange={setEditRoteiro}
+                  placeholder="Escreva o roteiro do vídeo aqui... (use / para inserir do núcleo)"
+                  className="font-mono text-sm min-h-[200px]"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
                 </p>
-              ) : (
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {tags.map((tag) => {
-                    const isSelected = editVideoTags.includes(tag.id);
-                    return (
-                      <button
-                        key={tag.id}
-                        onClick={() => toggleVideoTag(tag.id)}
-                        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                          isSelected 
-                            ? getTagColorClass(tag.cor) + " ring-2 ring-primary ring-offset-1"
-                            : "bg-muted/50 text-muted-foreground border-muted hover:bg-muted"
-                        }`}
-                      >
-                        {isSelected && <Check className="h-3 w-3" />}
-                        {tag.nome}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              </div>
+              
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button variant="outline" onClick={() => setEditingVideo(null)}>
+                  Cancelar
+                </Button>
+                <Button onClick={handleSaveRoteiro}>Salvar</Button>
+              </div>
             </div>
-            
-            <div>
-              <label className="text-sm font-medium">Roteiro</label>
-              <SlashCommandTextarea
+
+            {/* Coluna direita - Chat IA */}
+            <div className="w-[400px] shrink-0 border-l pl-6">
+              <RoteiroChat
                 clienteId={clienteId}
-                value={editRoteiro}
-                onValueChange={setEditRoteiro}
-                placeholder="Escreva o roteiro do vídeo aqui... (use / para inserir do núcleo)"
-                className="font-mono text-sm min-h-[200px]"
+                titulo={editTitulo}
+                descricao={editDescricao}
+                onInsertText={(text) => setEditRoteiro(prev => prev ? prev + "\n\n" + text : text)}
               />
-              <p className="text-xs text-muted-foreground mt-1">
-                Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
-              </p>
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setEditingVideo(null)}>
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveRoteiro}>Salvar</Button>
             </div>
           </div>
         </DialogContent>
