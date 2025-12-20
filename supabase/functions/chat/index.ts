@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,8 +12,10 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, context, agentConfig } = await req.json();
+    const { messages, context, agentConfig, agentId } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     
     if (!LOVABLE_API_KEY) {
       console.error("LOVABLE_API_KEY is not configured");
@@ -22,6 +25,23 @@ serve(async (req) => {
     console.log("Chat request received with", messages.length, "messages");
     console.log("Context:", context);
     console.log("Agent Config:", agentConfig);
+    console.log("Agent ID:", agentId);
+
+    // Fetch knowledge base for this agent if agentId is provided
+    let conhecimentos: { nome: string; conteudo_extraido: string }[] = [];
+    if (agentId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+      
+      const { data: knowledgeData, error: knowledgeError } = await supabase
+        .from("conhecimentos_agente")
+        .select("nome, conteudo_extraido")
+        .eq("agente_id", agentId);
+      
+      if (!knowledgeError && knowledgeData) {
+        conhecimentos = knowledgeData;
+        console.log("Found", conhecimentos.length, "knowledge documents");
+      }
+    }
 
     // Build system prompt based on agent config
     let systemPrompt = `Você é um especialista em criação de roteiros para vídeos curtos (Reels, TikTok, Shorts). Seu papel é ajudar o usuário a criar roteiros envolventes e virais.`;
@@ -46,6 +66,19 @@ serve(async (req) => {
       if (agentConfig.instrucoes) {
         systemPrompt += `\n\nInstruções específicas:\n${agentConfig.instrucoes}`;
       }
+    }
+
+    // Add knowledge base context
+    if (conhecimentos.length > 0) {
+      systemPrompt += `\n\n=== BASE DE CONHECIMENTO ===\nVocê tem acesso aos seguintes documentos de referência. Use estas informações para enriquecer suas respostas quando relevante:\n`;
+      
+      for (const doc of conhecimentos) {
+        // Limit each document to 10000 chars to avoid context overflow
+        const conteudo = doc.conteudo_extraido?.slice(0, 10000) || "";
+        systemPrompt += `\n--- ${doc.nome} ---\n${conteudo}\n`;
+      }
+      
+      systemPrompt += `\n=== FIM DA BASE DE CONHECIMENTO ===\n`;
     }
 
     // Add context about current video
@@ -79,6 +112,8 @@ Quando o usuário pedir para gerar um roteiro, formate assim:
 ---
 
 Seja criativo, direto e ajude a criar conteúdo que engaja!`;
+
+    console.log("System prompt length:", systemPrompt.length);
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",

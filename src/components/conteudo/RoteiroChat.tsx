@@ -2,10 +2,17 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Sparkles, Copy, Check, Loader2, Settings } from "lucide-react";
+import { Send, Sparkles, Copy, Check, Loader2, Settings, ChevronDown, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AgentConfigModal } from "./AgentConfig";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface Message {
   role: "user" | "assistant";
@@ -13,6 +20,7 @@ interface Message {
 }
 
 interface AgentConfig {
+  id?: string;
   nome: string;
   persona: string;
   instrucoes: string;
@@ -33,14 +41,16 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  const [agentConfig, setAgentConfig] = useState<AgentConfig | null>(null);
+  const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null);
   const [showAgentConfig, setShowAgentConfig] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (clienteId) {
-      fetchAgentConfig();
+      fetchAgents();
     }
   }, [clienteId]);
 
@@ -52,15 +62,19 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const fetchAgentConfig = async () => {
+  const fetchAgents = async () => {
     const { data } = await supabase
       .from("agentes_ia")
-      .select("nome, persona, instrucoes, tom_voz")
+      .select("id, nome, persona, instrucoes, tom_voz")
       .eq("cliente_id", clienteId)
-      .maybeSingle();
+      .order("created_at", { ascending: true });
 
-    if (data) {
-      setAgentConfig(data);
+    if (data && data.length > 0) {
+      setAgents(data);
+      // Select first agent if none selected
+      if (!selectedAgent) {
+        setSelectedAgent(data[0]);
+      }
     }
   };
 
@@ -74,7 +88,8 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
       body: JSON.stringify({
         messages: userMessages,
         context: { titulo, descricao },
-        agentConfig: agentConfig,
+        agentConfig: selectedAgent,
+        agentId: selectedAgent?.id,
       }),
     });
 
@@ -175,22 +190,70 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
     toast.success("Inserido no roteiro!");
   };
 
+  const handleSelectAgent = (agent: AgentConfig) => {
+    setSelectedAgent(agent);
+    toast.success(`Agente alterado para: ${agent.nome}`);
+  };
+
+  const handleCreateNewAgent = () => {
+    setIsCreatingNew(true);
+    setShowAgentConfig(true);
+  };
+
+  const handleEditAgent = () => {
+    setIsCreatingNew(false);
+    setShowAgentConfig(true);
+  };
+
+  const handleAgentSaved = (config: AgentConfig) => {
+    fetchAgents();
+    if (config.id) {
+      setSelectedAgent(config);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full bg-muted/30 rounded-lg border overflow-hidden">
-      {/* Header */}
+      {/* Header with Agent Selector */}
       <div className="flex items-center justify-between p-3 border-b bg-background/50 shrink-0">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" />
-          <span className="font-medium text-sm">
-            {agentConfig?.nome || "Chat I.A"}
-          </span>
+        <div className="flex items-center gap-2 flex-1">
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          
+          {/* Agent Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="h-7 px-2 font-medium text-sm gap-1">
+                {selectedAgent?.nome || "Selecionar Agente"}
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {agents.map((agent) => (
+                <DropdownMenuItem
+                  key={agent.id}
+                  onClick={() => handleSelectAgent(agent)}
+                  className="flex items-center gap-2"
+                >
+                  <span className={`h-2 w-2 rounded-full ${selectedAgent?.id === agent.id ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
+                  <span className="flex-1 truncate">{agent.nome}</span>
+                </DropdownMenuItem>
+              ))}
+              {agents.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuItem onClick={handleCreateNewAgent} className="text-primary">
+                <Plus className="h-4 w-4 mr-2" />
+                Criar novo agente
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
         <Button
           variant="ghost"
           size="icon"
           className="h-7 w-7"
-          onClick={() => setShowAgentConfig(true)}
+          onClick={handleEditAgent}
           title="Configurar agente"
+          disabled={!selectedAgent}
         >
           <Settings className="h-4 w-4" />
         </Button>
@@ -203,10 +266,21 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
             <Sparkles className="h-8 w-8 mx-auto mb-3 opacity-50" />
             <p>Use a IA para criar roteiros</p>
             <p className="text-xs mt-1">Clique em "Gerar roteiro" ou escreva sua dúvida</p>
-            {agentConfig && (
+            {selectedAgent && (
               <p className="text-xs mt-3 text-primary">
-                Agente configurado: {agentConfig.nome}
+                Agente: {selectedAgent.nome}
               </p>
+            )}
+            {!selectedAgent && agents.length === 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={handleCreateNewAgent}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Criar primeiro agente
+              </Button>
             )}
           </div>
         ) : (
@@ -312,9 +386,10 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
       {/* Agent Config Modal */}
       <AgentConfigModal
         clienteId={clienteId}
+        agentId={isCreatingNew ? undefined : selectedAgent?.id}
         open={showAgentConfig}
         onOpenChange={setShowAgentConfig}
-        onSave={(config) => setAgentConfig(config)}
+        onSave={handleAgentSaved}
       />
     </div>
   );
