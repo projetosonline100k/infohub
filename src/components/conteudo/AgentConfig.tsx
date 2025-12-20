@@ -6,8 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Loader2, Bot } from "lucide-react";
+import { KnowledgeUpload } from "./KnowledgeUpload";
 
 interface AgentConfig {
   id?: string;
@@ -17,8 +19,16 @@ interface AgentConfig {
   tom_voz: string;
 }
 
+interface Knowledge {
+  id: string;
+  nome: string;
+  caracteres: number;
+  created_at: string;
+}
+
 interface AgentConfigModalProps {
   clienteId: string;
+  agentId?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave?: (config: AgentConfig) => void;
@@ -32,9 +42,10 @@ const TOM_VOZ_OPTIONS = [
   { value: "inspirador", label: "Inspirador e motivacional" },
 ];
 
-export function AgentConfigModal({ clienteId, open, onOpenChange, onSave }: AgentConfigModalProps) {
-  const [loading, setLoading] = useState(true);
+export function AgentConfigModal({ clienteId, agentId, open, onOpenChange, onSave }: AgentConfigModalProps) {
+  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [conhecimentos, setConhecimentos] = useState<Knowledge[]>([]);
   const [config, setConfig] = useState<AgentConfig>({
     nome: "Assistente de Roteiros",
     persona: "",
@@ -44,17 +55,30 @@ export function AgentConfigModal({ clienteId, open, onOpenChange, onSave }: Agen
 
   useEffect(() => {
     if (open && clienteId) {
-      fetchAgentConfig();
+      if (agentId) {
+        fetchAgentConfig();
+        fetchConhecimentos();
+      } else {
+        // Creating new agent - reset form
+        setConfig({
+          nome: "Novo Agente",
+          persona: "",
+          instrucoes: "",
+          tom_voz: "informal",
+        });
+        setConhecimentos([]);
+        setLoading(false);
+      }
     }
-  }, [open, clienteId]);
+  }, [open, clienteId, agentId]);
 
   const fetchAgentConfig = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from("agentes_ia")
       .select("*")
-      .eq("cliente_id", clienteId)
-      .maybeSingle();
+      .eq("id", agentId)
+      .single();
 
     if (data) {
       setConfig({
@@ -66,6 +90,20 @@ export function AgentConfigModal({ clienteId, open, onOpenChange, onSave }: Agen
       });
     }
     setLoading(false);
+  };
+
+  const fetchConhecimentos = async () => {
+    if (!agentId) return;
+    
+    const { data } = await supabase
+      .from("conhecimentos_agente")
+      .select("id, nome, caracteres, created_at")
+      .eq("agente_id", agentId)
+      .order("created_at", { ascending: false });
+
+    if (data) {
+      setConhecimentos(data);
+    }
   };
 
   const handleSave = async () => {
@@ -116,11 +154,11 @@ export function AgentConfigModal({ clienteId, open, onOpenChange, onSave }: Agen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bot className="h-5 w-5" />
-            Configurar Agente I.A
+            {agentId ? "Configurar Agente I.A" : "Criar Novo Agente"}
           </DialogTitle>
         </DialogHeader>
         
@@ -186,6 +224,16 @@ export function AgentConfigModal({ clienteId, open, onOpenChange, onSave }: Agen
                 Regras e diretrizes específicas que o agente deve seguir
               </p>
             </div>
+
+            {/* Knowledge Base Section */}
+            <Separator />
+            
+            <KnowledgeUpload
+              agenteId={config.id || ""}
+              clienteId={clienteId}
+              conhecimentos={conhecimentos}
+              onUpdate={fetchConhecimentos}
+            />
 
             <div className="flex justify-end gap-2 pt-4">
               <Button variant="outline" onClick={() => onOpenChange(false)}>

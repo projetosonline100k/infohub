@@ -110,6 +110,50 @@ export type Database = {
         }
         Relationships: []
       }
+      conhecimentos_agente: {
+        Row: {
+          agente_id: string | null
+          arquivo_url: string | null
+          caracteres: number | null
+          cliente_id: string
+          conteudo_extraido: string | null
+          created_at: string | null
+          id: string
+          nome: string
+          tipo: string | null
+        }
+        Insert: {
+          agente_id?: string | null
+          arquivo_url?: string | null
+          caracteres?: number | null
+          cliente_id: string
+          conteudo_extraido?: string | null
+          created_at?: string | null
+          id?: string
+          nome: string
+          tipo?: string | null
+        }
+        Update: {
+          agente_id?: string | null
+          arquivo_url?: string | null
+          caracteres?: number | null
+          cliente_id?: string
+          conteudo_extraido?: string | null
+          created_at?: string | null
+          id?: string
+          nome?: string
+          tipo?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conhecimentos_agente_agente_id_fkey"
+            columns: ["agente_id"]
+            isOneToOne: false
+            referencedRelation: "agentes_ia"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipe_cliente: {
         Row: {
           cliente_id: string
