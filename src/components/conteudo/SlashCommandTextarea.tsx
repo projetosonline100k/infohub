@@ -39,32 +39,38 @@ export function SlashCommandTextarea({
 
     const textBeforeCursor = newValue.substring(0, cursorPos);
     
-    // Detecta "//" para termos virais (prioridade maior)
-    const lastDoubleSlashIndex = textBeforeCursor.lastIndexOf("//");
-    // Detecta "/" para mapa do avatar
-    const lastSingleSlashIndex = textBeforeCursor.lastIndexOf("/");
+    // Procura o último "/" antes do cursor
+    const lastSlashIndex = textBeforeCursor.lastIndexOf("/");
     
-    // Verifica se é comando de termos virais (//)
-    if (lastDoubleSlashIndex !== -1) {
-      const textAfterDoubleSlash = newValue.substring(lastDoubleSlashIndex + 2, cursorPos);
-      if (!textAfterDoubleSlash.includes("\n") && textAfterDoubleSlash.length < 30) {
-        // Verifica se não é apenas "/" único (o // deve estar no final)
-        if (lastSingleSlashIndex === lastDoubleSlashIndex || lastSingleSlashIndex === lastDoubleSlashIndex + 1) {
-          setSlashPosition(lastDoubleSlashIndex);
-          setSearch(textAfterDoubleSlash);
-          setCommandType("termos");
-          setOpen(true);
-          return;
-        }
-      }
+    if (lastSlashIndex === -1) {
+      setOpen(false);
+      setSlashPosition(null);
+      setCommandType(null);
+      return;
     }
     
-    // Verifica se é comando de mapa do avatar (/)
-    if (lastSingleSlashIndex !== -1 && lastSingleSlashIndex !== lastDoubleSlashIndex + 1) {
-      const textAfterSlash = newValue.substring(lastSingleSlashIndex + 1, cursorPos);
-      // Só abre se não começar com outra barra (evita //)
+    // Verifica se é "//" (termos virais) ou "/" (mapa do avatar)
+    const isDoubleSlash = lastSlashIndex > 0 && textBeforeCursor[lastSlashIndex - 1] === "/";
+    
+    if (isDoubleSlash) {
+      // Comando de termos virais (//)
+      const doubleSlashIndex = lastSlashIndex - 1;
+      const textAfterDoubleSlash = newValue.substring(lastSlashIndex + 1, cursorPos);
+      
+      if (!textAfterDoubleSlash.includes("\n") && textAfterDoubleSlash.length < 30) {
+        setSlashPosition(doubleSlashIndex);
+        setSearch(textAfterDoubleSlash);
+        setCommandType("termos");
+        setOpen(true);
+        return;
+      }
+    } else {
+      // Verifica se não é o início de um "//" (próximo caractere não é /)
+      const textAfterSlash = newValue.substring(lastSlashIndex + 1, cursorPos);
+      
+      // Só abre se não começar com outra barra (evita abrir no meio de //)
       if (!textAfterSlash.startsWith("/") && !textAfterSlash.includes("\n") && textAfterSlash.length < 30) {
-        setSlashPosition(lastSingleSlashIndex);
+        setSlashPosition(lastSlashIndex);
         setSearch(textAfterSlash);
         setCommandType("mapa");
         setOpen(true);
@@ -135,7 +141,7 @@ export function SlashCommandTextarea({
         />
       </PopoverAnchor>
       <PopoverContent 
-        className="w-[320px] p-0 z-50" 
+        className="w-[320px] p-0 z-50 bg-popover border" 
         align="start" 
         side="bottom"
         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -146,14 +152,13 @@ export function SlashCommandTextarea({
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList className="max-h-[300px]">
+          <CommandList className="max-h-[300px] overflow-y-auto">
             {loading ? (
               <CommandEmpty>Carregando...</CommandEmpty>
             ) : categorias.length === 0 ? (
               <CommandEmpty>{emptyMessage}</CommandEmpty>
             ) : (
               categorias.map((categoria) => {
-                const itemTexto = commandType === "termos" ? "termo" : "texto";
                 const filteredItems = categoria.items.filter((item: any) => {
                   const text = item.termo || item.texto || "";
                   return text.toLowerCase().includes(search.toLowerCase());
