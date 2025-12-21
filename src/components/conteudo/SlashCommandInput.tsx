@@ -27,6 +27,7 @@ export function SlashCommandInput({
   const [slashPosition, setSlashPosition] = useState<number | null>(null);
   const [commandType, setCommandType] = useState<CommandType>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   
   const { categorias: categoriasNucleo, loading: loadingNucleo } = useNucleoInfluencia(clienteId);
   const { categorias: categoriasTermos, loading: loadingTermos } = useTermosVirais(clienteId);
@@ -106,18 +107,24 @@ export function SlashCommandInput({
     }
   };
 
-  // Fecha ao clicar fora
-  useEffect(() => {
-    const handleClickOutside = () => {
-      if (open) {
-        setOpen(false);
-        setSlashPosition(null);
-        setCommandType(null);
-      }
-    };
-    document.addEventListener("click", handleClickOutside);
-    return () => document.removeEventListener("click", handleClickOutside);
-  }, [open]);
+  const handleWheelOnPopover = (e: React.WheelEvent) => {
+    const el = listRef.current;
+    if (!el) return;
+
+    const canScroll = el.scrollHeight > el.clientHeight;
+    if (!canScroll) return;
+
+    const atTop = el.scrollTop <= 0;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
+
+    // Se estiver no limite, deixa o scroll natural (ex: diálogo/página)
+    if ((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)) return;
+
+    el.scrollTop += e.deltaY;
+    e.preventDefault();
+  };
+
+  // (Popover já fecha ao clicar fora automaticamente)
 
   const categorias = commandType === "termos" ? categoriasTermos : categoriasNucleo;
   const loading = commandType === "termos" ? loadingTermos : loadingNucleo;
@@ -145,6 +152,7 @@ export function SlashCommandInput({
         align="start" 
         side="bottom"
         onOpenAutoFocus={(e) => e.preventDefault()}
+        onWheel={handleWheelOnPopover}
       >
         <Command shouldFilter={false}>
           <CommandInput 
@@ -152,7 +160,7 @@ export function SlashCommandInput({
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList className="max-h-[300px] overflow-y-auto">
+          <CommandList ref={listRef as any} className="max-h-[300px] overflow-y-auto overscroll-contain">
             {loading ? (
               <CommandEmpty>Carregando...</CommandEmpty>
             ) : categorias.length === 0 ? (
