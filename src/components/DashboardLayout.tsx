@@ -1,4 +1,5 @@
 import { NavLink } from "@/components/NavLink";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { LayoutDashboard, Users, Activity } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -17,9 +18,12 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       {/* Header horizontal */}
       <header className="bg-sidebar border-b border-sidebar-border">
         <div className="px-6 py-4">
-          <h1 className="text-xl font-bold text-sidebar-foreground mb-4">
-            Painel do Infoprodutor
-          </h1>
+          <div className="flex items-center justify-between mb-4">
+            <h1 className="text-xl font-bold text-sidebar-foreground">
+              Painel do Infoprodutor
+            </h1>
+            <ThemeToggle />
+          </div>
           
           <nav className="flex items-center gap-2">
             {menuItems.map((item) => {
