@@ -486,6 +486,33 @@ export type Database = {
         }
         Relationships: []
       }
+      termos_virais: {
+        Row: {
+          categoria: string | null
+          cliente_id: string
+          created_at: string
+          id: string
+          ordem: number | null
+          termo: string
+        }
+        Insert: {
+          categoria?: string | null
+          cliente_id: string
+          created_at?: string
+          id?: string
+          ordem?: number | null
+          termo: string
+        }
+        Update: {
+          categoria?: string | null
+          cliente_id?: string
+          created_at?: string
+          id?: string
+          ordem?: number | null
+          termo?: string
+        }
+        Relationships: []
+      }
       videos_referencia: {
         Row: {
           cliente_id: string

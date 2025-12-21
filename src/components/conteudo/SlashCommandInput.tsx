@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverAnchor } from "@/components/ui/popover";
 import { useNucleoInfluencia } from "@/hooks/useNucleoInfluencia";
+import { useTermosVirais } from "@/hooks/useTermosVirais";
 import { cn } from "@/lib/utils";
 
 interface SlashCommandInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -11,6 +12,8 @@ interface SlashCommandInputProps extends React.InputHTMLAttributes<HTMLInputElem
   value: string;
   onValueChange: (value: string) => void;
 }
+
+type CommandType = "mapa" | "termos" | null;
 
 export function SlashCommandInput({
   clienteId,
@@ -22,8 +25,11 @@ export function SlashCommandInput({
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [slashPosition, setSlashPosition] = useState<number | null>(null);
+  const [commandType, setCommandType] = useState<CommandType>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const { categorias, loading } = useNucleoInfluencia(clienteId);
+  
+  const { categorias: categoriasNucleo, loading: loadingNucleo } = useNucleoInfluencia(clienteId);
+  const { categorias: categoriasTermos, loading: loadingTermos } = useTermosVirais(clienteId);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
@@ -31,14 +37,36 @@ export function SlashCommandInput({
     
     onValueChange(newValue);
 
-    // Detecta "/" digitado
-    const lastSlashIndex = newValue.lastIndexOf("/");
-    if (lastSlashIndex !== -1 && cursorPos > lastSlashIndex) {
-      const textAfterSlash = newValue.substring(lastSlashIndex + 1, cursorPos);
-      // Só abre se não houver espaço após a barra ou se acabou de digitar
-      if (!textAfterSlash.includes(" ") || textAfterSlash === "") {
-        setSlashPosition(lastSlashIndex);
+    const textBeforeCursor = newValue.substring(0, cursorPos);
+    
+    // Detecta "//" para termos virais (prioridade maior)
+    const lastDoubleSlashIndex = textBeforeCursor.lastIndexOf("//");
+    // Detecta "/" para mapa do avatar
+    const lastSingleSlashIndex = textBeforeCursor.lastIndexOf("/");
+    
+    // Verifica se é comando de termos virais (//)
+    if (lastDoubleSlashIndex !== -1) {
+      const textAfterDoubleSlash = newValue.substring(lastDoubleSlashIndex + 2, cursorPos);
+      if (!textAfterDoubleSlash.includes(" ") || textAfterDoubleSlash === "") {
+        // Verifica se não é apenas "/" único
+        if (lastSingleSlashIndex === lastDoubleSlashIndex || lastSingleSlashIndex === lastDoubleSlashIndex + 1) {
+          setSlashPosition(lastDoubleSlashIndex);
+          setSearch(textAfterDoubleSlash);
+          setCommandType("termos");
+          setOpen(true);
+          return;
+        }
+      }
+    }
+    
+    // Verifica se é comando de mapa do avatar (/)
+    if (lastSingleSlashIndex !== -1 && lastSingleSlashIndex !== lastDoubleSlashIndex + 1) {
+      const textAfterSlash = newValue.substring(lastSingleSlashIndex + 1, cursorPos);
+      // Só abre se não começar com outra barra (evita //)
+      if (!textAfterSlash.startsWith("/") && (!textAfterSlash.includes(" ") || textAfterSlash === "")) {
+        setSlashPosition(lastSingleSlashIndex);
         setSearch(textAfterSlash);
+        setCommandType("mapa");
         setOpen(true);
         return;
       }
@@ -46,6 +74,7 @@ export function SlashCommandInput({
     
     setOpen(false);
     setSlashPosition(null);
+    setCommandType(null);
   };
 
   const handleSelect = (texto: string) => {
@@ -59,6 +88,7 @@ export function SlashCommandInput({
     setOpen(false);
     setSlashPosition(null);
     setSearch("");
+    setCommandType(null);
     inputRef.current?.focus();
   };
 
@@ -66,6 +96,7 @@ export function SlashCommandInput({
     if (open && e.key === "Escape") {
       setOpen(false);
       setSlashPosition(null);
+      setCommandType(null);
     }
   };
 
@@ -75,11 +106,21 @@ export function SlashCommandInput({
       if (open) {
         setOpen(false);
         setSlashPosition(null);
+        setCommandType(null);
       }
     };
     document.addEventListener("click", handleClickOutside);
     return () => document.removeEventListener("click", handleClickOutside);
   }, [open]);
+
+  const categorias = commandType === "termos" ? categoriasTermos : categoriasNucleo;
+  const loading = commandType === "termos" ? loadingTermos : loadingNucleo;
+  const emptyMessage = commandType === "termos" 
+    ? "Nenhum termo viral cadastrado" 
+    : "Nenhum item no mapa do avatar";
+  const placeholder = commandType === "termos" 
+    ? "Buscar termo viral..." 
+    : "Buscar item...";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -101,7 +142,7 @@ export function SlashCommandInput({
       >
         <Command shouldFilter={false}>
           <CommandInput 
-            placeholder="Buscar item..." 
+            placeholder={placeholder}
             value={search}
             onValueChange={setSearch}
           />
@@ -109,25 +150,29 @@ export function SlashCommandInput({
             {loading ? (
               <CommandEmpty>Carregando...</CommandEmpty>
             ) : categorias.length === 0 ? (
-              <CommandEmpty>Nenhum item no núcleo de influência</CommandEmpty>
+              <CommandEmpty>{emptyMessage}</CommandEmpty>
             ) : (
               categorias.map((categoria) => {
-                const filteredItems = categoria.items.filter((item) =>
-                  item.texto.toLowerCase().includes(search.toLowerCase())
-                );
+                const filteredItems = categoria.items.filter((item: any) => {
+                  const text = item.termo || item.texto || "";
+                  return text.toLowerCase().includes(search.toLowerCase());
+                });
                 if (filteredItems.length === 0) return null;
                 return (
                   <CommandGroup key={categoria.id} heading={categoria.titulo}>
-                    {filteredItems.map((item) => (
-                      <CommandItem
-                        key={item.id}
-                        value={item.texto}
-                        onSelect={() => handleSelect(item.texto)}
-                        className="cursor-pointer"
-                      >
-                        {item.texto}
-                      </CommandItem>
-                    ))}
+                    {filteredItems.map((item: any) => {
+                      const text = item.termo || item.texto || "";
+                      return (
+                        <CommandItem
+                          key={item.id}
+                          value={text}
+                          onSelect={() => handleSelect(text)}
+                          className="cursor-pointer"
+                        >
+                          {text}
+                        </CommandItem>
+                      );
+                    })}
                   </CommandGroup>
                 );
               })

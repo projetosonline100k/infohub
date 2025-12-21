@@ -243,7 +243,7 @@ export function NucleoInfluencia({ clienteId }: NucleoInfluenciaProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold">Núcleo de influência</h3>
+        <h3 className="text-lg font-semibold">Mapa do avatar</h3>
         <Dialog open={modalOpen} onOpenChange={setModalOpen}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm">
