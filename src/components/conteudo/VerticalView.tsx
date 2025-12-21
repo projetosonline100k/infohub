@@ -74,10 +74,10 @@ const createEmptyIdeia = (): NovaIdeia => ({
 const createEmptyIdeias = (): NovaIdeia[] => [createEmptyIdeia()];
 
 const KANBAN_COLUMNS = [
-  { id: "ideia", label: "Ideias de vídeos", color: "bg-blue-500/10 border-blue-500/30", borderColor: "border-l-blue-500" },
-  { id: "roteiro", label: "Criando roteiro", color: "bg-yellow-500/10 border-yellow-500/30", borderColor: "border-l-yellow-500" },
-  { id: "gravacao", label: "Gravação", color: "bg-purple-500/10 border-purple-500/30", borderColor: "border-l-purple-500" },
-  { id: "pronto", label: "Prontos para postar", color: "bg-green-500/10 border-green-500/30", borderColor: "border-l-green-500" },
+  { id: "ideia", label: "Ideias de vídeos", color: "bg-card border-border", borderColor: "border-l-blue-500" },
+  { id: "roteiro", label: "Criando roteiro", color: "bg-card border-border", borderColor: "border-l-yellow-500" },
+  { id: "gravacao", label: "Gravação", color: "bg-card border-border", borderColor: "border-l-purple-500" },
+  { id: "pronto", label: "Prontos para postar", color: "bg-card border-border", borderColor: "border-l-green-500" },
 ];
 
 const TAG_COLORS = [
@@ -923,10 +923,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                     >
                       {getVideosByStatus(column.id).map((video, index) => {
                         const isEscalado = video.escalado === true;
-                        const cardBorderClass = isEscalado ? "border-l-amber-500" : column.borderColor;
+                        const cardBorderClass = isEscalado ? "border-l-primary" : column.borderColor;
                         const cardBgClass = isEscalado 
-                          ? "bg-gradient-to-r from-amber-50 to-yellow-50/80 dark:from-amber-950/30 dark:to-yellow-950/20" 
-                          : "bg-card";
+                          ? "bg-primary" 
+                          : "bg-secondary/50";
+                        const textClass = isEscalado ? "text-primary-foreground" : "";
                         
                         return (
                         <Draggable key={video.id} draggableId={video.id} index={index}>
@@ -934,9 +935,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              className={`${cardBgClass} border-l-4 ${cardBorderClass} rounded-lg p-4 group cursor-pointer hover:bg-muted/50 transition-colors ${
+                              className={`${cardBgClass} ${textClass} border-l-4 ${cardBorderClass} rounded-lg p-4 group cursor-pointer hover:opacity-90 transition-all ${
                                 snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
-                              } ${isEscalado ? "ring-1 ring-amber-300/50" : ""}`}
+                              }`}
                               onClick={() => openEditModal(video)}
                             >
                               <div className="flex items-start gap-3">
@@ -948,7 +949,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                   <GripVertical className="h-4 w-4 text-muted-foreground" />
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-base leading-snug">{video.titulo}</p>
+                                  <p className={`font-medium text-base leading-snug ${isEscalado ? "text-primary-foreground" : ""}`}>{video.titulo}</p>
                                   
                                   {/* Tags do vídeo */}
                                   {getTagsForVideo(video.id).length > 0 && (
@@ -956,7 +957,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                       {getTagsForVideo(video.id).map((tag) => (
                                         <span
                                           key={tag.id}
-                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${getTagColorClass(tag.cor)}`}
+                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30" : getTagColorClass(tag.cor)}`}
                                         >
                                           {tag.nome}
                                         </span>
@@ -965,13 +966,13 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                   )}
                                   
                                   {video.descricao && (
-                                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
+                                    <p className={`text-sm mt-2 line-clamp-3 ${isEscalado ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
                                       {video.descricao}
                                     </p>
                                   )}
                                   {video.roteiro && (
                                     <div className="mt-3">
-                                      <MessageSquare className="h-5 w-5 text-blue-500" />
+                                      <MessageSquare className={`h-5 w-5 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
                                     </div>
                                   )}
                                 </div>
