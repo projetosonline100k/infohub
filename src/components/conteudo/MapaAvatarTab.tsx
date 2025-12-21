@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { PerfilCard } from "./PerfilCard";
 import { NucleoInfluencia } from "./NucleoInfluencia";
+import { TermosVirais } from "./TermosVirais";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Perfil {
   id: string;
@@ -157,8 +159,21 @@ export function MapaAvatarTab({ clienteId }: MapaAvatarTabProps) {
         </div>
       </div>
 
-      {/* Núcleo de influência */}
-      <NucleoInfluencia clienteId={clienteId} />
+      {/* Tabs: Mapa do avatar | Termos virais */}
+      <Tabs defaultValue="mapa" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="mapa">Mapa do avatar</TabsTrigger>
+          <TabsTrigger value="termos">Termos virais</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="mapa" className="mt-6">
+          <NucleoInfluencia clienteId={clienteId} />
+        </TabsContent>
+        
+        <TabsContent value="termos" className="mt-6">
+          <TermosVirais clienteId={clienteId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
