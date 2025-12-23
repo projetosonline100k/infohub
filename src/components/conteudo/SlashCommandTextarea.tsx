@@ -7,11 +7,19 @@ import { useNucleoInfluencia } from "@/hooks/useNucleoInfluencia";
 import { useTermosVirais } from "@/hooks/useTermosVirais";
 import { cn } from "@/lib/utils";
 
+interface SelectionRange {
+  start: number;
+  end: number;
+}
+
 interface SlashCommandTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   clienteId: string;
   value: string;
   onValueChange: (value: string) => void;
+  onSelectionChange?: (text: string | null, range: SelectionRange | null) => void;
 }
+
+export type { SelectionRange };
 
 type CommandType = "mapa" | "termos" | null;
 
@@ -19,6 +27,7 @@ export function SlashCommandTextarea({
   clienteId,
   value,
   onValueChange,
+  onSelectionChange,
   className,
   ...props
 }: SlashCommandTextareaProps) {
@@ -107,6 +116,19 @@ export function SlashCommandTextarea({
     }
   };
 
+  const handleSelectionChange = () => {
+    const textarea = textareaRef.current;
+    if (!textarea || !onSelectionChange) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+
+    if (start !== end) {
+      const selectedText = value.substring(start, end);
+      onSelectionChange(selectedText, { start, end });
+    }
+  };
+
   const handleWheelOnPopover = (e: React.WheelEvent) => {
     const el = listRef.current;
     if (!el) return;
@@ -142,6 +164,8 @@ export function SlashCommandTextarea({
           value={value}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
+          onMouseUp={handleSelectionChange}
+          onKeyUp={handleSelectionChange}
           className={cn(className)}
           {...props}
         />

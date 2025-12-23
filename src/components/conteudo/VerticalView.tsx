@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { SlashCommandInput } from "./SlashCommandInput";
-import { SlashCommandTextarea } from "./SlashCommandTextarea";
+import { SlashCommandTextarea, SelectionRange } from "./SlashCommandTextarea";
 import { RoteiroChat } from "./RoteiroChat";
 
 interface VerticalViewProps {
@@ -136,6 +136,10 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   const [editDescricao, setEditDescricao] = useState("");
   const [editRoteiro, setEditRoteiro] = useState("");
   const [editVideoTags, setEditVideoTags] = useState<string[]>([]);
+  
+  // Selection context state for contextual editing
+  const [selectedText, setSelectedText] = useState<string | null>(null);
+  const [selectionRange, setSelectionRange] = useState<SelectionRange | null>(null);
 
   useEffect(() => {
     fetchVideos();
@@ -339,6 +343,25 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     setEditDescricao(video.descricao || "");
     setEditRoteiro(video.roteiro || "");
     setEditVideoTags(getVideoTagIds(video.id));
+    // Clear any previous selection
+    setSelectedText(null);
+    setSelectionRange(null);
+  };
+
+  const handleSelectionChange = (text: string | null, range: SelectionRange | null) => {
+    setSelectedText(text);
+    setSelectionRange(range);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedText(null);
+    setSelectionRange(null);
+  };
+
+  const handleReplaceText = (newText: string, range: SelectionRange) => {
+    const before = editRoteiro.substring(0, range.start);
+    const after = editRoteiro.substring(range.end);
+    setEditRoteiro(before + newText + after);
   };
 
   const toggleVideoTag = (tagId: string) => {
@@ -1067,6 +1090,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                   clienteId={clienteId}
                   value={editRoteiro}
                   onValueChange={setEditRoteiro}
+                  onSelectionChange={handleSelectionChange}
                   placeholder="Escreva o roteiro do vídeo aqui... (use / para inserir do núcleo)"
                   className="font-mono text-sm min-h-[200px]"
                 />
@@ -1090,6 +1114,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                 titulo={editTitulo}
                 descricao={editDescricao}
                 onInsertText={(text) => setEditRoteiro(prev => prev ? prev + "\n\n" + text : text)}
+                selectedContext={selectedText && selectionRange ? { text: selectedText, range: selectionRange } : null}
+                onClearSelection={handleClearSelection}
+                onReplaceText={handleReplaceText}
               />
             </div>
           </div>

@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send, Sparkles, Copy, Check, Loader2, Settings, ChevronDown, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Send, Sparkles, Copy, Check, Loader2, Settings, ChevronDown, Plus, X, Pencil, Replace } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { AgentConfigModal } from "./AgentConfig";
@@ -27,16 +28,24 @@ interface AgentConfig {
   tom_voz: string;
 }
 
+interface SelectionContext {
+  text: string;
+  range: { start: number; end: number };
+}
+
 interface RoteiroChatProps {
   clienteId: string;
   titulo: string;
   descricao: string;
   onInsertText: (text: string) => void;
+  selectedContext?: SelectionContext | null;
+  onClearSelection?: () => void;
+  onReplaceText?: (text: string, range: { start: number; end: number }) => void;
 }
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: RoteiroChatProps) {
+export function RoteiroChat({ clienteId, titulo, descricao, onInsertText, selectedContext, onClearSelection, onReplaceText }: RoteiroChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -90,6 +99,7 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
         context: { titulo, descricao },
         agentConfig: selectedAgent,
         agentId: selectedAgent?.id,
+        selectedText: selectedContext?.text || null,
       }),
     });
 
@@ -190,6 +200,14 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
     toast.success("Inserido no roteiro!");
   };
 
+  const handleReplace = (content: string) => {
+    if (selectedContext && onReplaceText) {
+      onReplaceText(content, selectedContext.range);
+      onClearSelection?.();
+      toast.success("Texto substituído!");
+    }
+  };
+
   const handleSelectAgent = (agent: AgentConfig) => {
     setSelectedAgent(agent);
     toast.success(`Agente alterado para: ${agent.nome}`);
@@ -259,6 +277,31 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
         </Button>
       </div>
 
+      {/* Selection Context Badge */}
+      {selectedContext && (
+        <div className="px-3 py-2 border-b bg-primary/5 shrink-0">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="gap-1.5 pr-1 max-w-full">
+              <Pencil className="h-3 w-3 shrink-0" />
+              <span className="truncate text-xs">
+                Editando: "{selectedContext.text.length > 40 ? selectedContext.text.slice(0, 40) + '...' : selectedContext.text}"
+              </span>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-4 w-4 ml-1 hover:bg-destructive/20"
+                onClick={onClearSelection}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            Suas mensagens serão usadas para editar este trecho
+          </p>
+        </div>
+      )}
+
       {/* Messages - scrollable area */}
       <div className="flex-1 overflow-y-auto min-h-0 p-3" ref={scrollRef}>
         {messages.length === 0 ? (
@@ -294,7 +337,7 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
                 }`}>
                   <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                   {msg.role === "assistant" && msg.content && (
-                    <div className="flex gap-1 mt-2 pt-2 border-t border-border/50">
+                    <div className="flex gap-1 mt-2 pt-2 border-t border-border/50 flex-wrap">
                       <Button
                         size="sm"
                         variant="ghost"
@@ -304,14 +347,26 @@ export function RoteiroChat({ clienteId, titulo, descricao, onInsertText }: Rote
                         {copiedIndex === i ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                         Copiar
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 text-xs"
-                        onClick={() => handleInsert(msg.content)}
-                      >
-                        Inserir no roteiro
-                      </Button>
+                      {selectedContext && onReplaceText ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs text-primary"
+                          onClick={() => handleReplace(msg.content)}
+                        >
+                          <Replace className="h-3 w-3 mr-1" />
+                          Substituir no roteiro
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 text-xs"
+                          onClick={() => handleInsert(msg.content)}
+                        >
+                          Inserir no roteiro
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
