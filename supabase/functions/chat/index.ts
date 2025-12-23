@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, context, agentConfig, agentId } = await req.json();
+    const { messages, context, agentConfig, agentId, selectedText } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -87,6 +87,16 @@ serve(async (req) => {
     }
     if (context?.descricao) {
       systemPrompt += `\nDescrição: "${context.descricao}"`;
+    }
+
+    // Add selected text context for contextual editing
+    if (selectedText) {
+      systemPrompt += `\n\n=== MODO DE EDIÇÃO ===
+O usuário selecionou um trecho específico do roteiro para edição:
+"${selectedText}"
+
+IMPORTANTE: Quando o usuário pedir para modificar este trecho, responda APENAS com o texto modificado, sem explicações adicionais, sem o formato de roteiro completo. Apenas o novo texto que substituirá o trecho selecionado.
+=== FIM DO MODO DE EDIÇÃO ===`;
     }
 
     // Add default formatting guidelines
