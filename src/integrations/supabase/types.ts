@@ -53,10 +53,14 @@ export type Database = {
           concluida: boolean
           created_at: string
           data_atividade: string
+          data_inicio: string | null
+          data_vencimento: string | null
           descricao: string | null
           destaque: boolean
           id: string
           ordem: number
+          prioridade: string
+          status: string
           tempo_estimado: number | null
           titulo: string
         }
@@ -65,10 +69,14 @@ export type Database = {
           concluida?: boolean
           created_at?: string
           data_atividade?: string
+          data_inicio?: string | null
+          data_vencimento?: string | null
           descricao?: string | null
           destaque?: boolean
           id?: string
           ordem?: number
+          prioridade?: string
+          status?: string
           tempo_estimado?: number | null
           titulo: string
         }
@@ -77,10 +85,14 @@ export type Database = {
           concluida?: boolean
           created_at?: string
           data_atividade?: string
+          data_inicio?: string | null
+          data_vencimento?: string | null
           descricao?: string | null
           destaque?: boolean
           id?: string
           ordem?: number
+          prioridade?: string
+          status?: string
           tempo_estimado?: number | null
           titulo?: string
         }
@@ -505,6 +517,41 @@ export type Database = {
             columns: ["pesquisa_id"]
             isOneToOne: false
             referencedRelation: "pesquisas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subtarefas_atividade: {
+        Row: {
+          atividade_id: string
+          concluida: boolean
+          created_at: string
+          id: string
+          ordem: number
+          titulo: string
+        }
+        Insert: {
+          atividade_id: string
+          concluida?: boolean
+          created_at?: string
+          id?: string
+          ordem?: number
+          titulo: string
+        }
+        Update: {
+          atividade_id?: string
+          concluida?: boolean
+          created_at?: string
+          id?: string
+          ordem?: number
+          titulo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subtarefas_atividade_atividade_id_fkey"
+            columns: ["atividade_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
             referencedColumns: ["id"]
           },
         ]

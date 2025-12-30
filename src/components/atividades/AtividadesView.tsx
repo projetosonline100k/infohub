@@ -1,13 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
-import { Plus, Bike, MoreHorizontal, ArrowUpDown } from "lucide-react";
+import { Plus, Bike, MoreHorizontal, ArrowUpDown, GripVertical } from "lucide-react";
 import { AtividadeItem } from "./AtividadeItem";
 import { DiaSection } from "./DiaSection";
-import { AtividadeForm } from "./AtividadeForm";
+import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { toast } from "sonner";
-import { format, startOfWeek, addDays, parseISO, isEqual } from "date-fns";
+import { format, startOfWeek, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+} from "@hello-pangea/dnd";
 
 interface Atividade {
   id: string;
@@ -20,6 +26,10 @@ interface Atividade {
   ordem: number;
   destaque: boolean;
   created_at: string;
+  status: string;
+  prioridade: string;
+  data_vencimento: string | null;
+  data_inicio: string | null;
 }
 
 interface AtividadesViewProps {
@@ -42,20 +52,20 @@ const parseTempoFromText = (text: string): { titulo: string; tempo: number | nul
   let totalMinutos = 0;
   let titulo = text;
   let match;
-  
+
   while ((match = tempoRegex.exec(text)) !== null) {
     const valor = parseInt(match[1]);
     const unidade = match[2].toLowerCase();
-    
+
     if (unidade.startsWith("h")) {
       totalMinutos += valor * 60;
     } else {
       totalMinutos += valor;
     }
-    
+
     titulo = titulo.replace(match[0], "").trim();
   }
-  
+
   return {
     titulo: titulo || text,
     tempo: totalMinutos > 0 ? totalMinutos : null,
@@ -67,18 +77,18 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   const [loading, setLoading] = useState(true);
   const [novaAtividade, setNovaAtividade] = useState("");
   const [diasAbertos, setDiasAbertos] = useState<Record<string, boolean>>({});
-  const [editingAtividade, setEditingAtividade] = useState<Atividade | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
+  const [selectedAtividade, setSelectedAtividade] = useState<Atividade | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   // Get current week's days
-  const getWeekDays = () => {
+  const getWeekDays = useCallback(() => {
     const hoje = new Date();
     const inicioSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Monday start
     return DIAS_SEMANA.map((dia, index) => ({
       nome: dia,
       data: format(addDays(inicioSemana, index), "yyyy-MM-dd"),
     }));
-  };
+  }, []);
 
   const weekDays = getWeekDays();
 
@@ -103,7 +113,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       // Open days that have tasks
       const diasComTarefas: Record<string, boolean> = {};
       (data || []).forEach((atividade) => {
-        const diaIndex = weekDays.findIndex(d => d.data === atividade.data_atividade);
+        const diaIndex = weekDays.findIndex((d) => d.data === atividade.data_atividade);
         if (diaIndex !== -1) {
           diasComTarefas[weekDays[diaIndex].nome] = true;
         }
@@ -149,15 +159,16 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
 
   const toggleAtividade = async (id: string, concluida: boolean) => {
     try {
+      const novoStatus = concluida ? "finalizado" : "pendente";
       const { error } = await supabase
         .from("atividades")
-        .update({ concluida })
+        .update({ concluida, status: novoStatus })
         .eq("id", id);
 
       if (error) throw error;
 
       setAtividades((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, concluida } : a))
+        prev.map((a) => (a.id === id ? { ...a, concluida, status: novoStatus } : a))
       );
     } catch (error) {
       console.error("Erro ao atualizar atividade:", error);
@@ -179,31 +190,10 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     }
   };
 
-  const salvarAtividade = async (dados: Partial<Atividade>) => {
-    try {
-      if (dados.id) {
-        const { error } = await supabase
-          .from("atividades")
-          .update({
-            titulo: dados.titulo,
-            descricao: dados.descricao,
-            tempo_estimado: dados.tempo_estimado,
-            destaque: dados.destaque,
-          })
-          .eq("id", dados.id);
-
-        if (error) throw error;
-        toast.success("Atividade atualizada");
-      }
-      carregarAtividades();
-    } catch (error) {
-      console.error("Erro ao salvar atividade:", error);
-      toast.error("Erro ao salvar atividade");
-    }
-  };
-
   const getAtividadesDoDia = (dataStr: string) => {
-    return atividades.filter((a) => a.data_atividade === dataStr);
+    return atividades
+      .filter((a) => a.data_atividade === dataStr)
+      .sort((a, b) => a.ordem - b.ordem);
   };
 
   const toggleDia = (dia: string) => {
@@ -211,6 +201,93 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       ...prev,
       [dia]: !prev[dia],
     }));
+  };
+
+  const handleDragEnd = async (result: DropResult) => {
+    const { source, destination, draggableId } = result;
+
+    if (!destination) return;
+
+    // Same position
+    if (
+      source.droppableId === destination.droppableId &&
+      source.index === destination.index
+    ) {
+      return;
+    }
+
+    const sourceData = source.droppableId;
+    const destData = destination.droppableId;
+
+    // Find the activity
+    const atividade = atividades.find((a) => a.id === draggableId);
+    if (!atividade) return;
+
+    // Get activities from source and destination days
+    const sourceAtividades = getAtividadesDoDia(sourceData);
+    const destAtividades =
+      sourceData === destData
+        ? sourceAtividades
+        : getAtividadesDoDia(destData);
+
+    // Remove from source
+    const [removed] = sourceAtividades.splice(source.index, 1);
+
+    // Add to destination
+    if (sourceData === destData) {
+      sourceAtividades.splice(destination.index, 0, removed);
+    } else {
+      destAtividades.splice(destination.index, 0, removed);
+    }
+
+    // Update local state immediately for optimistic UI
+    const updatedAtividade = {
+      ...removed,
+      data_atividade: destData,
+      ordem: destination.index + 1,
+    };
+
+    setAtividades((prev) =>
+      prev.map((a) => (a.id === draggableId ? updatedAtividade : a))
+    );
+
+    // Update in database
+    try {
+      const { error } = await supabase
+        .from("atividades")
+        .update({
+          data_atividade: destData,
+          ordem: destination.index + 1,
+        })
+        .eq("id", draggableId);
+
+      if (error) throw error;
+
+      // Update ordem for other activities in destination
+      const atividadesParaAtualizar =
+        sourceData === destData ? sourceAtividades : destAtividades;
+
+      for (let i = 0; i < atividadesParaAtualizar.length; i++) {
+        if (atividadesParaAtualizar[i].id !== draggableId) {
+          await supabase
+            .from("atividades")
+            .update({ ordem: i + 1 })
+            .eq("id", atividadesParaAtualizar[i].id);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao mover atividade:", error);
+      toast.error("Erro ao mover atividade");
+      carregarAtividades(); // Revert on error
+    }
+  };
+
+  const openAtividadeDetail = (id: string) => {
+    const atv = atividades.find((a) => a.id === id);
+    if (atv) {
+      setSelectedAtividade(atv);
+      setPanelOpen(true);
+    }
   };
 
   if (loading) {
@@ -252,59 +329,88 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
               adicionarAtividade();
             }
           }}
-          placeholder="Adicionar tarefa"
+          placeholder="Adicionar tarefa (ex: Criar conteúdo 2h)"
           className="pl-9 bg-muted/50 border-muted"
         />
       </div>
 
-      {/* Days of the week */}
-      <div className="space-y-1">
-        {weekDays.map(({ nome, data }) => {
-          const atividadesDoDia = getAtividadesDoDia(data);
-          const contagem = atividadesDoDia.length;
+      {/* Days of the week with drag-drop */}
+      <DragDropContext onDragEnd={handleDragEnd}>
+        <div className="space-y-1">
+          {weekDays.map(({ nome, data }) => {
+            const atividadesDoDia = getAtividadesDoDia(data);
+            const contagem = atividadesDoDia.length;
 
-          return (
-            <DiaSection
-              key={nome}
-              dia={nome}
-              contagem={contagem}
-              isOpen={diasAbertos[nome] || false}
-              onToggle={() => toggleDia(nome)}
-            >
-              {atividadesDoDia.map((atividade) => (
-                <AtividadeItem
-                  key={atividade.id}
-                  id={atividade.id}
-                  titulo={atividade.titulo}
-                  concluida={atividade.concluida}
-                  tempoEstimado={atividade.tempo_estimado || undefined}
-                  temDescricao={!!atividade.descricao}
-                  destaque={atividade.destaque}
-                  onToggle={toggleAtividade}
-                  onClick={(id) => {
-                    const atv = atividades.find((a) => a.id === id);
-                    if (atv) {
-                      setEditingAtividade(atv);
-                      setFormOpen(true);
-                    }
-                  }}
-                  onDelete={excluirAtividade}
-                />
-              ))}
-            </DiaSection>
-          );
-        })}
-      </div>
+            return (
+              <DiaSection
+                key={nome}
+                dia={nome}
+                contagem={contagem}
+                isOpen={diasAbertos[nome] || false}
+                onToggle={() => toggleDia(nome)}
+              >
+                <Droppable droppableId={data}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`min-h-[2px] rounded transition-colors ${
+                        snapshot.isDraggingOver ? "bg-primary/10" : ""
+                      }`}
+                    >
+                      {atividadesDoDia.map((atividade, index) => (
+                        <Draggable
+                          key={atividade.id}
+                          draggableId={atividade.id}
+                          index={index}
+                        >
+                          {(provided, snapshot) => (
+                            <div
+                              ref={provided.innerRef}
+                              {...provided.draggableProps}
+                              className={`${
+                                snapshot.isDragging ? "opacity-90 shadow-lg" : ""
+                              }`}
+                            >
+                              <AtividadeItem
+                                id={atividade.id}
+                                titulo={atividade.titulo}
+                                concluida={atividade.concluida}
+                                tempoEstimado={atividade.tempo_estimado || undefined}
+                                temDescricao={!!atividade.descricao}
+                                destaque={atividade.destaque}
+                                status={atividade.status}
+                                prioridade={atividade.prioridade}
+                                dataVencimento={atividade.data_vencimento}
+                                onToggle={toggleAtividade}
+                                onClick={openAtividadeDetail}
+                                onDelete={excluirAtividade}
+                                dragHandleProps={provided.dragHandleProps}
+                              />
+                            </div>
+                          )}
+                        </Draggable>
+                      ))}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </DiaSection>
+            );
+          })}
+        </div>
+      </DragDropContext>
 
-      {/* Edit form modal */}
-      <AtividadeForm
-        open={formOpen}
+      {/* Detail Panel */}
+      <AtividadeDetailPanel
+        open={panelOpen}
         onClose={() => {
-          setFormOpen(false);
-          setEditingAtividade(null);
+          setPanelOpen(false);
+          setSelectedAtividade(null);
         }}
-        onSave={salvarAtividade}
-        atividade={editingAtividade}
+        atividade={selectedAtividade}
+        onUpdate={carregarAtividades}
+        onDelete={excluirAtividade}
       />
     </div>
   );
