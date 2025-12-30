@@ -25,6 +25,8 @@ import {
 import { StatusBadge } from "./StatusBadge";
 import { PriorityFlag } from "./PriorityFlag";
 import { SubtarefasList } from "./SubtarefasList";
+import { DocumentosList } from "@/components/documentos/DocumentosList";
+import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { toast } from "sonner";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -34,6 +36,8 @@ import {
   Star,
   X,
   Trash2,
+  FileText,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -354,8 +358,74 @@ export const AtividadeDetailPanel = ({
           <div className="border-t border-border pt-4">
             <SubtarefasList atividadeId={atividade.id} />
           </div>
+
+          {/* Documents */}
+          <DocumentosSection atividadeId={atividade.id} clienteId={atividade.cliente_id} />
         </div>
       </SheetContent>
     </Sheet>
   );
 };
+
+// Separate component for documents section
+function DocumentosSection({ atividadeId, clienteId }: { atividadeId: string; clienteId: string | null }) {
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const criarNovoDocumento = async () => {
+    const { data, error } = await supabase
+      .from("documentos")
+      .insert({
+        atividade_id: atividadeId,
+        cliente_id: clienteId,
+        titulo: "Documento sem título",
+      })
+      .select()
+      .single();
+
+    if (data && !error) {
+      setSelectedDocId(data.id);
+      setEditorOpen(true);
+    } else {
+      toast.error("Erro ao criar documento");
+    }
+  };
+
+  const handleOpenDoc = (docId: string) => {
+    setSelectedDocId(docId);
+    setEditorOpen(true);
+  };
+
+  const handleCloseEditor = () => {
+    setEditorOpen(false);
+    setSelectedDocId(null);
+    setRefreshKey((k) => k + 1);
+  };
+
+  return (
+    <>
+      <div className="border-t border-border pt-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Documentos</span>
+          </div>
+          <Button size="sm" variant="ghost" onClick={criarNovoDocumento} className="h-7 px-2">
+            <Plus className="h-4 w-4 mr-1" />
+            Novo Doc
+          </Button>
+        </div>
+        <DocumentosList 
+          key={refreshKey}
+          atividadeId={atividadeId} 
+          onOpenDoc={handleOpenDoc} 
+        />
+      </div>
+
+      {editorOpen && selectedDocId && (
+        <DocumentEditor documentoId={selectedDocId} onClose={handleCloseEditor} />
+      )}
+    </>
+  );
+}

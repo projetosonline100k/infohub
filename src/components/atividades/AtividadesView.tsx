@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Bike, MoreHorizontal, ArrowUpDown, List, LayoutGrid, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Bike, MoreHorizontal, ArrowUpDown, List, LayoutGrid, Calendar as CalendarIcon, ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { AtividadeItem } from "./AtividadeItem";
 import { DiaSection } from "./DiaSection";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
@@ -145,6 +146,10 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   const [viewMode, setViewMode] = useState<ViewMode>("lista");
   const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>("semana");
   const [dataReferencia, setDataReferencia] = useState(new Date());
+  
+  // Document editor state
+  const [docEditorOpen, setDocEditorOpen] = useState(false);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
   // Get interval days based on period filter
   const intervaloDatas = useMemo(() => {
@@ -505,6 +510,29 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     }
   };
 
+  const criarNovoDocumento = async () => {
+    const { data, error } = await supabase
+      .from("documentos")
+      .insert({
+        cliente_id: clienteId || null,
+        titulo: "Documento sem título",
+      })
+      .select()
+      .single();
+
+    if (data && !error) {
+      setSelectedDocId(data.id);
+      setDocEditorOpen(true);
+    } else {
+      toast.error("Erro ao criar documento");
+    }
+  };
+
+  const handleCloseDocEditor = () => {
+    setDocEditorOpen(false);
+    setSelectedDocId(null);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -560,6 +588,15 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
               <CalendarIcon className="h-4 w-4" />
             </Button>
           </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={criarNovoDocumento}
+            className="h-8 px-2.5 text-muted-foreground hover:text-foreground"
+          >
+            <FileText className="h-4 w-4 mr-1" />
+            <span className="hidden sm:inline">Novo Doc</span>
+          </Button>
           <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
             <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -731,6 +768,11 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         onUpdate={carregarAtividades}
         onDelete={excluirAtividade}
       />
+
+      {/* Document Editor */}
+      {docEditorOpen && selectedDocId && (
+        <DocumentEditor documentoId={selectedDocId} onClose={handleCloseDocEditor} />
+      )}
     </div>
   );
 };

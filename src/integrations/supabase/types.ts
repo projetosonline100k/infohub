@@ -213,6 +213,51 @@ export type Database = {
           },
         ]
       }
+      documentos: {
+        Row: {
+          atividade_id: string | null
+          cliente_id: string | null
+          conteudo: string | null
+          created_at: string
+          id: string
+          titulo: string
+          updated_at: string
+        }
+        Insert: {
+          atividade_id?: string | null
+          cliente_id?: string | null
+          conteudo?: string | null
+          created_at?: string
+          id?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Update: {
+          atividade_id?: string | null
+          cliente_id?: string | null
+          conteudo?: string | null
+          created_at?: string
+          id?: string
+          titulo?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documentos_atividade_id_fkey"
+            columns: ["atividade_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documentos_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipe_cliente: {
         Row: {
           cliente_id: string
