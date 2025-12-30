@@ -9,6 +9,7 @@ import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
 import { ConteudoSection } from "@/components/conteudo/ConteudoSection";
 import { AtividadesView } from "@/components/atividades/AtividadesView";
+import { DocumentosView } from "@/components/documentos/DocumentosView";
 
 interface Cliente {
   id: string;
@@ -150,6 +151,16 @@ export default function ClienteDetalhe() {
             }`}
           >
             Atividades
+          </button>
+          <button
+            onClick={() => setAbaAtiva("documentos")}
+            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+              abaAtiva === "documentos"
+                ? "bg-primary text-primary-foreground"
+                : "hover:bg-muted"
+            }`}
+          >
+            Documentos
           </button>
           
           {/* Conteúdo com sub-itens expansíveis */}
@@ -379,6 +390,10 @@ export default function ClienteDetalhe() {
 
           {abaAtiva === "conteudo" && (
             <ConteudoSection clienteId={id!} subAba={subAbaConteudo} />
+          )}
+
+          {abaAtiva === "documentos" && (
+            <DocumentosView clienteId={id!} />
           )}
         </div>
       </div>
