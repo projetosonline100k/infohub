@@ -372,9 +372,9 @@ export default function ClienteDetalhe() {
           )}
 
           {abaAtiva === "atividades" && (
-            <Card className="p-6 shadow-md max-w-2xl">
+            <div className="w-full">
               <AtividadesView clienteId={id} />
-            </Card>
+            </div>
           )}
 
           {abaAtiva === "conteudo" && (
