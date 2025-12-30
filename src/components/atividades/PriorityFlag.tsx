@@ -5,6 +5,7 @@ interface PriorityFlagProps {
   priority: string;
   onClick?: () => void;
   showLabel?: boolean;
+  size?: "sm" | "md";
 }
 
 const priorityConfig: Record<string, { label: string; color: string }> = {
@@ -26,8 +27,9 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
   },
 };
 
-export const PriorityFlag = ({ priority, onClick, showLabel }: PriorityFlagProps) => {
+export const PriorityFlag = ({ priority, onClick, showLabel, size = "md" }: PriorityFlagProps) => {
   const config = priorityConfig[priority] || priorityConfig.media;
+  const iconSize = size === "sm" ? "h-3 w-3" : "h-3.5 w-3.5";
 
   return (
     <button
@@ -37,7 +39,7 @@ export const PriorityFlag = ({ priority, onClick, showLabel }: PriorityFlagProps
         config.color
       )}
     >
-      <Flag className="h-3.5 w-3.5" fill="currentColor" />
+      <Flag className={iconSize} fill="currentColor" />
       {showLabel && <span className="text-xs">{config.label}</span>}
     </button>
   );
