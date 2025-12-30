@@ -25,6 +25,8 @@ import {
   addYears,
   subYears,
   eachDayOfInterval,
+  eachWeekOfInterval,
+  eachMonthOfInterval,
   isSameDay,
   isWithinInterval,
   parseISO
@@ -69,15 +71,12 @@ interface AtividadesViewProps {
 type ViewMode = "lista" | "quadro" | "calendario";
 type PeriodoFiltro = "semana" | "mes" | "ano";
 
-const DIAS_SEMANA = [
-  "Segunda",
-  "Terça",
-  "Quarta",
-  "Quinta",
-  "Sexta",
-  "Sábado",
-  "Domingo",
-];
+interface GrupoAtividades {
+  id: string;
+  label: string;
+  inicio: Date;
+  fim: Date;
+}
 
 const getIntervaloData = (data: Date, periodo: PeriodoFiltro) => {
   if (periodo === "semana") {
@@ -152,18 +151,52 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     return getIntervaloData(dataReferencia, periodoFiltro);
   }, [dataReferencia, periodoFiltro]);
 
-  // Get days for the current period
-  const diasDoPeriodo = useMemo(() => {
-    const days = eachDayOfInterval({
-      start: intervaloDatas.inicio,
-      end: intervaloDatas.fim,
-    });
-    return days.map((day) => ({
-      nome: format(day, "EEEE", { locale: ptBR }),
-      data: format(day, "yyyy-MM-dd"),
-      dataObj: day,
-    }));
-  }, [intervaloDatas]);
+  // Get groups for the current period based on filter type
+  const gruposDoPeriodo = useMemo((): GrupoAtividades[] => {
+    if (periodoFiltro === "semana") {
+      // For week: show individual days
+      const days = eachDayOfInterval({
+        start: intervaloDatas.inicio,
+        end: intervaloDatas.fim,
+      });
+      return days.map((day) => ({
+        id: format(day, "yyyy-MM-dd"),
+        label: `${format(day, "EEEE", { locale: ptBR }).charAt(0).toUpperCase() + format(day, "EEEE", { locale: ptBR }).slice(1)}, ${format(day, "d MMM", { locale: ptBR })}`,
+        inicio: day,
+        fim: day,
+      }));
+    } else if (periodoFiltro === "mes") {
+      // For month: show weeks
+      const weeks = eachWeekOfInterval(
+        { start: intervaloDatas.inicio, end: intervaloDatas.fim },
+        { weekStartsOn: 1 }
+      );
+      return weeks.map((weekStart, index) => {
+        const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+        return {
+          id: `semana-${index + 1}`,
+          label: `Semana ${index + 1} (${format(weekStart, "d MMM", { locale: ptBR })} - ${format(weekEnd, "d MMM", { locale: ptBR })})`,
+          inicio: weekStart,
+          fim: weekEnd,
+        };
+      });
+    } else {
+      // For year: show months
+      const months = eachMonthOfInterval({
+        start: intervaloDatas.inicio,
+        end: intervaloDatas.fim,
+      });
+      return months.map((monthStart) => {
+        const monthEnd = endOfMonth(monthStart);
+        return {
+          id: format(monthStart, "yyyy-MM"),
+          label: format(monthStart, "MMMM", { locale: ptBR }).charAt(0).toUpperCase() + format(monthStart, "MMMM", { locale: ptBR }).slice(1),
+          inicio: monthStart,
+          fim: monthEnd,
+        };
+      });
+    }
+  }, [intervaloDatas, periodoFiltro]);
 
   const labelPeriodo = useMemo(() => {
     return getLabelPeriodo(dataReferencia, periodoFiltro);
@@ -217,15 +250,18 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       if (error) throw error;
       setAtividades(data || []);
 
-      // Open days that have tasks
-      const diasComTarefas: Record<string, boolean> = {};
+      // Open groups that have tasks
+      const gruposComTarefas: Record<string, boolean> = {};
       (data || []).forEach((atividade) => {
-        const diaEncontrado = diasDoPeriodo.find((d) => d.data === atividade.data_atividade);
-        if (diaEncontrado) {
-          diasComTarefas[diaEncontrado.data] = true;
+        const dataAtv = parseISO(atividade.data_atividade);
+        const grupoEncontrado = gruposDoPeriodo.find((g) => 
+          isWithinInterval(dataAtv, { start: g.inicio, end: g.fim })
+        );
+        if (grupoEncontrado) {
+          gruposComTarefas[grupoEncontrado.id] = true;
         }
       });
-      setDiasAbertos(diasComTarefas);
+      setDiasAbertos(gruposComTarefas);
     } catch (error) {
       console.error("Erro ao carregar atividades:", error);
       toast.error("Erro ao carregar atividades");
@@ -324,6 +360,21 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     return atividades
       .filter((a) => a.data_atividade === dataStr)
       .sort((a, b) => a.ordem - b.ordem);
+  };
+
+  const getAtividadesDoGrupo = (grupo: GrupoAtividades) => {
+    return atividades
+      .filter((a) => {
+        const dataAtv = parseISO(a.data_atividade);
+        return isWithinInterval(dataAtv, { start: grupo.inicio, end: grupo.fim });
+      })
+      .sort((a, b) => {
+        // Sort by date first, then by order
+        if (a.data_atividade !== b.data_atividade) {
+          return a.data_atividade.localeCompare(b.data_atividade);
+        }
+        return a.ordem - b.ordem;
+      });
   };
 
   const toggleDia = (dataKey: string) => {
@@ -586,22 +637,21 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       {viewMode === "lista" && (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="space-y-1">
-            {diasDoPeriodo.map(({ nome, data, dataObj }) => {
-              const atividadesDoDia = getAtividadesDoDia(data);
-              const contagem = atividadesDoDia.length;
-              const isToday = isSameDay(dataObj, new Date());
-              const diaLabel = `${nome.charAt(0).toUpperCase() + nome.slice(1)}, ${format(dataObj, "d MMM", { locale: ptBR })}`;
+            {gruposDoPeriodo.map((grupo) => {
+              const atividadesDoGrupo = getAtividadesDoGrupo(grupo);
+              const contagem = atividadesDoGrupo.length;
+              const isToday = periodoFiltro === "semana" && isSameDay(grupo.inicio, new Date());
 
               return (
                 <DiaSection
-                  key={data}
-                  dia={diaLabel}
+                  key={grupo.id}
+                  dia={grupo.label}
                   contagem={contagem}
-                  isOpen={diasAbertos[data] || false}
-                  onToggle={() => toggleDia(data)}
+                  isOpen={diasAbertos[grupo.id] || false}
+                  onToggle={() => toggleDia(grupo.id)}
                   isToday={isToday}
                 >
-                  <Droppable droppableId={data}>
+                  <Droppable droppableId={grupo.id}>
                     {(provided, snapshot) => (
                       <div
                         ref={provided.innerRef}
@@ -610,7 +660,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
                           snapshot.isDraggingOver ? "bg-primary/10" : ""
                         }`}
                       >
-                        {atividadesDoDia.map((atividade, index) => (
+                        {atividadesDoGrupo.map((atividade, index) => (
                           <Draggable
                             key={atividade.id}
                             draggableId={atividade.id}
