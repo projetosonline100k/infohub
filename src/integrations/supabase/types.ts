@@ -47,6 +47,53 @@ export type Database = {
         }
         Relationships: []
       }
+      atividades: {
+        Row: {
+          cliente_id: string | null
+          concluida: boolean
+          created_at: string
+          data_atividade: string
+          descricao: string | null
+          destaque: boolean
+          id: string
+          ordem: number
+          tempo_estimado: number | null
+          titulo: string
+        }
+        Insert: {
+          cliente_id?: string | null
+          concluida?: boolean
+          created_at?: string
+          data_atividade?: string
+          descricao?: string | null
+          destaque?: boolean
+          id?: string
+          ordem?: number
+          tempo_estimado?: number | null
+          titulo: string
+        }
+        Update: {
+          cliente_id?: string | null
+          concluida?: boolean
+          created_at?: string
+          data_atividade?: string
+          descricao?: string | null
+          destaque?: boolean
+          id?: string
+          ordem?: number
+          tempo_estimado?: number | null
+          titulo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "atividades_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       categorias_nucleo: {
         Row: {
           cliente_id: string
