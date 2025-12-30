@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
-import { Plus, Bike, MoreHorizontal, ArrowUpDown, GripVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Plus, Bike, MoreHorizontal, ArrowUpDown, GripVertical, List, LayoutGrid, Calendar as CalendarIcon } from "lucide-react";
 import { AtividadeItem } from "./AtividadeItem";
 import { DiaSection } from "./DiaSection";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
+import { KanbanBoard } from "./KanbanBoard";
+import { CalendarView } from "./CalendarView";
 import { toast } from "sonner";
 import { format, startOfWeek, addDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -14,6 +17,7 @@ import {
   Draggable,
   DropResult,
 } from "@hello-pangea/dnd";
+import { cn } from "@/lib/utils";
 
 interface Atividade {
   id: string;
@@ -35,6 +39,8 @@ interface Atividade {
 interface AtividadesViewProps {
   clienteId?: string;
 }
+
+type ViewMode = "lista" | "quadro" | "calendario";
 
 const DIAS_SEMANA = [
   "Segunda",
@@ -79,6 +85,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   const [diasAbertos, setDiasAbertos] = useState<Record<string, boolean>>({});
   const [selectedAtividade, setSelectedAtividade] = useState<Atividade | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("lista");
 
   // Get current week's days
   const getWeekDays = useCallback(() => {
@@ -131,17 +138,19 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     carregarAtividades();
   }, [clienteId]);
 
-  const adicionarAtividade = async () => {
+  const adicionarAtividade = async (dataOverride?: Date) => {
     if (!novaAtividade.trim()) return;
 
     const { titulo, tempo } = parseTempoFromText(novaAtividade);
-    const hoje = format(new Date(), "yyyy-MM-dd");
+    const dataAtividade = dataOverride 
+      ? format(dataOverride, "yyyy-MM-dd")
+      : format(new Date(), "yyyy-MM-dd");
 
     try {
       const { error } = await supabase.from("atividades").insert({
         titulo,
         tempo_estimado: tempo,
-        data_atividade: hoje,
+        data_atividade: dataAtividade,
         cliente_id: clienteId || null,
         ordem: atividades.length + 1,
       });
@@ -149,6 +158,27 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       if (error) throw error;
 
       setNovaAtividade("");
+      carregarAtividades();
+      toast.success("Atividade adicionada");
+    } catch (error) {
+      console.error("Erro ao adicionar atividade:", error);
+      toast.error("Erro ao adicionar atividade");
+    }
+  };
+
+  const adicionarAtividadeRapida = async (date: Date) => {
+    const titulo = prompt("Nome da tarefa:");
+    if (!titulo?.trim()) return;
+
+    try {
+      const { error } = await supabase.from("atividades").insert({
+        titulo,
+        data_atividade: format(date, "yyyy-MM-dd"),
+        cliente_id: clienteId || null,
+        ordem: atividades.length + 1,
+      });
+
+      if (error) throw error;
       carregarAtividades();
       toast.success("Atividade adicionada");
     } catch (error) {
@@ -223,7 +253,41 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     const atividade = atividades.find((a) => a.id === draggableId);
     if (!atividade) return;
 
-    // Get activities from source and destination days
+    // Check if dragging between status columns (Kanban mode)
+    const statusOptions = ["backlog", "pendente", "em_progresso", "revisao", "finalizado"];
+    const isKanbanDrag = statusOptions.includes(sourceData) || statusOptions.includes(destData);
+
+    if (isKanbanDrag) {
+      // Update status
+      const updatedAtividade = {
+        ...atividade,
+        status: destData,
+        concluida: destData === "finalizado",
+      };
+
+      setAtividades((prev) =>
+        prev.map((a) => (a.id === draggableId ? updatedAtividade : a))
+      );
+
+      try {
+        const { error } = await supabase
+          .from("atividades")
+          .update({
+            status: destData,
+            concluida: destData === "finalizado",
+          })
+          .eq("id", draggableId);
+
+        if (error) throw error;
+      } catch (error) {
+        console.error("Erro ao mover atividade:", error);
+        toast.error("Erro ao mover atividade");
+        carregarAtividades();
+      }
+      return;
+    }
+
+    // List mode drag - between days
     const sourceAtividades = getAtividadesDoDia(sourceData);
     const destAtividades =
       sourceData === destData
@@ -309,6 +373,42 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
           </h2>
         </div>
         <div className="flex items-center gap-2">
+          {/* View Toggle */}
+          <div className="flex items-center bg-muted rounded-lg p-0.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode("lista")}
+              className={cn(
+                "h-7 px-2.5 rounded-md",
+                viewMode === "lista" && "bg-background shadow-sm"
+              )}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode("quadro")}
+              className={cn(
+                "h-7 px-2.5 rounded-md",
+                viewMode === "quadro" && "bg-background shadow-sm"
+              )}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setViewMode("calendario")}
+              className={cn(
+                "h-7 px-2.5 rounded-md",
+                viewMode === "calendario" && "bg-background shadow-sm"
+              )}
+            >
+              <CalendarIcon className="h-4 w-4" />
+            </Button>
+          </div>
           <button className="p-1.5 hover:bg-muted rounded-md transition-colors">
             <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
           </button>
@@ -334,72 +434,90 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         />
       </div>
 
-      {/* Days of the week with drag-drop */}
-      <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="space-y-1">
-          {weekDays.map(({ nome, data }) => {
-            const atividadesDoDia = getAtividadesDoDia(data);
-            const contagem = atividadesDoDia.length;
+      {/* View Content */}
+      {viewMode === "lista" && (
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="space-y-1">
+            {weekDays.map(({ nome, data }) => {
+              const atividadesDoDia = getAtividadesDoDia(data);
+              const contagem = atividadesDoDia.length;
 
-            return (
-              <DiaSection
-                key={nome}
-                dia={nome}
-                contagem={contagem}
-                isOpen={diasAbertos[nome] || false}
-                onToggle={() => toggleDia(nome)}
-              >
-                <Droppable droppableId={data}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={`min-h-[2px] rounded transition-colors ${
-                        snapshot.isDraggingOver ? "bg-primary/10" : ""
-                      }`}
-                    >
-                      {atividadesDoDia.map((atividade, index) => (
-                        <Draggable
-                          key={atividade.id}
-                          draggableId={atividade.id}
-                          index={index}
-                        >
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              className={`${
-                                snapshot.isDragging ? "opacity-90 shadow-lg" : ""
-                              }`}
-                            >
-                              <AtividadeItem
-                                id={atividade.id}
-                                titulo={atividade.titulo}
-                                concluida={atividade.concluida}
-                                tempoEstimado={atividade.tempo_estimado || undefined}
-                                temDescricao={!!atividade.descricao}
-                                destaque={atividade.destaque}
-                                status={atividade.status}
-                                prioridade={atividade.prioridade}
-                                dataVencimento={atividade.data_vencimento}
-                                onToggle={toggleAtividade}
-                                onClick={openAtividadeDetail}
-                                onDelete={excluirAtividade}
-                                dragHandleProps={provided.dragHandleProps}
-                              />
-                            </div>
-                          )}
-                        </Draggable>
-                      ))}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </DiaSection>
-            );
-          })}
-        </div>
-      </DragDropContext>
+              return (
+                <DiaSection
+                  key={nome}
+                  dia={nome}
+                  contagem={contagem}
+                  isOpen={diasAbertos[nome] || false}
+                  onToggle={() => toggleDia(nome)}
+                >
+                  <Droppable droppableId={data}>
+                    {(provided, snapshot) => (
+                      <div
+                        ref={provided.innerRef}
+                        {...provided.droppableProps}
+                        className={`min-h-[2px] rounded transition-colors ${
+                          snapshot.isDraggingOver ? "bg-primary/10" : ""
+                        }`}
+                      >
+                        {atividadesDoDia.map((atividade, index) => (
+                          <Draggable
+                            key={atividade.id}
+                            draggableId={atividade.id}
+                            index={index}
+                          >
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`${
+                                  snapshot.isDragging ? "opacity-90 shadow-lg" : ""
+                                }`}
+                              >
+                                <AtividadeItem
+                                  id={atividade.id}
+                                  titulo={atividade.titulo}
+                                  concluida={atividade.concluida}
+                                  tempoEstimado={atividade.tempo_estimado || undefined}
+                                  temDescricao={!!atividade.descricao}
+                                  destaque={atividade.destaque}
+                                  status={atividade.status}
+                                  prioridade={atividade.prioridade}
+                                  dataVencimento={atividade.data_vencimento}
+                                  onToggle={toggleAtividade}
+                                  onClick={openAtividadeDetail}
+                                  onDelete={excluirAtividade}
+                                  dragHandleProps={provided.dragHandleProps}
+                                />
+                              </div>
+                            )}
+                          </Draggable>
+                        ))}
+                        {provided.placeholder}
+                      </div>
+                    )}
+                  </Droppable>
+                </DiaSection>
+              );
+            })}
+          </div>
+        </DragDropContext>
+      )}
+
+      {viewMode === "quadro" && (
+        <KanbanBoard
+          atividades={atividades}
+          onDragEnd={handleDragEnd}
+          onCardClick={openAtividadeDetail}
+        />
+      )}
+
+      {viewMode === "calendario" && (
+        <CalendarView
+          atividades={atividades}
+          onTaskClick={openAtividadeDetail}
+          onAddTask={adicionarAtividadeRapida}
+        />
+      )}
 
       {/* Detail Panel */}
       <AtividadeDetailPanel
