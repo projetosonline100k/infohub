@@ -1,16 +1,42 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Bike, MoreHorizontal, ArrowUpDown, GripVertical, List, LayoutGrid, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Bike, MoreHorizontal, ArrowUpDown, List, LayoutGrid, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
 import { AtividadeItem } from "./AtividadeItem";
 import { DiaSection } from "./DiaSection";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { KanbanBoard } from "./KanbanBoard";
 import { CalendarView } from "./CalendarView";
 import { toast } from "sonner";
-import { format, startOfWeek, addDays } from "date-fns";
+import { 
+  format, 
+  startOfWeek, 
+  endOfWeek, 
+  startOfMonth, 
+  endOfMonth, 
+  startOfYear, 
+  endOfYear, 
+  addDays,
+  addWeeks,
+  subWeeks,
+  addMonths,
+  subMonths,
+  addYears,
+  subYears,
+  eachDayOfInterval,
+  isSameDay,
+  isWithinInterval,
+  parseISO
+} from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DragDropContext,
   Droppable,
@@ -41,6 +67,7 @@ interface AtividadesViewProps {
 }
 
 type ViewMode = "lista" | "quadro" | "calendario";
+type PeriodoFiltro = "semana" | "mes" | "ano";
 
 const DIAS_SEMANA = [
   "Segunda",
@@ -51,6 +78,37 @@ const DIAS_SEMANA = [
   "Sábado",
   "Domingo",
 ];
+
+const getIntervaloData = (data: Date, periodo: PeriodoFiltro) => {
+  if (periodo === "semana") {
+    return {
+      inicio: startOfWeek(data, { weekStartsOn: 1 }),
+      fim: endOfWeek(data, { weekStartsOn: 1 }),
+    };
+  } else if (periodo === "mes") {
+    return {
+      inicio: startOfMonth(data),
+      fim: endOfMonth(data),
+    };
+  } else {
+    return {
+      inicio: startOfYear(data),
+      fim: endOfYear(data),
+    };
+  }
+};
+
+const getLabelPeriodo = (data: Date, periodo: PeriodoFiltro) => {
+  if (periodo === "semana") {
+    const inicio = startOfWeek(data, { weekStartsOn: 1 });
+    const fim = endOfWeek(data, { weekStartsOn: 1 });
+    return `${format(inicio, "d MMM", { locale: ptBR })} - ${format(fim, "d MMM", { locale: ptBR })}`;
+  } else if (periodo === "mes") {
+    return format(data, "MMMM yyyy", { locale: ptBR });
+  } else {
+    return format(data, "yyyy");
+  }
+};
 
 // Parse tempo from text like "1h", "40min", "30m"
 const parseTempoFromText = (text: string): { titulo: string; tempo: number | null } => {
@@ -86,24 +144,66 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   const [selectedAtividade, setSelectedAtividade] = useState<Atividade | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("lista");
+  const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>("semana");
+  const [dataReferencia, setDataReferencia] = useState(new Date());
 
-  // Get current week's days
-  const getWeekDays = useCallback(() => {
-    const hoje = new Date();
-    const inicioSemana = startOfWeek(hoje, { weekStartsOn: 1 }); // Monday start
-    return DIAS_SEMANA.map((dia, index) => ({
-      nome: dia,
-      data: format(addDays(inicioSemana, index), "yyyy-MM-dd"),
+  // Get interval days based on period filter
+  const intervaloDatas = useMemo(() => {
+    return getIntervaloData(dataReferencia, periodoFiltro);
+  }, [dataReferencia, periodoFiltro]);
+
+  // Get days for the current period
+  const diasDoPeriodo = useMemo(() => {
+    const days = eachDayOfInterval({
+      start: intervaloDatas.inicio,
+      end: intervaloDatas.fim,
+    });
+    return days.map((day) => ({
+      nome: format(day, "EEEE", { locale: ptBR }),
+      data: format(day, "yyyy-MM-dd"),
+      dataObj: day,
     }));
-  }, []);
+  }, [intervaloDatas]);
 
-  const weekDays = getWeekDays();
+  const labelPeriodo = useMemo(() => {
+    return getLabelPeriodo(dataReferencia, periodoFiltro);
+  }, [dataReferencia, periodoFiltro]);
+
+  const periodoAnterior = () => {
+    if (periodoFiltro === "semana") {
+      setDataReferencia((prev) => subWeeks(prev, 1));
+    } else if (periodoFiltro === "mes") {
+      setDataReferencia((prev) => subMonths(prev, 1));
+    } else {
+      setDataReferencia((prev) => subYears(prev, 1));
+    }
+  };
+
+  const proximoPeriodo = () => {
+    if (periodoFiltro === "semana") {
+      setDataReferencia((prev) => addWeeks(prev, 1));
+    } else if (periodoFiltro === "mes") {
+      setDataReferencia((prev) => addMonths(prev, 1));
+    } else {
+      setDataReferencia((prev) => addYears(prev, 1));
+    }
+  };
+
+  const irParaHoje = () => {
+    setDataReferencia(new Date());
+  };
 
   const carregarAtividades = async () => {
     try {
+      const inicioStr = format(intervaloDatas.inicio, "yyyy-MM-dd");
+      const fimStr = format(intervaloDatas.fim, "yyyy-MM-dd");
+
       let query = supabase
         .from("atividades")
         .select("*")
+        .gte("data_atividade", inicioStr)
+        .lte("data_atividade", fimStr)
+        .order("data_atividade", { ascending: true })
         .order("ordem", { ascending: true });
 
       if (clienteId) {
@@ -120,9 +220,9 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       // Open days that have tasks
       const diasComTarefas: Record<string, boolean> = {};
       (data || []).forEach((atividade) => {
-        const diaIndex = weekDays.findIndex((d) => d.data === atividade.data_atividade);
-        if (diaIndex !== -1) {
-          diasComTarefas[weekDays[diaIndex].nome] = true;
+        const diaEncontrado = diasDoPeriodo.find((d) => d.data === atividade.data_atividade);
+        if (diaEncontrado) {
+          diasComTarefas[diaEncontrado.data] = true;
         }
       });
       setDiasAbertos(diasComTarefas);
@@ -136,7 +236,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
 
   useEffect(() => {
     carregarAtividades();
-  }, [clienteId]);
+  }, [clienteId, intervaloDatas]);
 
   const adicionarAtividade = async (dataOverride?: Date) => {
     if (!novaAtividade.trim()) return;
@@ -226,10 +326,10 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       .sort((a, b) => a.ordem - b.ordem);
   };
 
-  const toggleDia = (dia: string) => {
+  const toggleDia = (dataKey: string) => {
     setDiasAbertos((prev) => ({
       ...prev,
-      [dia]: !prev[dia],
+      [dataKey]: !prev[dataKey],
     }));
   };
 
@@ -434,21 +534,72 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         />
       </div>
 
+      {/* Period Filter - Only in list mode */}
+      {viewMode === "lista" && (
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={periodoAnterior}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Select
+              value={periodoFiltro}
+              onValueChange={(value: PeriodoFiltro) => setPeriodoFiltro(value)}
+            >
+              <SelectTrigger className="w-[130px] h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="semana">Esta Semana</SelectItem>
+                <SelectItem value="mes">Este Mês</SelectItem>
+                <SelectItem value="ano">Este Ano</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={proximoPeriodo}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={irParaHoje}
+          >
+            Hoje
+          </Button>
+          <span className="text-sm text-muted-foreground capitalize">
+            {labelPeriodo}
+          </span>
+        </div>
+      )}
+
       {/* View Content */}
       {viewMode === "lista" && (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="space-y-1">
-            {weekDays.map(({ nome, data }) => {
+            {diasDoPeriodo.map(({ nome, data, dataObj }) => {
               const atividadesDoDia = getAtividadesDoDia(data);
               const contagem = atividadesDoDia.length;
+              const isToday = isSameDay(dataObj, new Date());
+              const diaLabel = `${nome.charAt(0).toUpperCase() + nome.slice(1)}, ${format(dataObj, "d MMM", { locale: ptBR })}`;
 
               return (
                 <DiaSection
-                  key={nome}
-                  dia={nome}
+                  key={data}
+                  dia={diaLabel}
                   contagem={contagem}
-                  isOpen={diasAbertos[nome] || false}
-                  onToggle={() => toggleDia(nome)}
+                  isOpen={diasAbertos[data] || false}
+                  onToggle={() => toggleDia(data)}
+                  isToday={isToday}
                 >
                   <Droppable droppableId={data}>
                     {(provided, snapshot) => (
