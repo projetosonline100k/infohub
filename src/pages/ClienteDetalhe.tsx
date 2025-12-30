@@ -8,6 +8,7 @@ import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
 import { ConteudoSection } from "@/components/conteudo/ConteudoSection";
+import { AtividadesView } from "@/components/atividades/AtividadesView";
 
 interface Cliente {
   id: string;
@@ -371,11 +372,9 @@ export default function ClienteDetalhe() {
           )}
 
           {abaAtiva === "atividades" && (
-            <div className="flex items-center justify-center h-64">
-              <p className="text-muted-foreground">
-                Em breve: atividades e tarefas deste cliente
-              </p>
-            </div>
+            <Card className="p-6 shadow-md max-w-2xl">
+              <AtividadesView clienteId={id} />
+            </Card>
           )}
 
           {abaAtiva === "conteudo" && (
