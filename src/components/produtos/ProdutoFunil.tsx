@@ -520,7 +520,8 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
 
   // Duplo clique para editar nó existente
   const onNodeDoubleClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
+      event.stopPropagation(); // Evitar que crie um novo nó
       const funilNode = funilNodes.find((n) => n.id === node.id);
       setEditingNodeId(node.id);
       setEditingTitle(node.data.label);
@@ -623,23 +624,14 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       return;
     }
 
-    // 2) Deletar e validar que realmente deletou (count > 0)
-    const { error, count } = await supabase
+    // 2) Deletar o nó
+    const { error } = await supabase
       .from("funil_vendas")
-      .delete({ count: "exact" })
-      .eq("id", nodeId)
-      .select("id");
+      .delete()
+      .eq("id", nodeId);
 
     if (error) {
       toast({ title: "Erro ao deletar nó", variant: "destructive" });
-      return;
-    }
-
-    if (!count || count < 1) {
-      toast({
-        title: "Não foi possível deletar este nó",
-        variant: "destructive",
-      });
       return;
     }
 
