@@ -421,9 +421,13 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     }
   };
 
-  // Duplo clique no canvas para criar nó (update otimista)
+  // Duplo clique no canvas para criar nó (ignora se clicou em um nó)
   const handlePaneDoubleClick = useCallback(
     async (event: React.MouseEvent) => {
+      // Verificar se o clique foi em um nó (evitar criar novo ao editar)
+      const target = event.target as HTMLElement;
+      if (target.closest('.react-flow__node')) return;
+
       if (!reactFlowInstance) return;
 
       // Usar screenToFlowPosition diretamente
@@ -611,31 +615,48 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     setEditingImagem(null);
   };
 
-  // Deletar nó (update otimista)
+  // Deletar nó (verificando que realmente deletou no backend)
   const deletarNo = async (nodeId: string) => {
     // 1) Desvincular filhos para evitar erro de FK (parent_id)
     const { error: detachError } = await supabase
       .from("funil_vendas")
       .update({ parent_id: null })
-      .eq("parent_id", nodeId);
+      .eq("parent_id", nodeId)
+      .eq("produto_id", produtoId);
 
     if (detachError) {
       toast({ title: "Erro ao desvincular etapas filhas", variant: "destructive" });
       return;
     }
 
-    // 2) Deletar o nó
-    const { error } = await supabase
+    // 2) Deletar o nó e verificar se realmente deletou
+    const { data, error } = await supabase
       .from("funil_vendas")
       .delete()
-      .eq("id", nodeId);
+      .eq("id", nodeId)
+      .eq("produto_id", produtoId)
+      .select("id")
+      .maybeSingle();
 
     if (error) {
       toast({ title: "Erro ao deletar nó", variant: "destructive" });
       return;
     }
 
-    // Update otimista - remover do estado local
+    // Se data é null, significa que 0 linhas foram afetadas (nó não existia ou sem permissão)
+    if (!data) {
+      toast({ 
+        title: "Não foi possível deletar", 
+        description: "O item não foi encontrado ou não há permissão.",
+        variant: "destructive" 
+      });
+      // Forçar resync com backend
+      hasLoadedCategory.current = null;
+      carregarFunil();
+      return;
+    }
+
+    // Sucesso - remover do estado local
     setFunilNodes((prev) =>
       prev
         .map((n) => (n.parent_id === nodeId ? { ...n, parent_id: null } : n))
@@ -645,6 +666,7 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     setEdges((prev) => prev.filter((e) => e.source !== nodeId && e.target !== nodeId));
 
     setEditingNodeId(null);
+    toast({ title: "Etapa excluída com sucesso" });
   };
 
   return (
