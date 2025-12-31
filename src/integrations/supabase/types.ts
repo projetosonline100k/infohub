@@ -290,6 +290,57 @@ export type Database = {
           },
         ]
       }
+      funil_vendas: {
+        Row: {
+          cor: string | null
+          created_at: string | null
+          id: string
+          ordem: number | null
+          parent_id: string | null
+          posicao_x: number | null
+          posicao_y: number | null
+          produto_id: string
+          titulo: string
+        }
+        Insert: {
+          cor?: string | null
+          created_at?: string | null
+          id?: string
+          ordem?: number | null
+          parent_id?: string | null
+          posicao_x?: number | null
+          posicao_y?: number | null
+          produto_id: string
+          titulo: string
+        }
+        Update: {
+          cor?: string | null
+          created_at?: string | null
+          id?: string
+          ordem?: number | null
+          parent_id?: string | null
+          posicao_x?: number | null
+          posicao_y?: number | null
+          produto_id?: string
+          titulo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funil_vendas_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "funil_vendas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "funil_vendas_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos_cliente"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ideias_conteudo: {
         Row: {
           cliente_id: string
@@ -486,27 +537,86 @@ export type Database = {
           },
         ]
       }
+      produto_financeiro: {
+        Row: {
+          created_at: string | null
+          custos: number | null
+          id: string
+          mes: string
+          notas: string | null
+          produto_id: string
+          receita_bruta: number | null
+          reembolsos: number | null
+          vendas_quantidade: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          custos?: number | null
+          id?: string
+          mes: string
+          notas?: string | null
+          produto_id: string
+          receita_bruta?: number | null
+          reembolsos?: number | null
+          vendas_quantidade?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          custos?: number | null
+          id?: string
+          mes?: string
+          notas?: string | null
+          produto_id?: string
+          receita_bruta?: number | null
+          reembolsos?: number | null
+          vendas_quantidade?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "produto_financeiro_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos_cliente"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       produtos_cliente: {
         Row: {
+          acesso_instrucoes: string | null
+          acesso_url: string | null
           cliente_id: string
           created_at: string
+          descricao: string | null
           id: string
+          ideias: string | null
+          links_checkout: Json | null
           nome_produto: string
           preco: string | null
           status: string | null
         }
         Insert: {
+          acesso_instrucoes?: string | null
+          acesso_url?: string | null
           cliente_id: string
           created_at?: string
+          descricao?: string | null
           id?: string
+          ideias?: string | null
+          links_checkout?: Json | null
           nome_produto: string
           preco?: string | null
           status?: string | null
         }
         Update: {
+          acesso_instrucoes?: string | null
+          acesso_url?: string | null
           cliente_id?: string
           created_at?: string
+          descricao?: string | null
           id?: string
+          ideias?: string | null
+          links_checkout?: Json | null
           nome_produto?: string
           preco?: string | null
           status?: string | null
