@@ -2,16 +2,17 @@ import { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, GripVertical, Youtube, MessageSquare, X } from "lucide-react";
+import { Plus, Trash2, GripVertical, Youtube, FileText, X, List, LayoutGrid, ChevronDown, ChevronRight } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SlashCommandInput } from "./SlashCommandInput";
-import { SlashCommandTextarea } from "./SlashCommandTextarea";
-import { RoteiroChat } from "./RoteiroChat";
+import { VideoItem } from "./VideoItem";
+import { VideoDetailPanel } from "./VideoDetailPanel";
+import { cn } from "@/lib/utils";
 
 interface YoutubeViewProps {
   clienteId: string;
@@ -24,6 +25,8 @@ interface VideoYoutube {
   roteiro: string | null;
   status: string;
   ordem: number;
+  data_postagem?: string | null;
+  cliente_id: string;
 }
 
 interface NovaIdeia {
@@ -46,19 +49,24 @@ const KANBAN_COLUMNS = [
   { id: "pronto", label: "Prontos para postar", color: "bg-card border-border", borderColor: "border-l-green-500" },
 ];
 
+type ViewMode = "lista" | "quadro";
+
 export function YoutubeView({ clienteId }: YoutubeViewProps) {
   const [videosKanban, setVideosKanban] = useState<VideoYoutube[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // View mode
+  const [viewMode, setViewMode] = useState<ViewMode>("lista");
   
   // Nova ideia modal states
   const [showIdeiasModal, setShowIdeiasModal] = useState(false);
   const [novasIdeias, setNovasIdeias] = useState<NovaIdeia[]>(createEmptyIdeias());
   
-  // Edit roteiro states
-  const [editingVideo, setEditingVideo] = useState<VideoYoutube | null>(null);
-  const [editTitulo, setEditTitulo] = useState("");
-  const [editDescricao, setEditDescricao] = useState("");
-  const [editRoteiro, setEditRoteiro] = useState("");
+  // Detail panel state
+  const [selectedVideo, setSelectedVideo] = useState<VideoYoutube | null>(null);
+  
+  // Collapsible groups state
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchVideos();
@@ -72,7 +80,10 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
       .eq("cliente_id", clienteId)
       .order("ordem");
 
-    if (data) setVideosKanban(data);
+    if (data) {
+      const videosWithClienteId = data.map(v => ({ ...v, cliente_id: clienteId }));
+      setVideosKanban(videosWithClienteId);
+    }
     setLoading(false);
   };
 
@@ -80,6 +91,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     const { error } = await supabase.from("videos_youtube").delete().eq("id", id);
     if (!error) {
       toast.success("Item removido");
+      setSelectedVideo(null);
       fetchVideos();
     }
   };
@@ -118,49 +130,44 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     }
   };
 
-  const openEditModal = (video: VideoYoutube) => {
-    setEditingVideo(video);
-    setEditTitulo(video.titulo);
-    setEditDescricao(video.descricao || "");
-    setEditRoteiro(video.roteiro || "");
+  const openDetailPanel = (video: VideoYoutube) => {
+    setSelectedVideo(video);
   };
 
-  const handleSaveRoteiro = async () => {
-    if (!editingVideo) return;
-
+  const handleSaveVideo = async (video: VideoYoutube) => {
     // Se está salvando roteiro e video está em "ideia", move para "roteiro"
-    const novoStatus = editRoteiro.trim() && editingVideo.status === "ideia" 
+    const novoStatus = video.roteiro?.trim() && video.status === "ideia" 
       ? "roteiro" 
-      : editingVideo.status;
+      : video.status;
 
     const { error } = await supabase
       .from("videos_youtube")
       .update({
-        titulo: editTitulo,
-        descricao: editDescricao || null,
-        roteiro: editRoteiro || null,
+        titulo: video.titulo,
+        descricao: video.descricao || null,
+        roteiro: video.roteiro || null,
         status: novoStatus,
+        data_postagem: video.data_postagem || null,
       })
-      .eq("id", editingVideo.id);
+      .eq("id", video.id);
 
     if (error) {
       toast.error("Erro ao salvar");
       return;
     }
 
-    toast.success(novoStatus !== editingVideo.status 
-      ? "Roteiro salvo! Movido para 'Criando roteiro'" 
+    toast.success(novoStatus !== video.status 
+      ? "Salvo! Movido para 'Criando roteiro'" 
       : "Salvo com sucesso!");
-    setEditingVideo(null);
+    setSelectedVideo(null);
     fetchVideos();
   };
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
 
-    const { source, destination, draggableId } = result;
+    const { destination, draggableId } = result;
     
-    // Update local state immediately
     const updatedVideos = [...videosKanban];
     const videoIndex = updatedVideos.findIndex(v => v.id === draggableId);
     if (videoIndex !== -1) {
@@ -171,7 +178,6 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
       setVideosKanban(updatedVideos);
     }
 
-    // Update database
     const { error } = await supabase
       .from("videos_youtube")
       .update({ status: destination.droppableId })
@@ -179,19 +185,49 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
 
     if (error) {
       toast.error("Erro ao mover item");
-      fetchVideos(); // Revert on error
+      fetchVideos();
     }
   };
 
   const getVideosByStatus = (status: string) => 
     videosKanban.filter(v => v.status === status);
 
+  const handleVideoStatusChange = async (videoId: string, completed: boolean) => {
+    const newStatus = completed ? "pronto" : "ideia";
+    const { error } = await supabase
+      .from("videos_youtube")
+      .update({ status: newStatus })
+      .eq("id", videoId);
+
+    if (!error) {
+      fetchVideos();
+    }
+  };
+
+  // Group videos by status for list view
+  const getGroupedVideos = () => {
+    const groups: Record<string, VideoYoutube[]> = {};
+    
+    KANBAN_COLUMNS.forEach(col => {
+      const videos = videosKanban.filter(v => v.status === col.id);
+      if (videos.length > 0) {
+        groups[col.id] = videos;
+      }
+    });
+    
+    return groups;
+  };
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header YouTube */}
       <div className="flex items-center gap-3 p-4 bg-red-500/10 rounded-xl border border-border">
         <div className="p-3 rounded-full bg-red-600">
@@ -203,84 +239,88 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
         </div>
       </div>
 
-      {/* Kanban Board */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
+      {/* Pipeline Header with View Toggle */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
+        <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          <div className="flex items-center border rounded-md p-0.5 bg-muted/50">
+            <Button
+              variant={viewMode === "lista" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("lista")}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "quadro" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("quadro")}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Nova ideia button */}
           <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
             <Plus className="h-4 w-4 mr-1" />
             Nova ideia
           </Button>
         </div>
+      </div>
 
-        {/* Modal de novas ideias */}
-        <Dialog open={showIdeiasModal} onOpenChange={setShowIdeiasModal}>
-          <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Novas ideias de vídeo YouTube</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[55vh]">
-              {novasIdeias.map((ideia, index) => (
-                <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
-                  {/* Botão remover */}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      if (novasIdeias.length > 1) {
-                        setNovasIdeias((prev) => prev.filter((_, i) => i !== index));
-                      }
-                    }}
-                    disabled={novasIdeias.length === 1}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+      {/* List View */}
+      {viewMode === "lista" && (
+        <div className="space-y-2 border rounded-lg p-4">
+          {Object.entries(getGroupedVideos()).map(([status, videos]) => {
+            const column = KANBAN_COLUMNS.find(c => c.id === status);
+            const isOpen = openGroups[status] !== false; // default open
+            
+            return (
+              <Collapsible key={status} open={isOpen} onOpenChange={() => toggleGroup(status)}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">{column?.label || status}</span>
+                  <span className={cn(
+                    "text-sm",
+                    videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
+                  )}>
+                    {videos.length}
+                  </span>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-4">
+                  {videos.map((video) => (
+                    <VideoItem
+                      key={video.id}
+                      id={video.id}
+                      titulo={video.titulo}
+                      descricao={video.descricao}
+                      roteiro={video.roteiro}
+                      status={video.status}
+                      onClick={() => openDetailPanel(video)}
+                      onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
+                    />
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
+          {videosKanban.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">
+              Nenhum vídeo na pipeline ainda
+            </p>
+          )}
+        </div>
+      )}
 
-                  <div className="space-y-4 pr-8">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Título do vídeo</Label>
-                      <SlashCommandInput
-                        clienteId={clienteId}
-                        value={ideia.headline}
-                        onValueChange={(val) => updateIdeia(index, "headline", val)}
-                        placeholder="Ex: Como criar uma rotina matinal (use / para inserir do núcleo)"
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Descrição (opcional)</Label>
-                      <Textarea
-                        value={ideia.descricao}
-                        onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
-                        placeholder="Descreva a ideia do vídeo..."
-                        rows={2}
-                        className="resize-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setNovasIdeias((prev) => [...prev, createEmptyIdeia()])}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Adicionar mais uma linha
-            </Button>
-
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
-                Cancelar
-              </Button>
-              <Button onClick={adicionarIdeias} className="bg-red-600 hover:bg-red-700">Salvar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
+      {/* Kanban View */}
+      {viewMode === "quadro" && (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
             {KANBAN_COLUMNS.map((column) => (
@@ -310,7 +350,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                               className={`bg-secondary/50 border-l-4 ${column.borderColor} rounded-lg p-4 group cursor-pointer hover:opacity-90 transition-all ${
                                 snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
                               }`}
-                              onClick={() => openEditModal(video)}
+                              onClick={() => openDetailPanel(video)}
                             >
                               <div className="flex items-start gap-3">
                                 <div
@@ -324,13 +364,13 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                                   <p className="font-medium text-base leading-snug">{video.titulo}</p>
                                   
                                   {video.descricao && (
-                                    <p className="text-sm text-muted-foreground mt-2 line-clamp-3">
+                                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
                                       {video.descricao}
                                     </p>
                                   )}
                                   {video.roteiro && (
                                     <div className="mt-3">
-                                      <MessageSquare className="h-5 w-5 text-red-500" />
+                                      <FileText className="h-4 w-4 text-red-500" />
                                     </div>
                                   )}
                                 </div>
@@ -358,73 +398,87 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
             ))}
           </div>
         </DragDropContext>
-      </div>
+      )}
 
-      {/* Modal de edição de roteiro com Chat IA */}
-      <Dialog open={!!editingVideo} onOpenChange={(open) => !open && setEditingVideo(null)}>
-        <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <Youtube className="h-5 w-5 text-red-500" />
-              Editar vídeo YouTube
-            </DialogTitle>
+      {/* Modal de novas ideias */}
+      <Dialog open={showIdeiasModal} onOpenChange={setShowIdeiasModal}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Novas ideias de vídeo YouTube</DialogTitle>
           </DialogHeader>
-          <div className="flex gap-6 flex-1 min-h-0">
-            {/* Coluna esquerda - Campos de edição */}
-            <div className="flex-1 space-y-4 overflow-y-auto pr-2">
-              <div>
-                <label className="text-sm font-medium">Título</label>
-                <SlashCommandInput
-                  clienteId={clienteId}
-                  value={editTitulo}
-                  onValueChange={setEditTitulo}
-                  placeholder="Título do vídeo (use / para inserir do núcleo)"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Descrição</label>
-                <Textarea
-                  value={editDescricao}
-                  onChange={(e) => setEditDescricao(e.target.value)}
-                  placeholder="Descrição do vídeo..."
-                  rows={3}
-                />
-              </div>
-              
-              <div className="flex-1">
-                <label className="text-sm font-medium">Roteiro</label>
-                <SlashCommandTextarea
-                  clienteId={clienteId}
-                  value={editRoteiro}
-                  onValueChange={setEditRoteiro}
-                  placeholder="Escreva o roteiro do vídeo aqui... (use / para inserir do núcleo)"
-                  className="font-mono text-sm min-h-[250px]"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
-                </p>
-              </div>
-              
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={() => setEditingVideo(null)}>
-                  Cancelar
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[55vh]">
+            {novasIdeias.map((ideia, index) => (
+              <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    if (novasIdeias.length > 1) {
+                      setNovasIdeias((prev) => prev.filter((_, i) => i !== index));
+                    }
+                  }}
+                  disabled={novasIdeias.length === 1}
+                >
+                  <X className="h-4 w-4" />
                 </Button>
-                <Button onClick={handleSaveRoteiro} className="bg-red-600 hover:bg-red-700">Salvar</Button>
-              </div>
-            </div>
 
-            {/* Coluna direita - Chat IA */}
-            <div className="w-[400px] shrink-0 border-l pl-6">
-              <RoteiroChat
-                clienteId={clienteId}
-                titulo={editTitulo}
-                descricao={editDescricao}
-                onInsertText={(text) => setEditRoteiro(prev => prev ? prev + "\n\n" + text : text)}
-              />
-            </div>
+                <div className="space-y-4 pr-8">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Título do vídeo</Label>
+                    <SlashCommandInput
+                      clienteId={clienteId}
+                      value={ideia.headline}
+                      onValueChange={(val) => updateIdeia(index, "headline", val)}
+                      placeholder="Ex: Como criar uma rotina matinal (use / para inserir do núcleo)"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Descrição (opcional)</Label>
+                    <Textarea
+                      value={ideia.descricao}
+                      onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
+                      placeholder="Descreva a ideia do vídeo..."
+                      rows={2}
+                      className="resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setNovasIdeias((prev) => [...prev, createEmptyIdeia()])}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar mais uma linha
+          </Button>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
+              Cancelar
+            </Button>
+            <Button onClick={adicionarIdeias} className="bg-red-600 hover:bg-red-700">Salvar</Button>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Video Detail Panel */}
+      <VideoDetailPanel
+        video={selectedVideo}
+        open={!!selectedVideo}
+        onClose={() => setSelectedVideo(null)}
+        onSave={handleSaveVideo}
+        onDelete={handleDeleteVideoKanban}
+        tags={[]}
+        videoTags={[]}
+        onTagToggle={() => {}}
+        platform="youtube"
+      />
     </div>
   );
 }
