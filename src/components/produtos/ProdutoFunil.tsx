@@ -129,7 +129,6 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
   
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
-  const isFirstLoad = useRef(true);
 
   // Carregar categorias
   const carregarCategorias = useCallback(async () => {
@@ -146,12 +145,21 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
 
     if (data && data.length > 0) {
       setCategorias(data);
+
+      const defaultCatId = categoriaAtiva ?? data[0].id;
       if (!categoriaAtiva) {
-        setCategoriaAtiva(data[0].id);
+        setCategoriaAtiva(defaultCatId);
       }
+
+      // Migrar nós antigos (sem categoria) para a categoria padrão
+      await supabase
+        .from("funil_vendas")
+        .update({ categoria_id: defaultCatId })
+        .eq("produto_id", produtoId)
+        .is("categoria_id", null);
     } else {
       // Criar categoria padrão
-      const { data: novaCategoria } = await supabase
+      const { data: novaCategoria, error: catError } = await supabase
         .from("funil_categorias")
         .insert({
           produto_id: produtoId,
@@ -161,9 +169,21 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
         .select()
         .single();
 
+      if (catError) {
+        console.error("Erro ao criar categoria padrão:", catError);
+        return;
+      }
+
       if (novaCategoria) {
         setCategorias([novaCategoria]);
         setCategoriaAtiva(novaCategoria.id);
+
+        // Migrar nós antigos (sem categoria) para a categoria padrão
+        await supabase
+          .from("funil_vendas")
+          .update({ categoria_id: novaCategoria.id })
+          .eq("produto_id", produtoId)
+          .is("categoria_id", null);
       }
     }
   }, [produtoId, categoriaAtiva]);
@@ -191,7 +211,7 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       const flowNodes: Node[] = data.map((node) => ({
         id: node.id,
         type: "funilNode",
-        position: { x: node.posicao_x || 100, y: node.posicao_y || 100 },
+        position: { x: node.posicao_x ?? 100, y: node.posicao_y ?? 100 },
         data: {
           label: node.titulo,
           color: node.cor,
@@ -217,15 +237,9 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       setNodes(flowNodes);
       setEdges(flowEdges);
 
-      // Fit view apenas na primeira carga se houver nós
-      if (isFirstLoad.current && flowNodes.length > 0 && reactFlowInstance) {
-        setTimeout(() => {
-          reactFlowInstance.fitView({ padding: 0.2 });
-        }, 100);
-        isFirstLoad.current = false;
-      }
+      // Sem auto-fit: mantém o zoom/pan e o layout exatamente como você organizou
     }
-  }, [produtoId, categoriaAtiva, setNodes, setEdges, reactFlowInstance]);
+  }, [produtoId, categoriaAtiva, setNodes, setEdges]);
 
   useEffect(() => {
     carregarCategorias();
@@ -233,7 +247,6 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
 
   useEffect(() => {
     if (categoriaAtiva) {
-      isFirstLoad.current = true;
       carregarFunil();
     }
   }, [categoriaAtiva, carregarFunil]);
