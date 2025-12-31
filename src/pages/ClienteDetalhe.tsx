@@ -10,6 +10,7 @@ import { PesquisaList } from "@/components/pesquisa/PesquisaList";
 import { ConteudoSection } from "@/components/conteudo/ConteudoSection";
 import { AtividadesView } from "@/components/atividades/AtividadesView";
 import { DocumentosView } from "@/components/documentos/DocumentosView";
+import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 
 interface Cliente {
   id: string;
@@ -31,6 +32,11 @@ interface Produto {
   nome_produto: string;
   preco?: string;
   status: string;
+  descricao?: string;
+  links_checkout?: any;
+  acesso_url?: string;
+  acesso_instrucoes?: string;
+  ideias?: string;
 }
 
 export default function ClienteDetalhe() {
@@ -45,6 +51,7 @@ export default function ClienteDetalhe() {
   const [subAbaConteudo, setSubAbaConteudo] = useState("brainstorm");
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
+  const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
 
   useEffect(() => {
     carregarDados();
@@ -323,14 +330,16 @@ export default function ClienteDetalhe() {
                       {produtos.map((produto) => (
                         <div
                           key={produto.id}
-                          className="min-w-[200px] border border-border rounded-lg p-4 bg-card relative group"
+                          onClick={() => setProdutoSelecionado(produto)}
+                          className="min-w-[200px] border border-border rounded-lg p-4 bg-card relative group cursor-pointer hover:border-primary/50 transition-colors"
                         >
                           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                             <Button
                               size="icon"
                               variant="ghost"
                               className="h-6 w-6"
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setProdutoEditando(produto);
                                 setMostrarFormProduto(true);
                               }}
@@ -341,7 +350,10 @@ export default function ClienteDetalhe() {
                               size="icon"
                               variant="ghost"
                               className="h-6 w-6"
-                              onClick={() => excluirProduto(produto.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                excluirProduto(produto.id);
+                              }}
                             >
                               <Trash className="h-3 w-3" />
                             </Button>
@@ -408,6 +420,15 @@ export default function ClienteDetalhe() {
             setProdutoEditando(null);
           }}
           onSave={carregarDados}
+        />
+      )}
+
+      {/* Modal de detalhe do produto */}
+      {produtoSelecionado && (
+        <ProdutoDetalheModal
+          produto={produtoSelecionado}
+          onClose={() => setProdutoSelecionado(null)}
+          onUpdate={carregarDados}
         />
       )}
     </div>
