@@ -11,6 +11,7 @@ import { ConteudoSection } from "@/components/conteudo/ConteudoSection";
 import { AtividadesView } from "@/components/atividades/AtividadesView";
 import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
+import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
 
 interface Cliente {
   id: string;
@@ -290,22 +291,7 @@ export default function ClienteDetalhe() {
                   <CardTitle>Receita</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {cliente.link_painel_receita ? (
-                    <div className="w-full h-96 rounded-lg overflow-hidden border border-border">
-                      <iframe
-                        src={cliente.link_painel_receita}
-                        className="w-full h-full"
-                        title="Painel de Receitas"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-full h-48 flex items-center justify-center bg-muted rounded-lg">
-                      <p className="text-sm text-muted-foreground text-center max-w-md">
-                        Aqui será exibido o gráfico de receitas e dados financeiros
-                        (integração com Hotmart/Monetizze/etc)
-                      </p>
-                    </div>
-                  )}
+                  <ReceitaGraficoCliente clienteId={id!} />
                 </CardContent>
               </Card>
 
