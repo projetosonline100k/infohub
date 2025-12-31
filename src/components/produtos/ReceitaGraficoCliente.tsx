@@ -283,6 +283,8 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         produtosComTendencia.map((produto, index) => {
           const path = gerarCurva(produto.valores, svgWidth, svgHeight, padding);
           const posicaoFinal = getPosicaoFinal(produto.valores, svgWidth, svgHeight, padding);
+          const valorTotal = produto.valores.reduce((acc, v) => acc + v, 0);
+          const ultimoValor = produto.valores[produto.valores.length - 1] || 0;
 
           return (
             <div key={index} className="flex items-center gap-4">
@@ -294,6 +296,9 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
                     style={{ backgroundColor: produto.cor }}
                   />
                   <span className="text-sm font-medium truncate">{produto.nome}</span>
+                  <span className="text-sm font-bold text-foreground ml-2">
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorTotal)}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1 mt-1 pl-5">
                   {produto.crescendo ? (
