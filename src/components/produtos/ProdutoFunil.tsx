@@ -612,15 +612,43 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
 
   // Deletar nó (update otimista)
   const deletarNo = async (nodeId: string) => {
-    const { error } = await supabase.from("funil_vendas").delete().eq("id", nodeId);
+    // 1) Desvincular filhos para evitar erro de FK (parent_id)
+    const { error: detachError } = await supabase
+      .from("funil_vendas")
+      .update({ parent_id: null })
+      .eq("parent_id", nodeId);
+
+    if (detachError) {
+      toast({ title: "Erro ao desvincular etapas filhas", variant: "destructive" });
+      return;
+    }
+
+    // 2) Deletar e validar que realmente deletou (count > 0)
+    const { error, count } = await supabase
+      .from("funil_vendas")
+      .delete({ count: "exact" })
+      .eq("id", nodeId)
+      .select("id");
 
     if (error) {
       toast({ title: "Erro ao deletar nó", variant: "destructive" });
       return;
     }
 
+    if (!count || count < 1) {
+      toast({
+        title: "Não foi possível deletar este nó",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Update otimista - remover do estado local
-    setFunilNodes((prev) => prev.filter((n) => n.id !== nodeId));
+    setFunilNodes((prev) =>
+      prev
+        .map((n) => (n.parent_id === nodeId ? { ...n, parent_id: null } : n))
+        .filter((n) => n.id !== nodeId)
+    );
     setNodes((prev) => prev.filter((n) => n.id !== nodeId));
     setEdges((prev) => prev.filter((e) => e.source !== nodeId && e.target !== nodeId));
 
