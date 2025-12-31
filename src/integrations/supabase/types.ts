@@ -880,6 +880,7 @@ export type Database = {
         Row: {
           cliente_id: string
           created_at: string
+          data_postagem: string | null
           descricao: string | null
           escalado: boolean
           id: string
@@ -892,6 +893,7 @@ export type Database = {
         Insert: {
           cliente_id: string
           created_at?: string
+          data_postagem?: string | null
           descricao?: string | null
           escalado?: boolean
           id?: string
@@ -904,6 +906,7 @@ export type Database = {
         Update: {
           cliente_id?: string
           created_at?: string
+          data_postagem?: string | null
           descricao?: string | null
           escalado?: boolean
           id?: string
@@ -963,6 +966,7 @@ export type Database = {
         Row: {
           cliente_id: string
           created_at: string
+          data_postagem: string | null
           descricao: string | null
           id: string
           ordem: number
@@ -973,6 +977,7 @@ export type Database = {
         Insert: {
           cliente_id: string
           created_at?: string
+          data_postagem?: string | null
           descricao?: string | null
           id?: string
           ordem?: number
@@ -983,6 +988,7 @@ export type Database = {
         Update: {
           cliente_id?: string
           created_at?: string
+          data_postagem?: string | null
           descricao?: string | null
           id?: string
           ordem?: number

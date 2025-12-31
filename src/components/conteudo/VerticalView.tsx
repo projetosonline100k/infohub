@@ -7,14 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, ExternalLink, GripVertical, Instagram, Youtube, Sparkles, Check, MessageSquare, Tag, X, Settings } from "lucide-react";
+import { Plus, Trash2, GripVertical, Instagram, Youtube, Sparkles, Check, FileText, Tag, X, List, LayoutGrid, Calendar } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { SlashCommandInput } from "./SlashCommandInput";
-import { SlashCommandTextarea, SelectionRange } from "./SlashCommandTextarea";
-import { RoteiroChat } from "./RoteiroChat";
+import { VideoItem } from "./VideoItem";
+import { VideoDetailPanel } from "./VideoDetailPanel";
+import { VideoStatusBadge } from "./VideoStatusBadge";
+import { cn } from "@/lib/utils";
+import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, isWithinInterval, parseISO, isToday, startOfMonth, endOfMonth, addMonths, subMonths, startOfYear, endOfYear, addYears, subYears, getWeek } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -38,6 +44,8 @@ interface VideoVertical {
   ordem: number;
   escalado?: boolean;
   referencia_id?: string | null;
+  data_postagem?: string | null;
+  cliente_id: string;
 }
 
 interface EscalarItem {
@@ -105,11 +113,19 @@ const getTagColorClass = (cor: string) => {
   return colorMap[cor] || colorMap.blue;
 };
 
+type ViewMode = "lista" | "quadro";
+type PeriodoFiltro = "semana" | "mes" | "ano";
+
 export function VerticalView({ clienteId }: VerticalViewProps) {
   const [videosReferencia, setVideosReferencia] = useState<VideoReferencia[]>([]);
   const [videosKanban, setVideosKanban] = useState<VideoVertical[]>([]);
   const [selectedVideos, setSelectedVideos] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // View mode
+  const [viewMode, setViewMode] = useState<ViewMode>("lista");
+  const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>("semana");
+  const [dataReferencia, setDataReferencia] = useState(new Date());
   
   // Tags state
   const [tags, setTags] = useState<TagVideo[]>([]);
@@ -130,16 +146,12 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   const [escalarItems, setEscalarItems] = useState<EscalarItem[]>([]);
   const [escalarTabAtivo, setEscalarTabAtivo] = useState(0);
   
-  // Edit roteiro states
-  const [editingVideo, setEditingVideo] = useState<VideoVertical | null>(null);
-  const [editTitulo, setEditTitulo] = useState("");
-  const [editDescricao, setEditDescricao] = useState("");
-  const [editRoteiro, setEditRoteiro] = useState("");
+  // Detail panel state
+  const [selectedVideo, setSelectedVideo] = useState<VideoVertical | null>(null);
   const [editVideoTags, setEditVideoTags] = useState<string[]>([]);
   
-  // Selection context state for contextual editing
-  const [selectedText, setSelectedText] = useState<string | null>(null);
-  const [selectionRange, setSelectionRange] = useState<SelectionRange | null>(null);
+  // Collapsible groups state
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchVideos();
@@ -165,7 +177,10 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     ]);
 
     if (refResult.data) setVideosReferencia(refResult.data);
-    if (kanbanResult.data) setVideosKanban(kanbanResult.data);
+    if (kanbanResult.data) {
+      const videosWithClienteId = kanbanResult.data.map(v => ({ ...v, cliente_id: clienteId }));
+      setVideosKanban(videosWithClienteId);
+    }
     if (videoTagsResult.data) setVideoTags(videoTagsResult.data);
     setLoading(false);
   };
@@ -204,7 +219,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     if (!error) {
       toast.success("Tag removida");
       fetchTags();
-      fetchVideos(); // Refresh video tags
+      fetchVideos();
     }
   };
 
@@ -219,35 +234,14 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     return tags.filter(t => tagIds.includes(t.id));
   };
 
-  // Função para buscar thumbnail automaticamente via oEmbed
-  const fetchInstagramThumbnail = async (url: string): Promise<string | null> => {
-    try {
-      const response = await fetch(`https://noembed.com/embed?url=${encodeURIComponent(url)}`);
-      const data = await response.json();
-      return data.thumbnail_url || null;
-    } catch {
-      return null;
-    }
-  };
-
   const handleAddVideoRef = async () => {
     if (!novoVideoRef.titulo.trim()) return;
-    
-    let thumbnailUrl = novoVideoRef.thumbnail_url;
-    
-    // Tentar buscar thumbnail automaticamente se tiver link e não tiver thumbnail manual
-    if (novoVideoRef.link_video && !thumbnailUrl) {
-      toast.loading("Buscando thumbnail...", { id: "thumbnail-loading" });
-      const autoThumbnail = await fetchInstagramThumbnail(novoVideoRef.link_video);
-      toast.dismiss("thumbnail-loading");
-      if (autoThumbnail) thumbnailUrl = autoThumbnail;
-    }
     
     const { error } = await supabase.from("videos_referencia").insert({
       cliente_id: clienteId,
       titulo: novoVideoRef.titulo,
       link_video: novoVideoRef.link_video || null,
-      thumbnail_url: thumbnailUrl || null,
+      thumbnail_url: novoVideoRef.thumbnail_url || null,
       ordem: videosReferencia.length + 1,
     });
 
@@ -270,11 +264,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     }
   };
 
-
   const handleDeleteVideoKanban = async (id: string) => {
     const { error } = await supabase.from("videos_vertical").delete().eq("id", id);
     if (!error) {
       toast.success("Item removido");
+      setSelectedVideo(null);
       fetchVideos();
     }
   };
@@ -337,31 +331,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     }
   };
 
-  const openEditModal = (video: VideoVertical) => {
-    setEditingVideo(video);
-    setEditTitulo(video.titulo);
-    setEditDescricao(video.descricao || "");
-    setEditRoteiro(video.roteiro || "");
+  const openDetailPanel = (video: VideoVertical) => {
+    setSelectedVideo(video);
     setEditVideoTags(getVideoTagIds(video.id));
-    // Clear any previous selection
-    setSelectedText(null);
-    setSelectionRange(null);
-  };
-
-  const handleSelectionChange = (text: string | null, range: SelectionRange | null) => {
-    setSelectedText(text);
-    setSelectionRange(range);
-  };
-
-  const handleClearSelection = () => {
-    setSelectedText(null);
-    setSelectionRange(null);
-  };
-
-  const handleReplaceText = (newText: string, range: SelectionRange) => {
-    const before = editRoteiro.substring(0, range.start);
-    const after = editRoteiro.substring(range.end);
-    setEditRoteiro(before + newText + after);
   };
 
   const toggleVideoTag = (tagId: string) => {
@@ -372,58 +344,55 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     );
   };
 
-  const handleSaveRoteiro = async () => {
-    if (!editingVideo) return;
-
+  const handleSaveVideo = async (video: VideoVertical) => {
     // Se está salvando roteiro e video está em "ideia", move para "roteiro"
-    const novoStatus = editRoteiro.trim() && editingVideo.status === "ideia" 
+    const novoStatus = video.roteiro?.trim() && video.status === "ideia" 
       ? "roteiro" 
-      : editingVideo.status;
+      : video.status;
 
     const { error } = await supabase
       .from("videos_vertical")
       .update({
-        titulo: editTitulo,
-        descricao: editDescricao || null,
-        roteiro: editRoteiro || null,
+        titulo: video.titulo,
+        descricao: video.descricao || null,
+        roteiro: video.roteiro || null,
         status: novoStatus,
+        data_postagem: video.data_postagem || null,
       })
-      .eq("id", editingVideo.id);
+      .eq("id", video.id);
 
     if (error) {
       toast.error("Erro ao salvar");
       return;
     }
 
-    // Update tags - first remove all existing tags for this video
+    // Update tags
     await supabase
       .from("videos_vertical_tags")
       .delete()
-      .eq("video_id", editingVideo.id);
+      .eq("video_id", video.id);
 
-    // Then add the selected tags
     if (editVideoTags.length > 0) {
       await supabase.from("videos_vertical_tags").insert(
         editVideoTags.map(tagId => ({
-          video_id: editingVideo.id,
+          video_id: video.id,
           tag_id: tagId,
         }))
       );
     }
 
-    toast.success(novoStatus !== editingVideo.status 
-      ? "Roteiro salvo! Movido para 'Criando roteiro'" 
+    toast.success(novoStatus !== video.status 
+      ? "Salvo! Movido para 'Criando roteiro'" 
       : "Salvo com sucesso!");
-    setEditingVideo(null);
+    setSelectedVideo(null);
     fetchVideos();
   };
 
   const handleDragEnd = async (result: DropResult) => {
     if (!result.destination) return;
 
-    const { source, destination, draggableId } = result;
+    const { destination, draggableId } = result;
     
-    // Update local state immediately
     const updatedVideos = [...videosKanban];
     const videoIndex = updatedVideos.findIndex(v => v.id === draggableId);
     if (videoIndex !== -1) {
@@ -434,7 +403,6 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       setVideosKanban(updatedVideos);
     }
 
-    // Update database
     const { error } = await supabase
       .from("videos_vertical")
       .update({ status: destination.droppableId })
@@ -442,7 +410,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
     if (error) {
       toast.error("Erro ao mover item");
-      fetchVideos(); // Revert on error
+      fetchVideos();
     }
   };
 
@@ -460,12 +428,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       return;
     }
     
-    // Prepara os itens para o modal de escalar
     const selectedVideoData = videosReferencia.filter(v => selectedVideos.includes(v.id));
     const items: EscalarItem[] = selectedVideoData.map(video => ({
       id: video.id,
       tituloOriginal: video.titulo,
-      novaHeadline: video.titulo, // inicia com o mesmo título
+      novaHeadline: video.titulo,
     }));
     
     setEscalarItems(items);
@@ -506,12 +473,65 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   const getVideosByStatus = (status: string) => 
     videosKanban.filter(v => v.status === status);
 
+  const handleVideoStatusChange = async (videoId: string, completed: boolean) => {
+    const newStatus = completed ? "pronto" : "ideia";
+    const { error } = await supabase
+      .from("videos_vertical")
+      .update({ status: newStatus })
+      .eq("id", videoId);
+
+    if (!error) {
+      fetchVideos();
+    }
+  };
+
+  // Period navigation
+  const navegarPeriodo = (direcao: "anterior" | "proximo") => {
+    if (periodoFiltro === "semana") {
+      setDataReferencia(prev => direcao === "anterior" ? subWeeks(prev, 1) : addWeeks(prev, 1));
+    } else if (periodoFiltro === "mes") {
+      setDataReferencia(prev => direcao === "anterior" ? subMonths(prev, 1) : addMonths(prev, 1));
+    } else {
+      setDataReferencia(prev => direcao === "anterior" ? subYears(prev, 1) : addYears(prev, 1));
+    }
+  };
+
+  const getPeriodoLabel = () => {
+    if (periodoFiltro === "semana") {
+      const inicio = startOfWeek(dataReferencia, { weekStartsOn: 1 });
+      const fim = endOfWeek(dataReferencia, { weekStartsOn: 1 });
+      return `${format(inicio, "dd/MM")} - ${format(fim, "dd/MM/yyyy")}`;
+    } else if (periodoFiltro === "mes") {
+      return format(dataReferencia, "MMMM yyyy", { locale: ptBR });
+    } else {
+      return format(dataReferencia, "yyyy");
+    }
+  };
+
+  // Group videos by status for list view
+  const getGroupedVideos = () => {
+    const groups: Record<string, VideoVertical[]> = {};
+    
+    KANBAN_COLUMNS.forEach(col => {
+      const videos = videosKanban.filter(v => v.status === col.id);
+      if (videos.length > 0) {
+        groups[col.id] = videos;
+      }
+    });
+    
+    return groups;
+  };
+
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header Instagram */}
       <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-orange-500/10 rounded-xl border border-border">
         <div className="p-3 rounded-full bg-gradient-to-br from-pink-500 via-purple-500 to-orange-500">
@@ -525,8 +545,8 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
       {/* Vídeos que performaram */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Vídeos que performaram</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between py-3">
+          <CardTitle className="text-base">Vídeos que performaram</CardTitle>
           <div className="flex gap-2">
             {selectedVideos.length > 0 && (
               <Button onClick={handleEscalar} size="sm" className="gap-2">
@@ -567,34 +587,26 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             </Dialog>
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {videosReferencia.length === 0 ? (
-            <p className="text-center text-muted-foreground py-8">
+            <p className="text-center text-muted-foreground py-4 text-sm">
               Nenhum vídeo adicionado ainda
             </p>
           ) : (
-            <div className="flex gap-3 overflow-x-auto pb-4">
+            <div className="flex gap-3 overflow-x-auto pb-2">
               {videosReferencia.map((video) => (
                 <div
                   key={video.id}
-                  className={`relative flex-shrink-0 w-36 group ${
+                  className={`relative flex-shrink-0 w-32 group ${
                     selectedVideos.includes(video.id) ? "ring-2 ring-primary rounded-lg" : ""
                   }`}
                 >
-                  {/* Card clicável */}
                   <div 
                     className={`aspect-square bg-muted rounded-lg overflow-hidden relative ${
                       video.link_video ? "cursor-pointer hover:opacity-90 transition-opacity" : ""
                     }`}
                     onClick={() => {
                       if (video.link_video) {
-                        window.open(video.link_video, "_blank", "noopener,noreferrer");
-                      }
-                    }}
-                    role={video.link_video ? "button" : undefined}
-                    tabIndex={video.link_video ? 0 : undefined}
-                    onKeyDown={(e) => {
-                      if (video.link_video && (e.key === "Enter" || e.key === " ")) {
                         window.open(video.link_video, "_blank", "noopener,noreferrer");
                       }
                     }}
@@ -607,11 +619,10 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-pink-500/20 to-purple-500/20">
-                        <Instagram className="h-6 w-6 text-muted-foreground" />
+                        <Instagram className="h-5 w-5 text-muted-foreground" />
                       </div>
                     )}
                     
-                    {/* Checkbox overlay */}
                     <div 
                       className="absolute top-1.5 left-1.5 cursor-pointer z-10"
                       onClick={(e) => {
@@ -630,7 +641,6 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       </div>
                     </div>
 
-                    {/* Delete button overlay */}
                     <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                       <div className="flex justify-end">
                         <Button
@@ -655,275 +665,157 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         </CardContent>
       </Card>
 
-      {/* Kanban Board */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
-          <div className="flex gap-2">
-            {/* Gerenciar Tags */}
-            <Dialog open={tagsDialogOpen} onOpenChange={setTagsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Tag className="h-4 w-4 mr-1" />
-                  Tags
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Gerenciar Tags</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  {/* Create new tag */}
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Nome da tag"
-                      value={novaTag.nome}
-                      onChange={e => setNovaTag(prev => ({ ...prev, nome: e.target.value }))}
-                      className="flex-1"
-                    />
-                    <Button onClick={handleAddTag} size="sm">
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {/* Color picker */}
-                  <div className="flex flex-wrap gap-2">
-                    {TAG_COLORS.map((color) => (
-                      <button
-                        key={color.id}
-                        onClick={() => setNovaTag(prev => ({ ...prev, cor: color.id }))}
-                        className={`w-8 h-8 rounded-full ${color.class} transition-all ${
-                          novaTag.cor === color.id ? "ring-2 ring-offset-2 ring-primary" : ""
-                        }`}
-                        title={color.label}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Existing tags */}
-                  <div className="border-t pt-4">
-                    <p className="text-sm text-muted-foreground mb-3">Tags existentes:</p>
-                    {tags.length === 0 ? (
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        Nenhuma tag criada ainda
-                      </p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {tags.map((tag) => (
-                          <div
-                            key={tag.id}
-                            className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${getTagColorClass(tag.cor)}`}
-                          >
-                            {tag.nome}
-                            <button
-                              onClick={() => handleDeleteTag(tag.id)}
-                              className="ml-1 hover:opacity-70"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-
-            {/* Nova ideia button */}
-            <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
-              <Plus className="h-4 w-4 mr-1" />
-              Nova ideia
+      {/* Pipeline Header with View Toggle */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
+        <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          <div className="flex items-center border rounded-md p-0.5 bg-muted/50">
+            <Button
+              variant={viewMode === "lista" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("lista")}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "quadro" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => setViewMode("quadro")}
+            >
+              <LayoutGrid className="h-4 w-4" />
             </Button>
           </div>
-        </div>
 
-        {/* Modal de novas ideias */}
-        <Dialog open={showIdeiasModal} onOpenChange={setShowIdeiasModal}>
-          <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
-            <DialogHeader>
-              <DialogTitle>Novas ideias de conteúdo</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[55vh]">
-              {novasIdeias.map((ideia, index) => (
-                <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
-                  {/* Botão remover */}
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive"
-                    onClick={() => {
-                      if (novasIdeias.length > 1) {
-                        setNovasIdeias((prev) => prev.filter((_, i) => i !== index));
-                      }
-                    }}
-                    disabled={novasIdeias.length === 1}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-
-                  {/* Linha 1: Headline e Link */}
-                  <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 pr-8">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Headline</Label>
-                      <SlashCommandInput
-                        clienteId={clienteId}
-                        value={ideia.headline}
-                        onValueChange={(val) => updateIdeia(index, "headline", val)}
-                        placeholder="Ex: 3 livros para ler (use / para inserir do núcleo)"
-                        className="h-10"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Link</Label>
-                      <Input
-                        value={ideia.link}
-                        onChange={(e) => updateIdeia(index, "link", e.target.value)}
-                        placeholder="https://..."
-                        type="url"
-                        className="h-10"
-                      />
-                    </div>
-                  </div>
-                  
-                  {/* Linha 2: Plataforma e Descrição */}
-                  <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Qual plataforma?</Label>
-                      <RadioGroup
-                        value={ideia.plataforma}
-                        onValueChange={(value) => updateIdeia(index, "plataforma", value)}
-                        className="flex gap-4 pt-1"
-                      >
-                        <div className="flex items-center gap-1.5">
-                          <RadioGroupItem value="instagram" id={`ig-vertical-${index}`} />
-                          <Label htmlFor={`ig-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-xs">
-                            <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
-                              <Instagram className="h-2.5 w-2.5 text-white" />
-                            </div>
-                            Instagram
-                          </Label>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <RadioGroupItem value="youtube" id={`yt-vertical-${index}`} />
-                          <Label htmlFor={`yt-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-xs">
-                            <div className="w-4 h-4 rounded bg-red-600 flex items-center justify-center">
-                              <Youtube className="h-2.5 w-2.5 text-white" />
-                            </div>
-                            Youtube
-                          </Label>
-                        </div>
-                      </RadioGroup>
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs font-medium">Descrição (opcional)</Label>
-                      <Textarea
-                        value={ideia.descricao}
-                        onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
-                        placeholder="Descreva a ideia..."
-                        rows={2}
-                        className="resize-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={() => setNovasIdeias((prev) => [...prev, createEmptyIdeia()])}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Adicionar mais uma linha
-            </Button>
-
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
-                Cancelar
+          {/* Tags button */}
+          <Dialog open={tagsDialogOpen} onOpenChange={setTagsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Tag className="h-4 w-4 mr-1" />
+                Tags
               </Button>
-              <Button onClick={adicionarIdeias}>Salvar</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Modal de Escalar */}
-        <Dialog open={showEscalarModal} onOpenChange={(open) => { 
-          setShowEscalarModal(open); 
-          if (!open) { setEscalarItems([]); setEscalarTabAtivo(0); }
-        }}>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-amber-500" />
-                Escalar vídeos
-              </DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* Tabs para cada vídeo */}
-              {escalarItems.length > 1 && (
-                <div className="flex flex-wrap gap-2 pb-2 border-b">
-                  {escalarItems.map((item, index) => (
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Gerenciar Tags</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nome da tag"
+                    value={novaTag.nome}
+                    onChange={e => setNovaTag(prev => ({ ...prev, nome: e.target.value }))}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleAddTag} size="sm">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  {TAG_COLORS.map((color) => (
                     <button
-                      key={item.id}
-                      onClick={() => setEscalarTabAtivo(index)}
-                      className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors truncate max-w-[180px] ${
-                        escalarTabAtivo === index
-                          ? "bg-amber-500 text-white"
-                          : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                      key={color.id}
+                      onClick={() => setNovaTag(prev => ({ ...prev, cor: color.id }))}
+                      className={`w-8 h-8 rounded-full ${color.class} transition-all ${
+                        novaTag.cor === color.id ? "ring-2 ring-offset-2 ring-primary" : ""
                       }`}
-                    >
-                      {item.tituloOriginal.length > 20 
-                        ? item.tituloOriginal.substring(0, 20) + "..." 
-                        : item.tituloOriginal}
-                    </button>
+                      title={color.label}
+                    />
                   ))}
                 </div>
-              )}
 
-              {/* Conteúdo do vídeo selecionado */}
-              {escalarItems[escalarTabAtivo] && (
-                <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
-                  <div>
-                    <Label className="text-sm text-muted-foreground">Headline original</Label>
-                    <p className="font-medium text-base mt-1">
-                      {escalarItems[escalarTabAtivo].tituloOriginal}
+                <div className="border-t pt-4">
+                  <p className="text-sm text-muted-foreground mb-3">Tags existentes:</p>
+                  {tags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhuma tag criada ainda
                     </p>
-                  </div>
-                  <div>
-                    <Label className="text-sm font-medium">Nova headline</Label>
-                    <SlashCommandInput
-                      clienteId={clienteId}
-                      value={escalarItems[escalarTabAtivo].novaHeadline}
-                      onValueChange={(val) => updateEscalarHeadline(escalarTabAtivo, val)}
-                      placeholder="Digite a nova headline... (use / para inserir do núcleo)"
-                      className="mt-1"
-                    />
-                  </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <div
+                          key={tag.id}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${getTagColorClass(tag.cor)}`}
+                        >
+                          {tag.nome}
+                          <button
+                            onClick={() => handleDeleteTag(tag.id)}
+                            className="ml-1 hover:opacity-70"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => { 
-                  setShowEscalarModal(false); 
-                  setEscalarItems([]); 
-                  setEscalarTabAtivo(0); 
-                }}>
-                  Cancelar
-                </Button>
-                <Button 
-                  onClick={handleSalvarEscalar}
-                  className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white"
-                >
-                  <Sparkles className="h-4 w-4 mr-1" />
-                  Criar ideias ({escalarItems.length})
-                </Button>
               </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
 
+          {/* Nova ideia button */}
+          <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nova ideia
+          </Button>
+        </div>
+      </div>
+
+      {/* List View */}
+      {viewMode === "lista" && (
+        <div className="space-y-2 border rounded-lg p-4">
+          {Object.entries(getGroupedVideos()).map(([status, videos]) => {
+            const column = KANBAN_COLUMNS.find(c => c.id === status);
+            const isOpen = openGroups[status] !== false; // default open
+            
+            return (
+              <Collapsible key={status} open={isOpen} onOpenChange={() => toggleGroup(status)}>
+                <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
+                  {isOpen ? (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">{column?.label || status}</span>
+                  <span className={cn(
+                    "text-sm",
+                    videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
+                  )}>
+                    {videos.length}
+                  </span>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-4">
+                  {videos.map((video) => (
+                    <VideoItem
+                      key={video.id}
+                      id={video.id}
+                      titulo={video.titulo}
+                      descricao={video.descricao}
+                      roteiro={video.roteiro}
+                      status={video.status}
+                      escalado={video.escalado}
+                      tags={getTagsForVideo(video.id)}
+                      onClick={() => openDetailPanel(video)}
+                      onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
+                    />
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
+          {videosKanban.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">
+              Nenhum vídeo na pipeline ainda
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Kanban View */}
+      {viewMode === "quadro" && (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
             {KANBAN_COLUMNS.map((column) => (
@@ -947,74 +839,73 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       {getVideosByStatus(column.id).map((video, index) => {
                         const isEscalado = video.escalado === true;
                         const cardBorderClass = isEscalado ? "border-l-primary" : column.borderColor;
-                        const cardBgClass = isEscalado 
-                          ? "bg-primary" 
-                          : "bg-secondary/50";
+                        const cardBgClass = isEscalado ? "bg-primary" : "bg-secondary/50";
                         const textClass = isEscalado ? "text-primary-foreground" : "";
                         
                         return (
-                        <Draggable key={video.id} draggableId={video.id} index={index}>
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.draggableProps}
-                              className={`${cardBgClass} ${textClass} border-l-4 ${cardBorderClass} rounded-lg p-4 group cursor-pointer hover:opacity-90 transition-all ${
-                                snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
-                              }`}
-                              onClick={() => openEditModal(video)}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div
-                                  {...provided.dragHandleProps}
-                                  className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <GripVertical className="h-4 w-4 text-muted-foreground" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className={`font-medium text-base leading-snug ${isEscalado ? "text-primary-foreground" : ""}`}>{video.titulo}</p>
-                                  
-                                  {/* Tags do vídeo */}
-                                  {getTagsForVideo(video.id).length > 0 && (
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                      {getTagsForVideo(video.id).map((tag) => (
-                                        <span
-                                          key={tag.id}
-                                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30" : getTagColorClass(tag.cor)}`}
-                                        >
-                                          {tag.nome}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  
-                                  {video.descricao && (
-                                    <p className={`text-sm mt-2 line-clamp-3 ${isEscalado ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                                      {video.descricao}
+                          <Draggable key={video.id} draggableId={video.id} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`${cardBgClass} ${textClass} border-l-4 ${cardBorderClass} rounded-lg p-4 group cursor-pointer hover:opacity-90 transition-all ${
+                                  snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
+                                }`}
+                                onClick={() => openDetailPanel(video)}
+                              >
+                                <div className="flex items-start gap-3">
+                                  <div
+                                    {...provided.dragHandleProps}
+                                    className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`font-medium text-base leading-snug ${isEscalado ? "text-primary-foreground" : ""}`}>
+                                      {video.titulo}
                                     </p>
-                                  )}
-                                  {video.roteiro && (
-                                    <div className="mt-3">
-                                      <MessageSquare className={`h-5 w-5 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
-                                    </div>
-                                  )}
+                                    
+                                    {getTagsForVideo(video.id).length > 0 && (
+                                      <div className="flex flex-wrap gap-1 mt-2">
+                                        {getTagsForVideo(video.id).map((tag) => (
+                                          <span
+                                            key={tag.id}
+                                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30" : getTagColorClass(tag.cor)}`}
+                                          >
+                                            {tag.nome}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                    
+                                    {video.descricao && (
+                                      <p className={`text-sm mt-2 line-clamp-2 ${isEscalado ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
+                                        {video.descricao}
+                                      </p>
+                                    )}
+                                    {video.roteiro && (
+                                      <div className="mt-3">
+                                        <FileText className={`h-4 w-4 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteVideoKanban(video.id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteVideoKanban(video.id);
-                                  }}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
                               </div>
-                            </div>
-                          )}
-                        </Draggable>
-                      );
+                            )}
+                          </Draggable>
+                        );
                       })}
                       {provided.placeholder}
                     </div>
@@ -1024,104 +915,201 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             ))}
           </div>
         </DragDropContext>
-      </div>
+      )}
 
-      {/* Modal de edição de roteiro com Chat IA */}
-      <Dialog open={!!editingVideo} onOpenChange={(open) => !open && setEditingVideo(null)}>
-        <DialogContent className="max-w-6xl h-[85vh] flex flex-col">
-          <DialogHeader className="shrink-0">
-            <DialogTitle>Editar ideia de vídeo</DialogTitle>
+      {/* Modal de novas ideias */}
+      <Dialog open={showIdeiasModal} onOpenChange={setShowIdeiasModal}>
+        <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Novas ideias de conteúdo</DialogTitle>
           </DialogHeader>
-          <div className="flex gap-6 flex-1 min-h-0">
-            {/* Coluna esquerda - Campos de edição */}
-            <div className="flex-1 space-y-4 overflow-y-auto pr-2">
-              <div>
-                <label className="text-sm font-medium">Título</label>
-                <SlashCommandInput
-                  clienteId={clienteId}
-                  value={editTitulo}
-                  onValueChange={setEditTitulo}
-                  placeholder="Título do vídeo (use / para inserir do núcleo)"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Descrição</label>
-                <Textarea
-                  value={editDescricao}
-                  onChange={(e) => setEditDescricao(e.target.value)}
-                  placeholder="Descrição do vídeo..."
-                  rows={2}
-                />
-              </div>
-              
-              {/* Tags selection */}
-              <div>
-                <label className="text-sm font-medium">Tags</label>
-                {tags.length === 0 ? (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Nenhuma tag disponível. Crie tags primeiro clicando no botão "Tags".
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {tags.map((tag) => {
-                      const isSelected = editVideoTags.includes(tag.id);
-                      return (
-                        <button
-                          key={tag.id}
-                          onClick={() => toggleVideoTag(tag.id)}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                            isSelected 
-                              ? getTagColorClass(tag.cor) + " ring-2 ring-primary ring-offset-1"
-                              : "bg-muted/50 text-muted-foreground border-muted hover:bg-muted"
-                          }`}
-                        >
-                          {isSelected && <Check className="h-3 w-3" />}
-                          {tag.nome}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-              
-              <div className="flex-1">
-                <label className="text-sm font-medium">Roteiro</label>
-                <SlashCommandTextarea
-                  clienteId={clienteId}
-                  value={editRoteiro}
-                  onValueChange={setEditRoteiro}
-                  onSelectionChange={handleSelectionChange}
-                  placeholder="Escreva o roteiro do vídeo aqui... (use / para inserir do núcleo)"
-                  className="font-mono text-sm min-h-[200px]"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Ao salvar um roteiro, o vídeo será movido automaticamente para "Criando roteiro"
-                </p>
-              </div>
-              
-              <div className="flex justify-end gap-2 pt-4 border-t">
-                <Button variant="outline" onClick={() => setEditingVideo(null)}>
-                  Cancelar
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2 max-h-[55vh]">
+            {novasIdeias.map((ideia, index) => (
+              <div key={index} className="p-4 border rounded-lg bg-muted/30 space-y-4 relative">
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="absolute top-2 right-2 h-7 w-7 text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    if (novasIdeias.length > 1) {
+                      setNovasIdeias((prev) => prev.filter((_, i) => i !== index));
+                    }
+                  }}
+                  disabled={novasIdeias.length === 1}
+                >
+                  <X className="h-4 w-4" />
                 </Button>
-                <Button onClick={handleSaveRoteiro}>Salvar</Button>
-              </div>
-            </div>
 
-            {/* Coluna direita - Chat IA */}
-            <div className="w-[400px] shrink-0 border-l pl-6">
-              <RoteiroChat
-                clienteId={clienteId}
-                titulo={editTitulo}
-                descricao={editDescricao}
-                onInsertText={(text) => setEditRoteiro(prev => prev ? prev + "\n\n" + text : text)}
-                selectedContext={selectedText && selectionRange ? { text: selectedText, range: selectionRange } : null}
-                onClearSelection={handleClearSelection}
-                onReplaceText={handleReplaceText}
-              />
+                <div className="grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4 pr-8">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Headline</Label>
+                    <SlashCommandInput
+                      clienteId={clienteId}
+                      value={ideia.headline}
+                      onValueChange={(val) => updateIdeia(index, "headline", val)}
+                      placeholder="Ex: 3 livros para ler (use / para inserir do núcleo)"
+                      className="h-10"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Link</Label>
+                    <Input
+                      value={ideia.link}
+                      onChange={(e) => updateIdeia(index, "link", e.target.value)}
+                      placeholder="https://..."
+                      type="url"
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_2fr] gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Qual plataforma?</Label>
+                    <RadioGroup
+                      value={ideia.plataforma}
+                      onValueChange={(value) => updateIdeia(index, "plataforma", value)}
+                      className="flex gap-4 pt-1"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <RadioGroupItem value="instagram" id={`ig-vertical-${index}`} />
+                        <Label htmlFor={`ig-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-xs">
+                          <div className="w-4 h-4 rounded bg-gradient-to-br from-purple-500 via-pink-500 to-orange-400 flex items-center justify-center">
+                            <Instagram className="h-2.5 w-2.5 text-white" />
+                          </div>
+                          Instagram
+                        </Label>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <RadioGroupItem value="youtube" id={`yt-vertical-${index}`} />
+                        <Label htmlFor={`yt-vertical-${index}`} className="flex items-center gap-1 cursor-pointer text-xs">
+                          <div className="w-4 h-4 rounded bg-red-600 flex items-center justify-center">
+                            <Youtube className="h-2.5 w-2.5 text-white" />
+                          </div>
+                          Youtube
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Descrição (opcional)</Label>
+                    <Textarea
+                      value={ideia.descricao}
+                      onChange={(e) => updateIdeia(index, "descricao", e.target.value)}
+                      placeholder="Descreva a ideia..."
+                      rows={2}
+                      className="resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setNovasIdeias((prev) => [...prev, createEmptyIdeia()])}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Adicionar mais uma linha
+          </Button>
+
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button variant="outline" onClick={() => { setShowIdeiasModal(false); setNovasIdeias(createEmptyIdeias()); }}>
+              Cancelar
+            </Button>
+            <Button onClick={adicionarIdeias}>Salvar</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Escalar */}
+      <Dialog open={showEscalarModal} onOpenChange={(open) => { 
+        setShowEscalarModal(open); 
+        if (!open) { setEscalarItems([]); setEscalarTabAtivo(0); }
+      }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-500" />
+              Escalar vídeos
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {escalarItems.length > 1 && (
+              <div className="flex flex-wrap gap-2 pb-2 border-b">
+                {escalarItems.map((item, index) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setEscalarTabAtivo(index)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors truncate max-w-[180px] ${
+                      escalarTabAtivo === index
+                        ? "bg-amber-500 text-white"
+                        : "bg-muted hover:bg-muted/80 text-muted-foreground"
+                    }`}
+                  >
+                    {item.tituloOriginal.length > 20 
+                      ? item.tituloOriginal.substring(0, 20) + "..." 
+                      : item.tituloOriginal}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {escalarItems[escalarTabAtivo] && (
+              <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Headline original</Label>
+                  <p className="font-medium text-base mt-1">
+                    {escalarItems[escalarTabAtivo].tituloOriginal}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-sm font-medium">Nova headline</Label>
+                  <SlashCommandInput
+                    clienteId={clienteId}
+                    value={escalarItems[escalarTabAtivo].novaHeadline}
+                    onValueChange={(val) => updateEscalarHeadline(escalarTabAtivo, val)}
+                    placeholder="Digite a nova headline... (use / para inserir do núcleo)"
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => { 
+                setShowEscalarModal(false); 
+                setEscalarItems([]); 
+                setEscalarTabAtivo(0); 
+              }}>
+                Cancelar
+              </Button>
+              <Button 
+                onClick={handleSalvarEscalar}
+                className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white"
+              >
+                <Sparkles className="h-4 w-4 mr-1" />
+                Criar ideias ({escalarItems.length})
+              </Button>
             </div>
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Video Detail Panel */}
+      <VideoDetailPanel
+        video={selectedVideo}
+        open={!!selectedVideo}
+        onClose={() => setSelectedVideo(null)}
+        onSave={handleSaveVideo}
+        onDelete={handleDeleteVideoKanban}
+        tags={tags}
+        videoTags={editVideoTags}
+        onTagToggle={toggleVideoTag}
+        platform="vertical"
+      />
     </div>
   );
 }
