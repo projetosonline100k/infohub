@@ -9,17 +9,17 @@ import ReactFlow, {
   addEdge,
   Connection,
   MarkerType,
-  NodeChange,
   Handle,
   Position,
   ConnectionLineType,
   NodeProps,
+  Viewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Grid3X3, Trash2, Upload, X } from "lucide-react";
+import { Plus, Grid3X3, Trash2, X } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 
 interface FunilNode {
@@ -109,6 +109,10 @@ const nodeTypes = {
   funilNode: FunilCustomNode,
 };
 
+// Helper para chave do localStorage da viewport
+const getViewportKey = (produtoId: string, categoriaId: string) =>
+  `funil_viewport:${produtoId}:${categoriaId}`;
+
 export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -129,6 +133,7 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
   
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
+  const hasLoadedCategory = useRef<string | null>(null);
 
   // Carregar categorias
   const carregarCategorias = useCallback(async () => {
@@ -146,7 +151,7 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     if (data && data.length > 0) {
       setCategorias(data);
 
-      const defaultCatId = categoriaAtiva ?? data[0].id;
+      const defaultCatId = data[0].id;
       if (!categoriaAtiva) {
         setCategoriaAtiva(defaultCatId);
       }
@@ -188,9 +193,13 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     }
   }, [produtoId, categoriaAtiva]);
 
-  // Carregar dados do funil
+  // Carregar dados do funil (apenas no load inicial ou troca de categoria)
   const carregarFunil = useCallback(async () => {
     if (!categoriaAtiva) return;
+    
+    // Evitar recarregar a mesma categoria
+    if (hasLoadedCategory.current === categoriaAtiva) return;
+    hasLoadedCategory.current = categoriaAtiva;
 
     const { data, error } = await supabase
       .from("funil_vendas")
@@ -237,9 +246,20 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       setNodes(flowNodes);
       setEdges(flowEdges);
 
-      // Sem auto-fit: mantém o zoom/pan e o layout exatamente como você organizou
+      // Restaurar viewport do localStorage
+      if (reactFlowInstance) {
+        const savedViewport = localStorage.getItem(getViewportKey(produtoId, categoriaAtiva));
+        if (savedViewport) {
+          try {
+            const viewport: Viewport = JSON.parse(savedViewport);
+            reactFlowInstance.setViewport(viewport);
+          } catch (e) {
+            console.error("Erro ao restaurar viewport:", e);
+          }
+        }
+      }
     }
-  }, [produtoId, categoriaAtiva, setNodes, setEdges]);
+  }, [produtoId, categoriaAtiva, setNodes, setEdges, reactFlowInstance]);
 
   useEffect(() => {
     carregarCategorias();
@@ -247,9 +267,49 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
 
   useEffect(() => {
     if (categoriaAtiva) {
+      // Resetar flag para permitir carregar nova categoria
+      if (hasLoadedCategory.current !== categoriaAtiva) {
+        hasLoadedCategory.current = null;
+      }
       carregarFunil();
     }
   }, [categoriaAtiva, carregarFunil]);
+
+  // Salvar viewport no localStorage ao mover/zoom
+  const handleMoveEnd = useCallback(
+    (_: any, viewport: Viewport) => {
+      if (categoriaAtiva) {
+        localStorage.setItem(
+          getViewportKey(produtoId, categoriaAtiva),
+          JSON.stringify(viewport)
+        );
+      }
+    },
+    [produtoId, categoriaAtiva]
+  );
+
+  // Persistir posição apenas quando parar de arrastar
+  const handleNodeDragStop = useCallback(
+    async (_: React.MouseEvent, node: Node) => {
+      await supabase
+        .from("funil_vendas")
+        .update({
+          posicao_x: node.position.x,
+          posicao_y: node.position.y,
+        })
+        .eq("id", node.id);
+
+      // Atualizar estado local
+      setFunilNodes((prev) =>
+        prev.map((n) =>
+          n.id === node.id
+            ? { ...n, posicao_x: node.position.x, posicao_y: node.position.y }
+            : n
+        )
+      );
+    },
+    []
+  );
 
   // Criar nova categoria
   const criarCategoria = async () => {
@@ -306,11 +366,12 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     setCategorias(novasCategorias);
     
     if (categoriaAtiva === catId) {
+      hasLoadedCategory.current = null;
       setCategoriaAtiva(novasCategorias[0]?.id || null);
     }
   };
 
-  // Adicionar novo nó via botão
+  // Adicionar novo nó via botão (update otimista)
   const adicionarNo = async () => {
     if (!novoTitulo.trim()) {
       toast({ title: "Digite um título para o nó", variant: "destructive" });
@@ -320,34 +381,55 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     const posX = nodes.length > 0 ? Math.max(...nodes.map((n) => n.position.x)) + 200 : 100;
     const posY = 100;
 
-    const { error } = await supabase.from("funil_vendas").insert({
-      produto_id: produtoId,
-      titulo: novoTitulo,
-      cor: novaCor,
-      posicao_x: posX,
-      posicao_y: posY,
-      ordem: funilNodes.length + 1,
-      categoria_id: categoriaAtiva,
-    });
+    const { data, error } = await supabase
+      .from("funil_vendas")
+      .insert({
+        produto_id: produtoId,
+        titulo: novoTitulo,
+        cor: novaCor,
+        posicao_x: posX,
+        posicao_y: posY,
+        ordem: funilNodes.length + 1,
+        categoria_id: categoriaAtiva,
+      })
+      .select()
+      .single();
 
     if (error) {
       toast({ title: "Erro ao adicionar nó", variant: "destructive" });
       return;
     }
 
-    setNovoTitulo("");
-    carregarFunil();
+    if (data) {
+      // Update otimista - adicionar ao estado local sem refetch
+      setFunilNodes((prev) => [...prev, data]);
+      setNodes((prev) => [
+        ...prev,
+        {
+          id: data.id,
+          type: "funilNode",
+          position: { x: posX, y: posY },
+          data: {
+            label: data.titulo,
+            color: data.cor,
+            background: nodeColors[data.cor] || nodeColors.blue,
+            imagem: data.imagem_url,
+          },
+        },
+      ]);
+      setNovoTitulo("");
+    }
   };
 
-  // Duplo clique no canvas para criar nó
-  const onPaneDoubleClick = useCallback(
+  // Duplo clique no canvas para criar nó (update otimista)
+  const handlePaneDoubleClick = useCallback(
     async (event: React.MouseEvent) => {
-      if (!reactFlowWrapper.current || !reactFlowInstance) return;
+      if (!reactFlowInstance) return;
 
-      const bounds = reactFlowWrapper.current.getBoundingClientRect();
+      // Usar screenToFlowPosition diretamente
       const position = reactFlowInstance.screenToFlowPosition({
-        x: event.clientX - bounds.left,
-        y: event.clientY - bounds.top,
+        x: event.clientX,
+        y: event.clientY,
       });
 
       const { data, error } = await supabase
@@ -370,15 +452,31 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       }
 
       if (data) {
+        // Update otimista - adicionar ao estado local
+        setFunilNodes((prev) => [...prev, data]);
+        setNodes((prev) => [
+          ...prev,
+          {
+            id: data.id,
+            type: "funilNode",
+            position: { x: position.x, y: position.y },
+            data: {
+              label: "Novo nó",
+              color: novaCor,
+              background: nodeColors[novaCor] || nodeColors.blue,
+              imagem: null,
+            },
+          },
+        ]);
+
         // Abrir modal de edição imediatamente
         setEditingNodeId(data.id);
         setEditingTitle("Novo nó");
         setEditingCor(novaCor);
         setEditingImagem(null);
-        carregarFunil();
       }
     },
-    [produtoId, novaCor, funilNodes.length, categoriaAtiva, reactFlowInstance, carregarFunil]
+    [produtoId, novaCor, funilNodes.length, categoriaAtiva, reactFlowInstance, setNodes]
   );
 
   // Conectar nós
@@ -397,6 +495,13 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
         return;
       }
 
+      // Update otimista
+      setFunilNodes((prev) =>
+        prev.map((n) =>
+          n.id === connection.target ? { ...n, parent_id: connection.source } : n
+        )
+      );
+
       setEdges((eds) =>
         addEdge(
           {
@@ -411,27 +516,6 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       );
     },
     [setEdges]
-  );
-
-  // Atualizar posição ao arrastar
-  const handleNodesChange = useCallback(
-    async (changes: NodeChange[]) => {
-      onNodesChange(changes);
-
-      // Salvar posição quando parar de arrastar
-      for (const change of changes) {
-        if (change.type === "position" && change.dragging === false && change.position) {
-          await supabase
-            .from("funil_vendas")
-            .update({
-              posicao_x: change.position.x,
-              posicao_y: change.position.y,
-            })
-            .eq("id", change.id);
-        }
-      }
-    },
-    [onNodesChange]
   );
 
   // Duplo clique para editar nó existente
@@ -477,7 +561,7 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
     }
   };
 
-  // Salvar edição completa do nó
+  // Salvar edição completa do nó (update otimista)
   const salvarEdicao = async () => {
     if (!editingNodeId || !editingTitle.trim()) return;
 
@@ -495,13 +579,38 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       return;
     }
 
+    // Update otimista - atualizar estado local
+    setFunilNodes((prev) =>
+      prev.map((n) =>
+        n.id === editingNodeId
+          ? { ...n, titulo: editingTitle, cor: editingCor, imagem_url: editingImagem }
+          : n
+      )
+    );
+
+    setNodes((prev) =>
+      prev.map((n) =>
+        n.id === editingNodeId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                label: editingTitle,
+                color: editingCor,
+                background: nodeColors[editingCor] || nodeColors.blue,
+                imagem: editingImagem,
+              },
+            }
+          : n
+      )
+    );
+
     setEditingNodeId(null);
     setEditingTitle("");
     setEditingImagem(null);
-    carregarFunil();
   };
 
-  // Deletar nó
+  // Deletar nó (update otimista)
   const deletarNo = async (nodeId: string) => {
     const { error } = await supabase.from("funil_vendas").delete().eq("id", nodeId);
 
@@ -510,8 +619,12 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
       return;
     }
 
+    // Update otimista - remover do estado local
+    setFunilNodes((prev) => prev.filter((n) => n.id !== nodeId));
+    setNodes((prev) => prev.filter((n) => n.id !== nodeId));
+    setEdges((prev) => prev.filter((e) => e.source !== nodeId && e.target !== nodeId));
+
     setEditingNodeId(null);
-    carregarFunil();
   };
 
   return (
@@ -538,7 +651,12 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
               />
             ) : (
               <span
-                onClick={() => setCategoriaAtiva(cat.id)}
+                onClick={() => {
+                  if (categoriaAtiva !== cat.id) {
+                    hasLoadedCategory.current = null;
+                    setCategoriaAtiva(cat.id);
+                  }
+                }}
                 onDoubleClick={() => {
                   setEditandoCategoria(cat.id);
                   setNomeCategoria(cat.nome);
@@ -691,15 +809,13 @@ export function ProdutoFunil({ produtoId }: ProdutoFunilProps) {
         <ReactFlow
           nodes={nodes}
           edges={edges}
-          onNodesChange={handleNodesChange}
+          onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onNodeDoubleClick={onNodeDoubleClick}
-          onPaneClick={(e) => {
-            if (e.detail === 2) {
-              onPaneDoubleClick(e);
-            }
-          }}
+          onNodeDragStop={handleNodeDragStop}
+          onDoubleClick={handlePaneDoubleClick}
+          onMoveEnd={handleMoveEnd}
           onInit={setReactFlowInstance}
           nodeTypes={nodeTypes}
           attributionPosition="bottom-left"
