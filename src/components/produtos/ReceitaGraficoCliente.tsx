@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -27,14 +27,14 @@ interface FinanceiroRow {
 }
 
 const CORES_PRODUTOS = [
-  "#22c55e", // verde
-  "#3b82f6", // azul
-  "#8b5cf6", // roxo
-  "#f97316", // laranja
-  "#ec4899", // rosa
-  "#14b8a6", // teal
-  "#eab308", // amarelo
-  "#ef4444", // vermelho
+  { stroke: "#22c55e", fill: "#22c55e" }, // verde
+  { stroke: "#3b82f6", fill: "#3b82f6" }, // azul
+  { stroke: "#8b5cf6", fill: "#8b5cf6" }, // roxo
+  { stroke: "#f97316", fill: "#f97316" }, // laranja
+  { stroke: "#ec4899", fill: "#ec4899" }, // rosa
+  { stroke: "#14b8a6", fill: "#14b8a6" }, // teal
+  { stroke: "#eab308", fill: "#eab308" }, // amarelo
+  { stroke: "#ef4444", fill: "#ef4444" }, // vermelho
 ];
 
 export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps) {
@@ -139,9 +139,33 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
   return (
     <div className="h-72">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={dadosGrafico}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-          <XAxis dataKey="mes" className="text-xs" />
+        <AreaChart data={dadosGrafico}>
+          <defs>
+            {produtos.map((produto, index) => {
+              const cor = CORES_PRODUTOS[index % CORES_PRODUTOS.length];
+              return (
+                <linearGradient
+                  key={produto.id}
+                  id={`gradient-${produto.id}`}
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="5%" stopColor={cor.fill} stopOpacity={0.4} />
+                  <stop offset="95%" stopColor={cor.fill} stopOpacity={0.05} />
+                </linearGradient>
+              );
+            })}
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" opacity={0.3} />
+          <XAxis 
+            dataKey="mes" 
+            axisLine={false}
+            tickLine={false}
+            className="text-xs"
+            tick={{ fill: 'hsl(var(--muted-foreground))' }}
+          />
           <YAxis 
             tickFormatter={(value) => 
               new Intl.NumberFormat("pt-BR", {
@@ -149,7 +173,10 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
                 compactDisplay: "short",
               }).format(value)
             }
+            axisLine={false}
+            tickLine={false}
             className="text-xs"
+            tick={{ fill: 'hsl(var(--muted-foreground))' }}
           />
           <Tooltip
             formatter={(value: number) => formatarMoeda(value)}
@@ -157,22 +184,29 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
               backgroundColor: "hsl(var(--card))",
               border: "1px solid hsl(var(--border))",
               borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
             }}
-            labelStyle={{ color: "hsl(var(--foreground))" }}
+            labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
           />
-          <Legend />
-          {produtos.map((produto, index) => (
-            <Line
-              key={produto.id}
-              type="monotone"
-              dataKey={produto.nome_produto}
-              stroke={CORES_PRODUTOS[index % CORES_PRODUTOS.length]}
-              strokeWidth={2}
-              dot={{ r: 4 }}
-              activeDot={{ r: 6 }}
-            />
-          ))}
-        </LineChart>
+          <Legend 
+            wrapperStyle={{ paddingTop: "10px" }}
+          />
+          {produtos.map((produto, index) => {
+            const cor = CORES_PRODUTOS[index % CORES_PRODUTOS.length];
+            return (
+              <Area
+                key={produto.id}
+                type="monotone"
+                dataKey={produto.nome_produto}
+                stroke={cor.stroke}
+                strokeWidth={2.5}
+                fill={`url(#gradient-${produto.id})`}
+                dot={{ r: 4, fill: cor.stroke, strokeWidth: 2, stroke: "#fff" }}
+                activeDot={{ r: 6, fill: cor.stroke, strokeWidth: 2, stroke: "#fff" }}
+              />
+            );
+          })}
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
