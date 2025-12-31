@@ -1,17 +1,13 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { TrendingUp, TrendingDown, Calendar } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format, subMonths, startOfMonth, endOfMonth, startOfYear, subDays } from "date-fns";
+import { format, subMonths, startOfMonth, endOfMonth, startOfYear } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 interface ReceitaGraficoClienteProps {
   clienteId: string;
-}
-
-interface Produto {
-  id: string;
-  nome_produto: string;
 }
 
 type FiltroTipo = "este_mes" | "ultimos_3_meses" | "este_ano" | "tudo";
@@ -25,16 +21,26 @@ const CORES_PRODUTOS = [
   "#14b8a6", // teal
 ];
 
+interface ProdutoTendencia {
+  nome: string;
+  id: string;
+  cor: string;
+  valorTotal: number;
+  crescimento: number;
+  crescendo: boolean;
+}
+
+interface DadoGrafico {
+  mes: string;
+  mesLabel: string;
+  [key: string]: string | number;
+}
+
 export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps) {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<FiltroTipo>("ultimos_3_meses");
-  const [produtosComTendencia, setProdutosComTendencia] = useState<{
-    nome: string;
-    cor: string;
-    valores: number[];
-    crescimento: number;
-    crescendo: boolean;
-  }[]>([]);
+  const [produtos, setProdutos] = useState<ProdutoTendencia[]>([]);
+  const [dadosGrafico, setDadosGrafico] = useState<DadoGrafico[]>([]);
 
   useEffect(() => {
     carregarDados();
@@ -53,6 +59,10 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
       default:
         return { inicio: null, fim: null };
     }
+  };
+
+  const formatarMoeda = (valor: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valor);
   };
 
   const carregarDados = async () => {
@@ -74,7 +84,7 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
       const produtoIds = produtosData.map((p) => p.id);
       const { inicio, fim } = getDataRange();
 
-      // Buscar dados diários (produto_financeiro_diario)
+      // Buscar dados diários
       let queryDiario = supabase
         .from("produto_financeiro_diario")
         .select("produto_id, data, receita")
@@ -90,7 +100,7 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
       const { data: diarioData, error: diarioError } = await queryDiario;
       if (diarioError) throw diarioError;
 
-      // Buscar dados mensais (produto_financeiro)
+      // Buscar dados mensais
       let queryMensal = supabase
         .from("produto_financeiro")
         .select("produto_id, mes, receita_bruta")
@@ -111,7 +121,7 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
       
       if (diarioData) {
         diarioData.forEach((d) => {
-          const mes = d.data.substring(0, 7); // "yyyy-MM"
+          const mes = d.data.substring(0, 7);
           if (!dadosDiariosAgregados[d.produto_id]) {
             dadosDiariosAgregados[d.produto_id] = {};
           }
@@ -120,10 +130,9 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         });
       }
 
-      // Combinar dados diários agregados com mensais
+      // Combinar dados
       const dadosCombinados: Record<string, Record<string, number>> = {};
       
-      // Primeiro, adicionar dados mensais
       if (mensalData) {
         mensalData.forEach((d) => {
           if (!dadosCombinados[d.produto_id]) {
@@ -133,7 +142,6 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         });
       }
 
-      // Depois, sobrescrever/adicionar dados diários agregados (prioridade)
       Object.entries(dadosDiariosAgregados).forEach(([produtoId, meses]) => {
         if (!dadosCombinados[produtoId]) {
           dadosCombinados[produtoId] = {};
@@ -143,13 +151,19 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         });
       });
 
-      // Processar dados por produto
-      const resultado = produtosData.map((produto, index) => {
-        const dadosProduto = dadosCombinados[produto.id] || {};
-        const mesesOrdenados = Object.keys(dadosProduto).sort();
-        const valores = mesesOrdenados.map(mes => dadosProduto[mes]);
+      // Coletar todos os meses únicos
+      const todosMeses = new Set<string>();
+      Object.values(dadosCombinados).forEach(meses => {
+        Object.keys(meses).forEach(mes => todosMeses.add(mes));
+      });
+      const mesesOrdenados = Array.from(todosMeses).sort();
 
-        // Calcular crescimento
+      // Processar produtos
+      const produtosProcessados: ProdutoTendencia[] = produtosData.map((produto, index) => {
+        const dadosProduto = dadosCombinados[produto.id] || {};
+        const valores = mesesOrdenados.map(mes => dadosProduto[mes] || 0);
+        const valorTotal = valores.reduce((acc, v) => acc + v, 0);
+
         let crescimento = 0;
         let crescendo = true;
         if (valores.length >= 2) {
@@ -163,14 +177,28 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
 
         return {
           nome: produto.nome_produto,
+          id: produto.id,
           cor: CORES_PRODUTOS[index % CORES_PRODUTOS.length],
-          valores,
+          valorTotal,
           crescimento: Math.abs(crescimento),
           crescendo,
         };
-      }).filter(p => p.valores.length > 0);
+      }).filter(p => p.valorTotal > 0);
 
-      setProdutosComTendencia(resultado);
+      // Criar dados para o gráfico
+      const dadosChart: DadoGrafico[] = mesesOrdenados.map(mes => {
+        const [ano, mesNum] = mes.split('-');
+        const mesLabel = format(new Date(parseInt(ano), parseInt(mesNum) - 1, 1), 'MMM/yy', { locale: ptBR });
+        
+        const ponto: DadoGrafico = { mes, mesLabel };
+        produtosData.forEach(produto => {
+          ponto[produto.id] = dadosCombinados[produto.id]?.[mes] || 0;
+        });
+        return ponto;
+      });
+
+      setProdutos(produtosProcessados);
+      setDadosGrafico(dadosChart);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -178,62 +206,26 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
     }
   };
 
-  // Gerar path SVG para curva suave
-  const gerarCurva = (valores: number[], width: number, height: number, padding: number) => {
-    if (valores.length === 0) return "";
-    if (valores.length === 1) {
-      const x = padding;
-      const y = height / 2;
-      return `M ${x} ${y} L ${width - padding} ${y}`;
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-background border border-border rounded-lg p-3 shadow-lg">
+          <p className="font-medium text-sm mb-2">{label}</p>
+          {payload.map((entry: any, index: number) => {
+            const produto = produtos.find(p => p.id === entry.dataKey);
+            return (
+              <div key={index} className="flex items-center gap-2 text-sm">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-muted-foreground">{produto?.nome}:</span>
+                <span className="font-medium">{formatarMoeda(entry.value)}</span>
+              </div>
+            );
+          })}
+        </div>
+      );
     }
-
-    const maxValor = Math.max(...valores, 1);
-    const minValor = Math.min(...valores, 0);
-    const range = maxValor - minValor || 1;
-    
-    const pontos = valores.map((v, i) => ({
-      x: padding + (i / (valores.length - 1)) * (width - padding * 2),
-      y: padding + (1 - (v - minValor) / range) * (height - padding * 2),
-    }));
-
-    let path = `M ${pontos[0].x} ${pontos[0].y}`;
-    
-    for (let i = 0; i < pontos.length - 1; i++) {
-      const p0 = pontos[i];
-      const p1 = pontos[i + 1];
-      const midX = (p0.x + p1.x) / 2;
-      
-      path += ` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
-    }
-
-    return path;
+    return null;
   };
-
-  // Calcular posição final da seta
-  const getPosicaoFinal = (valores: number[], width: number, height: number, padding: number) => {
-    if (valores.length === 0) return { x: width - padding, y: height / 2, angulo: 0 };
-    
-    const maxValor = Math.max(...valores, 1);
-    const minValor = Math.min(...valores, 0);
-    const range = maxValor - minValor || 1;
-    
-    const ultimoValor = valores[valores.length - 1];
-    const penultimoValor = valores.length > 1 ? valores[valores.length - 2] : ultimoValor;
-    
-    const x = width - padding;
-    const y = padding + (1 - (ultimoValor - minValor) / range) * (height - padding * 2);
-    
-    const diferencaY = ultimoValor - penultimoValor;
-    let angulo = 0;
-    if (diferencaY > 0) angulo = -30;
-    else if (diferencaY < 0) angulo = 30;
-    
-    return { x, y, angulo };
-  };
-
-  const svgWidth = 280;
-  const svgHeight = 120;
-  const padding = 20;
 
   return (
     <div className="space-y-4">
@@ -273,86 +265,71 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         <div className="h-48 flex items-center justify-center">
           <p className="text-muted-foreground">Carregando...</p>
         </div>
-      ) : produtosComTendencia.length === 0 ? (
+      ) : produtos.length === 0 ? (
         <div className="h-32 flex items-center justify-center bg-muted/30 rounded-lg">
           <p className="text-sm text-muted-foreground text-center max-w-md">
             Nenhum dado financeiro disponível para o período selecionado.
           </p>
         </div>
       ) : (
-        produtosComTendencia.map((produto, index) => {
-          const path = gerarCurva(produto.valores, svgWidth, svgHeight, padding);
-          const posicaoFinal = getPosicaoFinal(produto.valores, svgWidth, svgHeight, padding);
-          const valorTotal = produto.valores.reduce((acc, v) => acc + v, 0);
-          const ultimoValor = produto.valores[produto.valores.length - 1] || 0;
-
-          return (
-            <div key={index} className="flex items-center gap-4">
-              {/* Nome e indicador */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: produto.cor }}
+        <>
+          {/* Gráfico de linhas */}
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={dadosGrafico} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis 
+                  dataKey="mesLabel" 
+                  tick={{ fontSize: 12 }}
+                  className="text-muted-foreground"
+                />
+                <YAxis 
+                  tick={{ fontSize: 12 }}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                  className="text-muted-foreground"
+                />
+                <Tooltip content={<CustomTooltip />} />
+                {produtos.map((produto) => (
+                  <Line
+                    key={produto.id}
+                    type="monotone"
+                    dataKey={produto.id}
+                    stroke={produto.cor}
+                    strokeWidth={2}
+                    dot={{ fill: produto.cor, strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, strokeWidth: 2 }}
+                    animationDuration={1500}
+                    animationEasing="ease-in-out"
                   />
-                  <span className="text-sm font-medium truncate">{produto.nome}</span>
-                  <span className="text-sm font-bold text-foreground ml-2">
-                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorTotal)}
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 mt-1 pl-5">
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Legenda com valores */}
+          <div className="flex flex-wrap gap-4">
+            {produtos.map((produto) => (
+              <div key={produto.id} className="flex items-center gap-2 bg-muted/30 rounded-lg px-3 py-2">
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: produto.cor }}
+                />
+                <span className="text-sm font-medium">{produto.nome}</span>
+                <span className="text-sm font-bold">{formatarMoeda(produto.valorTotal)}</span>
+                <div className="flex items-center gap-1">
                   {produto.crescendo ? (
-                    <TrendingUp className="h-4 w-4 text-green-500" />
+                    <TrendingUp className="h-3 w-3 text-green-500" />
                   ) : (
-                    <TrendingDown className="h-4 w-4 text-red-500" />
+                    <TrendingDown className="h-3 w-3 text-red-500" />
                   )}
-                  <span
-                    className={`text-xs font-medium ${
-                      produto.crescendo ? "text-green-500" : "text-red-500"
-                    }`}
-                  >
+                  <span className={`text-xs font-medium ${produto.crescendo ? "text-green-500" : "text-red-500"}`}>
                     {produto.crescimento.toFixed(1)}%
                   </span>
                 </div>
               </div>
-
-              {/* Gráfico de linha com seta */}
-              <div className="flex-shrink-0">
-                <svg
-                  width={svgWidth}
-                  height={svgHeight}
-                  viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                  className="overflow-visible"
-                >
-                  <path
-                    d={path}
-                    fill="none"
-                    stroke={produto.cor}
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  
-                  <g transform={`translate(${posicaoFinal.x}, ${posicaoFinal.y}) rotate(${posicaoFinal.angulo})`}>
-                    <polygon
-                      points="0,-6 12,0 0,6"
-                      fill={produto.cor}
-                    />
-                  </g>
-
-                  {produto.valores.length > 0 && (
-                    <circle
-                      cx={padding}
-                      cy={padding + (1 - (produto.valores[0] - Math.min(...produto.valores)) / (Math.max(...produto.valores, 1) - Math.min(...produto.valores, 0) || 1)) * (svgHeight - padding * 2)}
-                      r={4}
-                      fill={produto.cor}
-                    />
-                  )}
-                </svg>
-              </div>
-            </div>
-          );
-        })
+            ))}
+          </div>
+        </>
       )}
     </div>
   );
