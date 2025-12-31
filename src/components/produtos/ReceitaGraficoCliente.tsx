@@ -1,15 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from "recharts";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface ReceitaGraficoClienteProps {
   clienteId: string;
@@ -27,20 +18,23 @@ interface FinanceiroRow {
 }
 
 const CORES_PRODUTOS = [
-  { stroke: "#22c55e", fill: "#22c55e" }, // verde
-  { stroke: "#3b82f6", fill: "#3b82f6" }, // azul
-  { stroke: "#8b5cf6", fill: "#8b5cf6" }, // roxo
-  { stroke: "#f97316", fill: "#f97316" }, // laranja
-  { stroke: "#ec4899", fill: "#ec4899" }, // rosa
-  { stroke: "#14b8a6", fill: "#14b8a6" }, // teal
-  { stroke: "#eab308", fill: "#eab308" }, // amarelo
-  { stroke: "#ef4444", fill: "#ef4444" }, // vermelho
+  "#22c55e", // verde
+  "#3b82f6", // azul
+  "#8b5cf6", // roxo
+  "#f97316", // laranja
+  "#ec4899", // rosa
+  "#14b8a6", // teal
 ];
 
 export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps) {
   const [loading, setLoading] = useState(true);
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [dadosGrafico, setDadosGrafico] = useState<any[]>([]);
+  const [produtosComTendencia, setProdutosComTendencia] = useState<{
+    nome: string;
+    cor: string;
+    valores: number[];
+    crescimento: number;
+    crescendo: boolean;
+  }[]>([]);
 
   useEffect(() => {
     carregarDados();
@@ -48,7 +42,6 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
 
   const carregarDados = async () => {
     try {
-      // Buscar produtos do cliente
       const { data: produtosData, error: produtosError } = await supabase
         .from("produtos_cliente")
         .select("id, nome_produto")
@@ -61,9 +54,6 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         return;
       }
 
-      setProdutos(produtosData);
-
-      // Buscar dados financeiros de todos os produtos
       const produtoIds = produtosData.map((p) => p.id);
       const { data: financeiroData, error: financeiroError } = await supabase
         .from("produto_financeiro")
@@ -78,23 +68,34 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
         return;
       }
 
-      // Agrupar dados por mês
-      const mesesUnicos = [...new Set(financeiroData.map((d) => d.mes))].sort();
-      
-      const dadosAgrupados = mesesUnicos.map((mes) => {
-        const registro: any = { mes: formatarMes(mes) };
-        
-        produtosData.forEach((produto) => {
-          const dado = financeiroData.find(
-            (d) => d.mes === mes && d.produto_id === produto.id
-          );
-          registro[produto.nome_produto] = dado ? Number(dado.receita_bruta) : 0;
-        });
-        
-        return registro;
-      });
+      // Processar dados por produto
+      const resultado = produtosData.map((produto, index) => {
+        const dadosProduto = financeiroData
+          .filter((d) => d.produto_id === produto.id)
+          .map((d) => Number(d.receita_bruta));
 
-      setDadosGrafico(dadosAgrupados);
+        // Calcular crescimento (comparar último com penúltimo)
+        let crescimento = 0;
+        let crescendo = true;
+        if (dadosProduto.length >= 2) {
+          const ultimo = dadosProduto[dadosProduto.length - 1];
+          const penultimo = dadosProduto[dadosProduto.length - 2];
+          if (penultimo > 0) {
+            crescimento = ((ultimo - penultimo) / penultimo) * 100;
+          }
+          crescendo = ultimo >= penultimo;
+        }
+
+        return {
+          nome: produto.nome_produto,
+          cor: CORES_PRODUTOS[index % CORES_PRODUTOS.length],
+          valores: dadosProduto,
+          crescimento: Math.abs(crescimento),
+          crescendo,
+        };
+      }).filter(p => p.valores.length > 0);
+
+      setProdutosComTendencia(resultado);
     } catch (error) {
       console.error("Erro ao carregar dados:", error);
     } finally {
@@ -102,112 +103,156 @@ export function ReceitaGraficoCliente({ clienteId }: ReceitaGraficoClienteProps)
     }
   };
 
-  function formatarMes(mes: string) {
-    const [ano, mesNum] = mes.split("-");
-    const meses = [
-      "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
-      "Jul", "Ago", "Set", "Out", "Nov", "Dez",
-    ];
-    return `${meses[parseInt(mesNum) - 1]}/${ano.slice(2)}`;
-  }
+  // Gerar path SVG para curva suave
+  const gerarCurva = (valores: number[], width: number, height: number, padding: number) => {
+    if (valores.length === 0) return "";
+    if (valores.length === 1) {
+      const x = padding;
+      const y = height / 2;
+      return `M ${x} ${y} L ${width - padding} ${y}`;
+    }
 
-  function formatarMoeda(valor: number) {
-    return new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(valor);
-  }
+    const maxValor = Math.max(...valores, 1);
+    const minValor = Math.min(...valores, 0);
+    const range = maxValor - minValor || 1;
+    
+    const pontos = valores.map((v, i) => ({
+      x: padding + (i / (valores.length - 1)) * (width - padding * 2),
+      y: padding + (1 - (v - minValor) / range) * (height - padding * 2),
+    }));
+
+    // Criar curva bezier suave
+    let path = `M ${pontos[0].x} ${pontos[0].y}`;
+    
+    for (let i = 0; i < pontos.length - 1; i++) {
+      const p0 = pontos[i];
+      const p1 = pontos[i + 1];
+      const midX = (p0.x + p1.x) / 2;
+      
+      path += ` C ${midX} ${p0.y}, ${midX} ${p1.y}, ${p1.x} ${p1.y}`;
+    }
+
+    return path;
+  };
+
+  // Calcular posição final da seta
+  const getPosicaoFinal = (valores: number[], width: number, height: number, padding: number) => {
+    if (valores.length === 0) return { x: width - padding, y: height / 2, angulo: 0 };
+    
+    const maxValor = Math.max(...valores, 1);
+    const minValor = Math.min(...valores, 0);
+    const range = maxValor - minValor || 1;
+    
+    const ultimoValor = valores[valores.length - 1];
+    const penultimoValor = valores.length > 1 ? valores[valores.length - 2] : ultimoValor;
+    
+    const x = width - padding;
+    const y = padding + (1 - (ultimoValor - minValor) / range) * (height - padding * 2);
+    
+    // Calcular ângulo baseado na tendência
+    const diferencaY = ultimoValor - penultimoValor;
+    let angulo = 0;
+    if (diferencaY > 0) angulo = -30; // Subindo
+    else if (diferencaY < 0) angulo = 30; // Descendo
+    
+    return { x, y, angulo };
+  };
 
   if (loading) {
     return (
-      <div className="h-72 flex items-center justify-center">
+      <div className="h-48 flex items-center justify-center">
         <p className="text-muted-foreground">Carregando...</p>
       </div>
     );
   }
 
-  if (dadosGrafico.length === 0) {
+  if (produtosComTendencia.length === 0) {
     return (
-      <div className="h-48 flex items-center justify-center bg-muted rounded-lg">
+      <div className="h-32 flex items-center justify-center bg-muted/30 rounded-lg">
         <p className="text-sm text-muted-foreground text-center max-w-md">
-          Nenhum dado financeiro disponível. Adicione dados na aba Financeiro de cada produto.
+          Nenhum dado financeiro disponível.
         </p>
       </div>
     );
   }
 
+  const svgWidth = 280;
+  const svgHeight = 120;
+  const padding = 20;
+
   return (
-    <div className="h-72">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={dadosGrafico}>
-          <defs>
-            {produtos.map((produto, index) => {
-              const cor = CORES_PRODUTOS[index % CORES_PRODUTOS.length];
-              return (
-                <linearGradient
-                  key={produto.id}
-                  id={`gradient-${produto.id}`}
-                  x1="0"
-                  y1="0"
-                  x2="0"
-                  y2="1"
+    <div className="space-y-4">
+      {produtosComTendencia.map((produto, index) => {
+        const path = gerarCurva(produto.valores, svgWidth, svgHeight, padding);
+        const posicaoFinal = getPosicaoFinal(produto.valores, svgWidth, svgHeight, padding);
+
+        return (
+          <div key={index} className="flex items-center gap-4">
+            {/* Nome e indicador */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: produto.cor }}
+                />
+                <span className="text-sm font-medium truncate">{produto.nome}</span>
+              </div>
+              <div className="flex items-center gap-1 mt-1 pl-5">
+                {produto.crescendo ? (
+                  <TrendingUp className="h-4 w-4 text-green-500" />
+                ) : (
+                  <TrendingDown className="h-4 w-4 text-red-500" />
+                )}
+                <span
+                  className={`text-xs font-medium ${
+                    produto.crescendo ? "text-green-500" : "text-red-500"
+                  }`}
                 >
-                  <stop offset="5%" stopColor={cor.fill} stopOpacity={0.4} />
-                  <stop offset="95%" stopColor={cor.fill} stopOpacity={0.05} />
-                </linearGradient>
-              );
-            })}
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-muted" opacity={0.3} />
-          <XAxis 
-            dataKey="mes" 
-            axisLine={false}
-            tickLine={false}
-            className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-          />
-          <YAxis 
-            tickFormatter={(value) => 
-              new Intl.NumberFormat("pt-BR", {
-                notation: "compact",
-                compactDisplay: "short",
-              }).format(value)
-            }
-            axisLine={false}
-            tickLine={false}
-            className="text-xs"
-            tick={{ fill: 'hsl(var(--muted-foreground))' }}
-          />
-          <Tooltip
-            formatter={(value: number) => formatarMoeda(value)}
-            contentStyle={{
-              backgroundColor: "hsl(var(--card))",
-              border: "1px solid hsl(var(--border))",
-              borderRadius: "8px",
-              boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
-            }}
-            labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
-          />
-          <Legend 
-            wrapperStyle={{ paddingTop: "10px" }}
-          />
-          {produtos.map((produto, index) => {
-            const cor = CORES_PRODUTOS[index % CORES_PRODUTOS.length];
-            return (
-              <Area
-                key={produto.id}
-                type="monotone"
-                dataKey={produto.nome_produto}
-                stroke={cor.stroke}
-                strokeWidth={2.5}
-                fill={`url(#gradient-${produto.id})`}
-                dot={{ r: 4, fill: cor.stroke, strokeWidth: 2, stroke: "#fff" }}
-                activeDot={{ r: 6, fill: cor.stroke, strokeWidth: 2, stroke: "#fff" }}
-              />
-            );
-          })}
-        </AreaChart>
-      </ResponsiveContainer>
+                  {produto.crescimento.toFixed(1)}%
+                </span>
+              </div>
+            </div>
+
+            {/* Gráfico de linha com seta */}
+            <div className="flex-shrink-0">
+              <svg
+                width={svgWidth}
+                height={svgHeight}
+                viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                className="overflow-visible"
+              >
+                {/* Linha curva */}
+                <path
+                  d={path}
+                  fill="none"
+                  stroke={produto.cor}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+                
+                {/* Seta no final */}
+                <g transform={`translate(${posicaoFinal.x}, ${posicaoFinal.y}) rotate(${posicaoFinal.angulo})`}>
+                  <polygon
+                    points="0,-6 12,0 0,6"
+                    fill={produto.cor}
+                  />
+                </g>
+
+                {/* Círculo no início */}
+                {produto.valores.length > 0 && (
+                  <circle
+                    cx={padding}
+                    cy={padding + (1 - (produto.valores[0] - Math.min(...produto.valores)) / (Math.max(...produto.valores, 1) - Math.min(...produto.valores, 0) || 1)) * (svgHeight - padding * 2)}
+                    r={4}
+                    fill={produto.cor}
+                  />
+                )}
+              </svg>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
