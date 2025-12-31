@@ -626,6 +626,42 @@ export type Database = {
           },
         ]
       }
+      produto_financeiro_diario: {
+        Row: {
+          created_at: string | null
+          custos: number | null
+          data: string
+          id: string
+          notas: string | null
+          produto_id: string
+          receita: number | null
+          reembolsos: number | null
+          vendas_quantidade: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          custos?: number | null
+          data: string
+          id?: string
+          notas?: string | null
+          produto_id: string
+          receita?: number | null
+          reembolsos?: number | null
+          vendas_quantidade?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          custos?: number | null
+          data?: string
+          id?: string
+          notas?: string | null
+          produto_id?: string
+          receita?: number | null
+          reembolsos?: number | null
+          vendas_quantidade?: number | null
+        }
+        Relationships: []
+      }
       produtos_cliente: {
         Row: {
           acesso_instrucoes: string | null
