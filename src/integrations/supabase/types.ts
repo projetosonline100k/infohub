@@ -290,11 +290,45 @@ export type Database = {
           },
         ]
       }
+      funil_categorias: {
+        Row: {
+          created_at: string | null
+          id: string
+          nome: string
+          ordem: number | null
+          produto_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          nome?: string
+          ordem?: number | null
+          produto_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          nome?: string
+          ordem?: number | null
+          produto_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "funil_categorias_produto_id_fkey"
+            columns: ["produto_id"]
+            isOneToOne: false
+            referencedRelation: "produtos_cliente"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       funil_vendas: {
         Row: {
+          categoria_id: string | null
           cor: string | null
           created_at: string | null
           id: string
+          imagem_url: string | null
           ordem: number | null
           parent_id: string | null
           posicao_x: number | null
@@ -303,9 +337,11 @@ export type Database = {
           titulo: string
         }
         Insert: {
+          categoria_id?: string | null
           cor?: string | null
           created_at?: string | null
           id?: string
+          imagem_url?: string | null
           ordem?: number | null
           parent_id?: string | null
           posicao_x?: number | null
@@ -314,9 +350,11 @@ export type Database = {
           titulo: string
         }
         Update: {
+          categoria_id?: string | null
           cor?: string | null
           created_at?: string | null
           id?: string
+          imagem_url?: string | null
           ordem?: number | null
           parent_id?: string | null
           posicao_x?: number | null
@@ -325,6 +363,13 @@ export type Database = {
           titulo?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "funil_vendas_categoria_id_fkey"
+            columns: ["categoria_id"]
+            isOneToOne: false
+            referencedRelation: "funil_categorias"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "funil_vendas_parent_id_fkey"
             columns: ["parent_id"]
