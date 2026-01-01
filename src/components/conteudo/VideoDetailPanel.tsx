@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, Trash2, Sparkles, Calendar, Tag, FileText, ChevronDown } from "lucide-react";
+import { X, Trash2, Sparkles, Calendar, Tag, FileText, ChevronDown, MessageSquare } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +85,7 @@ export const VideoDetailPanel = ({
 }: VideoDetailPanelProps) => {
   const [editedVideo, setEditedVideo] = useState<Video | null>(null);
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     if (video) {
@@ -140,6 +141,15 @@ export const VideoDetailPanel = ({
             </SheetTitle>
             <div className="flex items-center gap-2">
               <Button
+                variant={showChat ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowChat(!showChat)}
+                className="gap-2"
+              >
+                <MessageSquare className="h-4 w-4" />
+                Chat IA
+              </Button>
+              <Button
                 variant="ghost"
                 size="icon"
                 onClick={() => onDelete(editedVideo.id)}
@@ -156,7 +166,7 @@ export const VideoDetailPanel = ({
 
         <div className="flex-1 flex min-h-0">
           {/* Left Column - Video Details */}
-          <div className="flex-1 flex flex-col min-h-0 border-r">
+          <div className={cn("flex-1 flex flex-col min-h-0", showChat && "border-r")}>
             <ScrollArea className="flex-1">
               <div className="p-6 space-y-6">
                 {/* Title */}
@@ -333,18 +343,20 @@ export const VideoDetailPanel = ({
             </div>
           </div>
 
-          {/* Right Column - AI Chat */}
-          <div className="w-[400px] flex flex-col min-h-0 bg-muted/20">
-            <RoteiroChat
-              clienteId={editedVideo.cliente_id}
-              titulo={editedVideo.titulo}
-              descricao={editedVideo.descricao || ""}
-              onInsertText={handleInsertText}
-              onReplaceText={handleReplaceText}
-              onClearSelection={handleClearSelection}
-              selectedContext={selectionContext ? { text: selectionContext.text, range: selectionContext.range } : undefined}
-            />
-          </div>
+          {/* Right Column - AI Chat (conditional) */}
+          {showChat && (
+            <div className="w-[400px] flex flex-col min-h-0 bg-muted/20">
+              <RoteiroChat
+                clienteId={editedVideo.cliente_id}
+                titulo={editedVideo.titulo}
+                descricao={editedVideo.descricao || ""}
+                onInsertText={handleInsertText}
+                onReplaceText={handleReplaceText}
+                onClearSelection={handleClearSelection}
+                selectedContext={selectionContext ? { text: selectionContext.text, range: selectionContext.range } : undefined}
+              />
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>

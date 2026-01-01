@@ -19,6 +19,9 @@ interface VideoItemProps {
   tags?: TagVideo[];
   onClick: () => void;
   onStatusChange?: (completed: boolean) => void;
+  // Multi-select for batch roteiro creation
+  selectedForRoteiro?: boolean;
+  onRoteiroSelectChange?: (selected: boolean) => void;
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -42,8 +45,11 @@ export const VideoItem = ({
   tags = [],
   onClick,
   onStatusChange,
+  selectedForRoteiro,
+  onRoteiroSelectChange,
 }: VideoItemProps) => {
   const isCompleted = status === "pronto";
+  const canSelectForRoteiro = status === "ideia" && !roteiro && onRoteiroSelectChange;
 
   return (
     <div
@@ -52,20 +58,32 @@ export const VideoItem = ({
         escalado 
           ? "border-l-primary bg-primary/5" 
           : "border-l-transparent",
-        isCompleted && "opacity-60"
+        isCompleted && "opacity-60",
+        selectedForRoteiro && "bg-primary/10 border-l-primary"
       )}
       onClick={onClick}
     >
       <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 cursor-grab" />
       
-      <Checkbox
-        checked={isCompleted}
-        onCheckedChange={(checked) => {
-          onStatusChange?.(!!checked);
-        }}
-        onClick={(e) => e.stopPropagation()}
-        className="h-4 w-4"
-      />
+      {canSelectForRoteiro ? (
+        <Checkbox
+          checked={selectedForRoteiro}
+          onCheckedChange={(checked) => {
+            onRoteiroSelectChange?.(!!checked);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4"
+        />
+      ) : (
+        <Checkbox
+          checked={isCompleted}
+          onCheckedChange={(checked) => {
+            onStatusChange?.(!!checked);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4"
+        />
+      )}
 
       <span className={cn(
         "flex-1 text-sm truncate",

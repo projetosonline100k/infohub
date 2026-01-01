@@ -18,6 +18,7 @@ import { SlashCommandInput } from "./SlashCommandInput";
 import { VideoItem } from "./VideoItem";
 import { VideoDetailPanel } from "./VideoDetailPanel";
 import { VideoStatusBadge } from "./VideoStatusBadge";
+import { CriarRoteirosModal } from "./CriarRoteirosModal";
 import { cn } from "@/lib/utils";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, isWithinInterval, parseISO, isToday, startOfMonth, endOfMonth, addMonths, subMonths, startOfYear, endOfYear, addYears, subYears, getWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -152,6 +153,10 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   
   // Collapsible groups state
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  
+  // Multi-select for batch roteiro creation
+  const [selectedForRoteiro, setSelectedForRoteiro] = useState<string[]>([]);
+  const [showCriarRoteirosModal, setShowCriarRoteirosModal] = useState(false);
 
   useEffect(() => {
     fetchVideos();
@@ -526,6 +531,23 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const toggleRoteiroSelection = (videoId: string) => {
+    setSelectedForRoteiro(prev =>
+      prev.includes(videoId)
+        ? prev.filter(id => id !== videoId)
+        : [...prev, videoId]
+    );
+  };
+
+  const getVideosForRoteiro = () => {
+    return videosKanban.filter(v => selectedForRoteiro.includes(v.id));
+  };
+
+  const handleCriarRoteirosComplete = () => {
+    setSelectedForRoteiro([]);
+    fetchVideos();
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
   }
@@ -756,6 +778,19 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             </DialogContent>
           </Dialog>
 
+          {/* Criar Roteiros button */}
+          {selectedForRoteiro.length > 0 && (
+            <Button 
+              size="sm" 
+              variant="secondary"
+              onClick={() => setShowCriarRoteirosModal(true)}
+              className="gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Criar Roteiros ({selectedForRoteiro.length})
+            </Button>
+          )}
+
           {/* Nova ideia button */}
           <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
             <Plus className="h-4 w-4 mr-1" />
@@ -800,6 +835,14 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       tags={getTagsForVideo(video.id)}
                       onClick={() => openDetailPanel(video)}
                       onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
+                      selectedForRoteiro={selectedForRoteiro.includes(video.id)}
+                      onRoteiroSelectChange={(selected) => {
+                        if (selected) {
+                          setSelectedForRoteiro(prev => [...prev, video.id]);
+                        } else {
+                          setSelectedForRoteiro(prev => prev.filter(id => id !== video.id));
+                        }
+                      }}
                     />
                   ))}
                 </CollapsibleContent>
@@ -1109,6 +1152,16 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         videoTags={editVideoTags}
         onTagToggle={toggleVideoTag}
         platform="vertical"
+      />
+
+      {/* Criar Roteiros Modal */}
+      <CriarRoteirosModal
+        videos={getVideosForRoteiro()}
+        open={showCriarRoteirosModal}
+        onClose={() => setShowCriarRoteirosModal(false)}
+        onComplete={handleCriarRoteirosComplete}
+        clienteId={clienteId}
+        tableName="videos_vertical"
       />
     </div>
   );
