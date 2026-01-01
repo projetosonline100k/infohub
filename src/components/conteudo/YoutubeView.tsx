@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { SlashCommandInput } from "./SlashCommandInput";
 import { VideoItem } from "./VideoItem";
 import { VideoDetailPanel } from "./VideoDetailPanel";
+import { CriarRoteirosModal } from "./CriarRoteirosModal";
 import { cn } from "@/lib/utils";
 
 interface YoutubeViewProps {
@@ -67,6 +68,10 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
   
   // Collapsible groups state
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  
+  // Multi-select for batch roteiro creation
+  const [selectedForRoteiro, setSelectedForRoteiro] = useState<string[]>([]);
+  const [showCriarRoteirosModal, setShowCriarRoteirosModal] = useState(false);
 
   useEffect(() => {
     fetchVideos();
@@ -222,6 +227,15 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
 
+  const getVideosForRoteiro = () => {
+    return videosKanban.filter(v => selectedForRoteiro.includes(v.id));
+  };
+
+  const handleCriarRoteirosComplete = () => {
+    setSelectedForRoteiro([]);
+    fetchVideos();
+  };
+
   if (loading) {
     return <div className="flex items-center justify-center h-64">Carregando...</div>;
   }
@@ -262,6 +276,19 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
               <LayoutGrid className="h-4 w-4" />
             </Button>
           </div>
+
+          {/* Criar Roteiros button */}
+          {selectedForRoteiro.length > 0 && (
+            <Button 
+              size="sm" 
+              variant="secondary"
+              onClick={() => setShowCriarRoteirosModal(true)}
+              className="gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Criar Roteiros ({selectedForRoteiro.length})
+            </Button>
+          )}
 
           {/* Nova ideia button */}
           <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
@@ -305,6 +332,14 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                       status={video.status}
                       onClick={() => openDetailPanel(video)}
                       onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
+                      selectedForRoteiro={selectedForRoteiro.includes(video.id)}
+                      onRoteiroSelectChange={(selected) => {
+                        if (selected) {
+                          setSelectedForRoteiro(prev => [...prev, video.id]);
+                        } else {
+                          setSelectedForRoteiro(prev => prev.filter(id => id !== video.id));
+                        }
+                      }}
                     />
                   ))}
                 </CollapsibleContent>
@@ -478,6 +513,16 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
         videoTags={[]}
         onTagToggle={() => {}}
         platform="youtube"
+      />
+
+      {/* Criar Roteiros Modal */}
+      <CriarRoteirosModal
+        videos={getVideosForRoteiro()}
+        open={showCriarRoteirosModal}
+        onClose={() => setShowCriarRoteirosModal(false)}
+        onComplete={handleCriarRoteirosComplete}
+        clienteId={clienteId}
+        tableName="videos_youtube"
       />
     </div>
   );
