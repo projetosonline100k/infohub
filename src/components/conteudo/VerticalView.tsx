@@ -47,6 +47,7 @@ interface VideoVertical {
   referencia_id?: string | null;
   data_postagem?: string | null;
   cliente_id: string;
+  origem_plataforma?: string | null;
 }
 
 interface EscalarItem {
@@ -490,6 +491,38 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     }
   };
 
+  // Transfer video to YouTube
+  const handleTransferToYoutube = async (video: VideoVertical) => {
+    try {
+      // Insert into videos_youtube with origem_plataforma = "vertical"
+      const { error: insertError } = await supabase.from("videos_youtube").insert({
+        cliente_id: clienteId,
+        titulo: video.titulo,
+        descricao: video.descricao,
+        roteiro: video.roteiro,
+        status: video.status,
+        ordem: 1,
+        origem_plataforma: "vertical"
+      });
+
+      if (insertError) throw insertError;
+
+      // Delete from videos_vertical
+      const { error: deleteError } = await supabase
+        .from("videos_vertical")
+        .delete()
+        .eq("id", video.id);
+
+      if (deleteError) throw deleteError;
+
+      toast.success("Ideia movida para YouTube!");
+      fetchVideos();
+    } catch (error) {
+      console.error("Erro ao mover para YouTube:", error);
+      toast.error("Erro ao mover para YouTube");
+    }
+  };
+
   // Period navigation
   const navegarPeriodo = (direcao: "anterior" | "proximo") => {
     if (periodoFiltro === "semana") {
@@ -822,7 +855,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                     {videos.length}
                   </span>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="pl-4">
+                <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
                   {videos.map((video) => (
                     <VideoItem
                       key={video.id}
@@ -833,6 +866,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                       status={video.status}
                       escalado={video.escalado}
                       tags={getTagsForVideo(video.id)}
+                      origemPlataforma={video.origem_plataforma}
                       onClick={() => openDetailPanel(video)}
                       onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
                       selectedForRoteiro={selectedForRoteiro.includes(video.id)}
@@ -843,6 +877,8 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                           setSelectedForRoteiro(prev => prev.filter(id => id !== video.id));
                         }
                       }}
+                      onTransferPlatform={() => handleTransferToYoutube(video)}
+                      plataformaDestino="youtube"
                     />
                   ))}
                 </CollapsibleContent>
@@ -875,7 +911,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`min-h-[300px] space-y-3 transition-colors rounded-md ${
+                      className={`min-h-[300px] max-h-[400px] overflow-y-auto scrollbar-thin space-y-3 transition-colors rounded-md ${
                         snapshot.isDraggingOver ? "bg-primary/5" : ""
                       }`}
                     >

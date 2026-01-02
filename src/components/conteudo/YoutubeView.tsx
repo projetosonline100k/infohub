@@ -28,6 +28,7 @@ interface VideoYoutube {
   ordem: number;
   data_postagem?: string | null;
   cliente_id: string;
+  origem_plataforma?: string | null;
 }
 
 interface NovaIdeia {
@@ -209,6 +210,38 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     }
   };
 
+  // Transfer video to Vertical
+  const handleTransferToVertical = async (video: VideoYoutube) => {
+    try {
+      // Insert into videos_vertical with origem_plataforma = "youtube"
+      const { error: insertError } = await supabase.from("videos_vertical").insert({
+        cliente_id: clienteId,
+        titulo: video.titulo,
+        descricao: video.descricao,
+        roteiro: video.roteiro,
+        status: video.status,
+        ordem: 1,
+        origem_plataforma: "youtube"
+      });
+
+      if (insertError) throw insertError;
+
+      // Delete from videos_youtube
+      const { error: deleteError } = await supabase
+        .from("videos_youtube")
+        .delete()
+        .eq("id", video.id);
+
+      if (deleteError) throw deleteError;
+
+      toast.success("Ideia movida para Vertical!");
+      fetchVideos();
+    } catch (error) {
+      console.error("Erro ao mover para Vertical:", error);
+      toast.error("Erro ao mover para Vertical");
+    }
+  };
+
   // Group videos by status for list view
   const getGroupedVideos = () => {
     const groups: Record<string, VideoYoutube[]> = {};
@@ -321,7 +354,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                     {videos.length}
                   </span>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="pl-4">
+                <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
                   {videos.map((video) => (
                     <VideoItem
                       key={video.id}
@@ -330,6 +363,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                       descricao={video.descricao}
                       roteiro={video.roteiro}
                       status={video.status}
+                      origemPlataforma={video.origem_plataforma}
                       onClick={() => openDetailPanel(video)}
                       onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
                       selectedForRoteiro={selectedForRoteiro.includes(video.id)}
@@ -340,6 +374,8 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                           setSelectedForRoteiro(prev => prev.filter(id => id !== video.id));
                         }
                       }}
+                      onTransferPlatform={() => handleTransferToVertical(video)}
+                      plataformaDestino="vertical"
                     />
                   ))}
                 </CollapsibleContent>
@@ -372,7 +408,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                     <div
                       ref={provided.innerRef}
                       {...provided.droppableProps}
-                      className={`min-h-[300px] space-y-3 transition-colors rounded-md ${
+                      className={`min-h-[300px] max-h-[400px] overflow-y-auto scrollbar-thin space-y-3 transition-colors rounded-md ${
                         snapshot.isDraggingOver ? "bg-primary/5" : ""
                       }`}
                     >
