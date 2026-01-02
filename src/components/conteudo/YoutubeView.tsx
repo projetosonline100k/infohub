@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { toast } from "sonner";
 import { Plus, Trash2, GripVertical, Youtube, FileText, X, List, LayoutGrid, ChevronDown, ChevronRight } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { SlashCommandInput } from "./SlashCommandInput";
 import { VideoItem } from "./VideoItem";
@@ -210,10 +211,10 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     }
   };
 
-  // Transfer video to Vertical
+  // Copy video to Vertical
   const handleTransferToVertical = async (video: VideoYoutube) => {
     try {
-      // Insert into videos_vertical with origem_plataforma = "youtube"
+      // Insert copy into videos_vertical with origem_plataforma = "youtube"
       const { error: insertError } = await supabase.from("videos_vertical").insert({
         cliente_id: clienteId,
         titulo: video.titulo,
@@ -226,19 +227,11 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
 
       if (insertError) throw insertError;
 
-      // Delete from videos_youtube
-      const { error: deleteError } = await supabase
-        .from("videos_youtube")
-        .delete()
-        .eq("id", video.id);
-
-      if (deleteError) throw deleteError;
-
-      toast.success("Ideia movida para Vertical!");
+      toast.success("Copiado para Vertical!");
       fetchVideos();
     } catch (error) {
-      console.error("Erro ao mover para Vertical:", error);
-      toast.error("Erro ao mover para Vertical");
+      console.error("Erro ao copiar para Vertical:", error);
+      toast.error("Erro ao copiar para Vertical");
     }
   };
 
@@ -337,23 +330,41 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
           {Object.entries(getGroupedVideos()).map(([status, videos]) => {
             const column = KANBAN_COLUMNS.find(c => c.id === status);
             const isOpen = openGroups[status] !== false; // default open
+            const ideiasNoStatus = status === "ideia" ? videos.filter(v => !v.roteiro) : [];
+            const allIdeiasSelected = ideiasNoStatus.length > 0 && ideiasNoStatus.every(v => selectedForRoteiro.includes(v.id));
             
             return (
               <Collapsible key={status} open={isOpen} onOpenChange={() => toggleGroup(status)}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
-                  {isOpen ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
+                  {status === "ideia" && ideiasNoStatus.length > 0 && (
+                    <Checkbox
+                      checked={allIdeiasSelected}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedForRoteiro(prev => [...new Set([...prev, ...ideiasNoStatus.map(v => v.id)])]);
+                        } else {
+                          setSelectedForRoteiro(prev => prev.filter(id => !ideiasNoStatus.map(v => v.id).includes(id)));
+                        }
+                      }}
+                      className="h-4 w-4"
+                      onClick={(e) => e.stopPropagation()}
+                    />
                   )}
-                  <span className="text-sm font-medium">{column?.label || status}</span>
-                  <span className={cn(
-                    "text-sm",
-                    videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
-                  )}>
-                    {videos.length}
-                  </span>
-                </CollapsibleTrigger>
+                  <CollapsibleTrigger className="flex items-center gap-2 flex-1">
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium">{column?.label || status}</span>
+                    <span className={cn(
+                      "text-sm",
+                      videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
+                    )}>
+                      {videos.length}
+                    </span>
+                  </CollapsibleTrigger>
+                </div>
                 <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
                   {videos.map((video) => (
                     <VideoItem
@@ -418,43 +429,33 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                             <div
                               ref={provided.innerRef}
                               {...provided.draggableProps}
-                              className={`bg-secondary/50 border-l-4 ${column.borderColor} rounded-lg p-4 group cursor-pointer hover:opacity-90 transition-all ${
+                              className={`bg-secondary/50 border-l-2 ${column.borderColor} rounded-md p-2 group cursor-pointer hover:opacity-90 transition-all ${
                                 snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
                               }`}
                               onClick={() => openDetailPanel(video)}
                             >
-                              <div className="flex items-start gap-3">
+                              <div className="flex items-center gap-2">
                                 <div
                                   {...provided.dragHandleProps}
-                                  className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
                                   onClick={(e) => e.stopPropagation()}
                                 >
-                                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-base leading-snug">{video.titulo}</p>
-                                  
-                                  {video.descricao && (
-                                    <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
-                                      {video.descricao}
-                                    </p>
-                                  )}
-                                  {video.roteiro && (
-                                    <div className="mt-3">
-                                      <FileText className="h-4 w-4 text-red-500" />
-                                    </div>
-                                  )}
-                                </div>
+                                <p className="font-medium text-sm leading-tight flex-1 truncate">{video.titulo}</p>
+                                {video.roteiro && (
+                                  <FileText className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
+                                )}
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteVideoKanban(video.id);
                                   }}
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  <Trash2 className="h-3.5 w-3.5" />
                                 </Button>
                               </div>
                             </div>

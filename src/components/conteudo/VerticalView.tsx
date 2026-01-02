@@ -494,7 +494,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   // Transfer video to YouTube
   const handleTransferToYoutube = async (video: VideoVertical) => {
     try {
-      // Insert into videos_youtube with origem_plataforma = "vertical"
+      // Insert copy into videos_youtube with origem_plataforma = "vertical"
       const { error: insertError } = await supabase.from("videos_youtube").insert({
         cliente_id: clienteId,
         titulo: video.titulo,
@@ -507,19 +507,11 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
       if (insertError) throw insertError;
 
-      // Delete from videos_vertical
-      const { error: deleteError } = await supabase
-        .from("videos_vertical")
-        .delete()
-        .eq("id", video.id);
-
-      if (deleteError) throw deleteError;
-
-      toast.success("Ideia movida para YouTube!");
+      toast.success("Copiado para YouTube!");
       fetchVideos();
     } catch (error) {
-      console.error("Erro ao mover para YouTube:", error);
-      toast.error("Erro ao mover para YouTube");
+      console.error("Erro ao copiar para YouTube:", error);
+      toast.error("Erro ao copiar para YouTube");
     }
   };
 
@@ -838,23 +830,41 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
           {Object.entries(getGroupedVideos()).map(([status, videos]) => {
             const column = KANBAN_COLUMNS.find(c => c.id === status);
             const isOpen = openGroups[status] !== false; // default open
+            const ideiasNoStatus = status === "ideia" ? videos.filter(v => !v.roteiro) : [];
+            const allIdeiasSelected = ideiasNoStatus.length > 0 && ideiasNoStatus.every(v => selectedForRoteiro.includes(v.id));
             
             return (
               <Collapsible key={status} open={isOpen} onOpenChange={() => toggleGroup(status)}>
-                <CollapsibleTrigger className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
-                  {isOpen ? (
-                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
+                  {status === "ideia" && ideiasNoStatus.length > 0 && (
+                    <Checkbox
+                      checked={allIdeiasSelected}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedForRoteiro(prev => [...new Set([...prev, ...ideiasNoStatus.map(v => v.id)])]);
+                        } else {
+                          setSelectedForRoteiro(prev => prev.filter(id => !ideiasNoStatus.map(v => v.id).includes(id)));
+                        }
+                      }}
+                      className="h-4 w-4"
+                      onClick={(e) => e.stopPropagation()}
+                    />
                   )}
-                  <span className="text-sm font-medium">{column?.label || status}</span>
-                  <span className={cn(
-                    "text-sm",
-                    videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
-                  )}>
-                    {videos.length}
-                  </span>
-                </CollapsibleTrigger>
+                  <CollapsibleTrigger className="flex items-center gap-2 flex-1">
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium">{column?.label || status}</span>
+                    <span className={cn(
+                      "text-sm",
+                      videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
+                    )}>
+                      {videos.length}
+                    </span>
+                  </CollapsibleTrigger>
+                </div>
                 <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
                   {videos.map((video) => (
                     <VideoItem
@@ -927,58 +937,47 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                               <div
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
-                                className={`${cardBgClass} ${textClass} border-l-4 ${cardBorderClass} rounded-lg p-4 group cursor-pointer hover:opacity-90 transition-all ${
+                                className={`${cardBgClass} ${textClass} border-l-2 ${cardBorderClass} rounded-md p-2 group cursor-pointer hover:opacity-90 transition-all ${
                                   snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
                                 }`}
                                 onClick={() => openDetailPanel(video)}
                               >
-                                <div className="flex items-start gap-3">
+                                <div className="flex items-center gap-2">
                                   <div
                                     {...provided.dragHandleProps}
-                                    className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <GripVertical className="h-4 w-4 text-muted-foreground" />
+                                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                                   </div>
-                                  <div className="flex-1 min-w-0">
-                                    <p className={`font-medium text-base leading-snug ${isEscalado ? "text-primary-foreground" : ""}`}>
-                                      {video.titulo}
-                                    </p>
-                                    
-                                    {getTagsForVideo(video.id).length > 0 && (
-                                      <div className="flex flex-wrap gap-1 mt-2">
-                                        {getTagsForVideo(video.id).map((tag) => (
-                                          <span
-                                            key={tag.id}
-                                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground border-primary-foreground/30" : getTagColorClass(tag.cor)}`}
-                                          >
-                                            {tag.nome}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                    
-                                    {video.descricao && (
-                                      <p className={`text-sm mt-2 line-clamp-2 ${isEscalado ? "text-primary-foreground/80" : "text-muted-foreground"}`}>
-                                        {video.descricao}
-                                      </p>
-                                    )}
-                                    {video.roteiro && (
-                                      <div className="mt-3">
-                                        <FileText className={`h-4 w-4 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
-                                      </div>
-                                    )}
-                                  </div>
+                                  <p className={`font-medium text-sm leading-tight flex-1 truncate ${isEscalado ? "text-primary-foreground" : ""}`}>
+                                    {video.titulo}
+                                  </p>
+                                  {getTagsForVideo(video.id).length > 0 && (
+                                    <div className="flex gap-1 flex-shrink-0">
+                                      {getTagsForVideo(video.id).slice(0, 1).map((tag) => (
+                                        <span
+                                          key={tag.id}
+                                          className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground" : getTagColorClass(tag.cor)}`}
+                                        >
+                                          {tag.nome}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {video.roteiro && (
+                                    <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
+                                  )}
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleDeleteVideoKanban(video.id);
                                     }}
                                   >
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash2 className="h-3.5 w-3.5" />
                                   </Button>
                                 </div>
                               </div>
