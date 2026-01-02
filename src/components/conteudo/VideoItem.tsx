@@ -1,5 +1,7 @@
-import { GripVertical, FileText, Sparkles } from "lucide-react";
+import { GripVertical, FileText, Sparkles, ArrowRightLeft } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { VideoStatusBadge } from "./VideoStatusBadge";
 import { cn } from "@/lib/utils";
 
@@ -17,11 +19,15 @@ interface VideoItemProps {
   status: string;
   escalado?: boolean;
   tags?: TagVideo[];
+  origemPlataforma?: string | null;
   onClick: () => void;
   onStatusChange?: (completed: boolean) => void;
   // Multi-select for batch roteiro creation
   selectedForRoteiro?: boolean;
   onRoteiroSelectChange?: (selected: boolean) => void;
+  // Transfer between platforms
+  onTransferPlatform?: () => void;
+  plataformaDestino?: "youtube" | "vertical";
 }
 
 const TAG_COLORS: Record<string, string> = {
@@ -43,10 +49,13 @@ export const VideoItem = ({
   status,
   escalado,
   tags = [],
+  origemPlataforma,
   onClick,
   onStatusChange,
   selectedForRoteiro,
   onRoteiroSelectChange,
+  onTransferPlatform,
+  plataformaDestino,
 }: VideoItemProps) => {
   const isCompleted = status === "pronto";
   const canSelectForRoteiro = status === "ideia" && !roteiro && onRoteiroSelectChange;
@@ -92,6 +101,20 @@ export const VideoItem = ({
         {titulo}
       </span>
 
+      {origemPlataforma && (
+        <Badge 
+          variant="outline" 
+          className={cn(
+            "text-[10px] px-1.5 py-0 h-5",
+            origemPlataforma === "youtube" 
+              ? "border-red-500/50 text-red-500" 
+              : "border-purple-500/50 text-purple-500"
+          )}
+        >
+          {origemPlataforma === "youtube" ? "YouTube" : "Vertical"}
+        </Badge>
+      )}
+
       {roteiro && (
         <FileText className="h-4 w-4 text-muted-foreground" />
       )}
@@ -113,6 +136,21 @@ export const VideoItem = ({
       ))}
 
       <VideoStatusBadge status={status} />
+
+      {onTransferPlatform && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTransferPlatform();
+          }}
+          title={`Mover para ${plataformaDestino === "youtube" ? "YouTube" : "Vertical"}`}
+        >
+          <ArrowRightLeft className="h-3.5 w-3.5" />
+        </Button>
+      )}
     </div>
   );
 };

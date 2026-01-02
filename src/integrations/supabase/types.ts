@@ -885,6 +885,7 @@ export type Database = {
           escalado: boolean
           id: string
           ordem: number
+          origem_plataforma: string | null
           referencia_id: string | null
           roteiro: string | null
           status: string
@@ -898,6 +899,7 @@ export type Database = {
           escalado?: boolean
           id?: string
           ordem?: number
+          origem_plataforma?: string | null
           referencia_id?: string | null
           roteiro?: string | null
           status?: string
@@ -911,6 +913,7 @@ export type Database = {
           escalado?: boolean
           id?: string
           ordem?: number
+          origem_plataforma?: string | null
           referencia_id?: string | null
           roteiro?: string | null
           status?: string
@@ -970,6 +973,7 @@ export type Database = {
           descricao: string | null
           id: string
           ordem: number
+          origem_plataforma: string | null
           roteiro: string | null
           status: string
           titulo: string
@@ -981,6 +985,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           ordem?: number
+          origem_plataforma?: string | null
           roteiro?: string | null
           status?: string
           titulo: string
@@ -992,6 +997,7 @@ export type Database = {
           descricao?: string | null
           id?: string
           ordem?: number
+          origem_plataforma?: string | null
           roteiro?: string | null
           status?: string
           titulo?: string
