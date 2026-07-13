@@ -1,4 +1,5 @@
 import { BrainstormView } from "./BrainstormView";
+import { CronogramaView } from "./CronogramaView";
 import { VerticalView } from "./VerticalView";
 import { YoutubeView } from "./YoutubeView";
 
@@ -16,13 +17,7 @@ export function ConteudoSection({ clienteId, subAba }: ConteudoSectionProps) {
       
       {subAba === "youtube" && <YoutubeView clienteId={clienteId} />}
       
-      {subAba === "cronograma" && (
-        <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">
-            Em breve: Cronograma de publicações
-          </p>
-        </div>
-      )}
+      {subAba === "cronograma" && <CronogramaView clienteId={clienteId} />}
     </div>
   );
 }

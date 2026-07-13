@@ -26,6 +26,10 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
     label: "Pronto",
     className: "bg-green-500/20 text-green-600 dark:text-green-400",
   },
+  postado: {
+    label: "Postado",
+    className: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
+  },
 };
 
 export const VideoStatusBadge = ({ status, className }: VideoStatusBadgeProps) => {

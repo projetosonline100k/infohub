@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, Trash2, GripVertical, Youtube, FileText, X, List, LayoutGrid, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, GripVertical, FileText, X, List, LayoutGrid, ChevronDown, ChevronRight } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -48,22 +48,33 @@ const KANBAN_COLUMNS = [
   { id: "ideia", label: "Ideias de vídeos", color: "bg-card border-border", borderColor: "border-l-red-500" },
   { id: "roteiro", label: "Criando roteiro", color: "bg-card border-border", borderColor: "border-l-yellow-500" },
   { id: "gravacao", label: "Gravação", color: "bg-card border-border", borderColor: "border-l-purple-500" },
-  { id: "edicao", label: "Em edição", color: "bg-card border-border", borderColor: "border-l-blue-500" },
+  { id: "edicao", label: "Edição", color: "bg-card border-border", borderColor: "border-l-blue-500" },
   { id: "pronto", label: "Prontos para postar", color: "bg-card border-border", borderColor: "border-l-green-500" },
+  { id: "postado", label: "Postados", color: "bg-card border-border", borderColor: "border-l-emerald-500" },
 ];
 
 type ViewMode = "lista" | "quadro";
+
+const VIEW_MODE_STORAGE_KEY = "conteudo_youtube_view_mode";
+
+const getStoredViewMode = (clienteId: string): ViewMode => {
+  if (typeof window === "undefined") return "lista";
+
+  const storedViewMode = window.localStorage.getItem(`${VIEW_MODE_STORAGE_KEY}:${clienteId}`);
+  return storedViewMode === "lista" || storedViewMode === "quadro" ? storedViewMode : "lista";
+};
 
 export function YoutubeView({ clienteId }: YoutubeViewProps) {
   const [videosKanban, setVideosKanban] = useState<VideoYoutube[]>([]);
   const [loading, setLoading] = useState(true);
   
   // View mode
-  const [viewMode, setViewMode] = useState<ViewMode>("lista");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => getStoredViewMode(clienteId));
   
   // Nova ideia modal states
   const [showIdeiasModal, setShowIdeiasModal] = useState(false);
   const [novasIdeias, setNovasIdeias] = useState<NovaIdeia[]>(createEmptyIdeias());
+  const [statusNovaIdeia, setStatusNovaIdeia] = useState("ideia");
   
   // Detail panel state
   const [selectedVideo, setSelectedVideo] = useState<VideoYoutube | null>(null);
@@ -78,6 +89,18 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
   useEffect(() => {
     fetchVideos();
   }, [clienteId]);
+
+  useEffect(() => {
+    setViewMode(getStoredViewMode(clienteId));
+  }, [clienteId]);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(`${VIEW_MODE_STORAGE_KEY}:${clienteId}`, mode);
+    }
+  };
 
   const fetchVideos = async () => {
     setLoading(true);
@@ -112,6 +135,12 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     );
   };
 
+  const abrirNovaIdeia = (status = "ideia") => {
+    setStatusNovaIdeia(status);
+    setNovasIdeias(createEmptyIdeias());
+    setShowIdeiasModal(true);
+  };
+
   const adicionarIdeias = async () => {
     const ideiasValidas = novasIdeias.filter((i) => i.headline.trim());
     if (ideiasValidas.length === 0) return;
@@ -122,8 +151,8 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
           cliente_id: clienteId,
           titulo: ideia.headline.trim(),
           descricao: ideia.descricao.trim() || null,
-          status: "ideia",
-          ordem: videosKanban.filter(v => v.status === "ideia").length + 1,
+          status: statusNovaIdeia,
+          ordem: videosKanban.filter(v => v.status === statusNovaIdeia).length + 1,
         });
       }
 
@@ -170,34 +199,117 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
     fetchVideos();
   };
 
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-
-    const { destination, draggableId } = result;
-    
-    const updatedVideos = [...videosKanban];
-    const videoIndex = updatedVideos.findIndex(v => v.id === draggableId);
-    if (videoIndex !== -1) {
-      updatedVideos[videoIndex] = {
-        ...updatedVideos[videoIndex],
-        status: destination.droppableId,
-      };
-      setVideosKanban(updatedVideos);
-    }
+  const handleAutoSaveVideo = async (video: VideoYoutube) => {
+    const novoStatus = video.roteiro?.trim() && video.status === "ideia" 
+      ? "roteiro" 
+      : video.status;
 
     const { error } = await supabase
       .from("videos_youtube")
-      .update({ status: destination.droppableId })
-      .eq("id", draggableId);
+      .update({
+        titulo: video.titulo,
+        descricao: video.descricao || null,
+        roteiro: video.roteiro || null,
+        status: novoStatus,
+        data_postagem: video.data_postagem || null,
+      })
+      .eq("id", video.id);
 
     if (error) {
+      throw error;
+    }
+
+    const savedVideo = {
+      ...video,
+      descricao: video.descricao || null,
+      roteiro: video.roteiro || null,
+      status: novoStatus,
+      data_postagem: video.data_postagem || null,
+    };
+
+    setSelectedVideo(savedVideo);
+    setVideosKanban(prev => prev.map(item => 
+      item.id === video.id ? { ...item, ...savedVideo } : item
+    ));
+  };
+
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+
+    const { source, destination, draggableId } = result;
+
+    if (source.droppableId === destination.droppableId && source.index === destination.index) {
+      return;
+    }
+
+    const sourceStatus = source.droppableId;
+    const destinationStatus = destination.droppableId;
+    const movedVideo = videosKanban.find((video) => video.id === draggableId);
+
+    if (!movedVideo) return;
+
+    const sourceVideos = getVideosByStatus(sourceStatus).filter((video) => video.id !== draggableId);
+    const destinationVideos = sourceStatus === destinationStatus
+      ? sourceVideos
+      : getVideosByStatus(destinationStatus);
+
+    const reorderedDestinationVideos = [...destinationVideos];
+    reorderedDestinationVideos.splice(destination.index, 0, {
+      ...movedVideo,
+      status: destinationStatus,
+    });
+
+    const reorderedVideos = videosKanban.map((video) => {
+      const destinationVideoIndex = reorderedDestinationVideos.findIndex((item) => item.id === video.id);
+
+      if (destinationVideoIndex !== -1) {
+        return {
+          ...video,
+          status: destinationStatus,
+          ordem: destinationVideoIndex + 1,
+        };
+      }
+
+      if (sourceStatus !== destinationStatus && video.status === sourceStatus) {
+        const sourceVideoIndex = sourceVideos.findIndex((item) => item.id === video.id);
+        return {
+          ...video,
+          ordem: sourceVideoIndex + 1,
+        };
+      }
+
+      return video;
+    });
+
+    setVideosKanban(reorderedVideos);
+
+    const videosToPersist = reorderedVideos.filter((video) =>
+      video.status === destinationStatus || video.status === sourceStatus
+    );
+
+    const updates = await Promise.all(
+      videosToPersist.map((video) =>
+        supabase
+          .from("videos_youtube")
+          .update({ status: video.status, ordem: video.ordem })
+          .eq("id", video.id)
+      )
+    );
+
+    if (updates.some(({ error }) => error)) {
       toast.error("Erro ao mover item");
       fetchVideos();
     }
   };
 
   const getVideosByStatus = (status: string) => 
-    videosKanban.filter(v => v.status === status);
+    videosKanban
+      .filter(v => v.status === status)
+      .sort((a, b) => a.ordem - b.ordem);
+
+  const relatedVideosForSelected = selectedVideo
+    ? getVideosByStatus(selectedVideo.status)
+    : [];
 
   const handleVideoStatusChange = async (videoId: string, completed: boolean) => {
     const newStatus = completed ? "pronto" : "ideia";
@@ -268,17 +380,6 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header YouTube */}
-      <div className="flex items-center gap-3 p-4 bg-red-500/10 rounded-xl border border-border">
-        <div className="p-3 rounded-full bg-red-600">
-          <Youtube className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h2 className="text-xl font-semibold">YouTube</h2>
-          <p className="text-sm text-muted-foreground">Vídeos longos para o canal</p>
-        </div>
-      </div>
-
       {/* Pipeline Header with View Toggle */}
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
@@ -289,7 +390,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
               variant={viewMode === "lista" ? "secondary" : "ghost"}
               size="sm"
               className="h-7 px-2"
-              onClick={() => setViewMode("lista")}
+              onClick={() => handleViewModeChange("lista")}
             >
               <List className="h-4 w-4" />
             </Button>
@@ -297,7 +398,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
               variant={viewMode === "quadro" ? "secondary" : "ghost"}
               size="sm"
               className="h-7 px-2"
-              onClick={() => setViewMode("quadro")}
+              onClick={() => handleViewModeChange("quadro")}
             >
               <LayoutGrid className="h-4 w-4" />
             </Button>
@@ -317,7 +418,7 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
           )}
 
           {/* Nova ideia button */}
-          <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
+          <Button size="sm" onClick={() => abrirNovaIdeia("ideia")}>
             <Plus className="h-4 w-4 mr-1" />
             Nova ideia
           </Button>
@@ -364,6 +465,15 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                       {videos.length}
                     </span>
                   </CollapsibleTrigger>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => abrirNovaIdeia(status)}
+                    title={`Adicionar em ${column?.label || status}`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
                 <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
                   {videos.map((video) => (
@@ -407,11 +517,22 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
           <div className="flex gap-4 overflow-x-auto pb-4">
             {KANBAN_COLUMNS.map((column) => (
               <div key={column.id} className={`flex-shrink-0 min-w-[260px] w-72 rounded-lg border p-3 ${column.color}`}>
-                <h4 className="font-medium text-sm mb-3 flex items-center justify-between">
-                  {column.label}
-                  <span className="text-xs bg-background/50 px-2 py-0.5 rounded-full">
-                    {getVideosByStatus(column.id).length}
-                  </span>
+                <h4 className="font-medium text-sm mb-3 flex items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1">{column.label}</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => abrirNovaIdeia(column.id)}
+                      title={`Adicionar em ${column.label}`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs bg-background/50 px-2 py-0.5 rounded-full">
+                      {getVideosByStatus(column.id).length}
+                    </span>
+                  </div>
                 </h4>
                 
                 <Droppable droppableId={column.id}>
@@ -434,15 +555,15 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
                               }`}
                               onClick={() => openDetailPanel(video)}
                             >
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-start gap-2">
                                 <div
                                   {...provided.dragHandleProps}
-                                  className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                  className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
                                   onClick={(e) => e.stopPropagation()}
                                 >
                                   <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
                                 </div>
-                                <p className="font-medium text-sm leading-tight flex-1 truncate">{video.titulo}</p>
+                                <p className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-snug">{video.titulo}</p>
                                 {video.roteiro && (
                                   <FileText className="h-3.5 w-3.5 text-red-500 flex-shrink-0" />
                                 )}
@@ -545,7 +666,10 @@ export function YoutubeView({ clienteId }: YoutubeViewProps) {
         open={!!selectedVideo}
         onClose={() => setSelectedVideo(null)}
         onSave={handleSaveVideo}
+        onAutoSave={handleAutoSaveVideo}
         onDelete={handleDeleteVideoKanban}
+        relatedVideos={relatedVideosForSelected}
+        onSelectVideo={openDetailPanel}
         tags={[]}
         videoTags={[]}
         onTagToggle={() => {}}

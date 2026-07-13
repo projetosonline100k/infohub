@@ -87,7 +87,9 @@ const KANBAN_COLUMNS = [
   { id: "ideia", label: "Ideias de vídeos", color: "bg-card border-border", borderColor: "border-l-blue-500" },
   { id: "roteiro", label: "Criando roteiro", color: "bg-card border-border", borderColor: "border-l-yellow-500" },
   { id: "gravacao", label: "Gravação", color: "bg-card border-border", borderColor: "border-l-purple-500" },
+  { id: "edicao", label: "Edição", color: "bg-card border-border", borderColor: "border-l-cyan-500" },
   { id: "pronto", label: "Prontos para postar", color: "bg-card border-border", borderColor: "border-l-green-500" },
+  { id: "postado", label: "Postados", color: "bg-card border-border", borderColor: "border-l-emerald-500" },
 ];
 
 const TAG_COLORS = [
@@ -118,6 +120,15 @@ const getTagColorClass = (cor: string) => {
 type ViewMode = "lista" | "quadro";
 type PeriodoFiltro = "semana" | "mes" | "ano";
 
+const VIEW_MODE_STORAGE_KEY = "conteudo_vertical_view_mode";
+
+const getStoredViewMode = (clienteId: string): ViewMode => {
+  if (typeof window === "undefined") return "lista";
+
+  const storedViewMode = window.localStorage.getItem(`${VIEW_MODE_STORAGE_KEY}:${clienteId}`);
+  return storedViewMode === "lista" || storedViewMode === "quadro" ? storedViewMode : "lista";
+};
+
 export function VerticalView({ clienteId }: VerticalViewProps) {
   const [videosReferencia, setVideosReferencia] = useState<VideoReferencia[]>([]);
   const [videosKanban, setVideosKanban] = useState<VideoVertical[]>([]);
@@ -125,7 +136,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   const [loading, setLoading] = useState(true);
   
   // View mode
-  const [viewMode, setViewMode] = useState<ViewMode>("lista");
+  const [viewMode, setViewMode] = useState<ViewMode>(() => getStoredViewMode(clienteId));
   const [periodoFiltro, setPeriodoFiltro] = useState<PeriodoFiltro>("semana");
   const [dataReferencia, setDataReferencia] = useState(new Date());
   
@@ -142,6 +153,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   // Nova ideia modal states
   const [showIdeiasModal, setShowIdeiasModal] = useState(false);
   const [novasIdeias, setNovasIdeias] = useState<NovaIdeia[]>(createEmptyIdeias());
+  const [statusNovaIdeia, setStatusNovaIdeia] = useState("ideia");
   
   // Escalar modal states
   const [showEscalarModal, setShowEscalarModal] = useState(false);
@@ -163,6 +175,18 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     fetchVideos();
     fetchTags();
   }, [clienteId]);
+
+  useEffect(() => {
+    setViewMode(getStoredViewMode(clienteId));
+  }, [clienteId]);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(`${VIEW_MODE_STORAGE_KEY}:${clienteId}`, mode);
+    }
+  };
 
   const fetchVideos = async () => {
     setLoading(true);
@@ -288,6 +312,12 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     );
   };
 
+  const abrirNovaIdeia = (status = "ideia") => {
+    setStatusNovaIdeia(status);
+    setNovasIdeias([{ ...createEmptyIdeia(), plataforma: "instagram" }]);
+    setShowIdeiasModal(true);
+  };
+
   const adicionarIdeias = async () => {
     const ideiasValidas = novasIdeias.filter((i) => i.headline.trim());
     if (ideiasValidas.length === 0) return;
@@ -311,8 +341,8 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             cliente_id: clienteId,
             titulo: ideia.headline.trim(),
             descricao: ideia.descricao.trim() || null,
-            status: "ideia",
-            ordem: videosKanban.filter(v => v.status === "ideia").length + 1,
+            status: statusNovaIdeia,
+            ordem: videosKanban.filter(v => v.status === statusNovaIdeia).length + 1,
           });
         }
 
@@ -321,7 +351,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
             cliente_id: clienteId,
             titulo: ideia.headline.trim(),
             descricao: ideia.descricao.trim() || null,
-            status: "ideia",
+            status: statusNovaIdeia,
             ordem: 1,
           });
         }
@@ -394,27 +424,104 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     fetchVideos();
   };
 
-  const handleDragEnd = async (result: DropResult) => {
-    if (!result.destination) return;
-
-    const { destination, draggableId } = result;
-    
-    const updatedVideos = [...videosKanban];
-    const videoIndex = updatedVideos.findIndex(v => v.id === draggableId);
-    if (videoIndex !== -1) {
-      updatedVideos[videoIndex] = {
-        ...updatedVideos[videoIndex],
-        status: destination.droppableId,
-      };
-      setVideosKanban(updatedVideos);
-    }
+  const handleAutoSaveVideo = async (video: VideoVertical) => {
+    const novoStatus = video.roteiro?.trim() && video.status === "ideia" 
+      ? "roteiro" 
+      : video.status;
 
     const { error } = await supabase
       .from("videos_vertical")
-      .update({ status: destination.droppableId })
-      .eq("id", draggableId);
+      .update({
+        titulo: video.titulo,
+        descricao: video.descricao || null,
+        roteiro: video.roteiro || null,
+        status: novoStatus,
+        data_postagem: video.data_postagem || null,
+      })
+      .eq("id", video.id);
 
     if (error) {
+      throw error;
+    }
+
+    const savedVideo = {
+      ...video,
+      descricao: video.descricao || null,
+      roteiro: video.roteiro || null,
+      status: novoStatus,
+      data_postagem: video.data_postagem || null,
+    };
+
+    setSelectedVideo(savedVideo);
+    setVideosKanban(prev => prev.map(item => 
+      item.id === video.id ? { ...item, ...savedVideo } : item
+    ));
+  };
+
+  const handleDragEnd = async (result: DropResult) => {
+    if (!result.destination) return;
+
+    const { source, destination, draggableId } = result;
+
+    if (source.droppableId === destination.droppableId && source.index === destination.index) {
+      return;
+    }
+
+    const sourceStatus = source.droppableId;
+    const destinationStatus = destination.droppableId;
+    const movedVideo = videosKanban.find((video) => video.id === draggableId);
+
+    if (!movedVideo) return;
+
+    const sourceVideos = getVideosByStatus(sourceStatus).filter((video) => video.id !== draggableId);
+    const destinationVideos = sourceStatus === destinationStatus
+      ? sourceVideos
+      : getVideosByStatus(destinationStatus);
+
+    const reorderedDestinationVideos = [...destinationVideos];
+    reorderedDestinationVideos.splice(destination.index, 0, {
+      ...movedVideo,
+      status: destinationStatus,
+    });
+
+    const reorderedVideos = videosKanban.map((video) => {
+      const destinationVideoIndex = reorderedDestinationVideos.findIndex((item) => item.id === video.id);
+
+      if (destinationVideoIndex !== -1) {
+        return {
+          ...video,
+          status: destinationStatus,
+          ordem: destinationVideoIndex + 1,
+        };
+      }
+
+      if (sourceStatus !== destinationStatus && video.status === sourceStatus) {
+        const sourceVideoIndex = sourceVideos.findIndex((item) => item.id === video.id);
+        return {
+          ...video,
+          ordem: sourceVideoIndex + 1,
+        };
+      }
+
+      return video;
+    });
+
+    setVideosKanban(reorderedVideos);
+
+    const videosToPersist = reorderedVideos.filter((video) =>
+      video.status === destinationStatus || video.status === sourceStatus
+    );
+
+    const updates = await Promise.all(
+      videosToPersist.map((video) =>
+        supabase
+          .from("videos_vertical")
+          .update({ status: video.status, ordem: video.ordem })
+          .eq("id", video.id)
+      )
+    );
+
+    if (updates.some(({ error }) => error)) {
       toast.error("Erro ao mover item");
       fetchVideos();
     }
@@ -477,7 +584,13 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   };
 
   const getVideosByStatus = (status: string) => 
-    videosKanban.filter(v => v.status === status);
+    videosKanban
+      .filter(v => v.status === status)
+      .sort((a, b) => a.ordem - b.ordem);
+
+  const relatedVideosForSelected = selectedVideo
+    ? getVideosByStatus(selectedVideo.status)
+    : [];
 
   const handleVideoStatusChange = async (videoId: string, completed: boolean) => {
     const newStatus = completed ? "pronto" : "ideia";
@@ -579,16 +692,308 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header Instagram */}
-      <div className="flex items-center gap-3 p-4 bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-orange-500/10 rounded-xl border border-border">
-        <div className="p-3 rounded-full bg-gradient-to-br from-pink-500 via-purple-500 to-orange-500">
-          <Instagram className="h-6 w-6 text-white" />
-        </div>
-        <div>
-          <h2 className="text-xl font-semibold">Instagram</h2>
-          <p className="text-sm text-muted-foreground">Conteúdo vertical para reels e stories</p>
+      {/* Pipeline Header with View Toggle */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
+        <div className="flex items-center gap-2">
+          {/* View mode toggle */}
+          <div className="flex items-center border rounded-md p-0.5 bg-muted/50">
+            <Button
+              variant={viewMode === "lista" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => handleViewModeChange("lista")}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === "quadro" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2"
+              onClick={() => handleViewModeChange("quadro")}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Tags button */}
+          <Dialog open={tagsDialogOpen} onOpenChange={setTagsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Tag className="h-4 w-4 mr-1" />
+                Tags
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Gerenciar Tags</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nome da tag"
+                    value={novaTag.nome}
+                    onChange={e => setNovaTag(prev => ({ ...prev, nome: e.target.value }))}
+                    className="flex-1"
+                  />
+                  <Button onClick={handleAddTag} size="sm">
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                <div className="flex flex-wrap gap-2">
+                  {TAG_COLORS.map((color) => (
+                    <button
+                      key={color.id}
+                      onClick={() => setNovaTag(prev => ({ ...prev, cor: color.id }))}
+                      className={`w-8 h-8 rounded-full ${color.class} transition-all ${
+                        novaTag.cor === color.id ? "ring-2 ring-offset-2 ring-primary" : ""
+                      }`}
+                      title={color.label}
+                    />
+                  ))}
+                </div>
+
+                <div className="border-t pt-4">
+                  <p className="text-sm text-muted-foreground mb-3">Tags existentes:</p>
+                  {tags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">
+                      Nenhuma tag criada ainda
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <div
+                          key={tag.id}
+                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${getTagColorClass(tag.cor)}`}
+                        >
+                          {tag.nome}
+                          <button
+                            onClick={() => handleDeleteTag(tag.id)}
+                            className="ml-1 hover:opacity-70"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          {/* Criar Roteiros button */}
+          {selectedForRoteiro.length > 0 && (
+            <Button 
+              size="sm" 
+              variant="secondary"
+              onClick={() => setShowCriarRoteirosModal(true)}
+              className="gap-2"
+            >
+              <FileText className="h-4 w-4" />
+              Criar Roteiros ({selectedForRoteiro.length})
+            </Button>
+          )}
+
+          {/* Nova ideia button */}
+          <Button size="sm" onClick={() => abrirNovaIdeia("ideia")}>
+            <Plus className="h-4 w-4 mr-1" />
+            Nova ideia
+          </Button>
         </div>
       </div>
+
+      {/* List View */}
+      {viewMode === "lista" && (
+        <div className="space-y-2 border rounded-lg p-4">
+          {Object.entries(getGroupedVideos()).map(([status, videos]) => {
+            const column = KANBAN_COLUMNS.find(c => c.id === status);
+            const isOpen = openGroups[status] !== false; // default open
+            const ideiasNoStatus = status === "ideia" ? videos.filter(v => !v.roteiro) : [];
+            const allIdeiasSelected = ideiasNoStatus.length > 0 && ideiasNoStatus.every(v => selectedForRoteiro.includes(v.id));
+            
+            return (
+              <Collapsible key={status} open={isOpen} onOpenChange={() => toggleGroup(status)}>
+                <div className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
+                  {status === "ideia" && ideiasNoStatus.length > 0 && (
+                    <Checkbox
+                      checked={allIdeiasSelected}
+                      onCheckedChange={(checked) => {
+                        if (checked) {
+                          setSelectedForRoteiro(prev => [...new Set([...prev, ...ideiasNoStatus.map(v => v.id)])]);
+                        } else {
+                          setSelectedForRoteiro(prev => prev.filter(id => !ideiasNoStatus.map(v => v.id).includes(id)));
+                        }
+                      }}
+                      className="h-4 w-4"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
+                  <CollapsibleTrigger className="flex items-center gap-2 flex-1">
+                    {isOpen ? (
+                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium">{column?.label || status}</span>
+                    <span className={cn(
+                      "text-sm",
+                      videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
+                    )}>
+                      {videos.length}
+                    </span>
+                  </CollapsibleTrigger>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => abrirNovaIdeia(status)}
+                    title={`Adicionar em ${column?.label || status}`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
+                  {videos.map((video) => (
+                    <VideoItem
+                      key={video.id}
+                      id={video.id}
+                      titulo={video.titulo}
+                      descricao={video.descricao}
+                      roteiro={video.roteiro}
+                      status={video.status}
+                      escalado={video.escalado}
+                      tags={getTagsForVideo(video.id)}
+                      origemPlataforma={video.origem_plataforma}
+                      onClick={() => openDetailPanel(video)}
+                      onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
+                      selectedForRoteiro={selectedForRoteiro.includes(video.id)}
+                      onRoteiroSelectChange={(selected) => {
+                        if (selected) {
+                          setSelectedForRoteiro(prev => [...prev, video.id]);
+                        } else {
+                          setSelectedForRoteiro(prev => prev.filter(id => id !== video.id));
+                        }
+                      }}
+                      onTransferPlatform={() => handleTransferToYoutube(video)}
+                      plataformaDestino="youtube"
+                    />
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })}
+          {videosKanban.length === 0 && (
+            <p className="text-center text-muted-foreground py-8">
+              Nenhum vídeo na pipeline ainda
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Kanban View */}
+      {viewMode === "quadro" && (
+        <DragDropContext onDragEnd={handleDragEnd}>
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {KANBAN_COLUMNS.map((column) => (
+              <div key={column.id} className={`flex-shrink-0 min-w-[260px] w-72 rounded-lg border p-3 ${column.color}`}>
+                <h4 className="font-medium text-sm mb-3 flex items-center justify-between gap-2">
+                  <span className="min-w-0 flex-1">{column.label}</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => abrirNovaIdeia(column.id)}
+                      title={`Adicionar em ${column.label}`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                    </Button>
+                    <span className="text-xs bg-background/50 px-2 py-0.5 rounded-full">
+                      {getVideosByStatus(column.id).length}
+                    </span>
+                  </div>
+                </h4>
+                
+                <Droppable droppableId={column.id}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                      className={`min-h-[300px] max-h-[400px] overflow-y-auto scrollbar-thin space-y-3 transition-colors rounded-md ${
+                        snapshot.isDraggingOver ? "bg-primary/5" : ""
+                      }`}
+                    >
+                      {getVideosByStatus(column.id).map((video, index) => {
+                        const isEscalado = video.escalado === true;
+                        const cardBorderClass = isEscalado ? "border-l-primary" : column.borderColor;
+                        const cardBgClass = isEscalado ? "bg-primary" : "bg-secondary/50";
+                        const textClass = isEscalado ? "text-primary-foreground" : "";
+                        
+                        return (
+                          <Draggable key={video.id} draggableId={video.id} index={index}>
+                            {(provided, snapshot) => (
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                className={`${cardBgClass} ${textClass} border-l-2 ${cardBorderClass} rounded-md p-2 group cursor-pointer hover:opacity-90 transition-all ${
+                                  snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
+                                }`}
+                                onClick={() => openDetailPanel(video)}
+                              >
+                                <div className="flex items-start gap-2">
+                                  <div
+                                    {...provided.dragHandleProps}
+                                    className="mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+                                  </div>
+                                  <p className={`min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-snug ${isEscalado ? "text-primary-foreground" : ""}`}>
+                                    {video.titulo}
+                                  </p>
+                                  {getTagsForVideo(video.id).length > 0 && (
+                                    <div className="flex gap-1 flex-shrink-0">
+                                      {getTagsForVideo(video.id).slice(0, 1).map((tag) => (
+                                        <span
+                                          key={tag.id}
+                                          className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground" : getTagColorClass(tag.cor)}`}
+                                        >
+                                          {tag.nome}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {video.roteiro && (
+                                    <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
+                                  )}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteVideoKanban(video.id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </Draggable>
+                        );
+                      })}
+                      {provided.placeholder}
+                    </div>
+                  )}
+                </Droppable>
+              </div>
+            ))}
+          </div>
+        </DragDropContext>
+      )}
 
       {/* Vídeos que performaram */}
       <Card>
@@ -711,289 +1116,6 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
           )}
         </CardContent>
       </Card>
-
-      {/* Pipeline Header with View Toggle */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
-        <div className="flex items-center gap-2">
-          {/* View mode toggle */}
-          <div className="flex items-center border rounded-md p-0.5 bg-muted/50">
-            <Button
-              variant={viewMode === "lista" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2"
-              onClick={() => setViewMode("lista")}
-            >
-              <List className="h-4 w-4" />
-            </Button>
-            <Button
-              variant={viewMode === "quadro" ? "secondary" : "ghost"}
-              size="sm"
-              className="h-7 px-2"
-              onClick={() => setViewMode("quadro")}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Tags button */}
-          <Dialog open={tagsDialogOpen} onOpenChange={setTagsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Tag className="h-4 w-4 mr-1" />
-                Tags
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Gerenciar Tags</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Nome da tag"
-                    value={novaTag.nome}
-                    onChange={e => setNovaTag(prev => ({ ...prev, nome: e.target.value }))}
-                    className="flex-1"
-                  />
-                  <Button onClick={handleAddTag} size="sm">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                <div className="flex flex-wrap gap-2">
-                  {TAG_COLORS.map((color) => (
-                    <button
-                      key={color.id}
-                      onClick={() => setNovaTag(prev => ({ ...prev, cor: color.id }))}
-                      className={`w-8 h-8 rounded-full ${color.class} transition-all ${
-                        novaTag.cor === color.id ? "ring-2 ring-offset-2 ring-primary" : ""
-                      }`}
-                      title={color.label}
-                    />
-                  ))}
-                </div>
-
-                <div className="border-t pt-4">
-                  <p className="text-sm text-muted-foreground mb-3">Tags existentes:</p>
-                  {tags.length === 0 ? (
-                    <p className="text-sm text-muted-foreground text-center py-4">
-                      Nenhuma tag criada ainda
-                    </p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {tags.map((tag) => (
-                        <div
-                          key={tag.id}
-                          className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium border ${getTagColorClass(tag.cor)}`}
-                        >
-                          {tag.nome}
-                          <button
-                            onClick={() => handleDeleteTag(tag.id)}
-                            className="ml-1 hover:opacity-70"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Criar Roteiros button */}
-          {selectedForRoteiro.length > 0 && (
-            <Button 
-              size="sm" 
-              variant="secondary"
-              onClick={() => setShowCriarRoteirosModal(true)}
-              className="gap-2"
-            >
-              <FileText className="h-4 w-4" />
-              Criar Roteiros ({selectedForRoteiro.length})
-            </Button>
-          )}
-
-          {/* Nova ideia button */}
-          <Button size="sm" onClick={() => setShowIdeiasModal(true)}>
-            <Plus className="h-4 w-4 mr-1" />
-            Nova ideia
-          </Button>
-        </div>
-      </div>
-
-      {/* List View */}
-      {viewMode === "lista" && (
-        <div className="space-y-2 border rounded-lg p-4">
-          {Object.entries(getGroupedVideos()).map(([status, videos]) => {
-            const column = KANBAN_COLUMNS.find(c => c.id === status);
-            const isOpen = openGroups[status] !== false; // default open
-            const ideiasNoStatus = status === "ideia" ? videos.filter(v => !v.roteiro) : [];
-            const allIdeiasSelected = ideiasNoStatus.length > 0 && ideiasNoStatus.every(v => selectedForRoteiro.includes(v.id));
-            
-            return (
-              <Collapsible key={status} open={isOpen} onOpenChange={() => toggleGroup(status)}>
-                <div className="flex items-center gap-2 w-full px-3 py-2 hover:bg-muted/50 rounded-md transition-colors">
-                  {status === "ideia" && ideiasNoStatus.length > 0 && (
-                    <Checkbox
-                      checked={allIdeiasSelected}
-                      onCheckedChange={(checked) => {
-                        if (checked) {
-                          setSelectedForRoteiro(prev => [...new Set([...prev, ...ideiasNoStatus.map(v => v.id)])]);
-                        } else {
-                          setSelectedForRoteiro(prev => prev.filter(id => !ideiasNoStatus.map(v => v.id).includes(id)));
-                        }
-                      }}
-                      className="h-4 w-4"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  )}
-                  <CollapsibleTrigger className="flex items-center gap-2 flex-1">
-                    {isOpen ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    )}
-                    <span className="text-sm font-medium">{column?.label || status}</span>
-                    <span className={cn(
-                      "text-sm",
-                      videos.length > 0 ? "text-primary font-medium" : "text-muted-foreground"
-                    )}>
-                      {videos.length}
-                    </span>
-                  </CollapsibleTrigger>
-                </div>
-                <CollapsibleContent className="pl-4 max-h-[288px] overflow-y-auto scrollbar-thin">
-                  {videos.map((video) => (
-                    <VideoItem
-                      key={video.id}
-                      id={video.id}
-                      titulo={video.titulo}
-                      descricao={video.descricao}
-                      roteiro={video.roteiro}
-                      status={video.status}
-                      escalado={video.escalado}
-                      tags={getTagsForVideo(video.id)}
-                      origemPlataforma={video.origem_plataforma}
-                      onClick={() => openDetailPanel(video)}
-                      onStatusChange={(completed) => handleVideoStatusChange(video.id, completed)}
-                      selectedForRoteiro={selectedForRoteiro.includes(video.id)}
-                      onRoteiroSelectChange={(selected) => {
-                        if (selected) {
-                          setSelectedForRoteiro(prev => [...prev, video.id]);
-                        } else {
-                          setSelectedForRoteiro(prev => prev.filter(id => id !== video.id));
-                        }
-                      }}
-                      onTransferPlatform={() => handleTransferToYoutube(video)}
-                      plataformaDestino="youtube"
-                    />
-                  ))}
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
-          {videosKanban.length === 0 && (
-            <p className="text-center text-muted-foreground py-8">
-              Nenhum vídeo na pipeline ainda
-            </p>
-          )}
-        </div>
-      )}
-
-      {/* Kanban View */}
-      {viewMode === "quadro" && (
-        <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {KANBAN_COLUMNS.map((column) => (
-              <div key={column.id} className={`flex-shrink-0 min-w-[260px] w-72 rounded-lg border p-3 ${column.color}`}>
-                <h4 className="font-medium text-sm mb-3 flex items-center justify-between">
-                  {column.label}
-                  <span className="text-xs bg-background/50 px-2 py-0.5 rounded-full">
-                    {getVideosByStatus(column.id).length}
-                  </span>
-                </h4>
-                
-                <Droppable droppableId={column.id}>
-                  {(provided, snapshot) => (
-                    <div
-                      ref={provided.innerRef}
-                      {...provided.droppableProps}
-                      className={`min-h-[300px] max-h-[400px] overflow-y-auto scrollbar-thin space-y-3 transition-colors rounded-md ${
-                        snapshot.isDraggingOver ? "bg-primary/5" : ""
-                      }`}
-                    >
-                      {getVideosByStatus(column.id).map((video, index) => {
-                        const isEscalado = video.escalado === true;
-                        const cardBorderClass = isEscalado ? "border-l-primary" : column.borderColor;
-                        const cardBgClass = isEscalado ? "bg-primary" : "bg-secondary/50";
-                        const textClass = isEscalado ? "text-primary-foreground" : "";
-                        
-                        return (
-                          <Draggable key={video.id} draggableId={video.id} index={index}>
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                className={`${cardBgClass} ${textClass} border-l-2 ${cardBorderClass} rounded-md p-2 group cursor-pointer hover:opacity-90 transition-all ${
-                                  snapshot.isDragging ? "shadow-lg ring-2 ring-primary" : ""
-                                }`}
-                                onClick={() => openDetailPanel(video)}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    {...provided.dragHandleProps}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-                                  </div>
-                                  <p className={`font-medium text-sm leading-tight flex-1 truncate ${isEscalado ? "text-primary-foreground" : ""}`}>
-                                    {video.titulo}
-                                  </p>
-                                  {getTagsForVideo(video.id).length > 0 && (
-                                    <div className="flex gap-1 flex-shrink-0">
-                                      {getTagsForVideo(video.id).slice(0, 1).map((tag) => (
-                                        <span
-                                          key={tag.id}
-                                          className={`inline-flex items-center px-1.5 py-0 rounded text-[10px] font-medium ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground" : getTagColorClass(tag.cor)}`}
-                                        >
-                                          {tag.nome}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {video.roteiro && (
-                                    <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
-                                  )}
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleDeleteVideoKanban(video.id);
-                                    }}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </Draggable>
-                        );
-                      })}
-                      {provided.placeholder}
-                    </div>
-                  )}
-                </Droppable>
-              </div>
-            ))}
-          </div>
-        </DragDropContext>
-      )}
 
       {/* Modal de novas ideias */}
       <Dialog open={showIdeiasModal} onOpenChange={setShowIdeiasModal}>
@@ -1182,7 +1304,10 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         open={!!selectedVideo}
         onClose={() => setSelectedVideo(null)}
         onSave={handleSaveVideo}
+        onAutoSave={handleAutoSaveVideo}
         onDelete={handleDeleteVideoKanban}
+        relatedVideos={relatedVideosForSelected}
+        onSelectVideo={openDetailPanel}
         tags={tags}
         videoTags={editVideoTags}
         onTagToggle={toggleVideoTag}

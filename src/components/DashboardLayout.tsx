@@ -1,6 +1,7 @@
 import { NavLink } from "@/components/NavLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { LayoutDashboard, Users, Activity } from "lucide-react";
+import { useLocation } from "react-router-dom";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -13,9 +14,13 @@ const menuItems = [
 ];
 
 export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
+  const location = useLocation();
+  const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
+
   return (
     <div className="min-h-screen w-full bg-background">
       {/* Header horizontal */}
+      {!isClienteDetalhe && (
       <header className="bg-sidebar border-b border-sidebar-border">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between mb-4">
@@ -44,10 +49,11 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           </nav>
         </div>
       </header>
+      )}
 
       {/* Main content area */}
       <main className="overflow-auto">
-        <div className="p-6">
+        <div className={isClienteDetalhe ? "" : "p-6"}>
           {children}
         </div>
       </main>

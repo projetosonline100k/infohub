@@ -57,13 +57,13 @@ export const VideoItem = ({
   onTransferPlatform,
   plataformaDestino,
 }: VideoItemProps) => {
-  const isCompleted = status === "pronto";
+  const isCompleted = status === "pronto" || status === "postado";
   const canSelectForRoteiro = status === "ideia" && !roteiro && onRoteiroSelectChange;
 
   return (
     <div
       className={cn(
-        "group flex items-center gap-2 px-3 py-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors border-l-2",
+        "group flex items-start gap-2 px-3 py-2.5 hover:bg-muted/50 rounded-md cursor-pointer transition-colors border-l-2",
         escalado 
           ? "border-l-primary bg-primary/5" 
           : "border-l-transparent",
@@ -72,7 +72,7 @@ export const VideoItem = ({
       )}
       onClick={onClick}
     >
-      <GripVertical className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 cursor-grab" />
+      <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 cursor-grab" />
       
       {canSelectForRoteiro ? (
         <Checkbox
@@ -81,7 +81,7 @@ export const VideoItem = ({
             onRoteiroSelectChange?.(!!checked);
           }}
           onClick={(e) => e.stopPropagation()}
-          className="h-4 w-4"
+          className="mt-0.5 h-4 w-4 shrink-0"
         />
       ) : (
         <Checkbox
@@ -90,58 +90,62 @@ export const VideoItem = ({
             onStatusChange?.(!!checked);
           }}
           onClick={(e) => e.stopPropagation()}
-          className="h-4 w-4"
+          className="mt-0.5 h-4 w-4 shrink-0"
         />
       )}
 
-      <span className={cn(
-        "flex-1 text-sm truncate",
-        isCompleted && "line-through text-muted-foreground"
-      )}>
-        {titulo}
-      </span>
-
-      {origemPlataforma && (
-        <Badge 
-          variant="outline" 
-          className={cn(
-            "text-[10px] px-1.5 py-0 h-5",
-            origemPlataforma === "youtube" 
-              ? "border-red-500/50 text-red-500" 
-              : "border-purple-500/50 text-purple-500"
-          )}
-        >
-          {origemPlataforma === "youtube" ? "YouTube" : "Vertical"}
-        </Badge>
-      )}
-
-      {roteiro && (
-        <FileText className="h-4 w-4 text-muted-foreground" />
-      )}
-
-      {escalado && (
-        <Sparkles className="h-4 w-4 text-primary" />
-      )}
-
-      {tags.slice(0, 2).map((tag) => (
-        <span
-          key={tag.id}
-          className={cn(
-            "px-1.5 py-0.5 rounded text-xs font-medium",
-            TAG_COLORS[tag.cor] || TAG_COLORS.blue
-          )}
-        >
-          {tag.nome}
+      <div className="min-w-0 flex-1 space-y-1">
+        <span className={cn(
+          "block whitespace-normal break-words text-sm leading-snug",
+          isCompleted && "line-through text-muted-foreground"
+        )}>
+          {titulo}
         </span>
-      ))}
 
-      <VideoStatusBadge status={status} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {origemPlataforma && (
+            <Badge 
+              variant="outline" 
+              className={cn(
+                "h-5 px-1.5 py-0 text-[10px]",
+                origemPlataforma === "youtube" 
+                  ? "border-red-500/50 text-red-500" 
+                  : "border-purple-500/50 text-purple-500"
+              )}
+            >
+              {origemPlataforma === "youtube" ? "YouTube" : "Vertical"}
+            </Badge>
+          )}
+
+          {roteiro && (
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          )}
+
+          {escalado && (
+            <Sparkles className="h-4 w-4 text-primary" />
+          )}
+
+          {tags.slice(0, 2).map((tag) => (
+            <span
+              key={tag.id}
+              className={cn(
+                "rounded px-1.5 py-0.5 text-xs font-medium",
+                TAG_COLORS[tag.cor] || TAG_COLORS.blue
+              )}
+            >
+              {tag.nome}
+            </span>
+          ))}
+
+          <VideoStatusBadge status={status} />
+        </div>
+      </div>
 
       {onTransferPlatform && (
         <Button
           size="icon"
           variant="ghost"
-          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-6 w-6 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
             onTransferPlatform();

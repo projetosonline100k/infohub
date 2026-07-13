@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
@@ -49,6 +49,7 @@ export default function ClienteDetalhe() {
   const [loading, setLoading] = useState(true);
   const [abaAtiva, setAbaAtiva] = useState("informacoes");
   const [conteudoExpandido, setConteudoExpandido] = useState(false);
+  const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
   const [subAbaConteudo, setSubAbaConteudo] = useState("brainstorm");
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
@@ -125,119 +126,133 @@ export default function ClienteDetalhe() {
     );
   }
 
+  const abasPrincipais = [
+    { id: "informacoes", label: "Informações gerais" },
+    { id: "pesquisa", label: "Pesquisa" },
+    { id: "atividades", label: "Atividades" },
+    { id: "documentos", label: "Documentos" },
+  ];
+  const abasConteudo = [
+    { id: "brainstorm", label: "Brainstorm" },
+    { id: "vertical", label: "Vertical" },
+    { id: "youtube", label: "Youtube" },
+    { id: "cronograma", label: "Cronograma" },
+  ];
+
   return (
     <div className="flex h-screen">
       {/* Sidebar interno */}
-      <div className="w-52 border-r border-border bg-background p-4">
-        <div className="space-y-1">
-          <button
-            onClick={() => setAbaAtiva("informacoes")}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-              abaAtiva === "informacoes"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            Informações gerais
-          </button>
-          <button
-            onClick={() => setAbaAtiva("pesquisa")}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-              abaAtiva === "pesquisa"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            Pesquisa
-          </button>
-          <button
-            onClick={() => setAbaAtiva("atividades")}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-              abaAtiva === "atividades"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            Atividades
-          </button>
-          <button
-            onClick={() => setAbaAtiva("documentos")}
-            className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-              abaAtiva === "documentos"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            Documentos
-          </button>
-          
-          {/* Conteúdo com sub-itens expansíveis */}
-          <div>
-            <button
-              onClick={() => {
-                setConteudoExpandido(!conteudoExpandido);
-                if (!conteudoExpandido) {
-                  setAbaAtiva("conteudo");
-                }
-              }}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${
-                abaAtiva === "conteudo"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
+      <div className={`${sidebarRecolhida ? "w-14" : "w-52"} shrink-0 border-r border-border bg-background p-4 transition-all`}>
+        {sidebarRecolhida ? (
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/clientes")}
+              title="Voltar"
             >
-              <span>Conteúdo</span>
-              {conteudoExpandido ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
-            </button>
-            
-            {/* Sub-itens */}
-            {conteudoExpandido && (
-              <div className="ml-3 mt-1 space-y-1 border-l border-border pl-2">
-                {[
-                  { id: "brainstorm", label: "Brainstorm" },
-                  { id: "vertical", label: "Vertical" },
-                  { id: "youtube", label: "Youtube" },
-                  { id: "cronograma", label: "Cronograma" },
-                ].map((item) => (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setAbaAtiva("conteudo");
-                      setSubAbaConteudo(item.id);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                      abaAtiva === "conteudo" && subAbaConteudo === item.id
-                        ? "bg-primary/20 text-primary font-medium"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            )}
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSidebarRecolhida(false)}
+              title="Expandir menu"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="mb-3 flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigate("/clientes")}
+                className="flex-1 justify-start gap-2"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Voltar
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setSidebarRecolhida(true)}
+                title="Recolher menu"
+                className="h-9 w-9"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-1">
+              {abasPrincipais.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setAbaAtiva(item.id)}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    abaAtiva === item.id
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+
+              <div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConteudoExpandido(!conteudoExpandido);
+                    if (!conteudoExpandido) {
+                      setAbaAtiva("conteudo");
+                    }
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${
+                    abaAtiva === "conteudo"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  <span>Conteúdo</span>
+                  {conteudoExpandido ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </button>
+
+                {conteudoExpandido && (
+                  <div className="ml-3 mt-1 space-y-1 border-l border-border pl-2">
+                    {abasConteudo.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setAbaAtiva("conteudo");
+                          setSubAbaConteudo(item.id);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+                          abaAtiva === "conteudo" && subAbaConteudo === item.id
+                            ? "bg-primary/20 text-primary font-medium"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Área de conteúdo */}
       <div className="flex-1 overflow-y-auto">
-        {/* Header */}
-        <div className="border-b border-border bg-background p-4 flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/clientes")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <h1 className="text-2xl font-bold">{cliente.nome_especialista}</h1>
-        </div>
-
         {/* Conteúdo das abas */}
         <div className="p-6">
           {abaAtiva === "informacoes" && (

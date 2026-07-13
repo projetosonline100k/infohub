@@ -14,6 +14,11 @@ interface SlashCommandInputProps extends React.InputHTMLAttributes<HTMLInputElem
 }
 
 type CommandType = "mapa" | "termos" | null;
+type HistoryEntry = {
+  value: string;
+  selectionStart: number;
+  selectionEnd: number;
+};
 
 export function SlashCommandInput({
   clienteId,
@@ -28,14 +33,69 @@ export function SlashCommandInput({
   const [commandType, setCommandType] = useState<CommandType>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const undoStackRef = useRef<HistoryEntry[]>([]);
+  const redoStackRef = useRef<HistoryEntry[]>([]);
+  const valueRef = useRef(value);
+  const selectionRef = useRef({ start: value.length, end: value.length });
   
   const { categorias: categoriasNucleo, loading: loadingNucleo } = useNucleoInfluencia(clienteId);
   const { categorias: categoriasTermos, loading: loadingTermos } = useTermosVirais(clienteId);
 
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const rememberSelection = () => {
+    const input = inputRef.current;
+    if (!input) return;
+
+    selectionRef.current = {
+      start: input.selectionStart || 0,
+      end: input.selectionEnd || 0,
+    };
+  };
+
+  const restoreSelection = (entry: HistoryEntry) => {
+    requestAnimationFrame(() => {
+      const input = inputRef.current;
+      if (!input) return;
+
+      input.focus();
+      input.setSelectionRange(entry.selectionStart, entry.selectionEnd);
+      selectionRef.current = {
+        start: entry.selectionStart,
+        end: entry.selectionEnd,
+      };
+    });
+  };
+
+  const pushUndoEntry = (entry: HistoryEntry) => {
+    const stack = undoStackRef.current;
+    const lastEntry = stack[stack.length - 1];
+
+    if (lastEntry?.value === entry.value) return;
+
+    stack.push(entry);
+    if (stack.length > 100) {
+      stack.shift();
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     const cursorPos = e.target.selectionStart || 0;
+    const previousSelection = selectionRef.current;
     
+    pushUndoEntry({
+      value: valueRef.current,
+      selectionStart: previousSelection.start,
+      selectionEnd: previousSelection.end,
+    });
+    redoStackRef.current = [];
+    selectionRef.current = {
+      start: e.target.selectionStart || 0,
+      end: e.target.selectionEnd || 0,
+    };
     onValueChange(newValue);
 
     const textBeforeCursor = newValue.substring(0, cursorPos);
@@ -90,7 +150,17 @@ export function SlashCommandInput({
       const cursorPos = inputRef.current?.selectionStart || value.length;
       const after = value.substring(cursorPos);
       const newValue = before + texto + after;
+      pushUndoEntry({
+        value: valueRef.current,
+        selectionStart: slashPosition,
+        selectionEnd: cursorPos,
+      });
+      redoStackRef.current = [];
       onValueChange(newValue);
+      selectionRef.current = {
+        start: before.length + texto.length,
+        end: before.length + texto.length,
+      };
     }
     setOpen(false);
     setSlashPosition(null);
@@ -100,6 +170,48 @@ export function SlashCommandInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const modifierPressed = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
+    const isUndo = modifierPressed && key === "z" && !e.shiftKey;
+    const isRedo = modifierPressed && ((key === "z" && e.shiftKey) || key === "y");
+
+    if (isUndo || isRedo) {
+      e.preventDefault();
+      setOpen(false);
+      setSlashPosition(null);
+      setCommandType(null);
+
+      const currentSelection = selectionRef.current;
+
+      if (isUndo) {
+        const previousEntry = undoStackRef.current.pop();
+        if (!previousEntry) return;
+
+        redoStackRef.current.push({
+          value: valueRef.current,
+          selectionStart: currentSelection.start,
+          selectionEnd: currentSelection.end,
+        });
+        onValueChange(previousEntry.value);
+        valueRef.current = previousEntry.value;
+        restoreSelection(previousEntry);
+        return;
+      }
+
+      const nextEntry = redoStackRef.current.pop();
+      if (!nextEntry) return;
+
+      undoStackRef.current.push({
+        value: valueRef.current,
+        selectionStart: currentSelection.start,
+        selectionEnd: currentSelection.end,
+      });
+      onValueChange(nextEntry.value);
+      valueRef.current = nextEntry.value;
+      restoreSelection(nextEntry);
+      return;
+    }
+
     if (open && e.key === "Escape") {
       setOpen(false);
       setSlashPosition(null);
@@ -143,6 +255,9 @@ export function SlashCommandInput({
           value={value}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
+          onKeyUp={rememberSelection}
+          onMouseUp={rememberSelection}
+          onSelect={rememberSelection}
           className={cn(className)}
           {...props}
         />
