@@ -25,6 +25,9 @@ import {
   Undo,
   Redo,
   Calendar,
+  CheckCircle2,
+  ExternalLink,
+  UploadCloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +45,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TagVideo {
   id: string;
@@ -58,6 +62,10 @@ interface Video {
   escalado?: boolean;
   data_postagem?: string | null;
   cliente_id: string;
+  arquivo_url?: string | null;
+  arquivo_chave?: string | null;
+  arquivo_nome?: string | null;
+  arquivo_tamanho?: number | null;
 }
 
 interface VideoDetailPanelProps {
@@ -112,6 +120,7 @@ export const VideoDetailPanel = ({
   tags,
   videoTags,
   onTagToggle,
+  platform,
 }: VideoDetailPanelProps) => {
   const [editedVideo, setEditedVideo] = useState<Video | null>(null);
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
@@ -119,6 +128,8 @@ export const VideoDetailPanel = ({
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedSnapshotRef = useRef("");
   const currentVideoIdRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (!video) {
@@ -242,6 +253,51 @@ export const VideoDetailPanel = ({
 
   const handleClearSelection = () => {
     setSelectionContext(null);
+  };
+
+  const handleVideoUpload = async (file: File) => {
+    if (!editedVideo) return;
+    setUploading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("backblaze-upload-url", {
+        body: {
+          videoId: editedVideo.id,
+          clienteId: editedVideo.cliente_id,
+          platform,
+          fileName: file.name,
+          contentType: file.type,
+          fileSize: file.size,
+        },
+      });
+      if (error) throw error;
+      if (!data?.uploadUrl) throw new Error(data?.error || "URL de upload não recebida");
+
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!uploadResponse.ok) throw new Error(`Backblaze respondeu com status ${uploadResponse.status}`);
+
+      const fileFields = {
+        arquivo_url: data.fileUrl,
+        arquivo_chave: data.objectKey,
+        arquivo_nome: file.name,
+        arquivo_tamanho: file.size,
+      };
+      const table = platform === "vertical" ? "videos_vertical" : "videos_youtube";
+      const { error: updateError } = await supabase.from(table).update(fileFields).eq("id", editedVideo.id);
+      if (updateError) throw updateError;
+
+      setEditedVideo({ ...editedVideo, ...fileFields });
+      toast.success("Vídeo enviado para o Backblaze");
+    } catch (error) {
+      console.error("Erro no upload do vídeo:", error);
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o vídeo");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const handleSelectionChange = (text: string | null, range: SelectionRange | null) => {
@@ -373,6 +429,61 @@ export const VideoDetailPanel = ({
 
           <ScrollArea className="h-full">
             <div className="space-y-5 p-4 pb-24">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <UploadCloud className="h-3 w-3" /> Arquivo do vídeo
+                </Label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleVideoUpload(file);
+                  }}
+                />
+                {editedVideo.arquivo_url ? (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{editedVideo.arquivo_nome || "Vídeo enviado"}</p>
+                        {editedVideo.arquivo_tamanho && (
+                          <p className="text-xs text-muted-foreground">
+                            {(editedVideo.arquivo_tamanho / 1024 / 1024).toFixed(1)} MB
+                          </p>
+                        )}
+                      </div>
+                      <a href={editedVideo.arquivo_url} target="_blank" rel="noreferrer" title="Abrir vídeo">
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </a>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled={uploading}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      {uploading ? "Enviando..." : "Substituir arquivo"}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full gap-2"
+                    disabled={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    {uploading ? "Enviando vídeo..." : "Enviar vídeo"}
+                  </Button>
+                )}
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground flex items-center gap-1">
                   <FileText className="h-3 w-3" /> Status

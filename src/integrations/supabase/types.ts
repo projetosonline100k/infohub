@@ -878,6 +878,10 @@ export type Database = {
       }
       videos_vertical: {
         Row: {
+          arquivo_chave: string | null
+          arquivo_nome: string | null
+          arquivo_tamanho: number | null
+          arquivo_url: string | null
           cliente_id: string
           created_at: string
           data_postagem: string | null
@@ -892,6 +896,10 @@ export type Database = {
           titulo: string
         }
         Insert: {
+          arquivo_chave?: string | null
+          arquivo_nome?: string | null
+          arquivo_tamanho?: number | null
+          arquivo_url?: string | null
           cliente_id: string
           created_at?: string
           data_postagem?: string | null
@@ -906,6 +914,10 @@ export type Database = {
           titulo: string
         }
         Update: {
+          arquivo_chave?: string | null
+          arquivo_nome?: string | null
+          arquivo_tamanho?: number | null
+          arquivo_url?: string | null
           cliente_id?: string
           created_at?: string
           data_postagem?: string | null
@@ -967,6 +979,10 @@ export type Database = {
       }
       videos_youtube: {
         Row: {
+          arquivo_chave: string | null
+          arquivo_nome: string | null
+          arquivo_tamanho: number | null
+          arquivo_url: string | null
           cliente_id: string
           created_at: string
           data_postagem: string | null
@@ -979,6 +995,10 @@ export type Database = {
           titulo: string
         }
         Insert: {
+          arquivo_chave?: string | null
+          arquivo_nome?: string | null
+          arquivo_tamanho?: number | null
+          arquivo_url?: string | null
           cliente_id: string
           created_at?: string
           data_postagem?: string | null
@@ -991,6 +1011,10 @@ export type Database = {
           titulo: string
         }
         Update: {
+          arquivo_chave?: string | null
+          arquivo_nome?: string | null
+          arquivo_tamanho?: number | null
+          arquivo_url?: string | null
           cliente_id?: string
           created_at?: string
           data_postagem?: string | null

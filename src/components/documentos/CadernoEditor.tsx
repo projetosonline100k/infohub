@@ -4,11 +4,13 @@ import {
   Check,
   Eraser,
   ImagePlus,
+  MousePointer2,
   PenLine,
   Redo2,
   RotateCcw,
   Save,
   Trash2,
+  WifiOff,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
@@ -22,7 +24,7 @@ const CADERNO_PREFIX = "__CADERNO_V1__";
 const CANVAS_WIDTH = 2400;
 const CANVAS_HEIGHT = 1600;
 
-type Tool = "pen" | "eraser";
+type Tool = "pen" | "eraser" | "select";
 
 interface Point {
   x: number;
@@ -63,6 +65,13 @@ interface CadernoEditorProps {
   onClose: () => void;
 }
 
+interface LocalCadernoCache {
+  titulo: string;
+  conteudo: string;
+  savedAt: string;
+  pendingSync: boolean;
+}
+
 const COLORS = ["#111827", "#ef4444", "#2563eb", "#16a34a", "#f59e0b"];
 
 export function isCadernoContent(content?: string | null) {
@@ -98,6 +107,37 @@ function parseCaderno(content?: string | null): CadernoElement[] {
   }
 }
 
+function getLocalCacheKey(documentoId: string) {
+  return `infopro:caderno:${documentoId}`;
+}
+
+function readLocalCaderno(documentoId: string): LocalCadernoCache | null {
+  try {
+    const raw = window.localStorage.getItem(getLocalCacheKey(documentoId));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalCaderno(documentoId: string, cache: LocalCadernoCache) {
+  try {
+    window.localStorage.setItem(getLocalCacheKey(documentoId), JSON.stringify(cache));
+  } catch (error) {
+    console.warn("Não foi possível salvar o caderno localmente.", error);
+  }
+}
+
+function clearLocalPendingSync(documentoId: string) {
+  const cache = readLocalCaderno(documentoId);
+  if (!cache) return;
+
+  writeLocalCaderno(documentoId, {
+    ...cache,
+    pendingSync: false,
+  });
+}
+
 export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement | null>(null);
@@ -108,10 +148,12 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeStrokeRef = useRef<StrokeElement | null>(null);
   const inputModeRef = useRef<"pointer" | "touch" | "mouse" | null>(null);
+  const selectedElementIdRef = useRef<string | null>(null);
 
   const [titulo, setTitulo] = useState("Caderno sem título");
   const [elements, setElements] = useState<CadernoElement[]>([]);
   const [redoCount, setRedoCount] = useState(0);
+  const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState(COLORS[0]);
   const [width, setWidth] = useState(5);
@@ -119,6 +161,8 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [pendingLocal, setPendingLocal] = useState(false);
+  const [online, setOnline] = useState(() => navigator.onLine);
 
   const drawStroke = useCallback((ctx: CanvasRenderingContext2D, stroke: StrokeElement) => {
     if (stroke.points.length < 2) return;
@@ -176,9 +220,46 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
         drawImage(ctx, element);
       }
     });
+
+    const selectedImage = elementsRef.current.find(
+      (element): element is ImageElement =>
+        element.type === "image" && element.id === selectedElementIdRef.current
+    );
+
+    if (selectedImage) {
+      ctx.save();
+      ctx.strokeStyle = "#2563eb";
+      ctx.lineWidth = 6;
+      ctx.setLineDash([18, 12]);
+      ctx.strokeRect(
+        selectedImage.x - 8,
+        selectedImage.y - 8,
+        selectedImage.width + 16,
+        selectedImage.height + 16
+      );
+      ctx.restore();
+    }
   }, [drawImage, drawStroke]);
 
+  const saveLocalContent = useCallback((nextElements: CadernoElement[], pendingSync = true) => {
+    writeLocalCaderno(documentoId, {
+      titulo,
+      conteudo: serializeCaderno(nextElements),
+      savedAt: new Date().toISOString(),
+      pendingSync,
+    });
+    setPendingLocal(pendingSync);
+  }, [documentoId, titulo]);
+
   const saveContent = useCallback(async (nextElements: CadernoElement[]) => {
+    saveLocalContent(nextElements, true);
+
+    if (!navigator.onLine) {
+      setSaving(false);
+      setPendingLocal(true);
+      return;
+    }
+
     setSaving(true);
     setSaved(false);
 
@@ -192,10 +273,14 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
 
     setSaving(false);
     if (!error) {
+      clearLocalPendingSync(documentoId);
+      setPendingLocal(false);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 1200);
+    } else {
+      setPendingLocal(true);
     }
-  }, [documentoId]);
+  }, [documentoId, saveLocalContent]);
 
   const queueSave = useCallback((nextElements: CadernoElement[]) => {
     if (saveTimeoutRef.current) {
@@ -210,6 +295,7 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   const commitElements = useCallback((nextElements: CadernoElement[], options?: { preserveRedo?: boolean }) => {
     elementsRef.current = nextElements;
     setElements(nextElements);
+    saveLocalContent(nextElements, true);
 
     if (!options?.preserveRedo) {
       redoRef.current = [];
@@ -218,33 +304,74 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
 
     redraw();
     queueSave(nextElements);
-  }, [queueSave, redraw]);
+  }, [queueSave, redraw, saveLocalContent]);
 
   useEffect(() => {
     async function loadCaderno() {
       setLoading(true);
+      const localCache = readLocalCaderno(documentoId);
+
+      if (localCache) {
+        const localElements = parseCaderno(localCache.conteudo);
+        elementsRef.current = localElements;
+        setElements(localElements);
+        setTitulo(localCache.titulo || "Caderno sem título");
+        setPendingLocal(localCache.pendingSync);
+        setLoading(false);
+      }
 
       const { data } = await supabase
         .from("documentos")
-        .select("titulo, conteudo")
+        .select("titulo, conteudo, updated_at")
         .eq("id", documentoId)
         .maybeSingle();
+
+      if (!data) {
+        setLoading(false);
+        return;
+      }
+
+      const shouldUseLocal =
+        localCache &&
+        new Date(localCache.savedAt).getTime() >= new Date(data.updated_at).getTime();
+
+      if (shouldUseLocal) {
+        if (localCache.pendingSync) {
+          saveContent(parseCaderno(localCache.conteudo));
+        }
+        setLoading(false);
+        return;
+      }
 
       const loadedElements = parseCaderno(data?.conteudo);
       elementsRef.current = loadedElements;
       setElements(loadedElements);
+      selectedElementIdRef.current = null;
+      setSelectedElementId(null);
       redoRef.current = [];
       setRedoCount(0);
       setTitulo(data?.titulo || "Caderno sem título");
+      writeLocalCaderno(documentoId, {
+        titulo: data?.titulo || "Caderno sem título",
+        conteudo: data?.conteudo || createEmptyCadernoContent(),
+        savedAt: data.updated_at,
+        pendingSync: false,
+      });
+      setPendingLocal(false);
       setLoading(false);
     }
 
     loadCaderno();
-  }, [documentoId]);
+  }, [documentoId, saveContent]);
 
   useEffect(() => {
     if (!loading) redraw();
   }, [loading, redraw]);
+
+  useEffect(() => {
+    selectedElementIdRef.current = selectedElementId;
+    redraw();
+  }, [selectedElementId, redraw]);
 
   useEffect(() => {
     return () => {
@@ -254,6 +381,29 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
       }
     };
   }, [saveContent]);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setOnline(true);
+      const localCache = readLocalCaderno(documentoId);
+      if (localCache?.pendingSync) {
+        saveContent(parseCaderno(localCache.conteudo));
+      }
+    };
+
+    const handleOffline = () => {
+      setOnline(false);
+      setPendingLocal(true);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [documentoId, saveContent]);
 
   const getCanvasPoint = (clientX: number, clientY: number, pressure = 0.8): Point => {
     const canvas = canvasRef.current;
@@ -269,6 +419,15 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   };
 
   const startStroke = (point: Point) => {
+    if (tool === "select") {
+      selectImageAtPoint(point);
+      inputModeRef.current = null;
+      return;
+    }
+
+    selectedElementIdRef.current = null;
+    setSelectedElementId(null);
+
     const stroke: StrokeElement = {
       type: "stroke",
       id: crypto.randomUUID(),
@@ -279,6 +438,24 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
     };
 
     activeStrokeRef.current = stroke;
+  };
+
+  const selectImageAtPoint = (point: Point) => {
+    const selectedImage = [...elementsRef.current]
+      .reverse()
+      .find((element): element is ImageElement => {
+        if (element.type !== "image") return false;
+
+        return (
+          point.x >= element.x &&
+          point.x <= element.x + element.width &&
+          point.y >= element.y &&
+          point.y <= element.y + element.height
+        );
+      });
+
+    selectedElementIdRef.current = selectedImage?.id || null;
+    setSelectedElementId(selectedImage?.id || null);
   };
 
   const addPointToStroke = (point: Point) => {
@@ -472,6 +649,8 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
         };
 
         imageCacheRef.current.set(src, image);
+        selectedElementIdRef.current = imageElement.id;
+        setSelectedElementId(imageElement.id);
         commitElements([...elementsRef.current, imageElement]);
       };
 
@@ -482,10 +661,28 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   };
 
   const salvarTitulo = async () => {
-    await supabase
+    const serialized = serializeCaderno(elementsRef.current);
+    writeLocalCaderno(documentoId, {
+      titulo,
+      conteudo: serialized,
+      savedAt: new Date().toISOString(),
+      pendingSync: true,
+    });
+
+    const { error } = await supabase
       .from("documentos")
       .update({ titulo })
       .eq("id", documentoId);
+
+    if (!error) {
+      const cache = readLocalCaderno(documentoId);
+      writeLocalCaderno(documentoId, {
+        titulo,
+        conteudo: cache?.conteudo || serialized,
+        savedAt: cache?.savedAt || new Date().toISOString(),
+        pendingSync: cache?.pendingSync || false,
+      });
+    }
   };
 
   const undo = () => {
@@ -506,7 +703,15 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
     commitElements([...elementsRef.current, nextElement], { preserveRedo: true });
   };
 
-  const clear = () => {
+  const deleteSelectedOrClear = () => {
+    if (selectedElementIdRef.current) {
+      const nextElements = elementsRef.current.filter((element) => element.id !== selectedElementIdRef.current);
+      selectedElementIdRef.current = null;
+      setSelectedElementId(null);
+      commitElements(nextElements);
+      return;
+    }
+
     if (!confirm("Apagar todos os elementos deste caderno?")) return;
     commitElements([]);
   };
@@ -539,6 +744,15 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
           </div>
 
           <div className="flex items-center gap-2 rounded-full bg-white shadow-sm border px-2 py-1">
+            <Button
+              variant={tool === "select" ? "secondary" : "ghost"}
+              size="icon"
+              onClick={() => setTool("select")}
+              className="h-10 w-10 rounded-full"
+              title="Selecionar imagem"
+            >
+              <MousePointer2 className="h-5 w-5" />
+            </Button>
             <Button
               variant={tool === "pen" ? "secondary" : "ghost"}
               size="icon"
@@ -582,6 +796,7 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
               size="icon"
               onClick={() => fileInputRef.current?.click()}
               className="h-10 w-10 rounded-full"
+              title="Subir imagem"
             >
               <ImagePlus className="h-5 w-5" />
             </Button>
@@ -611,6 +826,18 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
                   Salvo
                 </>
               )}
+              {!saving && pendingLocal && (
+                <>
+                  <WifiOff className="h-4 w-4" />
+                  Local
+                </>
+              )}
+              {!saving && !pendingLocal && !saved && !online && (
+                <>
+                  <WifiOff className="h-4 w-4" />
+                  Offline
+                </>
+              )}
             </span>
             <Button variant="ghost" size="icon" onClick={undo} disabled={elements.length === 0} className="h-11 w-11 rounded-full">
               <RotateCcw className="h-5 w-5" />
@@ -618,7 +845,14 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
             <Button variant="ghost" size="icon" onClick={redo} disabled={redoCount === 0} className="h-11 w-11 rounded-full">
               <Redo2 className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={clear} disabled={elements.length === 0} className="h-11 w-11 rounded-full text-destructive hover:text-destructive">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={deleteSelectedOrClear}
+              disabled={elements.length === 0}
+              className="h-11 w-11 rounded-full text-destructive hover:text-destructive"
+              title={selectedElementId ? "Excluir imagem selecionada" : "Limpar caderno"}
+            >
               <Trash2 className="h-5 w-5" />
             </Button>
           </div>
