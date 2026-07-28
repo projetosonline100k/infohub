@@ -28,9 +28,12 @@ serve(async (req) => {
       return json({ error: "Integração Backblaze não configurada no servidor" }, 500);
     }
 
-    const { videoId, clienteId, platform, fileName, contentType, fileSize } = await req.json();
+    const { videoId, clienteId, platform, fileKind = "original", fileName, contentType, fileSize } = await req.json();
     if (!videoId || !clienteId || !["vertical", "youtube"].includes(platform)) {
       return json({ error: "Dados do vídeo inválidos" }, 400);
+    }
+    if (!["original", "editado"].includes(fileKind)) {
+      return json({ error: "Tipo de arquivo inválido" }, 400);
     }
     if (!fileName || !contentType?.startsWith("video/")) {
       return json({ error: "Selecione um arquivo de vídeo válido" }, 400);
@@ -42,7 +45,7 @@ serve(async (req) => {
     const extension = fileName.includes(".")
       ? fileName.slice(fileName.lastIndexOf(".")).toLowerCase().replace(/[^a-z0-9.]/g, "")
       : "";
-    const objectKey = `videos/${clienteId}/${platform}/${videoId}/${crypto.randomUUID()}${extension}`;
+    const objectKey = `videos/${clienteId}/${platform}/${videoId}/${fileKind}/${crypto.randomUUID()}${extension}`;
 
     const client = new S3Client({
       endpoint,

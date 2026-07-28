@@ -882,6 +882,10 @@ export type Database = {
           arquivo_nome: string | null
           arquivo_tamanho: number | null
           arquivo_url: string | null
+          editado_chave: string | null
+          editado_nome: string | null
+          editado_tamanho: number | null
+          editado_url: string | null
           cliente_id: string
           created_at: string
           data_postagem: string | null
@@ -900,6 +904,10 @@ export type Database = {
           arquivo_nome?: string | null
           arquivo_tamanho?: number | null
           arquivo_url?: string | null
+          editado_chave?: string | null
+          editado_nome?: string | null
+          editado_tamanho?: number | null
+          editado_url?: string | null
           cliente_id: string
           created_at?: string
           data_postagem?: string | null
@@ -918,6 +926,10 @@ export type Database = {
           arquivo_nome?: string | null
           arquivo_tamanho?: number | null
           arquivo_url?: string | null
+          editado_chave?: string | null
+          editado_nome?: string | null
+          editado_tamanho?: number | null
+          editado_url?: string | null
           cliente_id?: string
           created_at?: string
           data_postagem?: string | null
@@ -983,6 +995,10 @@ export type Database = {
           arquivo_nome: string | null
           arquivo_tamanho: number | null
           arquivo_url: string | null
+          editado_chave: string | null
+          editado_nome: string | null
+          editado_tamanho: number | null
+          editado_url: string | null
           cliente_id: string
           created_at: string
           data_postagem: string | null
@@ -999,6 +1015,10 @@ export type Database = {
           arquivo_nome?: string | null
           arquivo_tamanho?: number | null
           arquivo_url?: string | null
+          editado_chave?: string | null
+          editado_nome?: string | null
+          editado_tamanho?: number | null
+          editado_url?: string | null
           cliente_id: string
           created_at?: string
           data_postagem?: string | null
@@ -1015,6 +1035,10 @@ export type Database = {
           arquivo_nome?: string | null
           arquivo_tamanho?: number | null
           arquivo_url?: string | null
+          editado_chave?: string | null
+          editado_nome?: string | null
+          editado_tamanho?: number | null
+          editado_url?: string | null
           cliente_id?: string
           created_at?: string
           data_postagem?: string | null

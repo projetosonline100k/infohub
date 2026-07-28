@@ -66,6 +66,10 @@ interface Video {
   arquivo_chave?: string | null;
   arquivo_nome?: string | null;
   arquivo_tamanho?: number | null;
+  editado_url?: string | null;
+  editado_chave?: string | null;
+  editado_nome?: string | null;
+  editado_tamanho?: number | null;
 }
 
 interface VideoDetailPanelProps {
@@ -129,7 +133,8 @@ export const VideoDetailPanel = ({
   const lastSavedSnapshotRef = useRef("");
   const currentVideoIdRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const editedFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploadingKind, setUploadingKind] = useState<"original" | "editado" | null>(null);
 
   useEffect(() => {
     if (!video) {
@@ -255,15 +260,16 @@ export const VideoDetailPanel = ({
     setSelectionContext(null);
   };
 
-  const handleVideoUpload = async (file: File) => {
+  const handleVideoUpload = async (file: File, fileKind: "original" | "editado") => {
     if (!editedVideo) return;
-    setUploading(true);
+    setUploadingKind(fileKind);
     try {
       const { data, error } = await supabase.functions.invoke("backblaze-upload-url", {
         body: {
           videoId: editedVideo.id,
           clienteId: editedVideo.cliente_id,
           platform,
+          fileKind,
           fileName: file.name,
           contentType: file.type,
           fileSize: file.size,
@@ -279,24 +285,32 @@ export const VideoDetailPanel = ({
       });
       if (!uploadResponse.ok) throw new Error(`Backblaze respondeu com status ${uploadResponse.status}`);
 
-      const fileFields = {
-        arquivo_url: data.fileUrl,
-        arquivo_chave: data.objectKey,
-        arquivo_nome: file.name,
-        arquivo_tamanho: file.size,
-      };
+      const fileFields = fileKind === "editado"
+        ? {
+            editado_url: data.fileUrl,
+            editado_chave: data.objectKey,
+            editado_nome: file.name,
+            editado_tamanho: file.size,
+          }
+        : {
+            arquivo_url: data.fileUrl,
+            arquivo_chave: data.objectKey,
+            arquivo_nome: file.name,
+            arquivo_tamanho: file.size,
+          };
       const table = platform === "vertical" ? "videos_vertical" : "videos_youtube";
       const { error: updateError } = await supabase.from(table).update(fileFields).eq("id", editedVideo.id);
       if (updateError) throw updateError;
 
       setEditedVideo({ ...editedVideo, ...fileFields });
-      toast.success("Vídeo enviado para o Backblaze");
+      toast.success(fileKind === "editado" ? "Vídeo editado enviado" : "Vídeo enviado para o Backblaze");
     } catch (error) {
       console.error("Erro no upload do vídeo:", error);
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar o vídeo");
     } finally {
-      setUploading(false);
+      setUploadingKind(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (editedFileInputRef.current) editedFileInputRef.current.value = "";
     }
   };
 
@@ -440,7 +454,7 @@ export const VideoDetailPanel = ({
                   className="hidden"
                   onChange={(event) => {
                     const file = event.target.files?.[0];
-                    if (file) void handleVideoUpload(file);
+                    if (file) void handleVideoUpload(file, "original");
                   }}
                 />
                 {editedVideo.arquivo_url ? (
@@ -464,10 +478,10 @@ export const VideoDetailPanel = ({
                       variant="outline"
                       size="sm"
                       className="w-full"
-                      disabled={uploading}
+                      disabled={uploadingKind !== null}
                       onClick={() => fileInputRef.current?.click()}
                     >
-                      {uploading ? "Enviando..." : "Substituir arquivo"}
+                      {uploadingKind === "original" ? "Enviando..." : "Substituir arquivo"}
                     </Button>
                   </div>
                 ) : (
@@ -475,11 +489,66 @@ export const VideoDetailPanel = ({
                     type="button"
                     variant="outline"
                     className="w-full gap-2"
-                    disabled={uploading}
+                    disabled={uploadingKind !== null}
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <UploadCloud className="h-4 w-4" />
-                    {uploading ? "Enviando vídeo..." : "Enviar vídeo"}
+                    {uploadingKind === "original" ? "Enviando vídeo..." : "Enviar vídeo"}
+                  </Button>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                  <UploadCloud className="h-3 w-3" /> Editado
+                </Label>
+                <input
+                  ref={editedFileInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleVideoUpload(file, "editado");
+                  }}
+                />
+                {editedVideo.editado_url ? (
+                  <div className="space-y-2 rounded-md border p-3">
+                    <div className="flex items-start gap-2 text-sm">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium">{editedVideo.editado_nome || "Vídeo editado"}</p>
+                        {editedVideo.editado_tamanho && (
+                          <p className="text-xs text-muted-foreground">
+                            {(editedVideo.editado_tamanho / 1024 / 1024).toFixed(1)} MB
+                          </p>
+                        )}
+                      </div>
+                      <a href={editedVideo.editado_url} target="_blank" rel="noreferrer" title="Abrir vídeo editado">
+                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      </a>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled={uploadingKind !== null}
+                      onClick={() => editedFileInputRef.current?.click()}
+                    >
+                      {uploadingKind === "editado" ? "Enviando..." : "Substituir editado"}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full gap-2"
+                    disabled={uploadingKind !== null}
+                    onClick={() => editedFileInputRef.current?.click()}
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    {uploadingKind === "editado" ? "Enviando editado..." : "Enviar vídeo editado"}
                   </Button>
                 )}
               </div>
