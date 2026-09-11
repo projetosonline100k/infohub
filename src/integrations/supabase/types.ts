@@ -138,6 +138,7 @@ export type Database = {
       }
       clientes: {
         Row: {
+          user_id: string | null
           created_at: string | null
           id: string
           idade: number
@@ -148,6 +149,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          user_id?: string | null
           created_at?: string | null
           id?: string
           idade: number
@@ -263,6 +265,9 @@ export type Database = {
           cliente_id: string
           created_at: string | null
           id: string
+          email: string | null
+          clientes_permitidos: string[]
+          permissoes: Json
           nome_pessoa: string
           papel: string
         }
@@ -270,6 +275,9 @@ export type Database = {
           cliente_id: string
           created_at?: string | null
           id?: string
+          email?: string | null
+          clientes_permitidos?: string[]
+          permissoes?: Json
           nome_pessoa: string
           papel: string
         }
@@ -277,6 +285,9 @@ export type Database = {
           cliente_id?: string
           created_at?: string | null
           id?: string
+          email?: string | null
+          clientes_permitidos?: string[]
+          permissoes?: Json
           nome_pessoa?: string
           papel?: string
         }
@@ -1057,7 +1068,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      team_access: { Args: { target: string }; Returns: Json }
     }
     Enums: {
       tipo_pesquisa: "aberta" | "multipla" | "unica"

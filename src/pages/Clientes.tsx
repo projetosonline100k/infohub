@@ -1,3 +1,4 @@
+import { useAuth } from "@/auth/AuthProvider";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Edit } from "lucide-react";
@@ -9,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import ClienteForm from "@/components/ClienteForm";
 
 interface Cliente {
+  user_id: string | null;
   id: string;
   nome_especialista: string;
   idade: number;
@@ -24,6 +26,7 @@ interface EquipeMembro {
 
 const Clientes = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [clienteEditando, setClienteEditando] = useState<Cliente | undefined>();
@@ -83,7 +86,7 @@ const Clientes = () => {
 
   const salvarCliente = async (
     data: { nomeEspecialista: string; idade: number; nicho: string; metaAtual?: string; linkPainelReceita?: string },
-    equipe: Array<{ nomePessoa: string; papel: string }>,
+    equipe: Array<{ id?: string; nomePessoa: string; papel: string }>,
     clienteId?: string
   ) => {
     try {
@@ -104,13 +107,14 @@ const Clientes = () => {
 
         if (error) throw error;
 
-        // Remover equipe antiga
-        await supabase.from("equipe_cliente").delete().eq("cliente_id", clienteId);
+
       } else {
-        // Criar novo cliente
+        if (!user?.id) throw new Error("Entre na sua conta antes de criar um cliente.");
+        // Registrar explicitamente quem criou o cliente.
         const { data: novoCliente, error } = await supabase
           .from("clientes")
           .insert({
+            user_id: user.id,
             nome_especialista: data.nomeEspecialista,
             idade: data.idade,
             nicho: data.nicho,
@@ -124,18 +128,17 @@ const Clientes = () => {
         clienteIdFinal = novoCliente.id;
       }
 
-      // Inserir nova equipe
-      if (equipe.length > 0 && clienteIdFinal) {
-        const equipeData = equipe
-          .filter(m => m.nomePessoa && m.papel)
-          .map(m => ({
-            cliente_id: clienteIdFinal,
-            nome_pessoa: m.nomePessoa,
-            papel: m.papel,
-          }));
-
-        if (equipeData.length > 0) {
-          const { error } = await supabase.from("equipe_cliente").insert(equipeData);
+      if (clienteIdFinal) {
+        for (const membro of equipe.filter(m => m.nomePessoa.trim() && m.papel.trim())) {
+          const payload = { cliente_id: clienteIdFinal, nome_pessoa: membro.nomePessoa.trim(), papel: membro.papel.trim() };
+          const { error } = membro.id
+            ? await supabase.from("equipe_cliente").update(payload).eq("id", membro.id).eq("cliente_id", clienteIdFinal)
+            : await supabase.from("equipe_cliente").insert(payload);
+          if (error) throw error;
+        }
+        const removidos = equipeEditando.filter(m => !equipe.some(n => n.id === m.id)).map(m => m.id);
+        if (clienteId && removidos.length) {
+          const { error } = await supabase.from("equipe_cliente").delete().eq("cliente_id", clienteId).in("id", removidos);
           if (error) throw error;
         }
       }
@@ -201,7 +204,7 @@ const Clientes = () => {
                   </h3>
                   <p className="text-sm text-muted-foreground">{cliente.nicho}</p>
                 </div>
-                <Button
+                {cliente.user_id === user?.id && <Button
                   variant="ghost"
                   size="sm"
                   onClick={(e) => {
@@ -211,7 +214,7 @@ const Clientes = () => {
                 >
                   <Edit className="h-4 w-4 mr-2" />
                   Editar
-                </Button>
+                </Button>}
               </div>
             </Card>
           ))}

@@ -1,3 +1,4 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { S3Client, PutObjectCommand } from "npm:@aws-sdk/client-s3@3";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3";
@@ -41,6 +42,19 @@ serve(async (req) => {
     if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 5 * 1024 ** 3) {
       return json({ error: "O vídeo deve ter no máximo 5 GB" }, 400);
     }
+
+    const authorization = req.headers.get("Authorization");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+    if (!authorization || !supabaseUrl || !anonKey) return json({ error: "Autenticação necessária" }, 401);
+    const supabase = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) return json({ error: "Sessão inválida" }, 401);
+    const { data: access, error: accessError } = await supabase.rpc("team_access", { target: clienteId });
+    if (accessError || !access?.permissoes?.conteudo?.editar) return json({ error: "Sem permissão para editar conteúdo" }, 403);
+    const { data: video, error: videoError } = await supabase.from(platform === "vertical" ? "videos_vertical" : "videos_youtube")
+      .select("id").eq("id", videoId).eq("cliente_id", clienteId).maybeSingle();
+    if (videoError || !video) return json({ error: "Vídeo não encontrado" }, 404);
 
     const extension = fileName.includes(".")
       ? fileName.slice(fileName.lastIndexOf(".")).toLowerCase().replace(/[^a-z0-9.]/g, "")

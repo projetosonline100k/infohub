@@ -1,7 +1,9 @@
 import { NavLink } from "@/components/NavLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { LayoutDashboard, Users, Activity } from "lucide-react";
+import { LayoutDashboard, Users, Activity, LogOut } from "lucide-react";
 import { useLocation } from "react-router-dom";
+import { useAuth } from "@/auth/AuthProvider";
+import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -15,6 +17,7 @@ const menuItems = [
 
 export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
+  const { user, signOut } = useAuth();
   const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
 
   return (
@@ -27,7 +30,13 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
             <h1 className="text-xl font-bold text-sidebar-foreground">
               Painel do Infoprodutor
             </h1>
-            <ThemeToggle />
+            <div className="flex items-center gap-3">
+              <span className="hidden text-xs text-muted-foreground sm:inline">{user?.email}</span>
+              <ThemeToggle />
+              <Button variant="ghost" size="icon" onClick={signOut} aria-label="Sair" title="Sair">
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           
           <nav className="flex items-center gap-2">

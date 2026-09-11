@@ -458,21 +458,26 @@ export const VideoDetailPanel = ({
                   }}
                 />
                 {editedVideo.arquivo_url ? (
-                  <div className="space-y-2 rounded-md border p-3">
-                    <div className="flex items-start gap-2 text-sm">
+                  <div className="min-w-0 space-y-2 overflow-hidden rounded-md border p-3">
+                    <div className="flex min-w-0 items-start gap-2 text-sm">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{editedVideo.arquivo_nome || "Vídeo enviado"}</p>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <p className="block max-w-full truncate font-medium" title={editedVideo.arquivo_nome || "Vídeo enviado"}>
+                          {editedVideo.arquivo_nome || "Vídeo enviado"}
+                        </p>
                         {editedVideo.arquivo_tamanho && (
                           <p className="text-xs text-muted-foreground">
                             {(editedVideo.arquivo_tamanho / 1024 / 1024).toFixed(1)} MB
                           </p>
                         )}
                       </div>
-                      <a href={editedVideo.arquivo_url} target="_blank" rel="noreferrer" title="Abrir vídeo">
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                      </a>
                     </div>
+                    <Button asChild type="button" variant="secondary" size="sm" className="w-full gap-2">
+                      <a href={editedVideo.arquivo_url} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-4 w-4" />
+                        Ver vídeo
+                      </a>
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"
@@ -513,21 +518,26 @@ export const VideoDetailPanel = ({
                   }}
                 />
                 {editedVideo.editado_url ? (
-                  <div className="space-y-2 rounded-md border p-3">
-                    <div className="flex items-start gap-2 text-sm">
+                  <div className="min-w-0 space-y-2 overflow-hidden rounded-md border p-3">
+                    <div className="flex min-w-0 items-start gap-2 text-sm">
                       <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-medium">{editedVideo.editado_nome || "Vídeo editado"}</p>
+                      <div className="min-w-0 flex-1 overflow-hidden">
+                        <p className="block max-w-full truncate font-medium" title={editedVideo.editado_nome || "Vídeo editado"}>
+                          {editedVideo.editado_nome || "Vídeo editado"}
+                        </p>
                         {editedVideo.editado_tamanho && (
                           <p className="text-xs text-muted-foreground">
                             {(editedVideo.editado_tamanho / 1024 / 1024).toFixed(1)} MB
                           </p>
                         )}
                       </div>
-                      <a href={editedVideo.editado_url} target="_blank" rel="noreferrer" title="Abrir vídeo editado">
-                        <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                      </a>
                     </div>
+                    <Button asChild type="button" variant="secondary" size="sm" className="w-full gap-2">
+                      <a href={editedVideo.editado_url} target="_blank" rel="noreferrer">
+                        <ExternalLink className="h-4 w-4" />
+                        Ver vídeo editado
+                      </a>
+                    </Button>
                     <Button
                       type="button"
                       variant="outline"

@@ -1,4 +1,4 @@
-project_id = "ofnhmqhycahbygfadubd"
+project_id = "ucjyobemrxqfcoopkcgb"
 
 [functions.chat]
 verify_jwt = false
@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.backblaze-upload-url]
 verify_jwt = true
+
+[functions.instagram-insights]
+verify_jwt = false

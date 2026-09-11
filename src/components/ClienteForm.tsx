@@ -21,6 +21,7 @@ const clienteSchema = z.object({
 type ClienteFormData = z.infer<typeof clienteSchema>;
 
 interface EquipeMembro {
+  id?: string;
   nomePessoa: string;
   papel: string;
 }
@@ -45,7 +46,7 @@ interface ClienteFormProps {
 
 const ClienteForm = ({ cliente, equipe = [], onClose, onSave }: ClienteFormProps) => {
   const [equipeMembros, setEquipeMembros] = useState<EquipeMembro[]>(
-    equipe.map(e => ({ nomePessoa: e.nome_pessoa, papel: e.papel }))
+    equipe.map(e => ({ id: e.id, nomePessoa: e.nome_pessoa, papel: e.papel }))
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
 

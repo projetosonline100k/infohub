@@ -15,7 +15,18 @@ serve(async (req) => {
     const { messages, context, agentConfig, agentId, selectedText } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
+    const authorization = req.headers.get("Authorization");
+    if (!authorization || !SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      return new Response(JSON.stringify({ error: "Autenticação necessária" }), { status: 401, headers: corsHeaders });
+    }
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      global: { headers: { Authorization: authorization } },
+    });
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      return new Response(JSON.stringify({ error: "Sessão inválida" }), { status: 401, headers: corsHeaders });
+    }
     
     if (!LOVABLE_API_KEY) {
       console.error("LOVABLE_API_KEY is not configured");
@@ -29,8 +40,11 @@ serve(async (req) => {
 
     // Fetch knowledge base for this agent if agentId is provided
     let conhecimentos: { nome: string; conteudo_extraido: string }[] = [];
-    if (agentId && SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    if (agentId) {
+      const { data: agent, error: agentError } = await supabase.from("agentes_ia").select("id").eq("id", agentId).maybeSingle();
+      if (agentError || !agent) {
+        return new Response(JSON.stringify({ error: "Sem acesso a este agente" }), { status: 403, headers: corsHeaders });
+      }
       
       const { data: knowledgeData, error: knowledgeError } = await supabase
         .from("conhecimentos_agente")

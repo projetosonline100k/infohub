@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Exportações locais do banco de dados
+*.backup
+*.backup.zip
+__pycache__/

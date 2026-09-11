@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { useAuth } from "@/auth/AuthProvider";
+import { acessoProprietario, resolverAcesso, permissoesVazias, AreaEquipe } from "@/lib/equipe";
+import { EquipeCard } from "@/components/equipe/EquipeCard";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -22,12 +25,6 @@ interface Cliente {
   link_painel_receita?: string;
 }
 
-interface EquipeMembro {
-  id: string;
-  nome_pessoa: string;
-  papel: string;
-}
-
 interface Produto {
   id: string;
   nome_produto: string;
@@ -43,10 +40,15 @@ interface Produto {
 export default function ClienteDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [permissoesDisponiveis, setPermissoesDisponiveis] = useState(false);
+  const [acesso, setAcesso] = useState({ proprietario: false, permissoes: permissoesVazias() });
   const [cliente, setCliente] = useState<Cliente | null>(null);
-  const [equipe, setEquipe] = useState<EquipeMembro[]>([]);
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erroCliente, setErroCliente] = useState("");
+  const [avisoPermissoes, setAvisoPermissoes] = useState("");
+  const requisicaoAtual = useRef(0);
   const [abaAtiva, setAbaAtiva] = useState("informacoes");
   const [conteudoExpandido, setConteudoExpandido] = useState(false);
   const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
@@ -56,34 +58,65 @@ export default function ClienteDetalhe() {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
 
   useEffect(() => {
-    carregarDados();
-  }, [id]);
+    void carregarDados();
+    return () => { requisicaoAtual.current += 1; };
+  }, [id, user?.id]);
 
   const carregarDados = async () => {
     if (!id) return;
+    const requisicao = ++requisicaoAtual.current;
+    const vigente = () => requisicao === requisicaoAtual.current;
+    setLoading(true);
+    setCliente(null);
+    setProdutos([]);
+    setErroCliente("");
+    setAvisoPermissoes("");
+    setPermissoesDisponiveis(false);
+    setAcesso({ proprietario: false, permissoes: permissoesVazias() });
 
     try {
-      setLoading(true);
-
-      const [clienteRes, equipeRes, produtosRes] = await Promise.all([
-        supabase.from("clientes").select("*").eq("id", id).single(),
-        supabase.from("equipe_cliente").select("*").eq("cliente_id", id),
-        supabase.from("produtos_cliente").select("*").eq("cliente_id", id),
-      ]);
-
+      const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
+      if (!vigente()) return;
       if (clienteRes.error) throw clienteRes.error;
+      if (!clienteRes.data) return;
+      // O resultado autorizado pelo banco não depende da consulta auxiliar de permissões.
       setCliente(clienteRes.data);
+      const dono = acessoProprietario(clienteRes.data.user_id, user?.id);
+      if (dono) setAcesso(dono);
 
-      if (equipeRes.data) setEquipe(equipeRes.data);
-      if (produtosRes.data) setProdutos(produtosRes.data);
+      try {
+        const { data, error } = await supabase.rpc('team_access', { target: id });
+        if (!vigente()) return;
+        if (error) throw error;
+        const acessoResolvido = resolverAcesso(clienteRes.data.user_id, user?.id, data);
+        if (!acessoResolvido) throw new Error('Resposta de permissões inválida');
+        setAcesso(acessoResolvido);
+        setPermissoesDisponiveis(true);
+      } catch (error) {
+        if (!vigente()) return;
+        console.error("Erro ao consultar permissões do cliente:", error);
+        if (!dono) {
+          setAvisoPermissoes(!clienteRes.data.user_id
+            ? "Este cliente está sem proprietário identificado no banco. É necessário vincular o registro à conta que o criou para liberar a administração."
+            : "Não foi possível consultar suas permissões de membro. Tente novamente.");
+        }
+      }
+
+      const produtosRes = await supabase.from("produtos_cliente").select("*").eq("cliente_id", id);
+      if (!vigente()) return;
+      if (produtosRes.error) {
+        console.error("Erro ao carregar produtos:", produtosRes.error);
+        toast({ title: "Não foi possível carregar os produtos", variant: "destructive" });
+      } else {
+        setProdutos(produtosRes.data || []);
+      }
     } catch (error) {
-      console.error("Erro ao carregar dados:", error);
-      toast({
-        title: "Erro ao carregar dados do cliente",
-        variant: "destructive",
-      });
+      if (!vigente()) return;
+      console.error("Erro ao carregar dados do cliente:", error);
+      const detalhe = error as { code?: string; message?: string };
+      setErroCliente(`Não foi possível carregar os dados do cliente. ${detalhe.message || "Verifique a conexão e tente novamente."}${detalhe.code ? ` (Código: ${detalhe.code})` : ""}`);
     } finally {
-      setLoading(false);
+      if (vigente()) setLoading(false);
     }
   };
 
@@ -120,18 +153,21 @@ export default function ClienteDetalhe() {
   if (!cliente) {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
-        <p className="text-muted-foreground">Cliente não encontrado</p>
+        <p role={erroCliente ? "alert" : undefined} className="max-w-xl px-4 text-center text-muted-foreground">{erroCliente || "Cliente não encontrado ou sem acesso nesta conta."}</p>
+        {erroCliente && <Button onClick={() => void carregarDados()}>Tentar novamente</Button>}
         <Button onClick={() => navigate("/clientes")}>Voltar para lista</Button>
       </div>
     );
   }
+
+  const pode = (area: AreaEquipe) => acesso.permissoes[area].acessar;
 
   const abasPrincipais = [
     { id: "informacoes", label: "Informações gerais" },
     { id: "pesquisa", label: "Pesquisa" },
     { id: "atividades", label: "Atividades" },
     { id: "documentos", label: "Documentos" },
-  ];
+  ].filter(item => item.id === "informacoes" || pode(item.id as AreaEquipe));
   const abasConteudo = [
     { id: "brainstorm", label: "Brainstorm" },
     { id: "vertical", label: "Vertical" },
@@ -201,7 +237,7 @@ export default function ClienteDetalhe() {
                 </button>
               ))}
 
-              <div>
+              {pode("conteudo") && <div>
                 <button
                   type="button"
                   onClick={() => {
@@ -245,7 +281,7 @@ export default function ClienteDetalhe() {
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
           </>
         )}
@@ -255,6 +291,7 @@ export default function ClienteDetalhe() {
       <div className="flex-1 overflow-y-auto">
         {/* Conteúdo das abas */}
         <div className="p-6">
+          {avisoPermissoes && <div role="status" className="mb-6 rounded-lg border border-border bg-muted/50 p-4 text-sm"><p>{avisoPermissoes}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carregarDados()}>Tentar novamente</Button></div>}
           {abaAtiva === "informacoes" && (
             <div className="space-y-6">
               {/* Bloco superior: Meta e Equipe */}
@@ -271,37 +308,11 @@ export default function ClienteDetalhe() {
                   </CardContent>
                 </Card>
 
-                {/* Equipe */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Equipe</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {equipe.length > 0 ? (
-                      <div className="space-y-2">
-                        {equipe.map((membro) => (
-                          <div key={membro.id} className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full border-2 border-foreground" />
-                            <span className="text-sm">
-                              {membro.nome_pessoa}{" "}
-                              <span className="text-muted-foreground">
-                                [{membro.papel}]
-                              </span>
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">
-                        Nenhum membro na equipe
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
+                {acesso.proprietario && <EquipeCard key={id} clienteId={id!} permissoesDisponiveis={permissoesDisponiveis} />}
               </div>
 
               {/* Receita */}
-              <Card>
+              {pode("produtos") && <><Card>
                 <CardHeader>
                   <CardTitle>Receita</CardTitle>
                 </CardHeader>
@@ -314,7 +325,7 @@ export default function ClienteDetalhe() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Esteira de produtos</CardTitle>
-                  <Button
+                  {acesso.permissoes.produtos.criar && <Button
                     size="sm"
                     onClick={() => {
                       setProdutoEditando(null);
@@ -323,7 +334,7 @@ export default function ClienteDetalhe() {
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Adicionar
-                  </Button>
+                  </Button>}
                 </CardHeader>
                 <CardContent>
                   {produtos.length > 0 ? (
@@ -335,7 +346,7 @@ export default function ClienteDetalhe() {
                           className="min-w-[200px] border border-border rounded-lg p-4 bg-card relative group cursor-pointer hover:border-primary/50 transition-colors"
                         >
                           <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            <Button
+                            {acesso.permissoes.produtos.editar && <Button
                               size="icon"
                               variant="ghost"
                               className="h-6 w-6"
@@ -346,8 +357,8 @@ export default function ClienteDetalhe() {
                               }}
                             >
                               <Edit className="h-3 w-3" />
-                            </Button>
-                            <Button
+                            </Button>}
+                            {acesso.proprietario && <Button
                               size="icon"
                               variant="ghost"
                               className="h-6 w-6"
@@ -357,7 +368,7 @@ export default function ClienteDetalhe() {
                               }}
                             >
                               <Trash className="h-3 w-3" />
-                            </Button>
+                            </Button>}
                           </div>
                           <h4 className="font-semibold text-sm mb-2">
                             {produto.nome_produto}
@@ -387,25 +398,25 @@ export default function ClienteDetalhe() {
                     </p>
                   )}
                 </CardContent>
-              </Card>
+              </Card></>}
             </div>
           )}
 
-          {abaAtiva === "pesquisa" && (
+          {abaAtiva === "pesquisa" && pode("pesquisa") && (
             <PesquisaList clienteId={id!} />
           )}
 
-          {abaAtiva === "atividades" && (
+          {abaAtiva === "atividades" && pode("atividades") && (
             <div className="w-full">
               <AtividadesView clienteId={id} />
             </div>
           )}
 
-          {abaAtiva === "conteudo" && (
+          {abaAtiva === "conteudo" && pode("conteudo") && (
             <ConteudoSection clienteId={id!} subAba={subAbaConteudo} />
           )}
 
-          {abaAtiva === "documentos" && (
+          {abaAtiva === "documentos" && pode("documentos") && (
             <DocumentosView clienteId={id!} />
           )}
         </div>

@@ -28,7 +28,6 @@ import {
   FileText,
   GripVertical,
   Plus,
-  Target,
   Youtube,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -41,6 +40,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { VideoDetailPanel } from "./VideoDetailPanel";
+import { InstagramInsightsPanel } from "./InstagramInsightsPanel";
 
 interface CronogramaViewProps {
   clienteId: string;
@@ -116,15 +116,6 @@ const SIDEBAR_GROUPS = [
 ];
 
 const getDraggableId = (video: ScheduledVideo) => `${video.platform}:${video.id}`;
-const getFollowerGoalStorageKey = (clienteId: string) => `cronograma_followers_goal:${clienteId}`;
-
-const formatNumber = (value: number) => value.toLocaleString("pt-BR");
-
-const parseNumberInput = (value: string) => {
-  const digitsOnly = value.replace(/\D/g, "");
-  return digitsOnly ? Number(digitsOnly) : 0;
-};
-
 const parseDraggableId = (draggableId: string) => {
   const [platform, id] = draggableId.split(":") as [Platform, string];
   return { platform, id };
@@ -141,31 +132,10 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const [newIdeaPlatform, setNewIdeaPlatform] = useState<Platform>("vertical");
   const [actionVideo, setActionVideo] = useState<ScheduledVideo | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<ScheduledVideo | null>(null);
-  const [currentFollowersInput, setCurrentFollowersInput] = useState("3.527");
-  const [followerGoalInput, setFollowerGoalInput] = useState("10.000");
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchVideos();
-  }, [clienteId]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const storedGoal = window.localStorage.getItem(getFollowerGoalStorageKey(clienteId));
-    if (!storedGoal) return;
-
-    try {
-      const parsedGoal = JSON.parse(storedGoal) as { current?: number; goal?: number };
-      if (typeof parsedGoal.current === "number") {
-        setCurrentFollowersInput(formatNumber(parsedGoal.current));
-      }
-      if (typeof parsedGoal.goal === "number") {
-        setFollowerGoalInput(formatNumber(parsedGoal.goal));
-      }
-    } catch (error) {
-      console.error("Erro ao carregar meta de seguidores:", error);
-    }
   }, [clienteId]);
 
   const fetchVideos = async () => {
@@ -241,11 +211,6 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   });
 
   const postedCount = videos.filter((video) => video.status === "postado").length;
-  const currentFollowers = parseNumberInput(currentFollowersInput);
-  const followerGoal = parseNumberInput(followerGoalInput);
-  const followerProgress = followerGoal > 0
-    ? Math.min(Math.round((currentFollowers / followerGoal) * 100), 100)
-    : 0;
 
   const getVideosForDay = (day: Date) =>
     scheduledVideos
@@ -354,21 +319,6 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
     );
     setActionVideo(null);
     toast.success("Marcado como postado");
-  };
-
-  const handleFollowerInputBlur = () => {
-    const current = parseNumberInput(currentFollowersInput);
-    const goal = parseNumberInput(followerGoalInput);
-
-    setCurrentFollowersInput(formatNumber(current));
-    setFollowerGoalInput(formatNumber(goal));
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        getFollowerGoalStorageKey(clienteId),
-        JSON.stringify({ current, goal })
-      );
-    }
   };
 
   const handleCreateIdea = async () => {
@@ -697,59 +647,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
           </main>
 
           <aside className="space-y-3">
-            <div className="rounded-lg border bg-card p-4">
-              <div className="mb-4 flex items-center gap-2 font-semibold">
-                <Target className="h-4 w-4" />
-                Meta de Seguidores
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="current-followers" className="text-xs text-muted-foreground">
-                    Atual
-                  </Label>
-                  <Input
-                    id="current-followers"
-                    value={currentFollowersInput}
-                    onChange={(event) => setCurrentFollowersInput(event.target.value)}
-                    onBlur={handleFollowerInputBlur}
-                    inputMode="numeric"
-                    className="h-9"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="follower-goal" className="text-xs text-muted-foreground">
-                    Meta
-                  </Label>
-                  <Input
-                    id="follower-goal"
-                    value={followerGoalInput}
-                    onChange={(event) => setFollowerGoalInput(event.target.value)}
-                    onBlur={handleFollowerInputBlur}
-                    inputMode="numeric"
-                    className="h-9"
-                  />
-                </div>
-              </div>
-              <div className="my-5 flex justify-center">
-                <div
-                  className="grid h-28 w-28 place-items-center rounded-full"
-                  style={{
-                    background: `conic-gradient(hsl(var(--primary)) ${followerProgress * 3.6}deg, hsl(var(--muted)) 0deg)`,
-                  }}
-                >
-                  <div className="grid h-20 w-20 place-items-center rounded-full bg-card text-xl font-bold">
-                    {followerProgress}%
-                  </div>
-                </div>
-              </div>
-              <p className="text-center text-sm font-medium">
-                {formatNumber(currentFollowers)} / {formatNumber(followerGoal)} seguidores
-              </p>
-              <div className="mt-4 border-t pt-4 text-sm text-muted-foreground">
-                <p>Faltam {formatNumber(Math.max(followerGoal - currentFollowers, 0))} seguidores</p>
-                <p>Meta deste mês</p>
-              </div>
-            </div>
+            <InstagramInsightsPanel />
 
             <div className="rounded-lg border bg-card p-4">
               <h4 className="mb-4 font-semibold">Resumo do Mês</h4>
