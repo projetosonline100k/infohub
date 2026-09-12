@@ -16,9 +16,10 @@ interface Subtarefa {
 
 interface SubtarefasListProps {
   atividadeId: string;
+  onResumoChange?: (resumo: { total: number; concluidas: number }) => void;
 }
 
-export const SubtarefasList = ({ atividadeId }: SubtarefasListProps) => {
+export const SubtarefasList = ({ atividadeId, onResumoChange }: SubtarefasListProps) => {
   const [subtarefas, setSubtarefas] = useState<Subtarefa[]>([]);
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,16 @@ export const SubtarefasList = ({ atividadeId }: SubtarefasListProps) => {
   useEffect(() => {
     carregarSubtarefas();
   }, [atividadeId]);
+
+  // Mantém o painel de detalhe informado do progresso, para poder bloquear
+  // a finalização enquanto o checklist não estiver completo.
+  useEffect(() => {
+    onResumoChange?.({
+      total: subtarefas.length,
+      concluidas: subtarefas.filter((s) => s.concluida).length,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subtarefas]);
 
   const adicionarSubtarefa = async () => {
     if (!novaSubtarefa.trim()) return;

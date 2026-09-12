@@ -1,10 +1,11 @@
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+import { cn, formatarTempo } from "@/lib/utils";
 
 interface DiaSectionProps {
   dia: string;
   contagem: number;
+  tempoTotal?: number;
   isOpen: boolean;
   onToggle: () => void;
   children: React.ReactNode;
@@ -14,6 +15,7 @@ interface DiaSectionProps {
 export const DiaSection = ({
   dia,
   contagem,
+  tempoTotal,
   isOpen,
   onToggle,
   children,
@@ -40,6 +42,9 @@ export const DiaSection = ({
         )}>
           {contagem}
         </span>
+        {!!tempoTotal && (
+          <span className="text-xs text-muted-foreground">{formatarTempo(tempoTotal)}</span>
+        )}
         {isToday && (
           <span className="ml-auto text-xs bg-primary text-primary-foreground px-1.5 py-0.5 rounded">
             Hoje

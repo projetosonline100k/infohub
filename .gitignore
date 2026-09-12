@@ -27,3 +27,6 @@ dist-ssr
 *.backup
 *.backup.zip
 __pycache__/
+
+# Cache local da CLI do Supabase (metadados da máquina, não do projeto)
+supabase/.temp/

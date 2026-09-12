@@ -1,8 +1,9 @@
 import { NavLink } from "@/components/NavLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { LayoutDashboard, Users, Activity, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Activity, ShieldCheck, LogOut } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
+import { ehAdmin } from "@/lib/admin";
 import { Button } from "@/components/ui/button";
 
 interface DashboardLayoutProps {
@@ -19,6 +20,9 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
   const { user, signOut } = useAuth();
   const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
+  const itens = ehAdmin(user?.email)
+    ? [...menuItems, { title: "Administração", path: "/admin", icon: ShieldCheck }]
+    : menuItems;
 
   return (
     <div className="min-h-screen w-full bg-background">
@@ -40,7 +44,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           </div>
           
           <nav className="flex items-center gap-2">
-            {menuItems.map((item) => {
+            {itens.map((item) => {
               const Icon = item.icon;
               return (
                 <NavLink

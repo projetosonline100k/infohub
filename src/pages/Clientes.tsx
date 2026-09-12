@@ -1,10 +1,11 @@
 import { useAuth } from "@/auth/AuthProvider";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Edit } from "lucide-react";
+import { Plus, Edit, Archive, ArchiveRestore } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import ClienteForm from "@/components/ClienteForm";
@@ -15,6 +16,7 @@ interface Cliente {
   nome_especialista: string;
   idade: number;
   nicho: string;
+  arquivado: boolean;
 }
 
 interface EquipeMembro {
@@ -32,16 +34,18 @@ const Clientes = () => {
   const [clienteEditando, setClienteEditando] = useState<Cliente | undefined>();
   const [equipeEditando, setEquipeEditando] = useState<EquipeMembro[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mostrarArquivados, setMostrarArquivados] = useState(false);
 
   useEffect(() => {
     carregarClientes();
-  }, []);
+  }, [mostrarArquivados]);
 
   const carregarClientes = async () => {
     try {
       const { data, error } = await supabase
         .from("clientes")
         .select("*")
+        .eq("arquivado", mostrarArquivados)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -54,6 +58,28 @@ const Clientes = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const alternarArquivo = async (cliente: Cliente) => {
+    try {
+      const { error } = await supabase
+        .from("clientes")
+        .update({ arquivado: !cliente.arquivado })
+        .eq("id", cliente.id);
+
+      if (error) throw error;
+
+      toast({
+        title: cliente.arquivado ? "Cliente reativado" : "Cliente arquivado",
+      });
+      setClientes((prev) => prev.filter((c) => c.id !== cliente.id));
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Erro ao arquivar cliente",
+        variant: "destructive",
+      });
     }
   };
 
@@ -170,6 +196,27 @@ const Clientes = () => {
         </Button>
       </div>
 
+      <div className="flex items-center bg-muted rounded-lg p-0.5 w-fit">
+        <button
+          onClick={() => setMostrarArquivados(false)}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            !mostrarArquivados ? "bg-background shadow-sm" : "text-muted-foreground"
+          )}
+        >
+          Ativos
+        </button>
+        <button
+          onClick={() => setMostrarArquivados(true)}
+          className={cn(
+            "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+            mostrarArquivados ? "bg-background shadow-sm" : "text-muted-foreground"
+          )}
+        >
+          Arquivados
+        </button>
+      </div>
+
       {loading ? (
         <Card className="p-8 shadow-md">
           <div className="text-center py-12">
@@ -180,7 +227,9 @@ const Clientes = () => {
         <Card className="p-8 shadow-md">
           <div className="text-center py-12">
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              Nenhum cliente cadastrado. Clique em "Novo cliente" para começar.
+              {mostrarArquivados
+                ? "Nenhum cliente arquivado."
+                : 'Nenhum cliente cadastrado. Clique em "Novo cliente" para começar.'}
             </p>
           </div>
         </Card>
@@ -204,17 +253,43 @@ const Clientes = () => {
                   </h3>
                   <p className="text-sm text-muted-foreground">{cliente.nicho}</p>
                 </div>
-                {cliente.user_id === user?.id && <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    abrirFormularioEditar(cliente);
-                  }}
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Editar
-                </Button>}
+                {cliente.user_id === user?.id && (
+                  <div className="flex items-center gap-1">
+                    {!mostrarArquivados && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          abrirFormularioEditar(cliente);
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Editar
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        alternarArquivo(cliente);
+                      }}
+                    >
+                      {cliente.arquivado ? (
+                        <>
+                          <ArchiveRestore className="h-4 w-4 mr-2" />
+                          Reativar
+                        </>
+                      ) : (
+                        <>
+                          <Archive className="h-4 w-4 mr-2" />
+                          Arquivar
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
             </Card>
           ))}

@@ -55,13 +55,18 @@ export type Database = {
           data_atividade: string
           data_inicio: string | null
           data_vencimento: string | null
+          deleted_at: string | null
           descricao: string | null
           destaque: boolean
           id: string
           ordem: number
+          pasta_id: string | null
           prioridade: string
+          responsavel_nome: string | null
           status: string
           tempo_estimado: number | null
+          timer_decorrido_segundos: number
+          timer_iniciado_em: string | null
           titulo: string
         }
         Insert: {
@@ -71,13 +76,18 @@ export type Database = {
           data_atividade?: string
           data_inicio?: string | null
           data_vencimento?: string | null
+          deleted_at?: string | null
           descricao?: string | null
           destaque?: boolean
           id?: string
           ordem?: number
+          pasta_id?: string | null
           prioridade?: string
+          responsavel_nome?: string | null
           status?: string
           tempo_estimado?: number | null
+          timer_decorrido_segundos?: number
+          timer_iniciado_em?: string | null
           titulo: string
         }
         Update: {
@@ -87,13 +97,18 @@ export type Database = {
           data_atividade?: string
           data_inicio?: string | null
           data_vencimento?: string | null
+          deleted_at?: string | null
           descricao?: string | null
           destaque?: boolean
           id?: string
           ordem?: number
+          pasta_id?: string | null
           prioridade?: string
+          responsavel_nome?: string | null
           status?: string
           tempo_estimado?: number | null
+          timer_decorrido_segundos?: number
+          timer_iniciado_em?: string | null
           titulo?: string
         }
         Relationships: [
@@ -102,6 +117,13 @@ export type Database = {
             columns: ["cliente_id"]
             isOneToOne: false
             referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "atividades_pasta_id_fkey"
+            columns: ["pasta_id"]
+            isOneToOne: false
+            referencedRelation: "pastas_atividade"
             referencedColumns: ["id"]
           },
         ]
@@ -141,6 +163,7 @@ export type Database = {
           user_id: string | null
           created_at: string | null
           id: string
+          arquivado: boolean
           idade: number
           link_painel_receita: string | null
           meta_atual: string | null
@@ -150,6 +173,7 @@ export type Database = {
         }
         Insert: {
           user_id?: string | null
+          arquivado?: boolean
           created_at?: string | null
           id?: string
           idade: number
@@ -160,6 +184,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          arquivado?: boolean
           created_at?: string | null
           id?: string
           idade?: number
@@ -170,6 +195,47 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      colunas_atividade: {
+        Row: {
+          cliente_id: string | null
+          created_at: string
+          eh_conclusao: boolean
+          id: string
+          nome: string
+          ordem: number
+          status_key: string
+          user_id: string | null
+        }
+        Insert: {
+          cliente_id?: string | null
+          created_at?: string
+          eh_conclusao?: boolean
+          id?: string
+          nome: string
+          ordem?: number
+          status_key: string
+          user_id?: string | null
+        }
+        Update: {
+          cliente_id?: string | null
+          created_at?: string
+          eh_conclusao?: boolean
+          id?: string
+          nome?: string
+          ordem?: number
+          status_key?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "colunas_atividade_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conhecimentos_agente: {
         Row: {
@@ -222,6 +288,7 @@ export type Database = {
           conteudo: string | null
           created_at: string
           id: string
+          pasta_id: string | null
           titulo: string
           updated_at: string
         }
@@ -231,6 +298,7 @@ export type Database = {
           conteudo?: string | null
           created_at?: string
           id?: string
+          pasta_id?: string | null
           titulo?: string
           updated_at?: string
         }
@@ -240,10 +308,18 @@ export type Database = {
           conteudo?: string | null
           created_at?: string
           id?: string
+          pasta_id?: string | null
           titulo?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "documentos_pasta_id_fkey"
+            columns: ["pasta_id"]
+            isOneToOne: false
+            referencedRelation: "pastas_atividade"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "documentos_atividade_id_fkey"
             columns: ["atividade_id"]
@@ -456,6 +532,44 @@ export type Database = {
           texto?: string
         }
         Relationships: []
+      }
+      pastas_atividade: {
+        Row: {
+          cliente_id: string | null
+          created_at: string
+          deleted_at: string | null
+          id: string
+          nome: string
+          ordem: number
+          user_id: string | null
+        }
+        Insert: {
+          cliente_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          nome: string
+          ordem?: number
+          user_id?: string | null
+        }
+        Update: {
+          cliente_id?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          id?: string
+          nome?: string
+          ordem?: number
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pastas_atividade_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       perfis_parecidos: {
         Row: {

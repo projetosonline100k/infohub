@@ -23,12 +23,17 @@ interface DocumentEditorProps {
 }
 
 export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
+  // Guardado à parte da prop pra dar pra trocar de guia sem fechar e reabrir
+  // o editor inteiro.
+  const [docAtualId, setDocAtualId] = useState(documentoId);
   const [titulo, setTitulo] = useState("Documento sem título");
+  const [clienteId, setClienteId] = useState<string | null>(null);
+  const [pastaId, setPastaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
 
   const { saving, lastSaved, debouncedSave, saveNow } = useAutoSave({
-    documentoId,
+    documentoId: docAtualId,
     debounceMs: 1000,
   });
 
@@ -59,36 +64,54 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     },
   });
 
-  // Load document data
+  // Carrega o documento atual (troca de guia dispara de novo, com outro id).
   useEffect(() => {
     async function loadDocument() {
       setLoading(true);
       const { data, error } = await supabase
         .from("documentos")
         .select("*")
-        .eq("id", documentoId)
+        .eq("id", docAtualId)
         .maybeSingle();
 
       if (data && !error) {
         setTitulo(data.titulo || "Documento sem título");
-        if (editor && data.conteudo) {
-          editor.commands.setContent(data.conteudo);
+        setClienteId(data.cliente_id);
+        setPastaId(data.pasta_id);
+        if (editor) {
+          editor.commands.setContent(data.conteudo || "");
         }
       }
       setLoading(false);
     }
 
-    if (documentoId && editor) {
+    if (docAtualId && editor) {
       loadDocument();
     }
-  }, [documentoId, editor]);
+  }, [docAtualId, editor]);
 
   const salvarTitulo = useCallback(async () => {
     await supabase
       .from("documentos")
       .update({ titulo })
-      .eq("id", documentoId);
-  }, [titulo, documentoId]);
+      .eq("id", docAtualId);
+  }, [titulo, docAtualId]);
+
+  const trocarDocumento = (novoId: string) => {
+    if (novoId === docAtualId) return;
+    // Salva o que está na tela antes de trocar, sem esperar o debounce.
+    if (editor) saveNow(editor.getHTML());
+    setDocAtualId(novoId);
+  };
+
+  const mudarPasta = async (novaPastaId: string | null) => {
+    setPastaId(novaPastaId);
+    const { error } = await supabase
+      .from("documentos")
+      .update({ pasta_id: novaPastaId })
+      .eq("id", docAtualId);
+    if (error) console.error("Erro ao mudar a pasta do documento:", error);
+  };
 
   const getSaveStatus = () => {
     if (saving) return "Salvando...";
@@ -138,7 +161,16 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
-        {showSidebar && <DocumentSidebar editor={editor} />}
+        {showSidebar && (
+          <DocumentSidebar
+            documentoAtualId={docAtualId}
+            tituloAtual={titulo}
+            clienteId={clienteId}
+            pastaId={pastaId}
+            onTrocarDocumento={trocarDocumento}
+            onMudarPasta={mudarPasta}
+          />
+        )}
 
         {/* Editor area - simulates paper */}
         <div className="flex-1 overflow-auto bg-muted/50 p-8">

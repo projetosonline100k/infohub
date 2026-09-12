@@ -2,7 +2,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { acessoProprietario, resolverAcesso, permissoesVazias, AreaEquipe } from "@/lib/equipe";
 import { EquipeCard } from "@/components/equipe/EquipeCard";
 import { useEffect, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,7 @@ interface Produto {
 export default function ClienteDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
   const [permissoesDisponiveis, setPermissoesDisponiveis] = useState(false);
   const [acesso, setAcesso] = useState({ proprietario: false, permissoes: permissoesVazias() });
@@ -109,6 +110,15 @@ export default function ClienteDetalhe() {
         toast({ title: "Não foi possível carregar os produtos", variant: "destructive" });
       } else {
         setProdutos(produtosRes.data || []);
+        // Permite chegar direto num produto específico via /clientes/:id?produto=<id>.
+        const produtoAlvo = searchParams.get("produto");
+        if (produtoAlvo) {
+          const encontrado = (produtosRes.data || []).find((p) => p.id === produtoAlvo);
+          if (encontrado) {
+            setProdutoSelecionado(encontrado);
+            setSearchParams({}, { replace: true });
+          }
+        }
       }
     } catch (error) {
       if (!vigente()) return;

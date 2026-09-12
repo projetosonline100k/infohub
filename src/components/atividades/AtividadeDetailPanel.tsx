@@ -38,6 +38,7 @@ import {
   Trash2,
   FileText,
   Plus,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -55,12 +56,20 @@ interface Atividade {
   prioridade: string;
   data_vencimento: string | null;
   data_inicio: string | null;
+  responsavel_nome: string | null;
+}
+
+interface Coluna {
+  status_key: string;
+  nome: string;
+  eh_conclusao: boolean;
 }
 
 interface AtividadeDetailPanelProps {
   open: boolean;
   onClose: () => void;
   atividade: Atividade | null;
+  colunas: Coluna[];
   onUpdate: () => void;
   onDelete: (id: string) => void;
 }
@@ -78,6 +87,7 @@ export const AtividadeDetailPanel = ({
   open,
   onClose,
   atividade,
+  colunas,
   onUpdate,
   onDelete,
 }: AtividadeDetailPanelProps) => {
@@ -89,6 +99,9 @@ export const AtividadeDetailPanel = ({
   const [destaque, setDestaque] = useState(false);
   const [dataVencimento, setDataVencimento] = useState<Date | undefined>();
   const [dataInicio, setDataInicio] = useState<Date | undefined>();
+  const [responsavelNome, setResponsavelNome] = useState("");
+  const [sugestoesEquipe, setSugestoesEquipe] = useState<string[]>([]);
+  const [checklistResumo, setChecklistResumo] = useState({ total: 0, concluidas: 0 });
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -105,28 +118,73 @@ export const AtividadeDetailPanel = ({
       setDataInicio(
         atividade.data_inicio ? parseISO(atividade.data_inicio) : undefined
       );
+      setResponsavelNome(atividade.responsavel_nome || "");
+      setChecklistResumo({ total: 0, concluidas: 0 });
     }
   }, [atividade]);
 
-  const salvar = async () => {
+  // Sugere nomes da equipe do cliente para preencher o responsável.
+  useEffect(() => {
+    if (!atividade?.cliente_id) {
+      setSugestoesEquipe([]);
+      return;
+    }
+    supabase
+      .from("equipe_cliente")
+      .select("nome_pessoa")
+      .eq("cliente_id", atividade.cliente_id)
+      .then(({ data }) => setSugestoesEquipe((data || []).map((m) => m.nome_pessoa)));
+  }, [atividade?.cliente_id]);
+
+  // Aceita overrides porque handlers de clique/seleção chamam salvar()
+  // no mesmo instante em que mudam o estado — como a atualização de estado
+  // do React é assíncrona, ler das variáveis de estado aqui pegaria o
+  // valor antigo. O valor novo precisa ser passado explicitamente.
+  const salvar = async (overrides?: {
+    status?: string;
+    prioridade?: string;
+    destaque?: boolean;
+    dataVencimento?: Date | undefined;
+    dataInicio?: Date | undefined;
+  }) => {
     if (!atividade) return;
+
+    const valores = {
+      status,
+      prioridade,
+      destaque,
+      dataVencimento,
+      dataInicio,
+      ...overrides,
+    };
 
     setSaving(true);
     try {
+      const colunaAtual = colunas.find((c) => c.status_key === valores.status);
+      const payload: Record<string, unknown> = {
+        titulo,
+        descricao: descricao || null,
+        status: valores.status,
+        concluida: !!colunaAtual?.eh_conclusao,
+        prioridade: valores.prioridade,
+        tempo_estimado: tempoEstimado,
+        destaque: valores.destaque,
+        data_vencimento: valores.dataVencimento
+          ? format(valores.dataVencimento, "yyyy-MM-dd")
+          : null,
+        data_inicio: valores.dataInicio ? format(valores.dataInicio, "yyyy-MM-dd") : null,
+        responsavel_nome: responsavelNome.trim() || null,
+      };
+      // Quando uma Data Início é escolhida agora, ela passa a decidir em
+      // qual dia a tarefa aparece no modo lista — sem isso a tarefa ficava
+      // presa no dia em que foi criada (normalmente hoje, se veio do quadro),
+      // mesmo depois de agendada para outro dia.
+      if (overrides?.dataInicio) {
+        payload.data_atividade = format(overrides.dataInicio, "yyyy-MM-dd");
+      }
       const { error } = await supabase
         .from("atividades")
-        .update({
-          titulo,
-          descricao: descricao || null,
-          status,
-          prioridade,
-          tempo_estimado: tempoEstimado,
-          destaque,
-          data_vencimento: dataVencimento
-            ? format(dataVencimento, "yyyy-MM-dd")
-            : null,
-          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : null,
-        })
+        .update(payload)
         .eq("id", atividade.id);
 
       if (error) throw error;
@@ -139,6 +197,20 @@ export const AtividadeDetailPanel = ({
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleStatusChange = (novoStatus: string) => {
+    const colunaAlvo = colunas.find((c) => c.status_key === novoStatus);
+    if (
+      colunaAlvo?.eh_conclusao &&
+      checklistResumo.total > 0 &&
+      checklistResumo.concluidas < checklistResumo.total
+    ) {
+      toast.error("Finalize todos os itens do checklist antes de concluir a tarefa");
+      return;
+    }
+    setStatus(novoStatus);
+    salvar({ status: novoStatus });
   };
 
   const handleDelete = () => {
@@ -178,7 +250,7 @@ export const AtividadeDetailPanel = ({
             <Input
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              onBlur={salvar}
+              onBlur={() => salvar()}
               className="text-xl font-semibold bg-transparent border-none shadow-none focus-visible:ring-0 px-0 h-auto"
             />
           </SheetTitle>
@@ -190,29 +262,24 @@ export const AtividadeDetailPanel = ({
             {/* Status */}
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Status</label>
-              <Select value={status} onValueChange={(v) => { setStatus(v); setTimeout(salvar, 100); }}>
+              <Select value={status} onValueChange={handleStatusChange}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="pendente">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-muted-foreground" />
-                      Pendente
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="em_progresso">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-blue-400" />
-                      Em Progresso
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="finalizado">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-green-400" />
-                      Finalizado
-                    </div>
-                  </SelectItem>
+                  {colunas.map((coluna) => (
+                    <SelectItem key={coluna.status_key} value={coluna.status_key}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={cn(
+                            "w-2 h-2 rounded-full",
+                            coluna.eh_conclusao ? "bg-green-400" : "bg-muted-foreground"
+                          )}
+                        />
+                        {coluna.nome}
+                      </div>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -220,7 +287,7 @@ export const AtividadeDetailPanel = ({
             {/* Priority */}
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Prioridade</label>
-              <Select value={prioridade} onValueChange={(v) => { setPrioridade(v); setTimeout(salvar, 100); }}>
+              <Select value={prioridade} onValueChange={(v) => { setPrioridade(v); salvar({ prioridade: v }); }}>
                 <SelectTrigger className="h-9">
                   <SelectValue />
                 </SelectTrigger>
@@ -253,6 +320,27 @@ export const AtividadeDetailPanel = ({
               </Select>
             </div>
 
+            {/* Responsible */}
+            <div className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">Responsável</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  list="responsavel-sugestoes"
+                  value={responsavelNome}
+                  onChange={(e) => setResponsavelNome(e.target.value)}
+                  onBlur={() => salvar()}
+                  placeholder="Quem é responsável?"
+                  className="h-9 pl-9"
+                />
+                <datalist id="responsavel-sugestoes">
+                  {sugestoesEquipe.map((nome) => (
+                    <option key={nome} value={nome} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+
             {/* Start Date */}
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Data Início</label>
@@ -275,7 +363,7 @@ export const AtividadeDetailPanel = ({
                   <Calendar
                     mode="single"
                     selected={dataInicio}
-                    onSelect={(d) => { setDataInicio(d); setTimeout(salvar, 100); }}
+                    onSelect={(d) => { setDataInicio(d); salvar({ dataInicio: d }); }}
                     locale={ptBR}
                   />
                 </PopoverContent>
@@ -304,7 +392,7 @@ export const AtividadeDetailPanel = ({
                   <Calendar
                     mode="single"
                     selected={dataVencimento}
-                    onSelect={(d) => { setDataVencimento(d); setTimeout(salvar, 100); }}
+                    onSelect={(d) => { setDataVencimento(d); salvar({ dataVencimento: d }); }}
                     locale={ptBR}
                   />
                 </PopoverContent>
@@ -320,7 +408,7 @@ export const AtividadeDetailPanel = ({
                   type="number"
                   value={tempoEstimado || ""}
                   onChange={(e) => setTempoEstimado(e.target.value ? parseInt(e.target.value) : null)}
-                  onBlur={salvar}
+                  onBlur={() => salvar()}
                   placeholder="Minutos"
                   className="h-9"
                 />
@@ -333,7 +421,7 @@ export const AtividadeDetailPanel = ({
               <Button
                 variant={destaque ? "default" : "outline"}
                 size="sm"
-                onClick={() => { setDestaque(!destaque); setTimeout(salvar, 100); }}
+                onClick={() => { const novoDestaque = !destaque; setDestaque(novoDestaque); salvar({ destaque: novoDestaque }); }}
                 className="w-full h-9"
               >
                 <Star className={cn("h-4 w-4 mr-2", destaque && "fill-current")} />
@@ -348,7 +436,7 @@ export const AtividadeDetailPanel = ({
             <Textarea
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              onBlur={salvar}
+              onBlur={() => salvar()}
               placeholder="Adicionar descrição..."
               className="min-h-[100px] resize-none"
             />
@@ -356,11 +444,20 @@ export const AtividadeDetailPanel = ({
 
           {/* Subtasks */}
           <div className="border-t border-border pt-4">
-            <SubtarefasList atividadeId={atividade.id} />
+            <SubtarefasList
+              atividadeId={atividade.id}
+              onResumoChange={(resumo) => {
+                setChecklistResumo(resumo);
+                // O quadro (kanban) decide se pode finalizar com base no
+                // checklist que ele já tem carregado; sem isso, marcar o
+                // último item aqui não refletia lá até algo mais recarregar.
+                onUpdate();
+              }}
+            />
           </div>
 
           {/* Documents */}
-          <DocumentosSection atividadeId={atividade.id} clienteId={atividade.cliente_id} />
+          <DocumentosSection atividadeId={atividade.id} clienteId={atividade.cliente_id} atividadeTitulo={atividade.titulo} />
         </div>
       </SheetContent>
     </Sheet>
@@ -368,7 +465,15 @@ export const AtividadeDetailPanel = ({
 };
 
 // Separate component for documents section
-function DocumentosSection({ atividadeId, clienteId }: { atividadeId: string; clienteId: string | null }) {
+function DocumentosSection({
+  atividadeId,
+  clienteId,
+  atividadeTitulo,
+}: {
+  atividadeId: string;
+  clienteId: string | null;
+  atividadeTitulo: string;
+}) {
   const [editorOpen, setEditorOpen] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -379,7 +484,7 @@ function DocumentosSection({ atividadeId, clienteId }: { atividadeId: string; cl
       .insert({
         atividade_id: atividadeId,
         cliente_id: clienteId,
-        titulo: "Documento sem título",
+        titulo: atividadeTitulo || "Documento sem título",
       })
       .select()
       .single();

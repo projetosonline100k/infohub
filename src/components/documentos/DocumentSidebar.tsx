@@ -1,97 +1,151 @@
 import { useEffect, useState } from "react";
-import { Editor } from "@tiptap/react";
-import { FileText, Plus } from "lucide-react";
+import { FileText, Plus, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
-interface HeadingItem {
-  level: number;
-  text: string;
-  pos: number;
+interface Guia {
+  id: string;
+  titulo: string;
 }
+
+interface Pasta {
+  id: string;
+  nome: string;
+}
+
+const SEM_PASTA = "__sem_pasta__";
 
 interface DocumentSidebarProps {
-  editor: Editor | null;
+  documentoAtualId: string;
+  tituloAtual: string;
+  clienteId: string | null;
+  pastaId: string | null;
+  onTrocarDocumento: (novoId: string) => void;
+  onMudarPasta: (novaPastaId: string | null) => void;
 }
 
-export function DocumentSidebar({ editor }: DocumentSidebarProps) {
-  const [headings, setHeadings] = useState<HeadingItem[]>([]);
+// "Guias no documento": os outros documentos que compartilham a mesma
+// pasta. Escolher uma pasta aqui reúne tarefas e documentos do mesmo
+// projeto no mesmo lugar.
+export function DocumentSidebar({
+  documentoAtualId,
+  tituloAtual,
+  clienteId,
+  pastaId,
+  onTrocarDocumento,
+  onMudarPasta,
+}: DocumentSidebarProps) {
+  const [pastas, setPastas] = useState<Pasta[]>([]);
+  const [guias, setGuias] = useState<Guia[]>([]);
 
   useEffect(() => {
-    if (!editor) return;
+    let query = supabase.from("pastas_atividade").select("id, nome").is("deleted_at", null).order("ordem");
+    query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);
+    query.then(({ data, error }) => {
+      if (error) {
+        console.error("Erro ao carregar pastas:", error);
+        return;
+      }
+      setPastas(data || []);
+    });
+  }, [clienteId]);
 
-    const updateHeadings = () => {
-      const items: HeadingItem[] = [];
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "heading") {
-          items.push({
-            level: node.attrs.level,
-            text: node.textContent,
-            pos,
-          });
-        }
-      });
-      setHeadings(items);
-    };
-
-    updateHeadings();
-    editor.on("update", updateHeadings);
-    return () => {
-      editor.off("update", updateHeadings);
-    };
-  }, [editor]);
-
-  const scrollToHeading = (pos: number) => {
-    if (!editor) return;
-    editor.chain().focus().setTextSelection(pos).run();
-    
-    // Scroll the editor view to the heading
-    const { view } = editor;
-    const coords = view.coordsAtPos(pos);
-    const editorContainer = document.querySelector(".ProseMirror")?.parentElement;
-    if (editorContainer) {
-      const containerRect = editorContainer.getBoundingClientRect();
-      const scrollTop = coords.top - containerRect.top - 100;
-      editorContainer.scrollTo({ top: editorContainer.scrollTop + scrollTop, behavior: "smooth" });
+  useEffect(() => {
+    if (!pastaId) {
+      setGuias([]);
+      return;
     }
-  };
+    supabase
+      .from("documentos")
+      .select("id, titulo")
+      .eq("pasta_id", pastaId)
+      .order("updated_at", { ascending: false })
+      .then(({ data, error }) => {
+        if (error) {
+          console.error("Erro ao carregar guias:", error);
+          return;
+        }
+        setGuias(data || []);
+      });
+  }, [pastaId, documentoAtualId]);
 
-  const addHeading = () => {
-    if (!editor) return;
-    editor.chain().focus().insertContent("\n").toggleHeading({ level: 2 }).insertContent("Novo título").run();
+  const criarGuia = async () => {
+    if (!pastaId) return;
+    const { data, error } = await supabase
+      .from("documentos")
+      .insert({ cliente_id: clienteId, pasta_id: pastaId, titulo: "Documento sem título" })
+      .select()
+      .single();
+    if (error) {
+      console.error("Erro ao criar guia:", error);
+      return;
+    }
+    if (data) onTrocarDocumento(data.id);
   };
 
   return (
     <div className="w-64 border-r bg-muted/30 flex flex-col h-full">
       <div className="flex items-center justify-between p-4 border-b">
         <span className="text-sm font-medium">Guias no documento</span>
-        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={addHeading}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6"
+          onClick={criarGuia}
+          disabled={!pastaId}
+          title={pastaId ? "Nova guia (documento)" : "Escolha uma pasta para criar guias"}
+        >
           <Plus className="h-4 w-4" />
         </Button>
       </div>
 
+      <div className="p-3 border-b space-y-1.5">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Folder className="h-3.5 w-3.5" />
+          Pasta
+        </label>
+        <Select
+          value={pastaId || SEM_PASTA}
+          onValueChange={(v) => onMudarPasta(v === SEM_PASTA ? null : v)}
+        >
+          <SelectTrigger className="h-8 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SEM_PASTA}>Nenhuma</SelectItem>
+            {pastas.map((pasta) => (
+              <SelectItem key={pasta.id} value={pasta.id}>
+                {pasta.nome}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
-          {headings.map((heading, i) => (
+          {guias.map((guia) => (
             <button
-              key={i}
-              onClick={() => scrollToHeading(heading.pos)}
+              key={guia.id}
+              onClick={() => onTrocarDocumento(guia.id)}
               className={cn(
                 "w-full text-left p-2 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
-                heading.level === 1 && "font-semibold",
-                heading.level === 2 && "pl-4",
-                heading.level === 3 && "pl-6 text-muted-foreground"
+                guia.id === documentoAtualId && "bg-muted font-medium"
               )}
             >
               <FileText className="h-4 w-4 shrink-0" />
-              <span className="truncate">{heading.text || "Sem título"}</span>
+              <span className="truncate">
+                {guia.id === documentoAtualId ? tituloAtual || "Sem título" : guia.titulo || "Sem título"}
+              </span>
             </button>
           ))}
 
-          {headings.length === 0 && (
+          {!pastaId && (
             <p className="text-xs text-muted-foreground p-2">
-              Os títulos que forem adicionados ao documento aparecerão aqui.
+              Escolha uma pasta acima para reunir este documento com outros do mesmo projeto.
             </p>
           )}
         </div>

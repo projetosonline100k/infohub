@@ -22,7 +22,8 @@ Destino: `ucjyobemrxqfcoopkcgb`.
 
 ## Pendente
 
-- Edge Functions continuam fora do destino: `scripts/check-edge-functions.mjs` recebe 404 nas quatro (chat, process-pdf, backblaze-upload-url, instagram-insights). Implantar exige a CLI do Supabase (não instalada nesta máquina), login no projeto e os segredos `LOVABLE_API_KEY`, `WINDSOR_API_KEY`, `WINDSOR_INSTAGRAM_ACCOUNT_ID`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, `B2_ENDPOINT`, `B2_REGION` e `B2_PUBLIC_BASE_URL`. As credenciais não foram fornecidas.
+- `admin-users` foi implantada com sucesso (12/09) usando a CLI do Supabase (instalada localmente via `npm install supabase --save-dev`, já que a instalação global não é suportada) e um token de acesso pessoal gerado pelo usuário, escopado só a este projeto e com expiração de 7 dias — usado apenas na sessão, não gravado em nenhum arquivo do repositório. `scripts/check-edge-functions.mjs` confirma: responde 401 ("Sessão inválida") em vez de 404, ou seja, está no ar e checando autenticação como esperado.
+- As outras quatro (chat, process-pdf, backblaze-upload-url, instagram-insights) continuam fora do destino (404). Com a CLI já instalada e o projeto linkado, a implantação em si é rápida; falta um token de acesso válido (o gerado em 12/09 expira em 7 dias) e os segredos `LOVABLE_API_KEY`, `WINDSOR_API_KEY`, `WINDSOR_INSTAGRAM_ACCOUNT_ID`, `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET_NAME`, `B2_ENDPOINT`, `B2_REGION` e `B2_PUBLIC_BASE_URL`, nenhum fornecido ainda.
 - O login com senha foi confirmado apenas pelo estado do banco; não houve autenticação real pela API, que exigiria a senha de uma das contas.
 - A publicação do frontend não foi executada.
 

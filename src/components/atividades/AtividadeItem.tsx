@@ -1,12 +1,18 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Trash2, GripVertical, Calendar } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { FileText, Trash2, GripVertical, Calendar, CheckSquare } from "lucide-react";
+import { cn, iniciais } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityFlag } from "./PriorityFlag";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+
+interface ChecklistResumo {
+  total: number;
+  concluidas: number;
+}
 
 interface AtividadeItemProps {
   id: string;
@@ -16,8 +22,11 @@ interface AtividadeItemProps {
   temDescricao: boolean;
   destaque: boolean;
   status: string;
+  statusLabel?: string;
   prioridade: string;
   dataVencimento?: string | null;
+  responsavelNome?: string | null;
+  checklist?: ChecklistResumo;
   onToggle: (id: string, concluida: boolean) => void;
   onClick: (id: string) => void;
   onDelete: (id: string) => void;
@@ -41,8 +50,11 @@ export const AtividadeItem = ({
   temDescricao,
   destaque,
   status,
+  statusLabel,
   prioridade,
   dataVencimento,
+  responsavelNome,
+  checklist,
   onToggle,
   onClick,
   onDelete,
@@ -91,7 +103,7 @@ export const AtividadeItem = ({
       )}
 
       {/* Status Badge */}
-      <StatusBadge status={status} />
+      <StatusBadge status={status} label={statusLabel} />
 
       {/* Due Date */}
       {dataVencimento && (
@@ -100,6 +112,28 @@ export const AtividadeItem = ({
           <span>{format(parseISO(dataVencimento), "dd/MM", { locale: ptBR })}</span>
         </div>
       )}
+
+      {/* Checklist summary */}
+      {checklist && checklist.total > 0 && (
+        <div
+          className={cn(
+            "flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0",
+            checklist.concluidas === checklist.total && "text-green-500"
+          )}
+        >
+          <CheckSquare className="h-3 w-3" />
+          <span>
+            {checklist.concluidas}/{checklist.total}
+          </span>
+        </div>
+      )}
+
+      {/* Responsible */}
+      <Avatar className="h-5 w-5 flex-shrink-0" title={responsavelNome || "Sem responsável"}>
+        <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
+          {responsavelNome ? iniciais(responsavelNome) : "?"}
+        </AvatarFallback>
+      </Avatar>
 
       {/* Time Estimate */}
       {tempoEstimado && (
