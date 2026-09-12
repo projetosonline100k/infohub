@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
+import { PresencaAvatares } from "@/components/documentos/PresencaAvatares";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { useDocumentoColaboracao } from "@/hooks/useDocumentoColaboracao";
 import { cn } from "@/lib/utils";
 import "@/components/documentos/editor.css";
 
@@ -234,6 +236,7 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
 }>(function EditorDoDocumento({ documentoId, titulo, onTituloChange, onSalvarTitulo }, ref) {
   const { saving, debouncedSave, saveNow } = useAutoSave({ documentoId, debounceMs: 1000 });
   const [carregandoConteudo, setCarregandoConteudo] = useState(true);
+  const tituloFocadoRef = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -246,6 +249,14 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
     ],
     content: "",
     onUpdate: ({ editor }) => debouncedSave(editor.getHTML()),
+  });
+
+  const { pessoasOnline } = useDocumentoColaboracao({
+    documentoId,
+    editor,
+    tituloFocadoRef,
+    onConteudoRemoto: (novo) => editor?.commands.setContent(novo, { emitUpdate: false }),
+    onTituloRemoto: onTituloChange,
   });
 
   useEffect(() => {
@@ -272,10 +283,14 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
         <Input
           value={titulo}
           onChange={(e) => onTituloChange(e.target.value)}
-          onBlur={onSalvarTitulo}
+          onFocus={() => { tituloFocadoRef.current = true; }}
+          onBlur={() => { tituloFocadoRef.current = false; onSalvarTitulo(); }}
           className="text-lg font-medium border-none bg-transparent shadow-none focus-visible:ring-0 max-w-md"
         />
-        <span className="text-xs text-muted-foreground ml-auto">{saving ? "Salvando..." : ""}</span>
+        <div className="ml-auto flex items-center gap-3">
+          <PresencaAvatares pessoas={pessoasOnline} />
+          <span className="text-xs text-muted-foreground">{saving ? "Salvando..." : ""}</span>
+        </div>
       </div>
       <DocumentToolbar editor={editor} />
       <div className={cn("flex-1 overflow-auto bg-muted/50 p-8 transition-opacity duration-150", carregandoConteudo && "opacity-40")}>

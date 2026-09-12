@@ -12,7 +12,9 @@ import { Input } from "@/components/ui/input";
 import { DocumentToolbar } from "./DocumentToolbar";
 import { DocumentSidebar } from "./DocumentSidebar";
 import { ShareDialog } from "./ShareDialog";
+import { PresencaAvatares } from "./PresencaAvatares";
 import { useAutoSave } from "@/hooks/useAutoSave";
+import { useDocumentoColaboracao } from "@/hooks/useDocumentoColaboracao";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -38,6 +40,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   // guia depois disso é instantâneo (o cabeçalho e a barra lateral não saem
   // do lugar, só o conteúdo troca).
   const primeiraCargaRef = useRef(true);
+  const tituloFocadoRef = useRef(false);
 
   const { saving, lastSaved, debouncedSave, saveNow } = useAutoSave({
     documentoId: docAtualId,
@@ -69,6 +72,16 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     onUpdate: ({ editor }) => {
       debouncedSave(editor.getHTML());
     },
+  });
+
+  // Quem mais está vendo/editando este documento agora, e aplica ao vivo o
+  // que essa pessoa salvar (dono, equipe ou convidado de um link).
+  const { pessoasOnline } = useDocumentoColaboracao({
+    documentoId: docAtualId,
+    editor,
+    tituloFocadoRef,
+    onConteudoRemoto: (novo) => editor?.commands.setContent(novo, { emitUpdate: false }),
+    onTituloRemoto: (novo) => setTitulo(novo),
   });
 
   // Carrega o documento atual (troca de guia dispara de novo, com outro id).
@@ -151,7 +164,8 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
           <Input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
-            onBlur={salvarTitulo}
+            onFocus={() => { tituloFocadoRef.current = true; }}
+            onBlur={() => { tituloFocadoRef.current = false; salvarTitulo(); }}
             className="text-lg font-medium border-none bg-transparent shadow-none focus-visible:ring-0 max-w-md"
           />
           <Button variant="ghost" size="icon" className="text-muted-foreground">
@@ -159,6 +173,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
           </Button>
         </div>
         <div className="flex items-center gap-3">
+          <PresencaAvatares pessoas={pessoasOnline} />
           <span className="text-sm text-muted-foreground">{getSaveStatus()}</span>
           <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
             <Share2 className="h-4 w-4 mr-1.5" />
