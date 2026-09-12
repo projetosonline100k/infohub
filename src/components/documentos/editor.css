@@ -134,3 +134,29 @@
 .document-editor .ProseMirror [style*="text-align: justify"] {
   text-align: justify;
 }
+
+/* Cursor de outra pessoa (dono, equipe ou convidado), tipo Google Docs. */
+.remote-cursor-caret {
+  position: relative;
+  display: inline-block;
+  width: 0;
+  height: 1.15em;
+  vertical-align: text-bottom;
+  border-left: 2px solid currentColor;
+  pointer-events: none;
+}
+
+.remote-cursor-label {
+  position: absolute;
+  top: -1.4em;
+  left: -2px;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: #fff;
+  padding: 0 5px;
+  border-radius: 4px 4px 4px 0;
+  pointer-events: none;
+  user-select: none;
+}

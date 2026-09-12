@@ -3,6 +3,7 @@ import type { Editor } from "@tiptap/react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { criarPluginCursorRemoto, redesenharCursores, remoteCursorPluginKey, type CursorRemoto } from "@/lib/remoteCursorPlugin";
 
 export interface PessoaOnline {
   chave: string;
@@ -39,12 +40,36 @@ export function useDocumentoColaboracao({ documentoId, editor, tituloFocadoRef, 
   callbacksRef.current = { onConteudoRemoto, onTituloRemoto };
 
   useEffect(() => {
-    if (!documentoId) {
+    if (!documentoId || !editor) {
       setPessoasOnline([]);
       return;
     }
     let cancelado = false;
     let channel: RealtimeChannel | null = null;
+    const cursoresRef: { current: Record<string, CursorRemoto> } = { current: {} };
+    // Cópia local da presença (não o state do React, que só atualiza depois
+    // do próximo render) — usada pra achar nome/cor de quem manda o cursor.
+    const presencaRef: { current: Record<string, { email: string; nome: string }> } = { current: {} };
+    editor.registerPlugin(criarPluginCursorRemoto(cursoresRef));
+
+    let ultimoEnvio = 0;
+    let pendente: ReturnType<typeof setTimeout> | null = null;
+    const enviarSelecao = () => {
+      if (!channel) return;
+      const { from, to } = editor.state.selection;
+      channel.send({ type: "broadcast", event: "cursor", payload: { chave: minhaChaveRef.current, from, to } });
+    };
+    const onSelectionUpdate = () => {
+      const agora = Date.now();
+      if (agora - ultimoEnvio > 150) {
+        ultimoEnvio = agora;
+        enviarSelecao();
+      } else {
+        if (pendente) clearTimeout(pendente);
+        pendente = setTimeout(enviarSelecao, 150);
+      }
+    };
+    editor.on("selectionUpdate", onSelectionUpdate);
 
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -59,6 +84,10 @@ export function useDocumentoColaboracao({ documentoId, editor, tituloFocadoRef, 
 
       channel.on("presence", { event: "sync" }, () => {
         const estado = channel!.presenceState<{ email: string; nome: string }>();
+        presencaRef.current = Object.fromEntries(
+          Object.entries(estado).map(([chave, entradas]) => [chave, entradas[0]])
+        );
+        const chavesPresentes = new Set(Object.keys(estado));
         const lista: PessoaOnline[] = Object.entries(estado)
           .filter(([chave]) => chave !== minhaChaveRef.current)
           .map(([chave, entradas]) => {
@@ -66,6 +95,24 @@ export function useDocumentoColaboracao({ documentoId, editor, tituloFocadoRef, 
             return { chave, email: info.email, nome: info.nome, cor: corPara(info.email || chave) };
           });
         setPessoasOnline(lista);
+        // Quem saiu não fica com o cursor "fantasma" parado na tela.
+        for (const chave of Object.keys(cursoresRef.current)) {
+          if (!chavesPresentes.has(chave)) delete cursoresRef.current[chave];
+        }
+        redesenharCursores(editor);
+      });
+
+      channel.on("broadcast", { event: "cursor" }, ({ payload }) => {
+        const dados = payload as { chave: string; from: number; to: number };
+        if (dados.chave === minhaChaveRef.current) return;
+        const pessoa = presencaRef.current[dados.chave];
+        cursoresRef.current[dados.chave] = {
+          nome: pessoa?.nome || "Alguém",
+          cor: corPara(pessoa?.email || dados.chave),
+          from: dados.from,
+          to: dados.to,
+        };
+        redesenharCursores(editor);
       });
 
       channel.on(
@@ -92,12 +139,16 @@ export function useDocumentoColaboracao({ documentoId, editor, tituloFocadoRef, 
       channel.subscribe(async (status) => {
         if (status === "SUBSCRIBED" && !cancelado) {
           await channel!.track({ email, nome: apelido });
+          enviarSelecao();
         }
       });
     })();
 
     return () => {
       cancelado = true;
+      if (pendente) clearTimeout(pendente);
+      editor.off("selectionUpdate", onSelectionUpdate);
+      if (!editor.isDestroyed) editor.unregisterPlugin(remoteCursorPluginKey);
       if (channel) supabase.removeChannel(channel);
       setPessoasOnline([]);
     };
