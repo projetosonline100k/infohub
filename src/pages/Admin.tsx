@@ -25,6 +25,7 @@ interface Usuario {
   criado_em: string;
   confirmado: boolean;
   ultimo_login: string | null;
+  origem: "admin" | "cadastro";
 }
 
 const gerarSenhaAleatoria = () => {
@@ -151,7 +152,8 @@ const Admin = () => {
           <h1 className="text-3xl font-bold text-foreground mb-2">Administração</h1>
           <p className="text-muted-foreground">
             Crie contas para sua equipe. Elas nascem sem nenhum acesso — só passam a ver um cliente quando você
-            adicionar a pessoa na equipe daquele cliente.
+            adicionar a pessoa na equipe daquele cliente. Quem se cadastra sozinho (por exemplo, ao aceitar um link
+            de documento compartilhado) também aparece aqui, marcado como "Cadastro externo".
           </p>
         </div>
         <Button onClick={abrirCriacao}>
@@ -173,7 +175,14 @@ const Admin = () => {
           {usuarios.map((usuario) => (
             <Card key={usuario.id} className="p-4 flex items-center justify-between gap-4">
               <div className="min-w-0">
-                <p className="font-medium text-foreground truncate">{usuario.nome || usuario.email}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-foreground truncate">{usuario.nome || usuario.email}</p>
+                  {usuario.origem === "cadastro" && (
+                    <span className="shrink-0 rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-medium text-accent">
+                      Cadastro externo
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-muted-foreground truncate">{usuario.email}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Criado {formatDistanceToNow(new Date(usuario.criado_em), { locale: ptBR, addSuffix: true })}

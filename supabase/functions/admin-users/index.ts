@@ -49,14 +49,21 @@ serve(async (req) => {
       if (error) throw error;
       const usuarios = data.users
         .filter((u) => (u.email || "").toLowerCase() !== ADMIN_EMAIL)
-        .map((u) => ({
-          id: u.id,
-          email: u.email,
-          nome: (u.user_metadata as Record<string, unknown> | null)?.nome ?? null,
-          criado_em: u.created_at,
-          confirmado: !!u.email_confirmed_at,
-          ultimo_login: u.last_sign_in_at,
-        }))
+        .map((u) => {
+          const metadata = u.user_metadata as Record<string, unknown> | null;
+          return {
+            id: u.id,
+            email: u.email,
+            nome: metadata?.nome ?? null,
+            criado_em: u.created_at,
+            confirmado: !!u.email_confirmed_at,
+            ultimo_login: u.last_sign_in_at,
+            // "admin": nasceu pelo painel de Administração, já pronta pra usar.
+            // "cadastro": a própria pessoa se cadastrou (ex.: aceitando um link
+            // de documento compartilhado) — vale ficar de olho.
+            origem: metadata?.origem === "admin" ? "admin" : "cadastro",
+          };
+        })
         .sort((a, b) => (a.criado_em < b.criado_em ? 1 : -1));
       return json({ usuarios });
     }
@@ -73,7 +80,7 @@ serve(async (req) => {
         email: emailLimpo,
         password: senha,
         email_confirm: true,
-        user_metadata: nome?.trim() ? { nome: nome.trim() } : undefined,
+        user_metadata: { origem: "admin", ...(nome?.trim() ? { nome: nome.trim() } : {}) },
       });
       if (error) throw error;
       return json({ usuario: { id: data.user?.id, email: data.user?.email } });

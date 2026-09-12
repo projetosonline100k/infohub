@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -6,15 +6,17 @@ import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
-import { ArrowLeft, Star, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, Star, MoreHorizontal, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DocumentToolbar } from "./DocumentToolbar";
 import { DocumentSidebar } from "./DocumentSidebar";
+import { ShareDialog } from "./ShareDialog";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { cn } from "@/lib/utils";
 import "./editor.css";
 
 interface DocumentEditorProps {
@@ -31,6 +33,11 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   const [pastaId, setPastaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Só a primeira abertura mostra a tela cheia de carregamento; trocar de
+  // guia depois disso é instantâneo (o cabeçalho e a barra lateral não saem
+  // do lugar, só o conteúdo troca).
+  const primeiraCargaRef = useRef(true);
 
   const { saving, lastSaved, debouncedSave, saveNow } = useAutoSave({
     documentoId: docAtualId,
@@ -83,6 +90,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         }
       }
       setLoading(false);
+      primeiraCargaRef.current = false;
     }
 
     if (docAtualId && editor) {
@@ -121,7 +129,10 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     return "";
   };
 
-  if (loading) {
+  // Só a primeiríssima abertura do editor bloqueia a tela toda; trocar de
+  // guia depois disso mantém cabeçalho e barra lateral fixos, só o miolo
+  // do documento pisca de leve enquanto o próximo conteúdo chega.
+  if (loading && primeiraCargaRef.current) {
     return (
       <div className="fixed inset-0 z-50 bg-background flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -149,6 +160,10 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{getSaveStatus()}</span>
+          <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
+            <Share2 className="h-4 w-4 mr-1.5" />
+            Compartilhar
+          </Button>
           <Button variant="ghost" size="icon">
             <MoreHorizontal className="h-5 w-5" />
           </Button>
@@ -174,13 +189,26 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
 
         {/* Editor area - simulates paper */}
         <div className="flex-1 overflow-auto bg-muted/50 p-8">
-          <div className="max-w-[816px] mx-auto bg-background shadow-lg min-h-[1056px] rounded-sm">
+          <div
+            className={cn(
+              "max-w-[816px] mx-auto bg-background shadow-lg min-h-[1056px] rounded-sm transition-opacity duration-150",
+              loading && "opacity-40"
+            )}
+          >
             <div className="p-16">
               <EditorContent editor={editor} className="prose prose-lg max-w-none dark:prose-invert document-editor" />
             </div>
           </div>
         </div>
       </div>
+
+      <ShareDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        documentoId={docAtualId}
+        documentoTitulo={titulo}
+        pastaId={pastaId}
+      />
     </div>
   );
 }

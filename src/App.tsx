@@ -13,6 +13,7 @@ import FormularioPublico from "./pages/FormularioPublico";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
+import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,7 @@ const App = () => (
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
+          <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
           
           {/* Protected routes with layout */}
           <Route path="/" element={<ProtectedRoute><DashboardLayout><DashGeral /></DashboardLayout></ProtectedRoute>} />
