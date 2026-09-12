@@ -355,7 +355,9 @@ function PastaCompartilhada({ pastaId, tituloPasta }: { pastaId: string; tituloP
   };
 
   const carregarGuias = useCallback(async () => {
-    const { data } = await supabase.from("documentos").select("id, titulo").eq("pasta_id", pastaId).order("updated_at", { ascending: false });
+    // Ordem fixa por criação — não por "atualizado por último", pra lista
+    // não pular de posição embaixo do cursor de quem está clicando.
+    const { data } = await supabase.from("documentos").select("id, titulo").eq("pasta_id", pastaId).order("created_at", { ascending: true });
     setGuias(data || []);
     setGuiaAtualId((atual) => atual || data?.[0]?.id || null);
   }, [pastaId]);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Plus, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -40,6 +40,18 @@ export function DocumentSidebar({
 }: DocumentSidebarProps) {
   const [pastas, setPastas] = useState<Pasta[]>([]);
   const [guias, setGuias] = useState<Guia[]>([]);
+  const guiaAnteriorRef = useRef<{ id: string; titulo: string } | null>(null);
+
+  // Como a lista não recarrega mais a cada troca (ver efeito abaixo), o
+  // título da guia que você acabou de sair fica registrado aqui na mão —
+  // senão a lateral mostraria o título antigo dela até a pasta recarregar.
+  useEffect(() => {
+    if (guiaAnteriorRef.current && guiaAnteriorRef.current.id !== documentoAtualId) {
+      const { id, titulo } = guiaAnteriorRef.current;
+      setGuias((prev) => prev.map((g) => (g.id === id ? { ...g, titulo } : g)));
+    }
+    guiaAnteriorRef.current = { id: documentoAtualId, titulo: tituloAtual };
+  }, [documentoAtualId, tituloAtual]);
 
   useEffect(() => {
     let query = supabase.from("pastas_atividade").select("id, nome").is("deleted_at", null).order("ordem");
@@ -53,6 +65,11 @@ export function DocumentSidebar({
     });
   }, [clienteId]);
 
+  // Ordem por criação (fixa), não por "atualizado por último": se fosse por
+  // updated_at, a guia que você acabou de sair pulava pro topo da lista bem
+  // na hora de clicar na próxima, e o clique acertava a guia errada.
+  // Recarrega só quando a pasta muda — trocar de guia não deve reordenar a
+  // lista embaixo do seu cursor.
   useEffect(() => {
     if (!pastaId) {
       setGuias([]);
@@ -62,7 +79,7 @@ export function DocumentSidebar({
       .from("documentos")
       .select("id, titulo")
       .eq("pasta_id", pastaId)
-      .order("updated_at", { ascending: false })
+      .order("created_at", { ascending: true })
       .then(({ data, error }) => {
         if (error) {
           console.error("Erro ao carregar guias:", error);
@@ -70,7 +87,7 @@ export function DocumentSidebar({
         }
         setGuias(data || []);
       });
-  }, [pastaId, documentoAtualId]);
+  }, [pastaId]);
 
   const criarGuia = async () => {
     if (!pastaId) return;
@@ -83,7 +100,10 @@ export function DocumentSidebar({
       console.error("Erro ao criar guia:", error);
       return;
     }
-    if (data) onTrocarDocumento(data.id);
+    if (data) {
+      setGuias((prev) => [...prev, { id: data.id, titulo: data.titulo }]);
+      onTrocarDocumento(data.id);
+    }
   };
 
   return (
