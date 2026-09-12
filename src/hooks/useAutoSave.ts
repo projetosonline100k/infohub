@@ -45,7 +45,23 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
     }, debounceMs);
   }, [save, debounceMs]);
 
-  // Cleanup on unmount
+  // Salva na hora e cancela o debounce pendente. Crucial ao trocar de guia:
+  // sem isso, o conteúdo do documento ANTERIOR ficava esquecido em
+  // pendingContentRef e, ao trocar de novo, esse cleanup abaixo (disparado
+  // pela troca de "save" quando o documentoId muda) reenviava o texto do
+  // documento antigo por cima do documento novo.
+  const saveNow = useCallback((content: string) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    pendingContentRef.current = null;
+    return save(content);
+  }, [save]);
+
+  // Cleanup on unmount (ou ao trocar de documento, já que "save" muda de
+  // identidade com o documentoId): só reenvia se sobrou algo pendente de
+  // fato — saveNow já limpa isso antes de trocar.
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -53,10 +69,11 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
         // Save any pending content before unmount
         if (pendingContentRef.current !== null) {
           save(pendingContentRef.current);
+          pendingContentRef.current = null;
         }
       }
     };
   }, [save]);
 
-  return { saving, lastSaved, debouncedSave, saveNow: save };
+  return { saving, lastSaved, debouncedSave, saveNow };
 }
