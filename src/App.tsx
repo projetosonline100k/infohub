@@ -12,6 +12,7 @@ import Admin from "./pages/Admin";
 import FormularioPublico from "./pages/FormularioPublico";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
+import RedefinirSenha from "./pages/RedefinirSenha";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 
 const queryClient = new QueryClient();
@@ -33,6 +34,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/redefinir-senha" element={<RedefinirSenha />} />
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
           
