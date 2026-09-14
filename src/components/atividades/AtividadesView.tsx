@@ -1137,15 +1137,52 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         }
       }
 
-      // Update status
-      const updatedAtividade = {
-        ...atividade,
+      // Reordena as colunas afetadas (origem e destino, ou só uma quando o
+      // arrasto é dentro da mesma coluna) e recalcula a "ordem" de cada
+      // card. Sem isso, mover um card pra outra posição na mesma coluna não
+      // persistia nada, porque o status de origem e destino é igual.
+      // Usa a mesma lista que está renderizada nas colunas (atividadesKanban,
+      // já filtrada por período/concluídas) — senão os índices do drag não
+      // batem com a posição real dos cards na tela.
+      const colunaOrigemAntes = atividadesKanban
+        .filter((a) => a.status === sourceData)
+        .sort((a, b) => a.ordem - b.ordem);
+      const colunaDestinoAntes =
+        sourceData === destData
+          ? colunaOrigemAntes
+          : atividadesKanban.filter((a) => a.status === destData).sort((a, b) => a.ordem - b.ordem);
+
+      const [removida] = colunaOrigemAntes.splice(source.index, 1);
+      const atividadeMovida = {
+        ...removida,
         status: destData,
         concluida: !!colunaDestino?.eh_conclusao,
       };
 
+      if (sourceData === destData) {
+        colunaOrigemAntes.splice(destination.index, 0, atividadeMovida);
+      } else {
+        colunaDestinoAntes.splice(destination.index, 0, atividadeMovida);
+      }
+
+      const listasAfetadas =
+        sourceData === destData ? [colunaOrigemAntes] : [colunaOrigemAntes, colunaDestinoAntes];
+      const novaOrdem = new Map<string, number>();
+      listasAfetadas.forEach((lista) => lista.forEach((a, i) => novaOrdem.set(a.id, i + 1)));
+
       setAtividades((prev) =>
-        prev.map((a) => (a.id === draggableId ? updatedAtividade : a))
+        prev.map((a) => {
+          if (a.id === draggableId) {
+            return {
+              ...a,
+              status: destData,
+              concluida: !!colunaDestino?.eh_conclusao,
+              ordem: novaOrdem.get(a.id) ?? a.ordem,
+            };
+          }
+          const ordem = novaOrdem.get(a.id);
+          return ordem !== undefined ? { ...a, ordem } : a;
+        })
       );
 
       try {
@@ -1154,10 +1191,16 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
           .update({
             status: destData,
             concluida: !!colunaDestino?.eh_conclusao,
+            ordem: novaOrdem.get(draggableId),
           })
           .eq("id", draggableId);
 
         if (error) throw error;
+
+        for (const [id, ordem] of novaOrdem) {
+          if (id === draggableId) continue;
+          await supabase.from("atividades").update({ ordem }).eq("id", id);
+        }
       } catch (error) {
         console.error("Erro ao mover atividade:", error);
         toast.error("Erro ao mover atividade");
@@ -1166,32 +1209,35 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       return;
     }
 
-    // List mode drag - between days
-    const sourceAtividades = getAtividadesDoDia(sourceData);
-    const destAtividades =
-      sourceData === destData
-        ? sourceAtividades
-        : getAtividadesDoDia(destData);
+    // List mode drag - between days. Recalcula a "ordem" de todo mundo
+    // afetado (origem e destino) e já reflete isso no estado local — antes
+    // só a tarefa arrastada tinha a ordem atualizada na tela, então dava
+    // empate de ordem com quem ficou no lugar e o card parecia voltar pra
+    // onde estava até a próxima recarga da página.
+    const listaOrigemAntes = getAtividadesDoDia(sourceData);
+    const listaDestinoAntes = sourceData === destData ? listaOrigemAntes : getAtividadesDoDia(destData);
 
-    // Remove from source
-    const [removed] = sourceAtividades.splice(source.index, 1);
+    const [removida] = listaOrigemAntes.splice(source.index, 1);
+    const atividadeMovida = { ...removida, data_atividade: destData };
 
-    // Add to destination
     if (sourceData === destData) {
-      sourceAtividades.splice(destination.index, 0, removed);
+      listaOrigemAntes.splice(destination.index, 0, atividadeMovida);
     } else {
-      destAtividades.splice(destination.index, 0, removed);
+      listaDestinoAntes.splice(destination.index, 0, atividadeMovida);
     }
 
-    // Update local state immediately for optimistic UI
-    const updatedAtividade = {
-      ...removed,
-      data_atividade: destData,
-      ordem: destination.index + 1,
-    };
+    const listasAfetadas = sourceData === destData ? [listaOrigemAntes] : [listaOrigemAntes, listaDestinoAntes];
+    const novaOrdem = new Map<string, number>();
+    listasAfetadas.forEach((lista) => lista.forEach((a, i) => novaOrdem.set(a.id, i + 1)));
 
     setAtividades((prev) =>
-      prev.map((a) => (a.id === draggableId ? updatedAtividade : a))
+      prev.map((a) => {
+        if (a.id === draggableId) {
+          return { ...a, data_atividade: destData, ordem: novaOrdem.get(a.id) ?? a.ordem };
+        }
+        const ordem = novaOrdem.get(a.id);
+        return ordem !== undefined ? { ...a, ordem } : a;
+      })
     );
 
     // Update in database
@@ -1200,23 +1246,15 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         .from("atividades")
         .update({
           data_atividade: destData,
-          ordem: destination.index + 1,
+          ordem: novaOrdem.get(draggableId),
         })
         .eq("id", draggableId);
 
       if (error) throw error;
 
-      // Update ordem for other activities in destination
-      const atividadesParaAtualizar =
-        sourceData === destData ? sourceAtividades : destAtividades;
-
-      for (let i = 0; i < atividadesParaAtualizar.length; i++) {
-        if (atividadesParaAtualizar[i].id !== draggableId) {
-          await supabase
-            .from("atividades")
-            .update({ ordem: i + 1 })
-            .eq("id", atividadesParaAtualizar[i].id);
-        }
+      for (const [id, ordem] of novaOrdem) {
+        if (id === draggableId) continue;
+        await supabase.from("atividades").update({ ordem }).eq("id", id);
       }
     } catch (error) {
       console.error("Erro ao mover atividade:", error);

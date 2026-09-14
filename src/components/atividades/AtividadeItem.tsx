@@ -2,7 +2,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { FileText, Trash2, GripVertical, Calendar, CheckSquare } from "lucide-react";
-import { cn, iniciais } from "@/lib/utils";
+import { cn, iniciais, rotuloDataRelativa } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityFlag } from "./PriorityFlag";
 import { format, parseISO } from "date-fns";
@@ -60,11 +60,18 @@ export const AtividadeItem = ({
   onDelete,
   dragHandleProps,
 }: AtividadeItemProps) => {
+  // Comparação por string (yyyy-MM-dd) evita problema de fuso ao converter
+  // pra Date; atividade concluída nunca conta como atrasada.
+  const hoje = format(new Date(), "yyyy-MM-dd");
+  const atrasada = !concluida && !!dataVencimento && dataVencimento < hoje;
+  const rotuloRelativo = dataVencimento ? rotuloDataRelativa(dataVencimento) : null;
+
   return (
     <div
       className={cn(
         "flex items-center gap-2 px-2 py-2 rounded-md hover:bg-muted/50 cursor-pointer group transition-colors border-b border-border/50",
-        destaque && "border-l-2 border-l-primary"
+        destaque && "border-l-2 border-l-primary",
+        atrasada && "bg-red-500/5 border-l-2 border-l-red-500"
       )}
       onClick={() => onClick(id)}
     >
@@ -107,9 +114,17 @@ export const AtividadeItem = ({
 
       {/* Due Date */}
       {dataVencimento && (
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+        <div
+          className={cn(
+            "flex items-center gap-1 text-xs",
+            atrasada ? "text-red-500 font-medium" : "text-muted-foreground"
+          )}
+        >
           <Calendar className="h-3 w-3" />
-          <span>{format(parseISO(dataVencimento), "dd/MM", { locale: ptBR })}</span>
+          <span>
+            {format(parseISO(dataVencimento), "dd/MM", { locale: ptBR })}
+            {rotuloRelativo && ` · ${rotuloRelativo}`}
+          </span>
         </div>
       )}
 

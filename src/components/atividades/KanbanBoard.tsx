@@ -12,6 +12,7 @@ interface Atividade {
   concluida: boolean;
   prioridade: string;
   data_atividade: string;
+  ordem: number;
   data_vencimento: string | null;
   data_inicio: string | null;
   tempo_estimado: number | null;
@@ -78,9 +79,11 @@ export const KanbanBoard = ({
     const diaSemana = detectarDiaSemana(coluna.nome);
     if (diaSemana !== null) {
       const dataAlvo = format(addDays(semanaInicio, diaSemana), "yyyy-MM-dd");
-      return atividades.filter((a) => a.data_atividade === dataAlvo);
+      return atividades.filter((a) => a.data_atividade === dataAlvo).sort((a, b) => a.ordem - b.ordem);
     }
-    return atividades.filter((a) => a.status === coluna.status_key);
+    // Ordenado por "ordem" pra respeitar o reposicionamento manual (arrastar
+    // um card pra cima/baixo dentro da mesma coluna).
+    return atividades.filter((a) => a.status === coluna.status_key).sort((a, b) => a.ordem - b.ordem);
   };
 
   const confirmarCriacao = () => {

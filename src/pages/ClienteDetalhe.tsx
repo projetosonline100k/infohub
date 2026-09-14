@@ -6,7 +6,9 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { iniciais } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
@@ -207,6 +209,11 @@ export default function ClienteDetalhe() {
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
+            <Avatar className="h-8 w-8" title={cliente.nome_especialista}>
+              <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
+                {iniciais(cliente.nome_especialista)}
+              </AvatarFallback>
+            </Avatar>
           </div>
         ) : (
           <>
@@ -229,6 +236,24 @@ export default function ClienteDetalhe() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
+            </div>
+
+            {/* Nome do cliente, sempre visível em cima do menu pra identificar
+                de cara em qual cliente você está. */}
+            <div className="mb-4 flex items-center gap-2 px-1">
+              <Avatar className="h-9 w-9 flex-shrink-0">
+                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
+                  {iniciais(cliente.nome_especialista)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="font-semibold text-foreground text-sm truncate">
+                  {cliente.nome_especialista}
+                </p>
+                {cliente.nicho && (
+                  <p className="text-xs text-muted-foreground truncate">{cliente.nicho}</p>
+                )}
+              </div>
             </div>
 
             <div className="space-y-1">

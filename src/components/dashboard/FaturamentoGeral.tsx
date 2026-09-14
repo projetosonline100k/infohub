@@ -34,6 +34,11 @@ const CORES_PRODUTOS = [
 
 type FiltroPeriodo = "hoje" | "ontem" | "7dias" | "15dias" | "30dias" | "personalizado";
 
+// Lembra quais produtos ficaram marcados/desmarcados no gráfico entre uma
+// visita e outra — sem isso, toda vez que a tela recarregava voltava pro
+// padrão (só produtos com algum lançamento).
+const CHAVE_SELECIONADOS = "faturamento-geral:produtos-selecionados";
+
 const OPCOES_FILTRO: { valor: FiltroPeriodo; label: string }[] = [
   { valor: "hoje", label: "Hoje" },
   { valor: "ontem", label: "Ontem" },
@@ -130,10 +135,25 @@ export const FaturamentoGeral = () => {
       // Por padrão só entram produtos que já tiveram algum lançamento — evita
       // encher o gráfico de linhas zeradas de produtos nunca faturados.
       const produtosComLancamento = new Set(lancamentosNormalizados.map((l) => l.produto_id));
+      const padrao = produtosInfo.filter((p) => produtosComLancamento.has(p.id)).map((p) => p.id);
+
+      // Se a pessoa já tinha marcado/desmarcado algo antes, respeita essa
+      // escolha em vez do padrão (só ignora ids de produtos que não existem
+      // mais).
+      let selecaoInicial = padrao;
+      try {
+        const salvo = localStorage.getItem(CHAVE_SELECIONADOS);
+        if (salvo !== null) {
+          const idsSalvos = JSON.parse(salvo) as string[];
+          selecaoInicial = idsSalvos.filter((id) => produtosInfo.some((p) => p.id === id));
+        }
+      } catch {
+        // localStorage indisponível ou corrompido: segue com o padrão
+      }
 
       setProdutos(produtosInfo);
       setLancamentos(lancamentosNormalizados);
-      setSelecionados(new Set(produtosInfo.filter((p) => produtosComLancamento.has(p.id)).map((p) => p.id)));
+      setSelecionados(new Set(selecaoInicial));
     } catch (error) {
       console.error("Erro ao carregar faturamento:", error);
     } finally {
@@ -169,6 +189,11 @@ export const FaturamentoGeral = () => {
       const novo = new Set(prev);
       if (novo.has(id)) novo.delete(id);
       else novo.add(id);
+      try {
+        localStorage.setItem(CHAVE_SELECIONADOS, JSON.stringify(Array.from(novo)));
+      } catch {
+        // localStorage indisponível: a escolha só não sobrevive a um reload
+      }
       return novo;
     });
   };

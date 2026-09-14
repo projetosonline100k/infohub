@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cn, iniciais, formatarTempo } from "@/lib/utils";
+import { cn, iniciais, formatarTempo, rotuloDataRelativa } from "@/lib/utils";
 import { FileText, Calendar, CheckSquare, Clock, Check } from "lucide-react";
 import { PriorityFlag } from "./PriorityFlag";
 import { format, parseISO } from "date-fns";
@@ -122,6 +122,14 @@ export const KanbanCard = ({
     }
   };
 
+  // Comparação por string (yyyy-MM-dd) evita problema de fuso ao converter
+  // pra Date; atividade concluída nunca conta como atrasada.
+  const hoje = format(new Date(), "yyyy-MM-dd");
+  const atrasada = !concluida && !!dataVencimento && dataVencimento < hoje;
+  // Rótulo tipo "Amanhã"/"Em 3 dias" pra bater o olho sem fazer conta —
+  // prioriza o vencimento, que é a data que realmente importa pro prazo.
+  const rotuloRelativo = rotuloDataRelativa(dataVencimento || dataInicio || "");
+
   return (
     <div
       {...dragHandleProps}
@@ -129,7 +137,8 @@ export const KanbanCard = ({
       className={cn(
         "group relative bg-card border border-border rounded-lg p-3 cursor-pointer transition-all hover:shadow-md hover:border-primary/30 overflow-hidden",
         concluida && "opacity-60",
-        isDragging && "shadow-lg ring-2 ring-primary/50"
+        isDragging && "shadow-lg ring-2 ring-primary/50",
+        atrasada && "border-red-500/60 bg-red-500/5 hover:border-red-500"
       )}
     >
       {/* Preenchimento do timer: o bloco todo, da esquerda pra direita */}
@@ -179,12 +188,18 @@ export const KanbanCard = ({
 
           {/* Dates */}
           {(dataInicio || dataVencimento) && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <div
+              className={cn(
+                "flex items-center gap-1 text-xs",
+                atrasada ? "text-red-500 font-medium" : "text-muted-foreground"
+              )}
+            >
               <Calendar className="h-3 w-3" />
               <span>
                 {dataInicio && dataVencimento
                   ? `${formatDate(dataInicio)} → ${formatDate(dataVencimento)}`
                   : formatDate(dataInicio || dataVencimento!)}
+                {rotuloRelativo && ` · ${rotuloRelativo}`}
               </span>
             </div>
           )}
