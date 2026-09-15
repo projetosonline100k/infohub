@@ -23,6 +23,8 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useTheme } from "@/hooks/useTheme";
+import { useMapaMentalColaboracao } from "@/hooks/useMapaMentalColaboracao";
+import { PresencaAvatares } from "./PresencaAvatares";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -257,9 +259,20 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const previousContentRef = useRef<string | null>(null);
   const loadingRef = useRef(true);
+  const isReadyRef = useRef(false);
   const pendingChainRef = useRef<{ blockId: string } | null>(null);
   const prevEditingIdRef = useRef<string | null>(null);
   const revealedArrowIdsRef = useRef<Set<string>>(new Set());
+
+  // Sincroniza elemento a elemento com quem mais está no mapa agora (em vez
+  // de cada aba salvar o documento inteiro por cima da outra, que era
+  // exatamente o bug de perder o que a outra pessoa escreveu) e mostra os
+  // cursores ao vivo — usa o próprio motor de multiplayer do Excalidraw.
+  const { pessoasOnline, broadcastElements, broadcastCursor, applyingRemoteRef } = useMapaMentalColaboracao({
+    documentoId,
+    excalidrawApiRef,
+    isReadyRef,
+  });
 
   // Cria um bloco conectado ao bloco de referência: "child" pendura um filho
   // dele (Tab); "sibling" pendura um irmão no mesmo pai (Enter). O novo bloco
@@ -440,6 +453,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
       }
 
       loadingRef.current = false;
+      isReadyRef.current = true;
       setLoading(false);
     }
 
@@ -458,6 +472,16 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   // Documento/Caderno. Também cuida da "ramificação instantânea" e do
   // indicador de conexões ocultas no bloco selecionado.
   const handleChange = useCallback((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+    // Se essa mudança veio de uma reconciliação com dado remoto (outra
+    // pessoa editando agora), não reenvia pra rede — evita eco infinito.
+    // Ainda assim segue o fluxo normal (autosave etc.), já que o resultado
+    // mesclado é exatamente o que precisa ser salvo.
+    const vindoDeFora = applyingRemoteRef.current;
+    applyingRemoteRef.current = false;
+    if (!vindoDeFora && !loadingRef.current) {
+      broadcastElements(elements);
+    }
+
     const editingId = appState.editingTextElement?.id ?? null;
     if (prevEditingIdRef.current && !editingId && pendingChainRef.current) {
       const { blockId } = pendingChainRef.current;
@@ -541,7 +565,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     if (content === previousContentRef.current) return;
     previousContentRef.current = content;
     debouncedSave(content);
-  }, [createConnectedBlock, debouncedSave]);
+  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef]);
 
   const toggleSelectedConnection = useCallback(() => {
     const api = excalidrawApiRef.current;
@@ -577,6 +601,12 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   const handleApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     excalidrawApiRef.current = api;
   }, []);
+
+  // Manda a posição do mouse pros outros que estiverem no mapa agora —
+  // é isso que faz aparecer o cursor colorido deles se mexendo, igual Miro.
+  const handlePointerUpdate = useCallback((payload: { pointer: { x: number; y: number } }) => {
+    broadcastCursor(payload.pointer.x, payload.pointer.y);
+  }, [broadcastCursor]);
 
   const handleClose = () => {
     const api = excalidrawApiRef.current;
@@ -615,6 +645,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
           />
         </div>
         <div className="flex items-center gap-1.5">
+          <PresencaAvatares pessoas={pessoasOnline} />
           {selectedArrowHidden && (
             <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={toggleSelectedConnection}>
               {selectedArrowHidden.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -656,6 +687,8 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
           excalidrawAPI={handleApiReady}
           initialData={initialData}
           onChange={handleChange}
+          onPointerUpdate={handlePointerUpdate}
+          isCollaborating
           theme={theme === "dark" ? "dark" : "light"}
           UIOptions={UI_OPTIONS}
         />
