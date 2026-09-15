@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, Plus, Search, Trash2, Link as LinkIcon } from "lucide-react";
+import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,6 +8,7 @@ import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { DocumentEditor } from "./DocumentEditor";
 import { CadernoEditor, createEmptyCadernoContent, isCadernoContent } from "./CadernoEditor";
+import { MindMapEditor, createEmptyMindMapContent, isMindMapContent } from "./MindMapEditor";
 import { toast } from "sonner";
 
 interface Documento {
@@ -35,6 +36,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   const [busca, setBusca] = useState("");
   const [docEditorOpen, setDocEditorOpen] = useState(false);
   const [cadernoEditorOpen, setCadernoEditorOpen] = useState(false);
+  const [mindMapEditorOpen, setMindMapEditorOpen] = useState(false);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
 
   const carregarDocumentos = async () => {
@@ -113,6 +115,25 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     }
   };
 
+  const criarNovoMapaMental = async () => {
+    const { data, error } = await supabase
+      .from("documentos")
+      .insert({
+        cliente_id: clienteId,
+        titulo: "Mapa mental sem título",
+        conteudo: createEmptyMindMapContent(),
+      })
+      .select()
+      .single();
+
+    if (data && !error) {
+      setSelectedDocId(data.id);
+      setMindMapEditorOpen(true);
+    } else {
+      toast.error("Erro ao criar mapa mental");
+    }
+  };
+
   const abrirDocumento = (docId: string) => {
     setSelectedDocId(docId);
     setDocEditorOpen(true);
@@ -121,6 +142,11 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   const abrirCaderno = (docId: string) => {
     setSelectedDocId(docId);
     setCadernoEditorOpen(true);
+  };
+
+  const abrirMapaMental = (docId: string) => {
+    setSelectedDocId(docId);
+    setMindMapEditorOpen(true);
   };
 
   const excluirDocumento = async (e: React.MouseEvent, docId: string) => {
@@ -140,18 +166,24 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   const handleCloseEditor = () => {
     setDocEditorOpen(false);
     setCadernoEditorOpen(false);
+    setMindMapEditorOpen(false);
     setSelectedDocId(null);
     carregarDocumentos();
   };
 
   const documentosFiltrados = documentos.filter((doc) => {
     const matchesSearch = doc.titulo.toLowerCase().includes(busca.toLowerCase());
-    return matchesSearch && !isCadernoContent(doc.conteudo);
+    return matchesSearch && !isCadernoContent(doc.conteudo) && !isMindMapContent(doc.conteudo);
   });
 
   const cadernosFiltrados = documentos.filter((doc) => {
     const matchesSearch = doc.titulo.toLowerCase().includes(busca.toLowerCase());
     return matchesSearch && isCadernoContent(doc.conteudo);
+  });
+
+  const mapasMentaisFiltrados = documentos.filter((doc) => {
+    const matchesSearch = doc.titulo.toLowerCase().includes(busca.toLowerCase());
+    return matchesSearch && isMindMapContent(doc.conteudo);
   });
 
   if (loading) {
@@ -176,6 +208,10 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
           <Button size="sm" variant="outline" onClick={criarNovoCaderno}>
             <Plus className="h-4 w-4 mr-1" />
             Novo Caderno
+          </Button>
+          <Button size="sm" variant="outline" onClick={criarNovoMapaMental}>
+            <Plus className="h-4 w-4 mr-1" />
+            Novo Mapa Mental
           </Button>
           <Button size="sm" onClick={criarNovoDocumento}>
             <Plus className="h-4 w-4 mr-1" />
@@ -253,6 +289,73 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       </section>
 
       <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Mapas mentais
+          </h3>
+          <Button size="sm" variant="ghost" onClick={criarNovoMapaMental}>
+            <Plus className="h-4 w-4 mr-1" />
+            Criar
+          </Button>
+        </div>
+
+        {mapasMentaisFiltrados.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-muted-foreground">
+            {busca ? "Nenhum mapa mental encontrado." : "Nenhum mapa mental criado ainda."}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {mapasMentaisFiltrados.map((doc) => (
+              <div
+                key={doc.id}
+                onClick={() => abrirMapaMental(doc.id)}
+                className={cn(
+                  "overflow-hidden rounded-lg border border-border bg-card cursor-pointer",
+                  "hover:border-primary/50 hover:shadow-md transition-all group"
+                )}
+              >
+                <div className="h-28 bg-muted/40 flex items-center justify-center">
+                  <svg viewBox="0 0 120 70" className="h-3/4 w-3/4 text-muted-foreground/40">
+                    <line x1="60" y1="35" x2="20" y2="15" stroke="currentColor" strokeWidth="1.5" />
+                    <line x1="60" y1="35" x2="100" y2="15" stroke="currentColor" strokeWidth="1.5" />
+                    <line x1="60" y1="35" x2="20" y2="55" stroke="currentColor" strokeWidth="1.5" />
+                    <line x1="60" y1="35" x2="100" y2="55" stroke="currentColor" strokeWidth="1.5" />
+                    <circle cx="60" cy="35" r="9" fill="#3b82f6" />
+                    <circle cx="20" cy="15" r="6" fill="#f59e0b" />
+                    <circle cx="100" cy="15" r="6" fill="#22c55e" />
+                    <circle cx="20" cy="55" r="6" fill="#ec4899" />
+                    <circle cx="100" cy="55" r="6" fill="#a855f7" />
+                  </svg>
+                </div>
+                <div className="p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <Workflow className="h-4 w-4 text-primary shrink-0" />
+                      <h4 className="font-medium truncate">{doc.titulo}</h4>
+                    </div>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
+                      onClick={(e) => excluirDocumento(e, doc.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Atualizado {formatDistanceToNow(new Date(doc.updated_at), {
+                      locale: ptBR,
+                      addSuffix: true,
+                    })}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
           Documentos
         </h3>
@@ -315,6 +418,10 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
 
       {cadernoEditorOpen && selectedDocId && (
         <CadernoEditor documentoId={selectedDocId} onClose={handleCloseEditor} />
+      )}
+
+      {mindMapEditorOpen && selectedDocId && (
+        <MindMapEditor documentoId={selectedDocId} onClose={handleCloseEditor} />
       )}
     </div>
   );
