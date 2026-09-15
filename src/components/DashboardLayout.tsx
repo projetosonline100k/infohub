@@ -12,7 +12,7 @@ interface DashboardLayoutProps {
 
 const menuItems = [
   { title: "Dash geral", path: "/", icon: LayoutDashboard },
-  { title: "Clientes", path: "/clientes", icon: Users },
+  { title: "Projetos Milionários", path: "/clientes", icon: Users },
   { title: "Atividades", path: "/atividades", icon: Activity },
 ];
 

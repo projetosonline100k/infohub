@@ -17,7 +17,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, PenLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -66,6 +66,18 @@ const ROOT_COLORS = [
   { bg: "#FBDDEA", border: "#D6689B" },
   { bg: "#E6DBFB", border: "#9B7FD1" },
   { bg: "#FFE1C7", border: "#D98A45" },
+];
+
+// Painel de cor/fonte compacto — substitui o painel nativo do Excalidraw
+// (que fica preso na lateral e ocupa bastante espaço); esse aqui só aparece
+// quando a pessoa clica no ícone de caneta lá embaixo.
+const STROKE_COLORS = ["#1e1e1e", "#e03131", "#2f9e44", "#1971c2", "#f08c00"];
+const BACKGROUND_COLORS = ["transparent", "#ffc9c9", "#b2f2bb", "#a5d8ff", "#ffec99"];
+const FONT_SIZES: { size: number; label: string }[] = [
+  { size: 16, label: "S" },
+  { size: 20, label: "M" },
+  { size: 28, label: "L" },
+  { size: 36, label: "XL" },
 ];
 
 interface CanvasMentalDoc {
@@ -251,6 +263,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   const [selectedArrowHidden, setSelectedArrowHidden] = useState<{ id: string; hidden: boolean } | null>(null);
   const [hasAnyHiddenConnection, setHasAnyHiddenConnection] = useState(false);
   const [hiddenBadge, setHiddenBadge] = useState<{ x: number; y: number; count: number } | null>(null);
+  const [penPanelOpen, setPenPanelOpen] = useState(false);
 
   const { theme } = useTheme();
   const { saving, lastSaved, debouncedSave, saveNow } = useAutoSave({ documentoId, debounceMs: 800 });
@@ -598,6 +611,52 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
   }, [hasAnyHiddenConnection]);
 
+  // Aplica cor/tamanho de fonte: se algo estiver selecionado, muda o
+  // selecionado; se não, muda o padrão do próximo elemento a ser criado —
+  // igual ao painel nativo do Excalidraw, só que a partir do botão de caneta.
+  const aplicarPropriedade = useCallback((patch: { strokeColor?: string; backgroundColor?: string; fontSize?: number }) => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const appState = api.getAppState();
+    const selectedIds = new Set(Object.keys(appState.selectedElementIds || {}));
+
+    if (selectedIds.size === 0) {
+      const nextAppState: Record<string, unknown> = {};
+      if (patch.strokeColor !== undefined) nextAppState.currentItemStrokeColor = patch.strokeColor;
+      if (patch.backgroundColor !== undefined) nextAppState.currentItemBackgroundColor = patch.backgroundColor;
+      if (patch.fontSize !== undefined) nextAppState.currentItemFontSize = patch.fontSize;
+      api.updateScene({ appState: nextAppState as never, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      return;
+    }
+
+    const elements = api.getSceneElements();
+    // Tamanho de fonte só faz sentido em texto — inclui o texto vinculado
+    // quando quem está selecionado é o bloco (container), não o texto em si.
+    const textIdsParaFonte = new Set<string>();
+    if (patch.fontSize !== undefined) {
+      elements.forEach((e) => {
+        if (!selectedIds.has(e.id)) return;
+        if (e.type === "text") textIdsParaFonte.add(e.id);
+        e.boundElements?.forEach((b) => {
+          if (b.type === "text") textIdsParaFonte.add(b.id);
+        });
+      });
+    }
+
+    const updated = elements.map((e) => {
+      let next = e;
+      if (selectedIds.has(e.id)) {
+        if (patch.strokeColor !== undefined) next = newElementWith(next, { strokeColor: patch.strokeColor });
+        if (patch.backgroundColor !== undefined) next = newElementWith(next, { backgroundColor: patch.backgroundColor });
+      }
+      if (patch.fontSize !== undefined && textIdsParaFonte.has(next.id) && next.type === "text") {
+        next = newElementWith(next, { fontSize: patch.fontSize });
+      }
+      return next;
+    });
+    api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+  }, []);
+
   const handleApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     excalidrawApiRef.current = api;
   }, []);
@@ -632,41 +691,54 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      <header className="flex shrink-0 items-center justify-between border-b bg-background px-4 py-2">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={handleClose}>
-            <ArrowLeft className="h-5 w-5" />
+      {/* Barra bem fina — só o essencial (voltar, título, status, conexões),
+          pra sobrar o máximo de tela pro canvas. */}
+      <header className="flex h-9 shrink-0 items-center justify-between gap-2 border-b bg-background px-2">
+        <div className="flex min-w-0 items-center gap-1">
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleClose}>
+            <ArrowLeft className="h-4 w-4" />
           </Button>
           <Input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
             onBlur={salvarTitulo}
-            className="max-w-md border-none bg-transparent text-lg font-medium shadow-none focus-visible:ring-0"
+            className="h-7 max-w-[240px] border-none bg-transparent px-1.5 text-sm font-medium shadow-none focus-visible:ring-0"
           />
+          <span className="hidden shrink-0 truncate text-[11px] text-muted-foreground sm:inline">
+            {getSaveStatus()}
+          </span>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-0.5">
           <PresencaAvatares pessoas={pessoasOnline} />
           {selectedArrowHidden && (
-            <Button variant="ghost" size="sm" className="h-7 gap-1.5 text-xs" onClick={toggleSelectedConnection}>
-              {selectedArrowHidden.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-              {selectedArrowHidden.hidden ? "Mostrar conexão" : "Ocultar conexão"}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={toggleSelectedConnection}
+              title={selectedArrowHidden.hidden ? "Mostrar conexão" : "Ocultar conexão"}
+            >
+              {selectedArrowHidden.hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
             </Button>
           )}
           <Button
             variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 text-xs text-muted-foreground"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground"
             onClick={toggleAllConnections}
             title={hasAnyHiddenConnection ? "Mostrar todas as conexões" : "Ocultar todas as conexões"}
           >
-            {hasAnyHiddenConnection ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
-            {hasAnyHiddenConnection ? "Mostrar todas" : "Ocultar todas"}
+            {hasAnyHiddenConnection ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           </Button>
-          <span className="w-24 text-right text-xs text-muted-foreground">{getSaveStatus()}</span>
         </div>
       </header>
 
-      <div className="relative flex-1" ref={wrapperRef}>
+      <div className="relative flex-1 mindmap-canvas" ref={wrapperRef}>
+        {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
+            lateral e ocupa bastante espaço — trocamos pelo botão de caneta
+            (com o popup compacto) lá embaixo. */}
+        <style>{".mindmap-canvas .selected-shape-actions { display: none !important; }"}</style>
+
         {isEmpty && (
           <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-center">
             <p className="text-base text-muted-foreground/70">Clique duas vezes em qualquer lugar para começar.</p>
@@ -692,6 +764,65 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
           theme={theme === "dark" ? "dark" : "light"}
           UIOptions={UI_OPTIONS}
         />
+
+        {/* Cor/fonte recolhidos num ícone de caneta — só aparece o painel
+            quando a pessoa clica, em vez de ficar sempre ocupando espaço. */}
+        {penPanelOpen && (
+          <div className="absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-xl border bg-background px-3 py-2 shadow-lg">
+            <div className="flex items-center gap-1">
+              {STROKE_COLORS.map((cor) => (
+                <button
+                  key={cor}
+                  type="button"
+                  title="Cor do traço"
+                  onClick={() => aplicarPropriedade({ strokeColor: cor })}
+                  className="h-5 w-5 rounded-full border border-border/60 transition-transform hover:scale-110"
+                  style={{ backgroundColor: cor }}
+                />
+              ))}
+            </div>
+            <div className="h-5 w-px bg-border" />
+            <div className="flex items-center gap-1">
+              {BACKGROUND_COLORS.map((cor) => (
+                <button
+                  key={cor}
+                  type="button"
+                  title="Cor de fundo"
+                  onClick={() => aplicarPropriedade({ backgroundColor: cor })}
+                  className="h-5 w-5 rounded-full border border-border/60 transition-transform hover:scale-110"
+                  style={
+                    cor === "transparent"
+                      ? { backgroundImage: "linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%), linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%)", backgroundSize: "6px 6px", backgroundPosition: "0 0, 3px 3px" }
+                      : { backgroundColor: cor }
+                  }
+                />
+              ))}
+            </div>
+            <div className="h-5 w-px bg-border" />
+            <div className="flex items-center gap-0.5">
+              {FONT_SIZES.map(({ size, label }) => (
+                <button
+                  key={size}
+                  type="button"
+                  title="Tamanho do texto"
+                  onClick={() => aplicarPropriedade({ fontSize: size })}
+                  className="flex h-6 w-6 items-center justify-center rounded text-[11px] font-medium text-muted-foreground hover:bg-muted"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <Button
+          size="icon"
+          className="absolute bottom-3 left-1/2 z-20 h-10 w-10 -translate-x-1/2 rounded-full shadow-lg"
+          onClick={() => setPenPanelOpen((v) => !v)}
+          title="Cor e fonte"
+        >
+          <PenLine className="h-5 w-5" />
+        </Button>
       </div>
     </div>
   );

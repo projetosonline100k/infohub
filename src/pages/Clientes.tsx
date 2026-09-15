@@ -187,7 +187,7 @@ const Clientes = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Clientes</h1>
+          <h1 className="text-3xl font-bold text-foreground mb-2">Projetos Milionários</h1>
           <p className="text-muted-foreground">Gerencie sua base de clientes</p>
         </div>
         <Button onClick={abrirFormularioNovo}>
