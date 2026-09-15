@@ -17,7 +17,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import { ArrowLeft, Eye, EyeOff, PenLine } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, PenLine, Square, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -168,8 +168,38 @@ function isHiddenConnection(el: ExcalidrawElement): boolean {
   return Boolean(getMindMapData(el)?.hidden);
 }
 
+// "Nó de mapa mental" = qualquer forma com metadado mindMap (criada via
+// Tab/Enter, arraste de conexão, ou marcada manualmente como "Retângulo
+// nó"). Um retângulo comum, desenhado à mão sem essa marcação, não entra
+// nesse comportamento — serve só como forma/desenho (item 17 do pedido).
 function isConnectableBlock(el: ExcalidrawElement): boolean {
-  return el.type !== "arrow" && el.type !== "text" && el.type !== "freedraw" && el.type !== "image";
+  if (el.type === "arrow" || el.type === "text" || el.type === "freedraw" || el.type === "image") return false;
+  return Boolean(getMindMapData(el));
+}
+
+type ConnectionSide = "top" | "right" | "bottom" | "left";
+
+function pointForSide(rect: { x: number; y: number; width: number; height: number }, side: ConnectionSide) {
+  switch (side) {
+    case "top": return { x: rect.x + rect.width / 2, y: rect.y };
+    case "bottom": return { x: rect.x + rect.width / 2, y: rect.y + rect.height };
+    case "left": return { x: rect.x, y: rect.y + rect.height / 2 };
+    case "right": return { x: rect.x + rect.width, y: rect.y + rect.height / 2 };
+  }
+}
+
+// Escolhe os lados de saída/entrada com base na posição relativa entre os
+// dois blocos — puxou pra baixo, entra por cima; puxou pro lado, entra pela
+// lateral (item 8 do pedido).
+function bestSides(source: { x: number; y: number; width: number; height: number }, target: { x: number; y: number; width: number; height: number }): { sourceSide: ConnectionSide; targetSide: ConnectionSide } {
+  const sourceCenter = { x: source.x + source.width / 2, y: source.y + source.height / 2 };
+  const targetCenter = { x: target.x + target.width / 2, y: target.y + target.height / 2 };
+  const dx = targetCenter.x - sourceCenter.x;
+  const dy = targetCenter.y - sourceCenter.y;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    return dx >= 0 ? { sourceSide: "right", targetSide: "left" } : { sourceSide: "left", targetSide: "right" };
+  }
+  return dy >= 0 ? { sourceSide: "bottom", targetSide: "top" } : { sourceSide: "top", targetSide: "bottom" };
 }
 
 function makeBlockSkeleton(params: {
@@ -209,8 +239,9 @@ function makeBlockSkeleton(params: {
 // mesma forma exata que uma seta desenhada e conectada à mão pelo usuário
 // (conferido: {elementId, focus: 0, gap: 1}, sem fixedPoint).
 function buildBoundArrow(id: string, source: ExcalidrawElement, target: ExcalidrawElement): ExcalidrawElement {
-  const startPoint = { x: source.x + source.width, y: source.y + source.height / 2 };
-  const endPoint = { x: target.x, y: target.y + target.height / 2 };
+  const { sourceSide, targetSide } = bestSides(source, target);
+  const startPoint = pointForSide(source, sourceSide);
+  const endPoint = pointForSide(target, targetSide);
   const dx = endPoint.x - startPoint.x;
   const dy = endPoint.y - startPoint.y;
 
@@ -265,6 +296,23 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   const [hiddenBadge, setHiddenBadge] = useState<{ x: number; y: number; count: number } | null>(null);
   const [penPanelOpen, setPenPanelOpen] = useState(false);
 
+  // Retângulo conectável (nó) — variação da ferramenta 2, escolhida por
+  // long-press, que persiste enquanto a pessoa não trocar de novo.
+  const [rectangleVariant, setRectangleVariant] = useState<"plain" | "node">("plain");
+  const rectangleVariantRef = useRef<"plain" | "node">("plain");
+  const [variantMenuOpen, setVariantMenuOpen] = useState(false);
+  const [variantMenuPos, setVariantMenuPos] = useState({ x: 0, y: 0 });
+
+  // Pontinhos de conexão + arraste pra criar/ligar nós.
+  const [activeNodeBoxes, setActiveNodeBoxes] = useState<{ id: string; left: number; top: number; width: number; height: number }[]>([]);
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const hoveredNodeIdRef = useRef<string | null>(null);
+  const [connectionDrag, setConnectionDrag] = useState<{ sourceId: string; startScene: { x: number; y: number }; currentScene: { x: number; y: number }; hoveredTargetId: string | null } | null>(null);
+  const connectionDragRef = useRef<typeof connectionDrag>(null);
+  const elementsRef = useRef<readonly ExcalidrawElement[] | null>(null);
+  const appStateRef = useRef<AppState | null>(null);
+  const knownElementIdsRef = useRef<Set<string> | null>(null);
+
   const { theme } = useTheme();
   const { saving, lastSaved, debouncedSave, saveNow } = useAutoSave({ documentoId, debounceMs: 800 });
 
@@ -286,6 +334,17 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     excalidrawApiRef,
     isReadyRef,
   });
+
+  // Único ponto que dispara o Enter sintético que abre edição — ver
+  // comentário mais abaixo. Precisa ser no elemento com foco de verdade (o
+  // container do Excalidraw); despachado direto em `document` ele é ignorado.
+  const dispatchSyntheticEnter = useCallback(() => {
+    requestAnimationFrame(() => {
+      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+      (event as unknown as { __mmSynthetic: boolean }).__mmSynthetic = true;
+      (document.activeElement || document).dispatchEvent(event);
+    });
+  }, []);
 
   // Cria um bloco conectado ao bloco de referência: "child" pendura um filho
   // dele (Tab); "sibling" pendura um irmão no mesmo pai (Enter). O novo bloco
@@ -352,15 +411,150 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     // atalho nativo "Enter com a forma selecionada". Então simulamos esse
     // Enter (marcado, pra não ser reinterpretado pelo nosso próprio
     // listener) depois que a seleção acima já foi aplicada no próximo frame.
-    // Importante: precisa ser disparado no elemento com foco de verdade
-    // (o container do Excalidraw) — despachado direto em `document` o
-    // Excalidraw simplesmente ignora o evento.
-    requestAnimationFrame(() => {
-      const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-      (event as unknown as { __mmSynthetic: boolean }).__mmSynthetic = true;
-      (document.activeElement || document).dispatchEvent(event);
+    dispatchSyntheticEnter();
+  }, [dispatchSyntheticEnter]);
+
+  // Recalcula, em coordenadas de tela, as caixas dos nós que devem mostrar
+  // os pontinhos de conexão agora (selecionados ou com o mouse por perto).
+  const recomputeActiveNodeBoxes = useCallback(() => {
+    const elements = elementsRef.current;
+    const appState = appStateRef.current;
+    if (!elements || !appState) return;
+    const selectedIds = new Set(Object.keys(appState.selectedElementIds || {}));
+    const activeIds = new Set<string>();
+    elements.forEach((e) => {
+      if (e.isDeleted || !isConnectableBlock(e)) return;
+      if (selectedIds.has(e.id) || e.id === hoveredNodeIdRef.current) activeIds.add(e.id);
     });
+    const boxes = elements
+      .filter((e) => activeIds.has(e.id))
+      .map((e) => {
+        const topLeft = sceneCoordsToViewportCoords({ sceneX: e.x, sceneY: e.y }, appState);
+        const bottomRight = sceneCoordsToViewportCoords({ sceneX: e.x + e.width, sceneY: e.y + e.height }, appState);
+        return {
+          id: e.id,
+          left: topLeft.x - appState.offsetLeft,
+          top: topLeft.y - appState.offsetTop,
+          width: bottomRight.x - topLeft.x,
+          height: bottomRight.y - topLeft.y,
+        };
+      });
+    setActiveNodeBoxes(boxes);
   }, []);
+
+  const escolherVariante = useCallback((variante: "plain" | "node") => {
+    rectangleVariantRef.current = variante;
+    setRectangleVariant(variante);
+    setVariantMenuOpen(false);
+  }, []);
+
+  // Começa a puxar uma conexão a partir de um pontinho do nó.
+  const startConnectionDrag = useCallback((sourceId: string, side: ConnectionSide) => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const source = api.getSceneElements().find((e) => e.id === sourceId);
+    if (!source) return;
+    const startPoint = pointForSide(source, side);
+    const drag = { sourceId, startScene: startPoint, currentScene: startPoint, hoveredTargetId: null as string | null };
+    connectionDragRef.current = drag;
+    setConnectionDrag(drag);
+  }, []);
+
+  const updateConnectionDrag = useCallback((sceneX: number, sceneY: number) => {
+    const drag = connectionDragRef.current;
+    if (!drag) return;
+    const elements = elementsRef.current || [];
+    let hoveredTargetId: string | null = null;
+    for (const e of elements) {
+      if (e.isDeleted || e.id === drag.sourceId || !isConnectableBlock(e)) continue;
+      if (sceneX >= e.x && sceneX <= e.x + e.width && sceneY >= e.y && sceneY <= e.y + e.height) {
+        hoveredTargetId = e.id;
+        break;
+      }
+    }
+    const next = { ...drag, currentScene: { x: sceneX, y: sceneY }, hoveredTargetId };
+    connectionDragRef.current = next;
+    setConnectionDrag(next);
+  }, []);
+
+  const cancelConnectionDrag = useCallback(() => {
+    connectionDragRef.current = null;
+    setConnectionDrag(null);
+  }, []);
+
+  // Solta a conexão: em cima de outro nó, só liga os dois; em área vazia,
+  // cria um bloco novo ali (já conectado, herdando o estilo do pai, e
+  // entrando direto em edição) — o coração do pedido.
+  const finishConnectionDrag = useCallback(() => {
+    const drag = connectionDragRef.current;
+    connectionDragRef.current = null;
+    setConnectionDrag(null);
+    if (!drag) return;
+
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+
+    const dist = Math.hypot(drag.currentScene.x - drag.startScene.x, drag.currentScene.y - drag.startScene.y);
+    if (dist < 12) return; // soltou quase no mesmo lugar — cancela.
+
+    const elements = api.getSceneElements();
+    const source = elements.find((e) => e.id === drag.sourceId);
+    if (!source) return;
+
+    if (drag.hoveredTargetId) {
+      const target = elements.find((e) => e.id === drag.hoveredTargetId);
+      if (!target || target.id === source.id) return;
+      const jaConectados = elements.some(
+        (e) =>
+          e.type === "arrow" &&
+          !e.isDeleted &&
+          ((e.startBinding?.elementId === source.id && e.endBinding?.elementId === target.id) ||
+            (e.startBinding?.elementId === target.id && e.endBinding?.elementId === source.id))
+      );
+      if (jaConectados) return;
+      const arrowId = crypto.randomUUID();
+      const arrowEl = buildBoundArrow(arrowId, source, target);
+      const updated = elements.map((e) => (e.id === source.id || e.id === target.id ? withBoundArrow(e, arrowId) : e));
+      api.updateScene({ elements: [...updated, arrowEl], captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      return;
+    }
+
+    // Área vazia: novo nó com um respiro entre o ponto largado e o bloco
+    // (item 9) — não deixa a ponta da seta entrando em cima do texto.
+    const newWidth = 180;
+    const newHeight = 64;
+    const gap = 30;
+    const dx = drag.currentScene.x - drag.startScene.x;
+    const dy = drag.currentScene.y - drag.startScene.y;
+    const horizontal = Math.abs(dx) >= Math.abs(dy);
+    const x = drag.currentScene.x - newWidth / 2 + (horizontal ? (dx > 0 ? gap : -gap) : 0);
+    const y = drag.currentScene.y - newHeight / 2 + (!horizontal ? (dy > 0 ? gap : -gap) : 0);
+
+    const newId = crypto.randomUUID();
+    const skeleton = makeBlockSkeleton({
+      id: newId,
+      x,
+      y,
+      backgroundColor: source.backgroundColor,
+      strokeColor: source.strokeColor,
+      parentId: source.id,
+    });
+    const built = convertToExcalidrawElements([skeleton], { regenerateIds: false });
+    const container = built.find((e) => e.id === newId);
+    const textEl = built.find((e) => e.type === "text" && (e as { containerId?: string }).containerId === newId);
+    if (!container || !textEl) return;
+
+    const arrowId = crypto.randomUUID();
+    const arrowEl = buildBoundArrow(arrowId, source, container);
+    const updatedSource = elements.map((e) => (e.id === source.id ? withBoundArrow(e, arrowId) : e));
+
+    api.updateScene({
+      elements: [...updatedSource, ...built, arrowEl],
+      appState: { selectedElementIds: { [newId]: true } },
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    dispatchSyntheticEnter();
+  }, [dispatchSyntheticEnter]);
 
   // Tab = filho / Enter = irmão (bloco selecionado, sem editar); Enter dentro
   // da edição de um bloco confirma o texto E encadeia o próximo irmão na
@@ -375,6 +569,12 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
       // edição do bloco recém-criado (ver comentário lá) — deixa passar
       // direto pro atalho nativo do Excalidraw, sem reinterpretar aqui.
       if ((event as unknown as { __mmSynthetic?: boolean }).__mmSynthetic) return;
+
+      if (event.key === "Escape" && connectionDragRef.current) {
+        event.preventDefault();
+        cancelConnectionDrag();
+        return;
+      }
 
       const target = event.target as HTMLElement | null;
       // Não interfere com o título do documento nem outros campos fora do
@@ -416,6 +616,17 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
       const selected = elements.find((e) => e.id === selectedIds[0]);
       if (!selected || !isConnectableBlock(selected)) return;
 
+      // Um nó recém-desenhado à mão, ainda sem texto, deve deixar o Enter
+      // seguir pro comportamento nativo ("Enter com forma selecionada" abre
+      // a edição) — senão a pessoa nunca consegue escrever nele, porque a
+      // gente já intercepta o Enter pra criar um irmão.
+      if (event.key === "Enter") {
+        const boundText = elements.find(
+          (e) => e.type === "text" && (e as { containerId?: string }).containerId === selected.id
+        ) as { text?: string } | undefined;
+        if (!boundText?.text?.trim()) return;
+      }
+
       event.preventDefault();
       // Sem isto, o mesmo Enter continuaria borbulhando até o atalho nativo
       // do Excalidraw ("Enter com forma selecionada" -> editar o texto),
@@ -428,7 +639,101 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
 
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [createConnectedBlock]);
+  }, [createConnectedBlock, cancelConnectionDrag]);
+
+  // Solta a conexão em qualquer lugar da tela, não só em cima do pontinho.
+  useEffect(() => {
+    if (!connectionDrag) return;
+    const onUp = () => finishConnectionDrag();
+    window.addEventListener("mouseup", onUp);
+    return () => window.removeEventListener("mouseup", onUp);
+  }, [connectionDrag, finishConnectionDrag]);
+
+  // Long-press (~2s) no botão "Retângulo" da toolbar nativa abre o menu de
+  // variação (comum / nó). Clique normal continua 100% igual (item 1 do
+  // pedido) — o timer só é iniciado, nunca interfere no clique em si.
+  useEffect(() => {
+    if (loading) return;
+
+    let label: Element | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let pollId: ReturnType<typeof setInterval> | null = null;
+
+    const limpar = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+    };
+    const onPointerDown = () => {
+      limpar();
+      timer = setTimeout(() => {
+        const rect = label!.getBoundingClientRect();
+        setVariantMenuPos({ x: rect.left, y: rect.bottom + 6 });
+        setVariantMenuOpen(true);
+      }, 2000);
+    };
+
+    const anexar = (el: Element) => {
+      label = el;
+      el.addEventListener("pointerdown", onPointerDown);
+      el.addEventListener("pointerup", limpar);
+      el.addEventListener("pointerleave", limpar);
+    };
+
+    // A toolbar do Excalidraw pode montar um instante depois do nosso
+    // próprio efeito rodar — tenta de novo por um tempinho até achar o botão.
+    const existente = document.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
+    if (existente) {
+      anexar(existente);
+    } else {
+      pollId = setInterval(() => {
+        const found = document.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
+        if (found) {
+          anexar(found);
+          if (pollId) clearInterval(pollId);
+        }
+      }, 150);
+    }
+
+    return () => {
+      limpar();
+      if (pollId) clearInterval(pollId);
+      if (label) {
+        label.removeEventListener("pointerdown", onPointerDown);
+        label.removeEventListener("pointerup", limpar);
+        label.removeEventListener("pointerleave", limpar);
+      }
+    };
+  }, [loading]);
+
+  // Selo discreto no botão da toolbar indicando que a variação "nó" está
+  // ativa (item 19) — via classe CSS, sem tocar no componente da lib.
+  useEffect(() => {
+    if (loading) return;
+    const aplicar = () => {
+      const label = document.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
+      if (label) {
+        label.classList.toggle("mm-node-variant-active", rectangleVariant === "node");
+        return true;
+      }
+      return false;
+    };
+    if (aplicar()) return;
+    const pollId = setInterval(() => {
+      if (aplicar()) clearInterval(pollId);
+    }, 150);
+    return () => clearInterval(pollId);
+  }, [rectangleVariant, loading]);
+
+  // Fecha o menu de variação ao clicar fora dele.
+  useEffect(() => {
+    if (!variantMenuOpen) return;
+    const onClickOutside = (event: MouseEvent) => {
+      const el = event.target as HTMLElement;
+      if (!el.closest(".mm-variant-menu")) setVariantMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside, true);
+    return () => document.removeEventListener("mousedown", onClickOutside, true);
+  }, [variantMenuOpen]);
 
   // Carrega o mapa (uma vez, ao abrir).
   useEffect(() => {
@@ -485,6 +790,9 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   // Documento/Caderno. Também cuida da "ramificação instantânea" e do
   // indicador de conexões ocultas no bloco selecionado.
   const handleChange = useCallback((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+    elementsRef.current = elements;
+    appStateRef.current = appState;
+
     // Se essa mudança veio de uma reconciliação com dado remoto (outra
     // pessoa editando agora), não reenvia pra rede — evita eco infinito.
     // Ainda assim segue o fluxo normal (autosave etc.), já que o resultado
@@ -494,6 +802,41 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     if (!vindoDeFora && !loadingRef.current) {
       broadcastElements(elements);
     }
+
+    // Retângulo desenhado à mão enquanto a variação "nó" está ativa: marca
+    // como nó de mapa mental assim que aparece pela primeira vez (nunca
+    // retroativo, nunca em cima de elemento vindo de outra pessoa). Espera o
+    // desenho terminar (não é mais o "newElement" em andamento) antes de
+    // mexer nele — mudar o array de elementos no meio do próprio gesto de
+    // arrastar confunde o rastreamento interno do Excalidraw e distorce o
+    // tamanho final da forma.
+    if (!vindoDeFora) {
+      if (knownElementIdsRef.current === null) {
+        knownElementIdsRef.current = new Set(elements.map((e) => e.id));
+      } else {
+        const known = knownElementIdsRef.current;
+        const emDesenho = appState.newElement?.id ?? null;
+        const novosSemTag = elements.filter(
+          (e) => e.type === "rectangle" && !e.isDeleted && !known.has(e.id) && !getMindMapData(e) && e.id !== emDesenho
+        );
+        if (novosSemTag.length > 0 && rectangleVariantRef.current === "node") {
+          const idsParaMarcar = new Set(novosSemTag.map((e) => e.id));
+          const api = excalidrawApiRef.current;
+          if (api) {
+            const marcados = elements.map((e) =>
+              idsParaMarcar.has(e.id) ? newElementWith(e, { customData: { ...(e.customData || {}), mindMap: { parentId: null } } }) : e
+            );
+            api.updateScene({ elements: marcados, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+          }
+          idsParaMarcar.forEach((id) => known.add(id));
+        }
+        elements.forEach((e) => {
+          if (e.id !== emDesenho) known.add(e.id);
+        });
+      }
+    }
+
+    recomputeActiveNodeBoxes();
 
     const editingId = appState.editingTextElement?.id ?? null;
     if (prevEditingIdRef.current && !editingId && pendingChainRef.current) {
@@ -578,7 +921,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     if (content === previousContentRef.current) return;
     previousContentRef.current = content;
     debouncedSave(content);
-  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef]);
+  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes]);
 
   const toggleSelectedConnection = useCallback(() => {
     const api = excalidrawApiRef.current;
@@ -665,7 +1008,32 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   // é isso que faz aparecer o cursor colorido deles se mexendo, igual Miro.
   const handlePointerUpdate = useCallback((payload: { pointer: { x: number; y: number } }) => {
     broadcastCursor(payload.pointer.x, payload.pointer.y);
-  }, [broadcastCursor]);
+
+    if (connectionDragRef.current) {
+      updateConnectionDrag(payload.pointer.x, payload.pointer.y);
+      return;
+    }
+
+    // Perto da borda de algum nó (mesmo sem selecionar) mostra os pontinhos.
+    const elements = elementsRef.current;
+    if (!elements) return;
+    const THRESHOLD = 24;
+    let found: string | null = null;
+    for (const e of elements) {
+      if (e.isDeleted || !isConnectableBlock(e)) continue;
+      const withinX = payload.pointer.x >= e.x - THRESHOLD && payload.pointer.x <= e.x + e.width + THRESHOLD;
+      const withinY = payload.pointer.y >= e.y - THRESHOLD && payload.pointer.y <= e.y + e.height + THRESHOLD;
+      if (withinX && withinY) {
+        found = e.id;
+        break;
+      }
+    }
+    if (found !== hoveredNodeIdRef.current) {
+      hoveredNodeIdRef.current = found;
+      setHoveredNodeId(found);
+      recomputeActiveNodeBoxes();
+    }
+  }, [broadcastCursor, updateConnectionDrag, recomputeActiveNodeBoxes]);
 
   const handleClose = () => {
     const api = excalidrawApiRef.current;
@@ -690,11 +1058,21 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-background">
-      {/* Barra bem fina — só o essencial (voltar, título, status, conexões),
-          pra sobrar o máximo de tela pro canvas. */}
-      <header className="flex h-9 shrink-0 items-center justify-between gap-2 border-b bg-background px-2">
-        <div className="flex min-w-0 items-center gap-1">
+    <div className="fixed inset-0 z-50 bg-background">
+      <div className="relative h-full mindmap-canvas" ref={wrapperRef}>
+        {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
+            lateral e ocupa bastante espaço — trocamos pelo botão de caneta
+            (com o popup compacto) lá embaixo. */}
+        <style>
+          {".mindmap-canvas .selected-shape-actions { display: none !important; } " +
+            ".mm-node-variant-active { position: relative; } " +
+            '.mm-node-variant-active::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary, #7c5cff); }'}
+        </style>
+
+        {/* Nenhuma barra fixa: voltar/título e as conexões ficam flutuando
+            por cima do canvas mesmo, sem tomar espaço dele. Encostado ao
+            lado do menu (☰) nativo do Excalidraw, não embaixo dele. */}
+        <div className="absolute left-14 top-2 z-20 flex h-9 items-center gap-1 rounded-lg border bg-background/95 px-1 shadow-sm">
           <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleClose}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -702,42 +1080,136 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
             onBlur={salvarTitulo}
-            className="h-7 max-w-[240px] border-none bg-transparent px-1.5 text-sm font-medium shadow-none focus-visible:ring-0"
+            className="h-7 w-40 border-none bg-transparent px-1.5 text-sm font-medium shadow-none focus-visible:ring-0"
           />
-          <span className="hidden shrink-0 truncate text-[11px] text-muted-foreground sm:inline">
+          <span className="hidden shrink-0 truncate pr-1 text-[11px] text-muted-foreground md:inline">
             {getSaveStatus()}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5">
+
+        <div className="absolute right-2 top-14 z-20 flex h-8 items-center gap-0.5 rounded-lg border bg-background/95 px-1 shadow-sm">
           <PresencaAvatares pessoas={pessoasOnline} />
           {selectedArrowHidden && (
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7"
+              className="h-6 w-6"
               onClick={toggleSelectedConnection}
               title={selectedArrowHidden.hidden ? "Mostrar conexão" : "Ocultar conexão"}
             >
-              {selectedArrowHidden.hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+              {selectedArrowHidden.hidden ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
             </Button>
           )}
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground"
+            className="h-6 w-6 text-muted-foreground"
             onClick={toggleAllConnections}
             title={hasAnyHiddenConnection ? "Mostrar todas as conexões" : "Ocultar todas as conexões"}
           >
-            {hasAnyHiddenConnection ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            {hasAnyHiddenConnection ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
           </Button>
         </div>
-      </header>
 
-      <div className="relative flex-1 mindmap-canvas" ref={wrapperRef}>
-        {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
-            lateral e ocupa bastante espaço — trocamos pelo botão de caneta
-            (com o popup compacto) lá embaixo. */}
-        <style>{".mindmap-canvas .selected-shape-actions { display: none !important; }"}</style>
+        {/* Menu de variação do retângulo (long-press na toolbar nativa). */}
+        {variantMenuOpen && (
+          <div
+            className="mm-variant-menu fixed z-30 flex w-48 flex-col overflow-hidden rounded-lg border bg-background py-1 shadow-lg"
+            style={{ left: variantMenuPos.x, top: variantMenuPos.y }}
+          >
+            <button
+              type="button"
+              className="flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+              onClick={() => escolherVariante("plain")}
+            >
+              <Square className="h-4 w-4" /> Retângulo comum
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+              onClick={() => escolherVariante("node")}
+            >
+              <Waypoints className="h-4 w-4" /> Retângulo nó
+            </button>
+          </div>
+        )}
+
+        {/* Pontinhos de conexão dos nós selecionados/sob o mouse. */}
+        {activeNodeBoxes.map((box) => (
+          <div key={box.id}>
+            {(["top", "right", "bottom", "left"] as ConnectionSide[]).map((side) => {
+              const style =
+                side === "top"
+                  ? { left: box.left + box.width / 2, top: box.top }
+                  : side === "bottom"
+                  ? { left: box.left + box.width / 2, top: box.top + box.height }
+                  : side === "left"
+                  ? { left: box.left, top: box.top + box.height / 2 }
+                  : { left: box.left + box.width, top: box.top + box.height / 2 };
+              return (
+                <div
+                  key={side}
+                  data-testid="mm-connection-dot"
+                  data-node-id={box.id}
+                  data-side={side}
+                  className="absolute z-20 h-3 w-3 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border-2 border-background bg-primary shadow transition-transform hover:scale-125"
+                  style={style}
+                  onMouseDown={(event) => {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    startConnectionDrag(box.id, side);
+                  }}
+                />
+              );
+            })}
+          </div>
+        ))}
+
+        {/* Prévia da conexão sendo arrastada + destaque do alvo válido. */}
+        {connectionDrag && appStateRef.current && (
+          <>
+            {connectionDrag.hoveredTargetId &&
+              (() => {
+                const target = elementsRef.current?.find((e) => e.id === connectionDrag.hoveredTargetId);
+                const appState = appStateRef.current;
+                if (!target || !appState) return null;
+                const topLeft = sceneCoordsToViewportCoords({ sceneX: target.x, sceneY: target.y }, appState);
+                const bottomRight = sceneCoordsToViewportCoords({ sceneX: target.x + target.width, sceneY: target.y + target.height }, appState);
+                return (
+                  <div
+                    className="pointer-events-none absolute z-20 rounded-lg ring-2 ring-primary/70"
+                    style={{
+                      left: topLeft.x - appState.offsetLeft - 4,
+                      top: topLeft.y - appState.offsetTop - 4,
+                      width: bottomRight.x - topLeft.x + 8,
+                      height: bottomRight.y - topLeft.y + 8,
+                    }}
+                  />
+                );
+              })()}
+            <svg className="pointer-events-none absolute inset-0 z-20 h-full w-full">
+              {(() => {
+                const appState = appStateRef.current!;
+                const start = sceneCoordsToViewportCoords({ sceneX: connectionDrag.startScene.x, sceneY: connectionDrag.startScene.y }, appState);
+                const end = sceneCoordsToViewportCoords({ sceneX: connectionDrag.currentScene.x, sceneY: connectionDrag.currentScene.y }, appState);
+                const sx = start.x - appState.offsetLeft;
+                const sy = start.y - appState.offsetTop;
+                const ex = end.x - appState.offsetLeft;
+                const ey = end.y - appState.offsetTop;
+                const mx = (sx + ex) / 2;
+                return (
+                  <path
+                    d={`M ${sx} ${sy} Q ${mx} ${sy} ${mx} ${(sy + ey) / 2} T ${ex} ${ey}`}
+                    fill="none"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    strokeDasharray="6 5"
+                  />
+                );
+              })()}
+            </svg>
+          </>
+        )}
 
         {isEmpty && (
           <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-center">
