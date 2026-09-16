@@ -15,6 +15,7 @@ function normalizar(texto: string): string {
   return texto
     .trim()
     .toLowerCase()
+    .replace(/[\s_-]+/g, "-")
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { cn, formatarTempo } from "@/lib/utils";
 import { Droppable, Draggable } from "@hello-pangea/dnd";
 import { KanbanCard } from "./KanbanCard";
@@ -58,12 +58,15 @@ export const KanbanColumn = ({
   onZerarTimer,
   onTimerFinalizado,
 }: KanbanColumnProps) => {
+  const adicaoConfirmada = useRef(false);
   const [adicionando, setAdicionando] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [editandoNome, setEditandoNome] = useState(false);
   const [nomeEditado, setNomeEditado] = useState(label);
 
   const confirmarAdicao = () => {
+    if (adicaoConfirmada.current) return;
+    adicaoConfirmada.current = true;
     const valor = titulo.trim();
     if (valor) {
       onAddCard(status, valor);
@@ -189,6 +192,7 @@ export const KanbanColumn = ({
                   if (e.key === "Enter") {
                     confirmarAdicao();
                   } else if (e.key === "Escape") {
+                    adicaoConfirmada.current = true;
                     setTitulo("");
                     setAdicionando(false);
                   }
@@ -199,7 +203,7 @@ export const KanbanColumn = ({
               />
             ) : (
               <button
-                onClick={() => setAdicionando(true)}
+                onClick={() => { adicaoConfirmada.current = false; setAdicionando(true); }}
                 className="w-full flex items-center gap-2 p-2 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-md transition-colors"
               >
                 <Plus className="h-4 w-4" />

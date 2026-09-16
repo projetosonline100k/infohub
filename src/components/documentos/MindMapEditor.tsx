@@ -17,11 +17,13 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import { ArrowLeft, Eye, EyeOff, PenLine, Square, Waypoints } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
-import { useAutoSave } from "@/hooks/useAutoSave";
+import { useCanvasAutoSave, canvasBackupKey } from "@/hooks/useCanvasAutoSave";
+import { mergeCanvas } from "@/lib/canvasPersistence";
+import { toast } from "sonner";
 import { useTheme } from "@/hooks/useTheme";
 import { useMapaMentalColaboracao } from "@/hooks/useMapaMentalColaboracao";
 import { PresencaAvatares } from "./PresencaAvatares";
@@ -284,9 +286,12 @@ function withBoundArrow(el: ExcalidrawElement, arrowId: string): ExcalidrawEleme
 interface MindMapEditorProps {
   documentoId: string;
   onClose: () => void;
+  embedded?: boolean;
 }
 
-export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
+export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMapEditorProps) {
+  const [fullscreen, setFullscreen] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [titulo, setTitulo] = useState("Mapa mental sem título");
   const [loading, setLoading] = useState(true);
   const [initialData, setInitialData] = useState<ExcalidrawInitialDataState | null>(null);
@@ -314,7 +319,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   const knownElementIdsRef = useRef<Set<string> | null>(null);
 
   const { theme } = useTheme();
-  const { saving, lastSaved, debouncedSave, saveNow } = useAutoSave({ documentoId, debounceMs: 800 });
+  const { saving, lastSaved, error: saveError, debouncedSave, saveNow } = useCanvasAutoSave(documentoId);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
@@ -577,6 +582,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
       }
 
       const target = event.target as HTMLElement | null;
+      if (embedded && (!target || !wrapperRef.current?.contains(target))) return;
       // Não interfere com o título do documento nem outros campos fora do
       // canvas — só o textarea nativo do Excalidraw é tratado como "dentro".
       if (
@@ -602,7 +608,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
             // irmão assim que a edição terminar de fato (via blur nativo).
             pendingChainRef.current = { blockId: containerId };
           }
-          const textarea = document.querySelector<HTMLTextAreaElement>("textarea.excalidraw-wysiwyg");
+          const textarea = wrapperRef.current?.querySelector<HTMLTextAreaElement>("textarea.excalidraw-wysiwyg");
           textarea?.blur();
         }
         return;
@@ -639,7 +645,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
 
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [createConnectedBlock, cancelConnectionDrag]);
+  }, [createConnectedBlock, cancelConnectionDrag, embedded]);
 
   // Solta a conexão em qualquer lugar da tela, não só em cima do pontinho.
   useEffect(() => {
@@ -681,12 +687,12 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
 
     // A toolbar do Excalidraw pode montar um instante depois do nosso
     // próprio efeito rodar — tenta de novo por um tempinho até achar o botão.
-    const existente = document.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
+    const existente = wrapperRef.current?.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
     if (existente) {
       anexar(existente);
     } else {
       pollId = setInterval(() => {
-        const found = document.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
+        const found = wrapperRef.current?.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
         if (found) {
           anexar(found);
           if (pollId) clearInterval(pollId);
@@ -710,7 +716,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
   useEffect(() => {
     if (loading) return;
     const aplicar = () => {
-      const label = document.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
+      const label = wrapperRef.current?.querySelector('input[data-testid="toolbar-rectangle"]')?.closest("label");
       if (label) {
         label.classList.toggle("mm-node-variant-active", rectangleVariant === "node");
         return true;
@@ -751,7 +757,12 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
 
       if (data && !error) {
         setTitulo(data.titulo || "Mapa mental sem título");
-        const parsed = parseCanvasDoc(data.conteudo);
+        let content = data.conteudo;
+        try {
+          const backup = localStorage.getItem(canvasBackupKey(documentoId));
+          if (backup) { content = mergeCanvas(backup, content); debouncedSave(content); }
+        } catch { toast.error("Não foi possível recuperar a cópia local. Ela foi mantida neste navegador."); }
+        const parsed = parseCanvasDoc(content);
         const restored = restore(
           {
             elements: parsed.elements as ExcalidrawElement[],
@@ -770,6 +781,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
         );
       }
 
+      if (error || !data) setLoadError(true);
       loadingRef.current = false;
       isReadyRef.current = true;
       setLoading(false);
@@ -779,7 +791,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     return () => {
       cancelado = true;
     };
-  }, [documentoId]);
+  }, [documentoId, debouncedSave]);
 
   const salvarTitulo = useCallback(async () => {
     await supabase.from("documentos").update({ titulo }).eq("id", documentoId);
@@ -800,7 +812,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     const vindoDeFora = applyingRemoteRef.current;
     applyingRemoteRef.current = false;
     if (!vindoDeFora && !loadingRef.current) {
-      broadcastElements(elements);
+      broadcastElements(elements, files);
     }
 
     // Retângulo desenhado à mão enquanto a variação "nó" está ativa: marca
@@ -1035,31 +1047,38 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
     }
   }, [broadcastCursor, updateConnectionDrag, recomputeActiveNodeBoxes]);
 
-  const handleClose = () => {
+  const handleClose = async () => {
     const api = excalidrawApiRef.current;
     if (api) {
-      saveNow(serializeCanvasDoc(api.getSceneElements(), api.getAppState(), api.getFiles()));
+      const saved = await saveNow(serializeCanvasDoc(api.getSceneElementsIncludingDeleted(), api.getAppState(), api.getFiles()));
+      if (!saved) return;
     }
     onClose();
   };
 
   const getSaveStatus = () => {
+    if (saveError) return saveError;
     if (saving) return "Salvando...";
     if (lastSaved) return `Salvo ${formatDistanceToNow(lastSaved, { locale: ptBR, addSuffix: false })}`;
     return "";
   };
 
+  if (loadError) return <div className={embedded ? "rounded-lg border p-8" : "fixed inset-0 z-50 bg-background p-8"}>
+    <p>Não foi possível carregar a lousa. Nenhuma alteração foi feita.</p>
+    <Button variant="outline" className="mt-3" onClick={onClose}>Voltar</Button>
+  </div>;
+
   if (loading || !initialData) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background">
+      <div className={embedded ? "h-[600px] flex items-center justify-center bg-background" : "fixed inset-0 z-50 flex items-center justify-center bg-background"}>
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-background">
-      <div className="relative h-full mindmap-canvas" ref={wrapperRef}>
+    <div className={embedded && !fullscreen ? "relative h-[600px] min-h-[400px] resize-y overflow-hidden rounded-lg border bg-background" : "fixed inset-0 z-50 bg-background"}>
+      <div className="relative h-full mindmap-canvas" data-document-canvas tabIndex={-1} ref={wrapperRef}>
         {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
             lateral e ocupa bastante espaço — trocamos pelo botão de caneta
             (com o popup compacto) lá embaixo. */}
@@ -1073,7 +1092,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
             por cima do canvas mesmo, sem tomar espaço dele. Encostado ao
             lado do menu (☰) nativo do Excalidraw, não embaixo dele. */}
         <div className="absolute left-14 top-2 z-20 flex h-9 items-center gap-1 rounded-lg border bg-background/95 px-1 shadow-sm">
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={handleClose}>
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={embedded ? "Recolher lousa" : "Voltar"} onClick={handleClose}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <Input
@@ -1086,6 +1105,12 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
             {getSaveStatus()}
           </span>
         </div>
+
+        {embedded && <Button variant="outline" size="sm" className="absolute right-3 bottom-14 z-30 gap-2" onClick={() => setFullscreen(value => !value)}>
+          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          {fullscreen ? "Sair da tela cheia" : "Tela cheia"}
+        </Button>}
+        {saveError && <div role="alert" className="absolute left-3 bottom-14 z-30 max-w-[60%] rounded border border-destructive bg-background p-2 text-xs text-destructive">{saveError}</div>}
 
         <div className="absolute right-2 top-14 z-20 flex h-8 items-center gap-0.5 rounded-lg border bg-background/95 px-1 shadow-sm">
           <PresencaAvatares pessoas={pessoasOnline} />
@@ -1229,6 +1254,7 @@ export function MindMapEditor({ documentoId, onClose }: MindMapEditorProps) {
 
         <Excalidraw
           excalidrawAPI={handleApiReady}
+          handleKeyboardGlobally={!embedded || fullscreen}
           initialData={initialData}
           onChange={handleChange}
           onPointerUpdate={handlePointerUpdate}

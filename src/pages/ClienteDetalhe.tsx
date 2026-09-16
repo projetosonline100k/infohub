@@ -14,6 +14,7 @@ import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
 import { ConteudoSection } from "@/components/conteudo/ConteudoSection";
 import { AtividadesView } from "@/components/atividades/AtividadesView";
+import { DocumentQuickAccess } from "@/components/documentos/DocumentQuickAccess";
 import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
@@ -321,6 +322,8 @@ export default function ClienteDetalhe() {
           </>
         )}
       </div>
+
+      {pode("documentos") && <div className="fixed bottom-4 left-4 z-20"><DocumentQuickAccess key={id} clienteId={id!} /></div>}
 
       {/* Área de conteúdo */}
       <div className="flex-1 overflow-y-auto">

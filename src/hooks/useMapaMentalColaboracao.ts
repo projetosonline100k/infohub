@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RealtimeChannel } from "@supabase/supabase-js";
 import { reconcileElements, CaptureUpdateAction } from "@excalidraw/excalidraw";
-import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
+import type { ExcalidrawImperativeAPI, BinaryFiles } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -92,18 +92,24 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
     });
   }, [excalidrawApiRef]);
 
-  const reconciliarRemoto = useCallback((remoteElements: ExcalidrawElement[]) => {
+  const reconciliarRemoto = useCallback((remoteElements: ExcalidrawElement[], files?: BinaryFiles) => {
     const api = excalidrawApiRef.current;
     if (!api || !isReadyRef.current) return;
+    if (files) {
+      const existing = api.getFiles();
+      const missing = Object.values(files).filter(file => !existing[file.id]);
+      if (missing.length) api.addFiles(missing);
+    }
     const localElements = api.getSceneElementsIncludingDeleted();
     const merged = reconcileElements(localElements, remoteElements as never, api.getAppState());
+    if (JSON.stringify(localElements) === JSON.stringify(merged)) return;
     applyingRemoteRef.current = true;
     api.updateScene({ elements: merged, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
   }, [excalidrawApiRef, isReadyRef]);
 
   // Throttles vivem fora do efeito de conexão (que pode reconectar) pra que
   // as funções de broadcast, estáveis, sempre encontrem o mesmo estado.
-  const elementosThrottleRef = useRef<ReturnType<typeof criarThrottle<readonly ExcalidrawElement[]>> | null>(null);
+  const elementosThrottleRef = useRef<ReturnType<typeof criarThrottle<{ elements: readonly ExcalidrawElement[]; files: BinaryFiles }>> | null>(null);
   const cursorThrottleRef = useRef<ReturnType<typeof criarThrottle<{ x: number; y: number }>> | null>(null);
 
   useEffect(() => {
@@ -114,12 +120,25 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
     let cancelado = false;
     let channel: RealtimeChannel | null = null;
 
-    elementosThrottleRef.current = criarThrottle(120, (elements: readonly ExcalidrawElement[]) => {
-      channelRef.current?.send({ type: "broadcast", event: "elements", payload: { chave: minhaChaveRef.current, elements } });
+    elementosThrottleRef.current = criarThrottle(120, ({ elements, files }: { elements: readonly ExcalidrawElement[]; files: BinaryFiles }) => {
+      channelRef.current?.send({ type: "broadcast", event: "elements", payload: { chave: minhaChaveRef.current, elements, files } });
     });
     cursorThrottleRef.current = criarThrottle(60, ({ x, y }: { x: number; y: number }) => {
       channelRef.current?.send({ type: "broadcast", event: "cursor", payload: { chave: minhaChaveRef.current, x, y } });
     });
+
+    const sincronizarBanco = async () => {
+      if (!isReadyRef.current || cancelado) return;
+      const { data, error } = await supabase.from("documentos").select("conteudo").eq("id", documentoId).maybeSingle();
+      if (cancelado || error || !data?.conteudo?.startsWith("__CANVASMENTAL_V1__")) return;
+      try {
+        const parsed = JSON.parse(data.conteudo.slice("__CANVASMENTAL_V1__".length));
+        if (Array.isArray(parsed.elements)) reconciliarRemoto(parsed.elements, parsed.files);
+      } catch { /* Invalid remote content never replaces the canvas. */ }
+    };
+    const poll = setInterval(() => void sincronizarBanco(), 15000);
+    const onOnline = () => void sincronizarBanco();
+    window.addEventListener("online", onOnline);
 
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -172,9 +191,9 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
       });
 
       channel.on("broadcast", { event: "elements" }, ({ payload }) => {
-        const dados = payload as { chave: string; elements: ExcalidrawElement[] };
+        const dados = payload as { chave: string; elements: ExcalidrawElement[]; files?: BinaryFiles };
         if (dados.chave === minhaChaveRef.current) return;
-        reconciliarRemoto(dados.elements);
+        reconciliarRemoto(dados.elements, dados.files);
       });
 
       // Rede de segurança: além do broadcast ao vivo, também reconcilia
@@ -188,7 +207,7 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
           if (!novo.conteudo?.startsWith("__CANVASMENTAL_V1__")) return;
           try {
             const parsed = JSON.parse(novo.conteudo.slice("__CANVASMENTAL_V1__".length));
-            if (Array.isArray(parsed.elements)) reconciliarRemoto(parsed.elements);
+            if (Array.isArray(parsed.elements)) reconciliarRemoto(parsed.elements, parsed.files);
           } catch {
             // conteúdo inválido — ignora, o autosave local não é afetado.
           }
@@ -198,12 +217,15 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
       channel.subscribe(async (status) => {
         if (status === "SUBSCRIBED" && !cancelado) {
           await channel!.track({ email, nome: apelido, cor: minhaCor });
+          void sincronizarBanco();
         }
       });
     })();
 
     return () => {
       cancelado = true;
+      clearInterval(poll);
+      window.removeEventListener("online", onOnline);
       elementosThrottleRef.current?.cancelar();
       cursorThrottleRef.current?.cancelar();
       elementosThrottleRef.current = null;
@@ -213,10 +235,10 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
       collaboratorsRef.current.clear();
       setPessoasOnline([]);
     };
-  }, [documentoId, reconciliarRemoto, aplicarColaboradores]);
+  }, [documentoId, reconciliarRemoto, aplicarColaboradores, isReadyRef]);
 
-  const broadcastElements = useCallback((elements: readonly ExcalidrawElement[]) => {
-    elementosThrottleRef.current?.disparar(elements);
+  const broadcastElements = useCallback((elements: readonly ExcalidrawElement[], files: BinaryFiles) => {
+    elementosThrottleRef.current?.disparar({ elements, files });
   }, []);
 
   const broadcastCursor = useCallback((x: number, y: number) => {

@@ -1,3 +1,4 @@
+import { LousaAtividades } from "./LousaAtividades";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -278,7 +279,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     if (kanbanPeriodo !== "todas") {
       lista = lista.filter((a) => {
         try {
-          return isWithinInterval(parseISO(a.data_atividade), semanaReferenciaKanban);
+          return isWithinInterval(parseISO(a.data_atividade), { start: semanaReferenciaKanban.inicio, end: semanaReferenciaKanban.fim });
         } catch {
           return false;
         }
@@ -812,15 +813,13 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     const coluna = colunas.find((c) => c.status_key === status);
     const diaSemana = coluna ? detectarDiaSemana(coluna.nome) : null;
 
-    // Coluna de dia da semana: a tarefa nasce agendada pra aquele dia, com o
-    // status de uma coluna "de verdade" (a primeira que não for um dia).
+    // Preserve a coluna escolhida e agende a tarefa no dia correspondente.
     const dataAtividade =
       diaSemana !== null
         ? format(addDays(semanaReferenciaKanban.inicio, diaSemana), "yyyy-MM-dd")
         : format(new Date(), "yyyy-MM-dd");
-    const colunaStatus =
-      diaSemana !== null ? colunas.find((c) => detectarDiaSemana(c.nome) === null) : coluna;
-    const statusReal = colunaStatus?.status_key || "backlog";
+    const colunaStatus = coluna;
+    const statusReal = status;
 
     try {
       const { error } = await supabase.from("atividades").insert({
@@ -1107,16 +1106,16 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       const colunaDestino = colunas.find((c) => c.status_key === destData);
       const diaSemanaDestino = colunaDestino ? detectarDiaSemana(colunaDestino.nome) : null;
 
-      // Coluna nomeada como dia da semana: muda a data, não o status.
+      // Coluna nomeada como dia da semana: mantém data e coluna sincronizadas.
       if (diaSemanaDestino !== null) {
         const novaData = format(addDays(semanaReferenciaKanban.inicio, diaSemanaDestino), "yyyy-MM-dd");
         setAtividades((prev) =>
-          prev.map((a) => (a.id === draggableId ? { ...a, data_atividade: novaData } : a))
+          prev.map((a) => (a.id === draggableId ? { ...a, data_atividade: novaData, status: destData } : a))
         );
         try {
           const { error } = await supabase
             .from("atividades")
-            .update({ data_atividade: novaData })
+            .update({ data_atividade: novaData, status: destData })
             .eq("id", draggableId);
           if (error) throw error;
         } catch (error) {
@@ -1658,6 +1657,10 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
 
           {viewMode === "notas" && <NotasPessoais />}
         </>
+      )}
+
+      {pastaAtivaId !== VISAO_GERAL && viewMode !== "notas" && (
+        <LousaAtividades key={`${clienteId || "pessoal"}:${pastaAtivaId || "sem-pasta"}`} clienteId={clienteId} pastaId={pastaAtivaId} pastaNome={pastas.find(pasta => pasta.id === pastaAtivaId)?.nome} />
       )}
 
       {/* Detail Panel */}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow } from "lucide-react";
+import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow, BookOpen, FolderPlus, Folder } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ interface Documento {
   created_at: string;
   updated_at: string;
   atividade_id: string | null;
+  pasta_id: string | null;
 }
 
 interface Atividade {
@@ -30,9 +31,15 @@ interface DocumentosViewProps {
 }
 
 export function DocumentosView({ clienteId }: DocumentosViewProps) {
+  const [pastas, setPastas] = useState<{ id: string; nome: string }[]>([]);
+  const [pastaAtiva, setPastaAtiva] = useState("todas");
+  const [novaPasta, setNovaPasta] = useState(false);
+  const [nomePasta, setNomePasta] = useState("");
+  const [salvandoPasta, setSalvandoPasta] = useState(false);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
   const [atividades, setAtividades] = useState<Record<string, Atividade>>({});
   const [loading, setLoading] = useState(true);
+  const [tipoFiltro, setTipoFiltro] = useState("todos");
   const [busca, setBusca] = useState("");
   const [docEditorOpen, setDocEditorOpen] = useState(false);
   const [cadernoEditorOpen, setCadernoEditorOpen] = useState(false);
@@ -44,7 +51,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     
     const { data, error } = await supabase
       .from("documentos")
-      .select("id, titulo, conteudo, created_at, updated_at, atividade_id")
+      .select("id, titulo, conteudo, created_at, updated_at, atividade_id, pasta_id")
       .eq("cliente_id", clienteId)
       .order("updated_at", { ascending: false });
 
@@ -71,18 +78,59 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
         }
       }
     }
+    if (error) toast.error("Erro ao carregar documentos");
+    const { data: folders, error: folderError } = await supabase.from("pastas_atividade")
+      .select("id, nome").eq("cliente_id", clienteId).is("deleted_at", null).order("ordem");
+    if (folderError) toast.error("Erro ao carregar pastas");
+    else setPastas(folders || []);
     setLoading(false);
   };
 
   useEffect(() => {
+    setPastaAtiva("todas");
     carregarDocumentos();
   }, [clienteId]);
+
+  const criarPasta = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!nomePasta.trim() || salvandoPasta) return;
+    setSalvandoPasta(true);
+    const { data, error } = await supabase.from("pastas_atividade").insert({
+      cliente_id: clienteId, nome: nomePasta.trim(), ordem: pastas.length,
+    }).select("id, nome").single();
+    setSalvandoPasta(false);
+    if (error) { toast.error("Erro ao criar pasta"); return; }
+    setPastas(prev => [...prev, data]);
+    setPastaAtiva(data.id);
+    setNovaPasta(false);
+    setNomePasta("");
+    toast.success("Pasta criada");
+  };
+
+  const moverDocumento = async (docId: string, pastaId: string | null) => {
+    const { error } = await supabase.from("documentos").update({ pasta_id: pastaId })
+      .eq("id", docId).eq("cliente_id", clienteId);
+    if (error) { toast.error("Erro ao mover documento"); return; }
+    setDocumentos(prev => prev.map(doc => doc.id === docId ? { ...doc, pasta_id: pastaId } : doc));
+    toast.success("Documento movido");
+  };
+
+  const seletorPasta = (doc: Documento) => <div className="px-4 pb-3" onClick={event => event.stopPropagation()}>
+    <select aria-label={`Mover ${doc.titulo} para pasta`} value={doc.pasta_id || ""}
+      className="w-full rounded-md border border-border bg-background p-2 text-xs text-muted-foreground"
+      onChange={event => void moverDocumento(doc.id, event.target.value || null)}>
+      <option value="">Sem pasta</option>
+      {doc.pasta_id && !pastas.some(pasta => pasta.id === doc.pasta_id) && <option value={doc.pasta_id}>Pasta indisponível</option>}
+      {pastas.map(pasta => <option key={pasta.id} value={pasta.id}>{pasta.nome}</option>)}
+    </select>
+  </div>;
 
   const criarNovoDocumento = async () => {
     const { data, error } = await supabase
       .from("documentos")
       .insert({
         cliente_id: clienteId,
+        pasta_id: pastaAtiva === "todas" || pastaAtiva === "sem-pasta" ? null : pastaAtiva,
         titulo: "Documento sem título",
       })
       .select()
@@ -101,6 +149,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       .from("documentos")
       .insert({
         cliente_id: clienteId,
+        pasta_id: pastaAtiva === "todas" || pastaAtiva === "sem-pasta" ? null : pastaAtiva,
         titulo: "Caderno sem título",
         conteudo: createEmptyCadernoContent(),
       })
@@ -120,6 +169,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       .from("documentos")
       .insert({
         cliente_id: clienteId,
+        pasta_id: pastaAtiva === "todas" || pastaAtiva === "sem-pasta" ? null : pastaAtiva,
         titulo: "Mapa mental sem título",
         conteudo: createEmptyMindMapContent(),
       })
@@ -171,20 +221,12 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     carregarDocumentos();
   };
 
-  const documentosFiltrados = documentos.filter((doc) => {
-    const matchesSearch = doc.titulo.toLowerCase().includes(busca.toLowerCase());
-    return matchesSearch && !isCadernoContent(doc.conteudo) && !isMindMapContent(doc.conteudo);
-  });
-
-  const cadernosFiltrados = documentos.filter((doc) => {
-    const matchesSearch = doc.titulo.toLowerCase().includes(busca.toLowerCase());
-    return matchesSearch && isCadernoContent(doc.conteudo);
-  });
-
-  const mapasMentaisFiltrados = documentos.filter((doc) => {
-    const matchesSearch = doc.titulo.toLowerCase().includes(busca.toLowerCase());
-    return matchesSearch && isMindMapContent(doc.conteudo);
-  });
+  const tipoDocumento = (doc: Documento) => isMindMapContent(doc.conteudo) ? "mapa" : isCadernoContent(doc.conteudo) ? "caderno" : "documento";
+  const documentosFiltrados = documentos.filter(doc =>
+    doc.titulo.toLowerCase().includes(busca.toLowerCase()) &&
+    (pastaAtiva === "todas" || (pastaAtiva === "sem-pasta" ? !doc.pasta_id : doc.pasta_id === pastaAtiva)) &&
+    (tipoFiltro === "todos" || tipoDocumento(doc) === tipoFiltro)
+  );
 
   if (loading) {
     return (
@@ -197,14 +239,15 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold text-foreground uppercase tracking-wide">
             Documentos
           </h2>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setNovaPasta(true)}><FolderPlus className="mr-1 h-4 w-4" />Nova pasta</Button>
           <Button size="sm" variant="outline" onClick={criarNovoCaderno}>
             <Plus className="h-4 w-4 mr-1" />
             Novo Caderno
@@ -220,6 +263,20 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
         </div>
       </div>
 
+      {novaPasta && <form onSubmit={criarPasta} className="flex gap-2">
+        <Input autoFocus aria-label="Nome da pasta" placeholder="Nome da pasta" value={nomePasta} onChange={event => setNomePasta(event.target.value)} />
+        <Button type="submit" disabled={salvandoPasta || !nomePasta.trim()}>Criar pasta</Button>
+        <Button type="button" variant="ghost" onClick={() => setNovaPasta(false)}>Cancelar</Button>
+      </form>}
+      <div className="flex flex-wrap gap-2" aria-label="Pastas de documentos">
+        {[{ id: "todas", nome: "Todos" }, { id: "sem-pasta", nome: "Sem pasta" }, ...pastas].map(pasta =>
+          <Button key={pasta.id} variant={pastaAtiva === pasta.id ? "default" : "outline"} onClick={() => setPastaAtiva(pasta.id)}
+            onDragOver={event => { if (pasta.id !== "todas") event.preventDefault(); }}
+            onDrop={event => { event.preventDefault(); const id = event.dataTransfer.getData("application/documento-id"); if (documentos.some(doc => doc.id === id) && pasta.id !== "todas") void moverDocumento(id, pasta.id === "sem-pasta" ? null : pasta.id); }}>
+            <Folder className="mr-2 h-4 w-4" />{pasta.nome}
+          </Button>)}
+      </div>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -231,185 +288,39 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
         />
       </div>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Caderno
-          </h3>
-          <Button size="sm" variant="ghost" onClick={criarNovoCaderno}>
-            <Plus className="h-4 w-4 mr-1" />
-            Criar
-          </Button>
+      <div className="flex flex-wrap items-center gap-2" aria-label="Filtrar por tipo">
+        {[{ id: "todos", nome: "Todos os tipos" }, { id: "documento", nome: "Documentos" }, { id: "mapa", nome: "Mapas mentais" }, { id: "caderno", nome: "Cadernos" }].map(tipo =>
+          <Button key={tipo.id} size="sm" variant={tipoFiltro === tipo.id ? "secondary" : "ghost"} aria-pressed={tipoFiltro === tipo.id} onClick={() => setTipoFiltro(tipo.id)}>{tipo.nome}</Button>
+        )}
+        <span className="ml-auto text-xs text-muted-foreground">{documentosFiltrados.length} itens</span>
+      </div>
+      {documentosFiltrados.length === 0 ? (
+        <div className="rounded-lg border border-dashed py-12 text-center text-muted-foreground">Nenhum item encontrado.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {documentosFiltrados.map(doc => {
+            const tipo = tipoDocumento(doc);
+            const Icon = tipo === "mapa" ? Workflow : tipo === "caderno" ? BookOpen : FileText;
+            const abrir = () => tipo === "mapa" ? abrirMapaMental(doc.id) : tipo === "caderno" ? abrirCaderno(doc.id) : abrirDocumento(doc.id);
+            return <div key={doc.id} draggable onDragStart={event => event.dataTransfer.setData("application/documento-id", doc.id)}
+              className={cn("rounded-lg border border-border bg-card transition-colors hover:border-primary/50 group")}>
+              <div className="flex items-start gap-2 p-4 pb-2">
+                <button className="flex min-w-0 flex-1 items-start gap-3 text-left" onClick={abrir}>
+                  <Icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div className="min-w-0">
+                    <h3 className="truncate font-medium">{doc.titulo}</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">{tipo === "mapa" ? "Mapa mental" : tipo === "caderno" ? "Caderno" : "Documento"}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Atualizado {formatDistanceToNow(new Date(doc.updated_at), { locale: ptBR, addSuffix: true })}</p>
+                  </div>
+                </button>
+                <Button size="icon" variant="ghost" aria-label={`Excluir ${doc.titulo}`} className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive" onClick={event => excluirDocumento(event, doc.id)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+              {doc.atividade_id && atividades[doc.atividade_id] && <div className="flex items-center gap-1 px-4 pb-2 text-xs text-muted-foreground"><LinkIcon className="h-3 w-3" /><span className="truncate">{atividades[doc.atividade_id].titulo}</span></div>}
+              {seletorPasta(doc)}
+            </div>;
+          })}
         </div>
-
-        {cadernosFiltrados.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-muted-foreground">
-            {busca ? "Nenhum caderno encontrado." : "Nenhum caderno criado ainda."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {cadernosFiltrados.map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => abrirCaderno(doc.id)}
-                className={cn(
-                  "overflow-hidden rounded-lg border border-border bg-card cursor-pointer",
-                  "hover:border-primary/50 hover:shadow-md transition-all group"
-                )}
-              >
-                <div className="h-28 bg-[radial-gradient(circle,#d1d5db_1.2px,transparent_1.2px)] [background-size:18px_18px] bg-white relative">
-                  <div className="absolute left-6 top-8 h-9 w-28 rounded-full border-t-2 border-foreground/70 rotate-[-5deg]" />
-                  <div className="absolute left-14 top-14 h-8 w-24 rounded-full border-t-2 border-blue-500/70 rotate-[3deg]" />
-                </div>
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <h4 className="font-medium truncate">{doc.titulo}</h4>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Atualizado {formatDistanceToNow(new Date(doc.updated_at), {
-                          locale: ptBR,
-                          addSuffix: true,
-                        })}
-                      </p>
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
-                      onClick={(e) => excluirDocumento(e, doc.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Mapas mentais
-          </h3>
-          <Button size="sm" variant="ghost" onClick={criarNovoMapaMental}>
-            <Plus className="h-4 w-4 mr-1" />
-            Criar
-          </Button>
-        </div>
-
-        {mapasMentaisFiltrados.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-muted-foreground">
-            {busca ? "Nenhum mapa mental encontrado." : "Nenhum mapa mental criado ainda."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {mapasMentaisFiltrados.map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => abrirMapaMental(doc.id)}
-                className={cn(
-                  "overflow-hidden rounded-lg border border-border bg-card cursor-pointer",
-                  "hover:border-primary/50 hover:shadow-md transition-all group"
-                )}
-              >
-                <div className="h-28 bg-muted/40 flex items-center justify-center">
-                  <svg viewBox="0 0 120 70" className="h-3/4 w-3/4 text-muted-foreground/40">
-                    <line x1="60" y1="35" x2="20" y2="15" stroke="currentColor" strokeWidth="1.5" />
-                    <line x1="60" y1="35" x2="100" y2="15" stroke="currentColor" strokeWidth="1.5" />
-                    <line x1="60" y1="35" x2="20" y2="55" stroke="currentColor" strokeWidth="1.5" />
-                    <line x1="60" y1="35" x2="100" y2="55" stroke="currentColor" strokeWidth="1.5" />
-                    <circle cx="60" cy="35" r="9" fill="#3b82f6" />
-                    <circle cx="20" cy="15" r="6" fill="#f59e0b" />
-                    <circle cx="100" cy="15" r="6" fill="#22c55e" />
-                    <circle cx="20" cy="55" r="6" fill="#ec4899" />
-                    <circle cx="100" cy="55" r="6" fill="#a855f7" />
-                  </svg>
-                </div>
-                <div className="p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0 flex items-center gap-2">
-                      <Workflow className="h-4 w-4 text-primary shrink-0" />
-                      <h4 className="font-medium truncate">{doc.titulo}</h4>
-                    </div>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
-                      onClick={(e) => excluirDocumento(e, doc.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Atualizado {formatDistanceToNow(new Date(doc.updated_at), {
-                      locale: ptBR,
-                      addSuffix: true,
-                    })}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Documentos
-        </h3>
-
-        {documentosFiltrados.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
-            {busca ? "Nenhum documento encontrado." : "Nenhum documento criado ainda."}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {documentosFiltrados.map((doc) => (
-              <div
-                key={doc.id}
-                onClick={() => abrirDocumento(doc.id)}
-                className={cn(
-                  "p-4 rounded-lg border border-border bg-card cursor-pointer",
-                  "hover:border-primary/50 hover:shadow-md transition-all group"
-                )}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <FileText className="h-5 w-5 text-primary shrink-0" />
-                    <h3 className="font-medium truncate">{doc.titulo}</h3>
-                  </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive shrink-0"
-                    onClick={(e) => excluirDocumento(e, doc.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                <p className="text-xs text-muted-foreground mt-2">
-                  Atualizado {formatDistanceToNow(new Date(doc.updated_at), {
-                    locale: ptBR,
-                    addSuffix: true,
-                  })}
-                </p>
-
-                {doc.atividade_id && atividades[doc.atividade_id] && (
-                  <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                    <LinkIcon className="h-3 w-3" />
-                    <span className="truncate">
-                      {atividades[doc.atividade_id].titulo}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      )}
 
       {/* Document Editor Modal */}
       {docEditorOpen && selectedDocId && (

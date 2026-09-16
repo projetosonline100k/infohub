@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
 interface UseAutoSaveOptions {
@@ -16,16 +17,22 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
     if (!documentoId) return;
 
     setSaving(true);
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("documentos")
       .update({
         conteudo: content,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", documentoId);
+      .eq("id", documentoId)
+      // O editor de texto não pode sobrescrever uma lousa/caderno aberto
+      // por uma guia antiga ou um link de compartilhamento de pasta.
+      .or("conteudo.is.null,and(conteudo.not.like.__CANVASMENTAL_V1__%,conteudo.not.like.__CADERNO_V1__%)")
+      .select("id");
 
-    if (!error) {
+    if (!error && data?.length) {
       setLastSaved(new Date());
+    } else {
+      toast.error("Não foi possível salvar este texto. Abra mapas e cadernos pelo editor correspondente em Documentos.");
     }
     setSaving(false);
   }, [documentoId]);
