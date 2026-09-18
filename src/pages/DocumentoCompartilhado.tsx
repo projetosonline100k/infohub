@@ -7,15 +7,18 @@ import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
-import { FileText, KeyRound, Loader2, LockKeyhole, LogOut, Mail, ShieldAlert } from "lucide-react";
+import { FileText, KeyRound, Loader2, LockKeyhole, LogOut, Mail, PanelLeft, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
 import { PresencaAvatares } from "@/components/documentos/PresencaAvatares";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { useDocumentoColaboracao } from "@/hooks/useDocumentoColaboracao";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useCaracteresSelecao } from "@/hooks/useCaracteresSelecao";
 import { cn } from "@/lib/utils";
 import "@/components/documentos/editor.css";
 
@@ -233,7 +236,8 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
   titulo: string;
   onTituloChange: (v: string) => void;
   onSalvarTitulo: () => void;
-}>(function EditorDoDocumento({ documentoId, titulo, onTituloChange, onSalvarTitulo }, ref) {
+  botaoMenu?: React.ReactNode;
+}>(function EditorDoDocumento({ documentoId, titulo, onTituloChange, onSalvarTitulo, botaoMenu }, ref) {
   const { saving, debouncedSave, saveNow } = useAutoSave({ documentoId, debounceMs: 1000 });
   const [carregandoConteudo, setCarregandoConteudo] = useState(true);
   const tituloFocadoRef = useRef(false);
@@ -250,6 +254,8 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
     content: "",
     onUpdate: ({ editor }) => debouncedSave(editor.getHTML()),
   });
+
+  const { total: totalCaracteres, selecionados: caracteresSelecionados } = useCaracteresSelecao(editor);
 
   const { pessoasOnline } = useDocumentoColaboracao({
     documentoId,
@@ -278,26 +284,35 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
   }), [editor, saveNow]);
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <div className="flex items-center gap-3 px-4 py-2 border-b shrink-0">
+    <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+      <div className="flex items-center gap-1 sm:gap-3 px-2 sm:px-4 py-2 border-b shrink-0">
+        {botaoMenu}
         <Input
           value={titulo}
           onChange={(e) => onTituloChange(e.target.value)}
           onFocus={() => { tituloFocadoRef.current = true; }}
           onBlur={() => { tituloFocadoRef.current = false; onSalvarTitulo(); }}
-          className="text-lg font-medium border-none bg-transparent shadow-none focus-visible:ring-0 max-w-md"
+          className="text-lg font-medium border-none bg-transparent shadow-none focus-visible:ring-0 min-w-0 flex-1 sm:max-w-md sm:flex-initial"
         />
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
           <PresencaAvatares pessoas={pessoasOnline} />
-          <span className="text-xs text-muted-foreground">{saving ? "Salvando..." : ""}</span>
+          <span className="hidden sm:inline text-xs text-muted-foreground">{saving ? "Salvando..." : ""}</span>
         </div>
       </div>
       <DocumentToolbar editor={editor} />
-      <div className={cn("flex-1 overflow-auto bg-muted/50 p-8 transition-opacity duration-150", carregandoConteudo && "opacity-40")}>
+      <div className={cn("flex-1 overflow-auto bg-muted/50 p-2 sm:p-4 md:p-8 transition-opacity duration-150", carregandoConteudo && "opacity-40")}>
         <div className="max-w-[816px] mx-auto bg-background shadow-lg min-h-[1056px] rounded-sm">
-          <div className="p-16">
-            <EditorContent editor={editor} className="prose prose-lg max-w-none dark:prose-invert document-editor" />
+          <div className="p-4 sm:p-8 md:p-16">
+            <EditorContent editor={editor} className="prose prose-sm sm:prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
           </div>
+        </div>
+        <div className="max-w-[816px] mx-auto px-1 py-2 text-right text-xs text-muted-foreground">
+          {caracteresSelecionados > 0 && (
+            <span className="mr-2 text-foreground font-medium">
+              {caracteresSelecionados.toLocaleString("pt-BR")} selecionados ·
+            </span>
+          )}
+          {totalCaracteres.toLocaleString("pt-BR")} caracteres
         </div>
       </div>
     </div>
@@ -347,11 +362,16 @@ function PastaCompartilhada({ pastaId, tituloPasta }: { pastaId: string; tituloP
   const [guiaAtualId, setGuiaAtualId] = useState<string | null>(null);
   const [titulo, setTitulo] = useState("Documento sem título");
   const editorRef = useRef<EditorDoDocumentoHandle>(null);
+  const isMobile = useIsMobile();
+  const [sidebarAberta, setSidebarAberta] = useState(false);
 
   const trocarGuia = (novoId: string) => {
-    if (novoId === guiaAtualId) return;
-    editorRef.current?.flush();
-    setGuiaAtualId(novoId);
+    if (novoId !== guiaAtualId) {
+      editorRef.current?.flush();
+      setGuiaAtualId(novoId);
+    }
+    // No celular a lista de guias é uma gaveta por cima do documento.
+    if (isMobile) setSidebarAberta(false);
   };
 
   const carregarGuias = useCallback(async () => {
@@ -379,31 +399,56 @@ function PastaCompartilhada({ pastaId, tituloPasta }: { pastaId: string; tituloP
     setGuias((prev) => prev.map((g) => (g.id === guiaAtualId ? { ...g, titulo } : g)));
   }, [titulo, guiaAtualId]);
 
+  const listaDeGuias = (
+    <>
+      <div className="p-4 border-b">
+        <span className="text-sm font-medium">{tituloPasta}</span>
+      </div>
+      <div className="p-2 space-y-1 overflow-auto">
+        {guias.map((guia) => (
+          <button
+            key={guia.id}
+            onClick={() => trocarGuia(guia.id)}
+            className={cn(
+              "w-full text-left p-2 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
+              guia.id === guiaAtualId && "bg-muted font-medium"
+            )}
+          >
+            <FileText className="h-4 w-4 shrink-0" />
+            <span className="truncate">{guia.id === guiaAtualId ? titulo || "Sem título" : guia.titulo || "Sem título"}</span>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
   return (
     <TopoCompartilhado>
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-64 border-r bg-muted/30 flex flex-col h-full shrink-0">
-          <div className="p-4 border-b">
-            <span className="text-sm font-medium">{tituloPasta}</span>
-          </div>
-          <div className="p-2 space-y-1 overflow-auto">
-            {guias.map((guia) => (
-              <button
-                key={guia.id}
-                onClick={() => trocarGuia(guia.id)}
-                className={cn(
-                  "w-full text-left p-2 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
-                  guia.id === guiaAtualId && "bg-muted font-medium"
-                )}
-              >
-                <FileText className="h-4 w-4 shrink-0" />
-                <span className="truncate">{guia.id === guiaAtualId ? titulo || "Sem título" : guia.titulo || "Sem título"}</span>
-              </button>
-            ))}
-          </div>
-        </div>
+        {isMobile ? (
+          <Sheet open={sidebarAberta} onOpenChange={setSidebarAberta}>
+            <SheetContent side="left" className="p-0 w-72 flex flex-col">
+              {listaDeGuias}
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <div className="w-64 border-r bg-muted/30 flex flex-col h-full shrink-0">{listaDeGuias}</div>
+        )}
         {guiaAtualId ? (
-          <EditorDoDocumento ref={editorRef} documentoId={guiaAtualId} titulo={titulo} onTituloChange={setTitulo} onSalvarTitulo={salvarTitulo} />
+          <EditorDoDocumento
+            ref={editorRef}
+            documentoId={guiaAtualId}
+            titulo={titulo}
+            onTituloChange={setTitulo}
+            onSalvarTitulo={salvarTitulo}
+            botaoMenu={
+              isMobile ? (
+                <Button variant="ghost" size="icon" className="shrink-0" onClick={() => setSidebarAberta(true)} title="Ver guias">
+                  <PanelLeft className="h-5 w-5" />
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">Esta pasta ainda não tem documentos.</div>
         )}

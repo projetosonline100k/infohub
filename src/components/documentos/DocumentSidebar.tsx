@@ -25,6 +25,7 @@ interface DocumentSidebarProps {
   pastaId: string | null;
   onTrocarDocumento: (novoId: string) => void;
   onMudarPasta: (novaPastaId: string | null) => void;
+  className?: string;
 }
 
 // "Guias no documento": os outros documentos que compartilham a mesma
@@ -37,6 +38,7 @@ export function DocumentSidebar({
   pastaId,
   onTrocarDocumento,
   onMudarPasta,
+  className,
 }: DocumentSidebarProps) {
   const [pastas, setPastas] = useState<Pasta[]>([]);
   const [guias, setGuias] = useState<Guia[]>([]);
@@ -107,7 +109,7 @@ export function DocumentSidebar({
   };
 
   return (
-    <div className="w-64 border-r bg-muted/30 flex flex-col h-full">
+    <div className={cn("w-64 border-r bg-muted/30 flex flex-col h-full", className)}>
       <div className="flex items-center justify-between p-4 border-b">
         <span className="text-sm font-medium">Guias no documento</span>
         <Button

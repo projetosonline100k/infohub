@@ -281,6 +281,39 @@ export type Database = {
           },
         ]
       }
+      documento_pastas: {
+        Row: {
+          created_at: string
+          documento_id: string
+          pasta_id: string
+        }
+        Insert: {
+          created_at?: string
+          documento_id: string
+          pasta_id: string
+        }
+        Update: {
+          created_at?: string
+          documento_id?: string
+          pasta_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "documento_pastas_documento_id_fkey"
+            columns: ["documento_id"]
+            isOneToOne: false
+            referencedRelation: "documentos"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documento_pastas_pasta_id_fkey"
+            columns: ["pasta_id"]
+            isOneToOne: false
+            referencedRelation: "pastas_atividade"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documentos: {
         Row: {
           atividade_id: string | null

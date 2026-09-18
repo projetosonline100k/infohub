@@ -128,6 +128,7 @@ export const VideoDetailPanel = ({
 }: VideoDetailPanelProps) => {
   const [editedVideo, setEditedVideo] = useState<Video | null>(null);
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
+  const [selectionLength, setSelectionLength] = useState(0);
   const [showChat, setShowChat] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedSnapshotRef = useRef("");
@@ -150,6 +151,7 @@ export const VideoDetailPanel = ({
 
     currentVideoIdRef.current = video.id;
     setEditedVideo({ ...video });
+    setSelectionLength(0);
     lastSavedSnapshotRef.current = JSON.stringify({
       titulo: video.titulo,
       descricao: video.descricao || "",
@@ -741,8 +743,14 @@ export const VideoDetailPanel = ({
                 clienteId={editedVideo.cliente_id}
                 className="min-h-[900px] flex-1 resize-none border-none bg-transparent p-0 text-lg leading-8 shadow-none focus-visible:ring-0"
                 onSelectionChange={handleSelectionChange}
+                onSelectionLengthChange={setSelectionLength}
               />
               <div className="mt-auto border-t pt-4 text-right text-sm text-muted-foreground">
+                {selectionLength > 0 && (
+                  <span className="mr-2 text-foreground font-medium">
+                    {selectionLength.toLocaleString("pt-BR")} selecionados ·
+                  </span>
+                )}
                 {roteiroCharacterCount.toLocaleString("pt-BR")} caracteres
               </div>
             </div>

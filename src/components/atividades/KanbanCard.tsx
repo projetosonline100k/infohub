@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { cn, iniciais, formatarTempo, rotuloDataRelativa } from "@/lib/utils";
-import { FileText, Calendar, CheckSquare, Clock, Check } from "lucide-react";
+import { FileText, Calendar, CheckSquare, Clock, Check, Volume2, VolumeX } from "lucide-react";
 import { PriorityFlag } from "./PriorityFlag";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+import { useSomCronometro, tocarTique } from "@/hooks/useSomCronometro";
 
 interface ChecklistResumo {
   total: number;
@@ -69,6 +70,7 @@ export const KanbanCard = ({
   isDragging,
 }: KanbanCardProps) => {
   const [menuTimerAberto, setMenuTimerAberto] = useState(false);
+  const [somAtivo, setSomAtivo] = useSomCronometro();
 
   const totalSeg = (tempoEstimado || 0) * 60;
   const decorridoBase = timerDecorridoSegundos || 0;
@@ -104,6 +106,7 @@ export const KanbanCard = ({
     const interval = setInterval(() => {
       const atual = calcularEstado();
       setEstado(atual);
+      if (atual.restante > 0 && somAtivo) tocarTique();
       if (atual.restante <= 0 && !disparado) {
         disparado = true;
         onTimerFinalizado(id);
@@ -112,7 +115,7 @@ export const KanbanCard = ({
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timerIniciadoEm, decorridoBase, totalSeg, id, onTimerFinalizado]);
+  }, [timerIniciadoEm, decorridoBase, totalSeg, id, onTimerFinalizado, somAtivo]);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -230,10 +233,18 @@ export const KanbanCard = ({
                 </button>
               </PopoverTrigger>
               <PopoverContent
-                className="w-36 p-1"
+                className="w-44 p-1"
                 onClick={(e) => e.stopPropagation()}
                 align="start"
               >
+                <button
+                  onClick={() => setSomAtivo(!somAtivo)}
+                  className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-sm rounded hover:bg-muted/50"
+                >
+                  {somAtivo ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                  Som do relógio {somAtivo ? "ligado" : "desligado"}
+                </button>
+                <div className="my-1 h-px bg-border" />
                 {estaPausado ? (
                   <button
                     onClick={() => {

@@ -17,9 +17,15 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import { ArrowLeft, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useCanvasAutoSave, canvasBackupKey } from "@/hooks/useCanvasAutoSave";
 import { mergeCanvas } from "@/lib/canvasPersistence";
@@ -287,9 +293,15 @@ interface MindMapEditorProps {
   documentoId: string;
   onClose: () => void;
   embedded?: boolean;
+  // Só quando informado a lousa mostra o menu "Trocar de lousa" no topo —
+  // quem chama decide pra onde ir (e precisa trocar a `key` do componente,
+  // pra remontar do zero em vez de tentar trocar a cena por baixo do pano:
+  // o Excalidraw e a colaboração em tempo real têm estado demais amarrado
+  // ao documentoId atual pra fazer essa troca com segurança "ao vivo").
+  onTrocarDocumento?: (id: string) => void;
 }
 
-export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMapEditorProps) {
+export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento }: MindMapEditorProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [titulo, setTitulo] = useState("Mapa mental sem título");
@@ -300,6 +312,11 @@ export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMa
   const [hasAnyHiddenConnection, setHasAnyHiddenConnection] = useState(false);
   const [hiddenBadge, setHiddenBadge] = useState<{ x: number; y: number; count: number } | null>(null);
   const [penPanelOpen, setPenPanelOpen] = useState(false);
+  // undefined = ainda não sabemos (carregando o documento); null = documento
+  // sem cliente. Só busca as outras lousas depois que isso vira um valor
+  // conhecido, senão a primeira busca sairia sem filtro nenhum.
+  const [clienteIdDoDoc, setClienteIdDoDoc] = useState<string | null | undefined>(undefined);
+  const [outrasLousas, setOutrasLousas] = useState<{ id: string; titulo: string }[]>([]);
 
   // Retângulo conectável (nó) — variação da ferramenta 2, escolhida por
   // long-press, que persiste enquanto a pessoa não trocar de novo.
@@ -749,7 +766,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMa
       setLoading(true);
       const { data, error } = await supabase
         .from("documentos")
-        .select("titulo, conteudo")
+        .select("titulo, conteudo, cliente_id")
         .eq("id", documentoId)
         .maybeSingle();
 
@@ -757,6 +774,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMa
 
       if (data && !error) {
         setTitulo(data.titulo || "Mapa mental sem título");
+        setClienteIdDoDoc(data.cliente_id ?? null);
         let content = data.conteudo;
         try {
           const backup = localStorage.getItem(canvasBackupKey(documentoId));
@@ -792,6 +810,28 @@ export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMa
       cancelado = true;
     };
   }, [documentoId, debouncedSave]);
+
+  // Lista as outras lousas/mapas mentais do mesmo cliente pro menu "Trocar
+  // de lousa" — só busca se quem chamou passou onTrocarDocumento (senão o
+  // menu nem aparece) e só depois de saber o cliente_id deste documento.
+  useEffect(() => {
+    if (!onTrocarDocumento || clienteIdDoDoc === undefined) return;
+    let cancelado = false;
+    let query = supabase
+      .from("documentos")
+      .select("id, titulo")
+      .like("conteudo", "\\_\\_CANVASMENTAL\\_V1\\_\\_%")
+      .neq("id", documentoId)
+      .order("updated_at", { ascending: false });
+    query = clienteIdDoDoc ? query.eq("cliente_id", clienteIdDoDoc) : query.is("cliente_id", null);
+    query.then(({ data, error }) => {
+      if (cancelado || error) return;
+      setOutrasLousas(data || []);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteIdDoDoc, documentoId, onTrocarDocumento]);
 
   const salvarTitulo = useCallback(async () => {
     await supabase.from("documentos").update({ titulo }).eq("id", documentoId);
@@ -1101,6 +1141,22 @@ export function MindMapEditor({ documentoId, onClose, embedded = false }: MindMa
             onBlur={salvarTitulo}
             className="h-7 w-40 border-none bg-transparent px-1.5 text-sm font-medium shadow-none focus-visible:ring-0"
           />
+          {onTrocarDocumento && outrasLousas.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Trocar de lousa">
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="max-h-72 w-56 overflow-y-auto">
+                {outrasLousas.map((lousa) => (
+                  <DropdownMenuItem key={lousa.id} onClick={() => onTrocarDocumento(lousa.id)}>
+                    <span className="truncate">{lousa.titulo || "Lousa sem título"}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <span className="hidden shrink-0 truncate pr-1 text-[11px] text-muted-foreground md:inline">
             {getSaveStatus()}
           </span>

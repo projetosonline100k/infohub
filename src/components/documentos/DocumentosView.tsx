@@ -1,7 +1,15 @@
 import { useState, useEffect } from "react";
-import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow, BookOpen, FolderPlus, Folder } from "lucide-react";
+import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow, BookOpen, FolderPlus, Folder, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -37,6 +45,9 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   const [nomePasta, setNomePasta] = useState("");
   const [salvandoPasta, setSalvandoPasta] = useState(false);
   const [documentos, setDocumentos] = useState<Documento[]>([]);
+  // Pastas extras de cada documento (além da pasta_id principal) — o mesmo
+  // documento pode aparecer em várias pastas ao mesmo tempo.
+  const [vinculosExtras, setVinculosExtras] = useState<Record<string, string[]>>({});
   const [atividades, setAtividades] = useState<Record<string, Atividade>>({});
   const [loading, setLoading] = useState(true);
   const [tipoFiltro, setTipoFiltro] = useState("todos");
@@ -57,18 +68,18 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
 
     if (!error && data) {
       setDocumentos(data);
-      
+
       // Carregar atividades vinculadas
       const atividadeIds = data
         .filter((d) => d.atividade_id)
         .map((d) => d.atividade_id as string);
-      
+
       if (atividadeIds.length > 0) {
         const { data: atividadesData } = await supabase
           .from("atividades")
           .select("id, titulo")
           .in("id", atividadeIds);
-        
+
         if (atividadesData) {
           const map: Record<string, Atividade> = {};
           atividadesData.forEach((a) => {
@@ -76,6 +87,24 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
           });
           setAtividades(map);
         }
+      }
+
+      // Pastas extras: um mesmo documento pode estar em mais de uma pasta.
+      if (data.length > 0) {
+        const { data: vinculos, error: vinculosError } = await supabase
+          .from("documento_pastas")
+          .select("documento_id, pasta_id")
+          .in("documento_id", data.map((d) => d.id));
+        if (vinculosError) toast.error("Erro ao carregar vínculos de pastas");
+        else {
+          const map: Record<string, string[]> = {};
+          (vinculos || []).forEach((v) => {
+            map[v.documento_id] = [...(map[v.documento_id] || []), v.pasta_id];
+          });
+          setVinculosExtras(map);
+        }
+      } else {
+        setVinculosExtras({});
       }
     }
     if (error) toast.error("Erro ao carregar documentos");
@@ -115,15 +144,77 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     toast.success("Documento movido");
   };
 
-  const seletorPasta = (doc: Documento) => <div className="px-4 pb-3" onClick={event => event.stopPropagation()}>
-    <select aria-label={`Mover ${doc.titulo} para pasta`} value={doc.pasta_id || ""}
-      className="w-full rounded-md border border-border bg-background p-2 text-xs text-muted-foreground"
-      onChange={event => void moverDocumento(doc.id, event.target.value || null)}>
-      <option value="">Sem pasta</option>
-      {doc.pasta_id && !pastas.some(pasta => pasta.id === doc.pasta_id) && <option value={doc.pasta_id}>Pasta indisponível</option>}
-      {pastas.map(pasta => <option key={pasta.id} value={pasta.id}>{pasta.nome}</option>)}
-    </select>
-  </div>;
+  // Coloca o mesmo documento também em outra pasta, sem tirar de onde já
+  // estava (a pasta principal continua guiando as guias/abas do editor).
+  const adicionarPastaExtra = async (docId: string, pastaId: string) => {
+    const { error } = await supabase.from("documento_pastas").insert({ documento_id: docId, pasta_id: pastaId });
+    if (error) { toast.error("Erro ao colocar o documento na pasta"); return; }
+    setVinculosExtras(prev => ({ ...prev, [docId]: [...(prev[docId] || []), pastaId] }));
+    toast.success("Documento também adicionado à pasta");
+  };
+
+  const removerPastaExtra = async (docId: string, pastaId: string) => {
+    const { error } = await supabase.from("documento_pastas").delete()
+      .eq("documento_id", docId).eq("pasta_id", pastaId);
+    if (error) { toast.error("Erro ao remover o documento da pasta"); return; }
+    setVinculosExtras(prev => ({ ...prev, [docId]: (prev[docId] || []).filter(id => id !== pastaId) }));
+  };
+
+  const seletorPasta = (doc: Documento) => {
+    const extras = vinculosExtras[doc.id] || [];
+    const pastasDisponiveis = pastas.filter(pasta => pasta.id !== doc.pasta_id && !extras.includes(pasta.id));
+    return (
+      <div className="space-y-2 px-4 pb-3" onClick={event => event.stopPropagation()}>
+        <div className="flex gap-1.5">
+          <select aria-label={`Mover ${doc.titulo} para pasta`} value={doc.pasta_id || ""}
+            className="w-full rounded-md border border-border bg-background p-2 text-xs text-muted-foreground"
+            onChange={event => void moverDocumento(doc.id, event.target.value || null)}>
+            <option value="">Sem pasta</option>
+            {doc.pasta_id && !pastas.some(pasta => pasta.id === doc.pasta_id) && <option value={doc.pasta_id}>Pasta indisponível</option>}
+            {pastas.map(pasta => <option key={pasta.id} value={pasta.id}>{pasta.nome}</option>)}
+          </select>
+          {pastasDisponiveis.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="icon" variant="outline" className="h-8 w-8 shrink-0" title="Também colocar em outra pasta">
+                  <FolderPlus className="h-3.5 w-3.5" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel className="text-xs">Também colocar em</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {pastasDisponiveis.map(pasta => (
+                  <DropdownMenuCheckboxItem
+                    key={pasta.id}
+                    checked={false}
+                    onCheckedChange={() => void adicionarPastaExtra(doc.id, pasta.id)}
+                  >
+                    {pasta.nome}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+        {extras.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {extras.map(pastaId => {
+              const pasta = pastas.find(p => p.id === pastaId);
+              return (
+                <span key={pastaId} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                  <Folder className="h-3 w-3" />
+                  {pasta?.nome || "Pasta indisponível"}
+                  <button type="button" aria-label={`Remover da pasta ${pasta?.nome || ""}`} onClick={() => void removerPastaExtra(doc.id, pastaId)} className="hover:text-destructive">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const criarNovoDocumento = async () => {
     const { data, error } = await supabase
@@ -222,9 +313,11 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   };
 
   const tipoDocumento = (doc: Documento) => isMindMapContent(doc.conteudo) ? "mapa" : isCadernoContent(doc.conteudo) ? "caderno" : "documento";
+  const estaNaPasta = (doc: Documento, pastaId: string) =>
+    doc.pasta_id === pastaId || (vinculosExtras[doc.id] || []).includes(pastaId);
   const documentosFiltrados = documentos.filter(doc =>
     doc.titulo.toLowerCase().includes(busca.toLowerCase()) &&
-    (pastaAtiva === "todas" || (pastaAtiva === "sem-pasta" ? !doc.pasta_id : doc.pasta_id === pastaAtiva)) &&
+    (pastaAtiva === "todas" || (pastaAtiva === "sem-pasta" ? !doc.pasta_id && !(vinculosExtras[doc.id]?.length) : estaNaPasta(doc, pastaAtiva))) &&
     (tipoFiltro === "todos" || tipoDocumento(doc) === tipoFiltro)
   );
 
@@ -332,7 +425,12 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       )}
 
       {mindMapEditorOpen && selectedDocId && (
-        <MindMapEditor documentoId={selectedDocId} onClose={handleCloseEditor} />
+        <MindMapEditor
+          key={selectedDocId}
+          documentoId={selectedDocId}
+          onClose={handleCloseEditor}
+          onTrocarDocumento={(id) => setSelectedDocId(id)}
+        />
       )}
     </div>
   );

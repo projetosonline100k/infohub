@@ -17,6 +17,11 @@ interface SlashCommandTextareaProps extends React.TextareaHTMLAttributes<HTMLTex
   value: string;
   onValueChange: (value: string) => void;
   onSelectionChange?: (text: string | null, range: SelectionRange | null) => void;
+  // Ao contrário de onSelectionChange (só dispara quando há texto
+  // selecionado, pra manter o contexto "grudado" pro chat de IA), este
+  // dispara sempre — inclusive com 0 quando a seleção é desfeita — pra
+  // alimentar um contador de caracteres selecionados.
+  onSelectionLengthChange?: (length: number) => void;
 }
 
 export type { SelectionRange };
@@ -99,6 +104,7 @@ export function SlashCommandTextarea({
   value,
   onValueChange,
   onSelectionChange,
+  onSelectionLengthChange,
   className,
   ...props
 }: SlashCommandTextareaProps) {
@@ -336,12 +342,13 @@ export function SlashCommandTextarea({
 
   const handleSelectionChange = () => {
     const textarea = textareaRef.current;
-    if (!textarea || !onSelectionChange) return;
+    if (!textarea) return;
 
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
+    onSelectionLengthChange?.(Math.abs(end - start));
 
-    if (start !== end) {
+    if (onSelectionChange && start !== end) {
       const selectedText = value.substring(start, end);
       onSelectionChange(selectedText, { start, end });
     }
