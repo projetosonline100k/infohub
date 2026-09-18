@@ -296,6 +296,11 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
         />
         <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
           <PresencaAvatares pessoas={pessoasOnline} />
+          <span className="hidden md:inline text-xs text-muted-foreground tabular-nums">
+            {caracteresSelecionados > 0
+              ? `${caracteresSelecionados.toLocaleString("pt-BR")} selecionados`
+              : `${totalCaracteres.toLocaleString("pt-BR")} caracteres`}
+          </span>
           <span className="hidden sm:inline text-xs text-muted-foreground">{saving ? "Salvando..." : ""}</span>
         </div>
       </div>
@@ -305,14 +310,6 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
           <div className="p-4 sm:p-8 md:p-16">
             <EditorContent editor={editor} className="prose prose-sm sm:prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
           </div>
-        </div>
-        <div className="max-w-[816px] mx-auto px-1 py-2 text-right text-xs text-muted-foreground">
-          {caracteresSelecionados > 0 && (
-            <span className="mr-2 text-foreground font-medium">
-              {caracteresSelecionados.toLocaleString("pt-BR")} selecionados ·
-            </span>
-          )}
-          {totalCaracteres.toLocaleString("pt-BR")} caracteres
         </div>
       </div>
     </div>

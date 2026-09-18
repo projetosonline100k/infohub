@@ -373,6 +373,11 @@ export const VideoDetailPanel = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground tabular-nums">
+            {selectionLength > 0
+              ? `${selectionLength.toLocaleString("pt-BR")} selecionados`
+              : `${roteiroCharacterCount.toLocaleString("pt-BR")} caracteres`}
+          </span>
           <span className={cn(
             "text-sm",
             autoSaveStatus === "error" ? "text-destructive" : "text-muted-foreground"
@@ -745,14 +750,6 @@ export const VideoDetailPanel = ({
                 onSelectionChange={handleSelectionChange}
                 onSelectionLengthChange={setSelectionLength}
               />
-              <div className="mt-auto border-t pt-4 text-right text-sm text-muted-foreground">
-                {selectionLength > 0 && (
-                  <span className="mr-2 text-foreground font-medium">
-                    {selectionLength.toLocaleString("pt-BR")} selecionados ·
-                  </span>
-                )}
-                {roteiroCharacterCount.toLocaleString("pt-BR")} caracteres
-              </div>
             </div>
           </div>
         </main>

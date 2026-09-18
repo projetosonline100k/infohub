@@ -202,6 +202,11 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         </div>
         <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           <PresencaAvatares pessoas={pessoasOnline} />
+          <span className="hidden lg:inline text-sm text-muted-foreground tabular-nums">
+            {caracteresSelecionados > 0
+              ? `${caracteresSelecionados.toLocaleString("pt-BR")} selecionados`
+              : `${totalCaracteres.toLocaleString("pt-BR")} caracteres`}
+          </span>
           <span className="hidden md:inline text-sm text-muted-foreground">{getSaveStatus()}</span>
           <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
             <Share2 className="h-4 w-4 sm:mr-1.5" />
@@ -257,14 +262,6 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             <div className="p-4 sm:p-8 md:p-16">
               <EditorContent editor={editor} className="prose prose-sm sm:prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
             </div>
-          </div>
-          <div className="max-w-[816px] mx-auto px-1 py-2 text-right text-xs text-muted-foreground">
-            {caracteresSelecionados > 0 && (
-              <span className="mr-2 text-foreground font-medium">
-                {caracteresSelecionados.toLocaleString("pt-BR")} selecionados ·
-              </span>
-            )}
-            {totalCaracteres.toLocaleString("pt-BR")} caracteres
           </div>
         </div>
       </div>
