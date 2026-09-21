@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { usePersistentHistory } from "@/hooks/usePersistentHistory";
 
 const CADERNO_PREFIX = "__CADERNO_V1__";
 const CANVAS_WIDTH = 2400;
@@ -144,15 +145,18 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const elementsRef = useRef<CadernoElement[]>([]);
-  const redoRef = useRef<CadernoElement[]>([]);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const activeStrokeRef = useRef<StrokeElement | null>(null);
   const inputModeRef = useRef<"pointer" | "touch" | "mouse" | null>(null);
   const selectedElementIdRef = useRef<string | null>(null);
+  // Guardado no localStorage: sobrevive a sair do caderno e voltar, não só
+  // à sessão atual (ver usePersistentHistory).
+  // Limite menor que o padrão: imagens coladas no caderno viram base64 e
+  // cada snapshot guarda a lista inteira de elementos, não só a diferença.
+  const historico = usePersistentHistory<CadernoElement[]>(documentoId ? `caderno:${documentoId}` : null, 15);
 
   const [titulo, setTitulo] = useState("Caderno sem título");
   const [elements, setElements] = useState<CadernoElement[]>([]);
-  const [redoCount, setRedoCount] = useState(0);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState(COLORS[0]);
@@ -292,19 +296,17 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
     }, 700);
   }, [saveContent]);
 
-  const commitElements = useCallback((nextElements: CadernoElement[], options?: { preserveRedo?: boolean }) => {
+  // Toda mudança de verdade (traço novo, imagem, apagar) passa por aqui e
+  // primeiro guarda o estado anterior no histórico — inclusive "Limpar
+  // caderno", que antes não dava pra desfazer de jeito nenhum.
+  const commitElements = useCallback((nextElements: CadernoElement[]) => {
+    historico.registrar(elementsRef.current);
     elementsRef.current = nextElements;
     setElements(nextElements);
     saveLocalContent(nextElements, true);
-
-    if (!options?.preserveRedo) {
-      redoRef.current = [];
-      setRedoCount(0);
-    }
-
     redraw();
     queueSave(nextElements);
-  }, [queueSave, redraw, saveLocalContent]);
+  }, [historico, queueSave, redraw, saveLocalContent]);
 
   useEffect(() => {
     async function loadCaderno() {
@@ -348,8 +350,6 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
       setElements(loadedElements);
       selectedElementIdRef.current = null;
       setSelectedElementId(null);
-      redoRef.current = [];
-      setRedoCount(0);
       setTitulo(data?.titulo || "Caderno sem título");
       writeLocalCaderno(documentoId, {
         titulo: data?.titulo || "Caderno sem título",
@@ -685,23 +685,41 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
     }
   };
 
-  const undo = () => {
-    const lastElement = elementsRef.current.at(-1);
-    if (!lastElement) return;
+  const undo = useCallback(() => {
+    const anterior = historico.desfazer(elementsRef.current);
+    if (anterior === undefined) return;
+    elementsRef.current = anterior;
+    setElements(anterior);
+    saveLocalContent(anterior, true);
+    redraw();
+    queueSave(anterior);
+  }, [historico, queueSave, redraw, saveLocalContent]);
 
-    redoRef.current = [lastElement, ...redoRef.current];
-    setRedoCount(redoRef.current.length);
-    commitElements(elementsRef.current.slice(0, -1), { preserveRedo: true });
-  };
+  const redo = useCallback(() => {
+    const proximo = historico.refazer(elementsRef.current);
+    if (proximo === undefined) return;
+    elementsRef.current = proximo;
+    setElements(proximo);
+    saveLocalContent(proximo, true);
+    redraw();
+    queueSave(proximo);
+  }, [historico, queueSave, redraw, saveLocalContent]);
 
-  const redo = () => {
-    const nextElement = redoRef.current[0];
-    if (!nextElement) return;
-
-    redoRef.current = redoRef.current.slice(1);
-    setRedoCount(redoRef.current.length);
-    commitElements([...elementsRef.current, nextElement], { preserveRedo: true });
-  };
+  // Ctrl+Z / Ctrl+Shift+Z (ou Cmd no Mac) também funcionam com o foco no
+  // canvas, não só clicando nos botões — exceto com o título em edição,
+  // onde o desfazer nativo do campo de texto deve prevalecer.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [undo, redo]);
 
   const deleteSelectedOrClear = () => {
     if (selectedElementIdRef.current) {
@@ -839,10 +857,10 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
                 </>
               )}
             </span>
-            <Button variant="ghost" size="icon" onClick={undo} disabled={elements.length === 0} className="h-11 w-11 rounded-full">
+            <Button variant="ghost" size="icon" onClick={undo} disabled={!historico.podeDesfazer} className="h-11 w-11 rounded-full" title="Desfazer (Ctrl+Z)">
               <RotateCcw className="h-5 w-5" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={redo} disabled={redoCount === 0} className="h-11 w-11 rounded-full">
+            <Button variant="ghost" size="icon" onClick={redo} disabled={!historico.podeRefazer} className="h-11 w-11 rounded-full" title="Refazer (Ctrl+Shift+Z)">
               <Redo2 className="h-5 w-5" />
             </Button>
             <Button

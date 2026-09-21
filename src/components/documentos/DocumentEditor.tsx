@@ -18,6 +18,7 @@ import { useAutoSave } from "@/hooks/useAutoSave";
 import { useDocumentoColaboracao } from "@/hooks/useDocumentoColaboracao";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCaracteresSelecao } from "@/hooks/useCaracteresSelecao";
+import { usePersistentHistory } from "@/hooks/usePersistentHistory";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -45,6 +46,15 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   // do lugar, só o conteúdo troca).
   const primeiraCargaRef = useRef(true);
   const tituloFocadoRef = useRef(false);
+  // Histórico que sobrevive a sair do documento e voltar (localStorage). O
+  // Tiptap já desfaz palavra a palavra dentro da sessão atual — isso aqui só
+  // entra em ação quando esse histórico da sessão acaba (ex.: acabou de
+  // reabrir o documento), guardando o conteúdo de como ele estava antes da
+  // primeira mudança desta sessão.
+  const historico = usePersistentHistory<string>(docAtualId ? `documento:${docAtualId}` : null);
+  const conteudoAoAbrirRef = useRef("");
+  const jaRegistrouSessaoRef = useRef(false);
+  const suprimirRegistroRef = useRef(false);
   // No celular a barra lateral começa fechada (senão espreme o documento a
   // ponto de quebrar o texto letra por letra) — só decide isso depois que
   // useIsMobile resolve o tamanho real da tela, e só uma vez.
@@ -83,7 +93,43 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     ],
     content: "",
     onUpdate: ({ editor }) => {
-      debouncedSave(editor.getHTML());
+      const html = editor.getHTML();
+      if (suprimirRegistroRef.current) {
+        suprimirRegistroRef.current = false;
+      } else if (!jaRegistrouSessaoRef.current) {
+        // Primeira mudança de verdade desde que abriu este documento: guarda
+        // como ele estava antes, pra dar pra recuperar mesmo depois de sair
+        // e voltar (o desfazer do Tiptap em si não sobrevive a isso).
+        historico.registrar(conteudoAoAbrirRef.current);
+        jaRegistrouSessaoRef.current = true;
+      }
+      debouncedSave(html);
+    },
+    editorProps: {
+      handleKeyDown: (_view, event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return false;
+        if (!editor) return false;
+        if (event.shiftKey) {
+          if (editor.can().redo()) return false;
+          const proximo = historico.refazer(editor.getHTML());
+          if (proximo === undefined) return true;
+          suprimirRegistroRef.current = true;
+          editor.commands.setContent(proximo, { emitUpdate: false });
+          conteudoAoAbrirRef.current = proximo;
+          jaRegistrouSessaoRef.current = false;
+          void saveNow(proximo);
+          return true;
+        }
+        if (editor.can().undo()) return false;
+        const anterior = historico.desfazer(editor.getHTML());
+        if (anterior === undefined) return true;
+        suprimirRegistroRef.current = true;
+        editor.commands.setContent(anterior, { emitUpdate: false });
+        conteudoAoAbrirRef.current = anterior;
+        jaRegistrouSessaoRef.current = false;
+        void saveNow(anterior);
+        return true;
+      },
     },
   });
 
@@ -95,7 +141,14 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     documentoId: docAtualId,
     editor,
     tituloFocadoRef,
-    onConteudoRemoto: (novo) => editor?.commands.setContent(novo, { emitUpdate: false }),
+    onConteudoRemoto: (novo) => {
+      // Uma mudança de outra pessoa também vira o novo "ponto de partida":
+      // se eu desfizer depois disso, quero voltar pra cá, não pra versão de
+      // antes de abrir o documento (que já nem existe mais no banco).
+      conteudoAoAbrirRef.current = novo;
+      jaRegistrouSessaoRef.current = false;
+      editor?.commands.setContent(novo, { emitUpdate: false });
+    },
     onTituloRemoto: (novo) => setTitulo(novo),
   });
 
@@ -113,7 +166,10 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         setTitulo(data.titulo || "Documento sem título");
         setClienteId(data.cliente_id);
         setPastaId(data.pasta_id);
+        conteudoAoAbrirRef.current = data.conteudo || "";
+        jaRegistrouSessaoRef.current = false;
         if (editor) {
+          suprimirRegistroRef.current = true;
           editor.commands.setContent(data.conteudo || "");
         }
       }

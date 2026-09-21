@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useCanvasAutoSave, canvasBackupKey } from "@/hooks/useCanvasAutoSave";
+import { usePersistentHistory } from "@/hooks/usePersistentHistory";
 import { mergeCanvas } from "@/lib/canvasPersistence";
 import { toast } from "sonner";
 import { useTheme } from "@/hooks/useTheme";
@@ -341,6 +342,17 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const wrapperRef = useRef<HTMLDivElement>(null);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const previousContentRef = useRef<string | null>(null);
+  // Histórico que sobrevive a sair do mapa e voltar (localStorage). O
+  // Excalidraw já desfaz sozinho dentro da sessão atual (Ctrl+Z nativo), mas
+  // não expõe uma forma de saber se essa pilha nativa ainda tem algo — por
+  // isso o critério aqui é "ainda não fiz nenhuma mudança de verdade nesta
+  // sessão": nesse caso a pilha nativa está garantidamente vazia (a
+  // instância acabou de montar) e é seguro usar o histórico persistido no
+  // lugar dela.
+  // Limite menor que o padrão: cada snapshot é a cena inteira (elementos +
+  // arquivos/imagens em base64), não só a diferença de um pra outro.
+  const historico = usePersistentHistory<string>(documentoId ? `mapa:${documentoId}` : null, 15);
+  const jaRegistrouSessaoRef = useRef(false);
   const loadingRef = useRef(true);
   const isReadyRef = useRef(false);
   const pendingChainRef = useRef<{ blockId: string } | null>(null);
@@ -800,6 +812,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       }
 
       if (error || !data) setLoadError(true);
+      jaRegistrouSessaoRef.current = false;
       loadingRef.current = false;
       isReadyRef.current = true;
       setLoading(false);
@@ -971,9 +984,49 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     if (loadingRef.current) return;
     const content = serializeCanvasDoc(elements, appState, files);
     if (content === previousContentRef.current) return;
+    // Primeira mudança de verdade feita por mim nesta sessão (não vinda de
+    // outra pessoa): guarda como o mapa estava antes, pra dar pra recuperar
+    // mesmo depois de sair e voltar.
+    if (!vindoDeFora && !jaRegistrouSessaoRef.current && previousContentRef.current !== null) {
+      historico.registrar(previousContentRef.current);
+      jaRegistrouSessaoRef.current = true;
+    }
     previousContentRef.current = content;
     debouncedSave(content);
-  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes]);
+  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes, historico]);
+
+  // Ctrl+Z / Ctrl+Shift+Z (ou Cmd no Mac) enquanto ainda não fiz nenhuma
+  // mudança nesta sessão (ver comentário do "historico" lá em cima) — depois
+  // da primeira mudança, o próprio Excalidraw assume o desfazer/refazer.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+      if (jaRegistrouSessaoRef.current) return;
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      const api = excalidrawApiRef.current;
+      if (!api) return;
+      const atual = serializeCanvasDoc(api.getSceneElementsIncludingDeleted(), api.getAppState(), api.getFiles());
+      const proximo = event.shiftKey ? historico.refazer(atual) : historico.desfazer(atual);
+      if (proximo === undefined) return;
+      event.preventDefault();
+      const parsed = parseCanvasDoc(proximo);
+      const restored = restore(
+        { elements: parsed.elements as ExcalidrawElement[], appState: parsed.appState, files: parsed.files },
+        null,
+        null
+      );
+      api.updateScene({
+        elements: restored.elements as ExcalidrawElement[],
+        appState: restored.appState as never,
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
+      previousContentRef.current = proximo;
+      debouncedSave(proximo);
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [historico, debouncedSave]);
 
   const toggleSelectedConnection = useCallback(() => {
     const api = excalidrawApiRef.current;

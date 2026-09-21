@@ -19,6 +19,7 @@ import { useAutoSave } from "@/hooks/useAutoSave";
 import { useDocumentoColaboracao } from "@/hooks/useDocumentoColaboracao";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCaracteresSelecao } from "@/hooks/useCaracteresSelecao";
+import { usePersistentHistory } from "@/hooks/usePersistentHistory";
 import { cn } from "@/lib/utils";
 import "@/components/documentos/editor.css";
 
@@ -241,6 +242,12 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
   const { saving, debouncedSave, saveNow } = useAutoSave({ documentoId, debounceMs: 1000 });
   const [carregandoConteudo, setCarregandoConteudo] = useState(true);
   const tituloFocadoRef = useRef(false);
+  // Histórico que sobrevive a sair do documento e voltar — ver o mesmo
+  // mecanismo (com a explicação completa) em DocumentEditor.tsx.
+  const historico = usePersistentHistory<string>(documentoId ? `documento:${documentoId}` : null);
+  const conteudoAoAbrirRef = useRef("");
+  const jaRegistrouSessaoRef = useRef(false);
+  const suprimirRegistroRef = useRef(false);
 
   const editor = useEditor({
     extensions: [
@@ -252,7 +259,42 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
       Highlight.configure({ multicolor: false }),
     ],
     content: "",
-    onUpdate: ({ editor }) => debouncedSave(editor.getHTML()),
+    onUpdate: ({ editor }) => {
+      const html = editor.getHTML();
+      if (suprimirRegistroRef.current) {
+        suprimirRegistroRef.current = false;
+      } else if (!jaRegistrouSessaoRef.current) {
+        historico.registrar(conteudoAoAbrirRef.current);
+        jaRegistrouSessaoRef.current = true;
+      }
+      debouncedSave(html);
+    },
+    editorProps: {
+      handleKeyDown: (_view, event) => {
+        if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return false;
+        if (!editor) return false;
+        if (event.shiftKey) {
+          if (editor.can().redo()) return false;
+          const proximo = historico.refazer(editor.getHTML());
+          if (proximo === undefined) return true;
+          suprimirRegistroRef.current = true;
+          editor.commands.setContent(proximo, { emitUpdate: false });
+          conteudoAoAbrirRef.current = proximo;
+          jaRegistrouSessaoRef.current = false;
+          void saveNow(proximo);
+          return true;
+        }
+        if (editor.can().undo()) return false;
+        const anterior = historico.desfazer(editor.getHTML());
+        if (anterior === undefined) return true;
+        suprimirRegistroRef.current = true;
+        editor.commands.setContent(anterior, { emitUpdate: false });
+        conteudoAoAbrirRef.current = anterior;
+        jaRegistrouSessaoRef.current = false;
+        void saveNow(anterior);
+        return true;
+      },
+    },
   });
 
   const { total: totalCaracteres, selecionados: caracteresSelecionados } = useCaracteresSelecao(editor);
@@ -261,7 +303,11 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
     documentoId,
     editor,
     tituloFocadoRef,
-    onConteudoRemoto: (novo) => editor?.commands.setContent(novo, { emitUpdate: false }),
+    onConteudoRemoto: (novo) => {
+      conteudoAoAbrirRef.current = novo;
+      jaRegistrouSessaoRef.current = false;
+      editor?.commands.setContent(novo, { emitUpdate: false });
+    },
     onTituloRemoto: onTituloChange,
   });
 
@@ -270,7 +316,14 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
     async function carregar() {
       setCarregandoConteudo(true);
       const { data } = await supabase.from("documentos").select("conteudo").eq("id", documentoId).maybeSingle();
-      if (!cancelado && editor) editor.commands.setContent(data?.conteudo || "");
+      if (!cancelado) {
+        conteudoAoAbrirRef.current = data?.conteudo || "";
+        jaRegistrouSessaoRef.current = false;
+        if (editor) {
+          suprimirRegistroRef.current = true;
+          editor.commands.setContent(data?.conteudo || "");
+        }
+      }
       if (!cancelado) setCarregandoConteudo(false);
     }
     if (documentoId && editor) carregar();
