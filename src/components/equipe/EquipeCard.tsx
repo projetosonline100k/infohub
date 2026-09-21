@@ -1,9 +1,9 @@
 import { useAuth } from "@/auth/AuthProvider";
 import { FormEvent, useEffect, useState } from 'react';
-import { Plus, Pencil, Users, Trash2 } from 'lucide-react';
+import { Plus, Pencil, Users, Trash2, ChevronsUpDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import type { Tables } from '@/integrations/supabase/types';
-import { areasEquipe, AcaoEquipe, AreaEquipe, lerPermissoes, permissoesVazias } from '@/lib/equipe';
+import { areasEquipe, AcaoEquipe, AreaEquipe, PermissoesEquipe, lerPermissoes, permissoesVazias } from '@/lib/equipe';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,13 +11,18 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { toast } from '@/hooks/use-toast';
+
+type PessoaConhecida = { nome: string; email: string; papel: string };
 
 type Membro = Tables<'equipe_cliente'>;
 export function EquipeCard({ clienteId, permissoesDisponiveis = true }: { clienteId: string; permissoesDisponiveis?: boolean }) {
   const { user } = useAuth();
   const [membros, setMembros] = useState<Membro[]>([]);
   const [clientes, setClientes] = useState<{ id: string; nome_especialista: string }[]>([]);
+  const [pessoasConhecidas, setPessoasConhecidas] = useState<PessoaConhecida[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [aberto, setAberto] = useState(false);
@@ -30,6 +35,7 @@ export function EquipeCard({ clienteId, permissoesDisponiveis = true }: { client
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [permissoes, setPermissoes] = useState(permissoesVazias);
   const [erro, setErro] = useState('');
+  const [buscaPessoaAberta, setBuscaPessoaAberta] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -37,11 +43,27 @@ export function EquipeCard({ clienteId, permissoesDisponiveis = true }: { client
     Promise.all([
       supabase.from('equipe_cliente').select('*').eq('cliente_id', clienteId).order('created_at'),
       supabase.from('clientes').select('id,nome_especialista').eq('user_id', user?.id || '').order('nome_especialista'),
-    ]).then(([team, clients]) => {
+      // Sem filtro de cliente: a política de segurança já limita às equipes
+      // que este dono já montou em qualquer um dos clientes dele, pra poder
+      // sugerir gente que ele já cadastrou antes num outro projeto.
+      supabase.from('equipe_cliente').select('nome_pessoa, email, papel').order('nome_pessoa'),
+    ]).then(([team, clients, pessoas]) => {
       if (!active) return;
       setLoadError(Boolean(team.error || clients.error));
       setMembros(team.data || []);
       setClientes(clients.data || []);
+      const vistos = new Set<string>();
+      const unicas: PessoaConhecida[] = [];
+      for (const p of pessoas.data || []) {
+        // Cadastros antigos podem não ter e-mail salvo; sem ele não dá pra
+        // sugerir a pessoa (nem pra saber se já apareceu antes).
+        if (!p.email) continue;
+        const chave = p.email.toLowerCase();
+        if (vistos.has(chave)) continue;
+        vistos.add(chave);
+        unicas.push({ nome: p.nome_pessoa, email: p.email, papel: p.papel });
+      }
+      setPessoasConhecidas(unicas);
       setLoading(false);
     });
     return () => { active = false; };
@@ -56,6 +78,16 @@ export function EquipeCard({ clienteId, permissoesDisponiveis = true }: { client
     setPermissoes(lerPermissoes(membro?.permissoes));
     setErro('');
     setAberto(true);
+  }
+  function escolherPessoaConhecida(pessoa: PessoaConhecida) {
+    setNome(pessoa.nome);
+    setEmail(pessoa.email);
+    setPapel(pessoa.papel);
+    setBuscaPessoaAberta(false);
+  }
+  const tudoMarcado = areasEquipe.every(area => permissoes[area.id].acessar && permissoes[area.id].criar && permissoes[area.id].editar);
+  function marcarTudo(checked: boolean) {
+    setPermissoes(Object.fromEntries(areasEquipe.map(({ id }) => [id, { acessar: checked, criar: checked, editar: checked }])) as PermissoesEquipe);
   }
   function alterar(area: AreaEquipe, acao: AcaoEquipe, checked: boolean) {
     setPermissoes(current => ({ ...current, [area]: acao === 'acessar' && !checked
@@ -112,10 +144,43 @@ export function EquipeCard({ clienteId, permissoesDisponiveis = true }: { client
         <DialogHeader><DialogTitle>{editando ? 'Editar membro e permissões' : 'Adicionar membro'}</DialogTitle><DialogDescription>Defina quais clientes e áreas esta pessoa pode acessar com a conta dela.</DialogDescription></DialogHeader>
         <form onSubmit={salvar} className="space-y-6">
           <fieldset disabled={saving} className="space-y-6">
+            {!editando && pessoasConhecidas.length > 0 && <div className="space-y-2">
+              <Label>Pessoa já cadastrada</Label>
+              <Popover open={buscaPessoaAberta} onOpenChange={setBuscaPessoaAberta}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" role="combobox" aria-expanded={buscaPessoaAberta} className="w-full justify-between font-normal text-muted-foreground">
+                    Buscar por nome ou e-mail usado em outro cliente...
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[320px] max-w-[85vw] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Nome ou e-mail..." />
+                    <CommandList>
+                      <CommandEmpty>Ninguém encontrado.</CommandEmpty>
+                      <CommandGroup>
+                        {pessoasConhecidas.map(pessoa => <CommandItem key={pessoa.email} value={`${pessoa.nome} ${pessoa.email}`} onSelect={() => escolherPessoaConhecida(pessoa)}>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm">{pessoa.nome}</p>
+                            <p className="truncate text-xs text-muted-foreground">{pessoa.email}{pessoa.papel ? ` · ${pessoa.papel}` : ''}</p>
+                          </div>
+                        </CommandItem>)}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+              <p className="text-xs text-muted-foreground">Preenche nome, função e e-mail com o que essa pessoa já usa em outro cliente seu. Dá pra ajustar antes de salvar.</p>
+            </div>}
             <div className="grid gap-4 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="membro-nome">Nome</Label><Input id="membro-nome" required maxLength={120} value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da pessoa" /></div><div className="space-y-2"><Label htmlFor="membro-papel">Função</Label><Input id="membro-papel" required maxLength={120} value={papel} onChange={e => setPapel(e.target.value)} placeholder="Ex.: Copywriter" /></div></div>
             <div className="space-y-2"><Label htmlFor="membro-email">E-mail de acesso</Label><Input id="membro-email" type="email" required value={email} onChange={e => setEmail(e.target.value)} placeholder="pessoa@exemplo.com" /><p className="text-xs text-muted-foreground">A pessoa deve criar uma conta com este e-mail e confirmá-lo para entrar. Nenhum e-mail é enviado ao salvar.</p></div>
             <div className="space-y-3"><h3 className="text-sm font-semibold">Clientes permitidos</h3><p className="text-xs text-muted-foreground">Este cliente está incluído. Selecione outros clientes para compartilhar as mesmas permissões.</p><div className="max-h-40 space-y-3 overflow-y-auto rounded-lg border p-3">{clientes.map(c => <label key={c.id} className="flex items-center gap-3 text-sm"><Checkbox checked={c.id === clienteId || selecionados.includes(c.id)} disabled={c.id === clienteId} onCheckedChange={checked => setSelecionados(current => checked === true ? [...current, c.id] : current.filter(id => id !== c.id))} />{c.nome_especialista}{c.id === clienteId && <span className="text-xs text-muted-foreground">(atual)</span>}</label>)}</div></div>
-            <div className="space-y-3"><h3 className="text-sm font-semibold">Permissões por área</h3><p className="text-xs text-muted-foreground">Criar e editar também liberam a visualização. Excluir registros e gerenciar a equipe são ações do proprietário.</p><div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/50"><tr><th className="p-3 text-left">Área</th>{['Acessar', 'Criar', 'Editar'].map(a => <th key={a} className="p-3 text-center">{a}</th>)}</tr></thead><tbody>{areasEquipe.map(area => <tr key={area.id} className="border-t"><th scope="row" className="p-3 text-left font-normal">{area.label}</th>{(['acessar', 'criar', 'editar'] as const).map(acao => <td key={acao} className="p-3 text-center"><Checkbox aria-label={`${acao} ${area.label}`} checked={permissoes[area.id][acao]} onCheckedChange={value => alterar(area.id, acao, value === true)} /></td>)}</tr>)}</tbody></table></div></div>
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div><h3 className="text-sm font-semibold">Permissões por área</h3><p className="text-xs text-muted-foreground">Criar e editar também liberam a visualização. Excluir registros e gerenciar a equipe são ações do proprietário.</p></div>
+                <label className="flex shrink-0 items-center gap-2 text-sm font-medium"><Checkbox checked={tudoMarcado} onCheckedChange={value => marcarTudo(value === true)} />Marcar tudo</label>
+              </div>
+              <div className="overflow-x-auto rounded-lg border"><table className="w-full text-sm"><thead className="bg-muted/50"><tr><th className="p-3 text-left">Área</th>{['Acessar', 'Criar', 'Editar'].map(a => <th key={a} className="p-3 text-center">{a}</th>)}</tr></thead><tbody>{areasEquipe.map(area => <tr key={area.id} className="border-t"><th scope="row" className="p-3 text-left font-normal">{area.label}</th>{(['acessar', 'criar', 'editar'] as const).map(acao => <td key={acao} className="p-3 text-center"><Checkbox aria-label={`${acao} ${area.label}`} checked={permissoes[area.id][acao]} onCheckedChange={value => alterar(area.id, acao, value === true)} /></td>)}</tr>)}</tbody></table></div></div>
           </fieldset>
           {erro && <p role="alert" className="text-sm text-destructive">{erro}</p>}
           <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={saving} onClick={() => setAberto(false)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar membro'}</Button></div>

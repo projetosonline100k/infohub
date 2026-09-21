@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
-import { cn, iniciais, formatarTempo, rotuloDataRelativa } from "@/lib/utils";
+import { cn, formatarTempo, rotuloDataRelativa } from "@/lib/utils";
 import { FileText, Calendar, CheckSquare, Clock, Check, Volume2, VolumeX } from "lucide-react";
 import { PriorityFlag } from "./PriorityFlag";
+import { ResponsavelAvatares } from "./ResponsavelAvatares";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import { useSomCronometro, tocarTique } from "@/hooks/useSomCronometro";
@@ -183,11 +183,7 @@ export const KanbanCard = ({
         {/* Info row - at the beginning as requested */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Avatar */}
-          <Avatar className="h-5 w-5" title={responsavelNome || "Sem responsável"}>
-            <AvatarFallback className="text-[10px] bg-muted text-muted-foreground">
-              {responsavelNome ? iniciais(responsavelNome) : "?"}
-            </AvatarFallback>
-          </Avatar>
+          <ResponsavelAvatares responsavelNome={responsavelNome} fallbackTextClassName="text-[10px]" />
 
           {/* Dates */}
           {(dataInicio || dataVencimento) && (

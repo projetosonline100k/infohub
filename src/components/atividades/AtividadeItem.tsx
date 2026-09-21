@@ -1,10 +1,10 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { FileText, Trash2, GripVertical, Calendar, CheckSquare } from "lucide-react";
-import { cn, iniciais, rotuloDataRelativa } from "@/lib/utils";
+import { cn, rotuloDataRelativa } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { PriorityFlag } from "./PriorityFlag";
+import { ResponsavelAvatares } from "./ResponsavelAvatares";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
@@ -144,11 +144,7 @@ export const AtividadeItem = ({
       )}
 
       {/* Responsible */}
-      <Avatar className="h-5 w-5 flex-shrink-0" title={responsavelNome || "Sem responsável"}>
-        <AvatarFallback className="text-[9px] bg-muted text-muted-foreground">
-          {responsavelNome ? iniciais(responsavelNome) : "?"}
-        </AvatarFallback>
-      </Avatar>
+      <ResponsavelAvatares responsavelNome={responsavelNome} />
 
       {/* Time Estimate */}
       {tempoEstimado && (

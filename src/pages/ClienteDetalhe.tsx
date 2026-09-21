@@ -18,6 +18,8 @@ import { DocumentQuickAccess } from "@/components/documentos/DocumentQuickAccess
 import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
+import { PresencaOnlineDot } from "@/components/PresencaOnlineDot";
+import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
 
 interface Cliente {
   id: string;
@@ -53,13 +55,14 @@ export default function ClienteDetalhe() {
   const [erroCliente, setErroCliente] = useState("");
   const [avisoPermissoes, setAvisoPermissoes] = useState("");
   const requisicaoAtual = useRef(0);
-  const [abaAtiva, setAbaAtiva] = useState("informacoes");
+  const [abaAtiva, setAbaAtiva] = useState("atividades");
   const [conteudoExpandido, setConteudoExpandido] = useState(false);
   const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
   const [subAbaConteudo, setSubAbaConteudo] = useState("brainstorm");
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+  const { pessoasOnline } = usePresencaProjeto(id);
 
   useEffect(() => {
     void carregarDados();
@@ -77,6 +80,9 @@ export default function ClienteDetalhe() {
     setAvisoPermissoes("");
     setPermissoesDisponiveis(false);
     setAcesso({ proprietario: false, permissoes: permissoesVazias() });
+    // Ao abrir um projeto, vai direto para Atividades — mas alguém sem
+    // permissão nessa área ainda cai em Informações gerais (ver abaixo).
+    setAbaAtiva("atividades");
 
     try {
       const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
@@ -96,6 +102,7 @@ export default function ClienteDetalhe() {
         if (!acessoResolvido) throw new Error('Resposta de permissões inválida');
         setAcesso(acessoResolvido);
         setPermissoesDisponiveis(true);
+        if (!acessoResolvido.permissoes.atividades.acessar) setAbaAtiva("informacoes");
       } catch (error) {
         if (!vigente()) return;
         console.error("Erro ao consultar permissões do cliente:", error);
@@ -103,6 +110,7 @@ export default function ClienteDetalhe() {
           setAvisoPermissoes(!clienteRes.data.user_id
             ? "Este cliente está sem proprietário identificado no banco. É necessário vincular o registro à conta que o criou para liberar a administração."
             : "Não foi possível consultar suas permissões de membro. Tente novamente.");
+          setAbaAtiva("informacoes");
         }
       }
 
@@ -247,7 +255,7 @@ export default function ClienteDetalhe() {
                   {iniciais(cliente.nome_especialista)}
                 </AvatarFallback>
               </Avatar>
-              <div className="min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="font-semibold text-foreground text-sm truncate">
                   {cliente.nome_especialista}
                 </p>
@@ -255,6 +263,7 @@ export default function ClienteDetalhe() {
                   <p className="text-xs text-muted-foreground truncate">{cliente.nicho}</p>
                 )}
               </div>
+              <PresencaOnlineDot pessoas={pessoasOnline} />
             </div>
 
             <div className="space-y-1">

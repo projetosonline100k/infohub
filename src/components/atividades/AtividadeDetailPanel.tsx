@@ -9,6 +9,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -41,6 +43,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { parseResponsaveis, formatResponsaveis } from "@/lib/responsaveis";
 
 interface Atividade {
   id: string;
@@ -99,7 +102,9 @@ export const AtividadeDetailPanel = ({
   const [destaque, setDestaque] = useState(false);
   const [dataVencimento, setDataVencimento] = useState<Date | undefined>();
   const [dataInicio, setDataInicio] = useState<Date | undefined>();
-  const [responsavelNome, setResponsavelNome] = useState("");
+  const [responsaveis, setResponsaveis] = useState<string[]>([]);
+  const [novoResponsavel, setNovoResponsavel] = useState("");
+  const [responsavelPopoverAberto, setResponsavelPopoverAberto] = useState(false);
   const [sugestoesEquipe, setSugestoesEquipe] = useState<string[]>([]);
   const [checklistResumo, setChecklistResumo] = useState({ total: 0, concluidas: 0 });
   const [saving, setSaving] = useState(false);
@@ -118,7 +123,8 @@ export const AtividadeDetailPanel = ({
       setDataInicio(
         atividade.data_inicio ? parseISO(atividade.data_inicio) : undefined
       );
-      setResponsavelNome(atividade.responsavel_nome || "");
+      setResponsaveis(parseResponsaveis(atividade.responsavel_nome));
+      setNovoResponsavel("");
       setChecklistResumo({ total: 0, concluidas: 0 });
     }
   }, [atividade]);
@@ -146,6 +152,7 @@ export const AtividadeDetailPanel = ({
     destaque?: boolean;
     dataVencimento?: Date | undefined;
     dataInicio?: Date | undefined;
+    responsaveis?: string[];
   }) => {
     if (!atividade) return;
 
@@ -155,6 +162,7 @@ export const AtividadeDetailPanel = ({
       destaque,
       dataVencimento,
       dataInicio,
+      responsaveis,
       ...overrides,
     };
 
@@ -173,7 +181,7 @@ export const AtividadeDetailPanel = ({
           ? format(valores.dataVencimento, "yyyy-MM-dd")
           : null,
         data_inicio: valores.dataInicio ? format(valores.dataInicio, "yyyy-MM-dd") : null,
-        responsavel_nome: responsavelNome.trim() || null,
+        responsavel_nome: formatResponsaveis(valores.responsaveis),
       };
       // Quando uma Data Início é escolhida agora, ela passa a decidir em
       // qual dia a tarefa aparece no modo lista — sem isso a tarefa ficava
@@ -211,6 +219,22 @@ export const AtividadeDetailPanel = ({
     }
     setStatus(novoStatus);
     salvar({ status: novoStatus });
+  };
+
+  const alternarResponsavel = (nome: string, marcado: boolean) => {
+    const novaLista = marcado ? Array.from(new Set([...responsaveis, nome])) : responsaveis.filter((n) => n !== nome);
+    setResponsaveis(novaLista);
+    salvar({ responsaveis: novaLista });
+  };
+
+  const adicionarResponsavelLivre = () => {
+    const nome = novoResponsavel.trim();
+    if (!nome) return;
+    setNovoResponsavel("");
+    if (responsaveis.includes(nome)) return;
+    const novaLista = [...responsaveis, nome];
+    setResponsaveis(novaLista);
+    salvar({ responsaveis: novaLista });
   };
 
   const handleDelete = () => {
@@ -320,25 +344,61 @@ export const AtividadeDetailPanel = ({
               </Select>
             </div>
 
-            {/* Responsible */}
+            {/* Responsible — mais de uma pessoa pode ser responsável pela mesma tarefa */}
             <div className="space-y-1.5">
               <label className="text-xs text-muted-foreground">Responsável</label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  list="responsavel-sugestoes"
-                  value={responsavelNome}
-                  onChange={(e) => setResponsavelNome(e.target.value)}
-                  onBlur={() => salvar()}
-                  placeholder="Quem é responsável?"
-                  className="h-9 pl-9"
-                />
-                <datalist id="responsavel-sugestoes">
-                  {sugestoesEquipe.map((nome) => (
-                    <option key={nome} value={nome} />
-                  ))}
-                </datalist>
-              </div>
+              <Popover open={responsavelPopoverAberto} onOpenChange={setResponsavelPopoverAberto}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-auto min-h-9 w-full justify-start gap-1.5 px-3 py-1.5 font-normal"
+                  >
+                    <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    {responsaveis.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {responsaveis.map((nome) => (
+                          <Badge key={nome} variant="secondary" className="text-xs">{nome}</Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-muted-foreground">Quem é responsável?</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72" align="start">
+                  <div className="space-y-3">
+                    {Array.from(new Set([...sugestoesEquipe, ...responsaveis])).length > 0 && (
+                      <div className="max-h-48 space-y-2 overflow-y-auto">
+                        {Array.from(new Set([...sugestoesEquipe, ...responsaveis])).map((nome) => (
+                          <div key={nome} className="flex items-center gap-2">
+                            <Checkbox
+                              id={`resp-${nome}`}
+                              checked={responsaveis.includes(nome)}
+                              onCheckedChange={(checked) => alternarResponsavel(nome, checked === true)}
+                            />
+                            <label htmlFor={`resp-${nome}`} className="flex-1 cursor-pointer truncate text-sm">{nome}</label>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-1.5 border-t pt-2">
+                      <Input
+                        value={novoResponsavel}
+                        onChange={(e) => setNovoResponsavel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { e.preventDefault(); adicionarResponsavelLivre(); }
+                        }}
+                        placeholder="Adicionar outro nome..."
+                        className="h-8 text-sm"
+                      />
+                      <Button type="button" size="sm" variant="secondary" onClick={adicionarResponsavelLivre}>
+                        Adicionar
+                      </Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Start Date */}

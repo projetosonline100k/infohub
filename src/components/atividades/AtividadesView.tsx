@@ -57,6 +57,7 @@ import {
 } from "@hello-pangea/dnd";
 import { cn, iniciais } from "@/lib/utils";
 import { detectarDiaSemana } from "@/lib/diasSemana";
+import { parseResponsaveis } from "@/lib/responsaveis";
 import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
 
 interface Atividade {
@@ -250,7 +251,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   const rosterPessoas = useMemo(() => {
     const nomes = new Set(pessoasDisponiveis);
     atividades.forEach((a) => {
-      if (a.responsavel_nome) nomes.add(a.responsavel_nome);
+      parseResponsaveis(a.responsavel_nome).forEach((nome) => nomes.add(nome));
     });
     return Array.from(nomes).sort();
   }, [pessoasDisponiveis, atividades]);
@@ -258,7 +259,11 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   const atividadesVisiveis = useMemo(() => {
     let lista = pastaAtivaId === VISAO_GERAL ? atividades : atividades.filter((a) => a.pasta_id === pastaAtivaId);
     if (pessoasSelecionadas.size > 0) {
-      lista = lista.filter((a) => pessoasSelecionadas.has(a.responsavel_nome || "Sem responsável"));
+      lista = lista.filter((a) => {
+        const responsaveis = parseResponsaveis(a.responsavel_nome);
+        if (responsaveis.length === 0) return pessoasSelecionadas.has("Sem responsável");
+        return responsaveis.some((nome) => pessoasSelecionadas.has(nome));
+      });
     }
     return lista;
   }, [atividades, pastaAtivaId, pessoasSelecionadas]);
@@ -627,7 +632,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
           // data inválida, ignora
         }
       }
-      if (a.responsavel_nome) grupo.integrantes.add(a.responsavel_nome);
+      parseResponsaveis(a.responsavel_nome).forEach((nome) => grupo.integrantes.add(nome));
     });
 
     const vazio: Acumulado = { total: 0, concluidas: 0, atrasadas: 0, estaSemana: 0, integrantes: new Set() };
