@@ -428,6 +428,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     let query = supabase
       .from("pastas_atividade")
       .select("id, nome, ordem")
+      .eq("origem", "atividades")
       .is("deleted_at", null)
       .order("ordem", { ascending: true });
     query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);
@@ -653,7 +654,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     try {
       const { data, error } = await supabase
         .from("pastas_atividade")
-        .insert({ nome, cliente_id: clienteId || null, ordem: pastas.length })
+        .insert({ nome, cliente_id: clienteId || null, ordem: pastas.length, origem: "atividades" })
         .select()
         .single();
 
@@ -752,18 +753,28 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       carregarChecklistResumo((data || []).map((a) => a.id));
       carregarVisaoGeral();
 
-      // Open groups that have tasks
+      // Open groups that have tasks. Com "ver todas" ligado, os grupos são por
+      // data real (ver gruposParaExibir) e não pela grade fixa da semana/mês/ano,
+      // senão atividades antigas nunca casam com nenhum grupo e ficam escondidas
+      // num accordion fechado. Também fazemos merge (não substituição) pra não
+      // fechar seções que o usuário já tinha aberto.
       const gruposComTarefas: Record<string, boolean> = {};
-      (data || []).forEach((atividade) => {
-        const dataAtv = parseISO(atividade.data_atividade);
-        const grupoEncontrado = gruposDoPeriodo.find((g) => 
-          isWithinInterval(dataAtv, { start: g.inicio, end: g.fim })
-        );
-        if (grupoEncontrado) {
-          gruposComTarefas[grupoEncontrado.id] = true;
-        }
-      });
-      setDiasAbertos(gruposComTarefas);
+      if (mostrarTodas) {
+        (data || []).forEach((atividade) => {
+          gruposComTarefas[atividade.data_atividade] = true;
+        });
+      } else {
+        (data || []).forEach((atividade) => {
+          const dataAtv = parseISO(atividade.data_atividade);
+          const grupoEncontrado = gruposDoPeriodo.find((g) =>
+            isWithinInterval(dataAtv, { start: g.inicio, end: g.fim })
+          );
+          if (grupoEncontrado) {
+            gruposComTarefas[grupoEncontrado.id] = true;
+          }
+        });
+      }
+      setDiasAbertos((prev) => ({ ...prev, ...gruposComTarefas }));
     } catch (error) {
       console.error("Erro ao carregar atividades:", error);
       toast.error("Erro ao carregar atividades");
@@ -1632,6 +1643,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
                 atividades={atividadesKanban}
                 colunas={colunas}
                 semanaInicio={semanaReferenciaKanban.inicio}
+                kanbanPeriodo={kanbanPeriodo}
                 checklistPorAtividade={checklistPorAtividade}
                 onCardClick={openAtividadeDetail}
                 onAddCard={adicionarAtividadeNoStatus}

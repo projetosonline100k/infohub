@@ -48,6 +48,7 @@ export const LixeiraPastasDialog = ({
       let expiradas = supabase
         .from("pastas_atividade")
         .delete()
+        .eq("origem", "atividades")
         .lt("deleted_at", cortes);
       expiradas = clienteId ? expiradas.eq("cliente_id", clienteId) : expiradas.is("cliente_id", null);
       await expiradas;
@@ -55,6 +56,7 @@ export const LixeiraPastasDialog = ({
       let query = supabase
         .from("pastas_atividade")
         .select("id, nome, deleted_at")
+        .eq("origem", "atividades")
         .not("deleted_at", "is", null)
         .order("deleted_at", { ascending: false });
       query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);

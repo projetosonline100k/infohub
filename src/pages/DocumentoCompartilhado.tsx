@@ -305,10 +305,10 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
         </div>
       </div>
       <DocumentToolbar editor={editor} />
-      <div className={cn("flex-1 overflow-auto bg-muted/50 p-2 sm:p-4 md:p-8 transition-opacity duration-150", carregandoConteudo && "opacity-40")}>
-        <div className="max-w-[816px] mx-auto bg-background shadow-lg min-h-[1056px] rounded-sm">
-          <div className="p-4 sm:p-8 md:p-16">
-            <EditorContent editor={editor} className="prose prose-sm sm:prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
+      <div className={cn("flex-1 overflow-auto bg-background transition-opacity duration-150 sm:bg-muted/50 sm:p-4 md:p-8", carregandoConteudo && "opacity-40")}>
+        <div className="mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
+          <div className="px-5 py-6 sm:p-8 md:p-16">
+            <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
           </div>
         </div>
       </div>

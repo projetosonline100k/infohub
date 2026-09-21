@@ -109,7 +109,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     }
     if (error) toast.error("Erro ao carregar documentos");
     const { data: folders, error: folderError } = await supabase.from("pastas_atividade")
-      .select("id, nome").eq("cliente_id", clienteId).is("deleted_at", null).order("ordem");
+      .select("id, nome").eq("cliente_id", clienteId).eq("origem", "documentos").is("deleted_at", null).order("ordem");
     if (folderError) toast.error("Erro ao carregar pastas");
     else setPastas(folders || []);
     setLoading(false);
@@ -125,7 +125,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     if (!nomePasta.trim() || salvandoPasta) return;
     setSalvandoPasta(true);
     const { data, error } = await supabase.from("pastas_atividade").insert({
-      cliente_id: clienteId, nome: nomePasta.trim(), ordem: pastas.length,
+      cliente_id: clienteId, nome: nomePasta.trim(), ordem: pastas.length, origem: "documentos",
     }).select("id, nome").single();
     setSalvandoPasta(false);
     if (error) { toast.error("Erro ao criar pasta"); return; }

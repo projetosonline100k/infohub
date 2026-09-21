@@ -56,7 +56,7 @@ export function DocumentSidebar({
   }, [documentoAtualId, tituloAtual]);
 
   useEffect(() => {
-    let query = supabase.from("pastas_atividade").select("id, nome").is("deleted_at", null).order("ordem");
+    let query = supabase.from("pastas_atividade").select("id, nome").eq("origem", "documentos").is("deleted_at", null).order("ordem");
     query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);
     query.then(({ data, error }) => {
       if (error) {

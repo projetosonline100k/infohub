@@ -251,16 +251,19 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
           )
         )}
 
-        {/* Editor area - simulates paper */}
-        <div className="flex-1 overflow-auto bg-muted/50 p-2 sm:p-4 md:p-8">
+        {/* Editor area - no celular é leitura em tela cheia, sem simular uma
+            folha de papel flutuando (fica artificial numa tela estreita e
+            sobra pouco espaço de verdade pro texto); a partir de sm o
+            "papel" volta, como no desktop. */}
+        <div className="flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
           <div
             className={cn(
-              "max-w-[816px] mx-auto bg-background shadow-lg min-h-[1056px] rounded-sm transition-opacity duration-150",
+              "mx-auto max-w-[816px] bg-background transition-opacity duration-150 sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg",
               loading && "opacity-40"
             )}
           >
-            <div className="p-4 sm:p-8 md:p-16">
-              <EditorContent editor={editor} className="prose prose-sm sm:prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
+            <div className="px-5 py-6 sm:p-8 md:p-16">
+              <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
             </div>
           </div>
         </div>

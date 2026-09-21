@@ -2,7 +2,7 @@ import { useState } from "react";
 import { KanbanColumn } from "./KanbanColumn";
 import { Input } from "@/components/ui/input";
 import { Plus } from "lucide-react";
-import { addDays, format } from "date-fns";
+import { addDays, format, getDay, parseISO } from "date-fns";
 import { detectarDiaSemana } from "@/lib/diasSemana";
 
 interface Atividade {
@@ -36,6 +36,7 @@ interface KanbanBoardProps {
   atividades: Atividade[];
   colunas: Coluna[];
   semanaInicio: Date;
+  kanbanPeriodo: "todas" | "semana" | "proxima_semana";
   checklistPorAtividade?: Record<string, ChecklistResumo>;
   onCardClick: (id: string) => void;
   onAddCard: (status: string, titulo: string) => void;
@@ -58,6 +59,7 @@ export const KanbanBoard = ({
   atividades,
   colunas,
   semanaInicio,
+  kanbanPeriodo,
   checklistPorAtividade,
   onCardClick,
   onAddCard,
@@ -74,10 +76,27 @@ export const KanbanBoard = ({
   const [nome, setNome] = useState("");
 
   // Uma coluna chamada "Segunda-feira" etc. não filtra por status: mostra as
-  // tarefas cuja data cai naquele dia da semana de referência.
+  // tarefas cuja data cai naquele dia da semana de referência. Com "Todas"
+  // selecionado no quadro, não faz sentido travar numa única data desta
+  // semana — senão uma tarefa de segunda passada nunca aparece na coluna
+  // "Segunda-feira" e, se todas as colunas forem dias da semana, o quadro
+  // inteiro fica vazio fora da semana atual. Nesse caso casamos pelo dia da
+  // semana em qualquer data, não pela data exata.
   const getAtividadesPorColuna = (coluna: Coluna) => {
     const diaSemana = detectarDiaSemana(coluna.nome);
     if (diaSemana !== null) {
+      if (kanbanPeriodo === "todas") {
+        const diaSemanaJs = (diaSemana + 1) % 7;
+        return atividades
+          .filter((a) => {
+            try {
+              return getDay(parseISO(a.data_atividade)) === diaSemanaJs;
+            } catch {
+              return false;
+            }
+          })
+          .sort((a, b) => a.ordem - b.ordem);
+      }
       const dataAlvo = format(addDays(semanaInicio, diaSemana), "yyyy-MM-dd");
       return atividades.filter((a) => a.data_atividade === dataAlvo).sort((a, b) => a.ordem - b.ordem);
     }
