@@ -15,6 +15,7 @@ import {
   ListOrdered,
   MessageSquare,
   MoreHorizontal,
+  PanelLeft,
   Pilcrow,
   Sparkles,
   Star,
@@ -39,8 +40,10 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { SlashCommandTextarea, SelectionRange } from "./SlashCommandTextarea";
 import { RoteiroChat } from "./RoteiroChat";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -136,6 +139,18 @@ export const VideoDetailPanel = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const editedFileInputRef = useRef<HTMLInputElement | null>(null);
   const [uploadingKind, setUploadingKind] = useState<"original" | "editado" | null>(null);
+  const isMobile = useIsMobile();
+  // No celular a barra de propriedades é uma gaveta por cima do roteiro
+  // (senão espreme o texto a ponto de quebrar letra por letra, como
+  // aconteceu antes desse ajuste) — só decide isso depois que useIsMobile
+  // resolve o tamanho real da tela, e só uma vez.
+  const [showProps, setShowProps] = useState(true);
+  const propsAjustadasRef = useRef(false);
+  useEffect(() => {
+    if (propsAjustadasRef.current) return;
+    propsAjustadasRef.current = true;
+    setShowProps(!isMobile);
+  }, [isMobile]);
 
   useEffect(() => {
     if (!video) {
@@ -240,6 +255,9 @@ export const VideoDetailPanel = ({
     }
 
     onSelectVideo?.(nextVideo);
+    // No celular a gaveta de propriedades cobre o roteiro; some depois de
+    // escolher outro card, senão o usuário teria que fechar na mão.
+    if (isMobile) setShowProps(false);
   };
 
   const handleInsertText = (text: string) => {
@@ -351,12 +369,326 @@ export const VideoDetailPanel = ({
   const relatedStatus = relatedVideos.find((relatedVideo) => relatedVideo.id === editedVideo.id)?.status || editedVideo.status;
   const statusLabel = STATUS_OPTIONS.find((option) => option.value === relatedStatus)?.label || relatedStatus;
 
+  // Conteúdo da barra de propriedades: reaproveitado tanto no painel fixo do
+  // desktop quanto na gaveta (Sheet) do celular, pra não duplicar o formulário.
+  const propriedadesConteudo = (
+    <>
+      <div className="flex items-center justify-between border-b px-4 py-3 shrink-0">
+        <h3 className="text-sm font-semibold">Propriedades do vídeo</h3>
+        {editedVideo.escalado && (
+          <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
+            <Sparkles className="h-3 w-3 mr-1" />
+            Escalado
+          </Badge>
+        )}
+      </div>
+
+      <ScrollArea className="h-full">
+        <div className="space-y-5 p-4 pb-24">
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <UploadCloud className="h-3 w-3" /> Arquivo do vídeo
+            </Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleVideoUpload(file, "original");
+              }}
+            />
+            {editedVideo.arquivo_url ? (
+              <div className="min-w-0 space-y-2 overflow-hidden rounded-md border p-3">
+                <div className="flex min-w-0 items-start gap-2 text-sm">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="block max-w-full truncate font-medium" title={editedVideo.arquivo_nome || "Vídeo enviado"}>
+                      {editedVideo.arquivo_nome || "Vídeo enviado"}
+                    </p>
+                    {editedVideo.arquivo_tamanho && (
+                      <p className="text-xs text-muted-foreground">
+                        {(editedVideo.arquivo_tamanho / 1024 / 1024).toFixed(1)} MB
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Button asChild type="button" variant="secondary" size="sm" className="w-full gap-2">
+                  <a href={editedVideo.arquivo_url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    Ver vídeo
+                  </a>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={uploadingKind !== null}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploadingKind === "original" ? "Enviando..." : "Substituir arquivo"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2"
+                disabled={uploadingKind !== null}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <UploadCloud className="h-4 w-4" />
+                {uploadingKind === "original" ? "Enviando vídeo..." : "Enviar vídeo"}
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <UploadCloud className="h-3 w-3" /> Editado
+            </Label>
+            <input
+              ref={editedFileInputRef}
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void handleVideoUpload(file, "editado");
+              }}
+            />
+            {editedVideo.editado_url ? (
+              <div className="min-w-0 space-y-2 overflow-hidden rounded-md border p-3">
+                <div className="flex min-w-0 items-start gap-2 text-sm">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="block max-w-full truncate font-medium" title={editedVideo.editado_nome || "Vídeo editado"}>
+                      {editedVideo.editado_nome || "Vídeo editado"}
+                    </p>
+                    {editedVideo.editado_tamanho && (
+                      <p className="text-xs text-muted-foreground">
+                        {(editedVideo.editado_tamanho / 1024 / 1024).toFixed(1)} MB
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Button asChild type="button" variant="secondary" size="sm" className="w-full gap-2">
+                  <a href={editedVideo.editado_url} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    Ver vídeo editado
+                  </a>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={uploadingKind !== null}
+                  onClick={() => editedFileInputRef.current?.click()}
+                >
+                  {uploadingKind === "editado" ? "Enviando..." : "Substituir editado"}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full gap-2"
+                disabled={uploadingKind !== null}
+                onClick={() => editedFileInputRef.current?.click()}
+              >
+                <UploadCloud className="h-4 w-4" />
+                {uploadingKind === "editado" ? "Enviando editado..." : "Enviar vídeo editado"}
+              </Button>
+            )}
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <FileText className="h-3 w-3" /> Status
+            </Label>
+            <Select
+              value={editedVideo.status}
+              onValueChange={(value) => setEditedVideo({ ...editedVideo, status: value })}
+            >
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <Calendar className="h-3 w-3" /> Data de postagem
+            </Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "h-9 w-full justify-start text-left font-normal",
+                    !editedVideo.data_postagem && "text-muted-foreground"
+                  )}
+                >
+                  {editedVideo.data_postagem
+                    ? format(new Date(editedVideo.data_postagem), "dd/MM/yyyy", { locale: ptBR })
+                    : "Selecionar data"}
+                  <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={editedVideo.data_postagem ? new Date(editedVideo.data_postagem) : undefined}
+                  onSelect={(date) =>
+                    setEditedVideo({
+                      ...editedVideo,
+                      data_postagem: date ? format(date, "yyyy-MM-dd") : null
+                    })
+                  }
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+              <Tag className="h-3 w-3" /> Tags
+            </Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-auto min-h-9 w-full justify-start">
+                  {videoTags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {tags
+                        .filter((t) => videoTags.includes(t.id))
+                        .map((tag) => (
+                          <Badge
+                            key={tag.id}
+                            variant="outline"
+                            className={cn("text-xs", TAG_COLORS[tag.cor])}
+                          >
+                            {tag.nome}
+                          </Badge>
+                        ))}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">Selecionar tags</span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64" align="start">
+                <div className="space-y-2">
+                  {tags.map((tag) => (
+                    <div key={tag.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={tag.id}
+                        checked={videoTags.includes(tag.id)}
+                        onCheckedChange={() => onTagToggle(tag.id)}
+                      />
+                      <label
+                        htmlFor={tag.id}
+                        className={cn(
+                          "text-sm cursor-pointer px-2 py-0.5 rounded",
+                          TAG_COLORS[tag.cor]
+                        )}
+                      >
+                        {tag.nome}
+                      </label>
+                    </div>
+                  ))}
+                  {tags.length === 0 && (
+                    <p className="text-sm text-muted-foreground">Nenhuma tag criada</p>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Descrição</Label>
+            <Textarea
+              value={editedVideo.descricao || ""}
+              onChange={(e) => setEditedVideo({ ...editedVideo, descricao: e.target.value })}
+              placeholder="Adicione uma descrição..."
+              className="min-h-[120px] resize-none bg-muted/30"
+            />
+          </div>
+
+          <Button onClick={handleSave} className="w-full">
+            Salvar
+          </Button>
+
+          {relatedVideos.length > 0 && (
+            <div className="space-y-3 border-t pt-5">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs text-muted-foreground">
+                  Cards em {statusLabel}
+                </Label>
+                <Badge variant="secondary" className="h-5 px-2 text-[11px]">
+                  {relatedVideos.length}
+                </Badge>
+              </div>
+
+              <div className="space-y-2">
+                {relatedVideos.map((relatedVideo) => {
+                  const isActive = relatedVideo.id === editedVideo.id;
+
+                  return (
+                    <button
+                      key={relatedVideo.id}
+                      type="button"
+                      onClick={() => void handleSelectVideo(relatedVideo)}
+                      className={cn(
+                        "w-full rounded-md border border-border bg-muted/30 p-3 text-left transition-colors hover:bg-muted",
+                        isActive && "border-primary bg-primary/10 text-primary"
+                      )}
+                    >
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-snug">
+                          {relatedVideo.titulo}
+                        </p>
+                        {relatedVideo.roteiro && (
+                          <FileText className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-blue-500" />
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+    </>
+  );
+
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
-      <header className="flex items-center justify-between px-4 py-2 border-b bg-background shrink-0">
-        <div className="flex min-w-0 items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => void handleClose()}>
+      <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0">
+        <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
+          <Button variant="ghost" size="icon" className="shrink-0" onClick={() => void handleClose()}>
             <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={() => setShowProps((v) => !v)}
+            title="Mostrar/ocultar propriedades"
+          >
+            <PanelLeft className="h-5 w-5" />
           </Button>
           <Input
             value={editedVideo.titulo}
@@ -364,22 +696,22 @@ export const VideoDetailPanel = ({
             onBlur={() => {
               if (!onAutoSave) handleSave();
             }}
-            className="max-w-xl border-none bg-transparent text-lg font-medium shadow-none focus-visible:ring-0"
+            className="min-w-0 flex-1 border-none bg-transparent text-base sm:text-lg font-medium shadow-none focus-visible:ring-0 sm:max-w-xl"
             placeholder="Título do vídeo"
           />
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
+          <Button variant="ghost" size="icon" className="hidden sm:inline-flex shrink-0 text-muted-foreground">
             <Star className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-muted-foreground tabular-nums">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+          <span className="hidden lg:inline text-sm text-muted-foreground tabular-nums">
             {selectionLength > 0
               ? `${selectionLength.toLocaleString("pt-BR")} selecionados`
               : `${roteiroCharacterCount.toLocaleString("pt-BR")} caracteres`}
           </span>
           <span className={cn(
-            "text-sm",
+            "hidden md:inline text-sm",
             autoSaveStatus === "error" ? "text-destructive" : "text-muted-foreground"
           )}>
             {saveStatusLabel}
@@ -388,26 +720,26 @@ export const VideoDetailPanel = ({
             variant={showChat ? "default" : "outline"}
             size="sm"
             onClick={() => setShowChat(!showChat)}
-            className="gap-2"
+            className="gap-0 sm:gap-2"
           >
             <MessageSquare className="h-4 w-4" />
-            Chat IA
+            <span className="hidden sm:inline">Chat IA</span>
           </Button>
           <Button
             variant="ghost"
             size="icon"
             onClick={() => onDelete(editedVideo.id)}
-            className="text-destructive hover:text-destructive"
+            className="shrink-0 text-destructive hover:text-destructive"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon">
+          <Button variant="ghost" size="icon" className="hidden sm:inline-flex shrink-0">
             <MoreHorizontal className="h-5 w-5" />
           </Button>
         </div>
       </header>
 
-      <div className="flex items-center gap-0.5 border-b bg-background p-2 shrink-0">
+      <div className="flex flex-wrap items-center gap-0.5 border-b bg-background p-2 shrink-0">
         <Select value="paragraph" onValueChange={() => {}}>
           <SelectTrigger className="h-8 w-36 text-xs">
             <SelectValue placeholder="Texto normal" />
@@ -436,317 +768,30 @@ export const VideoDetailPanel = ({
         ))}
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        <aside className="w-[320px] shrink-0 border-r bg-background">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <h3 className="text-sm font-semibold">Propriedades do vídeo</h3>
-            {editedVideo.escalado && (
-              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/30">
-                <Sparkles className="h-3 w-3 mr-1" />
-                Escalado
-              </Badge>
-            )}
-          </div>
+      <div className="flex flex-1 overflow-hidden relative">
+        {isMobile ? (
+          <Sheet open={showProps} onOpenChange={setShowProps}>
+            <SheetContent side="left" className="flex w-[320px] max-w-[88vw] flex-col p-0">
+              {propriedadesConteudo}
+            </SheetContent>
+          </Sheet>
+        ) : (
+          showProps && (
+            <aside className="w-[320px] shrink-0 border-r bg-background">
+              {propriedadesConteudo}
+            </aside>
+          )
+        )}
 
-          <ScrollArea className="h-full">
-            <div className="space-y-5 p-4 pb-24">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <UploadCloud className="h-3 w-3" /> Arquivo do vídeo
-                </Label>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleVideoUpload(file, "original");
-                  }}
-                />
-                {editedVideo.arquivo_url ? (
-                  <div className="min-w-0 space-y-2 overflow-hidden rounded-md border p-3">
-                    <div className="flex min-w-0 items-start gap-2 text-sm">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        <p className="block max-w-full truncate font-medium" title={editedVideo.arquivo_nome || "Vídeo enviado"}>
-                          {editedVideo.arquivo_nome || "Vídeo enviado"}
-                        </p>
-                        {editedVideo.arquivo_tamanho && (
-                          <p className="text-xs text-muted-foreground">
-                            {(editedVideo.arquivo_tamanho / 1024 / 1024).toFixed(1)} MB
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <Button asChild type="button" variant="secondary" size="sm" className="w-full gap-2">
-                      <a href={editedVideo.arquivo_url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="h-4 w-4" />
-                        Ver vídeo
-                      </a>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      disabled={uploadingKind !== null}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      {uploadingKind === "original" ? "Enviando..." : "Substituir arquivo"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full gap-2"
-                    disabled={uploadingKind !== null}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    {uploadingKind === "original" ? "Enviando vídeo..." : "Enviar vídeo"}
-                  </Button>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <UploadCloud className="h-3 w-3" /> Editado
-                </Label>
-                <input
-                  ref={editedFileInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handleVideoUpload(file, "editado");
-                  }}
-                />
-                {editedVideo.editado_url ? (
-                  <div className="min-w-0 space-y-2 overflow-hidden rounded-md border p-3">
-                    <div className="flex min-w-0 items-start gap-2 text-sm">
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-500" />
-                      <div className="min-w-0 flex-1 overflow-hidden">
-                        <p className="block max-w-full truncate font-medium" title={editedVideo.editado_nome || "Vídeo editado"}>
-                          {editedVideo.editado_nome || "Vídeo editado"}
-                        </p>
-                        {editedVideo.editado_tamanho && (
-                          <p className="text-xs text-muted-foreground">
-                            {(editedVideo.editado_tamanho / 1024 / 1024).toFixed(1)} MB
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <Button asChild type="button" variant="secondary" size="sm" className="w-full gap-2">
-                      <a href={editedVideo.editado_url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="h-4 w-4" />
-                        Ver vídeo editado
-                      </a>
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      disabled={uploadingKind !== null}
-                      onClick={() => editedFileInputRef.current?.click()}
-                    >
-                      {uploadingKind === "editado" ? "Enviando..." : "Substituir editado"}
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full gap-2"
-                    disabled={uploadingKind !== null}
-                    onClick={() => editedFileInputRef.current?.click()}
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    {uploadingKind === "editado" ? "Enviando editado..." : "Enviar vídeo editado"}
-                  </Button>
-                )}
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <FileText className="h-3 w-3" /> Status
-                </Label>
-                <Select
-                  value={editedVideo.status}
-                  onValueChange={(value) => setEditedVideo({ ...editedVideo, status: value })}
-                >
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Data de postagem
-                </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={cn(
-                        "h-9 w-full justify-start text-left font-normal",
-                        !editedVideo.data_postagem && "text-muted-foreground"
-                      )}
-                    >
-                      {editedVideo.data_postagem
-                        ? format(new Date(editedVideo.data_postagem), "dd/MM/yyyy", { locale: ptBR })
-                        : "Selecionar data"}
-                      <ChevronDown className="ml-auto h-4 w-4 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <CalendarComponent
-                      mode="single"
-                      selected={editedVideo.data_postagem ? new Date(editedVideo.data_postagem) : undefined}
-                      onSelect={(date) => 
-                        setEditedVideo({ 
-                          ...editedVideo, 
-                          data_postagem: date ? format(date, "yyyy-MM-dd") : null 
-                        })
-                      }
-                      locale={ptBR}
-                    />
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Tag className="h-3 w-3" /> Tags
-                </Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-auto min-h-9 w-full justify-start">
-                      {videoTags.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {tags
-                            .filter((t) => videoTags.includes(t.id))
-                            .map((tag) => (
-                              <Badge
-                                key={tag.id}
-                                variant="outline"
-                                className={cn("text-xs", TAG_COLORS[tag.cor])}
-                              >
-                                {tag.nome}
-                              </Badge>
-                            ))}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">Selecionar tags</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64" align="start">
-                    <div className="space-y-2">
-                      {tags.map((tag) => (
-                        <div key={tag.id} className="flex items-center gap-2">
-                          <Checkbox
-                            id={tag.id}
-                            checked={videoTags.includes(tag.id)}
-                            onCheckedChange={() => onTagToggle(tag.id)}
-                          />
-                          <label
-                            htmlFor={tag.id}
-                            className={cn(
-                              "text-sm cursor-pointer px-2 py-0.5 rounded",
-                              TAG_COLORS[tag.cor]
-                            )}
-                          >
-                            {tag.nome}
-                          </label>
-                        </div>
-                      ))}
-                      {tags.length === 0 && (
-                        <p className="text-sm text-muted-foreground">Nenhuma tag criada</p>
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Descrição</Label>
-                <Textarea
-                  value={editedVideo.descricao || ""}
-                  onChange={(e) => setEditedVideo({ ...editedVideo, descricao: e.target.value })}
-                  placeholder="Adicione uma descrição..."
-                  className="min-h-[120px] resize-none bg-muted/30"
-                />
-              </div>
-
-              <Button onClick={handleSave} className="w-full">
-                Salvar
-              </Button>
-
-              {relatedVideos.length > 0 && (
-                <div className="space-y-3 border-t pt-5">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="text-xs text-muted-foreground">
-                      Cards em {statusLabel}
-                    </Label>
-                    <Badge variant="secondary" className="h-5 px-2 text-[11px]">
-                      {relatedVideos.length}
-                    </Badge>
-                  </div>
-
-                  <div className="space-y-2">
-                    {relatedVideos.map((relatedVideo) => {
-                      const isActive = relatedVideo.id === editedVideo.id;
-
-                      return (
-                        <button
-                          key={relatedVideo.id}
-                          type="button"
-                          onClick={() => void handleSelectVideo(relatedVideo)}
-                          className={cn(
-                            "w-full rounded-md border border-border bg-muted/30 p-3 text-left transition-colors hover:bg-muted",
-                            isActive && "border-primary bg-primary/10 text-primary"
-                          )}
-                        >
-                          <div className="flex items-start gap-2">
-                            <p className="min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-snug">
-                              {relatedVideo.titulo}
-                            </p>
-                            {relatedVideo.roteiro && (
-                              <FileText className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-blue-500" />
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        </aside>
-
-        <main className="flex-1 overflow-auto bg-muted/50 p-8">
-          <div className="mx-auto min-h-[1056px] max-w-[816px] rounded-sm bg-background shadow-lg">
-            <div className="flex min-h-[1056px] flex-col p-16">
+        <main className="flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+          <div className="mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
+            <div className="flex min-h-[60vh] flex-col px-5 py-6 sm:min-h-[900px] sm:p-8 md:p-16">
               <SlashCommandTextarea
                 value={editedVideo.roteiro || ""}
                 onValueChange={(value) => setEditedVideo({ ...editedVideo, roteiro: value })}
                 placeholder="Escreva o roteiro do vídeo... Use / para inserir itens do Núcleo de Influência ou // para Termos Virais"
                 clienteId={editedVideo.cliente_id}
-                className="min-h-[900px] flex-1 resize-none border-none bg-transparent p-0 text-lg leading-8 shadow-none focus-visible:ring-0"
+                className="min-h-[50vh] flex-1 resize-none border-none bg-transparent p-0 text-base leading-7 shadow-none focus-visible:ring-0 sm:min-h-[900px] sm:text-lg sm:leading-8"
                 onSelectionChange={handleSelectionChange}
                 onSelectionLengthChange={setSelectionLength}
               />
@@ -755,17 +800,33 @@ export const VideoDetailPanel = ({
         </main>
 
         {showChat && (
-          <aside className="w-[400px] shrink-0 border-l bg-muted/20">
-            <RoteiroChat
-              clienteId={editedVideo.cliente_id}
-              titulo={editedVideo.titulo}
-              descricao={editedVideo.descricao || ""}
-              onInsertText={handleInsertText}
-              onReplaceText={handleReplaceText}
-              onClearSelection={handleClearSelection}
-              selectedContext={selectionContext ? { text: selectionContext.text, range: selectionContext.range } : undefined}
-            />
-          </aside>
+          isMobile ? (
+            <Sheet open={showChat} onOpenChange={setShowChat}>
+              <SheetContent side="right" className="flex w-full flex-col p-0">
+                <RoteiroChat
+                  clienteId={editedVideo.cliente_id}
+                  titulo={editedVideo.titulo}
+                  descricao={editedVideo.descricao || ""}
+                  onInsertText={handleInsertText}
+                  onReplaceText={handleReplaceText}
+                  onClearSelection={handleClearSelection}
+                  selectedContext={selectionContext ? { text: selectionContext.text, range: selectionContext.range } : undefined}
+                />
+              </SheetContent>
+            </Sheet>
+          ) : (
+            <aside className="w-[400px] shrink-0 border-l bg-muted/20">
+              <RoteiroChat
+                clienteId={editedVideo.cliente_id}
+                titulo={editedVideo.titulo}
+                descricao={editedVideo.descricao || ""}
+                onInsertText={handleInsertText}
+                onReplaceText={handleReplaceText}
+                onClearSelection={handleClearSelection}
+                selectedContext={selectionContext ? { text: selectionContext.text, range: selectionContext.range } : undefined}
+              />
+            </aside>
+          )
         )}
       </div>
     </div>
