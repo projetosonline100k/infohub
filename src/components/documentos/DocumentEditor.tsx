@@ -6,6 +6,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
+import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { ArrowLeft, Star, MoreHorizontal, PanelLeft, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,7 +77,9 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         heading: {
           levels: [1, 2, 3],
         },
+        italic: false,
       }),
+      ItalicSemAsterisco,
       Underline,
       TextAlign.configure({
         types: ["heading", "paragraph"],

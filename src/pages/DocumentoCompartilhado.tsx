@@ -7,6 +7,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
+import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { FileText, KeyRound, Loader2, LockKeyhole, LogOut, Mail, PanelLeft, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -251,7 +252,8 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      StarterKit.configure({ heading: { levels: [1, 2, 3] }, italic: false }),
+      ItalicSemAsterisco,
       Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Placeholder.configure({ placeholder: "Comece a escrever..." }),
