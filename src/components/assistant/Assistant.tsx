@@ -14,7 +14,7 @@ import { useAssistantAtividades, categoriaTarefa, type AssistantTarefa } from "@
 import { useAssistantCobranca, type AssistantEstadoPainel } from "@/hooks/useAssistantCobranca";
 import { useAssistantProjeto, type AssistantFiltroData } from "@/hooks/useAssistantProjeto";
 import { useAssistantDocumentos } from "@/hooks/useAssistantDocumentos";
-import { enviarSessaoParaExtensao, enviarTarefaAtualParaExtensao, enviarEstadoFocoParaExtensao } from "@/lib/extensionBridge";
+import { enviarSessaoParaExtensao, enviarTarefaAtualParaExtensao, enviarEstadoFocoParaExtensao, enviarSnapshotTarefasParaExtensao } from "@/lib/extensionBridge";
 
 const ORB_SIZE = 60;
 const MARGEM_PADRAO = 24;
@@ -213,9 +213,33 @@ export function Assistant() {
       startedAt: tarefaAtual.timer_iniciado_em,
       baseSegundos: tarefaAtual.timer_decorrido_segundos || 0,
       tempoEstimadoMin: tarefaAtual.tempo_estimado,
+      projeto: tarefaAtual.cliente_id ? projetos.find((p) => p.id === tarefaAtual.cliente_id)?.nome ?? null : null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tarefaAtual?.id, tarefaAtual?.timer_iniciado_em, tarefaAtual?.timer_decorrido_segundos, tarefaAtual?.tempo_estimado, tarefaAtual?.titulo, estado]);
+  }, [tarefaAtual?.id, tarefaAtual?.timer_iniciado_em, tarefaAtual?.timer_decorrido_segundos, tarefaAtual?.tempo_estimado, tarefaAtual?.titulo, tarefaAtual?.cliente_id, estado, projetos]);
+
+  // Empurra a lista inteira de tarefas pendentes pra extensão (item 1) toda
+  // vez que ela muda por qualquer via (carga inicial, Realtime,
+  // BroadcastChannel, mutação local) — é a MESMA `tarefas` que a aba "Hoje"
+  // já mostra, sem outra fonte/consulta.
+  useEffect(() => {
+    const snapshot = tarefas.map((t) => ({
+      id: t.id,
+      titulo: t.titulo,
+      clienteId: t.cliente_id,
+      projeto: t.cliente_id ? projetos.find((p) => p.id === t.cliente_id)?.nome ?? null : null,
+      status: t.status,
+      concluida: t.concluida,
+      dataVencimento: t.data_vencimento,
+      dataAtividade: t.data_atividade,
+      prioridade: t.prioridade,
+      tempoEstimadoMin: t.tempo_estimado,
+      timerIniciadoEm: t.timer_iniciado_em,
+      timerDecorridoSegundos: t.timer_decorrido_segundos,
+      ordem: t.ordem,
+    }));
+    enviarSnapshotTarefasParaExtensao(snapshot, projetoAtual?.nome ?? null);
+  }, [tarefas, projetos, projetoAtual]);
 
   const dispararCelebracao = useCallback(() => {
     setCelebracao("Boa. Uma a menos. ✨");

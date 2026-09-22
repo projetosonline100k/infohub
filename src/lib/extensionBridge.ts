@@ -11,6 +11,11 @@ import type { Session } from "@supabase/supabase-js";
 // existe alguém ouvindo se o content script estiver rodando).
 const ORIGEM_MENSAGEM = "infopro-assistant";
 
+// `session.expires_at` do supabase-js vem em SEGUNDOS desde epoch (mesma
+// convenção do claim `exp` do JWT) — convertido pra milissegundos aqui,
+// que é a unidade que Date.now() usa e que o background.js espera ao
+// comparar pra decidir quando renovar sozinho (ver garantirSessaoValida em
+// chrome-extension/background.js).
 export function enviarSessaoParaExtensao(session: Session | null) {
   if (typeof window === "undefined") return;
   window.postMessage(
@@ -18,7 +23,11 @@ export function enviarSessaoParaExtensao(session: Session | null) {
       source: ORIGEM_MENSAGEM,
       type: "SESSION",
       session: session
-        ? { accessToken: session.access_token, refreshToken: session.refresh_token, expiresAt: session.expires_at }
+        ? {
+            accessToken: session.access_token,
+            refreshToken: session.refresh_token,
+            expiresAt: session.expires_at ? session.expires_at * 1000 : null,
+          }
         : null,
     },
     window.location.origin,
@@ -37,6 +46,7 @@ export interface FocoParaExtensao {
   startedAt: string | null;
   baseSegundos: number;
   tempoEstimadoMin: number | null;
+  projeto: string | null;
 }
 
 // Empurra o estado de foco pra extensão IMEDIATAMENTE (criada/editada/
@@ -46,4 +56,32 @@ export interface FocoParaExtensao {
 export function enviarEstadoFocoParaExtensao(foco: FocoParaExtensao | null) {
   if (typeof window === "undefined") return;
   window.postMessage({ source: ORIGEM_MENSAGEM, type: "FOCUS_STATE", focus: foco }, window.location.origin);
+}
+
+// Campos mínimos que a extensão precisa pra mostrar a mesma lista de
+// tarefas do Assistant web (item 1) — nada além disso (sem descrição,
+// checklist etc.), pra manter o payload leve.
+export interface TarefaParaExtensao {
+  id: string;
+  titulo: string;
+  clienteId: string | null;
+  projeto: string | null;
+  status: string;
+  concluida: boolean;
+  dataVencimento: string | null;
+  dataAtividade: string;
+  prioridade: string;
+  tempoEstimadoMin: number | null;
+  timerIniciadoEm: string | null;
+  timerDecorridoSegundos: number;
+  ordem: number;
+}
+
+// Empurra a lista inteira de tarefas pendentes pra extensão — chamado
+// sempre que `tarefas` muda no Assistant web (carga inicial, Realtime,
+// BroadcastChannel ou uma mutação local), pra extensão nunca depender de
+// consultar o Supabase sozinha enquanto o app está aberto em algum lugar.
+export function enviarSnapshotTarefasParaExtensao(tarefas: TarefaParaExtensao[], projetoAtual: string | null) {
+  if (typeof window === "undefined") return;
+  window.postMessage({ source: ORIGEM_MENSAGEM, type: "TASKS_SNAPSHOT", tasks: tarefas, project: projetoAtual }, window.location.origin);
 }

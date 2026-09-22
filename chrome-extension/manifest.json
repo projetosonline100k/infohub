@@ -9,7 +9,7 @@
     "default_title": "Infopro Assistant"
   },
   "background": { "service_worker": "background.js" },
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "tabs"],
   "host_permissions": ["https://*.supabase.co/*"],
   "content_scripts": [
     {
