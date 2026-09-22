@@ -38,6 +38,25 @@ const ALARM_NAME = "infopro-poll-focus";
 const POLL_MINUTES = 0.5; // 30s
 const TASKS_STALE_MS = 60_000; // só refaz a busca de tarefas no fallback se o último push foi há mais tempo que isso
 
+// Mesmas 4 colunas padrão de useAssistantAtividades.ts/AtividadesView.tsx —
+// só entram em jogo se aquele escopo (cliente ou pessoal) nunca abriu um
+// quadro Kanban antes.
+const COLUNAS_PADRAO = [
+  { nome: "Backlog", status_key: "backlog", eh_conclusao: false },
+  { nome: "Em Execução", status_key: "em_progresso", eh_conclusao: false },
+  { nome: "Revisão", status_key: "revisao", eh_conclusao: false },
+  { nome: "Finalizado", status_key: "finalizado", eh_conclusao: true },
+];
+const ORDEM_STATUS_PADRAO = COLUNAS_PADRAO.map((c) => c.status_key);
+
+// Mesmo prefixo que useAssistantDocumentos.ts usa pra marcar "nota rápida"
+// dentro da tabela `documentos` (mesma técnica de Caderno/Mapa Mental) — sem
+// tabela nova. Convenção de armazenamento fica só aqui: o que sai/entra por
+// mensagem (orb.js) já vem/vai sem o prefixo, ver mapDocumento/criarNota.
+const NOTA_PREFIX = "__NOTA_RAPIDA_V1__";
+const CADERNO_PREFIX = "__CADERNO_V1__";
+const CANVAS_PREFIX = "__CANVASMENTAL_V1__";
+
 // ---- autenticação (itens 12/14) ----
 const MARGEM_REFRESH_MS = 5 * 60_000; // renova ~5min antes de expirar
 const JANELA_PUSH_RECENTE_MS = 3 * 60_000; // se o app empurrou sessão fresca há pouco, deixa ele cuidar da renovação (evita os dois brigarem pelo mesmo refresh_token)
@@ -110,18 +129,32 @@ async function transmitirParaAbas(mensagem) {
   }
 }
 
-// Grava um patch no cache local E avisa toda orbe aberta (item 7/8) com o
-// estado consolidado atual — usado sempre que `focus`/`tasks`/
-// `sessionExpired` mudam.
-async function salvarCache(patch) {
-  await chrome.storage.local.set(patch);
-  const { focus, tasks, sessionExpired } = await chrome.storage.local.get(["focus", "tasks", "sessionExpired"]);
-  await transmitirParaAbas({
+// Estado completo pra transmitir a toda aba aberta — inclui dado (foco/
+// tarefas/sessão) E preferência visual (projeto selecionado, tamanho do
+// painel, posição da orbe), sempre os mesmos 6 campos em toda mensagem
+// (nunca um subconjunto), pra orb.js nunca precisar tratar "campo ausente"
+// como "resetar pra null".
+async function estadoParaBroadcast() {
+  const { focus, tasks, sessionExpired, selectedProjectId, panelSize, orbPosition } = await chrome.storage.local.get([
+    "focus", "tasks", "sessionExpired", "selectedProjectId", "panelSize", "orbPosition",
+  ]);
+  return {
     type: "ASSISTANT_STATE_CHANGED",
     focus: focus || null,
     tasks: tasks || [],
     sessionExpired: !!sessionExpired,
-  });
+    selectedProjectId: selectedProjectId || null,
+    panelSize: panelSize === "expanded" ? "expanded" : "compact",
+    orbPosition: orbPosition || null,
+  };
+}
+
+// Grava um patch no cache local E avisa toda orbe aberta (item 7/8, e agora
+// também projeto/tamanho do painel/posição — preferências visuais que antes
+// só apareciam pra uma orbe recém-injetada, ver GET_ASSISTANT_STATE).
+async function salvarCache(patch) {
+  await chrome.storage.local.set(patch);
+  await transmitirParaAbas(await estadoParaBroadcast());
 }
 
 // `refreshToken` em chrome.storage.local (sobrevive a reiniciar o Chrome);
@@ -147,8 +180,7 @@ async function limparSessaoInvalida(motivo) {
   await chrome.storage.local.set({ refreshToken: null, sessionExpired: true });
   await chrome.storage.session.remove(["accessToken", "expiresAt", "sessionUpdatedAt"]);
   log("sessão inválida, limpa:", motivo);
-  const { focus, tasks } = await chrome.storage.local.get(["focus", "tasks"]);
-  await transmitirParaAbas({ type: "ASSISTANT_STATE_CHANGED", focus: focus || null, tasks: tasks || [], sessionExpired: true });
+  await transmitirParaAbas(await estadoParaBroadcast());
 }
 
 // POST /auth/v1/token?grant_type=refresh_token — troca o refresh_token por
@@ -403,6 +435,189 @@ async function concluir(taskId) {
   await salvarCache({ focus: null, tasks: (tasks || []).filter((t) => t.id !== taskId) });
 }
 
+// ---- navegação do painel (mini workspace): projetos, colunas do Kanban,
+// criar/mover atividade, docs e notas — tudo pelas MESMAS tabelas que o
+// Assistant web usa (clientes/atividades/colunas_atividade/documentos),
+// autenticado via chamarSupabase, nunca acessado direto pelo orb.js. ----
+
+// Mesma query de useAssistantProjeto.ts (clientes não arquivados, por nome).
+async function fetchProjetos() {
+  const res = await chamarSupabase(`/rest/v1/clientes?arquivado=is.false&select=id,nome_especialista&order=nome_especialista.asc`);
+  if (!res?.ok) return [];
+  const data = await res.json();
+  return data.map((c) => ({ id: c.id, nome: c.nome_especialista }));
+}
+
+function mapColuna(c) {
+  return { id: c.id, nome: c.nome, statusKey: c.status_key, ehConclusao: c.eh_conclusao, ordem: c.ordem };
+}
+
+// Mesma lógica de garantirColunas em useAssistantAtividades.ts: busca as
+// colunas do cliente (ou do escopo pessoal, cliente_id null); se nenhuma
+// existir ainda, cria as 4 colunas padrão pra esse escopo.
+async function fetchColunasDoProjeto(projectId) {
+  const filtro = projectId ? `cliente_id=eq.${projectId}` : "cliente_id=is.null";
+  let res = await chamarSupabase(`/rest/v1/colunas_atividade?${filtro}&select=id,nome,status_key,eh_conclusao,ordem&order=ordem.asc`);
+  if (!res?.ok) return [];
+  let colunas = await res.json();
+  if (colunas.length > 0) return colunas.map(mapColuna);
+
+  res = await chamarSupabase(`/rest/v1/colunas_atividade`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify(COLUNAS_PADRAO.map((c, i) => ({ ...c, cliente_id: projectId, ordem: i }))),
+  });
+  if (!res?.ok) return [];
+  colunas = await res.json();
+  return colunas.sort((a, b) => a.ordem - b.ordem).map(mapColuna);
+}
+
+// Mesma lógica de colunasTodas em useAssistantAtividades.ts: colunas de
+// TODOS os clientes (+ pessoal), deduplicadas por status_key — usada quando
+// "Todos os projetos" está selecionado, já que cada cliente tem seu próprio
+// jogo de colunas.
+async function fetchColunasTodas() {
+  const res = await chamarSupabase(`/rest/v1/colunas_atividade?select=id,nome,status_key,eh_conclusao,ordem&order=ordem.asc`);
+  const fallback = () => COLUNAS_PADRAO.map((c, i) => mapColuna({ id: c.status_key, ...c, ordem: i }));
+  if (!res?.ok) return fallback();
+  const data = await res.json();
+  if (!data || data.length === 0) return fallback();
+
+  const vistos = new Set();
+  const agregadas = [];
+  data.forEach((c) => {
+    if (vistos.has(c.status_key)) return;
+    vistos.add(c.status_key);
+    agregadas.push(c);
+  });
+  agregadas.sort((a, b) => {
+    const ia = ORDEM_STATUS_PADRAO.indexOf(a.status_key);
+    const ib = ORDEM_STATUS_PADRAO.indexOf(b.status_key);
+    if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+    return a.ordem - b.ordem;
+  });
+  return agregadas.map(mapColuna);
+}
+
+// Mesmos campos/defaults de criarAtividade em useAssistantAtividades.ts
+// (que espelha adicionarAtividadeNoStatus em AtividadesView.tsx) — insere
+// direto na mesma tabela, então já aparece no Kanban principal.
+async function criarAtividade({ titulo, projectId, data, estimativa, prioridade, statusKey }) {
+  const cols = await fetchColunasDoProjeto(projectId);
+  const coluna = cols.find((c) => c.statusKey === statusKey);
+  const { tasks } = await chrome.storage.local.get("tasks");
+  const res = await chamarSupabase(`/rest/v1/atividades`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({
+      titulo,
+      cliente_id: projectId,
+      data_atividade: data,
+      tempo_estimado: estimativa,
+      prioridade,
+      status: statusKey,
+      concluida: !!coluna?.ehConclusao,
+      ordem: (tasks || []).length + 1,
+    }),
+  });
+  if (!res?.ok) return null;
+  const [row] = await res.json();
+  await getTasks({ forcar: true });
+  return row;
+}
+
+// Mesma lógica de moverParaStatus em useAssistantAtividades.ts: manda pro
+// fim da coluna de destino (sem recalcular a ordem fina dos outros cards —
+// aceitável pra uma visão compacta). Se a coluna de destino é de conclusão,
+// segue a mesma sequência de concluir() (zera timer, sai da lista/foco).
+async function moverAtividade(id, statusKey, ehConclusao) {
+  const { tasks, currentTaskId } = await chrome.storage.local.get(["tasks", "currentTaskId"]);
+  const lista = tasks || [];
+  const doStatus = lista.filter((t) => t.status === statusKey);
+  const novaOrdem = Math.max(0, ...doStatus.map((t) => t.ordem || 0)) + 1;
+
+  const body = { status: statusKey, concluida: ehConclusao, ordem: novaOrdem };
+  if (ehConclusao) Object.assign(body, { timer_iniciado_em: null, timer_decorrido_segundos: 0 });
+  const ok = await patch(id, body);
+
+  if (ehConclusao) {
+    await salvarCache({ tasks: lista.filter((t) => t.id !== id) });
+    if (currentTaskId === id) {
+      await chrome.storage.local.set({ currentTaskId: null });
+      await salvarCache({ focus: null });
+    }
+  } else {
+    await salvarCache({ tasks: lista.map((t) => (t.id === id ? { ...t, status: statusKey, concluida: false, ordem: novaOrdem } : t)) });
+  }
+  if (!ok) await getTasks({ forcar: true }); // corrige o cache se o PATCH falhou
+  return ok;
+}
+
+function ehDocumentoComum(conteudo) {
+  if (!conteudo) return true;
+  return !conteudo.startsWith(CADERNO_PREFIX) && !conteudo.startsWith(CANVAS_PREFIX) && !conteudo.startsWith(NOTA_PREFIX);
+}
+
+// Nota rápida sai/entra por mensagem SEM o prefixo interno — orb.js não
+// precisa conhecer a convenção de armazenamento (mesma técnica que
+// CadernoEditor/MindMapEditor usam, ver useAssistantDocumentos.ts).
+function mapDocumento(d, ehNota) {
+  return {
+    id: d.id,
+    titulo: d.titulo,
+    conteudo: ehNota ? (d.conteudo || "").slice(NOTA_PREFIX.length) : d.conteudo,
+    updatedAt: d.updated_at,
+  };
+}
+
+// Mesma query de useAssistantDocumentos.ts: tudo de `documentos` desse
+// cliente, separado em documentos comuns vs. notas rápidas (mesmo prefixo).
+async function fetchDocsNotas(projectId) {
+  if (!projectId) return { docs: [], notes: [] };
+  const res = await chamarSupabase(`/rest/v1/documentos?cliente_id=eq.${projectId}&select=id,titulo,conteudo,updated_at&order=updated_at.desc`);
+  if (!res?.ok) return { docs: [], notes: [] };
+  const todos = await res.json();
+  return {
+    docs: todos.filter((d) => ehDocumentoComum(d.conteudo)).map((d) => mapDocumento(d, false)),
+    notes: todos.filter((d) => (d.conteudo || "").startsWith(NOTA_PREFIX)).map((d) => mapDocumento(d, true)),
+  };
+}
+
+// Mesmo insert de criarNovoDocumento em DocumentosView.tsx — só título, sem
+// conteúdo (o editor rico completo fica só no app, ver item 6).
+async function criarDocumento(projectId, titulo) {
+  const res = await chamarSupabase(`/rest/v1/documentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({ cliente_id: projectId, titulo }),
+  });
+  if (!res?.ok) return null;
+  const [row] = await res.json();
+  return mapDocumento(row, false);
+}
+
+// Mesmo insert de criarNota em useAssistantDocumentos.ts (prefixo aplicado
+// aqui, nunca em orb.js).
+async function criarNota(projectId, titulo, conteudo) {
+  const res = await chamarSupabase(`/rest/v1/documentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({ cliente_id: projectId, titulo: titulo || "Nota sem título", conteudo: NOTA_PREFIX + (conteudo || "") }),
+  });
+  if (!res?.ok) return null;
+  const [row] = await res.json();
+  return mapDocumento(row, true);
+}
+
+async function atualizarNota(id, titulo, conteudo) {
+  const res = await chamarSupabase(`/rest/v1/documentos?id=eq.${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ titulo: titulo || "Nota sem título", conteudo: NOTA_PREFIX + (conteudo || "") }),
+  });
+  return !!res?.ok;
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   (async () => {
     switch (message?.type) {
@@ -489,10 +704,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       case "GET_ASSISTANT_STATE": {
         // Estado completo de uma vez, pra uma orbe recém-injetada não
         // esperar o próximo polling (item 8) — inclui posição salva da
-        // orbe e a flag de sessão expirada (item 5), nunca token nenhum.
+        // orbe, projeto/tamanho de painel preferidos e a flag de sessão
+        // expirada (item 5), nunca token nenhum.
         log("GET_ASSISTANT_STATE");
-        const { focus, tasks, project, orbPosition, sessionExpired } = await chrome.storage.local.get([
-          "focus", "tasks", "project", "orbPosition", "sessionExpired",
+        const { focus, tasks, project, orbPosition, sessionExpired, selectedProjectId, panelSize } = await chrome.storage.local.get([
+          "focus", "tasks", "project", "orbPosition", "sessionExpired", "selectedProjectId", "panelSize",
         ]);
         sendResponse({
           focus: focus || null,
@@ -500,15 +716,77 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
           project: project || null,
           orbPosition: orbPosition || null,
           sessionExpired: !!sessionExpired,
+          selectedProjectId: selectedProjectId || null,
+          panelSize: panelSize === "expanded" ? "expanded" : "compact",
           updatedAt: Date.now(),
         });
         break;
       }
 
+      // Preferências visuais (posição da orbe, projeto selecionado, tamanho
+      // do painel) agora passam por salvarCache — mesmo caminho de
+      // broadcast que tarefas/foco já usavam, então toda orbe aberta
+      // reflete a mudança na hora, não só a próxima injetada.
       case "SET_ORB_POSITION":
-        await chrome.storage.local.set({ orbPosition: message.position });
+        await salvarCache({ orbPosition: message.position });
         sendResponse({ ok: true });
         break;
+
+      // Não é dado de sessão, só um filtro de exibição; por isso não é
+      // limpa no logout, igual orbPosition.
+      case "SET_SELECTED_PROJECT":
+        await salvarCache({ selectedProjectId: message.projectId ?? null });
+        sendResponse({ ok: true });
+        break;
+
+      case "SET_PANEL_SIZE":
+        await salvarCache({ panelSize: message.size === "expanded" ? "expanded" : "compact" });
+        sendResponse({ ok: true });
+        break;
+
+      case "GET_PROJECTS":
+        sendResponse({ projects: await fetchProjetos() });
+        break;
+
+      case "GET_COLUMNS": {
+        const colunas = message.projectId ? await fetchColunasDoProjeto(message.projectId) : await fetchColunasTodas();
+        sendResponse({ columns: colunas });
+        break;
+      }
+
+      case "CREATE_ACTIVITY": {
+        const tarefa = await criarAtividade(message);
+        sendResponse({ task: tarefa });
+        break;
+      }
+
+      case "MOVE_ACTIVITY": {
+        const ok = await moverAtividade(message.id, message.statusKey, !!message.ehConclusao);
+        sendResponse({ ok });
+        break;
+      }
+
+      case "GET_DOCS_NOTES":
+        sendResponse(await fetchDocsNotas(message.projectId));
+        break;
+
+      case "CREATE_DOC": {
+        const doc = await criarDocumento(message.projectId, message.titulo);
+        sendResponse({ doc });
+        break;
+      }
+
+      case "CREATE_NOTE": {
+        const note = await criarNota(message.projectId, message.titulo, message.conteudo);
+        sendResponse({ note });
+        break;
+      }
+
+      case "UPDATE_NOTE": {
+        const ok = await atualizarNota(message.id, message.titulo, message.conteudo);
+        sendResponse({ ok });
+        break;
+      }
 
       case "START_FOCUS":
         await iniciarFoco(message.taskId);
