@@ -92,10 +92,38 @@ export default {
             height: "0",
           },
         },
+        "orb-glow-pulse": {
+          "0%, 100%": {
+            filter: "drop-shadow(0 0 8px rgba(34,211,238,0.45)) drop-shadow(0 0 2px rgba(34,211,238,0.6))",
+            transform: "scale(1)",
+          },
+          "50%": {
+            filter: "drop-shadow(0 0 18px rgba(34,211,238,0.8)) drop-shadow(0 0 5px rgba(34,211,238,0.9))",
+            transform: "scale(1.035)",
+          },
+        },
+        // Disparado por 1 ciclo só (ver AssistantOrb `pulse="green"`) quando
+        // uma tarefa é concluída — mesma ideia do glow ciano, cor diferente.
+        "orb-glow-green": {
+          "0%": {
+            filter: "drop-shadow(0 0 8px rgba(34,211,238,0.45)) drop-shadow(0 0 2px rgba(34,211,238,0.6))",
+            transform: "scale(1)",
+          },
+          "30%": {
+            filter: "drop-shadow(0 0 26px rgba(34,197,94,0.95)) drop-shadow(0 0 8px rgba(34,197,94,1))",
+            transform: "scale(1.08)",
+          },
+          "100%": {
+            filter: "drop-shadow(0 0 8px rgba(34,211,238,0.45)) drop-shadow(0 0 2px rgba(34,211,238,0.6))",
+            transform: "scale(1)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "orb-glow-pulse": "orb-glow-pulse 3.5s ease-in-out infinite",
+        "orb-glow-green": "orb-glow-green 1.5s ease-out 1",
       },
     },
   },

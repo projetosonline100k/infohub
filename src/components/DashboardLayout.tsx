@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import { useAuth } from "@/auth/AuthProvider";
 import { ehAdmin } from "@/lib/admin";
 import { Button } from "@/components/ui/button";
+import { Assistant } from "@/components/assistant/Assistant";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -70,6 +71,10 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           {children}
         </div>
       </main>
+
+      {/* Assistente virtual flutuante — única instância, visível em toda
+          página autenticada (este layout envolve todas as rotas protegidas). */}
+      <Assistant />
     </div>
   );
 };
