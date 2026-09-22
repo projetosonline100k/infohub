@@ -5,6 +5,7 @@ import {
   newElementWith,
   restore,
   sceneCoordsToViewportCoords,
+  viewportCoordsToSceneCoords,
   CaptureUpdateAction,
   ROUNDNESS,
 } from "@excalidraw/excalidraw";
@@ -17,7 +18,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import { ArrowLeft, ChevronDown, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,7 +35,10 @@ import { toast } from "sonner";
 import { useTheme } from "@/hooks/useTheme";
 import { useMapaMentalColaboracao } from "@/hooks/useMapaMentalColaboracao";
 import { PresencaAvatares } from "./PresencaAvatares";
-import { formatDistanceToNow } from "date-fns";
+import { MindMapKanbanCard, type MindMapKanbanAtividade } from "./MindMapKanbanCard";
+import { MindMapKanbanPicker, type MindMapKanbanPickerItem } from "./MindMapKanbanPicker";
+import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
 // Nível de "roughness" 1 = estilo "artist", o visual clássico do Excalidraw
@@ -102,6 +106,27 @@ interface MindMapCustomData {
     parentId?: string | null;
     hidden?: boolean;
   };
+  kanban?: {
+    atividadeId: string;
+  };
+}
+
+// Colunas padrão do quadro Kanban (ver AtividadesView.tsx) — reaproveitadas
+// aqui só pra garantir que um cliente que nunca abriu o quadro, mas já
+// coloca cards na lousa, tenha colunas "Concluído"/"A fazer" válidas pra
+// marcar/desmarcar uma tarefa.
+const COLUNAS_PADRAO = [
+  { nome: "Backlog", status_key: "backlog", eh_conclusao: false },
+  { nome: "Em Execução", status_key: "em_progresso", eh_conclusao: false },
+  { nome: "Revisão", status_key: "revisao", eh_conclusao: false },
+  { nome: "Finalizado", status_key: "finalizado", eh_conclusao: true },
+];
+
+interface ColunaAtividade {
+  nome: string;
+  status_key: string;
+  eh_conclusao: boolean;
+  ordem: number;
 }
 
 export function isMindMapContent(content?: string | null) {
@@ -171,6 +196,10 @@ function getMindMapData(el: ExcalidrawElement): MindMapCustomData["mindMap"] {
 
 function getParentId(el: ExcalidrawElement): string | null {
   return getMindMapData(el)?.parentId ?? null;
+}
+
+function getKanbanId(el: ExcalidrawElement): string | null {
+  return (el.customData as MindMapCustomData | undefined)?.kanban?.atividadeId ?? null;
 }
 
 function isHiddenConnection(el: ExcalidrawElement): boolean {
@@ -300,9 +329,14 @@ interface MindMapEditorProps {
   // o Excalidraw e a colaboração em tempo real têm estado demais amarrado
   // ao documentoId atual pra fazer essa troca com segurança "ao vivo").
   onTrocarDocumento?: (id: string) => void;
+  // Chamado sempre que um card do Kanban preso no mapa muda (criar, marcar/
+  // desmarcar, editar, excluir) — quem chama (LousaAtividades, dentro da
+  // mesma página do Kanban) usa isso pra recarregar o quadro na hora, sem
+  // precisar trocar de aba ou dar F5 pra ver a mudança refletida.
+  onAtividadesAlteradas?: () => void;
 }
 
-export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento }: MindMapEditorProps) {
+export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas }: MindMapEditorProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [titulo, setTitulo] = useState("Mapa mental sem título");
@@ -317,6 +351,11 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   // sem cliente. Só busca as outras lousas depois que isso vira um valor
   // conhecido, senão a primeira busca sairia sem filtro nenhum.
   const [clienteIdDoDoc, setClienteIdDoDoc] = useState<string | null | undefined>(undefined);
+  // Mesma pasta_id do documento (documentos e atividades compartilham a
+  // tabela pastas_atividade) — usada pra criar/listar cards do Kanban na
+  // mesma pasta que o quadro normal filtra, senão o card fica "invisível"
+  // lá (o Kanban de uma pasta só mostra atividades com esse pasta_id).
+  const [pastaIdDoDoc, setPastaIdDoDoc] = useState<string | null | undefined>(undefined);
   const [outrasLousas, setOutrasLousas] = useState<{ id: string; titulo: string }[]>([]);
 
   // Retângulo conectável (nó) — variação da ferramenta 2, escolhida por
@@ -335,6 +374,18 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const elementsRef = useRef<readonly ExcalidrawElement[] | null>(null);
   const appStateRef = useRef<AppState | null>(null);
   const knownElementIdsRef = useRef<Set<string> | null>(null);
+
+  // Cards do Kanban colados no mapa: cada um é um retângulo invisível
+  // (customData.kanban) com um card React de verdade desenhado por cima na
+  // posição/tamanho dele (ver MindMapKanbanCard e recomputeKanbanBoxes).
+  const [kanbanBoxes, setKanbanBoxes] = useState<{ elementId: string; atividadeId: string; left: number; top: number; width: number; height: number; zoom: number; selected: boolean }[]>([]);
+  const [atividadesPorId, setAtividadesPorId] = useState<Record<string, MindMapKanbanAtividade | null>>({});
+  const knownAtividadeIdsRef = useRef<Set<string>>(new Set());
+  const [colunas, setColunas] = useState<ColunaAtividade[]>([]);
+  const colunasPromiseRef = useRef<Promise<ColunaAtividade[]> | null>(null);
+  const [atividadesDoCliente, setAtividadesDoCliente] = useState<MindMapKanbanPickerItem[]>([]);
+  const [detailAtividadeId, setDetailAtividadeId] = useState<string | null>(null);
+  const novosCardsCountRef = useRef(0);
 
   const { theme } = useTheme();
   const { saving, lastSaved, error: saveError, debouncedSave, saveNow } = useCanvasAutoSave(documentoId);
@@ -475,6 +526,240 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       });
     setActiveNodeBoxes(boxes);
   }, []);
+
+  // Busca em lote as atividades ainda não conhecidas (ver knownAtividadeIdsRef
+  // em recomputeKanbanBoxes) e guarda no cache — `null` marca "já busquei e
+  // não existe mais" (foi excluída em outro lugar), pra distinguir de "ainda
+  // carregando" (chave ausente do objeto).
+  const fetchAtividadesKanban = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return;
+    const { data, error } = await supabase.from("atividades").select("*").in("id", ids).is("deleted_at", null);
+    if (error) return;
+    const encontradas = new Set((data || []).map((a) => a.id));
+    setAtividadesPorId((prev) => {
+      const next = { ...prev };
+      (data || []).forEach((a) => { next[a.id] = a; });
+      ids.forEach((id) => { if (!encontradas.has(id)) next[id] = null; });
+      return next;
+    });
+  }, []);
+
+  // Garante que as colunas do quadro Kanban deste cliente existem (cria as
+  // padrão se for a primeira vez que alguém usa um card aqui sem nunca ter
+  // aberto o quadro) — mesma lógica de carregarColunas em AtividadesView.
+  const garantirColunas = useCallback((): Promise<ColunaAtividade[]> => {
+    if (colunas.length > 0) return Promise.resolve(colunas);
+    if (colunasPromiseRef.current) return colunasPromiseRef.current;
+    if (clienteIdDoDoc === undefined) return Promise.resolve([]);
+
+    const promise = (async () => {
+      let query = supabase.from("colunas_atividade").select("nome, status_key, eh_conclusao, ordem").order("ordem", { ascending: true });
+      query = clienteIdDoDoc ? query.eq("cliente_id", clienteIdDoDoc) : query.is("cliente_id", null);
+      const { data, error } = await query;
+      if (error) { colunasPromiseRef.current = null; return []; }
+      if (data && data.length > 0) { setColunas(data); return data; }
+
+      const { data: inseridas, error: erroInsert } = await supabase
+        .from("colunas_atividade")
+        .insert(COLUNAS_PADRAO.map((c, i) => ({ ...c, cliente_id: clienteIdDoDoc || null, ordem: i })))
+        .select("nome, status_key, eh_conclusao, ordem");
+      if (erroInsert) { colunasPromiseRef.current = null; return []; }
+      const resultado = (inseridas || []).sort((a, b) => a.ordem - b.ordem);
+      setColunas(resultado);
+      return resultado;
+    })();
+    colunasPromiseRef.current = promise;
+    return promise;
+  }, [colunas, clienteIdDoDoc]);
+
+  // Recalcula, em coordenadas de tela, a caixa de todo card do Kanban preso
+  // no mapa (não só selecionado/hover, ao contrário dos pontinhos de conexão
+  // — o card precisa aparecer sempre) e dispara a busca dos que ainda não
+  // estão no cache.
+  const recomputeKanbanBoxes = useCallback(() => {
+    const elements = elementsRef.current;
+    const appState = appStateRef.current;
+    if (!elements || !appState) return;
+
+    const boxes: typeof kanbanBoxes = [];
+    const aBuscar: string[] = [];
+    const selectedIds = appState.selectedElementIds || {};
+    elements.forEach((e) => {
+      if (e.isDeleted) return;
+      const atividadeId = getKanbanId(e);
+      if (!atividadeId) return;
+      if (!knownAtividadeIdsRef.current.has(atividadeId)) {
+        knownAtividadeIdsRef.current.add(atividadeId);
+        aBuscar.push(atividadeId);
+      }
+      // Posição em coordenadas de tela (essa sim precisa do zoom), mas
+      // tamanho nas unidades "de cena" (largura/altura reais do elemento,
+      // que não mudam com o zoom) — o card escala inteiro via CSS
+      // transform (ver MindMapKanbanCard), em vez de esticar/comprimir
+      // width/height já multiplicados pelo zoom, que distorcia o conteúdo
+      // interno (fontes/ícones de tamanho fixo) em zooms diferentes de 100%.
+      const topLeft = sceneCoordsToViewportCoords({ sceneX: e.x, sceneY: e.y }, appState);
+      boxes.push({
+        elementId: e.id,
+        atividadeId,
+        left: topLeft.x - appState.offsetLeft,
+        top: topLeft.y - appState.offsetTop,
+        width: e.width,
+        height: e.height,
+        zoom: appState.zoom.value,
+        selected: Boolean(selectedIds[e.id]),
+      });
+    });
+    setKanbanBoxes(boxes);
+    if (boxes.length > 0) void garantirColunas();
+    if (aBuscar.length > 0) void fetchAtividadesKanban(aBuscar);
+  }, [fetchAtividadesKanban, garantirColunas]);
+
+  // Insere no mapa um retângulo invisível vinculado a uma atividade (o card
+  // React de cima é desenhado por recomputeKanbanBoxes/render). Nasce no
+  // centro da área visível, com um pequeno deslocamento em cascata se vários
+  // forem adicionados em sequência.
+  const inserirCardNoMapa = useCallback((atividadeId: string) => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const appState = api.getAppState();
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    const center = rect
+      ? viewportCoordsToSceneCoords({ clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 }, appState)
+      : { x: 200, y: 200 };
+
+    const width = 240;
+    const height = 128;
+    const deslocamento = novosCardsCountRef.current * 24;
+    novosCardsCountRef.current += 1;
+    const id = crypto.randomUUID();
+
+    const [element] = convertToExcalidrawElements(
+      [
+        {
+          type: "rectangle",
+          id,
+          x: center.x - width / 2 + deslocamento,
+          y: center.y - height / 2 + deslocamento,
+          width,
+          height,
+          // backgroundColor precisa ser uma cor "de verdade" (não
+          // "transparent") pra o Excalidraw considerar o interior do
+          // retângulo clicável/arrastável — com fundo transparente ele só
+          // reconhece cliques bem em cima da borda (ver shouldTestInside no
+          // motor de colisão). opacity:0 é o que de fato deixa invisível,
+          // sem perder esse comportamento de clique.
+          strokeColor: "transparent",
+          backgroundColor: "#000000",
+          fillStyle: "solid",
+          opacity: 0,
+          roughness: 0,
+          customData: { kanban: { atividadeId } },
+        } as ExcalidrawElementSkeleton,
+      ],
+      { regenerateIds: false }
+    );
+
+    const elements = api.getSceneElements();
+    api.updateScene({
+      elements: [...elements, element],
+      appState: { selectedElementIds: { [id]: true } },
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+  }, []);
+
+  // Cria uma atividade nova (status = primeira coluna) e já a prende no
+  // mapa, abrindo o painel de detalhes na hora pra dar nome/configurar.
+  const criarNovoCard = useCallback(async () => {
+    if (clienteIdDoDoc === undefined) return;
+    const cols = await garantirColunas();
+    const primeira = cols[0];
+    const { data, error } = await supabase
+      .from("atividades")
+      .insert({
+        titulo: "Nova tarefa",
+        cliente_id: clienteIdDoDoc,
+        pasta_id: pastaIdDoDoc ?? null,
+        status: primeira?.status_key || "backlog",
+        concluida: !!primeira?.eh_conclusao,
+        data_atividade: format(new Date(), "yyyy-MM-dd"),
+      })
+      .select("*")
+      .single();
+    if (error || !data) {
+      toast.error("Não foi possível criar a tarefa");
+      return;
+    }
+    knownAtividadeIdsRef.current.add(data.id);
+    setAtividadesPorId((prev) => ({ ...prev, [data.id]: data }));
+    setAtividadesDoCliente((prev) => [{ id: data.id, titulo: data.titulo, concluida: data.concluida }, ...prev]);
+    inserirCardNoMapa(data.id);
+    setDetailAtividadeId(data.id);
+    onAtividadesAlteradas?.();
+  }, [clienteIdDoDoc, pastaIdDoDoc, garantirColunas, inserirCardNoMapa, onAtividadesAlteradas]);
+
+  // Marca/desmarca concluída direto no card — mesma lógica de toggleAtividade
+  // em AtividadesView (o status muda junto, pra continuar valendo no Kanban
+  // normal).
+  const toggleCardConcluida = useCallback(async (atividade: MindMapKanbanAtividade) => {
+    const cols = await garantirColunas();
+    const concluida = !atividade.concluida;
+    const colunaConclusao = cols.find((c) => c.eh_conclusao);
+    const colunaReabertura = cols.find((c) => !c.eh_conclusao) || cols[0];
+    const novoStatus = concluida ? colunaConclusao?.status_key || "finalizado" : colunaReabertura?.status_key || "backlog";
+
+    setAtividadesPorId((prev) => ({ ...prev, [atividade.id]: { ...atividade, concluida, status: novoStatus } }));
+    const { error } = await supabase.from("atividades").update({ concluida, status: novoStatus }).eq("id", atividade.id);
+    if (error) {
+      toast.error("Não foi possível atualizar a tarefa");
+      setAtividadesPorId((prev) => ({ ...prev, [atividade.id]: atividade }));
+      return;
+    }
+    onAtividadesAlteradas?.();
+  }, [garantirColunas, onAtividadesAlteradas]);
+
+  // Tira só o card do mapa (o retângulo vira isDeleted, igual apagar
+  // qualquer outro elemento) — a atividade continua existindo no Kanban.
+  const removerCardDoMapa = useCallback((elementId: string) => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const elements = api.getSceneElementsIncludingDeleted();
+    const updated = elements.map((e) => (e.id === elementId ? newElementWith(e, { isDeleted: true }) : e));
+    api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+  }, []);
+
+  // Depois de editar no painel de detalhes, refaz o fetch dessa atividade
+  // pra refletir no card (o painel não devolve o registro atualizado, só
+  // avisa que salvou).
+  const handleDetalheAtualizado = useCallback(async (atividadeId: string) => {
+    const { data, error } = await supabase.from("atividades").select("*").eq("id", atividadeId).maybeSingle();
+    if (error) return;
+    setAtividadesPorId((prev) => ({ ...prev, [atividadeId]: data ?? null }));
+    onAtividadesAlteradas?.();
+  }, [onAtividadesAlteradas]);
+
+  // Exclusão pelo painel de detalhes apaga a atividade de vez (igual
+  // excluirAtividade em AtividadesView) e também remove qualquer card no
+  // mapa que apontava pra ela.
+  const handleDetalheExcluido = useCallback(async (atividadeId: string) => {
+    const { error } = await supabase.from("atividades").delete().eq("id", atividadeId);
+    if (error) {
+      toast.error("Não foi possível excluir a tarefa");
+      return;
+    }
+    setAtividadesPorId((prev) => ({ ...prev, [atividadeId]: null }));
+    setAtividadesDoCliente((prev) => prev.filter((a) => a.id !== atividadeId));
+    setDetailAtividadeId(null);
+    const api = excalidrawApiRef.current;
+    const alvos = api ? kanbanBoxes.filter((b) => b.atividadeId === atividadeId).map((b) => b.elementId) : [];
+    if (api && alvos.length > 0) {
+      const elements = api.getSceneElementsIncludingDeleted();
+      const updated = elements.map((e) => (alvos.includes(e.id) ? newElementWith(e, { isDeleted: true }) : e));
+      api.updateScene({ elements: updated, captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+    }
+    toast.success("Atividade excluída");
+    onAtividadesAlteradas?.();
+  }, [kanbanBoxes, onAtividadesAlteradas]);
 
   const escolherVariante = useCallback((variante: "plain" | "node") => {
     rectangleVariantRef.current = variante;
@@ -778,7 +1063,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       setLoading(true);
       const { data, error } = await supabase
         .from("documentos")
-        .select("titulo, conteudo, cliente_id")
+        .select("titulo, conteudo, cliente_id, pasta_id")
         .eq("id", documentoId)
         .maybeSingle();
 
@@ -787,6 +1072,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       if (data && !error) {
         setTitulo(data.titulo || "Mapa mental sem título");
         setClienteIdDoDoc(data.cliente_id ?? null);
+        setPastaIdDoDoc(data.pasta_id ?? null);
         let content = data.conteudo;
         try {
           const backup = localStorage.getItem(canvasBackupKey(documentoId));
@@ -846,6 +1132,31 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     };
   }, [clienteIdDoDoc, documentoId, onTrocarDocumento]);
 
+  // Lista as atividades da mesma cliente+pasta pro seletor "Adicionar do
+  // Kanban" — mesmo filtro que o quadro Kanban dessa pasta usa (ver
+  // atividadesVisiveis em AtividadesView), pra só oferecer tarefas que já
+  // apareceriam nesse mesmo quadro. Só leitura (ao contrário de
+  // garantirColunas, não cria nada), então pode ser eager assim que o
+  // cliente_id/pasta_id do documento são conhecidos.
+  useEffect(() => {
+    if (clienteIdDoDoc === undefined || pastaIdDoDoc === undefined) return;
+    let cancelado = false;
+    let query = supabase
+      .from("atividades")
+      .select("id, titulo, concluida")
+      .is("deleted_at", null)
+      .order("data_atividade", { ascending: false });
+    query = clienteIdDoDoc ? query.eq("cliente_id", clienteIdDoDoc) : query.is("cliente_id", null);
+    query = pastaIdDoDoc ? query.eq("pasta_id", pastaIdDoDoc) : query.is("pasta_id", null);
+    query.then(({ data, error }) => {
+      if (cancelado || error) return;
+      setAtividadesDoCliente(data || []);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [clienteIdDoDoc, pastaIdDoDoc]);
+
   const salvarTitulo = useCallback(async () => {
     await supabase.from("documentos").update({ titulo }).eq("id", documentoId);
   }, [titulo, documentoId]);
@@ -902,6 +1213,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     }
 
     recomputeActiveNodeBoxes();
+    recomputeKanbanBoxes();
 
     const editingId = appState.editingTextElement?.id ?? null;
     if (prevEditingIdRef.current && !editingId && pendingChainRef.current) {
@@ -993,7 +1305,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     }
     previousContentRef.current = content;
     debouncedSave(content);
-  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes, historico]);
+  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes, recomputeKanbanBoxes, historico]);
 
   // Ctrl+Z / Ctrl+Shift+Z (ou Cmd no Mac) enquanto ainda não fiz nenhuma
   // mudança nesta sessão (ver comentário do "historico" lá em cima) — depois
@@ -1215,6 +1527,17 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
           </span>
         </div>
 
+        {/* Puxar/criar cards do Kanban direto no mapa. */}
+        <div className="absolute left-14 top-14 z-20 flex h-8 items-center gap-0.5 rounded-lg border bg-background/95 px-1 shadow-sm">
+          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Novo card" onClick={() => void criarNovoCard()}>
+            <Plus className="h-4 w-4" />
+          </Button>
+          <MindMapKanbanPicker
+            atividades={atividadesDoCliente.filter((a) => !kanbanBoxes.some((b) => b.atividadeId === a.id))}
+            onSelect={inserirCardNoMapa}
+          />
+        </div>
+
         {embedded && <Button variant="outline" size="sm" className="absolute right-3 bottom-14 z-30 gap-2" onClick={() => setFullscreen(value => !value)}>
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           {fullscreen ? "Sair da tela cheia" : "Tela cheia"}
@@ -1298,6 +1621,25 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
             })}
           </div>
         ))}
+
+        {/* Cards do Kanban presos no mapa — ver customData.kanban e
+            recomputeKanbanBoxes. */}
+        {kanbanBoxes.map((box) => {
+          const atividade = atividadesPorId[box.atividadeId];
+          const coluna = atividade ? colunas.find((c) => c.status_key === atividade.status) : undefined;
+          return (
+            <MindMapKanbanCard
+              key={box.elementId}
+              box={box}
+              selected={box.selected}
+              atividade={atividade}
+              statusLabel={coluna?.nome}
+              onToggleConcluida={() => atividade && void toggleCardConcluida(atividade)}
+              onAbrirDetalhes={() => setDetailAtividadeId(box.atividadeId)}
+              onRemoverDoMapa={() => removerCardDoMapa(box.elementId)}
+            />
+          );
+        })}
 
         {/* Prévia da conexão sendo arrastada + destaque do alvo válido. */}
         {connectionDrag && appStateRef.current && (
@@ -1430,6 +1772,18 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         >
           <PenLine className="h-5 w-5" />
         </Button>
+
+        {/* Mesmo painel de detalhes do Kanban normal — abrir por aqui já
+            cobre status, responsáveis, datas, prioridade, subtarefas etc.,
+            sem duplicar nada disso num menu próprio do card. */}
+        <AtividadeDetailPanel
+          open={detailAtividadeId !== null}
+          onClose={() => setDetailAtividadeId(null)}
+          atividade={detailAtividadeId ? atividadesPorId[detailAtividadeId] ?? null : null}
+          colunas={colunas}
+          onUpdate={() => detailAtividadeId && void handleDetalheAtualizado(detailAtividadeId)}
+          onDelete={(id) => void handleDetalheExcluido(id)}
+        />
       </div>
     </div>
   );

@@ -1677,7 +1677,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       )}
 
       {pastaAtivaId !== VISAO_GERAL && viewMode !== "notas" && (
-        <LousaAtividades key={`${clienteId || "pessoal"}:${pastaAtivaId || "sem-pasta"}`} clienteId={clienteId} pastaId={pastaAtivaId} pastaNome={pastas.find(pasta => pasta.id === pastaAtivaId)?.nome} />
+        <LousaAtividades key={`${clienteId || "pessoal"}:${pastaAtivaId || "sem-pasta"}`} clienteId={clienteId} pastaId={pastaAtivaId} pastaNome={pastas.find(pasta => pasta.id === pastaAtivaId)?.nome} onAtividadesAlteradas={carregarAtividades} />
       )}
 
       {/* Detail Panel */}

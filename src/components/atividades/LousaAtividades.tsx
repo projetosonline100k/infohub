@@ -9,9 +9,10 @@ interface Props {
   clienteId?: string;
   pastaId: string | null;
   pastaNome?: string;
+  onAtividadesAlteradas?: () => void;
 }
 
-export function LousaAtividades({ clienteId, pastaId, pastaNome }: Props) {
+export function LousaAtividades({ clienteId, pastaId, pastaNome, onAtividadesAlteradas }: Props) {
   const [mapas, setMapas] = useState<{ id: string; titulo: string }[]>([]);
   const [selecionado, setSelecionado] = useState("");
   const [aberta, setAberta] = useState(true);
@@ -68,7 +69,7 @@ export function LousaAtividades({ clienteId, pastaId, pastaNome }: Props) {
     </div>
     {aberta && (loading ? <p className="py-8 text-center text-muted-foreground">Carregando lousas...</p> : erro ?
       <div className="py-8 text-center"><p className="text-muted-foreground">Não foi possível carregar as lousas.</p><Button variant="ghost" onClick={() => setTentativa(prev => prev + 1)}>Tentar novamente</Button></div> :
-      selecionado ? <MindMapEditor key={selecionado} documentoId={selecionado} embedded onClose={() => setAberta(false)} /> :
+      selecionado ? <MindMapEditor key={selecionado} documentoId={selecionado} embedded onClose={() => setAberta(false)} onAtividadesAlteradas={onAtividadesAlteradas} /> :
       <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground"><p>Organize suas ideias em uma lousa abaixo das tarefas.</p><Button className="mt-3" variant="outline" disabled={criando} onClick={() => void criar()}>Criar primeira lousa</Button></div>
     )}
   </section>;
