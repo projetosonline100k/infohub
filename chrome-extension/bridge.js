@@ -2,14 +2,15 @@
 // window.postMessage que src/lib/extensionBridge.ts manda (sempre pra
 // window.location.origin, nunca "*") e repassa pro background via
 // chrome.runtime — é o único ponto de contato entre a página e a extensão.
+// Genérico de propósito (não hardcoda os tipos de mensagem): qualquer
+// {source:"infopro-assistant", type, ...} que a página mandar é repassado
+// como está pro background.js decidir o que fazer.
 window.addEventListener("message", (event) => {
   if (event.source !== window || event.origin !== window.location.origin) return;
   const data = event.data;
-  if (!data || data.source !== "infopro-assistant") return;
+  if (!data || data.source !== "infopro-assistant" || !data.type) return;
 
-  if (data.type === "SESSION") {
-    chrome.runtime.sendMessage({ type: "SESSION", session: data.session });
-  } else if (data.type === "CURRENT_TASK") {
-    chrome.runtime.sendMessage({ type: "CURRENT_TASK", taskId: data.taskId });
-  }
+  const { source, ...mensagem } = data;
+  void source;
+  chrome.runtime.sendMessage(mensagem);
 });

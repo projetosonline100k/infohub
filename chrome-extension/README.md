@@ -24,18 +24,40 @@ design — protegida pela Row Level Security no banco, não é segredo).
 
 ## Como funciona a sincronização
 
+**App → extensão (push imediato, principal):**
 ```
 App web (Assistant.tsx)
-  → window.postMessage (só p/ própria origem)
+  → window.postMessage (só p/ própria origem) — SESSION / CURRENT_TASK / FOCUS_STATE
   → bridge.js (content script, roda só na origem do app)
   → chrome.runtime.sendMessage
   → background.js (service worker)
-  → chrome.storage.local (session + currentTaskId)
-  → fetch/PATCH direto no PostgREST do Supabase (mesma tabela `atividades`)
-  → chrome.storage.local (focus, cache curto)
+  → chrome.storage.local (session, currentTaskId, focus)
   → chrome.storage.onChanged
   → orb.js (content script em qualquer outra aba)
 ```
+`FOCUS_STATE` é mandado toda vez que o Assistant detecta uma mudança
+relevante na tarefa em foco (criar, iniciar, pausar, retomar, concluir,
+trocar de tarefa, mudar estimativa) — a extensão aplica isso na hora, sem
+esperar o alarme de 30s.
+
+**Extensão → Supabase → app (Realtime, sem passar pela extensão de volta):**
+```
+orb.js → chrome.runtime.sendMessage (PAUSE/RESUME/COMPLETE)
+  → background.js → PATCH direto no PostgREST (mesma tabela `atividades`)
+  → Supabase Realtime (postgres_changes)
+  → useAssistantAtividades.ts (qualquer aba do app web) atualiza sozinho
+```
+A extensão nunca manda o resultado de volta pro app diretamente — ela só
+escreve no Supabase, e o app já está inscrito em Realtime nessa tabela, então
+recebe a mudança do mesmo jeito que receberia de qualquer outra aba ou do
+Kanban principal.
+
+**Fallback (não a via principal):** `chrome.alarms` a cada ~30s — cobre só o
+caso de uma mudança acontecer sem nenhuma aba do app aberta (ou um push
+perdido). Um service worker MV3 não mantém WebSocket vivo de forma
+confiável (pode ser encerrado a qualquer momento pelo Chrome), então não dá
+pra ter Realtime de verdade *dentro* da extensão — só esse polling leve como
+rede de segurança.
 
 Não existe token copiado manualmente: o app manda a sessão (access/refresh
 token) automaticamente quando você está logado; a extensão só guarda isso em
@@ -43,17 +65,16 @@ token) automaticamente quando você está logado; a extensão só guarda isso em
 
 `chrome.storage` é usado só pra estado da própria extensão (posição da
 orbe, cache do foco, a sessão recebida) — nunca como fonte de verdade: o
-estado real do foco (rodando/pausado/tempo) sempre vem de uma consulta fresca
-à tabela `atividades`.
+estado real do foco (rodando/pausado/tempo) sempre vem do Supabase, via push
+do app ou, no fallback, de uma consulta fresca à tabela `atividades`.
 
 ## Limitações desta POC
 
-- **Sem realtime de verdade**: um service worker MV3 não mantém WebSocket
-  vivo de forma confiável (pode ser encerrado a qualquer momento pelo
-  Chrome), então a extensão usa `chrome.alarms` pra reconsultar a cada
-  ~30s — mesma cadência do refetch periódico que o app web agora também
-  tem. Pausar pela extensão pode levar até 30s pra aparecer no app (e
-  vice-versa), não é instantâneo.
+- **Sem Realtime dentro da extensão**: as escritas dela (Pausar/Retomar/
+  Concluir) chegam ao app web via Realtime normalmente (é o app que está
+  inscrito, não a extensão), mas mudanças feitas em OUTRO lugar enquanto
+  nenhuma aba do app está aberta só chegam na extensão no próximo alarme
+  (~30s) — ela não mantém uma inscrição Realtime própria (ver acima).
 - **Token sem renovação automática**: se o `access_token` expirar entre uma
   ida e outra ao app (sessões do Supabase costumam durar ~1h), a extensão
   para de conseguir ler/gravar até você reabrir/focar o app web (o que

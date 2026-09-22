@@ -29,3 +29,21 @@ export function enviarTarefaAtualParaExtensao(taskId: string | null) {
   if (typeof window === "undefined") return;
   window.postMessage({ source: ORIGEM_MENSAGEM, type: "CURRENT_TASK", taskId }, window.location.origin);
 }
+
+export interface FocoParaExtensao {
+  taskId: string;
+  titulo: string;
+  status: "active" | "paused";
+  startedAt: string | null;
+  baseSegundos: number;
+  tempoEstimadoMin: number | null;
+}
+
+// Empurra o estado de foco pra extensão IMEDIATAMENTE (criada/editada/
+// concluída/movida/pausada/retomada) — o polling de 30s do background.js
+// vira só um fallback (cobre o caso de nenhuma aba do app estar aberta),
+// não a via principal pra mudanças feitas pelo próprio sistema.
+export function enviarEstadoFocoParaExtensao(foco: FocoParaExtensao | null) {
+  if (typeof window === "undefined") return;
+  window.postMessage({ source: ORIGEM_MENSAGEM, type: "FOCUS_STATE", focus: foco }, window.location.origin);
+}

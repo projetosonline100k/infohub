@@ -13,6 +13,8 @@ interface AssistantKanbanTabProps {
   projetos: AssistantProjetoOpcao[];
   tarefas: AssistantTarefa[];
   colunasDoProjeto: (clienteId: string | null) => Promise<ColunaAtividade[]>;
+  colunasTodas: () => Promise<ColunaAtividade[]>;
+  colunasVersion: number;
   onSelecionarTarefa: (id: string) => void;
   onConcluirDireto: (id: string) => void;
   onMoverStatus: (id: string, statusKey: string, ehConclusao: boolean) => void;
@@ -32,6 +34,8 @@ export function AssistantKanbanTab({
   projetos,
   tarefas,
   colunasDoProjeto,
+  colunasTodas,
+  colunasVersion,
   onSelecionarTarefa,
   onConcluirDireto,
   onMoverStatus,
@@ -41,18 +45,24 @@ export function AssistantKanbanTab({
   const [colunas, setColunas] = useState<ColunaAtividade[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
 
+  // Sem projeto selecionado ("Todos os projetos"), usa as colunas agregadas
+  // de todos os clientes (colunasTodas) — cada cliente tem seu próprio jogo
+  // de colunas, então não faria sentido usar só o de um deles. colunasVersion
+  // muda quando qualquer coluna é criada/renomeada/excluída em qualquer
+  // lugar do sistema (Realtime em colunas_atividade), refazendo essa busca.
   useEffect(() => {
     let cancelado = false;
-    colunasDoProjeto(projetoId).then((cols) => {
+    const buscar = projetoId === null ? colunasTodas : () => colunasDoProjeto(projetoId);
+    buscar().then((cols) => {
       if (!cancelado) setColunas(cols);
     });
     return () => {
       cancelado = true;
     };
-  }, [projetoId, colunasDoProjeto]);
+  }, [projetoId, colunasDoProjeto, colunasTodas, colunasVersion]);
 
   const tarefasDoProjeto = useMemo(
-    () => tarefas.filter((t) => (t.cliente_id ?? null) === projetoId),
+    () => (projetoId === null ? tarefas : tarefas.filter((t) => (t.cliente_id ?? null) === projetoId)),
     [tarefas, projetoId],
   );
 

@@ -48,6 +48,8 @@ interface AssistantPanelProps {
   // Kanban
   todasTarefas: AssistantTarefa[];
   colunasDoProjeto: (clienteId: string | null) => Promise<ColunaAtividade[]>;
+  colunasTodas: () => Promise<ColunaAtividade[]>;
+  colunasVersion: number;
   onMoverStatus: (id: string, statusKey: string, ehConclusao: boolean) => void;
   onCriarAtividade: (input: NovaAtividadeInput) => Promise<unknown>;
 
@@ -137,6 +139,8 @@ export function AssistantPanel(props: AssistantPanelProps) {
             projetos={props.projetos}
             tarefas={props.todasTarefas}
             colunasDoProjeto={props.colunasDoProjeto}
+            colunasTodas={props.colunasTodas}
+            colunasVersion={props.colunasVersion}
             onSelecionarTarefa={props.onSelecionarTarefa}
             onConcluirDireto={props.onConcluirDireto}
             onMoverStatus={props.onMoverStatus}

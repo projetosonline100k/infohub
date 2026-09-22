@@ -14,7 +14,7 @@ import { useAssistantAtividades, categoriaTarefa, type AssistantTarefa } from "@
 import { useAssistantCobranca, type AssistantEstadoPainel } from "@/hooks/useAssistantCobranca";
 import { useAssistantProjeto, type AssistantFiltroData } from "@/hooks/useAssistantProjeto";
 import { useAssistantDocumentos } from "@/hooks/useAssistantDocumentos";
-import { enviarSessaoParaExtensao, enviarTarefaAtualParaExtensao } from "@/lib/extensionBridge";
+import { enviarSessaoParaExtensao, enviarTarefaAtualParaExtensao, enviarEstadoFocoParaExtensao } from "@/lib/extensionBridge";
 
 const ORB_SIZE = 60;
 const MARGEM_PADRAO = 24;
@@ -120,7 +120,7 @@ export function Assistant() {
 
   const navigate = useNavigate();
   const { session } = useAuth();
-  const { tarefas, atrasadas, loading, iniciarTimer, pausarTimer, concluir, colunasDoProjeto, moverParaStatus, criarAtividade } = useAssistantAtividades();
+  const { tarefas, atrasadas, loading, iniciarTimer, pausarTimer, concluir, colunasDoProjeto, colunasTodas, colunasVersion, moverParaStatus, criarAtividade } = useAssistantAtividades();
   const { projetos, loadingProjetos, projetoId, projetoAtual, setProjetoId, filtroDia, setFiltroDia } = useAssistantProjeto();
   const { documentos, notas, loading: loadingDocumentos, refetch: refetchDocumentos, criarDocumento, criarNota } = useAssistantDocumentos(projetoId);
 
@@ -196,6 +196,26 @@ export function Assistant() {
   useEffect(() => {
     enviarTarefaAtualParaExtensao(currentTaskId);
   }, [currentTaskId]);
+
+  // Empurra o estado de foco (não o cronômetro tiquetaqueando — só quando
+  // algo estrutural muda: tarefa, status ativo/pausado, timestamp de
+  // início, estimativa) pra extensão assim que muda, sem esperar o
+  // polling de 30s dela (que fica só como rede de segurança).
+  useEffect(() => {
+    if (!tarefaAtual || (estado !== "foco" && estado !== "pausado")) {
+      enviarEstadoFocoParaExtensao(null);
+      return;
+    }
+    enviarEstadoFocoParaExtensao({
+      taskId: tarefaAtual.id,
+      titulo: tarefaAtual.titulo,
+      status: estado === "foco" ? "active" : "paused",
+      startedAt: tarefaAtual.timer_iniciado_em,
+      baseSegundos: tarefaAtual.timer_decorrido_segundos || 0,
+      tempoEstimadoMin: tarefaAtual.tempo_estimado,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tarefaAtual?.id, tarefaAtual?.timer_iniciado_em, tarefaAtual?.timer_decorrido_segundos, tarefaAtual?.tempo_estimado, tarefaAtual?.titulo, estado]);
 
   const dispararCelebracao = useCallback(() => {
     setCelebracao("Boa. Uma a menos. ✨");
@@ -403,6 +423,8 @@ export function Assistant() {
               onMudarFiltroDia={setFiltroDia}
               todasTarefas={tarefas}
               colunasDoProjeto={colunasDoProjeto}
+              colunasTodas={colunasTodas}
+              colunasVersion={colunasVersion}
               onMoverStatus={handleMoverStatus}
               onCriarAtividade={criarAtividade}
               documentos={documentos}

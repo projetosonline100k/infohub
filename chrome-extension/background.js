@@ -1,15 +1,19 @@
-// Service worker (MV3) — única fonte de verdade da extensão pro estado de
-// foco, sempre lido direto do Supabase (mesma tabela `atividades` do app
-// web), nunca duplicado localmente além de um cache curto em
-// chrome.storage.local. Sem WebSocket/Realtime aqui: um service worker MV3
-// pode ser encerrado e reiniciado a qualquer momento pelo navegador, então
-// uma conexão persistente não é confiável — em vez disso, uso
-// chrome.alarms (que sobrevive ao worker ser recriado) pra reconsultar a
-// cada 30s. É um trade-off deliberado (polling, não push instantâneo).
+// Service worker (MV3) — estado de foco da extensão, sempre baseado no
+// Supabase (mesma tabela `atividades` do app web), nunca duplicado como uma
+// fonte paralela. Duas vias de atualização:
+// 1. Push (principal): o app web manda FOCUS_STATE via bridge.js assim que
+//    algo muda por lá (criar/pausar/concluir/mudar prazo etc.) — aplicado
+//    na hora, sem esperar nada.
+// 2. chrome.alarms a cada 30s (fallback): cobre mudanças feitas com
+//    nenhuma aba do app aberta (direto no banco, ou um push perdido). Um
+//    service worker MV3 pode ser encerrado e reiniciado a qualquer
+//    momento, então não dá pra manter uma conexão Realtime própria aqui —
+//    por isso o fallback é polling via chrome.alarms (que sobrevive ao
+//    worker ser recriado), não WebSocket.
 importScripts("config.js");
 
 const ALARM_NAME = "infopro-poll-focus";
-const POLL_MINUTES = 0.5; // 30s — mesma cadência do refetch periódico do app web
+const POLL_MINUTES = 0.5; // 30s — só o fallback; mudanças do próprio app chegam via push (FOCUS_STATE)
 
 chrome.alarms.create(ALARM_NAME, { periodInMinutes: POLL_MINUTES });
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -128,6 +132,32 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         await poll();
         sendResponse({ ok: true });
         break;
+      case "FOCUS_STATE": {
+        // Push imediato vindo do app web (src/lib/extensionBridge.ts) — não
+        // espera o alarme de 30s. Mesmo cálculo de elapsed que paraFoco()
+        // usa no fallback, só que a partir do que o app já mandou pronto.
+        const f = message.focus;
+        if (!f) {
+          await chrome.storage.local.set({ focus: null });
+        } else {
+          const rodando = f.status === "active";
+          const elapsedSegundos = rodando && f.startedAt
+            ? f.baseSegundos + (Date.now() - new Date(f.startedAt).getTime()) / 1000
+            : f.baseSegundos;
+          await chrome.storage.local.set({
+            focus: {
+              taskId: f.taskId,
+              titulo: f.titulo,
+              status: f.status,
+              startedAt: f.startedAt,
+              elapsedSegundos,
+              tempoEstimadoMin: f.tempoEstimadoMin,
+            },
+          });
+        }
+        sendResponse({ ok: true });
+        break;
+      }
       case "GET_FOCUS": {
         const { focus } = await chrome.storage.local.get("focus");
         sendResponse({ focus: focus || null });
