@@ -551,9 +551,18 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     try {
       const coluna = colunas.find((c) => c.status_key === statusKey);
       if (!coluna) return;
-      const { error } = await supabase.from("colunas_atividade").update({ nome: novoNome }).eq("id", coluna.id);
+      // Renomear tira o papel de "conclusão" que a coluna tinha (normalmente
+      // herdado da coluna padrão "Finalizado") — o nome novo não significa
+      // mais isso, então tarefa adicionada aqui não deve nascer marcada como
+      // concluída (e sumir da vista, já que concluídas ficam escondidas por
+      // padrão). Sem isto, renomear "Finalizado" pra qualquer outra coisa
+      // (ex.: um dia da semana) fazia parecer que o quadro não salvava mais
+      // nada ali — na real salvava, só que direto como concluída/invisível.
+      const patch: { nome: string; eh_conclusao?: boolean } = { nome: novoNome };
+      if (coluna.eh_conclusao) patch.eh_conclusao = false;
+      const { error } = await supabase.from("colunas_atividade").update(patch).eq("id", coluna.id);
       if (error) throw error;
-      setColunas((prev) => prev.map((c) => (c.id === coluna.id ? { ...c, nome: novoNome } : c)));
+      setColunas((prev) => prev.map((c) => (c.id === coluna.id ? { ...c, ...patch } : c)));
     } catch (error) {
       console.error("Erro ao renomear coluna:", error);
       toast.error("Erro ao renomear coluna");
