@@ -136,9 +136,18 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
         if (Array.isArray(parsed.elements)) reconciliarRemoto(parsed.elements, parsed.files);
       } catch { /* Invalid remote content never replaces the canvas. */ }
     };
-    const poll = setInterval(() => void sincronizarBanco(), 15000);
+    // Sem polling contínuo (era select("conteudo") a cada 15s, mesmo com a
+    // aba parada em segundo plano — o maior gerador de egress do projeto).
+    // Realtime cobre o dia a dia; os gatilhos pontuais abaixo cobrem os
+    // buracos: abrir o documento (chamada única dentro de channel.subscribe,
+    // mais abaixo), voltar a ficar visível (aba em segundo plano pode perder
+    // eventos do socket) e reconectar depois de cair a internet.
     const onOnline = () => void sincronizarBanco();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void sincronizarBanco();
+    };
     window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibility);
 
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -224,8 +233,8 @@ export function useMapaMentalColaboracao({ documentoId, excalidrawApiRef, isRead
 
     return () => {
       cancelado = true;
-      clearInterval(poll);
       window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibility);
       elementosThrottleRef.current?.cancelar();
       cursorThrottleRef.current?.cancelar();
       elementosThrottleRef.current = null;

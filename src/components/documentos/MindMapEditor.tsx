@@ -14,6 +14,7 @@ import type {
   ExcalidrawImperativeAPI,
   AppState,
   BinaryFiles,
+  BinaryFileData,
   ExcalidrawInitialDataState,
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
@@ -188,6 +189,35 @@ function serializeCanvasDoc(elements: readonly ExcalidrawElement[], appState: Ap
     files,
   };
   return `${CANVAS_PREFIX}${JSON.stringify(doc)}`;
+}
+
+const MIND_MAP_IMAGES_BUCKET = "mapa-mental-imagens";
+
+// Imagem colada/solta no mapa nasce em base64 dentro do próprio arquivo do
+// Excalidraw — sem isto ela ficaria embutida pra sempre na coluna
+// `conteudo`, multiplicada pelo autosave, pelo broadcast de colaboração e
+// por todo carregamento futuro do documento (era o maior gerador de egress
+// do projeto, junto com o polling removido de useMapaMentalColaboracao).
+// Sobe o binário pro Storage e devolve a URL pública; quem chama troca a
+// entrada em `files` por essa URL antes do próximo save. Retorna `null` em
+// caso de falha — a imagem continua funcionando normalmente em base64,
+// só não fica otimizada (sem retry automático, pra não virar um polling
+// disfarçado numa configuração de bucket quebrada).
+async function uploadMindMapFile(documentoId: string, file: BinaryFileData): Promise<string | null> {
+  try {
+    const response = await fetch(file.dataURL);
+    const blob = await response.blob();
+    const extension = file.mimeType.split("/")[1]?.replace(/[^a-z0-9]/gi, "") || "bin";
+    const path = `${documentoId}/${file.id}.${extension}`;
+    const { error } = await supabase.storage
+      .from(MIND_MAP_IMAGES_BUCKET)
+      .upload(path, blob, { contentType: file.mimeType, upsert: true });
+    if (error) return null;
+    const { data } = supabase.storage.from(MIND_MAP_IMAGES_BUCKET).getPublicUrl(path);
+    return data.publicUrl;
+  } catch {
+    return null;
+  }
 }
 
 function getMindMapData(el: ExcalidrawElement): MindMapCustomData["mindMap"] {
@@ -406,6 +436,12 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const jaRegistrouSessaoRef = useRef(false);
   const loadingRef = useRef(true);
   const isReadyRef = useRef(false);
+  const mountedRef = useRef(true);
+  // Ids de arquivo que não devem (mais) ser enviados ao Storage: os que já
+  // vieram prontos do banco ao abrir o documento (mapas antigos, com base64
+  // — não fazemos migração retroativa) e os que esta sessão já processou
+  // (subiu com sucesso, ou tentou e falhou uma vez — sem retry automático).
+  const legacyOrProcessedFileIdsRef = useRef<Set<string>>(new Set());
   const pendingChainRef = useRef<{ blockId: string } | null>(null);
   const prevEditingIdRef = useRef<string | null>(null);
   const revealedArrowIdsRef = useRef<Set<string>>(new Set());
@@ -1055,6 +1091,11 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     return () => document.removeEventListener("mousedown", onClickOutside, true);
   }, [variantMenuOpen]);
 
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
+
   // Carrega o mapa (uma vez, ao abrir).
   useEffect(() => {
     let cancelado = false;
@@ -1079,6 +1120,10 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
           if (backup) { content = mergeCanvas(backup, content); debouncedSave(content); }
         } catch { toast.error("Não foi possível recuperar a cópia local. Ela foi mantida neste navegador."); }
         const parsed = parseCanvasDoc(content);
+        // Arquivos que já vieram do banco nunca são candidatos a upload —
+        // evita reprocessar (e reenviar ao Storage) imagens antigas só
+        // porque o documento foi aberto.
+        legacyOrProcessedFileIdsRef.current = new Set(Object.keys(parsed.files || {}));
         const restored = restore(
           {
             elements: parsed.elements as ExcalidrawElement[],
@@ -1177,6 +1222,33 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     applyingRemoteRef.current = false;
     if (!vindoDeFora && !loadingRef.current) {
       broadcastElements(elements, files);
+    }
+
+    // Imagem nova (colada/solta agora, por mim — não uma que acabou de
+    // chegar de outra pessoa via reconciliarRemoto) ainda em base64: sobe
+    // pro Storage em segundo plano e troca a referência local por uma URL
+    // leve assim que terminar. Só o autor tenta o upload; quem recebe via
+    // Realtime só usa o base64 já recebido pra desenhar, sem duplicar envio.
+    if (!vindoDeFora && !loadingRef.current) {
+      Object.values(files).forEach((file) => {
+        if (legacyOrProcessedFileIdsRef.current.has(file.id)) return;
+        if (!file.dataURL.startsWith("data:")) return;
+        legacyOrProcessedFileIdsRef.current.add(file.id);
+        void (async () => {
+          const url = await uploadMindMapFile(documentoId, file);
+          if (!url || !mountedRef.current) return;
+          const api = excalidrawApiRef.current;
+          if (!api) return;
+          api.addFiles([{ ...file, dataURL: url as never }]);
+          const freshContent = serializeCanvasDoc(
+            api.getSceneElementsIncludingDeleted(),
+            api.getAppState(),
+            api.getFiles()
+          );
+          previousContentRef.current = freshContent;
+          debouncedSave(freshContent);
+        })();
+      });
     }
 
     // Retângulo desenhado à mão enquanto a variação "nó" está ativa: marca
@@ -1305,7 +1377,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     }
     previousContentRef.current = content;
     debouncedSave(content);
-  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes, recomputeKanbanBoxes, historico]);
+  }, [createConnectedBlock, debouncedSave, broadcastElements, applyingRemoteRef, recomputeActiveNodeBoxes, recomputeKanbanBoxes, historico, documentoId]);
 
   // Ctrl+Z / Ctrl+Shift+Z (ou Cmd no Mac) enquanto ainda não fiz nenhuma
   // mudança nesta sessão (ver comentário do "historico" lá em cima) — depois
