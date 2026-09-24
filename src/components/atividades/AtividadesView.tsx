@@ -2,6 +2,7 @@ import { LousaAtividades } from "./LousaAtividades";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/auth/AuthProvider";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,6 +60,8 @@ import { cn, iniciais } from "@/lib/utils";
 import { detectarDiaSemana } from "@/lib/diasSemana";
 import { parseResponsaveis } from "@/lib/responsaveis";
 import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
+import { criarAtividade as criarAtividadeService } from "@/lib/atividades/criarAtividade";
+import { onActivityCreated } from "@/lib/desktop/events";
 
 interface Atividade {
   id: string;
@@ -191,6 +194,7 @@ const parseTempoFromText = (text: string): { titulo: string; tempo: number | nul
 };
 
 export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
+  const { user } = useAuth();
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [loading, setLoading] = useState(true);
   const [novaAtividade, setNovaAtividade] = useState("");
@@ -792,6 +796,55 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     carregarAtividades();
   }, [clienteId, intervaloDatas, viewMode, mostrarTodas]);
 
+  // Este board tinha só carga sob demanda (mount/filtro mudando) — uma
+  // atividade criada/editada em outro lugar (Assistant/Jarvis, extensão
+  // Chrome, outra aba) nunca aparecia aqui sem recarregar a página. Mesmo
+  // padrão de sincronização que useAssistantAtividades.ts já usa: Realtime
+  // (fonte oficial, cobre qualquer origem) + BroadcastChannel (atalho
+  // instantâneo entre abas do mesmo navegador). Sempre refaz a MESMA busca
+  // já existente (carregarAtividades), sem duplicar lógica de merge.
+  useEffect(() => {
+    if (!user?.id) return;
+    const canal = supabase
+      .channel(`atividades-view-${clienteId || "pessoal"}-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "atividades", filter: `user_id=eq.${user.id}` },
+        () => carregarAtividades(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "colunas_atividade", filter: `user_id=eq.${user.id}` },
+        () => carregarAtividades(),
+      )
+      .subscribe();
+
+    let broadcast: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      broadcast = new BroadcastChannel("assistant-sync");
+      broadcast.onmessage = () => carregarAtividades();
+    }
+
+    return () => {
+      supabase.removeChannel(canal);
+      broadcast?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, clienteId]);
+
+  // Atalho local (desktop): a janela `jarvis` emite este evento nativo logo
+  // após criar uma atividade (ver src/lib/atividades/criarAtividade.ts) —
+  // refaz a busca na hora, sem esperar o Realtime ir e voltar pela rede.
+  // No-op na web/fora do app desktop.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    onActivityCreated(() => carregarAtividades()).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId]);
+
   const adicionarAtividade = async (dataOverride?: Date) => {
     if (!novaAtividade.trim()) return;
 
@@ -801,17 +854,16 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       : format(new Date(), "yyyy-MM-dd");
 
     try {
-      const { error } = await supabase.from("atividades").insert({
+      await criarAtividadeService({
         titulo,
-        tempo_estimado: tempo,
-        data_atividade: dataAtividade,
-        cliente_id: clienteId || null,
-        pasta_id: pastaAtivaId,
-        status: "backlog",
+        tempoEstimado: tempo,
+        dataAtividade,
+        clienteId: clienteId || null,
+        pastaId: pastaAtivaId,
+        statusKey: "backlog",
+        concluida: false,
         ordem: atividades.length + 1,
       });
-
-      if (error) throw error;
 
       setNovaAtividade("");
       carregarAtividades();
@@ -838,18 +890,16 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     const statusReal = status;
 
     try {
-      const { error } = await supabase.from("atividades").insert({
+      await criarAtividadeService({
         titulo,
-        tempo_estimado: tempo,
-        data_atividade: dataAtividade,
-        cliente_id: clienteId || null,
-        pasta_id: pastaAtivaId,
+        tempoEstimado: tempo,
+        dataAtividade,
+        clienteId: clienteId || null,
+        pastaId: pastaAtivaId,
         ordem: atividades.length + 1,
-        status: statusReal,
+        statusKey: statusReal,
         concluida: !!colunaStatus?.eh_conclusao,
       });
-
-      if (error) throw error;
 
       carregarAtividades();
       toast.success("Atividade adicionada");
@@ -864,16 +914,15 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     if (!titulo?.trim()) return;
 
     try {
-      const { error } = await supabase.from("atividades").insert({
+      await criarAtividadeService({
         titulo,
-        data_atividade: format(date, "yyyy-MM-dd"),
-        cliente_id: clienteId || null,
-        pasta_id: pastaAtivaId,
-        status: "backlog",
+        dataAtividade: format(date, "yyyy-MM-dd"),
+        clienteId: clienteId || null,
+        pastaId: pastaAtivaId,
+        statusKey: "backlog",
+        concluida: false,
         ordem: atividades.length + 1,
       });
-
-      if (error) throw error;
       carregarAtividades();
       toast.success("Atividade adicionada");
     } catch (error) {
@@ -1647,8 +1696,6 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
               <KanbanBoard
                 atividades={atividadesKanban}
                 colunas={colunas}
-                semanaInicio={semanaReferenciaKanban.inicio}
-                kanbanPeriodo={kanbanPeriodo}
                 checklistPorAtividade={checklistPorAtividade}
                 onCardClick={openAtividadeDetail}
                 onAddCard={adicionarAtividadeNoStatus}

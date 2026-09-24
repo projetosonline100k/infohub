@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export type AssistantOrbRingEstado = "foco" | "pausado" | "concluido";
+export type AssistantOrbRingEstado = "foco" | "pausado" | "concluido" | "excedido";
 
 interface AssistantOrbRingProps {
   // 0..1 — elapsedSegundos / (tempo_estimado ?? 25min), capado em 1.
@@ -9,23 +9,31 @@ interface AssistantOrbRingProps {
 }
 
 const N_PONTOS = 40;
-const RAIO_PX = 38;
+// Rodada 8, item 8: raio 50px ~ anel de ~100px de diâmetro (era 38px/~79px)
+// — janela da orbe agora é 140x140, então sobra espaço de verdade.
+const RAIO_PX = 50;
 
 const CORES: Record<AssistantOrbRingEstado, string> = {
   foco: "bg-cyan-400 shadow-[0_0_4px_1px_rgba(34,211,238,0.9)]",
   pausado: "bg-amber-400 shadow-[0_0_4px_1px_rgba(251,191,36,0.9)]",
   concluido: "bg-emerald-400 shadow-[0_0_4px_1px_rgba(52,211,153,0.9)]",
+  // Passou da estimativa (item 7, rodada 4) — vermelho, e o wrapper todo
+  // pulsa (ver className abaixo) pra nunca parecer congelado.
+  excedido: "bg-red-500 shadow-[0_0_4px_1px_rgba(239,68,68,0.9)]",
 };
 
 // Relógio circular de pontinhos ao redor da orbe — acende no sentido
-// horário conforme o foco avança. Fica FORA do círculo de 60px da orbe
-// (raio 38px do centro), então nunca cobre os olhos. Puramente decorativo
+// horário conforme o foco avança. Fica FORA do círculo de 64px da face
+// (raio 50px do centro), então nunca cobre os olhos. Puramente decorativo
 // (pointer-events-none), não interfere no drag/clique da orbe.
 export function AssistantOrbRing({ progress, estado }: AssistantOrbRingProps) {
   const fracaoAcesa = Math.max(0, Math.min(1, progress));
 
   return (
-    <div className="pointer-events-none absolute inset-0" aria-hidden>
+    <div
+      className={cn("pointer-events-none absolute inset-0", estado === "excedido" && "animate-pulse")}
+      aria-hidden
+    >
       {Array.from({ length: N_PONTOS }).map((_, i) => {
         const fracao = i / N_PONTOS;
         const aceso = fracao <= fracaoAcesa;

@@ -29,9 +29,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted) setSession(nextSession);
     });
 
+    // Duas janelas do app desktop (principal + Jarvis, ver
+    // src/pages/JarvisWindow.tsx) são dois runtimes JS separados que só
+    // compartilham a mesma origem/localStorage — o evento nativo "storage"
+    // dispara nas OUTRAS janelas quando uma delas loga/desloga, então a
+    // gente reconsulta a sessão em vez de esperar um evento que nunca
+    // chega sozinho. Também é grátis pra multi-aba na web.
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && !e.key.includes("supabase") && !e.key.startsWith("sb-")) return;
+      supabase.auth.getSession().then(({ data }) => {
+        if (mounted) setSession(data.session);
+      });
+    };
+    window.addEventListener("storage", onStorage);
+
     return () => {
       mounted = false;
       listener.subscription.unsubscribe();
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
 

@@ -1,0 +1,72 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Infopro Hub",
+  "version": "0.1.0",
+  "identifier": "com.infoprohub.desktop",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:8080",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Infopro Hub",
+        "url": "/",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      },
+      {
+        "label": "jarvis",
+        "title": "Jarvis",
+        "url": "/jarvis",
+        "width": 140,
+        "height": 140,
+        "minWidth": 140,
+        "minHeight": 140,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "closable": false,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visibleOnAllWorkspaces": true,
+        "x": 1400,
+        "y": 760
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMwQTBGMjIzQTREQjNEN0YKUldSL1BkdWtJL0tnd080c1Zhd3NTVG14VExFaFIyWUk0M3dhVVp1eUYweTdWUUxOa0NBbURyYmUK",
+      "endpoints": [
+        "https://github.com/projetosonline100k/infohub/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

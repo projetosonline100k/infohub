@@ -1,0 +1,44 @@
+name: Release desktop app
+
+# Dispara ao empurrar uma tag de versão (ex.: v0.1.1) — build, assina
+# (via TAURI_SIGNING_PRIVATE_KEY/_PASSWORD, secrets do repo) e publica no
+# GitHub Releases (instaladores + latest.json que o updater consulta). Ver
+# docs/DESKTOP.md pro passo a passo de configuração dos secrets.
+on:
+  push:
+    tags:
+      - "v*"
+
+# Necessário pro GITHUB_TOKEN poder criar/editar a release.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Só macOS por enquanto — único alvo testado até aqui (ver
+    # docs/DESKTOP.md). Adicionar windows-latest/ubuntu-latest depois, se
+    # o app passar a ser distribuído pra essas plataformas também.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Instalar dependências do frontend
+        run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Infopro Hub Desktop ${{ github.ref_name }}"
+          releaseBody: "Ver o changelog do commit. Instalação: baixe o .dmg, abra e, na primeira vez, clique com o botão direito no app → Abrir (o app ainda não é notarizado pela Apple)."
+          releaseDraft: false
+          prerelease: false

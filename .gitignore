@@ -30,3 +30,11 @@ __pycache__/
 
 # Cache local da CLI do Supabase (metadados da máquina, não do projeto)
 supabase/.temp/
+
+# Tauri (desktop) — build do Rust e chaves de assinatura do updater nunca
+# entram no repo (ver docs/DESKTOP.md)
+src-tauri/target/
+src-tauri/gen/
+*.key
+*.key.pub
+.tauri-signing-key*

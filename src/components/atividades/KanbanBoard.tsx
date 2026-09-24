@@ -2,8 +2,6 @@ import { useState } from "react";
 import { KanbanColumn } from "./KanbanColumn";
 import { Input } from "@/components/ui/input";
 import { Plus } from "lucide-react";
-import { addDays, format, getDay, parseISO } from "date-fns";
-import { detectarDiaSemana } from "@/lib/diasSemana";
 
 interface Atividade {
   id: string;
@@ -35,8 +33,6 @@ interface Coluna {
 interface KanbanBoardProps {
   atividades: Atividade[];
   colunas: Coluna[];
-  semanaInicio: Date;
-  kanbanPeriodo: "todas" | "semana" | "proxima_semana";
   checklistPorAtividade?: Record<string, ChecklistResumo>;
   onCardClick: (id: string) => void;
   onAddCard: (status: string, titulo: string) => void;
@@ -58,8 +54,6 @@ const CORES_COLUNA = ["bg-gray-500", "bg-blue-500", "bg-emerald-500", "bg-orange
 export const KanbanBoard = ({
   atividades,
   colunas,
-  semanaInicio,
-  kanbanPeriodo,
   checklistPorAtividade,
   onCardClick,
   onAddCard,
@@ -75,35 +69,16 @@ export const KanbanBoard = ({
   const [criando, setCriando] = useState(false);
   const [nome, setNome] = useState("");
 
-  // Uma coluna chamada "Segunda-feira" etc. não filtra por status: mostra as
-  // tarefas cuja data cai naquele dia da semana de referência. Com "Todas"
-  // selecionado no quadro, não faz sentido travar numa única data desta
-  // semana — senão uma tarefa de segunda passada nunca aparece na coluna
-  // "Segunda-feira" e, se todas as colunas forem dias da semana, o quadro
-  // inteiro fica vazio fora da semana atual. Nesse caso casamos pelo dia da
-  // semana em qualquer data, não pela data exata.
-  const getAtividadesPorColuna = (coluna: Coluna) => {
-    const diaSemana = detectarDiaSemana(coluna.nome);
-    if (diaSemana !== null) {
-      if (kanbanPeriodo === "todas") {
-        const diaSemanaJs = (diaSemana + 1) % 7;
-        return atividades
-          .filter((a) => {
-            try {
-              return getDay(parseISO(a.data_atividade)) === diaSemanaJs;
-            } catch {
-              return false;
-            }
-          })
-          .sort((a, b) => a.ordem - b.ordem);
-      }
-      const dataAlvo = format(addDays(semanaInicio, diaSemana), "yyyy-MM-dd");
-      return atividades.filter((a) => a.data_atividade === dataAlvo).sort((a, b) => a.ordem - b.ordem);
-    }
-    // Ordenado por "ordem" pra respeitar o reposicionamento manual (arrastar
-    // um card pra cima/baixo dentro da mesma coluna).
-    return atividades.filter((a) => a.status === coluna.status_key).sort((a, b) => a.ordem - b.ordem);
-  };
+  // `status` é sempre quem decide a coluna — inclusive quando a coluna tem
+  // nome de dia da semana ("Segunda-feira" etc.). Já existia uma exceção
+  // aqui que agrupava essas colunas por `data_atividade` em vez de status,
+  // então criar/mover uma tarefa com um status escolhido manualmente podia
+  // fazer ela aparecer em outra coluna (data manda, não o status). `data`
+  // continua sendo só o prazo — não define mais em qual coluna o card
+  // aparece. Ordenado por "ordem" pra respeitar o reposicionamento manual
+  // (arrastar um card pra cima/baixo dentro da mesma coluna).
+  const getAtividadesPorColuna = (coluna: Coluna) =>
+    atividades.filter((a) => a.status === coluna.status_key).sort((a, b) => a.ordem - b.ordem);
 
   const confirmarCriacao = () => {
     const valor = nome.trim();
