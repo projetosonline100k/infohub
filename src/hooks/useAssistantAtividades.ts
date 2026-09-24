@@ -3,6 +3,8 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import type { Tables } from "@/integrations/supabase/types";
+import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
+import { onActivityCreated } from "@/lib/desktop/events";
 
 export type AssistantTarefa = Tables<"atividades">;
 
@@ -288,12 +290,19 @@ export function useAssistantAtividades() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colunasVersion]);
 
-  const iniciarTimer = useCallback(async (id: string) => {
+  // `duracaoMin`, quando informado (usuário escolheu um tempo específico ao
+  // iniciar foco, ou confirmou a estimativa já existente), também grava em
+  // `tempo_estimado` — é o que dá ao cronômetro uma referência pra contar
+  // REGRESSIVO (ring + AssistantHojeTab passam a mostrar tempo restante, não
+  // mais só elapsed). Omitido (undefined) em retomar/recomendação rápida —
+  // aí a estimativa da tarefa não muda.
+  const iniciarTimer = useCallback(async (id: string, duracaoMin?: number | null) => {
     const atual = tarefasBrutas.find((t) => t.id === id);
     if (!atual) return;
     const agora = new Date().toISOString();
-    emitirAtualizacao({ ...atual, timer_iniciado_em: agora });
-    const { error } = await supabase.from("atividades").update({ timer_iniciado_em: agora }).eq("id", id);
+    const novaEstimativa = typeof duracaoMin === "number" && duracaoMin > 0 ? duracaoMin : atual.tempo_estimado;
+    emitirAtualizacao({ ...atual, timer_iniciado_em: agora, tempo_estimado: novaEstimativa });
+    const { error } = await supabase.from("atividades").update({ timer_iniciado_em: agora, tempo_estimado: novaEstimativa }).eq("id", id);
     if (error) await carregar();
   }, [tarefasBrutas, emitirAtualizacao, carregar]);
 
@@ -330,6 +339,36 @@ export function useAssistantAtividades() {
     }
   }, [tarefasBrutas, garantirColunas, emitirRemocao, carregar]);
 
+  // Zera o cronômetro sem mexer em mais nada (mesmo padrão de zerarTimer em
+  // AtividadesView.tsx:1002-1016) — a tarefa continua exatamente onde
+  // estava, só o tempo decorrido some.
+  const zerarTimer = useCallback(async (id: string) => {
+    const atual = tarefasBrutas.find((t) => t.id === id);
+    if (!atual) return;
+    emitirAtualizacao({ ...atual, timer_iniciado_em: null, timer_decorrido_segundos: 0 });
+    const { error } = await supabase
+      .from("atividades")
+      .update({ timer_iniciado_em: null, timer_decorrido_segundos: 0 })
+      .eq("id", id);
+    if (error) await carregar();
+  }, [tarefasBrutas, emitirAtualizacao, carregar]);
+
+  // Edição genérica (título/estimativa/descanso/prioridade/data/projeto/
+  // pasta/status) — usada pelo formulário de editar atividade do Jarvis.
+  const atualizarAtividade = useCallback(async (id: string, patch: Partial<Pick<AssistantTarefa,
+    "titulo" | "tempo_estimado" | "tempo_descanso" | "prioridade" | "data_atividade" | "cliente_id" | "pasta_id" | "status" | "concluida"
+  >>) => {
+    const atual = tarefasBrutas.find((t) => t.id === id);
+    if (!atual) return;
+    if (patch.concluida) {
+      emitirRemocao(id);
+    } else {
+      emitirAtualizacao({ ...atual, ...patch });
+    }
+    const { error } = await supabase.from("atividades").update(patch).eq("id", id);
+    if (error) await carregar();
+  }, [tarefasBrutas, emitirAtualizacao, emitirRemocao, carregar]);
+
   // Muda status (+ordem, pro card ir pro fim da coluna de destino) — usada
   // pelo Kanban compacto (seletor rápido e o drag entre colunas). Versão
   // simplificada do handleDragEnd de AtividadesView.tsx: sempre acrescenta
@@ -352,30 +391,41 @@ export function useAssistantAtividades() {
     if (error) await carregar();
   }, [tarefasBrutas, emitirAtualizacao, emitirRemocao, carregar]);
 
-  // Cria uma atividade de verdade na mesma tabela (mesmos campos/defaults
-  // usados por adicionarAtividadeNoStatus em AtividadesView.tsx) — aparece
-  // no Kanban principal porque É a mesma linha, não uma cópia.
+  // Cria a atividade pela MESMA função que o Kanban usa (ver
+  // src/lib/atividades/criarAtividade.ts — adicionarAtividadeNoStatus em
+  // AtividadesView.tsx chama exatamente a mesma), então aparece lá porque É
+  // a mesma linha, não uma cópia. O Jarvis não tem seletor de pasta próprio
+  // — lerPastaAtivaSalva lê a mesma pasta que o Kanban já lembra ter
+  // deixado ativa pra esse cliente (senão a atividade nasce em "Sem pasta"
+  // e some do quadro enquanto uma pasta específica estiver selecionada).
   const criarAtividade = useCallback(async (input: NovaAtividadeInput) => {
     const cols = await garantirColunas(input.clienteId);
     const coluna = cols.find((c) => c.status_key === input.statusKey);
-    const { data, error } = await supabase
-      .from("atividades")
-      .insert({
-        titulo: input.titulo,
-        cliente_id: input.clienteId,
-        data_atividade: input.dataAtividade,
-        tempo_estimado: input.tempoEstimado,
-        prioridade: input.prioridade,
-        status: input.statusKey,
-        concluida: !!coluna?.eh_conclusao,
-        ordem: tarefasBrutas.length + 1,
-      })
-      .select("*")
-      .single();
-    if (error || !data) throw error || new Error("Falha ao criar atividade");
+    const data = await criarAtividadeService({
+      titulo: input.titulo,
+      clienteId: input.clienteId,
+      pastaId: lerPastaAtivaSalva(input.clienteId),
+      dataAtividade: input.dataAtividade,
+      tempoEstimado: input.tempoEstimado,
+      prioridade: input.prioridade,
+      statusKey: input.statusKey,
+      concluida: !!coluna?.eh_conclusao,
+      ordem: tarefasBrutas.length + 1,
+    });
     if (!data.concluida) emitirAtualizacao(data);
     return data;
   }, [garantirColunas, tarefasBrutas.length, emitirAtualizacao]);
+
+  // Atalho local (desktop): quando a OUTRA janela (main <-> jarvis) cria
+  // uma atividade, refaz a busca na hora em vez de esperar o Realtime ir e
+  // voltar pela rede. No-op na web (ver src/lib/desktop/events.ts).
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    onActivityCreated(() => void carregar()).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, [carregar]);
 
   return {
     tarefas,
@@ -390,5 +440,7 @@ export function useAssistantAtividades() {
     colunasVersion,
     moverParaStatus,
     criarAtividade,
+    zerarTimer,
+    atualizarAtividade,
   };
 }

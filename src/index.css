@@ -113,6 +113,16 @@ Dark theme inspired by professional content management tools.
   }
 }
 
+/* Janela nativa `jarvis` (Tauri) — sem isso, o `bg-background` acima pinta
+   um retângulo opaco atrás da orbe flutuante (rodada 4, item 1). A classe é
+   aplicada só nessa janela (ver src/pages/JarvisWindow.tsx), nunca na
+   principal/web. */
+html.jarvis-window,
+html.jarvis-window body,
+html.jarvis-window #root {
+  background: transparent !important;
+}
+
 /* Custom scrollbar styles */
 .scrollbar-thin {
   scrollbar-width: thin;

@@ -22,6 +22,15 @@ const N_PONTOS_ANEL = 40;
 const RAIO_ANEL = 38;
 const REFERENCIA_SEM_ESTIMATIVA_SEGUNDOS = 25 * 60;
 const MAX_TAREFAS_LISTA = 5;
+const DURACAO_BOLHA_MS = 6000;
+const INTERVALO_MOTIVACIONAL_MS = 2 * 60 * 1000;
+const INTERVALO_PENDENCIAS_MS = 5 * 60 * 1000;
+const MENSAGENS_MOTIVACIONAIS = [
+  "Continua, você é disciplinado",
+  "Vai pra cima, seu sono depende disso",
+  "Vai campeão",
+  "Para agora não",
+];
 
 function log(...args) {
   console.log("[Assistant]", ...args);
@@ -50,9 +59,22 @@ const CSS = `
   #ring span.on.paused { background: #fbbf24; box-shadow: 0 0 4px 1px rgba(251,191,36,.9); }
   #ring span.on.done { background: #34d399; box-shadow: 0 0 4px 1px rgba(52,211,153,.9); }
 
-  #panel { position: absolute; bottom: calc(100% + 12px); right: 0; width: 320px; max-height: 480px; display: none; flex-direction: column; background: #16181d; color: #f2f2f2; border: 1px solid #2b2e35; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); font-size: 13px; overflow: hidden; }
+  #backdrop { display: none; position: fixed; inset: 0; background: rgba(6,8,12,.6); }
+  #backdrop.on { display: block; }
+
+  /* Altura FIXA (não max-height): o painel não pode crescer/encolher
+     conforme o conteúdo da aba atual — o que varia entra em scroll dentro
+     de #body, que é quem tem overflow-y. min() só evita cortar em telas
+     muito baixas, não é o que define o tamanho no dia a dia. */
+  #panel { position: absolute; bottom: calc(100% + 12px); right: 0; width: 320px; height: min(480px, calc(100vh - 64px)); display: none; flex-direction: column; background: #16181d; color: #f2f2f2; border: 1px solid #2b2e35; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); font-size: 13px; overflow: hidden; }
   #panel.open { display: flex; }
-  #panel.expanded { width: 430px; max-height: 600px; }
+  /* Expandido: não é "um pouco maior perto da orbe", é a página inteira —
+     mesmo padrão visual de um app em tela cheia, como o sistema principal. */
+  #panel.expanded { position: fixed; inset: 24px; width: auto; height: auto; border-radius: 16px; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+  #panel.expanded #body { padding: 24px; }
+  #panel.expanded #header { padding: 14px 10px 14px 16px; }
+  #panel.expanded #tabbar { padding: 8px 16px; }
+  #panel.expanded #tabbar button { font-size: 12px; padding: 8px 6px; }
 
   #header { display: flex; align-items: center; gap: 4px; padding: 8px 6px 8px 10px; border-bottom: 1px solid #2b2e35; flex-shrink: 0; }
   #header .icon-btn { background: transparent; border: none; color: #9aa0aa; cursor: pointer; padding: 4px 7px; border-radius: 6px; font-size: 14px; line-height: 1; }
@@ -63,6 +85,11 @@ const CSS = `
   #banner.on { display: flex; }
   #banner .banner-tempo { font-variant-numeric: tabular-nums; font-weight: 700; color: #22d3ee; font-size: 13px; }
   #banner .banner-titulo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: #9aa0aa; }
+  #banner .banner-tempo span.estourado, #body .tempo.estourado { color: #f87171; }
+
+  /* Bolha de aviso (item 1: tempo esgotado; itens 5-6: motivacional/pendências) — mesmo papel do AssistantBubble.tsx do app web, some sozinha. */
+  #bubble { position: absolute; bottom: calc(100% + 12px); right: 0; max-width: 220px; width: max-content; display: none; background: #16181d; color: #f2f2f2; border: 1px solid #2b2e35; border-radius: 12px; padding: 10px 12px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  #bubble.on { display: block; }
 
   #tabbar { display: flex; gap: 2px; padding: 6px 8px; border-bottom: 1px solid #2b2e35; overflow-x: auto; flex-shrink: 0; }
   #tabbar button { flex: 1; white-space: nowrap; background: transparent; border: none; color: #9aa0aa; font-size: 11px; font-weight: 600; padding: 6px 4px; border-radius: 6px; cursor: pointer; }
@@ -135,6 +162,17 @@ function formatarCronometro(segundos) {
   const m = Math.floor((s % 3600) / 60);
   const sec = s % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
+// Mesma lógica de formatarTempoFoco em src/components/assistant/format.ts:
+// regressivo (tempo restante) quando a tarefa tem estimativa, senão
+// elapsed puro. Depois de estourar, continua contando só que pra cima,
+// marcado como "estourado" (cor de aviso + gatilho da bolha em tick()).
+function formatarTempoFoco(elapsedSegundos, tempoEstimadoMin) {
+  if (!tempoEstimadoMin) return { texto: formatarCronometro(elapsedSegundos), estourado: false };
+  const restante = tempoEstimadoMin * 60 - elapsedSegundos;
+  if (restante >= 0) return { texto: formatarCronometro(restante), estourado: false };
+  return { texto: `+${formatarCronometro(Math.abs(restante))}`, estourado: true };
 }
 
 // Mesmo critério de categoriaTarefa em useAssistantAtividades.ts: atrasada
@@ -218,6 +256,27 @@ async function main() {
     eyeEls[f] = img;
   });
 
+  // Bolha curta perto da orbe — tempo esgotado (item 1), motivacional e
+  // lembrete de pendências (itens 5-6). Aparece mesmo com o painel
+  // FECHADO (é literalmente pra isso que ela existe); quem decide QUANDO
+  // mostrar é cada chamador de mostrarBolha, mais abaixo.
+  const bubble = document.createElement("div");
+  bubble.id = "bubble";
+  root.appendChild(bubble);
+  let esconderBolhaId = null;
+  function mostrarBolha(texto) {
+    clearTimeout(esconderBolhaId);
+    bubble.textContent = texto;
+    bubble.classList.add("on");
+    esconderBolhaId = setTimeout(() => bubble.classList.remove("on"), DURACAO_BOLHA_MS);
+  }
+
+  // Fundo escurecido só aparece atrás do painel EXPANDIDO (tela cheia) —
+  // no modo compacto o resto da página continua visível/interativa normal.
+  const backdrop = document.createElement("div");
+  backdrop.id = "backdrop";
+  root.appendChild(backdrop);
+
   // ---- painel: header fixo + banner de foco fixo + abas fixas + corpo rolável ----
   const panel = document.createElement("div");
   panel.id = "panel";
@@ -247,6 +306,10 @@ async function main() {
   let panelSize = "compact";
   let tickId = null;
   let elementosCronometro = [];
+  // taskId já avisado de "tempo estourado" nesta sessão de foco — evita
+  // repetir a bolha a cada segundo depois do primeiro aviso.
+  let avisouEstourouTaskId = null;
+  let ultimaMotivacionalIndice = -1;
 
   // Pilha simples de navegação (item 9): cada entrada é uma tela. Trocar de
   // aba na home TAMBÉM empilha (home→kanban→task-detail, ← volta uma de
@@ -298,6 +361,7 @@ async function main() {
       });
     } else {
       panel.classList.toggle("open");
+      atualizarBackdrop();
       if (panel.classList.contains("open")) renderPanel();
     }
     drag = null;
@@ -308,7 +372,10 @@ async function main() {
     root.style.top = `${novo.y}px`;
   });
 
-  // ---- olhos: pisca/olha de lado em intervalos variados, sempre volta pro 1 ----
+  // ---- olhos: pisca em intervalos variados, sempre volta pro 1 (olhar de
+  // lado removido — mesmo ajuste do Jarvis desktop/web, ver
+  // src/components/assistant/AssistantEyes.tsx, pra não dessincronizar as
+  // duas superfícies do Jarvis) ----
   function mostrarFrame(f) {
     Object.values(eyeEls).forEach((img) => img.classList.remove("on"));
     eyeEls[f].classList.add("on");
@@ -316,14 +383,8 @@ async function main() {
   function agendarProximoGesto() {
     const espera = 2500 + Math.random() * 3500;
     setTimeout(() => {
-      const piscar = Math.random() < 0.7;
-      if (piscar) {
-        mostrarFrame(4);
-        setTimeout(() => { mostrarFrame(1); agendarProximoGesto(); }, 120 + Math.random() * 60);
-      } else {
-        mostrarFrame(Math.random() < 0.5 ? 2 : 3);
-        setTimeout(() => { mostrarFrame(1); agendarProximoGesto(); }, 450 + Math.random() * 250);
-      }
+      mostrarFrame(4);
+      setTimeout(() => { mostrarFrame(1); agendarProximoGesto(); }, 120 + Math.random() * 60);
     }, espera);
   }
   agendarProximoGesto();
@@ -371,13 +432,20 @@ async function main() {
   }
   function fecharPainel() {
     panel.classList.remove("open");
+    atualizarBackdrop();
     nav = [{ screen: "home", tab: "hoje" }];
   }
   function alternarTamanho() {
     panelSize = panelSize === "expanded" ? "compact" : "expanded";
     panel.classList.toggle("expanded", panelSize === "expanded");
+    atualizarBackdrop();
     chrome.runtime.sendMessage({ type: "SET_PANEL_SIZE", size: panelSize });
     renderHeader();
+  }
+  // Fundo escurecido só faz sentido com o painel aberto E expandido (tela
+  // cheia) — nos outros três casos (fechado, ou compacto) fica escondido.
+  function atualizarBackdrop() {
+    backdrop.classList.toggle("on", panel.classList.contains("open") && panelSize === "expanded");
   }
 
   function tasksFiltradasPorProjeto() {
@@ -481,8 +549,10 @@ async function main() {
     linha1.className = "banner-tempo";
     const emojiSpan = document.createElement("span");
     emojiSpan.textContent = (focus.status === "active" ? "🔥 " : "⏸ ");
+    const cronoFoco = formatarTempoFoco(focus.elapsedSegundos, focus.tempoEstimadoMin);
     const tempoSpan = document.createElement("span");
-    tempoSpan.textContent = formatarCronometro(focus.elapsedSegundos);
+    tempoSpan.textContent = cronoFoco.texto;
+    tempoSpan.classList.toggle("estourado", cronoFoco.estourado);
     elementosCronometro.push(tempoSpan);
     linha1.appendChild(emojiSpan);
     linha1.appendChild(tempoSpan);
@@ -854,9 +924,13 @@ async function main() {
       body.appendChild(projeto);
     }
 
+    const emFoco = focus && focus.taskId === taskId;
+
     [
       ["Prazo", tarefa.dataVencimento || tarefa.dataAtividade],
-      ["Estimativa", tarefa.tempoEstimadoMin ? `${tarefa.tempoEstimadoMin} min` : "—"],
+      // Sem foco, a estimativa vira o input de duração logo abaixo — evita
+      // mostrar a mesma informação duas vezes.
+      ...(emFoco ? [["Estimativa", tarefa.tempoEstimadoMin ? `${tarefa.tempoEstimadoMin} min` : "—"]] : []),
       ["Prioridade", capitalizar(tarefa.prioridade)],
     ].forEach(([label, valor]) => {
       const p = document.createElement("p");
@@ -865,12 +939,12 @@ async function main() {
       body.appendChild(p);
     });
 
-    const emFoco = focus && focus.taskId === taskId;
-
     if (emFoco) {
+      const cronoFoco = formatarTempoFoco(focus.elapsedSegundos, focus.tempoEstimadoMin);
       const tempo = document.createElement("p");
       tempo.className = "tempo";
-      tempo.textContent = formatarCronometro(focus.elapsedSegundos);
+      tempo.classList.toggle("estourado", cronoFoco.estourado);
+      tempo.textContent = cronoFoco.texto;
       elementosCronometro.push(tempo);
       body.appendChild(tempo);
 
@@ -888,12 +962,23 @@ async function main() {
       row.appendChild(btnConcluir);
       body.appendChild(row);
     } else {
+      // Duração pra iniciar o foco (item 1) — pré-preenchida com a
+      // estimativa da tarefa (se já tiver), editável.
+      const campoDuracao = criarCampo("Duração (min)");
+      const inputDuracao = document.createElement("input");
+      inputDuracao.type = "number";
+      inputDuracao.min = "1";
+      inputDuracao.placeholder = "Sem tempo definido";
+      inputDuracao.value = tarefa.tempoEstimadoMin ? String(tarefa.tempoEstimadoMin) : "";
+      campoDuracao.appendChild(inputDuracao);
+      body.appendChild(campoDuracao);
+
       const row = document.createElement("div");
       row.className = "row";
       const btnFoco = document.createElement("button");
       btnFoco.className = "acao primaria";
       btnFoco.textContent = "▶ Iniciar foco";
-      btnFoco.onclick = () => iniciarFoco(taskId);
+      btnFoco.onclick = () => iniciarFoco(taskId, inputDuracao.value ? Number(inputDuracao.value) : null);
       row.appendChild(btnFoco);
       const btnConcluir = document.createElement("button");
       btnConcluir.className = "acao secundaria";
@@ -913,8 +998,8 @@ async function main() {
     }
   }
 
-  async function iniciarFoco(taskId) {
-    await chrome.runtime.sendMessage({ type: "START_FOCUS", taskId });
+  async function iniciarFoco(taskId, duracaoMin) {
+    await chrome.runtime.sendMessage({ type: "START_FOCUS", taskId, duracaoMin });
     const resp = await chrome.runtime.sendMessage({ type: "GET_CURRENT_FOCUS" });
     aplicarFocus(resp?.focus ?? null);
   }
@@ -1206,13 +1291,26 @@ async function main() {
     if (!focus || focus.status !== "active") return;
     focus = { ...focus, elapsedSegundos: focus.elapsedSegundos + 1 };
     atualizarAnel();
-    const texto = formatarCronometro(focus.elapsedSegundos);
-    elementosCronometro.forEach((el) => { el.textContent = texto; });
+    const cronoFoco = formatarTempoFoco(focus.elapsedSegundos, focus.tempoEstimadoMin);
+    elementosCronometro.forEach((el) => {
+      el.textContent = cronoFoco.texto;
+      el.classList.toggle("estourado", cronoFoco.estourado);
+    });
+
+    // Aviso único por sessão de foco (item 1) — só quando o painel está
+    // fechado (com ele aberto o número regressivo já mostra "+00:03" na
+    // tela, não precisa de bolha).
+    if (cronoFoco.estourado && avisouEstourouTaskId !== focus.taskId && !panel.classList.contains("open")) {
+      avisouEstourouTaskId = focus.taskId;
+      mostrarBolha("⏰ Tempo estimado esgotado! Continua ou conclui?");
+    }
   }
 
   function aplicarFocus(novoFocus) {
+    const mudouTarefa = !focus || !novoFocus || focus.taskId !== novoFocus.taskId;
     focus = novoFocus;
     log("focus recebido");
+    if (mudouTarefa) avisouEstourouTaskId = null;
     atualizarAnel();
     clearInterval(tickId);
     if (focus && focus.status === "active") tickId = setInterval(tick, 1000);
@@ -1256,6 +1354,7 @@ async function main() {
     if (panelSize === tamanho) return;
     panelSize = tamanho;
     panel.classList.toggle("expanded", panelSize === "expanded");
+    atualizarBackdrop();
     if (panel.classList.contains("open")) renderHeader();
   }
 
@@ -1295,6 +1394,30 @@ async function main() {
   aplicarFocus(inicial?.focus ?? null);
   aplicarTasks(inicial?.tasks ?? []);
   aplicarSessionExpired(inicial?.sessionExpired);
+
+  // Mensagem motivacional (item 5) — sorteada entre as 4 opções, evitando
+  // repetir a mesma duas vezes seguidas, a cada 2min, sempre que o painel
+  // está fechado (com foco ativo ou não — não depende de nenhum estado).
+  // Mesmo par de regras que useAssistantCobranca.ts usa no app web.
+  setInterval(() => {
+    if (panel.classList.contains("open")) return;
+    let indice = Math.floor(Math.random() * MENSAGENS_MOTIVACIONAIS.length);
+    if (MENSAGENS_MOTIVACIONAIS.length > 1 && indice === ultimaMotivacionalIndice) {
+      indice = (indice + 1) % MENSAGENS_MOTIVACIONAIS.length;
+    }
+    ultimaMotivacionalIndice = indice;
+    mostrarBolha(MENSAGENS_MOTIVACIONAIS[indice]);
+  }, INTERVALO_MOTIVACIONAL_MS);
+
+  // Lembrete de pendências (item 6) — a cada 5min, sempre que o painel
+  // está fechado; não avisa se não sobrou nada pendente hoje.
+  setInterval(() => {
+    if (panel.classList.contains("open")) return;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const n = tasks.filter((t) => categoriaTarefa(t, hoje) !== "proxima").length;
+    if (n === 0) return;
+    mostrarBolha(`📋 Você ainda tem ${n} atividade${n > 1 ? "s" : ""} pendente${n > 1 ? "s" : ""} hoje.`);
+  }, INTERVALO_PENDENCIAS_MS);
 }
 
 main().catch((err) => console.error("[Assistant] erro ao iniciar", err));

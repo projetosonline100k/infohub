@@ -64,6 +64,7 @@ export type Database = {
           prioridade: string
           responsavel_nome: string | null
           status: string
+          tempo_descanso: number | null
           tempo_estimado: number | null
           timer_decorrido_segundos: number
           timer_iniciado_em: string | null
@@ -85,6 +86,7 @@ export type Database = {
           prioridade?: string
           responsavel_nome?: string | null
           status?: string
+          tempo_descanso?: number | null
           tempo_estimado?: number | null
           timer_decorrido_segundos?: number
           timer_iniciado_em?: string | null
@@ -106,6 +108,7 @@ export type Database = {
           prioridade?: string
           responsavel_nome?: string | null
           status?: string
+          tempo_descanso?: number | null
           tempo_estimado?: number | null
           timer_decorrido_segundos?: number
           timer_iniciado_em?: string | null
@@ -320,6 +323,8 @@ export type Database = {
           cliente_id: string | null
           conteudo: string | null
           created_at: string
+          deleted_at: string | null
+          fixado: boolean
           id: string
           pasta_id: string | null
           titulo: string
@@ -330,6 +335,8 @@ export type Database = {
           cliente_id?: string | null
           conteudo?: string | null
           created_at?: string
+          deleted_at?: string | null
+          fixado?: boolean
           id?: string
           pasta_id?: string | null
           titulo?: string
@@ -340,6 +347,8 @@ export type Database = {
           cliente_id?: string | null
           conteudo?: string | null
           created_at?: string
+          deleted_at?: string | null
+          fixado?: boolean
           id?: string
           pasta_id?: string | null
           titulo?: string
@@ -536,6 +545,173 @@ export type Database = {
           plataformas?: string[] | null
           status?: string | null
           titulo?: string
+        }
+        Relationships: []
+      }
+      jarvis_configuracoes: {
+        Row: {
+          analisar_titulo_janela: boolean
+          detectar_distracoes: boolean
+          monitorar_app_ativo: boolean
+          som_ativado: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analisar_titulo_janela?: boolean
+          detectar_distracoes?: boolean
+          monitorar_app_ativo?: boolean
+          som_ativado?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          analisar_titulo_janela?: boolean
+          detectar_distracoes?: boolean
+          monitorar_app_ativo?: boolean
+          som_ativado?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      focus_activity_events: {
+        Row: {
+          app_name: string
+          atividade_id: string | null
+          bundle_id: string | null
+          classification: string
+          created_at: string
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          started_at: string
+          user_id: string
+          window_title: string | null
+        }
+        Insert: {
+          app_name: string
+          atividade_id?: string | null
+          bundle_id?: string | null
+          classification?: string
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          started_at: string
+          user_id?: string
+          window_title?: string | null
+        }
+        Update: {
+          app_name?: string
+          atividade_id?: string | null
+          bundle_id?: string | null
+          classification?: string
+          created_at?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string
+          user_id?: string
+          window_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_activity_events_atividade_id_fkey"
+            columns: ["atividade_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_learned_rules: {
+        Row: {
+          app_name: string | null
+          atividade_id: string | null
+          bundle_id: string | null
+          classification: string
+          cliente_id: string | null
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+          window_title_pattern: string | null
+        }
+        Insert: {
+          app_name?: string | null
+          atividade_id?: string | null
+          bundle_id?: string | null
+          classification: string
+          cliente_id?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          window_title_pattern?: string | null
+        }
+        Update: {
+          app_name?: string | null
+          atividade_id?: string | null
+          bundle_id?: string | null
+          classification?: string
+          cliente_id?: string | null
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+          window_title_pattern?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_learned_rules_atividade_id_fkey"
+            columns: ["atividade_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_learned_rules_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      jarvis_mensagens: {
+        Row: {
+          ativo: boolean
+          contexto: string | null
+          created_at: string
+          id: string
+          intervalo_minimo_minutos: number
+          mensagem: string
+          tipo: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          contexto?: string | null
+          created_at?: string
+          id?: string
+          intervalo_minimo_minutos?: number
+          mensagem: string
+          tipo: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          ativo?: boolean
+          contexto?: string | null
+          created_at?: string
+          id?: string
+          intervalo_minimo_minutos?: number
+          mensagem?: string
+          tipo?: string
+          updated_at?: string
+          user_id?: string
         }
         Relationships: []
       }

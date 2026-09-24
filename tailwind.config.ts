@@ -92,14 +92,17 @@ export default {
             height: "0",
           },
         },
+        // Rodada 7, item 3: respiração bem suave — scale 1 → 1.025 → 1,
+        // 4s, ease-in-out infinite (era 3.5s/1.035, sutilmente mais rápido
+        // e mais intenso do que o pedido).
         "orb-glow-pulse": {
           "0%, 100%": {
             filter: "drop-shadow(0 0 8px rgba(34,211,238,0.45)) drop-shadow(0 0 2px rgba(34,211,238,0.6))",
             transform: "scale(1)",
           },
           "50%": {
-            filter: "drop-shadow(0 0 18px rgba(34,211,238,0.8)) drop-shadow(0 0 5px rgba(34,211,238,0.9))",
-            transform: "scale(1.035)",
+            filter: "drop-shadow(0 0 16px rgba(34,211,238,0.75)) drop-shadow(0 0 4px rgba(34,211,238,0.85))",
+            transform: "scale(1.025)",
           },
         },
         // Disparado por 1 ciclo só (ver AssistantOrb `pulse="green"`) quando
@@ -122,8 +125,10 @@ export default {
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "orb-glow-pulse": "orb-glow-pulse 3.5s ease-in-out infinite",
-        "orb-glow-green": "orb-glow-green 1.5s ease-out 1",
+        "orb-glow-pulse": "orb-glow-pulse 4s ease-in-out infinite",
+        // Item 7 do refinamento: celebração dura ~2s (dentro da faixa
+        // pedida de 1.5-2.5s), acompanhando confete + som.
+        "orb-glow-green": "orb-glow-green 2s ease-out 1",
       },
     },
   },

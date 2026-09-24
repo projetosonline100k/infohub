@@ -17,6 +17,9 @@ import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Plus, KeyRound, Trash2, ShieldCheck, Copy, Eye, EyeOff } from "lucide-react";
+import { AdminJarvisMensagens } from "@/components/admin/AdminJarvisMensagens";
+import { AdminJarvisSons } from "@/components/admin/AdminJarvisSons";
+import { AdminJarvisPrivacidade } from "@/components/admin/AdminJarvisPrivacidade";
 
 interface Usuario {
   id: string;
@@ -208,6 +211,16 @@ const Admin = () => {
           ))}
         </div>
       )}
+
+      <div className="space-y-6 border-t border-border pt-6">
+        <div>
+          <h1 className="mb-1 text-2xl font-bold text-foreground">Jarvis</h1>
+          <p className="text-sm text-muted-foreground">Mensagens espontâneas e preferências do assistente flutuante.</p>
+        </div>
+        <AdminJarvisMensagens />
+        <AdminJarvisSons />
+        <AdminJarvisPrivacidade />
+      </div>
 
       {/* Criar usuário */}
       <Dialog open={criando} onOpenChange={setCriando}>

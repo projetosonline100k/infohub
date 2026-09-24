@@ -391,9 +391,16 @@ async function patch(taskId, body) {
   return !!res?.ok;
 }
 
-async function iniciarFoco(taskId) {
+// `duracaoMin`, quando informado (usuário escolheu um tempo específico ou
+// confirmou a estimativa já existente, ver task-detail em orb.js), também
+// grava em `tempo_estimado` — mesma lógica de iniciarTimer em
+// useAssistantAtividades.ts, é o que dá ao cronômetro uma referência pra
+// contar regressivo (ver paraFoco/tick em orb.js).
+async function iniciarFoco(taskId, duracaoMin) {
   await chrome.storage.local.set({ currentTaskId: taskId });
-  await patch(taskId, { timer_iniciado_em: new Date().toISOString() });
+  const body = { timer_iniciado_em: new Date().toISOString() };
+  if (typeof duracaoMin === "number" && duracaoMin > 0) body.tempo_estimado = duracaoMin;
+  await patch(taskId, body);
   await pollFocus();
 }
 
@@ -789,7 +796,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
 
       case "START_FOCUS":
-        await iniciarFoco(message.taskId);
+        await iniciarFoco(message.taskId, message.duracaoMin);
         sendResponse({ ok: true });
         break;
 

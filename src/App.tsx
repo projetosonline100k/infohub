@@ -8,12 +8,14 @@ import DashGeral from "./pages/DashGeral";
 import Clientes from "./pages/Clientes";
 import ClienteDetalhe from "./pages/ClienteDetalhe";
 import Atividades from "./pages/Atividades";
+import Notas from "./pages/Notas";
 import Admin from "./pages/Admin";
 import FormularioPublico from "./pages/FormularioPublico";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
+import JarvisWindow from "./pages/JarvisWindow";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 
 const queryClient = new QueryClient();
@@ -39,12 +41,18 @@ const App = () => (
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
+
+          {/* Janela nativa `jarvis` (desktop, ver src-tauri/tauri.conf.json) —
+              sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona
+              pra /login: ver JarvisWindow.tsx). */}
+          <Route path="/jarvis" element={<JarvisWindow />} />
           
           {/* Protected routes with layout */}
           <Route path="/" element={<ProtectedRoute><DashboardLayout><DashGeral /></DashboardLayout></ProtectedRoute>} />
           <Route path="/clientes" element={<ProtectedRoute><DashboardLayout><Clientes /></DashboardLayout></ProtectedRoute>} />
           <Route path="/clientes/:id" element={<ProtectedRoute><DashboardLayout><ClienteDetalhe /></DashboardLayout></ProtectedRoute>} />
           <Route path="/atividades" element={<ProtectedRoute><DashboardLayout><Atividades /></DashboardLayout></ProtectedRoute>} />
+          <Route path="/notas" element={<ProtectedRoute><DashboardLayout><Notas /></DashboardLayout></ProtectedRoute>} />
           <Route path="/admin" element={<ProtectedRoute><DashboardLayout><Admin /></DashboardLayout></ProtectedRoute>} />
 
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

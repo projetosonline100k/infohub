@@ -22,6 +22,7 @@ import { DiaSection } from "./DiaSection";
 import { AtividadeItem } from "./AtividadeItem";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { AtividadesView } from "./AtividadesView";
+import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
 
 // Guarda qual(is) cliente(s) estavam selecionados no filtro, pra voltar
 // exatamente de onde parou ao reabrir a aba.
@@ -210,6 +211,40 @@ export const AtividadesClientesView = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientes]);
 
+  // Mesmo motivo/padrão de AtividadesView.tsx: essa lista só carregava sob
+  // demanda, então uma atividade criada pelo Assistant/Jarvis (widget ou
+  // extensão) ou por outra aba nunca aparecia aqui sem recarregar a
+  // página. Realtime (fonte oficial) + BroadcastChannel (atalho entre abas
+  // do mesmo navegador), sempre refazendo a MESMA busca já existente.
+  useEffect(() => {
+    if (!user?.id) return;
+    const canal = supabase
+      .channel(`atividades-clientes-view-${user.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "atividades", filter: `user_id=eq.${user.id}` },
+        () => carregarDados(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "colunas_atividade", filter: `user_id=eq.${user.id}` },
+        () => carregarDados(),
+      )
+      .subscribe();
+
+    let broadcast: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== "undefined") {
+      broadcast = new BroadcastChannel("assistant-sync");
+      broadcast.onmessage = () => carregarDados();
+    }
+
+    return () => {
+      supabase.removeChannel(canal);
+      broadcast?.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   // Se o filtro estiver travado num único cliente, a criação de tarefa já
   // parte pra ele — evita ter que escolher de novo toda hora.
   useEffect(() => {
@@ -316,14 +351,15 @@ export const AtividadesClientesView = () => {
     ).length;
 
     try {
-      const { error } = await supabase.from("atividades").insert({
+      await criarAtividadeService({
         titulo,
-        cliente_id: novoClienteId,
-        data_atividade: format(new Date(), "yyyy-MM-dd"),
-        status: statusPadrao,
+        clienteId: novoClienteId,
+        pastaId: lerPastaAtivaSalva(novoClienteId),
+        dataAtividade: format(new Date(), "yyyy-MM-dd"),
+        statusKey: statusPadrao,
+        concluida: false,
         ordem: ordemNaColuna + 1,
       });
-      if (error) throw error;
       setNovoTitulo("");
       carregarDados();
       toast.success("Atividade adicionada");

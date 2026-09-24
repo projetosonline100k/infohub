@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { mensagensAtivasPorTipo, type JarvisMensagem, type JarvisMensagemTipo } from "@/hooks/useJarvisMensagens";
 
 export type AssistantEstadoPainel = "lista" | "recomendacao" | "selecionada" | "foco" | "pausado";
 
@@ -12,7 +13,17 @@ interface CobrancaSnapshot {
   focoIniciadoEm: number | null;
   // segundos já acumulados antes desse run (timer_decorrido_segundos).
   focoAcumuladoAntesDoRunSegundos: number;
+  // tempo_estimado da tarefa atual, em segundos (null = sem referência,
+  // não dá pra saber quando "estourou").
+  estimativaSegundos: number | null;
   atrasadasCount: number;
+  // atividades de hoje + atrasadas ainda não concluídas (a lista de origem
+  // já só tem não concluídas) — usado pelo lembrete periódico.
+  pendentesHojeCount: number;
+  // Mensagens cadastradas em Administração → Jarvis (item 2) — ativas de
+  // cada tipo entram no sorteio abaixo; sem nenhuma configurada, os textos
+  // fixos de sempre continuam valendo (sem regressão pra quem não configurou nada).
+  mensagens: JarvisMensagem[];
 }
 
 type Regra = "foco45" | "selecionadaParada" | "pausadoLongo" | "atrasada";
@@ -24,6 +35,19 @@ const LIMIAR_SELECIONADA_MS = 10 * 60 * 1000;
 const LIMIAR_PAUSADO_MS = 15 * 60 * 1000;
 const LIMIAR_SESSAO_LONGA_SEGUNDOS = 45 * 60;
 
+// Nudges periódicos (itens 5-6 do pedido) — independentes do cooldown de
+// 15min acima (senão iam competir com as cobranças antigas e sumir por até
+// 15min de folga). Disparam sempre que o painel está fechado, com foco
+// ativo ou não — não dependem de nenhum estado específico.
+const INTERVALO_MOTIVACIONAL_MS = 2 * 60 * 1000;
+const INTERVALO_PENDENCIAS_MS = 5 * 60 * 1000;
+const MENSAGENS_MOTIVACIONAIS = [
+  "Continua, você é disciplinado",
+  "Vai pra cima, seu sono depende disso",
+  "Vai campeão",
+  "Para agora não",
+];
+
 // Cobranças proativas simples — só tarefa/sessão/tempo/atraso, sem IA.
 // No máximo 1 aviso a cada ~15min (cooldown único pra tudo nesta v1) e só
 // com o painel FECHADO (aberto = já está engajado, não precisa cutucar).
@@ -34,8 +58,53 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
   const ultimoAvisoRef = useRef(0);
   const avisou45MinRef = useRef(false);
   const esconderRef = useRef<ReturnType<typeof setTimeout>>();
+  const ultimaMotivacionalRef = useRef(-1);
+  // Cooldown por mensagem (item 2: "intervalo mínimo") — em memória, não
+  // precisa sobreviver a um reload (mesmo critério dos outros refs aqui).
+  const cooldownPorMensagemRef = useRef<Map<string, number>>(new Map());
 
-  // Sessão de foco nova (ou parada) — libera o aviso de "45 min" de novo.
+  const mostrarBolha = (texto: string) => {
+    clearTimeout(esconderRef.current);
+    setMensagem(texto);
+    esconderRef.current = setTimeout(() => setMensagem(null), DURACAO_BOLHA_MS);
+  };
+
+  // Sorteia entre as mensagens ATIVAS de um tipo (Administração → Jarvis),
+  // preferindo as que já passaram do próprio intervalo mínimo — se todas
+  // estiverem em cooldown, mostra uma mesmo assim (o cooldown é uma
+  // preferência de rotação, não um bloqueio duro; quem bloqueia de verdade
+  // é o cooldown global de 15min dos gatilhos reativos, mais acima). Sem
+  // nenhuma mensagem configurada pro tipo, cai no texto fixo de sempre.
+  const escolherTexto = useCallback((tipo: JarvisMensagemTipo, fallback: string): string => {
+    const candidatas = mensagensAtivasPorTipo(snapshotRef.current.mensagens, tipo);
+    // Log temporário (item 2, rodada 4) — ajuda a confirmar ao vivo se o
+    // problema era mesmo geométrico (janela pequena demais) e não de dados;
+    // fácil de remover depois de validado.
+    console.log("[jarvis][cobranca] escolherTexto", { tipo, candidatas: candidatas.length, totalMensagens: snapshotRef.current.mensagens.length });
+    if (candidatas.length === 0) return fallback;
+    const agora = Date.now();
+    const disponiveis = candidatas.filter(
+      (m) => agora - (cooldownPorMensagemRef.current.get(m.id) ?? 0) >= m.intervalo_minimo_minutos * 60_000,
+    );
+    const pool = disponiveis.length > 0 ? disponiveis : candidatas;
+    const escolhida = pool[Math.floor(Math.random() * pool.length)];
+    cooldownPorMensagemRef.current.set(escolhida.id, agora);
+    return escolhida.mensagem;
+  }, []);
+
+  // Disparo pontual (fora do loop periódico) — usado por ações imediatas do
+  // usuário: pausar (tipo "pausa") e concluir (tipo "conclusao", chamado de
+  // dispararCelebracao em Assistant.tsx). Pausar/concluir não são ações
+  // frequentes o bastante pra precisar do cooldown global de 15min.
+  const dispararMensagemPontual = useCallback((tipo: JarvisMensagemTipo, fallback: string) => {
+    mostrarBolha(escolherTexto(tipo, fallback));
+  }, [escolherTexto]);
+
+  // Sessão de foco nova (ou parada/pausada) — libera o aviso de "45 min" de
+  // novo (um novo timer_iniciado_em é um novo run). O aviso de "tempo
+  // estimado esgotado" virou um diálogo modal de verdade (item 7, rodada 4
+  // — ver dialogoExcedido em Assistant.tsx), não mais um balão passivo
+  // daqui.
   useEffect(() => {
     if (!snapshot.focoIniciadoEm) avisou45MinRef.current = false;
   }, [snapshot.focoIniciadoEm]);
@@ -51,7 +120,7 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
       if (s.estado === "foco" && s.focoIniciadoEm && !avisou45MinRef.current) {
         const totalSeg = s.focoAcumuladoAntesDoRunSegundos + (agora - s.focoIniciadoEm) / 1000;
         if (totalSeg >= LIMIAR_SESSAO_LONGA_SEGUNDOS) {
-          candidata = { texto: "🔥 45 min de foco. Continua ou faz uma pausa?", regra: "foco45" };
+          candidata = { texto: escolherTexto("alerta", "🔥 45 min de foco. Continua ou faz uma pausa?"), regra: "foco45" };
         }
       }
 
@@ -61,11 +130,11 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
 
       if (!candidata && s.estado === "pausado" && s.pausadoEm && agora - s.pausadoEm >= LIMIAR_PAUSADO_MS) {
         const minutos = Math.round((agora - s.pausadoEm) / 60000);
-        candidata = { texto: `Seu foco está pausado há ${minutos} min. Bora voltar?`, regra: "pausadoLongo" };
+        candidata = { texto: escolherTexto("retorno_foco", `Seu foco está pausado há ${minutos} min. Bora voltar?`), regra: "pausadoLongo" };
       }
 
       if (!candidata && s.atrasadasCount > 0) {
-        candidata = { texto: "Você ainda tem uma tarefa atrasada esperando.", regra: "atrasada" };
+        candidata = { texto: escolherTexto("alerta", "Você ainda tem uma tarefa atrasada esperando."), regra: "atrasada" };
       }
 
       if (!candidata) return;
@@ -74,15 +143,49 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
       ultimoAvisoRef.current = agora;
       if (candidata.regra === "foco45") avisou45MinRef.current = true;
 
-      clearTimeout(esconderRef.current);
-      setMensagem(candidata.texto);
-      esconderRef.current = setTimeout(() => setMensagem(null), DURACAO_BOLHA_MS);
+      mostrarBolha(candidata.texto);
     }, CHECK_INTERVAL_MS);
     return () => {
       clearInterval(id);
       clearTimeout(esconderRef.current);
     };
+    // escolherTexto é estável ([] de deps) — não precisa recriar o interval por causa dela.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return mensagem;
+  // Mensagem motivacional (item 5) — sorteada entre as 4 opções, evitando
+  // repetir a mesma duas vezes seguidas, a cada 2min, sempre que o painel
+  // está fechado (com foco ativo ou não — não depende de nenhum estado).
+  useEffect(() => {
+    const id = setInterval(() => {
+      // Log temporário (item 2, rodada 4) — se isso não aparecer a cada
+      // 2min com o painel fechado, o problema é o timer nunca rodar (ex.:
+      // componente desmontado); se aparecer mas a bolha não for vista, o
+      // problema é geométrico (janela pequena demais), não de dados.
+      console.log("[jarvis][cobranca] tick motivacional", { panelAberto: snapshotRef.current.panelAberto });
+      if (snapshotRef.current.panelAberto) return;
+      let indice = Math.floor(Math.random() * MENSAGENS_MOTIVACIONAIS.length);
+      if (MENSAGENS_MOTIVACIONAIS.length > 1 && indice === ultimaMotivacionalRef.current) {
+        indice = (indice + 1) % MENSAGENS_MOTIVACIONAIS.length;
+      }
+      ultimaMotivacionalRef.current = indice;
+      mostrarBolha(escolherTexto("motivacao", MENSAGENS_MOTIVACIONAIS[indice]));
+    }, INTERVALO_MOTIVACIONAL_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Lembrete de pendências (item 6) — a cada 5min, sempre que o painel está
+  // fechado; não avisa se não sobrou nada pendente hoje.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = snapshotRef.current;
+      if (s.panelAberto || s.pendentesHojeCount <= 0) return;
+      const n = s.pendentesHojeCount;
+      mostrarBolha(`📋 Você ainda tem ${n} atividade${n > 1 ? "s" : ""} pendente${n > 1 ? "s" : ""} hoje.`);
+    }, INTERVALO_PENDENCIAS_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  return { mensagem, dispararMensagemPontual, escolherTexto };
 }
