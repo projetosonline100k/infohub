@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { FaturamentoGeral } from "@/components/dashboard/FaturamentoGeral";
+import { ProdutividadeGeral } from "@/components/dashboard/ProdutividadeGeral";
 import { supabase } from "@/integrations/supabase/client";
 import { cn, iniciais } from "@/lib/utils";
 import { AlertCircle, CalendarClock, TrendingUp, ArrowRight } from "lucide-react";
@@ -159,12 +160,12 @@ const DashGeral = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">Dash geral</h1>
+        <h1 className="mb-2 text-4xl font-bold text-foreground">Dash geral</h1>
         <p className="text-muted-foreground">Como estão suas tarefas agora</p>
       </div>
 
       {/* Stat tiles */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatTile
           icon={AlertCircle}
           label="Tarefas atrasadas"
@@ -335,6 +336,13 @@ const DashGeral = () => {
         Semana de {format(inicioSemana, "d MMM", { locale: ptBR })} a {format(fimSemana, "d MMM", { locale: ptBR })} ·{" "}
         {concluidasSemana.length}/{daSemana.length} tarefas concluídas
       </p>
+
+      <div className="pt-2">
+        <h2 className="text-lg font-semibold text-foreground uppercase tracking-wide mb-4">
+          Produtividade
+        </h2>
+        <ProdutividadeGeral />
+      </div>
 
       <div className="pt-2">
         <h2 className="text-lg font-semibold text-foreground uppercase tracking-wide mb-4">

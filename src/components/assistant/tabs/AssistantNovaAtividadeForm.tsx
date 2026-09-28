@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatarTempo } from "@/lib/utils";
 import type { AssistantProjetoOpcao } from "@/hooks/useAssistantProjeto";
 import type { ColunaAtividade, NovaAtividadeInput } from "@/hooks/useAssistantAtividades";
 
@@ -92,6 +93,12 @@ export function AssistantNovaAtividadeForm({ projetos, projetoIdPadrao, colunasD
         <div className="space-y-1.5">
           <Label htmlFor="assistant-nova-estimativa" className="text-xs">Estimativa (min)</Label>
           <Input id="assistant-nova-estimativa" type="number" min={0} value={estimativa} onChange={(e) => setEstimativa(e.target.value)} placeholder="40" />
+          {/* "Preciso saber o minuto exato, tipo 1h30" — o campo continua em
+              minutos (mesma coluna do banco), só ganha essa tradução ao
+              vivo pra não precisar fazer conta de cabeça pra ler 90, 150... */}
+          {Number(estimativa) > 0 && (
+            <p className="text-xs text-muted-foreground">= {formatarTempo(Number(estimativa))}</p>
+          )}
         </div>
       </div>
 

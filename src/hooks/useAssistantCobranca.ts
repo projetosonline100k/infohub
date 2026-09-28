@@ -24,9 +24,15 @@ interface CobrancaSnapshot {
   // cada tipo entram no sorteio abaixo; sem nenhuma configurada, os textos
   // fixos de sempre continuam valendo (sem regressão pra quem não configurou nada).
   mensagens: JarvisMensagem[];
+  // "Começar o dia": id da tarefa em foco agora + id/status da prioridade
+  // #1 do plano de hoje (null quando não existe plano) — usados só pela
+  // regra "sugestão moderada" abaixo, sem UI nova nenhuma.
+  tarefaAtualId: string | null;
+  prioridadeUmId: string | null;
+  prioridadeUmConcluida: boolean;
 }
 
-type Regra = "foco45" | "selecionadaParada" | "pausadoLongo" | "atrasada";
+type Regra = "foco45" | "selecionadaParada" | "pausadoLongo" | "sugestaoModerada" | "atrasada";
 
 const COOLDOWN_MS = 15 * 60 * 1000;
 const CHECK_INTERVAL_MS = 30 * 1000;
@@ -73,15 +79,19 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
   // preferindo as que já passaram do próprio intervalo mínimo — se todas
   // estiverem em cooldown, mostra uma mesmo assim (o cooldown é uma
   // preferência de rotação, não um bloqueio duro; quem bloqueia de verdade
-  // é o cooldown global de 15min dos gatilhos reativos, mais acima). Sem
-  // nenhuma mensagem configurada pro tipo, cai no texto fixo de sempre.
-  const escolherTexto = useCallback((tipo: JarvisMensagemTipo, fallback: string): string => {
+  // é o cooldown global de 15min dos gatilhos reativos, mais acima).
+  //
+  // Bug corrigido: sem NENHUMA mensagem cadastrada pro tipo, cai no texto
+  // fixo de sempre (sem regressão pra quem nunca configurou nada) — mas se
+  // o usuário JÁ cadastrou mensagens desse tipo e desativou todas elas
+  // (Switch em Administração → Jarvis → Mensagens), isso é um "desligar" de
+  // verdade: retorna null e quem chamar não deve mostrar bolha nenhuma, em
+  // vez de cair no mesmo texto fixo como se nada tivesse sido configurado.
+  const escolherTexto = useCallback((tipo: JarvisMensagemTipo, fallback: string): string | null => {
+    const todasDoTipo = snapshotRef.current.mensagens.filter((m) => m.tipo === tipo);
+    if (todasDoTipo.length === 0) return fallback;
     const candidatas = mensagensAtivasPorTipo(snapshotRef.current.mensagens, tipo);
-    // Log temporário (item 2, rodada 4) — ajuda a confirmar ao vivo se o
-    // problema era mesmo geométrico (janela pequena demais) e não de dados;
-    // fácil de remover depois de validado.
-    console.log("[jarvis][cobranca] escolherTexto", { tipo, candidatas: candidatas.length, totalMensagens: snapshotRef.current.mensagens.length });
-    if (candidatas.length === 0) return fallback;
+    if (candidatas.length === 0) return null;
     const agora = Date.now();
     const disponiveis = candidatas.filter(
       (m) => agora - (cooldownPorMensagemRef.current.get(m.id) ?? 0) >= m.intervalo_minimo_minutos * 60_000,
@@ -97,7 +107,8 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
   // dispararCelebracao em Assistant.tsx). Pausar/concluir não são ações
   // frequentes o bastante pra precisar do cooldown global de 15min.
   const dispararMensagemPontual = useCallback((tipo: JarvisMensagemTipo, fallback: string) => {
-    mostrarBolha(escolherTexto(tipo, fallback));
+    const texto = escolherTexto(tipo, fallback);
+    if (texto) mostrarBolha(texto);
   }, [escolherTexto]);
 
   // Sessão de foco nova (ou parada/pausada) — libera o aviso de "45 min" de
@@ -120,7 +131,8 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
       if (s.estado === "foco" && s.focoIniciadoEm && !avisou45MinRef.current) {
         const totalSeg = s.focoAcumuladoAntesDoRunSegundos + (agora - s.focoIniciadoEm) / 1000;
         if (totalSeg >= LIMIAR_SESSAO_LONGA_SEGUNDOS) {
-          candidata = { texto: escolherTexto("alerta", "🔥 45 min de foco. Continua ou faz uma pausa?"), regra: "foco45" };
+          const texto = escolherTexto("alerta", "🔥 45 min de foco. Continua ou faz uma pausa?");
+          if (texto) candidata = { texto, regra: "foco45" };
         }
       }
 
@@ -130,11 +142,21 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
 
       if (!candidata && s.estado === "pausado" && s.pausadoEm && agora - s.pausadoEm >= LIMIAR_PAUSADO_MS) {
         const minutos = Math.round((agora - s.pausadoEm) / 60000);
-        candidata = { texto: escolherTexto("retorno_foco", `Seu foco está pausado há ${minutos} min. Bora voltar?`), regra: "pausadoLongo" };
+        const texto = escolherTexto("retorno_foco", `Seu foco está pausado há ${minutos} min. Bora voltar?`);
+        if (texto) candidata = { texto, regra: "pausadoLongo" };
+      }
+
+      // "Começar o dia": trabalhando em foco em algo que NÃO é a prioridade
+      // #1 do plano, com ela ainda pendente — sugestão simples e moderada,
+      // herda o mesmo cooldown global de 15min de tudo aqui (não é um alerta
+      // urgente, só um lembrete gentil).
+      if (!candidata && s.estado === "foco" && s.prioridadeUmId && !s.prioridadeUmConcluida && s.tarefaAtualId !== s.prioridadeUmId) {
+        candidata = { texto: "Lembrete: sua prioridade #1 de hoje ainda está pendente.", regra: "sugestaoModerada" };
       }
 
       if (!candidata && s.atrasadasCount > 0) {
-        candidata = { texto: escolherTexto("alerta", "Você ainda tem uma tarefa atrasada esperando."), regra: "atrasada" };
+        const texto = escolherTexto("alerta", "Você ainda tem uma tarefa atrasada esperando.");
+        if (texto) candidata = { texto, regra: "atrasada" };
       }
 
       if (!candidata) return;
@@ -169,7 +191,8 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
         indice = (indice + 1) % MENSAGENS_MOTIVACIONAIS.length;
       }
       ultimaMotivacionalRef.current = indice;
-      mostrarBolha(escolherTexto("motivacao", MENSAGENS_MOTIVACIONAIS[indice]));
+      const texto = escolherTexto("motivacao", MENSAGENS_MOTIVACIONAIS[indice]);
+      if (texto) mostrarBolha(texto);
     }, INTERVALO_MOTIVACIONAL_MS);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps

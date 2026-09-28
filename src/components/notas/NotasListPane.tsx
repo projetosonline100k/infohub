@@ -126,7 +126,7 @@ export function NotasListPane({
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar notas..."
-            className="h-8 pl-7 text-sm"
+            className={cn("pl-7", compact ? "h-8 text-sm" : "h-9 text-sm")}
           />
         </div>
         {!compact && (
@@ -179,13 +179,19 @@ export function NotasListPane({
                       type="button"
                       onClick={() => onSelecionar(nota.id)}
                       className={cn(
-                        "w-full rounded-md px-2 py-2 text-left transition-colors",
-                        nota.id === notaSelecionadaId ? "bg-accent" : "hover:bg-accent/50",
+                        "w-full rounded-lg px-3 text-left transition-colors",
+                        compact ? "py-2" : "py-2.5",
+                        // Destaque suave (item 4 do pedido) — o bloco sólido
+                        // com a cor de accent (verde forte da marca) chamava
+                        // demais a atenção pra uma simples seleção de item de
+                        // lista; um tingimento leve já deixa claro qual nota
+                        // está aberta sem competir com o conteúdo.
+                        nota.id === notaSelecionadaId ? "bg-accent/10" : "hover:bg-muted/60",
                       )}
                     >
                       <div className="flex items-center gap-1.5">
                         {nota.fixado && !naLixeira && <Pin className="h-3 w-3 shrink-0 fill-current text-amber-500" />}
-                        <p className="flex-1 truncate text-sm font-medium">{nota.titulo || "Nota sem título"}</p>
+                        <p className={cn("flex-1 truncate font-medium", compact ? "text-sm" : "text-[15px]")}>{nota.titulo || "Nota sem título"}</p>
                         {naLixeira && (onRestaurar || onExcluirPermanente) && (
                           <span className="flex shrink-0 items-center gap-0.5">
                             {onRestaurar && (

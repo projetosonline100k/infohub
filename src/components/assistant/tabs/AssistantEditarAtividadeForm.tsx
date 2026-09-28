@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { formatarTempo } from "@/lib/utils";
 import type { AssistantProjetoOpcao } from "@/hooks/useAssistantProjeto";
 import type { AssistantTarefa, ColunaAtividade } from "@/hooks/useAssistantAtividades";
 
@@ -154,10 +155,12 @@ export function AssistantEditarAtividadeForm({ atividade, projetos, colunasDoPro
         <div className="space-y-1.5">
           <Label htmlFor="assistant-editar-estimativa" className="text-xs">Foco (min)</Label>
           <Input id="assistant-editar-estimativa" type="number" min={0} value={estimativa} onChange={(e) => setEstimativa(e.target.value)} placeholder="40" />
+          {Number(estimativa) > 0 && <p className="text-xs text-muted-foreground">= {formatarTempo(Number(estimativa))}</p>}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="assistant-editar-descanso" className="text-xs">Descanso (min)</Label>
           <Input id="assistant-editar-descanso" type="number" min={0} value={descanso} onChange={(e) => setDescanso(e.target.value)} placeholder="10" />
+          {Number(descanso) > 0 && <p className="text-xs text-muted-foreground">= {formatarTempo(Number(descanso))}</p>}
         </div>
       </div>
 

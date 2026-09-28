@@ -12,6 +12,11 @@ interface AssistantOrbProps extends React.ButtonHTMLAttributes<HTMLButtonElement
   ring?: { progress: number; estado: AssistantOrbRingEstado } | null;
   // Tarefa atual pausada — olhos ficam fechados (ver AssistantEyes).
   pausado?: boolean;
+  // "Dia encerrado" (Encerrar o dia, item 8) — estado temporário depois de
+  // terminar o ritual: olhos fechados (reaproveita o mesmo frame de
+  // `pausado`, sem precisar mexer em AssistantEyes), glow mais fraco, 🌙
+  // discreto. Volta ao normal sozinho (ver Assistant.tsx).
+  diaEncerrado?: boolean;
 }
 
 // Rodada 7, itens 3/4: isolado num componente memoizado à parte,
@@ -57,7 +62,7 @@ const AssistantOrbGlowFace = memo(function AssistantOrbGlowFace({ pulse, pausado
 // (drop-shadow + leve scale) e a interação (hover no botão externo,
 // arraste via onPointerDown vindo de fora).
 export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
-  ({ open, pulse, ring, pausado, className, ...props }, ref) => (
+  ({ open, pulse, ring, pausado, diaEncerrado, className, ...props }, ref) => (
     <button
       ref={ref}
       type="button"
@@ -69,6 +74,7 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
         "relative flex h-16 w-16 shrink-0 cursor-grab select-none items-center justify-center rounded-full",
         "active:cursor-grabbing",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        diaEncerrado && "opacity-80 saturate-[0.6]",
         className,
       )}
       {...props}
@@ -79,7 +85,12 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
           contaminar o glow/eyes com re-renders. Ela mesma já vaza de
           propósito além do círculo de 60px (ver AssistantOrbRing.tsx). */}
       {ring && <AssistantOrbRing progress={ring.progress} estado={ring.estado} />}
-      <AssistantOrbGlowFace pulse={pulse} pausado={pausado} />
+      <AssistantOrbGlowFace pulse={pulse} pausado={pausado || diaEncerrado} />
+      {diaEncerrado && (
+        <span className="pointer-events-none absolute -right-0.5 -top-0.5 text-xs" aria-hidden="true">
+          🌙
+        </span>
+      )}
     </button>
   ),
 );

@@ -5,17 +5,17 @@ import { useNotasPastas } from "@/hooks/useNotasPastas";
 import { NotasFoldersPane, filtroNotasIguais, type FiltroNotas } from "@/components/notas/NotasFoldersPane";
 import { NotasListPane } from "@/components/notas/NotasListPane";
 import { NotaEditorPane } from "@/components/notas/NotaEditorPane";
-import { cn } from "@/lib/utils";
 
-// Página nova (item 2, "modo expandido"): 3 colunas — pastas / notas do
-// projeto / editor. Mesmos dados e componentes do Jarvis compacto
-// (useAssistantProjeto, useAssistantDocumentos, useNotasPastas,
-// NotasListPane, NotaEditorPane) — nenhuma lógica duplicada, só um layout
-// maior, inspirado na organização do Apple Notes (sem copiar a identidade
-// visual).
+// Página nova (redesenho "imitar o Notes"): sidebar única (projeto + filtros
+// + pastas, tudo em NotasFoldersPane) / lista de notas / editor — mesmos
+// dados e componentes do Jarvis compacto (useAssistantProjeto,
+// useAssistantDocumentos, useNotasPastas, NotasListPane, NotaEditorPane),
+// nenhuma lógica duplicada, só um layout maior e mais parecido com o
+// Notes nativo do Mac/iPhone. Altura calculada a partir do shell novo:
+// topbar (4rem) + padding vertical do <main> (1.5rem + 1.5rem) = 7rem.
 export default function Notas() {
   const { projetos, loadingProjetos, projetoId, setProjetoId } = useAssistantProjeto();
-  const { notas, notasLixeira, loading, criarNota, fixarNota, moverNotaParaPasta, duplicarNota, excluirNota, restaurarNota, excluirNotaPermanente } =
+  const { notas, notasLixeira, loading, criarNota, atualizarNotaLocal, fixarNota, moverNotaParaPasta, duplicarNota, excluirNota, restaurarNota, excluirNotaPermanente } =
     useAssistantDocumentos(projetoId);
   const { pastas, criarPasta, renomearPasta, excluirPasta } = useNotasPastas(projetoId);
 
@@ -43,35 +43,26 @@ export default function Notas() {
   };
 
   return (
-    // Layout leve (item 5, rodada 4): um único contorno externo com
-    // divisórias verticais finas entre colunas, em vez de 4 cartões
-    // separados — mais perto de um app de notas de verdade, menos "3 caixas
-    // de documento lado a lado".
-    <div className="flex h-[calc(100vh-180px)] divide-x divide-border overflow-hidden rounded-lg border border-border bg-card">
-      {/* Coluna esquerda (nível 0): projetos */}
-      <div className="w-48 shrink-0 overflow-y-auto p-2">
-        <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Projetos</p>
-        {loadingProjetos ? (
-          <p className="px-2 text-sm text-muted-foreground">Carregando...</p>
-        ) : projetos.length === 0 ? (
-          <p className="px-2 text-sm text-muted-foreground">Nenhum projeto ainda.</p>
+    <div className="flex h-[calc(100vh-7rem)] divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">
+      {/* Coluna 1: sidebar única — seletor de projeto + filtros + pastas */}
+      <div className="w-72 shrink-0 overflow-y-auto">
+        {projetos.length === 0 && !loadingProjetos ? (
+          <p className="p-4 text-sm text-muted-foreground">Nenhum projeto ainda.</p>
         ) : (
-          <ul className="space-y-0.5">
-            {projetos.map((p) => (
-              <li key={p.id}>
-                <button
-                  type="button"
-                  onClick={() => selecionarProjeto(p.id)}
-                  className={cn(
-                    "w-full truncate rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                    p.id === projetoId ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  )}
-                >
-                  {p.nome}
-                </button>
-              </li>
-            ))}
-          </ul>
+          <NotasFoldersPane
+            projetos={projetos}
+            loadingProjetos={loadingProjetos}
+            projetoId={projetoId}
+            onSelecionarProjeto={selecionarProjeto}
+            notas={notas}
+            pastas={pastas}
+            filtro={filtro}
+            onSelecionarFiltro={selecionarFiltro}
+            onCriarPasta={criarPasta}
+            onRenomearPasta={renomearPasta}
+            onExcluirPasta={excluirPasta}
+            contagemLixeira={notasLixeira.length}
+          />
         )}
       </div>
 
@@ -81,21 +72,8 @@ export default function Notas() {
         </div>
       ) : (
         <>
-          {/* Coluna 1: pastas/filtros */}
-          <div className="w-52 shrink-0 overflow-y-auto p-2">
-            <NotasFoldersPane
-              pastas={pastas}
-              filtro={filtro}
-              onSelecionarFiltro={selecionarFiltro}
-              onCriarPasta={criarPasta}
-              onRenomearPasta={renomearPasta}
-              onExcluirPasta={excluirPasta}
-              contagemLixeira={notasLixeira.length}
-            />
-          </div>
-
           {/* Coluna 2: notas do filtro/pasta selecionado */}
-          <div className="w-80 shrink-0 overflow-y-auto p-3">
+          <div className="w-96 shrink-0 overflow-y-auto p-4">
             <NotasListPane
               notas={notas}
               notasLixeira={notasLixeira}
@@ -111,7 +89,7 @@ export default function Notas() {
           </div>
 
           {/* Coluna 3: editor da nota selecionada */}
-          <div className="flex-1 overflow-hidden p-4">
+          <div className="flex-1 overflow-hidden bg-background/40 p-8">
             {notaSelecionada ? (
               <NotaEditorPane
                 nota={notaSelecionada}
@@ -121,6 +99,7 @@ export default function Notas() {
                 onMoverParaPasta={moverNotaParaPasta}
                 pastas={pastas}
                 onRestaurar={restaurarNota}
+                onNotaAtualizada={atualizarNotaLocal}
               />
             ) : (
               <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">

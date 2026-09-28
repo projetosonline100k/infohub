@@ -7,7 +7,10 @@ export function useTheme() {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("theme") as Theme;
       if (stored) return stored;
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      // Redesign visual: dark é a identidade padrão do Infopro Hub agora —
+      // não depende mais da preferência do sistema. O toggle continua
+      // funcionando normalmente pra quem preferir claro.
+      return "dark";
     }
     return "dark";
   });

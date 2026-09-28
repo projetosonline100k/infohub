@@ -1,32 +1,35 @@
-import { useEffect } from "react";
-import { NavLink } from "@/components/NavLink";
-import { ThemeToggle } from "@/components/ThemeToggle";
-import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, LogOut } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { useAuth } from "@/auth/AuthProvider";
-import { ehAdmin } from "@/lib/admin";
-import { Button } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { AppTopbar } from "@/components/layout/AppTopbar";
+import { GlobalSearchCommand } from "@/components/layout/GlobalSearchCommand";
 import { Assistant } from "@/components/assistant/Assistant";
 import { DesktopUpdateBanner } from "@/components/DesktopUpdateBanner";
-import { DownloadDesktopAppButton } from "@/components/DownloadDesktopAppButton";
 import { isDesktop } from "@/lib/platform";
-import { onMainNavigate } from "@/lib/desktop/events";
+import { onMainNavigate, emitClienteAtualMudou } from "@/lib/desktop/events";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-const menuItems = [
-  { title: "Dash geral", path: "/", icon: LayoutDashboard },
-  { title: "Projetos Milionários", path: "/clientes", icon: Users },
-  { title: "Atividades", path: "/atividades", icon: Activity },
-  { title: "Notas", path: "/notas", icon: StickyNote },
-];
-
+// Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
+// conteúdo, no lugar do header horizontal antigo. Rotas, autenticação,
+// DesktopUpdateBanner, o Assistant flutuante e a ponte onMainNavigate
+// (Tauri) continuam exatamente como estavam — só o chrome visual mudou.
 export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { id: clienteRotaId } = useParams<{ id: string }>();
+  const [buscaAberta, setBuscaAberta] = useState(false);
+
+  // Avisa a janela `jarvis` (desktop) qual cliente está aberto aqui na
+  // `main` — cada janela tem sua própria árvore React Router, então o
+  // Assistant renderizado dentro do Jarvis não enxerga essa rota sozinho
+  // (ver src/lib/desktop/events.ts). No-op na web/sem cliente selecionado.
+  useEffect(() => {
+    if (clienteRotaId) void emitClienteAtualMudou(clienteRotaId);
+  }, [clienteRotaId]);
 
   // Item 1 (rodada 3): a janela main já foi mostrada/maximizada/focada por
   // openMainWindow() (chamado de dentro do Jarvis) — aqui só navegamos pra
@@ -39,66 +42,32 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
     });
     return () => unlisten?.();
   }, [navigate]);
+
   const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
-  const itens = ehAdmin(user?.email)
-    ? [...menuItems, { title: "Administração", path: "/admin", icon: ShieldCheck }]
-    : menuItems;
 
   return (
-    <div className="min-h-screen w-full bg-background">
-      {/* Header horizontal */}
-      {!isClienteDetalhe && (
-      <header className="bg-sidebar border-b border-sidebar-border">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-xl font-bold text-sidebar-foreground">
-              Painel do Infoprodutor
-            </h1>
-            <div className="flex items-center gap-3">
-              <span className="hidden text-xs text-muted-foreground sm:inline">{user?.email}</span>
-              <DownloadDesktopAppButton />
-              <ThemeToggle />
-              <Button variant="ghost" size="icon" onClick={signOut} aria-label="Sair" title="Sair">
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
+    <SidebarProvider>
+      {/* Página de detalhe de projeto (/clientes/:id) volta a ficar
+          full-bleed, igual era antes do redesign — nem sidebar nem topbar,
+          só o conteúdo da própria página. */}
+      {!isClienteDetalhe && <AppSidebar />}
+      <SidebarInset>
+        {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
 
-          <nav className="flex items-center gap-2">
-            {itens.map((item) => {
-              const Icon = item.icon;
-              return (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  end
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-all duration-200"
-                  activeClassName="bg-sidebar-accent font-semibold"
-                >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.title}</span>
-                </NavLink>
-              );
-            })}
-          </nav>
-        </div>
-      </header>
-      )}
+        <DesktopUpdateBanner />
 
-      <DesktopUpdateBanner />
+        <main className="flex-1 overflow-auto">
+          <div className={isClienteDetalhe ? "" : "p-6"}>{children}</div>
+        </main>
+      </SidebarInset>
 
-      {/* Main content area */}
-      <main className="overflow-auto">
-        <div className={isClienteDetalhe ? "" : "p-6"}>
-          {children}
-        </div>
-      </main>
+      <GlobalSearchCommand open={buscaAberta} onOpenChange={setBuscaAberta} />
 
       {/* Assistente virtual flutuante — única instância, visível em toda
           página autenticada (este layout envolve todas as rotas protegidas).
           No desktop esconde aqui: a janela nativa `jarvis` (ver
           src/pages/JarvisWindow.tsx) já cobre esse papel, sem duplicar. */}
       {!isDesktop() && <Assistant />}
-    </div>
+    </SidebarProvider>
   );
 };

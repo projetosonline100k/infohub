@@ -7,10 +7,13 @@ import { cn } from "@/lib/utils";
 import type { AssistantTarefa, ColunaAtividade, NovaAtividadeInput } from "@/hooks/useAssistantAtividades";
 import type { AssistantProjetoOpcao } from "@/hooks/useAssistantProjeto";
 import { AssistantNovaAtividadeForm } from "./AssistantNovaAtividadeForm";
+import { ProjetoSelectorInline } from "../ProjetoSelectorInline";
+import type { FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 
 interface AssistantKanbanTabProps {
   projetoId: string | null;
   projetos: AssistantProjetoOpcao[];
+  onSelecionarProjeto: (id: string | null) => void;
   tarefas: AssistantTarefa[];
   colunasDoProjeto: (clienteId: string | null) => Promise<ColunaAtividade[]>;
   colunasTodas: () => Promise<ColunaAtividade[]>;
@@ -18,7 +21,9 @@ interface AssistantKanbanTabProps {
   onSelecionarTarefa: (id: string) => void;
   onConcluirDireto: (id: string) => void;
   onMoverStatus: (id: string, statusKey: string, ehConclusao: boolean) => void;
+  onReordenarNaColuna: (statusKey: string, tarefaId: string, novoIndex: number) => void;
   onCriarAtividade: (input: NovaAtividadeInput) => Promise<unknown>;
+  filtroResponsavel: FiltroResponsavel;
 }
 
 type Modo = "lista" | "kanban";
@@ -32,6 +37,7 @@ type Modo = "lista" | "kanban";
 export function AssistantKanbanTab({
   projetoId,
   projetos,
+  onSelecionarProjeto,
   tarefas,
   colunasDoProjeto,
   colunasTodas,
@@ -39,7 +45,9 @@ export function AssistantKanbanTab({
   onSelecionarTarefa,
   onConcluirDireto,
   onMoverStatus,
+  onReordenarNaColuna,
   onCriarAtividade,
+  filtroResponsavel,
 }: AssistantKanbanTabProps) {
   const [modo, setModo] = useState<Modo>("kanban");
   const [colunas, setColunas] = useState<ColunaAtividade[]>([]);
@@ -78,7 +86,17 @@ export function AssistantKanbanTab({
 
   const handleDragEnd = (result: DropResult) => {
     const { source, destination, draggableId } = result;
-    if (!destination || destination.droppableId === source.droppableId) return;
+    if (!destination) return;
+
+    // Mesma coluna: só reordena (antes essa "página soltava" o card de
+    // volta pra posição original sem fazer nada — a única forma de mudar a
+    // posição era editar o número de "ordem" manualmente).
+    if (destination.droppableId === source.droppableId) {
+      if (destination.index === source.index) return;
+      onReordenarNaColuna(source.droppableId, draggableId, destination.index);
+      return;
+    }
+
     const colunaDestino = colunas.find((c) => c.status_key === destination.droppableId);
     if (!colunaDestino) return;
     onMoverStatus(draggableId, colunaDestino.status_key, colunaDestino.eh_conclusao);
@@ -98,6 +116,8 @@ export function AssistantKanbanTab({
 
   return (
     <div className="space-y-3">
+      <ProjetoSelectorInline projetos={projetos} projetoId={projetoId} onSelecionar={onSelecionarProjeto} />
+
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
           <button
@@ -129,8 +149,9 @@ export function AssistantKanbanTab({
           {tarefasDoProjeto.map((t) => (
             <li key={t.id} className="flex items-center gap-2">
               <Checkbox checked={false} onCheckedChange={() => onConcluirDireto(t.id)} aria-label={`Concluir "${t.titulo}"`} />
-              <button type="button" onClick={() => onSelecionarTarefa(t.id)} className="flex-1 truncate text-left text-sm hover:text-primary" title={t.titulo}>
-                {t.titulo}
+              <button type="button" onClick={() => onSelecionarTarefa(t.id)} className="min-w-0 flex-1 text-left hover:text-primary" title={t.titulo}>
+                <span className="block truncate text-sm">{t.titulo}</span>
+                {filtroResponsavel === "outras" && <span className="block truncate text-[11px] text-muted-foreground">Responsável: {t.responsavel_nome}</span>}
               </button>
             </li>
           ))}
@@ -161,7 +182,10 @@ export function AssistantKanbanTab({
                                 snapshot.isDragging && "shadow-lg ring-1 ring-primary/40",
                               )}
                             >
-                              <span className="flex-1 truncate">{tarefa.titulo}</span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate">{tarefa.titulo}</span>
+                                {filtroResponsavel === "outras" && <span className="block truncate text-[10px] text-muted-foreground">Responsável: {tarefa.responsavel_nome}</span>}
+                              </span>
                               {coluna.eh_conclusao ? null : (
                                 <button
                                   type="button"

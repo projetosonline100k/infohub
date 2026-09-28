@@ -8,6 +8,7 @@ import Link from "@tiptap/extension-link";
 import Highlight from "@tiptap/extension-highlight";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
+import { toast } from "sonner";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { supabase } from "@/integrations/supabase/client";
 import { NOTA_PREFIX, conteudoDaNota, type AssistantDocumento } from "@/hooks/useAssistantDocumentos";
@@ -20,13 +21,21 @@ const DEBOUNCE_MS = 800;
 // (checklist, já usadas em NotasPessoais.tsx, nada novo pra instalar).
 // Compartilhado entre o Jarvis compacto e a página /notas — autosave
 // debounced 800ms salva título + `editor.getHTML()`.
-export function useNotaEditor(nota: AssistantDocumento | null) {
+//
+// `onSalvo` é opcional e existe só pra corrigir um bug: este hook grava
+// direto no Supabase por fora de useAssistantDocumentos, então o array
+// `notas` que a lista usa nunca sabia que o conteúdo tinha mudado — reabrir
+// a nota carregava a versão antiga desse cache e parecia que a edição
+// tinha se perdido (não tinha: só o cache local é que ficava desatualizado).
+export function useNotaEditor(nota: AssistantDocumento | null, onSalvo?: (id: string, patch: Partial<AssistantDocumento>) => void) {
   const [titulo, setTitulo] = useState(nota?.titulo ?? "");
   const [salvando, setSalvando] = useState(false);
   const [salvoEm, setSalvoEm] = useState<Date | null>(null);
   const notaIdRef = useRef<string | null>(nota?.id ?? null);
   const tituloRef = useRef(titulo);
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const onSalvoRef = useRef(onSalvo);
+  onSalvoRef.current = onSalvo;
 
   const agendarSalvamento = useCallback((novoTitulo: string, novoConteudoHtml: string) => {
     clearTimeout(timeoutRef.current);
@@ -34,16 +43,23 @@ export function useNotaEditor(nota: AssistantDocumento | null) {
       const id = notaIdRef.current;
       if (!id) return;
       setSalvando(true);
+      const tituloFinal = novoTitulo.trim() || "Nota sem título";
+      const conteudoFinal = NOTA_PREFIX + novoConteudoHtml;
+      const updatedAt = new Date().toISOString();
       const { error } = await supabase
         .from("documentos")
-        .update({
-          titulo: novoTitulo.trim() || "Nota sem título",
-          conteudo: NOTA_PREFIX + novoConteudoHtml,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ titulo: tituloFinal, conteudo: conteudoFinal, updated_at: updatedAt })
         .eq("id", id);
       setSalvando(false);
-      if (!error) setSalvoEm(new Date());
+      if (!error) {
+        setSalvoEm(new Date());
+        onSalvoRef.current?.(id, { titulo: tituloFinal, conteudo: conteudoFinal, updated_at: updatedAt });
+      } else {
+        // Antes falhava em silêncio: "Salvo há..." simplesmente parava de
+        // avançar, sem nenhum aviso de que a última edição não foi pro
+        // banco — indistinguível de "está tudo bem, só não editei mais nada".
+        toast.error("Não foi possível salvar a nota. Verifique a conexão.");
+      }
     }, DEBOUNCE_MS);
   }, []);
 

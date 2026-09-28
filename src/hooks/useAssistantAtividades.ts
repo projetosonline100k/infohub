@@ -23,6 +23,8 @@ export interface NovaAtividadeInput {
   tempoEstimado: number | null;
   prioridade: string;
   statusKey: string;
+  pastaId?: string | null;
+  tempoDescanso?: number | null;
 }
 
 // Rede de segurança, não a fonte principal de atualização (essa agora é o
@@ -63,21 +65,27 @@ export function categoriaTarefa(t: Pick<AssistantTarefa, "data_vencimento" | "da
 
 const ORDEM_CATEGORIA: Record<AssistantCategoria, number> = { atrasada: 0, hoje: 1, proxima: 2 };
 
-// Ordena exatamente pelos critérios pedidos: atrasada > vence hoje > maior
-// prioridade > prazo mais próximo > ordem atual do Kanban.
+// Critério pedido originalmente era atrasada > vence hoje > maior prioridade
+// > prazo mais próximo > ordem manual. Virou atrasada > vence hoje > ORDEM
+// MANUAL > prioridade > prazo — senão arrastar uma tarefa pra reordenar
+// (Home do Jarvis) nunca "grudava": prioridade/prazo sempre reclassificavam
+// tudo de volta antes da posição arrastada valer pra alguma coisa.
+// Prioridade/prazo continuam como desempate pra tarefas que nunca foram
+// arrastadas (mesma `ordem`, ex.: ambas 0 na criação).
 function compararTarefas(a: AssistantTarefa, b: AssistantTarefa, hoje: string): number {
   const catA = categoriaTarefa(a, hoje);
   const catB = categoriaTarefa(b, hoje);
   if (catA !== catB) return ORDEM_CATEGORIA[catA] - ORDEM_CATEGORIA[catB];
+
+  const ordemDiff = (a.ordem ?? 0) - (b.ordem ?? 0);
+  if (ordemDiff !== 0) return ordemDiff;
 
   const prioDiff = (PESO_PRIORIDADE[b.prioridade] ?? 2) - (PESO_PRIORIDADE[a.prioridade] ?? 2);
   if (prioDiff !== 0) return prioDiff;
 
   const dataA = a.data_vencimento ?? "9999-99-99";
   const dataB = b.data_vencimento ?? "9999-99-99";
-  if (dataA !== dataB) return dataA < dataB ? -1 : 1;
-
-  return (a.ordem ?? 0) - (b.ordem ?? 0);
+  return dataA < dataB ? -1 : dataA > dataB ? 1 : 0;
 }
 
 interface MensagemSync {
@@ -306,18 +314,43 @@ export function useAssistantAtividades() {
     if (error) await carregar();
   }, [tarefasBrutas, emitirAtualizacao, carregar]);
 
+  // "Encerrar o dia" precisa saber quantas sessões de foco aconteceram HOJE
+  // e qual foi a maior — timer_decorrido_segundos é um acumulador vitalício
+  // por tarefa, não dá pra saber por dia. Grava um registro em
+  // focus_sessions toda vez que um timer que estava rodando para, nos
+  // mesmos 4 lugares abaixo onde isso já acontecia — puramente aditivo,
+  // não muda nada do comportamento existente do timer/acumulador. Melhor
+  // esforço: falha aqui nunca deve impedir a ação principal (pausar/
+  // concluir/zerar), por isso não tem `await` nem tratamento de erro que
+  // propague.
+  const registrarSessaoFoco = useCallback((atividade: AssistantTarefa, terminoIso: string, motivo: "pause" | "complete" | "reset") => {
+    if (!atividade.timer_iniciado_em) return;
+    const duracao = Math.max(0, Math.round((new Date(terminoIso).getTime() - new Date(atividade.timer_iniciado_em).getTime()) / 1000));
+    if (duracao <= 0) return;
+    void supabase.from("focus_sessions").insert({
+      atividade_id: atividade.id,
+      cliente_id: atividade.cliente_id,
+      started_at: atividade.timer_iniciado_em,
+      ended_at: terminoIso,
+      duration_seconds: duracao,
+      ended_reason: motivo,
+    });
+  }, []);
+
   const pausarTimer = useCallback(async (id: string) => {
     const atual = tarefasBrutas.find((t) => t.id === id);
     if (!atual?.timer_iniciado_em) return;
-    const decorridoAgora = (Date.now() - new Date(atual.timer_iniciado_em).getTime()) / 1000;
+    const agora = new Date().toISOString();
+    const decorridoAgora = (new Date(agora).getTime() - new Date(atual.timer_iniciado_em).getTime()) / 1000;
     const novoDecorrido = Math.round((atual.timer_decorrido_segundos || 0) + decorridoAgora);
+    registrarSessaoFoco(atual, agora, "pause");
     emitirAtualizacao({ ...atual, timer_iniciado_em: null, timer_decorrido_segundos: novoDecorrido });
     const { error } = await supabase
       .from("atividades")
       .update({ timer_iniciado_em: null, timer_decorrido_segundos: novoDecorrido })
       .eq("id", id);
     if (error) await carregar();
-  }, [tarefasBrutas, emitirAtualizacao, carregar]);
+  }, [tarefasBrutas, emitirAtualizacao, carregar, registrarSessaoFoco]);
 
   // Marca concluída (mesma coluna "eh_conclusao" que o Kanban usa, do
   // cliente dessa tarefa) e zera o timer — mesma sequência de
@@ -328,6 +361,7 @@ export function useAssistantAtividades() {
     const cols = await garantirColunas(tarefa?.cliente_id ?? null);
     const colunaConclusao = cols.find((c) => c.eh_conclusao);
     const novoStatus = colunaConclusao?.status_key || "finalizado";
+    if (tarefa) registrarSessaoFoco(tarefa, new Date().toISOString(), "complete");
     emitirRemocao(id);
     const { error } = await supabase
       .from("atividades")
@@ -337,7 +371,7 @@ export function useAssistantAtividades() {
       await carregar();
       throw error;
     }
-  }, [tarefasBrutas, garantirColunas, emitirRemocao, carregar]);
+  }, [tarefasBrutas, garantirColunas, emitirRemocao, carregar, registrarSessaoFoco]);
 
   // Zera o cronômetro sem mexer em mais nada (mesmo padrão de zerarTimer em
   // AtividadesView.tsx:1002-1016) — a tarefa continua exatamente onde
@@ -345,13 +379,14 @@ export function useAssistantAtividades() {
   const zerarTimer = useCallback(async (id: string) => {
     const atual = tarefasBrutas.find((t) => t.id === id);
     if (!atual) return;
+    if (atual.timer_iniciado_em) registrarSessaoFoco(atual, new Date().toISOString(), "reset");
     emitirAtualizacao({ ...atual, timer_iniciado_em: null, timer_decorrido_segundos: 0 });
     const { error } = await supabase
       .from("atividades")
       .update({ timer_iniciado_em: null, timer_decorrido_segundos: 0 })
       .eq("id", id);
     if (error) await carregar();
-  }, [tarefasBrutas, emitirAtualizacao, carregar]);
+  }, [tarefasBrutas, emitirAtualizacao, carregar, registrarSessaoFoco]);
 
   // Edição genérica (título/estimativa/descanso/prioridade/data/projeto/
   // pasta/status) — usada pelo formulário de editar atividade do Jarvis.
@@ -391,6 +426,59 @@ export function useAssistantAtividades() {
     if (error) await carregar();
   }, [tarefasBrutas, emitirAtualizacao, emitirRemocao, carregar]);
 
+  // Reordena dentro da MESMA coluna (arrastar pra cima/baixo sem mudar de
+  // status) — o Kanban compacto do Jarvis só sabia mover entre colunas
+  // (moverParaStatus, sempre pro fim da lista de destino); soltar um card
+  // no meio da própria coluna não fazia nada, e a única forma de mudar a
+  // posição de uma tarefa era editando o número de "ordem" diretamente.
+  // Mesma lógica do handleDragEnd de AtividadesView.tsx: recalcula a
+  // "ordem" de toda a coluna afetada, não só da tarefa arrastada.
+  const reordenarNaColuna = useCallback(async (statusKey: string, tarefaId: string, novoIndex: number) => {
+    const daColuna = tarefasBrutas.filter((t) => t.status === statusKey).sort((a, b) => (a.ordem || 0) - (b.ordem || 0));
+    const indiceAtual = daColuna.findIndex((t) => t.id === tarefaId);
+    if (indiceAtual === -1 || indiceAtual === novoIndex) return;
+
+    const [removida] = daColuna.splice(indiceAtual, 1);
+    daColuna.splice(novoIndex, 0, removida);
+
+    const novaOrdem = new Map<string, number>();
+    daColuna.forEach((t, i) => novaOrdem.set(t.id, i + 1));
+    daColuna.forEach((t) => {
+      const ordem = novaOrdem.get(t.id);
+      if (ordem !== undefined) emitirAtualizacao({ ...t, ordem });
+    });
+
+    try {
+      for (const [id, ordem] of novaOrdem) {
+        const { error } = await supabase.from("atividades").update({ ordem }).eq("id", id);
+        if (error) throw error;
+      }
+    } catch {
+      await carregar();
+    }
+  }, [tarefasBrutas, emitirAtualizacao, carregar]);
+
+  // Versão genérica: recebe a sequência final de ids já pronta (calculada
+  // por quem chama) e grava `ordem = posição` pra cada um. Usada pela Home
+  // do Jarvis pra reordenar tarefas dentro de uma categoria (Hoje/Atrasadas)
+  // e pra mover um grupo de projeto inteiro pra cima/baixo (recalcula a
+  // categoria toda de uma vez, na nova sequência de grupos).
+  const reordenarPorIds = useCallback(async (ids: string[]) => {
+    const novaOrdem = new Map(ids.map((id, i) => [id, i + 1]));
+    tarefasBrutas.forEach((t) => {
+      const ordem = novaOrdem.get(t.id);
+      if (ordem !== undefined && ordem !== t.ordem) emitirAtualizacao({ ...t, ordem });
+    });
+    try {
+      for (const [id, ordem] of novaOrdem) {
+        const { error } = await supabase.from("atividades").update({ ordem }).eq("id", id);
+        if (error) throw error;
+      }
+    } catch {
+      await carregar();
+    }
+  }, [tarefasBrutas, emitirAtualizacao, carregar]);
+
   // Cria a atividade pela MESMA função que o Kanban usa (ver
   // src/lib/atividades/criarAtividade.ts — adicionarAtividadeNoStatus em
   // AtividadesView.tsx chama exatamente a mesma), então aparece lá porque É
@@ -404,13 +492,14 @@ export function useAssistantAtividades() {
     const data = await criarAtividadeService({
       titulo: input.titulo,
       clienteId: input.clienteId,
-      pastaId: lerPastaAtivaSalva(input.clienteId),
+      pastaId: input.pastaId !== undefined ? input.pastaId : lerPastaAtivaSalva(input.clienteId),
       dataAtividade: input.dataAtividade,
       tempoEstimado: input.tempoEstimado,
       prioridade: input.prioridade,
       statusKey: input.statusKey,
       concluida: !!coluna?.eh_conclusao,
       ordem: tarefasBrutas.length + 1,
+      tempoDescanso: input.tempoDescanso,
     });
     if (!data.concluida) emitirAtualizacao(data);
     return data;
@@ -439,6 +528,8 @@ export function useAssistantAtividades() {
     colunasTodas,
     colunasVersion,
     moverParaStatus,
+    reordenarNaColuna,
+    reordenarPorIds,
     criarAtividade,
     zerarTimer,
     atualizarAtividade,

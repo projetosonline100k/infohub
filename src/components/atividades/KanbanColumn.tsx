@@ -102,6 +102,9 @@ export const KanbanColumn = ({
               else if (e.key === "Escape") setEditandoNome(false);
             }}
             onBlur={confirmarEdicaoNome}
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             className="h-6 bg-white/20 border-none text-white text-xs font-semibold uppercase tracking-wide px-1.5 focus-visible:ring-1 focus-visible:ring-white"
           />
         ) : (
@@ -199,6 +202,9 @@ export const KanbanColumn = ({
                 }}
                 onBlur={confirmarAdicao}
                 placeholder="Nome da tarefa"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 className="h-8 bg-background"
               />
             ) : (

@@ -97,6 +97,17 @@ export function useAssistantDocumentos(clienteId: string | null) {
     if (error) await carregar();
   }, [carregar]);
 
+  // Corrige a nota já em memória sem ir ao banco — usado pelo autosave do
+  // editor (useNotaEditor), que grava direto no Supabase por fora deste
+  // hook. Sem isto, o array `notas` ficava com o conteúdo antigo depois de
+  // qualquer edição: reabrir a nota (o editor é remontado do zero no Jarvis,
+  // e reselecionada troca o `nota.id` na página /notas) recarregava o texto
+  // ANTIGO a partir daqui, dando a impressão de que nada tinha sido salvo —
+  // quando na real só este cache local é que nunca era atualizado.
+  const atualizarNotaLocal = useCallback((id: string, patch: Partial<AssistantDocumento>) => {
+    setNotas((prev) => prev.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  }, []);
+
   const duplicarNota = useCallback(async (id: string) => {
     const original = notas.find((n) => n.id === id);
     if (!original) return;
@@ -149,6 +160,7 @@ export function useAssistantDocumentos(clienteId: string | null) {
     refetch: carregar,
     criarDocumento,
     criarNota,
+    atualizarNotaLocal,
     fixarNota,
     moverNotaParaPasta,
     duplicarNota,

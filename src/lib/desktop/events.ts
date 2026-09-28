@@ -56,3 +56,51 @@ export async function onMainNavigate(handler: (route: string) => void): Promise<
     return () => {};
   }
 }
+
+// Janela `main` avisando qual cliente está aberta em /clientes/:id (item:
+// Jarvis seguir o projeto da página atual). As janelas main/jarvis têm cada
+// uma sua própria instância de React Router — useParams() dentro do
+// Assistant não enxerga a rota da OUTRA janela, então isso precisa de um
+// evento nativo cruzando pra janela `jarvis` (mesmo padrão de
+// activity-created/main-navigate acima). No-op na web (lá as duas partes
+// já são a mesma árvore React/mesma rota, useParams() basta).
+const EVENTO_CLIENTE_ATUAL = "cliente-atual-mudou";
+
+export async function emitClienteAtualMudou(clienteId: string): Promise<void> {
+  if (!isDesktop()) return;
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit(EVENTO_CLIENTE_ATUAL, { clienteId });
+  } catch {
+    /* ignora — quem quiser pode trocar o projeto manualmente no Jarvis */
+  }
+}
+
+export async function onClienteAtualMudou(handler: (clienteId: string) => void): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlisten = await listen<{ clienteId: string }>(EVENTO_CLIENTE_ATUAL, (event) => handler(event.payload.clienteId));
+    return unlisten;
+  } catch {
+    return () => {};
+  }
+}
+
+// ⌘+Shift+E ("Encerrar o dia") — emitido do lado Rust (ver
+// src-tauri/src/global_shortcut.rs), nunca do JS: o atalho é registrado uma
+// única vez no processo (main e jarvis são a mesma app, não duas), e quem
+// recebe o evento é sempre a própria janela `jarvis` (Rust já a mostra/
+// foca antes de emitir). Sem emitX correspondente aqui por isso.
+const EVENTO_ABRIR_ENCERRAR_DIA = "abrir-encerrar-dia";
+
+export async function onAbrirEncerrarDia(handler: () => void): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const unlisten = await listen(EVENTO_ABRIR_ENCERRAR_DIA, () => handler());
+    return unlisten;
+  } catch {
+    return () => {};
+  }
+}

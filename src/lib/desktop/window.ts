@@ -24,7 +24,7 @@ export async function startWindowDrag(): Promise<void> {
     const scale = await win.scaleFactor();
     const pos = (await win.outerPosition()).toLogical(scale);
     const size = (await win.outerSize()).toLogical(scale);
-    ancoraCache = { x: pos.x + size.width, y: pos.y + size.height };
+    definirAncora({ x: pos.x + size.width, y: pos.y + size.height });
   } catch {
     /* fora de uma janela Tauri ou permissão ausente — ignora */
   }
@@ -65,6 +65,45 @@ export async function hideMainWindow(): Promise<void> {
   }
 }
 
+// "Clicar fora" não existe como conceito de DOM pra uma janela nativa sem
+// decorações (a janela inteira É o conteúdo — não tem uma área "de fora"
+// dentro da mesma página) — o equivalente é a janela perder o foco pro SO
+// (clicar em outro app/janela). Chamado de dentro da própria janela
+// `jarvis` (variant="window" do Assistant), então getCurrentWindow() já é
+// ela mesma. Retorna a função de "unlisten" pra limpar no unmount.
+export async function aoPerderFocoJanela(callback: () => void): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    return await win.onFocusChanged(({ payload: focado }) => {
+      if (!focado) callback();
+    });
+  } catch {
+    return () => {};
+  }
+}
+
+// Espelho de aoPerderFocoJanela, pro caso "saudação de bom dia" (Encerrar o
+// dia, item 13): na janela `jarvis` (criada uma vez, nunca desmontada —
+// `closable: false`), um `useEffect` "ao montar" só dispara uma vez por
+// LANÇAMENTO do app, não uma vez por DIA — se a pessoa deixar o Mac e o app
+// ligados de um dia pro outro (bem provável: recusar "Repousar Mac" faz
+// exatamente isso), a saudação nunca apareceria de novo. Reverificar quando
+// a janela reganha o foco cobre esse caso.
+export async function aoGanharFocoJanela(callback: () => void): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    return await win.onFocusChanged(({ payload: focado }) => {
+      if (focado) callback();
+    });
+  } catch {
+    return () => {};
+  }
+}
+
 interface Tamanho {
   width: number;
   height: number;
@@ -73,18 +112,43 @@ interface Tamanho {
 // Rodada 8: só existem 3 tamanhos possíveis pra janela `jarvis`, fixos, sem
 // cálculo por conteúdo e sem escolha do usuário (resize manual removido por
 // enquanto — item 7 do pedido). Qualquer ajuste futuro de tamanho passa por
-// mudar UM destes 3 números, nunca por lógica espalhada pelos componentes.
+// mudar UM destes números, nunca por lógica espalhada pelos componentes.
 export type JarvisWindowMode = "orb" | "panel" | "notification";
 
+const ORB_TAMANHO: Tamanho = { width: 140, height: 140 };
+
+// Único ponto de verdade pro tamanho do CONTEÚDO do painel (o que
+// AssistantPanel.tsx realmente preenche, `h-full w-full` por dentro) —
+// Assistant.tsx importa isto pra dimensionar a caixa que envolve o painel,
+// em vez de repetir 460/620 num segundo lugar (esse tipo de duplicação já
+// causou uma regressão real aqui — ver comentário em AssistantPanel.tsx
+// sobre "painel e janela real de tamanhos diferentes").
+export const TAMANHO_CONTEUDO_PAINEL: Tamanho = { width: 460, height: 620 };
+
+// Item novo (pedido do usuário): "quando abro o Jarvis, ele some de onde
+// está" — antes, o painel preenchia a janela inteira e cobria a orbe por
+// trás. Agora a orbe continua visível, empilhada embaixo do painel — mesmo
+// tratamento visual (gap + padding pro anel de progresso) já usado no modo
+// notificação, só com o painel no lugar do card.
+const GAP_EMPILHADO = 8; // gap-2
+const PADDING_EMPILHADO = 24; // p-6, em cada lado
+
+const PANEL_TAMANHO: Tamanho = {
+  width: TAMANHO_CONTEUDO_PAINEL.width + PADDING_EMPILHADO * 2,
+  height: TAMANHO_CONTEUDO_PAINEL.height + GAP_EMPILHADO + ORB_TAMANHO.height + PADDING_EMPILHADO * 2,
+};
+
+// Rodada 12: 230 só cabia o card, sem sobra pra orbe também aparecer
+// (usuário queria ver a orbe junto da mensagem — "dá a impressão que ele
+// está falando comigo"). 360 dá espaço pro card (agora com altura de
+// conteúdo, não mais forçado a preencher tudo) empilhado ACIMA da orbe
+// (~140px), ambos alinhados no canto inferior direito.
+const NOTIFICATION_TAMANHO: Tamanho = { width: 380, height: 360 };
+
 const TAMANHOS: Record<JarvisWindowMode, Tamanho> = {
-  orb: { width: 140, height: 140 },
-  panel: { width: 460, height: 620 },
-  // Rodada 12: 230 só cabia o card, sem sobra pra orbe também aparecer
-  // (usuário queria ver a orbe junto da mensagem — "dá a impressão que ele
-  // está falando comigo"). 360 dá espaço pro card (agora com altura de
-  // conteúdo, não mais forçado a preencher tudo) empilhado ACIMA da orbe
-  // (~140px), ambos alinhados no canto inferior direito.
-  notification: { width: 380, height: 360 },
+  orb: ORB_TAMANHO,
+  panel: PANEL_TAMANHO,
+  notification: NOTIFICATION_TAMANHO,
 };
 
 // Item 4, rodada 8: garante que a janela `jarvis` (em qualquer modo) fique
@@ -109,25 +173,62 @@ async function posicaoDentroDoMonitor(x: number, y: number, width: number, heigh
   }
 }
 
+// Item novo (pedido do usuário): "arrasto o Jarvis pra um canto bom, quero
+// que continue ali depois de fechar e abrir de novo" — inclusive depois de
+// FECHAR E REABRIR O APP, não só dentro da mesma sessão. Mesma chave de
+// armazenamento (localStorage, compartilhado entre as janelas do mesmo
+// app) já usada pela versão embutida (ver CHAVE_POSICAO em Assistant.tsx).
+const CHAVE_ANCORA = "jarvisAncora";
+
+function lerAncoraSalva(): { x: number; y: number } | null {
+  try {
+    const salvo = localStorage.getItem(CHAVE_ANCORA);
+    if (!salvo) return null;
+    const parsed = JSON.parse(salvo);
+    if (typeof parsed?.x === "number" && typeof parsed?.y === "number") return parsed;
+  } catch {
+    /* localStorage indisponível ou corrompido — cai no comportamento de sempre */
+  }
+  return null;
+}
+
 // Rodada 9, item 3: âncora estável (canto inferior direito "de casa" da
-// orbe), guardada em memória — nunca recalculada a partir do tamanho/
-// posição ATUAL da janela (isso é o que causava o "abre em outro canto":
-// cada troca de modo calculava a próxima posição em cima da última, e
-// qualquer erro de arredondamento/timing acumulava a cada ciclo
-// orbe→painel→orbe). Toda troca de modo agora deriva SEMPRE da mesma
-// âncora. Só é re-sincronizada quando a própria janela está (ou acabou de
-// ficar, por causa de um arraste nativo) do tamanho da orbe — é o único
-// momento em que "posição atual" É a âncora de verdade.
-let ancoraCache: { x: number; y: number } | null = null;
+// orbe) — nunca recalculada a partir do tamanho/posição ATUAL da janela
+// (isso é o que causava o "abre em outro canto": cada troca de modo
+// calculava a próxima posição em cima da última, e qualquer erro de
+// arredondamento/timing acumulava a cada ciclo orbe→painel→orbe). Toda
+// troca de modo agora deriva SEMPRE da mesma âncora. Só é re-sincronizada
+// quando a própria janela está (ou acabou de ficar, por causa de um
+// arraste nativo) do tamanho da orbe — é o único momento em que "posição
+// atual" É a âncora de verdade.
+let ancoraCache: { x: number; y: number } | null = lerAncoraSalva();
+
+// A janela `jarvis` SEMPRE nasce do tamanho da orbe (ver "width"/"height" em
+// tauri.conf.json) — sem este flag, a checagem "pareceOrbe" logo abaixo
+// resincronizaria a âncora a partir da posição de fábrica da janela (o
+// canto fixo do tauri.conf.json) na primeiríssima chamada de cada
+// lançamento do app, descartando a âncora salva antes dela valer uma vez.
+let primeiraConsulta = true;
+
+function definirAncora(ancora: { x: number; y: number }): void {
+  ancoraCache = ancora;
+  try {
+    localStorage.setItem(CHAVE_ANCORA, JSON.stringify(ancora));
+  } catch {
+    /* localStorage indisponível — âncora só dura a sessão atual, aceitável */
+  }
+}
 
 async function obterAncora(win: InstanceType<typeof import("@tauri-apps/api/window").Window>, scale: number): Promise<{ x: number; y: number }> {
   const pos = (await win.outerPosition()).toLogical(scale);
   const size = (await win.outerSize()).toLogical(scale);
   const pareceOrbe = Math.abs(size.width - TAMANHOS.orb.width) < 1 && Math.abs(size.height - TAMANHOS.orb.height) < 1;
-  if (pareceOrbe || !ancoraCache) {
-    ancoraCache = { x: pos.x + size.width, y: pos.y + size.height };
+  const usaAncoraSalva = primeiraConsulta && ancoraCache != null;
+  primeiraConsulta = false;
+  if (!usaAncoraSalva && (pareceOrbe || !ancoraCache)) {
+    definirAncora({ x: pos.x + size.width, y: pos.y + size.height });
   }
-  return ancoraCache;
+  return ancoraCache!;
 }
 
 // ÚNICA função que redimensiona/reposiciona a janela nativa `jarvis` (item
@@ -159,7 +260,7 @@ export async function setJarvisWindowMode(mode: JarvisWindowMode): Promise<void>
     // acompanhar — senão o próximo modo calcula de novo a partir do ponto
     // original (fora da tela) e clampa de novo, ficando sempre "puxando"
     // pra dentro em vez de já nascer no lugar certo.
-    ancoraCache = { x: x + target.width, y: y + target.height };
+    definirAncora({ x: x + target.width, y: y + target.height });
   } catch {
     /* ignora — Jarvis ainda funciona, só não redimensiona a janela */
   }
