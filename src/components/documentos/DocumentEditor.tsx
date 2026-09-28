@@ -333,6 +333,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         onOpenChange={setShareOpen}
         documentoId={docAtualId}
         documentoTitulo={titulo}
+        onTituloChange={setTitulo}
         pastaId={pastaId}
       />
     </div>

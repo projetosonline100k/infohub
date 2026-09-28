@@ -62,9 +62,12 @@ import { parseResponsaveis } from "@/lib/responsaveis";
 import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
 import { criarAtividade as criarAtividadeService } from "@/lib/atividades/criarAtividade";
 import { onActivityCreated } from "@/lib/desktop/events";
+import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
+import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 
 interface Atividade {
   id: string;
+  user_id: string | null;
   cliente_id: string | null;
   titulo: string;
   descricao: string | null;
@@ -124,6 +127,7 @@ const COLUNAS_PADRAO = [
 
 interface AtividadesViewProps {
   clienteId?: string;
+  filtroResponsavel?: FiltroResponsavel;
 }
 
 type ViewMode = "lista" | "quadro" | "calendario" | "notas";
@@ -193,8 +197,9 @@ const parseTempoFromText = (text: string): { titulo: string; tempo: number | nul
   };
 };
 
-export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
+export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: AtividadesViewProps) => {
   const { user } = useAuth();
+  const meusNomes = useIdentidadeResponsavel();
   const [atividades, setAtividades] = useState<Atividade[]>([]);
   const [loading, setLoading] = useState(true);
   const [novaAtividade, setNovaAtividade] = useState("");
@@ -207,8 +212,9 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
   // Ignora o filtro de período na lista; quadro e calendário já ignoram sempre
   // (não faz sentido uma tarefa sumir do quadro só porque mudou de semana).
   const [mostrarTodas, setMostrarTodas] = useState(false);
-  // Filtros específicos do quadro: por padrão mostra tudo, sem período.
-  const [mostrarConcluidas, setMostrarConcluidas] = useState(true);
+  // Filtros específicos do quadro: concluídas ficam escondidas por padrão —
+  // só aparecem se a pessoa marcar "Ver concluídas" explicitamente.
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
   const [kanbanPeriodo, setKanbanPeriodo] = useState<"todas" | "semana" | "proxima_semana">("todas");
   const [timerFinalizadoId, setTimerFinalizadoId] = useState<string | null>(null);
   // Filtro de responsáveis: conjunto vazio = mostra de todo mundo.
@@ -269,8 +275,8 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         return responsaveis.some((nome) => pessoasSelecionadas.has(nome));
       });
     }
-    return lista;
-  }, [atividades, pastaAtivaId, pessoasSelecionadas]);
+    return filtrarPorResponsavel(lista, filtroResponsavel, meusNomes, user?.id);
+  }, [atividades, pastaAtivaId, pessoasSelecionadas, filtroResponsavel, meusNomes, user?.id]);
 
   // Semana usada tanto pelo filtro "esta semana/semana que vem" do quadro
   // quanto pelas colunas nomeadas como dia da semana (sempre precisam de
@@ -854,21 +860,27 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId]);
 
+  // As 3 funções abaixo tinham um passo de preparo (parseTempoFromText/
+  // detectarDiaSemana/format/addDays) ANTES do try/catch — como a função é
+  // async, qualquer exceção aí virava uma promise rejeitada sem handler
+  // (nunca cai no catch), então uma tarefa podia falhar em silêncio total:
+  // sem toast de sucesso, sem toast de erro, input só voltava vazio. Agora
+  // TUDO roda dentro do try, e o toast de erro mostra a mensagem real.
   const adicionarAtividade = async (dataOverride?: Date) => {
     if (!novaAtividade.trim()) return;
 
-    const { titulo, tempo } = parseTempoFromText(novaAtividade);
-    const dataAtividade = dataOverride 
-      ? format(dataOverride, "yyyy-MM-dd")
-      : format(new Date(), "yyyy-MM-dd");
-
     try {
+      const { titulo, tempo } = parseTempoFromText(novaAtividade);
+      const dataAtividade = dataOverride
+        ? format(dataOverride, "yyyy-MM-dd")
+        : format(new Date(), "yyyy-MM-dd");
+
       await criarAtividadeService({
         titulo,
         tempoEstimado: tempo,
         dataAtividade,
         clienteId: clienteId || null,
-        pastaId: pastaAtivaId,
+        pastaId: pastaAtivaId === VISAO_GERAL ? null : pastaAtivaId,
         statusKey: "backlog",
         concluida: false,
         ordem: atividades.length + 1,
@@ -879,42 +891,40 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       toast.success("Atividade adicionada");
     } catch (error) {
       console.error("Erro ao adicionar atividade:", error);
-      toast.error("Erro ao adicionar atividade");
+      toast.error(`Erro ao adicionar atividade: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
   const adicionarAtividadeNoStatus = async (status: string, tituloBruto: string) => {
     if (!tituloBruto.trim()) return;
 
-    const { titulo, tempo } = parseTempoFromText(tituloBruto);
-    const coluna = colunas.find((c) => c.status_key === status);
-    const diaSemana = coluna ? detectarDiaSemana(coluna.nome) : null;
-
-    // Preserve a coluna escolhida e agende a tarefa no dia correspondente.
-    const dataAtividade =
-      diaSemana !== null
-        ? format(addDays(semanaReferenciaKanban.inicio, diaSemana), "yyyy-MM-dd")
-        : format(new Date(), "yyyy-MM-dd");
-    const colunaStatus = coluna;
-    const statusReal = status;
-
     try {
+      const { titulo, tempo } = parseTempoFromText(tituloBruto);
+      const coluna = colunas.find((c) => c.status_key === status);
+      const diaSemana = coluna ? detectarDiaSemana(coluna.nome) : null;
+
+      // Preserve a coluna escolhida e agende a tarefa no dia correspondente.
+      const dataAtividade =
+        diaSemana !== null
+          ? format(addDays(semanaReferenciaKanban.inicio, diaSemana), "yyyy-MM-dd")
+          : format(new Date(), "yyyy-MM-dd");
+
       await criarAtividadeService({
         titulo,
         tempoEstimado: tempo,
         dataAtividade,
         clienteId: clienteId || null,
-        pastaId: pastaAtivaId,
+        pastaId: pastaAtivaId === VISAO_GERAL ? null : pastaAtivaId,
         ordem: atividades.length + 1,
-        statusKey: statusReal,
-        concluida: !!colunaStatus?.eh_conclusao,
+        statusKey: status,
+        concluida: !!coluna?.eh_conclusao,
       });
 
       carregarAtividades();
       toast.success("Atividade adicionada");
     } catch (error) {
       console.error("Erro ao adicionar atividade:", error);
-      toast.error("Erro ao adicionar atividade");
+      toast.error(`Erro ao adicionar atividade: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -927,7 +937,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
         titulo,
         dataAtividade: format(date, "yyyy-MM-dd"),
         clienteId: clienteId || null,
-        pastaId: pastaAtivaId,
+        pastaId: pastaAtivaId === VISAO_GERAL ? null : pastaAtivaId,
         statusKey: "backlog",
         concluida: false,
         ordem: atividades.length + 1,
@@ -936,7 +946,7 @@ export const AtividadesView = ({ clienteId }: AtividadesViewProps) => {
       toast.success("Atividade adicionada");
     } catch (error) {
       console.error("Erro ao adicionar atividade:", error);
-      toast.error("Erro ao adicionar atividade");
+      toast.error(`Erro ao adicionar atividade: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
 

@@ -4,16 +4,28 @@ import { Bike, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AtividadesView } from "@/components/atividades/AtividadesView";
 import { AtividadesClientesView } from "@/components/atividades/AtividadesClientesView";
+import { FiltroResponsavel } from "@/components/atividades/FiltroResponsavel";
+import type { FiltroResponsavel as Filtro } from "@/lib/atividades/filtroResponsavel";
 
 type Secao = "pessoal" | "clientes";
 
 const CHAVE_SECAO = "atividades-secao";
+const CHAVE_RESPONSAVEL = "atividades-filtro-responsavel";
 
 const Atividades = () => {
   const [secao, setSecao] = useState<Secao>(() => {
     const salvo = localStorage.getItem(CHAVE_SECAO);
     return salvo === "clientes" ? "clientes" : "pessoal";
   });
+  const [filtroResponsavel, setFiltroResponsavel] = useState<Filtro>(() => {
+    const salvo = localStorage.getItem(CHAVE_RESPONSAVEL);
+    return salvo === "minhas" || salvo === "outras" || salvo === "sem_responsavel" ? salvo : "todas";
+  });
+
+  const selecionarResponsavel = (valor: Filtro) => {
+    setFiltroResponsavel(valor);
+    localStorage.setItem(CHAVE_RESPONSAVEL, valor);
+  };
 
   const selecionarSecao = (valor: Secao) => {
     setSecao(valor);
@@ -30,7 +42,9 @@ const Atividades = () => {
           </p>
         </div>
 
-        <div className="flex items-center bg-muted rounded-lg p-0.5">
+        <div className="flex items-center gap-2">
+          <FiltroResponsavel value={filtroResponsavel} onChange={selecionarResponsavel} />
+          <div className="flex items-center bg-muted rounded-lg p-0.5">
           <button
             onClick={() => selecionarSecao("pessoal")}
             className={cn(
@@ -51,11 +65,12 @@ const Atividades = () => {
             <Users className="h-4 w-4" />
             Clientes
           </button>
+          </div>
         </div>
       </div>
 
       <Card className="p-6 shadow-md w-full">
-        {secao === "pessoal" ? <AtividadesView /> : <AtividadesClientesView />}
+        {secao === "pessoal" ? <AtividadesView filtroResponsavel={filtroResponsavel} /> : <AtividadesClientesView filtroResponsavel={filtroResponsavel} />}
       </Card>
     </div>
   );

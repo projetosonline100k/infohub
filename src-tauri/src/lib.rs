@@ -9,6 +9,10 @@ use tauri_plugin_autostart::MacosLauncher;
 mod active_window;
 #[cfg(target_os = "macos")]
 mod focus_monitor;
+#[cfg(target_os = "macos")]
+mod global_shortcut;
+#[cfg(target_os = "macos")]
+mod mac_sleep;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,7 +30,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
 
-    // FocusActivityMonitor (item 3, rodada 3) — só macOS por enquanto.
+    // FocusActivityMonitor (item 3, rodada 3) + Encerrar o dia (atalho
+    // global e repouso do Mac) — só macOS por enquanto.
     #[cfg(target_os = "macos")]
     let builder = builder
         .manage(focus_monitor::FocusMonitorState::default())
@@ -35,6 +40,8 @@ pub fn run() {
             focus_monitor::stop_focus_monitor,
             focus_monitor::check_accessibility_trusted,
             focus_monitor::open_accessibility_settings,
+            global_shortcut::atalho_encerrar_dia_registrado,
+            mac_sleep::dormir_mac,
         ]);
 
     builder
@@ -45,6 +52,15 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // ⌘+Shift+E — registra o atalho global e guarda se deu certo
+            // (item 15: se outro app já tiver essa combinação, não pode
+            // quebrar o app, só avisar em Administração → Jarvis → Atalhos).
+            #[cfg(target_os = "macos")]
+            {
+                let estado_atalho = global_shortcut::registrar(&app.handle().clone());
+                app.manage(estado_atalho);
             }
 
             // Tray (seção 6): "Abrir" reexibe a janela principal (fechar

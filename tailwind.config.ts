@@ -57,6 +57,29 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Redesign visual, item 2 — linguagem de cor de status única em
+        // todo o app (bg-status-x / text-status-x), em vez de cada tela
+        // escolher sua própria classe Tailwind solta (ex.: text-orange-400).
+        status: {
+          success: "hsl(var(--status-success))",
+          info: "hsl(var(--status-info))",
+          warning: "hsl(var(--status-warning))",
+          danger: "hsl(var(--status-danger))",
+          paused: "hsl(var(--status-paused))",
+          notes: "hsl(var(--status-notes))",
+        },
+      },
+      fontFamily: {
+        sans: [
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "sans-serif",
+        ],
       },
       boxShadow: {
         'sm': 'var(--shadow-sm)',

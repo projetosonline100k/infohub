@@ -23,6 +23,8 @@ import { AtividadeItem } from "./AtividadeItem";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { AtividadesView } from "./AtividadesView";
 import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
+import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
+import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 
 // Guarda qual(is) cliente(s) estavam selecionados no filtro, pra voltar
 // exatamente de onde parou ao reabrir a aba.
@@ -35,6 +37,7 @@ interface ClienteInfo {
 
 interface Atividade {
   id: string;
+  user_id: string | null;
   cliente_id: string;
   titulo: string;
   descricao: string | null;
@@ -67,8 +70,9 @@ interface ChecklistResumo {
 // Visão que junta as atividades de todos os clientes que o usuário tem
 // acesso, sem precisar entrar em cada um: tudo aqui é a mesma tarefa que
 // aparece dentro do cliente (mesma tabela), só reorganizada por cliente.
-export const AtividadesClientesView = () => {
+export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtroResponsavel?: FiltroResponsavel }) => {
   const { user } = useAuth();
+  const meusNomes = useIdentidadeResponsavel();
   const [clientes, setClientes] = useState<ClienteInfo[]>([]);
   const [carregandoClientes, setCarregandoClientes] = useState(true);
   const [atividades, setAtividades] = useState<Atividade[]>([]);
@@ -76,7 +80,9 @@ export const AtividadesClientesView = () => {
   const [checklistPorAtividade, setChecklistPorAtividade] = useState<Record<string, ChecklistResumo>>({});
   const [loading, setLoading] = useState(true);
   const [selectedClienteIds, setSelectedClienteIds] = useState<Set<string>>(new Set());
-  const [mostrarConcluidas, setMostrarConcluidas] = useState(true);
+  // Concluídas ficam escondidas por padrão — só aparecem se a pessoa marcar
+  // "Ver concluídas" explicitamente.
+  const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
   const [diasAbertos, setDiasAbertos] = useState<Record<string, boolean>>({});
   const [novoTitulo, setNovoTitulo] = useState("");
   const [novoClienteId, setNovoClienteId] = useState("");
@@ -261,8 +267,8 @@ export const AtividadesClientesView = () => {
     if (!mostrarConcluidas) {
       lista = lista.filter((a) => !a.concluida);
     }
-    return lista;
-  }, [atividades, selectedClienteIds, mostrarConcluidas]);
+    return filtrarPorResponsavel(lista, filtroResponsavel, meusNomes, user?.id);
+  }, [atividades, selectedClienteIds, mostrarConcluidas, filtroResponsavel, meusNomes, user?.id]);
 
   // Sem filtro: só mostra cliente que realmente tem tarefa (senão a lista
   // fica enorme com grupo vazio pra cada cliente cadastrado). Com filtro
@@ -453,7 +459,7 @@ export const AtividadesClientesView = () => {
       {clienteFiltradoUnico ? (
         // Aba Atividades de verdade daquele cliente: lista, quadro, calendário
         // e pastas, tudo igual a entrar nele — só que sem sair desta tela.
-        <AtividadesView key={clienteFiltradoUnico.id} clienteId={clienteFiltradoUnico.id} />
+        <AtividadesView key={clienteFiltradoUnico.id} clienteId={clienteFiltradoUnico.id} filtroResponsavel={filtroResponsavel} />
       ) : (
         <>
           {/* Criar tarefa direto daqui, sem entrar no cliente */}

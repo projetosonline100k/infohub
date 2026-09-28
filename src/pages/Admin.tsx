@@ -20,6 +20,7 @@ import { Plus, KeyRound, Trash2, ShieldCheck, Copy, Eye, EyeOff } from "lucide-r
 import { AdminJarvisMensagens } from "@/components/admin/AdminJarvisMensagens";
 import { AdminJarvisSons } from "@/components/admin/AdminJarvisSons";
 import { AdminJarvisPrivacidade } from "@/components/admin/AdminJarvisPrivacidade";
+import { AdminJarvisAtalhos } from "@/components/admin/AdminJarvisAtalhos";
 
 interface Usuario {
   id: string;
@@ -220,6 +221,7 @@ const Admin = () => {
         <AdminJarvisMensagens />
         <AdminJarvisSons />
         <AdminJarvisPrivacidade />
+        <AdminJarvisAtalhos />
       </div>
 
       {/* Criar usuário */}

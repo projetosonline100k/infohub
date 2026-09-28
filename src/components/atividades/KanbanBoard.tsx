@@ -124,6 +124,9 @@ export const KanbanBoard = ({
             }}
             onBlur={confirmarCriacao}
             placeholder="Nome da coluna"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             className="h-9"
           />
         ) : (

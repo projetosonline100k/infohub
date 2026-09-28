@@ -51,6 +51,7 @@ export type Database = {
         Row: {
           cliente_id: string | null
           concluida: boolean
+          concluida_em: string | null
           created_at: string
           data_atividade: string
           data_inicio: string | null
@@ -73,6 +74,7 @@ export type Database = {
         Insert: {
           cliente_id?: string | null
           concluida?: boolean
+          concluida_em?: string | null
           created_at?: string
           data_atividade?: string
           data_inicio?: string | null
@@ -95,6 +97,7 @@ export type Database = {
         Update: {
           cliente_id?: string | null
           concluida?: boolean
+          concluida_em?: string | null
           created_at?: string
           data_atividade?: string
           data_inicio?: string | null
@@ -679,6 +682,259 @@ export type Database = {
           },
         ]
       }
+      focus_sessions: {
+        Row: {
+          atividade_id: string | null
+          cliente_id: string | null
+          created_at: string
+          duration_seconds: number
+          ended_at: string
+          ended_reason: string
+          id: string
+          started_at: string
+          user_id: string
+        }
+        Insert: {
+          atividade_id?: string | null
+          cliente_id?: string | null
+          created_at?: string
+          duration_seconds: number
+          ended_at: string
+          ended_reason?: string
+          id?: string
+          started_at: string
+          user_id?: string
+        }
+        Update: {
+          atividade_id?: string | null
+          cliente_id?: string | null
+          created_at?: string
+          duration_seconds?: number
+          ended_at?: string
+          ended_reason?: string
+          id?: string
+          started_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_sessions_atividade_id_fkey"
+            columns: ["atividade_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_sessions_cliente_id_fkey"
+            columns: ["cliente_id"]
+            isOneToOne: false
+            referencedRelation: "clientes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_plan_activities: {
+        Row: {
+          activity_id: string
+          created_at: string
+          daily_plan_id: string
+          id: string
+          position: number
+          user_id: string
+        }
+        Insert: {
+          activity_id: string
+          created_at?: string
+          daily_plan_id: string
+          id?: string
+          position: number
+          user_id?: string
+        }
+        Update: {
+          activity_id?: string
+          created_at?: string
+          daily_plan_id?: string
+          id?: string
+          position?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_plan_activities_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "daily_plan_activities_daily_plan_id_fkey"
+            columns: ["daily_plan_id"]
+            isOneToOne: false
+            referencedRelation: "daily_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_plans: {
+        Row: {
+          created_at: string
+          date: string
+          expected_blocker: string | null
+          expected_blocker_other: string | null
+          focus_time_available_minutes: number | null
+          id: string
+          main_priority_activity_id: string | null
+          mandatory_outcome: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          expected_blocker?: string | null
+          expected_blocker_other?: string | null
+          focus_time_available_minutes?: number | null
+          id?: string
+          main_priority_activity_id?: string | null
+          mandatory_outcome?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          expected_blocker?: string | null
+          expected_blocker_other?: string | null
+          focus_time_available_minutes?: number | null
+          id?: string
+          main_priority_activity_id?: string | null
+          mandatory_outcome?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_plans_main_priority_activity_id_fkey"
+            columns: ["main_priority_activity_id"]
+            isOneToOne: false
+            referencedRelation: "atividades"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      daily_productivity_reports: {
+        Row: {
+          completed_main_priority: boolean
+          completed_tasks: number
+          created_at: string
+          daily_plan_id: string | null
+          date: string
+          distraction_seconds: number
+          eighty_twenty_completed_count: number | null
+          eighty_twenty_total_count: number | null
+          energy_score: number
+          focus_score: number
+          focus_sessions_count: number
+          focused_seconds: number
+          id: string
+          longest_focus_seconds: number
+          main_blocker: string | null
+          main_blocker_other: string | null
+          main_win: string | null
+          overdue_tasks: number
+          overtime_seconds: number
+          pause_count: number
+          paused_seconds: number
+          pending_for_tomorrow: string | null
+          planned_bed_time: string | null
+          possible_distraction_seconds: number
+          productivity_score: number
+          started_tasks: number
+          tomorrow_main_priority: string | null
+          top_apps: Json
+          top_projects: Json
+          unfinished_tasks: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed_main_priority: boolean
+          completed_tasks?: number
+          created_at?: string
+          daily_plan_id?: string | null
+          date: string
+          distraction_seconds?: number
+          eighty_twenty_completed_count?: number | null
+          eighty_twenty_total_count?: number | null
+          energy_score: number
+          focus_score: number
+          focus_sessions_count?: number
+          focused_seconds?: number
+          id?: string
+          longest_focus_seconds?: number
+          main_blocker?: string | null
+          main_blocker_other?: string | null
+          main_win?: string | null
+          overdue_tasks?: number
+          overtime_seconds?: number
+          pause_count?: number
+          paused_seconds?: number
+          pending_for_tomorrow?: string | null
+          planned_bed_time?: string | null
+          possible_distraction_seconds?: number
+          productivity_score: number
+          started_tasks?: number
+          tomorrow_main_priority?: string | null
+          top_apps?: Json
+          top_projects?: Json
+          unfinished_tasks?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          completed_main_priority?: boolean
+          completed_tasks?: number
+          created_at?: string
+          daily_plan_id?: string | null
+          date?: string
+          distraction_seconds?: number
+          eighty_twenty_completed_count?: number | null
+          eighty_twenty_total_count?: number | null
+          energy_score?: number
+          focus_score?: number
+          focus_sessions_count?: number
+          focused_seconds?: number
+          id?: string
+          longest_focus_seconds?: number
+          main_blocker?: string | null
+          main_blocker_other?: string | null
+          main_win?: string | null
+          overdue_tasks?: number
+          overtime_seconds?: number
+          pause_count?: number
+          paused_seconds?: number
+          pending_for_tomorrow?: string | null
+          planned_bed_time?: string | null
+          possible_distraction_seconds?: number
+          productivity_score?: number
+          started_tasks?: number
+          tomorrow_main_priority?: string | null
+          top_apps?: Json
+          top_projects?: Json
+          unfinished_tasks?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "daily_productivity_reports_daily_plan_id_fkey"
+            columns: ["daily_plan_id"]
+            isOneToOne: false
+            referencedRelation: "daily_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jarvis_mensagens: {
         Row: {
           ativo: boolean
@@ -782,6 +1038,217 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      performance_goals: {
+        Row: {
+          automatic_source: string | null
+          created_at: string
+          end_date: string
+          id: string
+          linked_habit_id: string | null
+          nome: string
+          period: string
+          pillar_id: string | null
+          start_date: string
+          target_value: number
+          tipo: string
+          unit: string | null
+          updated_at: string
+          user_id: string
+          ativo: boolean
+        }
+        Insert: {
+          automatic_source?: string | null
+          created_at?: string
+          end_date: string
+          id?: string
+          linked_habit_id?: string | null
+          nome: string
+          period: string
+          pillar_id?: string | null
+          start_date: string
+          target_value: number
+          tipo: string
+          unit?: string | null
+          updated_at?: string
+          user_id?: string
+          ativo?: boolean
+        }
+        Update: {
+          automatic_source?: string | null
+          created_at?: string
+          end_date?: string
+          id?: string
+          linked_habit_id?: string | null
+          nome?: string
+          period?: string
+          pillar_id?: string | null
+          start_date?: string
+          target_value?: number
+          tipo?: string
+          unit?: string | null
+          updated_at?: string
+          user_id?: string
+          ativo?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_goals_linked_habit_id_fkey"
+            columns: ["linked_habit_id"]
+            isOneToOne: false
+            referencedRelation: "performance_habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "performance_goals_pillar_id_fkey"
+            columns: ["pillar_id"]
+            isOneToOne: false
+            referencedRelation: "performance_pillars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      performance_habit_logs: {
+        Row: {
+          completed: boolean | null
+          created_at: string
+          date: string
+          habit_id: string
+          id: string
+          notes: string | null
+          updated_at: string
+          user_id: string
+          value_numeric: number | null
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string
+          date: string
+          habit_id: string
+          id?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+          value_numeric?: number | null
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string
+          date?: string
+          habit_id?: string
+          id?: string
+          notes?: string | null
+          updated_at?: string
+          user_id?: string
+          value_numeric?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_habit_logs_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "performance_habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      performance_habits: {
+        Row: {
+          ativo: boolean
+          automatic_key: string | null
+          created_at: string
+          descricao: string | null
+          dias_da_semana: number[] | null
+          frequencia: string
+          id: string
+          lembrete_ativo: boolean
+          lembrete_horario: string | null
+          meta_diaria: number | null
+          nome: string
+          ordem: number
+          pillar_id: string | null
+          source: string
+          tipo: string
+          unidade: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ativo?: boolean
+          automatic_key?: string | null
+          created_at?: string
+          descricao?: string | null
+          dias_da_semana?: number[] | null
+          frequencia?: string
+          id?: string
+          lembrete_ativo?: boolean
+          lembrete_horario?: string | null
+          meta_diaria?: number | null
+          nome: string
+          ordem?: number
+          pillar_id?: string | null
+          source?: string
+          tipo: string
+          unidade?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          ativo?: boolean
+          automatic_key?: string | null
+          created_at?: string
+          descricao?: string | null
+          dias_da_semana?: number[] | null
+          frequencia?: string
+          id?: string
+          lembrete_ativo?: boolean
+          lembrete_horario?: string | null
+          meta_diaria?: number | null
+          nome?: string
+          ordem?: number
+          pillar_id?: string | null
+          source?: string
+          tipo?: string
+          unidade?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "performance_habits_pillar_id_fkey"
+            columns: ["pillar_id"]
+            isOneToOne: false
+            referencedRelation: "performance_pillars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      performance_pillars: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          ordem: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          ordem?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       perfis_parecidos: {
         Row: {
@@ -1093,6 +1560,78 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sleep_goals: {
+        Row: {
+          ideal_bed_time: string | null
+          ideal_wake_time: string | null
+          target_sleep_minutes: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ideal_bed_time?: string | null
+          ideal_wake_time?: string | null
+          target_sleep_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          ideal_bed_time?: string | null
+          ideal_wake_time?: string | null
+          target_sleep_minutes?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      sleep_logs: {
+        Row: {
+          bed_time: string
+          created_at: string
+          id: string
+          night_awakenings: number | null
+          notes: string | null
+          quality_score: number
+          sleep_date: string
+          source: string
+          total_sleep_minutes: number
+          updated_at: string
+          user_id: string
+          wake_feeling: string | null
+          wake_time: string
+        }
+        Insert: {
+          bed_time: string
+          created_at?: string
+          id?: string
+          night_awakenings?: number | null
+          notes?: string | null
+          quality_score: number
+          sleep_date: string
+          source?: string
+          total_sleep_minutes: number
+          updated_at?: string
+          user_id?: string
+          wake_feeling?: string | null
+          wake_time: string
+        }
+        Update: {
+          bed_time?: string
+          created_at?: string
+          id?: string
+          night_awakenings?: number | null
+          notes?: string | null
+          quality_score?: number
+          sleep_date?: string
+          source?: string
+          total_sleep_minutes?: number
+          updated_at?: string
+          user_id?: string
+          wake_feeling?: string | null
+          wake_time?: string
+        }
+        Relationships: []
       }
       subtarefas_atividade: {
         Row: {

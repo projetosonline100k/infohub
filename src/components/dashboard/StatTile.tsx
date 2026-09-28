@@ -1,4 +1,3 @@
-import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 
@@ -7,27 +6,36 @@ interface StatTileProps {
   label: string;
   value: string;
   tone: "critical" | "warning" | "good" | "neutral";
+  // Texto auxiliar opcional embaixo do número (ex.: "3 desde ontem") — só
+  // aparece quando quem chama tiver um dado real pra mostrar; nunca inventa
+  // tendência/percentual sem dado por trás.
+  hint?: string;
 }
 
 const TONE_CLASSES: Record<StatTileProps["tone"], string> = {
-  critical: "bg-red-500/10 text-red-500",
-  warning: "bg-orange-500/10 text-orange-400",
-  good: "bg-green-500/10 text-green-500",
+  critical: "bg-status-danger/10 text-status-danger",
+  warning: "bg-status-warning/10 text-status-warning",
+  good: "bg-status-success/10 text-status-success",
   neutral: "bg-muted text-muted-foreground",
 };
 
-export const StatTile = ({ icon: Icon, label, value, tone }: StatTileProps) => {
+// Card de métrica do redesign visual (item 5) — ícone com selo colorido,
+// label pequena, número grande, borda discreta + hover sutil em vez do
+// card branco/shadow pesada de antes. Mesma API de props, então
+// DashGeral.tsx/Clientes.tsx não mudam de lógica ao usar isso.
+export const StatTile = ({ icon: Icon, label, value, tone, hint }: StatTileProps) => {
   return (
-    <Card className="p-5 shadow-sm">
+    <div className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary/40">
       <div className="flex items-center gap-3">
-        <div className={cn("h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0", TONE_CLASSES[tone])}>
+        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full", TONE_CLASSES[tone])}>
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-3xl font-semibold text-foreground leading-tight">{value}</p>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+          <p className="text-3xl font-bold leading-tight text-foreground">{value}</p>
         </div>
       </div>
-    </Card>
+      {hint && <p className="mt-2 text-xs text-muted-foreground">{hint}</p>}
+    </div>
   );
 };
