@@ -1,5 +1,5 @@
 import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
-import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, Sparkles, Gauge } from "lucide-react";
+import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, Sparkles, Gauge, CalendarDays } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -20,6 +20,7 @@ const menuItems = [
   { title: "Atividades", path: "/atividades", icon: Activity },
   { title: "Notas", path: "/notas", icon: StickyNote },
   { title: "Produtividade", path: "/produtividade", icon: Gauge },
+  { title: "Agenda", path: "/agenda", icon: CalendarDays },
 ];
 
 // Sidebar fixa do redesign visual (item 3) — reaproveita o sistema de
