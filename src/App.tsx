@@ -19,6 +19,7 @@ import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import JarvisWindow from "./pages/JarvisWindow";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
+import { WorkspaceTabsProvider } from "@/components/workspace/WorkspaceTabs";
 
 const queryClient = new QueryClient();
 
@@ -37,6 +38,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <WorkspaceTabsProvider>
           <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
@@ -62,6 +64,7 @@ const App = () => (
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<ProtectedRoute><DashboardLayout><NotFound /></DashboardLayout></ProtectedRoute>} />
           </Routes>
+          </WorkspaceTabsProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

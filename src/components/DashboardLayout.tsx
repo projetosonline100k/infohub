@@ -8,6 +8,7 @@ import { Assistant } from "@/components/assistant/Assistant";
 import { DesktopUpdateBanner } from "@/components/DesktopUpdateBanner";
 import { isDesktop } from "@/lib/platform";
 import { onMainNavigate, emitClienteAtualMudou } from "@/lib/desktop/events";
+import { useWorkspaceTabs, WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -22,6 +23,9 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const navigate = useNavigate();
   const { id: clienteRotaId } = useParams<{ id: string }>();
   const [buscaAberta, setBuscaAberta] = useState(false);
+  const { syncPath } = useWorkspaceTabs();
+
+  useEffect(() => { syncPath(location.pathname); }, [location.pathname, syncPath]);
 
   // Avisa a janela `jarvis` (desktop) qual cliente está aberto aqui na
   // `main` — cada janela tem sua própria árvore React Router, então o
@@ -53,6 +57,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       {!isClienteDetalhe && <AppSidebar />}
       <SidebarInset>
         {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+        {!isClienteDetalhe && <WorkspaceTabs onNavigate={navigate} />}
 
         <DesktopUpdateBanner />
 
