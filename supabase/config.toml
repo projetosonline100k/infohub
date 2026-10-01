@@ -14,3 +14,8 @@ verify_jwt = false
 
 [functions.admin-users]
 verify_jwt = true
+
+[functions.google-calendar]
+# O callback OAuth vem do Google sem JWT; as demais acoes validam a sessao
+# explicitamente dentro da funcao.
+verify_jwt = false
