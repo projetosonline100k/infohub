@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Infopro Hub",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "identifier": "com.infoprohub.desktop",
   "build": {
     "frontendDist": "../dist",
