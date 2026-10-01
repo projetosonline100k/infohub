@@ -5,7 +5,7 @@ import {
   subDays, subMonths, subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarDays, ChevronLeft, ChevronRight, Loader2, LogOut, Plus, RefreshCw } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, LogOut, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { GOOGLE_EVENT_COLORS, GoogleCalendarEvent } from "@/lib/googleCalendar";
@@ -24,7 +24,9 @@ export default function Agenda() {
   const [view, setView] = useState<View>("month");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogDate, setDialogDate] = useState(new Date());
+  const [dialogEnd, setDialogEnd] = useState<Date | undefined>();
   const [selectedEvent, setSelectedEvent] = useState<GoogleCalendarEvent | null>(null);
+  const [sidebarVisible, setSidebarVisible] = useState(true);
   const calendar = useGoogleCalendar(anchor);
 
   useEffect(() => {
@@ -37,16 +39,18 @@ export default function Agenda() {
   const calendarById = useMemo(() => new Map(calendar.calendars.map((item) => [item.id, item])), [calendar.calendars]);
   const colorFor = (event: GoogleCalendarEvent) => GOOGLE_EVENT_COLORS[event.colorId || ""] || calendarById.get(event.calendarId)?.backgroundColor || "hsl(var(--primary))";
 
-  const openNew = (date = new Date()) => {
+  const openNew = (date = new Date(), end?: Date) => {
     const next = new Date(date);
     if (next.getHours() === 0) next.setHours(9, 0, 0, 0);
     setDialogDate(next);
+    setDialogEnd(end);
     setSelectedEvent(null);
     setDialogOpen(true);
   };
   const openEvent = (event: GoogleCalendarEvent) => {
     setSelectedEvent(event);
     setDialogDate(eventStart(event));
+    setDialogEnd(undefined);
     setDialogOpen(true);
   };
 
@@ -96,12 +100,13 @@ export default function Agenda() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="icon" title="Atualizar" onClick={() => calendar.reload()} disabled={calendar.loadingEvents}><RefreshCw className={cn("h-4 w-4", calendar.loadingEvents && "animate-spin")} /></Button>
+          <Button variant="outline" size="icon" title={sidebarVisible ? "Ocultar calendários" : "Mostrar calendários"} onClick={() => setSidebarVisible((visible) => !visible)}><span className="sr-only">{sidebarVisible ? "Ocultar calendários" : "Mostrar calendários"}</span>{sidebarVisible ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}</Button>
           <Button onClick={() => openNew()}><Plus className="mr-2 h-4 w-4" />Novo evento</Button>
         </div>
       </header>
 
       <div className="flex flex-1 gap-4 overflow-hidden">
-        <aside className="hidden w-56 shrink-0 rounded-xl border bg-card p-4 lg:block">
+        <aside className={cn("hidden w-56 shrink-0 rounded-xl border bg-card p-4 lg:block", !sidebarVisible && "lg:hidden")}>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meus calendarios</p>
           <div className="space-y-2">
             {calendar.calendars.map((item) => (
@@ -137,14 +142,14 @@ export default function Agenda() {
         </section>
       </div>
 
-      <EventoDialog open={dialogOpen} onOpenChange={setDialogOpen} initialDate={dialogDate} event={selectedEvent} calendars={calendar.calendars} onSave={calendar.saveEvent} onDelete={calendar.deleteEvent} />
+      <EventoDialog open={dialogOpen} onOpenChange={setDialogOpen} initialDate={dialogDate} initialEnd={dialogEnd} event={selectedEvent} calendars={calendar.calendars} onSave={calendar.saveEvent} onDelete={calendar.deleteEvent} />
     </div>
   );
 }
 
 function MonthView({ anchor, events, colorFor, onNew, onEvent }: {
   anchor: Date; events: GoogleCalendarEvent[]; colorFor: (event: GoogleCalendarEvent) => string;
-  onNew: (date: Date) => void; onEvent: (event: GoogleCalendarEvent) => void;
+  onNew: (date: Date, end?: Date) => void; onEvent: (event: GoogleCalendarEvent) => void;
 }) {
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(anchor), { weekStartsOn: 0 }),
@@ -194,14 +199,45 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onResize }: 
       <div className="relative grid" style={{ gridTemplateColumns: `4rem repeat(${days.length}, minmax(110px, 1fr))` }}>
         <div>{HOURS.map((hour) => <div key={hour} className="h-16 border-b pr-2 text-right text-[10px] text-muted-foreground">{String(hour).padStart(2, "0")}:00</div>)}</div>
         {days.map((day) => (
-          <div key={day.toISOString()} className="relative border-l">
-            {HOURS.map((hour) => <button key={hour} className="block h-16 w-full border-b text-left hover:bg-primary/5" onClick={() => { const date = new Date(day); date.setHours(hour, 0, 0, 0); onNew(date); }} />)}
+          <GridDay key={day.toISOString()} day={day} onNew={onNew}>
             {events.filter((event) => !event.start.date && isSameDay(eventStart(event), day)).map((event) => <TimedEvent key={`${event.calendarId}-${event.id}`} event={event} color={colorFor(event)} onOpen={onEvent} onResize={onResize} />)}
-          </div>
+          </GridDay>
         ))}
       </div>
     </div>
   );
+}
+
+function GridDay({ day, onNew, children }: { day: Date; onNew: (date: Date, end?: Date) => void; children: React.ReactNode }) {
+  const [selection, setSelection] = useState<{ start: Date; end: Date } | null>(null);
+  const dateAt = (clientY: number, element: HTMLDivElement) => {
+    const bounds = element.getBoundingClientRect();
+    const minutes = Math.max(0, Math.min(23 * 60 + 45, Math.floor(((clientY - bounds.top) / 64) * 4) * 15));
+    const date = new Date(day); date.setHours(0, minutes, 0, 0); return date;
+  };
+  const startSelection = (pointer: React.PointerEvent<HTMLDivElement>) => {
+    if (pointer.button !== 0) return;
+    const origin = dateAt(pointer.clientY, pointer.currentTarget); const element = pointer.currentTarget;
+    let current = origin; let moved = false;
+    const move = (moveEvent: PointerEvent) => {
+      current = dateAt(moveEvent.clientY, element); moved ||= Math.abs(moveEvent.clientY - pointer.clientY) > 4;
+      const first = current < origin ? current : origin; const last = current < origin ? origin : current;
+      setSelection({ start: first, end: new Date(last.getTime() + 15 * 60_000) });
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move); setSelection(null);
+      if (!moved) onNew(origin);
+      else { const first = current < origin ? current : origin; const last = current < origin ? origin : current; onNew(first, new Date(last.getTime() + 15 * 60_000)); }
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish, { once: true });
+  };
+  const top = selection ? selection.start.getHours() * 64 + selection.start.getMinutes() / 60 * 64 : 0;
+  const height = selection ? Math.max(16, (selection.end.getTime() - selection.start.getTime()) / 3_600_000 * 64) : 0;
+  return <div onPointerDown={startSelection} className="relative border-l select-none">
+    {HOURS.map((hour) => <div key={hour} className="h-16 border-b hover:bg-primary/5" />)}
+    {selection && <div className="pointer-events-none absolute inset-x-1 z-[1] rounded bg-primary/30 ring-1 ring-primary" style={{ top, height }} />}
+    {children}
+  </div>;
 }
 
 function TimedEvent({ event, color, onOpen, onResize }: { event: GoogleCalendarEvent; color: string; onOpen: (event: GoogleCalendarEvent) => void; onResize: (event: GoogleCalendarEvent, start: Date, end: Date) => Promise<void>; }) {
@@ -228,7 +264,7 @@ function TimedEvent({ event, color, onOpen, onResize }: { event: GoogleCalendarE
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish, { once: true });
   };
-  return <div role="button" tabIndex={0} onClick={() => { if (!ignoreClick.current) onOpen(event); }} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") onOpen(event); }} className="absolute left-1 right-1 z-[1] overflow-hidden rounded px-2 py-1 text-left text-xs text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1" style={{ top, height, background: color }}>
+  return <div role="button" tabIndex={0} onPointerDown={(pointer) => pointer.stopPropagation()} onClick={() => { if (!ignoreClick.current) onOpen(event); }} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") onOpen(event); }} className="absolute left-1 right-1 z-[1] overflow-hidden rounded px-2 py-1 text-left text-xs text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1" style={{ top, height, background: color }}>
     <div onPointerDown={(pointer) => beginResize("start", pointer)} className="absolute inset-x-0 top-0 h-2 cursor-ns-resize" aria-label="Arraste para alterar o início" />
     <span className="font-semibold">{event.summary || "Sem titulo"}</span><br /><span className="opacity-90">{saving ? "Salvando..." : `${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}</span>
     <div onPointerDown={(pointer) => beginResize("end", pointer)} className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize" aria-label="Arraste para alterar o fim" />

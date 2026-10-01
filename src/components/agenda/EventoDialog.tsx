@@ -17,6 +17,7 @@ interface EventoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialDate: Date;
+  initialEnd?: Date;
   event: GoogleCalendarEvent | null;
   calendars: GoogleCalendar[];
   onSave: (calendarId: string, event: GoogleEventInput, existing?: GoogleCalendarEvent) => Promise<void>;
@@ -26,7 +27,7 @@ interface EventoDialogProps {
 const localDateTime = (date: Date) => format(date, "yyyy-MM-dd'T'HH:mm");
 
 export function EventoDialog({
-  open, onOpenChange, initialDate, event, calendars, onSave, onDelete,
+  open, onOpenChange, initialDate, initialEnd, event, calendars, onSave, onDelete,
 }: EventoDialogProps) {
   const writable = useMemo(
     () => calendars.filter((calendar) => ["writer", "owner"].includes(calendar.accessRole)),
@@ -46,7 +47,7 @@ export function EventoDialog({
     if (!open) return;
     const isAllDay = !!event?.start.date;
     const startDate = event ? new Date(event.start.dateTime || `${event.start.date}T00:00:00`) : initialDate;
-    const endDate = event ? new Date(event.end.dateTime || `${event.end.date}T00:00:00`) : addHours(initialDate, 1);
+    const endDate = event ? new Date(event.end.dateTime || `${event.end.date}T00:00:00`) : initialEnd || addHours(initialDate, 1);
     setSummary(event?.summary || "");
     setDescription(event?.description || "");
     setLocation(event?.location || "");
@@ -55,7 +56,7 @@ export function EventoDialog({
     setStart(isAllDay ? format(startDate, "yyyy-MM-dd") : localDateTime(startDate));
     setEnd(isAllDay ? format(addDays(endDate, -1), "yyyy-MM-dd") : localDateTime(endDate));
     setColorId(event?.colorId || null);
-  }, [event, initialDate, open, writable]);
+  }, [event, initialDate, initialEnd, open, writable]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
