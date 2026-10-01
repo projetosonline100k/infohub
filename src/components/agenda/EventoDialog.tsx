@@ -11,7 +11,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { GoogleCalendar, GoogleCalendarEvent, GoogleEventInput } from "@/lib/googleCalendar";
+import { GOOGLE_EVENT_COLORS, GoogleCalendar, GoogleCalendarEvent, GoogleEventInput } from "@/lib/googleCalendar";
 
 interface EventoDialogProps {
   open: boolean;
@@ -39,6 +39,7 @@ export function EventoDialog({
   const [allDay, setAllDay] = useState(false);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
+  const [colorId, setColorId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -53,6 +54,7 @@ export function EventoDialog({
     setAllDay(isAllDay);
     setStart(isAllDay ? format(startDate, "yyyy-MM-dd") : localDateTime(startDate));
     setEnd(isAllDay ? format(addDays(endDate, -1), "yyyy-MM-dd") : localDateTime(endDate));
+    setColorId(event?.colorId || null);
   }, [event, initialDate, open, writable]);
 
   const submit = async (e: FormEvent) => {
@@ -63,11 +65,13 @@ export function EventoDialog({
       const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       const payload: GoogleEventInput = allDay ? {
         summary: summary.trim(), description: description.trim() || undefined, location: location.trim() || undefined,
+        colorId: colorId || (event?.colorId ? null : undefined),
         start: { date: start },
         // Google usa fim exclusivo em eventos de dia inteiro.
         end: { date: format(addDays(new Date(`${end}T12:00:00`), 1), "yyyy-MM-dd") },
       } : {
         summary: summary.trim(), description: description.trim() || undefined, location: location.trim() || undefined,
+        colorId: colorId || (event?.colorId ? null : undefined),
         start: { dateTime: new Date(start).toISOString(), timeZone },
         end: { dateTime: new Date(end).toISOString(), timeZone },
       };
@@ -100,6 +104,16 @@ export function EventoDialog({
           <div className="space-y-2">
             <Label htmlFor="event-title">Titulo</Label>
             <Input id="event-title" autoFocus required value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="Nome do evento" />
+          </div>
+          <div className="space-y-2">
+            <Label>Cor do evento</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setColorId(null)} aria-label="Usar cor do calendário" title="Cor do calendário" className={`h-7 w-7 rounded-full border-2 bg-primary transition-transform hover:scale-110 ${colorId === null ? "border-foreground ring-2 ring-primary/30" : "border-transparent"}`} />
+              {Object.entries(GOOGLE_EVENT_COLORS).map(([id, color]) => (
+                <button key={id} type="button" onClick={() => setColorId(id)} aria-label={`Selecionar cor ${id}`} className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${colorId === id ? "border-foreground ring-2 ring-primary/30" : "border-transparent"}`} style={{ backgroundColor: color }} />
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">Escolha uma cor ou mantenha a cor do calendário.</p>
           </div>
           <div className="space-y-2">
             <Label>Calendario</Label>

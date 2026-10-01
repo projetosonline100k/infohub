@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addDays, addMonths, addWeeks, eachDayOfInterval, endOfDay, endOfMonth, endOfWeek,
   format, isSameDay, isSameMonth, isToday, startOfDay, startOfMonth, startOfWeek,
@@ -8,7 +8,7 @@ import { ptBR } from "date-fns/locale";
 import { CalendarDays, ChevronLeft, ChevronRight, Loader2, LogOut, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { GoogleCalendarEvent } from "@/lib/googleCalendar";
+import { GOOGLE_EVENT_COLORS, GoogleCalendarEvent } from "@/lib/googleCalendar";
 import { useGoogleCalendar } from "@/hooks/useGoogleCalendar";
 import { EventoDialog } from "@/components/agenda/EventoDialog";
 import { toast } from "sonner";
@@ -35,7 +35,7 @@ export default function Agenda() {
   }, []);
 
   const calendarById = useMemo(() => new Map(calendar.calendars.map((item) => [item.id, item])), [calendar.calendars]);
-  const colorFor = (event: GoogleCalendarEvent) => calendarById.get(event.calendarId)?.backgroundColor || "hsl(var(--primary))";
+  const colorFor = (event: GoogleCalendarEvent) => GOOGLE_EVENT_COLORS[event.colorId || ""] || calendarById.get(event.calendarId)?.backgroundColor || "hsl(var(--primary))";
 
   const openNew = (date = new Date()) => {
     const next = new Date(date);
@@ -48,6 +48,15 @@ export default function Agenda() {
     setSelectedEvent(event);
     setDialogDate(eventStart(event));
     setDialogOpen(true);
+  };
+
+  const resizeEvent = async (event: GoogleCalendarEvent, start: Date, end: Date) => {
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    try {
+      await calendar.saveEvent(event.calendarId, { summary: event.summary || "Sem titulo", description: event.description, location: event.location, colorId: event.colorId, start: { dateTime: start.toISOString(), timeZone }, end: { dateTime: end.toISOString(), timeZone } }, event);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel alterar o horario do evento");
+    }
   };
 
   const navigate = (direction: -1 | 1) => {
@@ -123,7 +132,7 @@ export default function Agenda() {
           {view === "month" ? (
             <MonthView anchor={anchor} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} />
           ) : (
-            <TimeGrid anchor={anchor} view={view} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} />
+            <TimeGrid anchor={anchor} view={view} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} onResize={resizeEvent} />
           )}
         </section>
       </div>
@@ -168,9 +177,10 @@ function MonthView({ anchor, events, colorFor, onNew, onEvent }: {
   );
 }
 
-function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent }: {
+function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onResize }: {
   anchor: Date; view: "week" | "day"; events: GoogleCalendarEvent[]; colorFor: (event: GoogleCalendarEvent) => string;
   onNew: (date: Date) => void; onEvent: (event: GoogleCalendarEvent) => void;
+  onResize: (event: GoogleCalendarEvent, start: Date, end: Date) => Promise<void>;
 }) {
   const days = view === "day" ? [anchor] : eachDayOfInterval({ start: startOfWeek(anchor), end: endOfWeek(anchor) });
   const allDay = events.filter((event) => event.start.date && days.some((day) => isSameDay(day, eventStart(event))));
@@ -186,12 +196,7 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent }: {
         {days.map((day) => (
           <div key={day.toISOString()} className="relative border-l">
             {HOURS.map((hour) => <button key={hour} className="block h-16 w-full border-b text-left hover:bg-primary/5" onClick={() => { const date = new Date(day); date.setHours(hour, 0, 0, 0); onNew(date); }} />)}
-            {events.filter((event) => !event.start.date && isSameDay(eventStart(event), day)).map((event) => {
-              const start = eventStart(event); const end = eventEnd(event);
-              const top = start.getHours() * 64 + start.getMinutes() / 60 * 64;
-              const height = Math.max(24, (end.getTime() - start.getTime()) / 3_600_000 * 64);
-              return <button key={`${event.calendarId}-${event.id}`} onClick={() => onEvent(event)} className="absolute left-1 right-1 z-[1] overflow-hidden rounded px-2 py-1 text-left text-xs text-white shadow-sm" style={{ top, height, background: colorFor(event) }}><span className="font-semibold">{event.summary || "Sem titulo"}</span><br /><span className="opacity-90">{format(start, "HH:mm")}</span></button>;
-            })}
+            {events.filter((event) => !event.start.date && isSameDay(eventStart(event), day)).map((event) => <TimedEvent key={`${event.calendarId}-${event.id}`} event={event} color={colorFor(event)} onOpen={onEvent} onResize={onResize} />)}
           </div>
         ))}
       </div>
@@ -199,7 +204,37 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent }: {
   );
 }
 
+function TimedEvent({ event, color, onOpen, onResize }: { event: GoogleCalendarEvent; color: string; onOpen: (event: GoogleCalendarEvent) => void; onResize: (event: GoogleCalendarEvent, start: Date, end: Date) => Promise<void>; }) {
+  const [draft, setDraft] = useState<{ start: Date; end: Date } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const ignoreClick = useRef(false);
+  const start = draft?.start || eventStart(event); const end = draft?.end || eventEnd(event);
+  const top = start.getHours() * 64 + start.getMinutes() / 60 * 64;
+  const height = Math.max(24, (end.getTime() - start.getTime()) / 3_600_000 * 64);
+  const beginResize = (edge: "start" | "end", pointer: React.PointerEvent<HTMLDivElement>) => {
+    pointer.preventDefault(); pointer.stopPropagation();
+    const originalStart = eventStart(event); const originalEnd = eventEnd(event); const originY = pointer.clientY;
+    let nextStart = originalStart; let nextEnd = originalEnd;
+    const move = (moveEvent: PointerEvent) => {
+      const minutes = Math.round(((moveEvent.clientY - originY) / 64) * 4) * 15;
+      if (edge === "start") nextStart = new Date(Math.min(originalStart.getTime() + minutes * 60_000, originalEnd.getTime() - 15 * 60_000));
+      else nextEnd = new Date(Math.max(originalEnd.getTime() + minutes * 60_000, originalStart.getTime() + 15 * 60_000));
+      setDraft({ start: nextStart, end: nextEnd });
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move); ignoreClick.current = true; window.setTimeout(() => { ignoreClick.current = false; }, 0);
+      const changed = nextStart.getTime() !== originalStart.getTime() || nextEnd.getTime() !== originalEnd.getTime(); setDraft(null);
+      if (changed) { setSaving(true); void onResize(event, nextStart, nextEnd).finally(() => setSaving(false)); }
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", finish, { once: true });
+  };
+  return <div role="button" tabIndex={0} onClick={() => { if (!ignoreClick.current) onOpen(event); }} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") onOpen(event); }} className="absolute left-1 right-1 z-[1] overflow-hidden rounded px-2 py-1 text-left text-xs text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1" style={{ top, height, background: color }}>
+    <div onPointerDown={(pointer) => beginResize("start", pointer)} className="absolute inset-x-0 top-0 h-2 cursor-ns-resize" aria-label="Arraste para alterar o início" />
+    <span className="font-semibold">{event.summary || "Sem titulo"}</span><br /><span className="opacity-90">{saving ? "Salvando..." : `${format(start, "HH:mm")} – ${format(end, "HH:mm")}`}</span>
+    <div onPointerDown={(pointer) => beginResize("end", pointer)} className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize" aria-label="Arraste para alterar o fim" />
+  </div>;
+}
+
 function EventChip({ event, color, onClick }: { event: GoogleCalendarEvent; color: string; onClick: () => void }) {
   return <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="flex w-full items-center gap-1.5 overflow-hidden rounded px-1.5 py-1 text-left text-[11px] font-medium text-white" style={{ background: color }}><span className="truncate">{event.start.dateTime && `${format(eventStart(event), "HH:mm")} `}{event.summary || "Sem titulo"}</span></button>;
 }
-

@@ -28,9 +28,17 @@ export interface GoogleEventInput {
   summary: string;
   description?: string;
   location?: string;
+  // `null` remove a cor personalizada e volta para a cor do calendário.
+  colorId?: string | null;
   start: { date?: string; dateTime?: string; timeZone?: string };
   end: { date?: string; dateTime?: string; timeZone?: string };
 }
+
+export const GOOGLE_EVENT_COLORS: Record<string, string> = {
+  "1": "#a4bdfc", "2": "#7ae7bf", "3": "#dbadff", "4": "#ff887c",
+  "5": "#fbd75b", "6": "#ffb878", "7": "#46d6db", "8": "#e1e1e1",
+  "9": "#5484ed", "10": "#51b749", "11": "#dc2127",
+};
 
 type CalendarAction =
   | { action: "status" | "disconnect" | "calendars" }
@@ -58,4 +66,3 @@ export async function chamarGoogleCalendar<T>(body: CalendarAction): Promise<T> 
   if (data?.error) throw new Error(data.error);
   return data as T;
 }
-
