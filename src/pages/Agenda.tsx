@@ -190,7 +190,7 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onResize }: 
   const days = view === "day" ? [anchor] : eachDayOfInterval({ start: startOfWeek(anchor), end: endOfWeek(anchor) });
   const allDay = events.filter((event) => event.start.date && days.some((day) => isSameDay(day, eventStart(event))));
   const [now, setNow] = useState(new Date());
-  const todayIsVisible = days.some((day) => isSameDay(day, now));
+  const todayIndex = days.findIndex((day) => isSameDay(day, now));
   const nowTop = now.getHours() * 64 + now.getMinutes() / 60 * 64;
 
   useEffect(() => {
@@ -212,7 +212,7 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onResize }: 
             {events.filter((event) => !event.start.date && isSameDay(eventStart(event), day)).map((event) => <TimedEvent key={`${event.calendarId}-${event.id}`} event={event} color={colorFor(event)} onOpen={onEvent} onResize={onResize} />)}
           </GridDay>
         ))}
-        {todayIsVisible && <div className="pointer-events-none absolute left-16 right-0 z-[3] border-t-2 border-red-500" style={{ top: nowTop }}><span className="absolute -left-2 -top-1.5 h-3 w-3 rounded-full bg-red-500" /></div>}
+        {todayIndex >= 0 && <div className="pointer-events-none absolute z-[3] border-t-2 border-red-500" style={{ top: nowTop, left: `calc(4rem + ${todayIndex} * (100% - 4rem) / ${days.length})`, width: `calc((100% - 4rem) / ${days.length})` }}><span className="absolute -left-2 -top-1.5 h-3 w-3 rounded-full bg-red-500" /></div>}
       </div>
     </div>
   );
