@@ -189,17 +189,33 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onResize }: 
 }) {
   const days = view === "day" ? [anchor] : eachDayOfInterval({ start: startOfWeek(anchor), end: endOfWeek(anchor) });
   const allDay = events.filter((event) => event.start.date && days.some((day) => isSameDay(day, eventStart(event))));
+  const scrollArea = useRef<HTMLDivElement>(null);
+  const scrolledToToday = useRef<string | null>(null);
   const [now, setNow] = useState(new Date());
   const todayIndex = days.findIndex((day) => isSameDay(day, now));
   const nowTop = now.getHours() * 64 + now.getMinutes() / 60 * 64;
+  const todayKey = todayIndex >= 0 ? format(days[todayIndex], "yyyy-MM-dd") : null;
 
   useEffect(() => {
     const refresh = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(refresh);
   }, []);
 
+  useEffect(() => {
+    if (!todayKey) {
+      scrolledToToday.current = null;
+      return;
+    }
+    if (scrolledToToday.current === todayKey) return;
+    const frame = window.requestAnimationFrame(() => {
+      scrollArea.current?.scrollTo({ top: Math.max(0, nowTop - 260) });
+      scrolledToToday.current = todayKey;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [nowTop, todayKey]);
+
   return (
-    <div className="h-[calc(100vh-15.5rem)] min-h-[560px] overflow-auto">
+    <div ref={scrollArea} className="h-[calc(100vh-15.5rem)] min-h-[560px] overflow-auto">
       <div className="sticky top-0 z-10 grid border-b bg-card" style={{ gridTemplateColumns: `4rem repeat(${days.length}, minmax(110px, 1fr))` }}>
         <div />
         {days.map((day) => <div key={day.toISOString()} className="border-l p-2 text-center"><p className="text-xs uppercase text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</p><p className={cn("mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold", isToday(day) && "bg-primary text-primary-foreground")}>{format(day, "d")}</p></div>)}
