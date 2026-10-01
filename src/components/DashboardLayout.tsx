@@ -54,17 +54,19 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       {/* Página de detalhe de projeto (/clientes/:id) volta a ficar
           full-bleed, igual era antes do redesign — nem sidebar nem topbar,
           só o conteúdo da própria página. */}
-      {!isClienteDetalhe && <AppSidebar />}
-      <SidebarInset>
-        {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+      <div className="flex min-h-svh w-full flex-col overflow-hidden">
         <WorkspaceTabs onNavigate={navigate} />
-
-        <DesktopUpdateBanner />
-
-        <main className="flex-1 overflow-auto">
-          <div className={isClienteDetalhe ? "" : "p-6"}>{children}</div>
-        </main>
-      </SidebarInset>
+        <div className="flex min-h-0 flex-1">
+          {!isClienteDetalhe && <AppSidebar />}
+          <SidebarInset>
+            {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+            <DesktopUpdateBanner />
+            <main className="flex-1 overflow-auto">
+              <div className={isClienteDetalhe ? "" : "p-6"}>{children}</div>
+            </main>
+          </SidebarInset>
+        </div>
+      </div>
 
       <GlobalSearchCommand open={buscaAberta} onOpenChange={setBuscaAberta} />
 
