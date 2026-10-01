@@ -1,6 +1,6 @@
 [package]
 name = "infopro-hub"
-version = "0.2.2"
+version = "0.2.3"
 description = "Infopro Hub — painel de gestão para infoprodutores"
 authors = ["Infopro Hub"]
 license = ""
