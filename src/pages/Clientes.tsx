@@ -390,9 +390,11 @@ const Clientes = () => {
               ultimaAtividade={cliente.stats.ultimaAtividade}
               podeGerenciar={cliente.user_id === user?.id}
               visualizacao={visualizacao}
-              onAbrir={(event) => {
+              onAbrir={() => {
                 const path = `/clientes/${cliente.id}`;
-                if (event?.metaKey) openTab(path, cliente.nome_especialista);
+                // Projetos são espaços de trabalho: cada um merece sua própria
+                // aba, inclusive no clique normal. ⌘+clique continua funcionando.
+                openTab(path, cliente.nome_especialista);
                 navigate(path);
               }}
               onEditar={() => abrirFormularioEditar(cliente)}
