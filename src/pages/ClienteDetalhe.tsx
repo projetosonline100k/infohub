@@ -65,6 +65,10 @@ export default function ClienteDetalhe() {
   const { pessoasOnline } = usePresencaProjeto(id);
 
   useEffect(() => {
+    if (searchParams.get("documento")) setAbaAtiva("documentos");
+  }, [searchParams]);
+
+  useEffect(() => {
     void carregarDados();
     return () => { requisicaoAtual.current += 1; };
   }, [id, user?.id]);

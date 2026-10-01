@@ -25,7 +25,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const [buscaAberta, setBuscaAberta] = useState(false);
   const { syncPath } = useWorkspaceTabs();
 
-  useEffect(() => { syncPath(location.pathname); }, [location.pathname, syncPath]);
+  useEffect(() => { syncPath(`${location.pathname}${location.search}`); }, [location.pathname, location.search, syncPath]);
 
   // Avisa a janela `jarvis` (desktop) qual cliente está aberto aqui na
   // `main` — cada janela tem sua própria árvore React Router, então o
