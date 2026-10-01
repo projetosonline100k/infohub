@@ -12,6 +12,7 @@ import ClienteForm from "@/components/ClienteForm";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ProjetoRow } from "@/components/clientes/ProjetoRow";
 import { NOTA_PREFIX } from "@/hooks/useAssistantDocumentos";
+import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 interface Cliente {
   user_id: string | null;
@@ -41,6 +42,7 @@ type Ordenacao = "nome" | "recente" | "notas";
 
 const Clientes = () => {
   const navigate = useNavigate();
+  const { openTab } = useWorkspaceTabs();
   const { user } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -388,7 +390,11 @@ const Clientes = () => {
               ultimaAtividade={cliente.stats.ultimaAtividade}
               podeGerenciar={cliente.user_id === user?.id}
               visualizacao={visualizacao}
-              onAbrir={() => navigate(`/clientes/${cliente.id}`)}
+              onAbrir={(event) => {
+                const path = `/clientes/${cliente.id}`;
+                if (event?.metaKey) openTab(path, cliente.nome_especialista);
+                navigate(path);
+              }}
               onEditar={() => abrirFormularioEditar(cliente)}
               onArquivar={() => alternarArquivo(cliente)}
             />

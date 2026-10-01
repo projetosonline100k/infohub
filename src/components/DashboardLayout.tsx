@@ -57,7 +57,7 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
       {!isClienteDetalhe && <AppSidebar />}
       <SidebarInset>
         {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
-        {!isClienteDetalhe && <WorkspaceTabs onNavigate={navigate} />}
+        <WorkspaceTabs onNavigate={navigate} />
 
         <DesktopUpdateBanner />
 
