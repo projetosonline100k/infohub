@@ -29,7 +29,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Instalar dependências do frontend
-        run: npm ci
+        run: npm install --include=optional
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -38,6 +38,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          tauriScript: npm run tauri
           tagName: ${{ github.ref_name }}
           releaseName: "Infopro Hub Desktop ${{ github.ref_name }}"
           releaseBody: "Ver o changelog do commit. Instalação: baixe o .dmg, abra e, na primeira vez, clique com o botão direito no app → Abrir (o app ainda não é notarizado pela Apple)."
