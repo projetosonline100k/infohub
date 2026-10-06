@@ -20,7 +20,7 @@ interface ProjetoRowProps {
   ultimaAtividade: string | null;
   podeGerenciar: boolean;
   visualizacao: "lista" | "grid";
-  onAbrir: () => void;
+  onAbrir: (event?: React.MouseEvent) => void;
   onEditar: () => void;
   onArquivar: () => void;
 }

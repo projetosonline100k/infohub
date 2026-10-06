@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 
 interface Perfil {
   id: string;
@@ -54,7 +55,7 @@ export function PerfilCard({ perfil, onAdd, onUpdate, onDelete, filtroAtual }: P
 
   const openLink = () => {
     if (perfil?.link_perfil) {
-      window.open(perfil.link_perfil, "_blank");
+      void abrirLinkExterno(perfil.link_perfil);
     }
   };
 

@@ -33,6 +33,7 @@ import {
 } from "recharts";
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, parseISO, isWithinInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface FinanceiroDiario {
   id: string;
@@ -395,7 +396,7 @@ export function ProdutoFinanceiro({ produtoId }: ProdutoFinanceiroProps) {
   };
 
   const excluirDia = async (id: string) => {
-    if (!confirm("Excluir este registro?")) return;
+    if (!(await confirmar("Excluir este registro?"))) return;
 
     const { error } = await supabase
       .from("produto_financeiro_diario")
@@ -411,7 +412,7 @@ export function ProdutoFinanceiro({ produtoId }: ProdutoFinanceiroProps) {
   };
 
   const excluirMes = async (id: string) => {
-    if (!confirm("Excluir este registro?")) return;
+    if (!(await confirmar("Excluir este registro?"))) return;
 
     const { error } = await supabase
       .from("produto_financeiro")

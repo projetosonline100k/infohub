@@ -15,7 +15,7 @@ interface Props {
 export function LousaAtividades({ clienteId, pastaId, pastaNome, onAtividadesAlteradas }: Props) {
   const [mapas, setMapas] = useState<{ id: string; titulo: string }[]>([]);
   const [selecionado, setSelecionado] = useState("");
-  const [aberta, setAberta] = useState(true);
+  const [aberta, setAberta] = useState(false);
   const [loading, setLoading] = useState(true);
   const [criando, setCriando] = useState(false);
   const [erro, setErro] = useState(false);

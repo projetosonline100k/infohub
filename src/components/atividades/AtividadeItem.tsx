@@ -8,6 +8,7 @@ import { ResponsavelAvatares } from "./ResponsavelAvatares";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+import { IndicadorAlarme } from "./IndicadorAlarme";
 
 interface ChecklistResumo {
   total: number;
@@ -26,6 +27,7 @@ interface AtividadeItemProps {
   prioridade: string;
   dataVencimento?: string | null;
   responsavelNome?: string | null;
+  alarmeEm?: string | null;
   checklist?: ChecklistResumo;
   onToggle: (id: string, concluida: boolean) => void;
   onClick: (id: string) => void;
@@ -59,6 +61,7 @@ export const AtividadeItem = ({
   onClick,
   onDelete,
   dragHandleProps,
+  alarmeEm,
 }: AtividadeItemProps) => {
   // Comparação por string (yyyy-MM-dd) evita problema de fuso ao converter
   // pra Date; atividade concluída nunca conta como atrasada.
@@ -145,6 +148,8 @@ export const AtividadeItem = ({
 
       {/* Responsible */}
       <ResponsavelAvatares responsavelNome={responsavelNome} />
+
+      <IndicadorAlarme alarmeEm={alarmeEm} concluida={concluida} />
 
       {/* Time Estimate */}
       {tempoEstimado && (

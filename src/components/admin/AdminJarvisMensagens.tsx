@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useJarvisMensagens, type JarvisMensagem, type JarvisMensagemTipo } from "@/hooks/useJarvisMensagens";
+import { confirmar } from "@/components/DialogosGlobais";
 
 const TIPO_LABEL: Record<JarvisMensagemTipo, string> = {
   motivacao: "Motivação",
@@ -83,7 +84,7 @@ export function AdminJarvisMensagens() {
   };
 
   const remover = async (m: JarvisMensagem) => {
-    if (!window.confirm("Excluir esta mensagem?")) return;
+    if (!(await confirmar("Excluir esta mensagem?"))) return;
     try {
       await excluir(m.id);
       toast.success("Mensagem excluída");

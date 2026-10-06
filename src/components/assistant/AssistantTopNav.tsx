@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 
-export type AssistantAba = "hoje" | "kanban" | "docs" | "notas" | "performance";
+export type AssistantAba = "hoje" | "kanban" | "docs" | "notas" | "performance" | "relatorio";
 
 // Item 4 do pedido: sem aba "Projeto" isolada — o projeto agora é escolhido
 // direto dentro de Kanban e Notas (ver ProjetoSelectorInline), e o filtro
@@ -14,6 +14,8 @@ const ABAS: { id: AssistantAba; label: string }[] = [
   { id: "kanban", label: "Kanban" },
   { id: "docs", label: "Docs" },
   { id: "notas", label: "Notas" },
+  // Diário rápido do dia (ver AssistantRelatorioTab).
+  { id: "relatorio", label: "Relatório" },
 ];
 
 interface AssistantTopNavProps {

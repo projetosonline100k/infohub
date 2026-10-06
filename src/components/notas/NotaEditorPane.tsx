@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { Editor } from "@tiptap/react";
 import { EditorContent } from "@tiptap/react";
-import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
+import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,14 +28,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
+import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { useNotaEditor } from "@/hooks/useNotaEditor";
 import { cn } from "@/lib/utils";
 import type { AssistantDocumento } from "@/hooks/useAssistantDocumentos";
 import type { NotaPasta } from "@/hooks/useNotasPastas";
 import "@/components/documentos/editor.css";
-
-const SEM_PASTA = "__sem_pasta__";
+import { pedirTexto } from "@/components/DialogosGlobais";
 
 interface NotaEditorPaneProps {
   nota: AssistantDocumento;
@@ -53,6 +52,8 @@ interface NotaEditorPaneProps {
   // conteúdo desatualizado mesmo com o autosave funcionando normalmente.
   onNotaAtualizada?: (id: string, patch: Partial<AssistantDocumento>) => void;
   compact?: boolean;
+  // Botão extra no começo da barra (página /notas: mostrar/ocultar pastas).
+  acaoEsquerda?: React.ReactNode;
 }
 
 function formatarEdicaoCompacta(data: Date): string {
@@ -129,8 +130,8 @@ function FormatacaoCompacta({ editor }: { editor: Editor }) {
       </BotaoFormatacao>
       <div className="mx-0.5 h-4 w-px shrink-0 bg-border" />
       <BotaoFormatacao
-        onClick={() => {
-          const url = window.prompt("URL do link:");
+        onClick={async () => {
+          const url = await pedirTexto("URL do link:");
           if (url) editor.chain().focus().setLink({ href: url }).run();
         }}
         active={editor.isActive("link")}
@@ -148,7 +149,7 @@ function FormatacaoCompacta({ editor }: { editor: Editor }) {
 // padrão — bem diferente do modo desktop (DocumentToolbar sempre visível),
 // então os dois viraram blocos praticamente separados aqui dentro, embora
 // usem os mesmos dados/autosave por baixo.
-export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar, onMoverParaPasta, pastas, onRestaurar, onNotaAtualizada, compact }: NotaEditorPaneProps) {
+export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar, onMoverParaPasta, pastas, onRestaurar, onNotaAtualizada, compact, acaoEsquerda }: NotaEditorPaneProps) {
   const { editor, titulo, onTituloChange, salvando, salvoEm } = useNotaEditor(nota, onNotaAtualizada);
   const naLixeira = !!nota.deleted_at;
   const [mostrarFormatacao, setMostrarFormatacao] = useState(false);
@@ -220,13 +221,15 @@ export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar,
           onChange={(e) => onTituloChange(e.target.value)}
           placeholder="Título"
           disabled={naLixeira}
-          className="mb-0.5 shrink-0 border-none px-0 text-lg font-bold shadow-none focus-visible:ring-0"
+          className="mb-0.5 ml-7 w-auto shrink-0 border-none px-0 text-lg font-bold shadow-none focus-visible:ring-0"
         />
-        <p className="mb-3 shrink-0 text-xs text-muted-foreground">
+        <p className="mb-3 shrink-0 pl-7 text-xs text-muted-foreground">
           {salvando ? "Salvando..." : salvoEm ? formatarEdicaoCompacta(salvoEm) : formatarEdicaoCompacta(new Date(nota.updated_at))}
         </p>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        {/* pl-7: espaço pras setas dos títulos recolhíveis (ficam à esquerda
+            do texto) — sem isso eram cortadas e não dava pra abrir no Jarvis. */}
+        <div className="min-h-0 flex-1 overflow-y-auto pl-7">
           <EditorContent editor={editor} className="prose prose-sm max-w-none document-editor dark:prose-invert" />
         </div>
 
@@ -235,18 +238,22 @@ export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar,
     );
   }
 
+  // Layout tipo Apple Notes: barra discreta (voltar · data · ações), título
+  // grande e o texto direto — sem barra de formatação fixa; formatar é pelo
+  // menu que aparece ao selecionar texto (MenuSelecaoTexto).
+  const dataEdicao = salvoEm || new Date(nota.updated_at);
   return (
-    <div className="mx-auto flex h-full w-full max-w-3xl flex-col">
-      <div className="flex flex-wrap items-center gap-1 pb-3">
+    <div className="flex h-full w-full flex-col">
+      <div className="flex shrink-0 items-center gap-1 pb-2">
+        {acaoEsquerda}
         {onVoltar && (
-          <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={onVoltar} aria-label="Voltar para a lista">
+          <button type="button" onClick={onVoltar} aria-label="Voltar para as notas"
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
             <ArrowLeft className="h-4 w-4" />
-          </Button>
+            Notas
+          </button>
         )}
-        <p className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {salvando ? "Salvando..." : salvoEm ? `Salvo ${formatDistanceToNow(salvoEm, { locale: ptBR, addSuffix: true })}` : ""}
-        </p>
-
+        <div className="flex-1" />
         {naLixeira ? (
           onRestaurar && (
             <Button type="button" variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => onRestaurar(nota.id)}>
@@ -256,72 +263,65 @@ export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar,
           )
         ) : (
           <>
-            {onMoverParaPasta && pastas && (
-              <Select value={nota.pasta_id ?? SEM_PASTA} onValueChange={(v) => onMoverParaPasta(nota.id, v === SEM_PASTA ? null : v)}>
-                <SelectTrigger className="h-7 w-auto gap-1 border-none px-2 text-xs text-muted-foreground shadow-none [&>svg]:h-3 [&>svg]:w-3">
-                  <FolderInput className="h-3.5 w-3.5" />
-                  <SelectValue placeholder="Pasta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SEM_PASTA}>Sem pasta</SelectItem>
-                  {pastas.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            )}
-            {onDuplicar && (
-              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => onDuplicar(nota.id)} aria-label="Duplicar nota" title="Duplicar">
-                <Copy className="h-3.5 w-3.5" />
+            {editor && (
+              <Button type="button" variant="ghost" size="icon" className={cn("h-8 w-8", editor.isActive("taskList") && "bg-muted")} title="Checklist"
+                aria-label="Checklist" onClick={() => editor.chain().focus().toggleTaskList().run()}>
+                <ListChecks className="h-4 w-4" />
               </Button>
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0"
-              onClick={() => onFixar(nota.id, !nota.fixado)}
-              aria-label={nota.fixado ? "Desafixar nota" : "Fixar nota"}
-              title={nota.fixado ? "Desafixar" : "Fixar"}
-            >
-              {nota.fixado ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
+            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => onFixar(nota.id, !nota.fixado)}
+              aria-label={nota.fixado ? "Desafixar nota" : "Fixar nota"} title={nota.fixado ? "Desafixar" : "Fixar"}>
+              {nota.fixado ? <PinOff className="h-4 w-4" /> : <Pin className="h-4 w-4" />}
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0 text-destructive hover:text-destructive"
-              onClick={() => onExcluir(nota.id)}
-              aria-label="Mover para a lixeira"
-              title="Excluir"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" aria-label="Mais opções" title="Mais opções">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                {onMoverParaPasta && pastas && (
+                  <>
+                    <DropdownMenuItem onClick={() => onMoverParaPasta(nota.id, null)} disabled={!nota.pasta_id}>
+                      <FolderInput className="mr-2 h-4 w-4" />Sem pasta
+                    </DropdownMenuItem>
+                    {pastas.map((p) => (
+                      <DropdownMenuItem key={p.id} onClick={() => onMoverParaPasta(nota.id, p.id)} disabled={nota.pasta_id === p.id}>
+                        <FolderInput className="mr-2 h-4 w-4" />Mover para {p.nome}
+                      </DropdownMenuItem>
+                    ))}
+                  </>
+                )}
+                {onDuplicar && (
+                  <DropdownMenuItem onClick={() => onDuplicar(nota.id)}><Copy className="mr-2 h-4 w-4" />Duplicar</DropdownMenuItem>
+                )}
+                <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => onExcluir(nota.id)}>
+                  <Trash2 className="mr-2 h-4 w-4" />Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         )}
       </div>
 
-      <Input
-        value={titulo}
-        onChange={(e) => onTituloChange(e.target.value)}
-        placeholder="Título"
-        disabled={naLixeira}
-        className="mb-1 shrink-0 border-none px-0 text-3xl font-bold shadow-none focus-visible:ring-0"
-      />
-
-      <p
-        className="mb-4 shrink-0 text-xs text-muted-foreground"
-        title={`Criada em ${format(new Date(nota.created_at), "d 'de' MMM 'de' yyyy", { locale: ptBR })}`}
-      >
-        Editada {formatDistanceToNow(new Date(nota.updated_at), { locale: ptBR, addSuffix: true })}
-      </p>
-
-      {!naLixeira && editor && (
-        <div className="shrink-0 overflow-x-auto rounded-lg border border-border/60 bg-secondary/40 px-1 py-1">
-          <DocumentToolbar editor={editor} />
-        </div>
-      )}
-
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <EditorContent editor={editor} className="prose prose-lg max-w-none document-editor py-4 dark:prose-invert" />
+        {/* pl-7: espaço à esquerda pras setas dos títulos recolhíveis, que
+            ficam fora da linha do texto — sem isso elas eram cortadas. */}
+        <div className="mx-auto w-full max-w-3xl pl-7">
+          <p className="mb-3 text-center text-xs text-muted-foreground"
+            title={`Criada em ${format(new Date(nota.created_at), "d 'de' MMM 'de' yyyy", { locale: ptBR })}`}>
+            {salvando ? "Salvando..." : format(dataEdicao, "d 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+          </p>
+          <Input
+            value={titulo}
+            onChange={(e) => onTituloChange(e.target.value)}
+            placeholder="Título"
+            disabled={naLixeira}
+            className="mb-1 h-auto border-none bg-transparent px-0 py-1 text-3xl font-bold shadow-none focus-visible:ring-0 md:text-3xl"
+          />
+          <EditorContent editor={editor} className="prose prose-lg max-w-none document-editor pb-16 dark:prose-invert" />
+          {editor && !naLixeira && <MenuSelecaoTexto editor={editor} />}
+        </div>
       </div>
     </div>
   );

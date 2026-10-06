@@ -5,6 +5,7 @@ import { format } from "date-fns";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface Pergunta {
   id: string;
@@ -76,7 +77,7 @@ export function RespostasIndividual({
   };
 
   const excluir = async () => {
-    if (!confirm("Tem certeza que deseja excluir essas respostas?")) {
+    if (!(await confirmar("Tem certeza que deseja excluir essas respostas?"))) {
       return;
     }
 

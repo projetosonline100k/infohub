@@ -18,8 +18,8 @@
         "url": "/",
         "width": 1280,
         "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
+        "minWidth": 400,
+        "minHeight": 450,
         "resizable": true,
         "fullscreen": false,
         "center": true

@@ -20,6 +20,7 @@ import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
 import { PresencaOnlineDot } from "@/components/PresencaOnlineDot";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface Cliente {
   id: string;
@@ -63,6 +64,10 @@ export default function ClienteDetalhe() {
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   const { pessoasOnline } = usePresencaProjeto(id);
+
+  useEffect(() => {
+    if (searchParams.get("documento")) setAbaAtiva("documentos");
+  }, [searchParams]);
 
   useEffect(() => {
     void carregarDados();
@@ -142,7 +147,7 @@ export default function ClienteDetalhe() {
   };
 
   const excluirProduto = async (produtoId: string) => {
-    if (!confirm("Deseja realmente excluir este produto?")) return;
+    if (!(await confirmar("Deseja realmente excluir este produto?"))) return;
 
     try {
       const { error } = await supabase

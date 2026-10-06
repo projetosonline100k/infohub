@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRecarregarAoVoltar } from "@/hooks/useRecarregarAoVoltar";
 import { useAuth } from "@/auth/AuthProvider";
 import { acessoProprietario, resolverAcesso } from "@/lib/equipe";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Users } from "lucide-react";
+import { List, Map as MapaIcone, Plus, Users } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { iniciais } from "@/lib/utils";
@@ -22,6 +23,7 @@ import { DiaSection } from "./DiaSection";
 import { AtividadeItem } from "./AtividadeItem";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { AtividadesView } from "./AtividadesView";
+import { MapaAtividades } from "./MapaAtividades";
 import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
@@ -29,6 +31,8 @@ import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 // Guarda qual(is) cliente(s) estavam selecionados no filtro, pra voltar
 // exatamente de onde parou ao reabrir a aba.
 const CHAVE_FILTRO = "atividades-clientes:filtro";
+// Último modo usado na visão de todos os clientes (lista ou mapa).
+const CHAVE_MODO = "atividades-clientes:modo";
 
 interface ClienteInfo {
   id: string;
@@ -37,6 +41,7 @@ interface ClienteInfo {
 
 interface Atividade {
   id: string;
+  alarme_em?: string | null;
   user_id: string | null;
   cliente_id: string;
   titulo: string;
@@ -83,6 +88,13 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
   // Concluídas ficam escondidas por padrão — só aparecem se a pessoa marcar
   // "Ver concluídas" explicitamente.
   const [mostrarConcluidas, setMostrarConcluidas] = useState(false);
+  const [modo, setModo] = useState<"lista" | "mapa">(() => {
+    try { return localStorage.getItem(CHAVE_MODO) === "mapa" ? "mapa" : "lista"; } catch { return "lista"; }
+  });
+  const escolherModo = (novo: "lista" | "mapa") => {
+    setModo(novo);
+    try { localStorage.setItem(CHAVE_MODO, novo); } catch { /* sem storage */ }
+  };
   const [diasAbertos, setDiasAbertos] = useState<Record<string, boolean>>({});
   const [novoTitulo, setNovoTitulo] = useState("");
   const [novoClienteId, setNovoClienteId] = useState("");
@@ -217,6 +229,16 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientes]);
 
+  // Volta pra esta tela (troca de aba / volta pro app) ou abre o Mapa: busca
+  // de novo, pra aparecer o que foi criado dentro de um projeto, pelo Jarvis
+  // ou em outra aba — sem depender só do realtime.
+  const raizRef = useRef<HTMLDivElement>(null);
+  useRecarregarAoVoltar(raizRef, () => void carregarDados());
+  useEffect(() => {
+    if (modo === "mapa") void carregarDados();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modo]);
+
   // Mesmo motivo/padrão de AtividadesView.tsx: essa lista só carregava sob
   // demanda, então uma atividade criada pelo Assistant/Jarvis (widget ou
   // extensão) ou por outra aba nunca aparecia aqui sem recarregar a
@@ -300,7 +322,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
   useEffect(() => {
     setPanelOpen(false);
     setSelectedAtividade(null);
-  }, [clienteFiltradoUnico?.id]);
+  }, [clienteFiltradoUnico?.id, modo]);
 
   const toggleAtividade = async (id: string, concluida: boolean) => {
     const atual = atividades.find((a) => a.id === id);
@@ -326,6 +348,27 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     } catch (error) {
       console.error("Erro ao atualizar atividade:", error);
       toast.error("Erro ao atualizar atividade");
+    }
+  };
+
+  // Mapa: card solto em outra coluna do mesmo projeto muda o status (e
+  // conclui/reabre se a coluna for/deixar de ser a de conclusão).
+  const moverNoMapa = async (atividade: Atividade, coluna: Coluna | { status_key: string; eh_conclusao: boolean }) => {
+    if (coluna.eh_conclusao) {
+      const resumo = checklistPorAtividade[atividade.id];
+      if (resumo && resumo.total > 0 && resumo.concluidas < resumo.total) {
+        toast.error("Finalize todos os itens do checklist antes de concluir a tarefa");
+        return;
+      }
+    }
+    const ordem = Math.max(-1, ...atividades.filter((a) => a.cliente_id === atividade.cliente_id && a.status === coluna.status_key).map((a) => a.ordem)) + 1;
+    const patch = { status: coluna.status_key, concluida: coluna.eh_conclusao, ordem };
+    const anterior = atividades;
+    setAtividades((prev) => prev.map((a) => (a.id === atividade.id ? { ...a, ...patch } : a)));
+    const { error } = await supabase.from("atividades").update(patch).eq("id", atividade.id);
+    if (error) {
+      setAtividades(anterior);
+      toast.error("Não foi possível mover a atividade");
     }
   };
 
@@ -392,7 +435,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
   }
 
   return (
-    <div className="space-y-4">
+    <div ref={raizRef} className="space-y-4">
       <div className="flex items-center gap-3 flex-wrap">
         <Popover>
           <PopoverTrigger asChild>
@@ -448,7 +491,25 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
           </PopoverContent>
         </Popover>
 
-        {!clienteFiltradoUnico && (
+        {/* Sempre visível — inclusive com um cliente só no filtro. */}
+        <div className="flex items-center rounded-lg bg-muted p-0.5">
+          <button type="button" onClick={() => escolherModo("lista")}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${modo === "lista" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <List className="h-3.5 w-3.5" />Lista
+          </button>
+          <button type="button" onClick={() => escolherModo("mapa")}
+            className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm font-medium transition-colors ${modo === "mapa" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+            <MapaIcone className="h-3.5 w-3.5" />Mapa
+          </button>
+        </div>
+
+        {modo === "mapa" && selectedClienteIds.size > 0 && (
+          <button type="button" onClick={() => setSelectedClienteIds(new Set())} className="text-sm text-primary hover:underline">
+            Ver todos os projetos
+          </button>
+        )}
+
+        {(!clienteFiltradoUnico || modo === "mapa") && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer ml-auto">
             <Checkbox checked={mostrarConcluidas} onCheckedChange={(v) => setMostrarConcluidas(!!v)} />
             Ver concluídas
@@ -456,7 +517,17 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
         )}
       </div>
 
-      {clienteFiltradoUnico ? (
+      {modo === "mapa" ? (
+        // Visão geral: todos os projetos de uma vez, num canvas com zoom.
+        <MapaAtividades
+          projetos={clientesParaExibir}
+          atividades={atividadesFiltradas}
+          colunasPorCliente={colunasPorCliente}
+          onMover={(atividade, coluna) => void moverNoMapa(atividade as Atividade, coluna)}
+          onAbrir={(atividade) => { setSelectedAtividade(atividade as Atividade); setPanelOpen(true); }}
+          onConcluir={(atividade, concluida) => void toggleAtividade(atividade.id, concluida)}
+        />
+      ) : clienteFiltradoUnico ? (
         // Aba Atividades de verdade daquele cliente: lista, quadro, calendário
         // e pastas, tudo igual a entrar nele — só que sem sair desta tela.
         <AtividadesView key={clienteFiltradoUnico.id} clienteId={clienteFiltradoUnico.id} filtroResponsavel={filtroResponsavel} />
@@ -537,6 +608,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
                           prioridade={a.prioridade}
                           dataVencimento={a.data_vencimento}
                           responsavelNome={a.responsavel_nome}
+                          alarmeEm={a.alarme_em}
                           checklist={checklistPorAtividade[a.id]}
                           onToggle={toggleAtividade}
                           onClick={openAtividadeDetail}
@@ -549,19 +621,22 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
               })}
             </div>
           )}
-
-          <AtividadeDetailPanel
-            open={panelOpen}
-            onClose={() => {
-              setPanelOpen(false);
-              setSelectedAtividade(null);
-            }}
-            atividade={selectedAtividade}
-            colunas={selectedAtividade ? colunasPorCliente[selectedAtividade.cliente_id] || [] : []}
-            onUpdate={carregarDados}
-            onDelete={excluirAtividade}
-          />
         </>
+      )}
+
+      {/* Card completo (lista agregada e mapa). */}
+      {(!clienteFiltradoUnico || modo === "mapa") && (
+        <AtividadeDetailPanel
+          open={panelOpen}
+          onClose={() => {
+            setPanelOpen(false);
+            setSelectedAtividade(null);
+          }}
+          atividade={selectedAtividade}
+          colunas={selectedAtividade ? colunasPorCliente[selectedAtividade.cliente_id] || [] : []}
+          onUpdate={carregarDados}
+          onDelete={excluirAtividade}
+        />
       )}
     </div>
   );

@@ -1,3 +1,4 @@
+import { IdeiasEmDestaque } from "./IdeiasEmDestaque";
 import { useState, useEffect } from "react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { supabase } from "@/integrations/supabase/client";
@@ -22,6 +23,7 @@ import { CriarRoteirosModal } from "./CriarRoteirosModal";
 import { cn } from "@/lib/utils";
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, isWithinInterval, parseISO, isToday, startOfMonth, endOfMonth, addMonths, subMonths, startOfYear, endOfYear, addYears, subYears, getWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 
 interface VerticalViewProps {
   clienteId: string;
@@ -34,6 +36,10 @@ interface VideoReferencia {
   link_video: string | null;
   plataforma: string;
   ordem: number;
+  criador?: string | null;
+  data_publicacao?: string | null;
+  visualizacoes?: number | null;
+  transcricao?: string | null;
 }
 
 interface VideoVertical {
@@ -48,6 +54,8 @@ interface VideoVertical {
   data_postagem?: string | null;
   cliente_id: string;
   origem_plataforma?: string | null;
+  created_at?: string;
+  ideia_origem_id?: string | null;
 }
 
 interface EscalarItem {
@@ -88,8 +96,8 @@ const KANBAN_COLUMNS = [
   { id: "roteiro", label: "Criando roteiro", color: "bg-card border-border", borderColor: "border-l-yellow-500" },
   { id: "gravacao", label: "Gravação", color: "bg-card border-border", borderColor: "border-l-purple-500" },
   { id: "edicao", label: "Edição", color: "bg-card border-border", borderColor: "border-l-cyan-500" },
-  { id: "pronto", label: "Prontos para postar", color: "bg-card border-border", borderColor: "border-l-green-500" },
-  { id: "postado", label: "Postados", color: "bg-card border-border", borderColor: "border-l-emerald-500" },
+  // "Prontos para postar" saiu do pipeline; a última etapa agora é "Prontos".
+  { id: "postado", label: "Prontos", color: "bg-card border-border", borderColor: "border-l-emerald-500" },
 ];
 
 const TAG_COLORS = [
@@ -367,6 +375,41 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     }
   };
 
+  // "Ideias em destaque": cria uma CÓPIA da ideia no fim de "Criando
+  // roteiro" (ligada por ideia_origem_id). A ideia continua lá em cima,
+  // marcada como usada — o banco de ideias não perde nada.
+  const moverIdeiaParaRoteiro = async (ideia: { id: string }) => {
+    const original = videosKanban.find((v) => v.id === ideia.id);
+    if (!original) return;
+    const ordem = Math.max(0, ...videosKanban.filter((v) => v.status === "roteiro").map((v) => v.ordem)) + 1;
+    const { data, error } = await supabase.from("videos_vertical").insert({
+      cliente_id: clienteId,
+      titulo: original.titulo,
+      descricao: original.descricao,
+      roteiro: original.roteiro,
+      status: "roteiro",
+      ordem,
+      referencia_id: original.referencia_id ?? null,
+      origem_plataforma: original.origem_plataforma ?? null,
+      ideia_origem_id: original.id,
+    }).select("*").single();
+    if (error || !data) { toast.error("Não foi possível mandar a ideia pro roteiro"); return; }
+    setVideosKanban((prev) => [...prev, { ...data, cliente_id: clienteId }]);
+    toast.success("Ideia enviada para Criando roteiro");
+  };
+
+  // Ideia já usada → em que etapa está o vídeo criado a partir dela.
+  const etapaDaIdeia = new Map<string, string>();
+  videosKanban.forEach((v) => {
+    if (v.ideia_origem_id) etapaDaIdeia.set(v.ideia_origem_id, KANBAN_COLUMNS.find((c) => c.id === v.status)?.label ?? v.status);
+  });
+
+  const agendarIdeia = async (ideia: { id: string }, data: string) => {
+    setVideosKanban((prev) => prev.map((v) => (v.id === ideia.id ? { ...v, data_postagem: data } : v)));
+    const { error } = await supabase.from("videos_vertical").update({ data_postagem: data }).eq("id", ideia.id);
+    if (error) { toast.error("Não foi possível adicionar ao cronograma"); void fetchVideos(); }
+  };
+
   const openDetailPanel = (video: VideoVertical) => {
     setSelectedVideo(video);
     setEditVideoTags(getVideoTagIds(video.id));
@@ -593,7 +636,8 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     : [];
 
   const handleVideoStatusChange = async (videoId: string, completed: boolean) => {
-    const newStatus = completed ? "pronto" : "ideia";
+    // Concluído vai pra última etapa, "Prontos" (status postado).
+    const newStatus = completed ? "postado" : "ideia";
     const { error } = await supabase
       .from("videos_vertical")
       .update({ status: newStatus })
@@ -692,9 +736,26 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
 
   return (
     <div className="space-y-6">
+      {/* Ideias (inclusive as importadas da planilha de referências) ficam em
+          cartões aqui em cima; o quadro abaixo começa em "Criando roteiro". */}
+      <IdeiasEmDestaque
+        clienteId={clienteId}
+        ideias={videosKanban.filter((v) => v.status === "ideia")}
+        referencias={new Map(videosReferencia.map((r) => [r.id, r]))}
+        usadas={etapaDaIdeia}
+        onRegistrar={() => abrirNovaIdeia("ideia")}
+        onMoverParaRoteiro={(ideia) => void moverIdeiaParaRoteiro(ideia)}
+        onAgendar={(ideia, data) => void agendarIdeia(ideia, data)}
+        onAbrir={(ideia) => { const video = videosKanban.find((v) => v.id === ideia.id); if (video) openDetailPanel(video); }}
+        onImportado={() => void fetchVideos()}
+      />
+
       {/* Pipeline Header with View Toggle */}
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Pipeline de Vídeos</h3>
+        <div>
+          <h3 className="text-lg font-semibold leading-tight">Pipeline de Produção de Vídeos</h3>
+          <p className="text-xs text-muted-foreground">Arraste os cartões entre as colunas para acompanhar seu progresso</p>
+        </div>
         <div className="flex items-center gap-2">
           {/* View mode toggle */}
           <div className="flex items-center border rounded-md p-0.5 bg-muted/50">
@@ -896,7 +957,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       {viewMode === "quadro" && (
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {KANBAN_COLUMNS.map((column) => (
+            {KANBAN_COLUMNS.filter((column) => column.id !== "ideia").map((column) => (
               <div key={column.id} className={`flex-shrink-0 min-w-[260px] w-72 rounded-lg border p-3 ${column.color}`}>
                 <h4 className="font-medium text-sm mb-3 flex items-center justify-between gap-2">
                   <span className="min-w-0 flex-1">{column.label}</span>
@@ -1059,7 +1120,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                     }`}
                     onClick={() => {
                       if (video.link_video) {
-                        window.open(video.link_video, "_blank", "noopener,noreferrer");
+                        void abrirLinkExterno(video.link_video);
                       }
                     }}
                   >

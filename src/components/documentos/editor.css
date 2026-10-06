@@ -58,6 +58,8 @@
 
 .document-editor .ProseMirror mark {
   background-color: hsl(50, 100%, 70%);
+  /* Grifos são claros: texto escuro mantém a leitura também no tema escuro. */
+  color: #1f1f1f;
   padding: 0.125em 0.25em;
   border-radius: 0.125em;
 }
@@ -159,4 +161,66 @@
   border-radius: 4px 4px 4px 0;
   pointer-events: none;
   user-select: none;
+}
+
+/* Títulos recolhíveis (Notas) — ver src/lib/tiptapTituloRecolhivel.ts */
+.document-editor .ProseMirror h1,
+.document-editor .ProseMirror h2,
+.document-editor .ProseMirror h3 {
+  position: relative;
+}
+
+.document-editor .ProseMirror .titulo-recolhido-oculto {
+  display: none;
+}
+
+.document-editor .ProseMirror .titulo-recolhivel-seta {
+  position: absolute;
+  /* Tamanho fixo (não em "em"): em títulos grandes a seta ia além da margem
+     da nota e era cortada. Alinhada ao meio da primeira linha do título. */
+  left: -24px;
+  top: calc(0.6em - 10px);
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms, background-color 120ms;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.document-editor .ProseMirror .titulo-recolhivel-seta::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid hsl(var(--muted-foreground));
+  border-bottom: 2px solid hsl(var(--muted-foreground));
+  transform: translateY(-15%) rotate(45deg);
+  transition: transform 150ms;
+}
+
+.document-editor .ProseMirror .titulo-recolhivel-seta:hover {
+  background: hsl(var(--muted));
+}
+
+.document-editor .ProseMirror :is(h1, h2, h3):hover > .titulo-recolhivel-seta,
+.document-editor .ProseMirror :is(h1, h2, h3)[data-collapsed="true"] > .titulo-recolhivel-seta {
+  opacity: 1;
+}
+
+/* Recolhido: seta para a direita, e uma marca discreta de "tem mais aqui". */
+.document-editor .ProseMirror :is(h1, h2, h3)[data-collapsed="true"] > .titulo-recolhivel-seta::before {
+  transform: translateX(-15%) rotate(-45deg);
+}
+
+.document-editor .ProseMirror :is(h1, h2, h3)[data-collapsed="true"]::after {
+  content: "…";
+  margin-left: 0.35em;
+  color: hsl(var(--muted-foreground));
+  font-weight: 400;
 }

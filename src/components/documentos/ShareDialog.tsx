@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import { documentShareUrl, publicWebOrigin, PUBLIC_SITE_URL } from "@/lib/shareUrl";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface ShareDialogProps {
   open: boolean;
@@ -108,7 +109,7 @@ export function ShareDialog({ open, onOpenChange, documentoId, documentoTitulo, 
 
   const pararCompartilhar = async () => {
     if (!compartilhamento) return;
-    if (!window.confirm("Quem já tem o link perde o acesso imediatamente. Continuar?")) return;
+    if (!(await confirmar("Quem já tem o link perde o acesso imediatamente. Continuar?"))) return;
     setCarregando(true);
     const { error } = await supabase.from("compartilhamentos").delete().eq("id", compartilhamento.id);
     setCarregando(false);

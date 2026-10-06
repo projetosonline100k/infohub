@@ -1,4 +1,4 @@
-import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
+import { NavLink as RouterNavLink, useLocation, useNavigate } from "react-router-dom";
 import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, Sparkles, Gauge, CalendarDays } from "lucide-react";
 import {
   Sidebar,
@@ -13,6 +13,7 @@ import {
 import { useAuth } from "@/auth/AuthProvider";
 import { ehAdmin } from "@/lib/admin";
 import { cn } from "@/lib/utils";
+import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 const menuItems = [
   { title: "Dash geral", path: "/", icon: LayoutDashboard },
@@ -29,6 +30,8 @@ const menuItems = [
 // existiam em DashboardLayout.tsx, nenhuma navegação nova.
 export function AppSidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { openTab } = useWorkspaceTabs();
   const { user } = useAuth();
   const itens = ehAdmin(user?.email) ? [...menuItems, { title: "Administração", path: "/admin", icon: ShieldCheck }] : menuItems;
 
@@ -61,7 +64,11 @@ export function AppSidebar() {
                         ativo && "border-primary text-sidebar-foreground",
                       )}
                     >
-                      <RouterNavLink to={item.path} end={item.path === "/"}>
+                      <RouterNavLink to={item.path} end={item.path === "/"} onClick={(event) => {
+                        event.preventDefault();
+                        if (event.metaKey) openTab(item.path, item.title);
+                        navigate(item.path);
+                      }}>
                         <Icon className={cn("h-4 w-4", ativo && "text-primary")} />
                         <span>{item.title}</span>
                       </RouterNavLink>

@@ -5,7 +5,8 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
-import Highlight from "@tiptap/extension-highlight";
+import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
+import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { ArrowLeft, Star, MoreHorizontal, PanelLeft, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -90,9 +91,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       Link.configure({
         openOnClick: true,
       }),
-      Highlight.configure({
-        multicolor: false,
-      }),
+      ...extensoesEstiloTexto,
     ],
     content: "",
     onUpdate: ({ editor }) => {
@@ -323,6 +322,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
           >
             <div className="px-5 py-6 sm:p-8 md:p-16">
               <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
+            {editor && <MenuSelecaoTexto editor={editor} />}
             </div>
           </div>
         </div>

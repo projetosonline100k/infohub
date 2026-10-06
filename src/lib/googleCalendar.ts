@@ -22,14 +22,94 @@ export interface GoogleCalendarEvent {
   colorId?: string;
   start: { date?: string; dateTime?: string; timeZone?: string };
   end: { date?: string; dateTime?: string; timeZone?: string };
+  extendedProperties?: { private?: Record<string, string>; shared?: Record<string, string> };
+  reminders?: { useDefault?: boolean; overrides?: { method: string; minutes: number }[] };
+  attendees?: Record<string, unknown>[];
+  transparency?: string;
+  visibility?: string;
 }
 
 export interface GoogleEventInput {
   summary: string;
   description?: string;
   location?: string;
+  // `null` remove a cor personalizada e volta para a cor do calendário.
+  colorId?: string | null;
   start: { date?: string; dateTime?: string; timeZone?: string };
   end: { date?: string; dateTime?: string; timeZone?: string };
+  extendedProperties?: GoogleCalendarEvent["extendedProperties"];
+  reminders?: GoogleCalendarEvent["reminders"];
+  attendees?: GoogleCalendarEvent["attendees"];
+  transparency?: string;
+  visibility?: string;
+}
+
+// Dados do Infopro guardados no próprio evento do Google (propriedades
+// privadas, invisíveis no Google Agenda): a atividade que virou o evento e
+// o alarme local. Assim não precisa de tabela nova nem mudança no backend.
+const PROP_ATIVIDADE = "infoproAtividadeId";
+const PROP_ALARME = "infoproAlarme";
+
+export const atividadeDoEvento = (event: GoogleCalendarEvent): string | null =>
+  event.extendedProperties?.private?.[PROP_ATIVIDADE] || null;
+
+// Minutos antes do início em que o alarme toca (0 = na hora), ou null.
+export function alarmeDoEvento(event: GoogleCalendarEvent): number | null {
+  const valor = event.extendedProperties?.private?.[PROP_ALARME];
+  if (valor === undefined || valor === "") return null;
+  const minutos = Number(valor);
+  return Number.isFinite(minutos) && minutos >= 0 ? minutos : null;
+}
+
+export function propriedadesInfopro(atual: GoogleCalendarEvent["extendedProperties"], mudancas: { atividadeId?: string | null; alarme?: number | null }) {
+  const privado = { ...(atual?.private || {}) };
+  if (mudancas.atividadeId !== undefined) {
+    if (mudancas.atividadeId) privado[PROP_ATIVIDADE] = mudancas.atividadeId; else delete privado[PROP_ATIVIDADE];
+  }
+  if (mudancas.alarme !== undefined) {
+    if (mudancas.alarme === null) delete privado[PROP_ALARME]; else privado[PROP_ALARME] = String(mudancas.alarme);
+  }
+  return { ...(atual || {}), private: privado };
+}
+
+// O "update" do Google substitui o evento inteiro (PUT): o que não for
+// reenviado se perde (convidados, lembretes, a atividade vinculada…). Esta
+// função monta a entrada a partir do evento atual + as mudanças.
+export function entradaDoEvento(event: GoogleCalendarEvent, mudancas: Partial<GoogleEventInput>): GoogleEventInput {
+  return {
+    summary: event.summary || "Sem titulo",
+    description: event.description,
+    location: event.location,
+    colorId: event.colorId,
+    start: event.start,
+    end: event.end,
+    extendedProperties: event.extendedProperties,
+    reminders: event.reminders,
+    attendees: event.attendees,
+    transparency: event.transparency,
+    visibility: event.visibility,
+    ...mudancas,
+  };
+}
+
+// Paleta atual do Google Calendar (Lavanda, Sálvia, Uva, Flamingo, Banana,
+// Tangerina, Pavão, Grafite, Mirtilo, Manjericão, Tomate) — a API ainda
+// devolve a antiga, mais clara, que fica difícil de ler com texto branco.
+export const GOOGLE_EVENT_COLORS: Record<string, string> = {
+  "1": "#7986cb", "2": "#33b679", "3": "#8e24aa", "4": "#e67c73",
+  "5": "#f6bf26", "6": "#f4511e", "7": "#039be5", "8": "#616161",
+  "9": "#3f51b5", "10": "#0b8043", "11": "#d50000",
+};
+
+// Texto escuro em fundos claros (ex.: Banana, cores pastel de calendário), branco nos demais.
+export function corDoTexto(fundo: string): string {
+  const hex = fundo.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
+  if (!hex) return "#ffffff";
+  const cheio = hex.length === 3 ? hex.split("").map((c) => c + c).join("") : hex;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(cheio.slice(i, i + 2), 16) / 255)
+    .map((c) => c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const luminancia = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminancia > 0.45 ? "#1f1f1f" : "#ffffff";
 }
 
 type CalendarAction =
@@ -58,4 +138,3 @@ export async function chamarGoogleCalendar<T>(body: CalendarAction): Promise<T> 
   if (data?.error) throw new Error(data.error);
   return data as T;
 }
-

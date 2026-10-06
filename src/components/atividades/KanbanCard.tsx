@@ -7,6 +7,7 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+import { IndicadorAlarme } from "./IndicadorAlarme";
 import { useSomCronometro, tocarTique } from "@/hooks/useSomCronometro";
 
 interface ChecklistResumo {
@@ -26,6 +27,7 @@ interface KanbanCardProps {
   timerIniciadoEm?: string | null;
   timerDecorridoSegundos?: number;
   responsavelNome?: string | null;
+  alarmeEm?: string | null;
   checklist?: ChecklistResumo;
   onClick: (id: string) => void;
   onToggleConcluida: (id: string, concluida: boolean) => void;
@@ -67,6 +69,7 @@ export const KanbanCard = ({
   onZerarTimer,
   onTimerFinalizado,
   dragHandleProps,
+  alarmeEm,
   isDragging,
 }: KanbanCardProps) => {
   const [menuTimerAberto, setMenuTimerAberto] = useState(false);
@@ -202,6 +205,8 @@ export const KanbanCard = ({
               </span>
             </div>
           )}
+
+          <IndicadorAlarme alarmeEm={alarmeEm} concluida={concluida} />
 
           {/* Estimated time / timer */}
           {!!tempoEstimado && (

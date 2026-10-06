@@ -691,6 +691,7 @@ export function AssistantHojeTab({
         prioridadeUm={prioridadeUmDoPlano}
         onAbrirComecarDia={onAbrirComecarDia}
         onSelecionarTarefa={onSelecionarTarefa}
+        onConcluir={onConcluirDireto}
       />
 
       <AdicionarAtividadeHoje

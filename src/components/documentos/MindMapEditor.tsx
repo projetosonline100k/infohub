@@ -4,7 +4,9 @@ import {
   convertToExcalidrawElements,
   newElementWith,
   restore,
+  restoreElements,
   sceneCoordsToViewportCoords,
+  FONT_FAMILY,
   viewportCoordsToSceneCoords,
   CaptureUpdateAction,
   ROUNDNESS,
@@ -21,6 +23,7 @@ import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/exca
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import { ArrowLeft, ChevronDown, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -93,6 +96,57 @@ const FONT_SIZES: { size: number; label: string }[] = [
   { size: 28, label: "L" },
   { size: 36, label: "XL" },
 ];
+
+// Menu flutuante do bloco (aparece ao selecionar/editar um bloco ou texto).
+// O Excalidraw só tem um estilo por texto, então tudo vale pro bloco inteiro.
+const MENU_CORES_TEXTO = ["#1e1e1e", "#868e96", "#e03131", "#f08c00", "#2f9e44", "#1971c2", "#9c36b5"];
+const MENU_FUNDOS = ["transparent", "#ffec99", "#b2f2bb", "#a5d8ff", "#eebefa", "#ffc9c9", "#ffd8a8"];
+const MENU_FONTES: { nome: string; familia: number; css: string }[] = [
+  { nome: "Manuscrita", familia: FONT_FAMILY.Excalifont, css: "Excalifont, Virgil, cursive" },
+  { nome: "Normal", familia: FONT_FAMILY.Nunito, css: "Nunito, system-ui, sans-serif" },
+  { nome: "Clássica", familia: FONT_FAMILY["Liberation Sans"], css: "'Liberation Sans', Helvetica, Arial, sans-serif" },
+  { nome: "Destaque", familia: FONT_FAMILY["Lilita One"], css: "'Lilita One', system-ui, sans-serif" },
+  { nome: "Código", familia: FONT_FAMILY["Comic Shanns"], css: "'Comic Shanns', ui-monospace, monospace" },
+];
+
+interface BlocoMenu {
+  x: number;
+  y: number;
+  // Sem espaço acima (bloco colado no topo): o menu vai pra baixo do bloco.
+  abaixo: boolean;
+  temFundo: boolean;
+  cor: string;
+  fundo: string;
+  tamanho: number;
+  fonte: number;
+}
+
+// Bloco/texto alvo do menu: o texto em edição, ou o único elemento selecionado.
+function alvoDoMenu(elements: readonly ExcalidrawElement[], appState: AppState) {
+  const ativos = elements.filter((e) => !e.isDeleted);
+  const porId = (id?: string | null) => (id ? ativos.find((e) => e.id === id) : undefined);
+  let texto: ExcalidrawElement | undefined;
+  let container: ExcalidrawElement | undefined;
+  const editando = appState.editingTextElement;
+  if (editando) {
+    texto = porId(editando.id) || editando;
+    container = porId((texto as { containerId?: string | null }).containerId);
+  } else {
+    const selecionados = Object.keys(appState.selectedElementIds || {});
+    if (selecionados.length !== 1) return null;
+    const el = porId(selecionados[0]);
+    if (!el) return null;
+    if (el.type === "text") {
+      texto = el;
+      container = porId((el as { containerId?: string | null }).containerId);
+    } else if (isConnectableBlock(el)) {
+      container = el;
+      texto = ativos.find((e) => e.type === "text" && (e as { containerId?: string | null }).containerId === el.id);
+    }
+  }
+  if (!texto && !container) return null;
+  return { texto, container };
+}
 
 interface CanvasMentalDoc {
   kind: "canvas_mental";
@@ -377,6 +431,8 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const [hasAnyHiddenConnection, setHasAnyHiddenConnection] = useState(false);
   const [hiddenBadge, setHiddenBadge] = useState<{ x: number; y: number; count: number } | null>(null);
   const [penPanelOpen, setPenPanelOpen] = useState(false);
+  const [blocoMenu, setBlocoMenu] = useState<BlocoMenu | null>(null);
+  const [blocoMenuPainel, setBlocoMenuPainel] = useState<"fonte" | "cor" | null>(null);
   // undefined = ainda não sabemos (carregando o documento); null = documento
   // sem cliente. Só busca as outras lousas depois que isso vira um valor
   // conhecido, senão a primeira busca sairia sem filtro nenhum.
@@ -949,7 +1005,10 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       const editingText = appState.editingTextElement;
 
       if (editingText) {
-        if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        // Enter sozinho quebra a linha (comportamento nativo do textarea,
+        // como em outras plataformas); ⌘/Ctrl+Enter termina a edição e já
+        // cria o próximo bloco irmão. Esc só termina a edição.
+        if (event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
           const containerId = (editingText as unknown as { containerId?: string | null }).containerId;
           event.preventDefault();
           event.stopPropagation();
@@ -1344,6 +1403,29 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     }
     setHiddenBadge(nextBadge);
 
+    // Menu flutuante do bloco: acima do bloco (ou texto) selecionado/em edição.
+    const alvo = alvoDoMenu(elements, appState);
+    const caixa = alvo?.container || alvo?.texto;
+    let nextMenu: BlocoMenu | null = null;
+    if (alvo && caixa) {
+      const topo = sceneCoordsToViewportCoords({ sceneX: caixa.x + caixa.width / 2, sceneY: caixa.y }, appState);
+      const base = sceneCoordsToViewportCoords({ sceneX: caixa.x, sceneY: caixa.y + caixa.height }, appState);
+      const abaixo = topo.y - appState.offsetTop < 70;
+      const texto = alvo.texto as { strokeColor?: string; fontSize?: number; fontFamily?: number } | undefined;
+      nextMenu = {
+        x: Math.round(topo.x - appState.offsetLeft),
+        y: Math.round((abaixo ? base.y : topo.y) - appState.offsetTop),
+        abaixo,
+        temFundo: !!alvo.container,
+        cor: texto?.strokeColor || "",
+        fundo: alvo.container?.backgroundColor || "transparent",
+        tamanho: texto?.fontSize || 0,
+        fonte: texto?.fontFamily || 0,
+      };
+    }
+    setBlocoMenu((atual) => JSON.stringify(atual) === JSON.stringify(nextMenu) ? atual : nextMenu);
+    if (!nextMenu) setBlocoMenuPainel(null);
+
     const previouslyRevealed = revealedArrowIdsRef.current;
     const revealChanged =
       previouslyRevealed.size !== nextRevealed.size ||
@@ -1446,6 +1528,42 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   // Aplica cor/tamanho de fonte: se algo estiver selecionado, muda o
   // selecionado; se não, muda o padrão do próximo elemento a ser criado —
   // igual ao painel nativo do Excalidraw, só que a partir do botão de caneta.
+  // Aplica estilo ao bloco do menu flutuante: cor/tamanho/fonte no texto,
+  // fundo no bloco. Tamanho e fonte mudam as medidas do texto, então elas são
+  // recalculadas (e o bloco cresce se o texto não couber mais).
+  const aplicarNoBloco = useCallback((patch: { cor?: string; fundo?: string; tamanho?: number; fonte?: number }) => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const elements = api.getSceneElements();
+    const alvo = alvoDoMenu(elements, api.getAppState());
+    if (!alvo) return;
+    let container = alvo.container;
+    let texto = alvo.texto;
+    if (container && patch.fundo !== undefined) {
+      container = newElementWith(container, { backgroundColor: patch.fundo, fillStyle: "solid" });
+    }
+    if (texto && texto.type === "text") {
+      const mudancas: Record<string, unknown> = {};
+      if (patch.cor !== undefined) mudancas.strokeColor = patch.cor;
+      if (patch.tamanho !== undefined) mudancas.fontSize = patch.tamanho;
+      if (patch.fonte !== undefined) mudancas.fontFamily = patch.fonte;
+      texto = newElementWith(texto, mudancas as never);
+      if (patch.tamanho !== undefined || patch.fonte !== undefined) {
+        const medir = (c: ExcalidrawElement | undefined, t: ExcalidrawElement) =>
+          restoreElements(c ? [c, t] : [t], null, { refreshDimensions: true }).find((e) => e.id === t.id) || t;
+        let medido = medir(container, texto);
+        if (container && medido.height + 20 > container.height) {
+          container = newElementWith(container, { height: medido.height + 20 });
+          medido = medir(container, texto);
+        }
+        const { x, y, width, height } = medido;
+        texto = newElementWith(texto, { x, y, width, height, text: (medido as { text: string }).text } as never);
+      }
+    }
+    const trocados = new Map([container, texto].filter(Boolean).map((e) => [e!.id, e!]));
+    api.updateScene({ elements: elements.map((e) => trocados.get(e.id) || e), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+  }, []);
+
   const aplicarPropriedade = useCallback((patch: { strokeColor?: string; backgroundColor?: string; fontSize?: number }) => {
     const api = excalidrawApiRef.current;
     if (!api) return;
@@ -1763,6 +1881,70 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
           <div className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 text-center">
             <p className="text-base text-muted-foreground/70">Clique duas vezes em qualquer lugar para começar.</p>
             <p className="text-sm text-muted-foreground/50">Tab cria uma ramificação.</p>
+          </div>
+        )}
+
+        {blocoMenu && !connectionDrag && (
+          // onMouseDown + preventDefault: não tira o foco do texto em edição.
+          <div
+            className={cn("absolute z-30 -translate-x-1/2 rounded-lg border bg-popover text-popover-foreground shadow-lg", !blocoMenu.abaixo && "-translate-y-full")}
+            style={{ left: blocoMenu.x, top: blocoMenu.abaixo ? blocoMenu.y + 10 : blocoMenu.y - 10 }}
+            onMouseDown={(event) => event.preventDefault()}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center gap-0.5 p-1">
+              <button type="button" title="Fonte" onMouseDown={(e) => { e.preventDefault(); setBlocoMenuPainel((p) => p === "fonte" ? null : "fonte"); }}
+                className={cn("flex h-7 items-center gap-1 rounded px-2 text-sm hover:bg-muted", blocoMenuPainel === "fonte" && "bg-muted")}
+                style={{ fontFamily: MENU_FONTES.find((f) => f.familia === blocoMenu.fonte)?.css }}>
+                {MENU_FONTES.find((f) => f.familia === blocoMenu.fonte)?.nome || "Fonte"}<ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+              <span className="mx-0.5 h-5 w-px bg-border" />
+              {FONT_SIZES.map(({ size, label }) => (
+                <button key={size} type="button" title={`Tamanho ${label}`} onMouseDown={(e) => { e.preventDefault(); aplicarNoBloco({ tamanho: size }); }}
+                  className={cn("flex h-7 min-w-7 items-center justify-center rounded px-1 text-xs font-medium hover:bg-muted", blocoMenu.tamanho === size && "bg-muted text-primary")}>{label}</button>
+              ))}
+              <span className="mx-0.5 h-5 w-px bg-border" />
+              <button type="button" title="Cor do texto e fundo" onMouseDown={(e) => { e.preventDefault(); setBlocoMenuPainel((p) => p === "cor" ? null : "cor"); }}
+                className={cn("flex h-7 items-center gap-1 rounded px-2 hover:bg-muted", blocoMenuPainel === "cor" && "bg-muted")}>
+                <span className="rounded px-1 text-sm font-semibold underline decoration-2 underline-offset-2" style={{ color: blocoMenu.cor === "#1e1e1e" ? undefined : blocoMenu.cor, background: blocoMenu.temFundo && blocoMenu.fundo !== "transparent" ? blocoMenu.fundo : undefined }}>A</span>
+                <ChevronDown className="h-3 w-3 opacity-60" />
+              </button>
+            </div>
+            {blocoMenuPainel === "fonte" && (
+              <div className="border-t p-1">
+                {MENU_FONTES.map((fonte) => (
+                  <button key={fonte.familia} type="button" onMouseDown={(e) => { e.preventDefault(); aplicarNoBloco({ fonte: fonte.familia }); setBlocoMenuPainel(null); }}
+                    className={cn("flex w-full rounded px-2 py-1 text-left text-sm hover:bg-muted", blocoMenu.fonte === fonte.familia && "text-primary")}
+                    style={{ fontFamily: fonte.css }}>{fonte.nome}</button>
+                ))}
+              </div>
+            )}
+            {blocoMenuPainel === "cor" && (
+              <div className="space-y-2 border-t p-2">
+                <div>
+                  <p className="mb-1 text-[11px] font-medium text-muted-foreground">Cor do texto</p>
+                  <div className="flex gap-1">
+                    {MENU_CORES_TEXTO.map((cor) => (
+                      <button key={cor} type="button" title="Cor do texto" onMouseDown={(e) => { e.preventDefault(); aplicarNoBloco({ cor }); }}
+                        className={cn("flex h-6 w-6 items-center justify-center rounded border text-sm font-semibold hover:bg-muted", blocoMenu.cor === cor && "ring-2 ring-primary")}
+                        style={{ color: cor === "#1e1e1e" ? undefined : cor }}>A</button>
+                    ))}
+                  </div>
+                </div>
+                {blocoMenu.temFundo && (
+                  <div>
+                    <p className="mb-1 text-[11px] font-medium text-muted-foreground">Fundo do bloco</p>
+                    <div className="flex gap-1">
+                      {MENU_FUNDOS.map((fundo) => (
+                        <button key={fundo} type="button" title={fundo === "transparent" ? "Sem fundo" : "Cor de fundo"} onMouseDown={(e) => { e.preventDefault(); aplicarNoBloco({ fundo }); }}
+                          className={cn("flex h-6 w-6 items-center justify-center rounded border text-xs text-muted-foreground", blocoMenu.fundo === fundo && "ring-2 ring-primary")}
+                          style={{ background: fundo === "transparent" ? undefined : fundo }}>{fundo === "transparent" ? "∅" : ""}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

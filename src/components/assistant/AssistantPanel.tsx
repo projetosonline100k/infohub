@@ -15,6 +15,7 @@ import { AssistantKanbanTab } from "./tabs/AssistantKanbanTab";
 import { AssistantDocsTab } from "./tabs/AssistantDocsTab";
 import { AssistantNotasTab } from "./tabs/AssistantNotasTab";
 import { AssistantPerformanceTab } from "./tabs/AssistantPerformanceTab";
+import { AssistantRelatorioTab } from "./tabs/AssistantRelatorioTab";
 import { EndOfDayFlow } from "./enddoday/EndOfDayFlow";
 import { StartDayFlow } from "./startday/StartDayFlow";
 import type { AtividadeDoPlano, PlanoDiario } from "@/lib/productivity/DailyPlanService";
@@ -387,6 +388,8 @@ export function AssistantPanel(props: AssistantPanelProps) {
             onIrParaProjeto={() => onMudarAba("kanban")}
           />
         )}
+
+        {!fluxoRitualAberto && aba === "relatorio" && <AssistantRelatorioTab />}
 
         {!fluxoRitualAberto && aba === "notas" && (
           <AssistantNotasTab

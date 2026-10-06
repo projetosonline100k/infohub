@@ -17,9 +17,23 @@ const CADERNO_PREFIX = "__CADERNO_V1__";
 const CANVAS_PREFIX = "__CANVASMENTAL_V1__";
 export const NOTA_PREFIX = "__NOTA_RAPIDA_V1__";
 
+// Nota aberta no editor de Documentos era salva com o prefixo virando um
+// parágrafo de texto ("<p>__NOTA_RAPIDA_V1__</p>...") — e sumia das Notas.
+const NOTA_PREFIX_CORROMPIDO = `<p>${NOTA_PREFIX}</p>`;
+
+export function ehNota(conteudo: string | null | undefined): boolean {
+  return !!conteudo && (conteudo.startsWith(NOTA_PREFIX) || conteudo.startsWith(NOTA_PREFIX_CORROMPIDO));
+}
+
+// Devolve o conteúdo com o prefixo de nota no lugar certo (ou null se já está ok).
+function reparoDeNota(conteudo: string | null): string | null {
+  if (!conteudo?.startsWith(NOTA_PREFIX_CORROMPIDO)) return null;
+  return NOTA_PREFIX + conteudo.slice(NOTA_PREFIX_CORROMPIDO.length);
+}
+
 function ehDocumentoComum(conteudo: string | null): boolean {
   if (!conteudo) return true;
-  return !conteudo.startsWith(CADERNO_PREFIX) && !conteudo.startsWith(CANVAS_PREFIX) && !conteudo.startsWith(NOTA_PREFIX);
+  return !conteudo.startsWith(CADERNO_PREFIX) && !conteudo.startsWith(CANVAS_PREFIX) && !ehNota(conteudo);
 }
 
 // Docs + Notas do Assistant, ambos sobre a MESMA tabela `documentos` já
@@ -49,7 +63,16 @@ export function useAssistantDocumentos(clienteId: string | null) {
       .eq("cliente_id", clienteId)
       .order("updated_at", { ascending: false });
     if (!error) {
-      const todos = data || [];
+      // Recupera notas que perderam o prefixo (ver NOTA_PREFIX_CORROMPIDO):
+      // corrige aqui pra já aparecerem e grava a correção no banco.
+      const todos = (data || []).map((d) => {
+        const reparado = reparoDeNota(d.conteudo);
+        if (!reparado) return d;
+        void supabase.from("documentos").update({ conteudo: reparado }).eq("id", d.id).then(({ error: erroReparo }) => {
+          if (erroReparo) console.error("Erro ao recuperar nota:", erroReparo);
+        });
+        return { ...d, conteudo: reparado };
+      });
       setDocumentos(todos.filter((d) => !d.deleted_at && ehDocumentoComum(d.conteudo)));
       setNotas(todos.filter((d) => !d.deleted_at && d.conteudo?.startsWith(NOTA_PREFIX)));
       setNotasLixeira(todos.filter((d) => d.deleted_at && d.conteudo?.startsWith(NOTA_PREFIX)));

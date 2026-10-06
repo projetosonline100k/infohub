@@ -11,7 +11,8 @@ import { toast } from "@/hooks/use-toast";
 import ClienteForm from "@/components/ClienteForm";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ProjetoRow } from "@/components/clientes/ProjetoRow";
-import { NOTA_PREFIX } from "@/hooks/useAssistantDocumentos";
+import { ehNota } from "@/hooks/useAssistantDocumentos";
+import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 interface Cliente {
   user_id: string | null;
@@ -41,6 +42,7 @@ type Ordenacao = "nome" | "recente" | "notas";
 
 const Clientes = () => {
   const navigate = useNavigate();
+  const { openTab } = useWorkspaceTabs();
   const { user } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -102,7 +104,7 @@ const Clientes = () => {
       ]);
 
       const atividades = atividadesRes.data || [];
-      const notas = (documentosRes.data || []).filter((d) => !d.deleted_at && d.conteudo?.startsWith(NOTA_PREFIX));
+      const notas = (documentosRes.data || []).filter((d) => !d.deleted_at && ehNota(d.conteudo));
 
       const emAndamentoSet = new Set(atividades.filter((a) => !a.concluida && a.cliente_id).map((a) => a.cliente_id as string));
 
@@ -388,7 +390,13 @@ const Clientes = () => {
               ultimaAtividade={cliente.stats.ultimaAtividade}
               podeGerenciar={cliente.user_id === user?.id}
               visualizacao={visualizacao}
-              onAbrir={() => navigate(`/clientes/${cliente.id}`)}
+              onAbrir={() => {
+                const path = `/clientes/${cliente.id}`;
+                // Projetos são espaços de trabalho: cada um merece sua própria
+                // aba, inclusive no clique normal. ⌘+clique continua funcionando.
+                openTab(path, cliente.nome_especialista);
+                navigate(path);
+              }}
               onEditar={() => abrirFormularioEditar(cliente)}
               onArquivar={() => alternarArquivo(cliente)}
             />

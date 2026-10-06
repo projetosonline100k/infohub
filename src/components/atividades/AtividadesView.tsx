@@ -1,5 +1,6 @@
 import { LousaAtividades } from "./LousaAtividades";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useRecarregarAoVoltar } from "@/hooks/useRecarregarAoVoltar";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -64,9 +65,11 @@ import { criarAtividade as criarAtividadeService } from "@/lib/atividades/criarA
 import { onActivityCreated } from "@/lib/desktop/events";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
+import { confirmar, pedirTexto } from "@/components/DialogosGlobais";
 
 interface Atividade {
   id: string;
+  alarme_em?: string | null;
   user_id: string | null;
   cliente_id: string | null;
   titulo: string;
@@ -267,7 +270,12 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   }, [pessoasDisponiveis, atividades]);
 
   const atividadesVisiveis = useMemo(() => {
-    let lista = pastaAtivaId === VISAO_GERAL ? atividades : atividades.filter((a) => a.pasta_id === pastaAtivaId);
+    // "Sem pasta" (null) inclui tarefas com pasta que não é deste projeto.
+    let lista = pastaAtivaId === VISAO_GERAL
+      ? atividades
+      : pastaAtivaId === null
+        ? atividades.filter((a) => !a.pasta_id || !pastas.some((p) => p.id === a.pasta_id))
+        : atividades.filter((a) => a.pasta_id === pastaAtivaId);
     if (pessoasSelecionadas.size > 0) {
       lista = lista.filter((a) => {
         const responsaveis = parseResponsaveis(a.responsavel_nome);
@@ -276,7 +284,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
       });
     }
     return filtrarPorResponsavel(lista, filtroResponsavel, meusNomes, user?.id);
-  }, [atividades, pastaAtivaId, pessoasSelecionadas, filtroResponsavel, meusNomes, user?.id]);
+  }, [atividades, pastaAtivaId, pastas, pessoasSelecionadas, filtroResponsavel, meusNomes, user?.id]);
 
   // Semana usada tanto pelo filtro "esta semana/semana que vem" do quadro
   // quanto pelas colunas nomeadas como dia da semana (sempre precisam de
@@ -588,7 +596,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
       tarefasNaColuna > 0
         ? `Excluir "${coluna.nome}" vai mover ${tarefasNaColuna} tarefa${tarefasNaColuna > 1 ? "s" : ""} para "${destino?.nome}". Continuar?`
         : `Excluir a coluna "${coluna.nome}"?`;
-    if (!window.confirm(mensagem)) return;
+    if (!(await confirmar(mensagem))) return;
 
     try {
       if (tarefasNaColuna > 0 && destino) {
@@ -612,14 +620,14 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
 
   // Contagens por pasta para a grade da Visão Geral, sem limitar pelo
   // período selecionado na lista (a visão geral é sempre do total).
+  const SEM_PASTA = "__sem_pasta__";
   const carregarVisaoGeral = async () => {
-    // A visão geral só mostra pastas de verdade; tarefas sem pasta continuam
-    // acessíveis pelo chip "Sem pasta" na barra, só não entram nesta grade.
+    // Tarefas sem pasta (ex.: vindas de fora, como o Jarvis) aparecem num
+    // bloco "Sem pasta" — sem ele ficavam invisíveis dentro do projeto.
     let query = supabase
       .from("atividades")
       .select("pasta_id, concluida, data_vencimento, responsavel_nome")
-      .is("deleted_at", null)
-      .not("pasta_id", "is", null);
+      .is("deleted_at", null);
     query = clienteId ? query.eq("cliente_id", clienteId) : query.is("cliente_id", null);
 
     const { data, error } = await query;
@@ -636,7 +644,8 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
     type Acumulado = { total: number; concluidas: number; atrasadas: number; estaSemana: number; integrantes: Set<string> };
     const porPasta: Record<string, Acumulado> = {};
     (data || []).forEach((a) => {
-      const chave = a.pasta_id as string;
+      // Pasta de outro projeto ou na lixeira também conta como "sem pasta".
+      const chave = a.pasta_id && pastas.some((p) => p.id === a.pasta_id) ? a.pasta_id : SEM_PASTA;
       porPasta[chave] ??= { total: 0, concluidas: 0, atrasadas: 0, estaSemana: 0, integrantes: new Set() };
       const grupo = porPasta[chave];
       grupo.total++;
@@ -667,6 +676,18 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
         integrantes: Array.from(acumulado.integrantes),
       };
     });
+    const semPasta = porPasta[SEM_PASTA];
+    if (semPasta && semPasta.total - semPasta.concluidas > 0) {
+      resultado.push({
+        id: null,
+        nome: "Sem pasta",
+        total: semPasta.total,
+        concluidas: semPasta.concluidas,
+        atrasadas: semPasta.atrasadas,
+        estaSemana: semPasta.estaSemana,
+        integrantes: Array.from(semPasta.integrantes),
+      });
+    }
     setVisaoGeral(resultado);
   };
 
@@ -743,6 +764,15 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
       toast.error("Erro ao excluir pasta");
     }
   };
+
+  // Volta pra esta tela (troca de aba / volta pro app): busca de novo, pra
+  // aparecer o que foi criado ou movido por fora (Jarvis, outra aba).
+  const raizRef = useRef<HTMLDivElement>(null);
+  useRecarregarAoVoltar(raizRef, () => {
+    void carregarAtividades();
+    void carregarPastas();
+    void carregarVisaoGeral();
+  });
 
   const carregarAtividades = async () => {
     try {
@@ -929,7 +959,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   };
 
   const adicionarAtividadeRapida = async (date: Date) => {
-    const titulo = prompt("Nome da tarefa:");
+    const titulo = await pedirTexto("Nome da tarefa:");
     if (!titulo?.trim()) return;
 
     try {
@@ -1191,24 +1221,13 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
       const diaSemanaDestino = colunaDestino ? detectarDiaSemana(colunaDestino.nome) : null;
 
       // Coluna nomeada como dia da semana: mantém data e coluna sincronizadas.
-      if (diaSemanaDestino !== null) {
-        const novaData = format(addDays(semanaReferenciaKanban.inicio, diaSemanaDestino), "yyyy-MM-dd");
-        setAtividades((prev) =>
-          prev.map((a) => (a.id === draggableId ? { ...a, data_atividade: novaData, status: destData } : a))
-        );
-        try {
-          const { error } = await supabase
-            .from("atividades")
-            .update({ data_atividade: novaData, status: destData })
-            .eq("id", draggableId);
-          if (error) throw error;
-        } catch (error) {
-          console.error("Erro ao mover atividade:", error);
-          toast.error("Erro ao mover atividade");
-          carregarAtividades();
-        }
-        return;
-      }
+      // Segue pro mesmo cálculo de ordem abaixo — antes este caso só mudava
+      // a data e saía, então reordenar dentro de uma coluna de dia não
+      // salvava nada e o card voltava pro lugar.
+      const novaDataDiaSemana = diaSemanaDestino !== null
+        ? format(addDays(semanaReferenciaKanban.inicio, diaSemanaDestino), "yyyy-MM-dd")
+        : null;
+      const mudancaDeData = novaDataDiaSemana ? { data_atividade: novaDataDiaSemana } : {};
 
       // Não deixa finalizar com checklist pendente. Não atualiza nada:
       // o card volta sozinho para a coluna de origem no próximo render.
@@ -1258,6 +1277,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
           if (a.id === draggableId) {
             return {
               ...a,
+              ...mudancaDeData,
               status: destData,
               concluida: !!colunaDestino?.eh_conclusao,
               ordem: novaOrdem.get(a.id) ?? a.ordem,
@@ -1272,6 +1292,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
         const { error } = await supabase
           .from("atividades")
           .update({
+            ...mudancaDeData,
             status: destData,
             concluida: !!colunaDestino?.eh_conclusao,
             ordem: novaOrdem.get(draggableId),
@@ -1393,7 +1414,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
 
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
-    <div className="space-y-4">
+    <div ref={raizRef} className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -1663,6 +1684,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
                                     prioridade={atividade.prioridade}
                                     dataVencimento={atividade.data_vencimento}
                                     responsavelNome={atividade.responsavel_nome}
+                                    alarmeEm={atividade.alarme_em}
                                     checklist={checklistPorAtividade[atividade.id]}
                                     onToggle={toggleAtividade}
                                     onClick={openAtividadeDetail}

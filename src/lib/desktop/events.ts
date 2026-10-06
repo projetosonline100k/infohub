@@ -50,6 +50,10 @@ export async function onMainNavigate(handler: (route: string) => void): Promise<
   if (!isDesktop()) return () => {};
   try {
     const { listen } = await import("@tauri-apps/api/event");
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    // Abas destacadas viram janelas próprias com este mesmo layout; só a
+    // `main` obedece ao Jarvis, senão todas navegariam juntas.
+    if (getCurrentWindow().label !== "main") return () => {};
     const unlisten = await listen<{ route: string }>(EVENTO_MAIN_NAVIGATE, (event) => handler(event.payload.route));
     return unlisten;
   } catch {

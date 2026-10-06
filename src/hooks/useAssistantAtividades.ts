@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import type { Tables } from "@/integrations/supabase/types";
-import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
+import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva, pastaValidaOuPadrao } from "@/lib/atividades/criarAtividade";
 import { onActivityCreated } from "@/lib/desktop/events";
 
 export type AssistantTarefa = Tables<"atividades">;
@@ -358,7 +358,14 @@ export function useAssistantAtividades() {
   // (ela só traz não-concluídas).
   const concluir = useCallback(async (id: string) => {
     const tarefa = tarefasBrutas.find((t) => t.id === id);
-    const cols = await garantirColunas(tarefa?.cliente_id ?? null);
+    // Fora da lista atual (ex.: filtro de projeto no Jarvis, mas está no
+    // "Foco de hoje"): busca o projeto, pra concluir na coluna certa dele.
+    let clienteId = tarefa?.cliente_id ?? null;
+    if (!tarefa) {
+      const { data } = await supabase.from("atividades").select("cliente_id").eq("id", id).maybeSingle();
+      clienteId = data?.cliente_id ?? null;
+    }
+    const cols = await garantirColunas(clienteId);
     const colunaConclusao = cols.find((c) => c.eh_conclusao);
     const novoStatus = colunaConclusao?.status_key || "finalizado";
     if (tarefa) registrarSessaoFoco(tarefa, new Date().toISOString(), "complete");
@@ -395,6 +402,12 @@ export function useAssistantAtividades() {
   >>) => {
     const atual = tarefasBrutas.find((t) => t.id === id);
     if (!atual) return;
+    // Mudou de projeto (ou de pasta): a pasta tem que ser do projeto final —
+    // sem pasta, ou com pasta de outro projeto, a tarefa ficava invisível.
+    if ((patch.cliente_id !== undefined && patch.cliente_id !== atual.cliente_id) || patch.pasta_id !== undefined) {
+      const clienteFinal = patch.cliente_id !== undefined ? patch.cliente_id : atual.cliente_id;
+      patch = { ...patch, pasta_id: await pastaValidaOuPadrao(clienteFinal, patch.pasta_id ?? null) };
+    }
     if (patch.concluida) {
       emitirRemocao(id);
     } else {

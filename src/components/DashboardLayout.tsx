@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { AppTopbar } from "@/components/layout/AppTopbar";
@@ -8,20 +8,27 @@ import { Assistant } from "@/components/assistant/Assistant";
 import { DesktopUpdateBanner } from "@/components/DesktopUpdateBanner";
 import { isDesktop } from "@/lib/platform";
 import { onMainNavigate, emitClienteAtualMudou } from "@/lib/desktop/events";
-
-interface DashboardLayoutProps {
-  children: React.ReactNode;
-}
+import { useWorkspaceTabs, WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { WorkspacePages } from "@/components/workspace/WorkspacePages";
+import { useAlarmesAgenda } from "@/hooks/useAlarmesAgenda";
 
 // Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
 // conteúdo, no lugar do header horizontal antigo. Rotas, autenticação,
 // DesktopUpdateBanner, o Assistant flutuante e a ponte onMainNavigate
 // (Tauri) continuam exatamente como estavam — só o chrome visual mudou.
-export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
+export const DashboardLayout = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { id: clienteRotaId } = useParams<{ id: string }>();
+  // O layout fica fora das rotas de página, então lê o id direto do caminho.
+  const clienteRotaId = matchPath("/clientes/:id", location.pathname)?.params.id;
   const [buscaAberta, setBuscaAberta] = useState(false);
+  const { syncPath } = useWorkspaceTabs();
+  // Alarmes da Agenda tocam em qualquer tela do app (não só na Agenda).
+  useAlarmesAgenda();
+
+  useEffect(() => {
+    syncPath(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search, syncPath]);
 
   // Avisa a janela `jarvis` (desktop) qual cliente está aberto aqui na
   // `main` — cada janela tem sua própria árvore React Router, então o
@@ -46,20 +53,24 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
   const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
 
   return (
-    <SidebarProvider>
-      {/* Página de detalhe de projeto (/clientes/:id) volta a ficar
-          full-bleed, igual era antes do redesign — nem sidebar nem topbar,
-          só o conteúdo da própria página. */}
-      {!isClienteDetalhe && <AppSidebar />}
-      <SidebarInset>
-        {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
-
-        <DesktopUpdateBanner />
-
-        <main className="flex-1 overflow-auto">
-          <div className={isClienteDetalhe ? "" : "p-6"}>{children}</div>
-        </main>
-      </SidebarInset>
+    <div className="flex h-svh w-full flex-col overflow-hidden">
+      <WorkspaceTabs onNavigate={navigate} />
+      <SidebarProvider className="min-h-0 min-w-0 flex-1">
+        {/* min-w-0 em toda a cadeia: sem isso este item de flex estica até a
+            largura da página e é cortado pela janela, e o <main> nunca rola. */}
+        <div className="flex min-h-0 min-w-0 flex-1">
+          {!isClienteDetalhe && <AppSidebar />}
+          {/* min-w-0/min-h-0: a área da página não estica além da janela — quem
+              rola (inclusive pro lado, em janela estreita) é o <main>. */}
+          <SidebarInset className="min-h-0 min-w-0">
+            {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+            <DesktopUpdateBanner />
+            <main className="flex-1 overflow-auto">
+              <WorkspacePages />
+            </main>
+          </SidebarInset>
+        </div>
+      </SidebarProvider>
 
       <GlobalSearchCommand open={buscaAberta} onOpenChange={setBuscaAberta} />
 
@@ -68,6 +79,6 @@ export const DashboardLayout = ({ children }: DashboardLayoutProps) => {
           No desktop esconde aqui: a janela nativa `jarvis` (ver
           src/pages/JarvisWindow.tsx) já cobre esse papel, sem duplicar. */}
       {!isDesktop() && <Assistant />}
-    </SidebarProvider>
+    </div>
   );
 };

@@ -3,16 +3,17 @@
   "identifier": "default",
   "description": "Permissões padrão do app desktop — janela principal e Jarvis",
   "windows": [
-    "main",
-    "jarvis"
+    "*"
   ],
   "permissions": [
     "core:default",
     "core:event:default",
     "core:window:allow-start-dragging",
+    "core:webview:allow-create-webview-window",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
+    "core:window:allow-request-user-attention",
     "core:window:allow-is-visible",
     "core:window:allow-set-size",
     "core:window:allow-set-position",
@@ -26,6 +27,7 @@
     "core:window:allow-current-monitor",
     "updater:default",
     "autostart:default",
-    "process:default"
+    "process:default",
+    "opener:default"
   ]
 }

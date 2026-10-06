@@ -4,7 +4,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
-import Highlight from "@tiptap/extension-highlight";
+import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
+import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { supabase } from "@/integrations/supabase/client";
@@ -57,7 +58,7 @@ export const NotasPessoais = () => {
       Underline,
       Placeholder.configure({ placeholder: "Escreva algo, ou digite \"/\" para ver os comandos..." }),
       Link.configure({ openOnClick: true }),
-      Highlight.configure({ multicolor: false }),
+      ...extensoesEstiloTexto,
       TaskList,
       TaskItem.configure({ nested: true }),
       SlashCommand.configure({ abrirPicker }),
@@ -158,6 +159,7 @@ export const NotasPessoais = () => {
         ) : (
           <div className="max-w-[760px] mx-auto bg-background rounded-lg shadow-sm p-10 min-h-[460px]">
             <EditorContent editor={editor} className="prose prose-lg max-w-none dark:prose-invert document-editor" />
+            {editor && <MenuSelecaoTexto editor={editor} />}
           </div>
         )}
       </div>

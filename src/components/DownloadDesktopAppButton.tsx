@@ -1,6 +1,7 @@
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { isDesktop } from "@/lib/platform";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 
 const URL_RELEASES = "https://github.com/projetosonline100k/infohub/releases/latest";
 
@@ -18,7 +19,7 @@ export function DownloadDesktopAppButton() {
       size="sm"
       className="gap-1.5"
       title="O macOS ainda não está notarizado pela Apple — na primeira abertura, clique com o botão direito no app → Abrir."
-      onClick={() => window.open(URL_RELEASES, "_blank", "noopener,noreferrer")}
+      onClick={() => void abrirLinkExterno(URL_RELEASES)}
     >
       <Download className="h-3.5 w-3.5" />
       Baixar app desktop

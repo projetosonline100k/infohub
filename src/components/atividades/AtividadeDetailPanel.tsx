@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusBadge } from "./StatusBadge";
+import { AlarmeAtividadeCampo } from "./AlarmeAtividadeCampo";
 import { PriorityFlag } from "./PriorityFlag";
 import { SubtarefasList } from "./SubtarefasList";
 import { DocumentosList } from "@/components/documentos/DocumentosList";
@@ -458,6 +459,9 @@ export const AtividadeDetailPanel = ({
                 </PopoverContent>
               </Popover>
             </div>
+
+            {/* Alarme (toca no app e no app Lembretes do Mac) */}
+            <AlarmeAtividadeCampo atividadeId={atividade.id} titulo={titulo || atividade.titulo} vencimento={dataVencimento ? format(dataVencimento, "yyyy-MM-dd") : null} />
 
             {/* Estimated Time */}
             <div className="space-y-1.5">

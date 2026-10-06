@@ -49,6 +49,8 @@ export type Database = {
       }
       atividades: {
         Row: {
+          alarme_em: string | null
+          alarme_lembrete_id: string | null
           cliente_id: string | null
           concluida: boolean
           concluida_em: string | null
@@ -72,6 +74,8 @@ export type Database = {
           titulo: string
         }
         Insert: {
+          alarme_em?: string | null
+          alarme_lembrete_id?: string | null
           cliente_id?: string | null
           concluida?: boolean
           concluida_em?: string | null
@@ -95,6 +99,8 @@ export type Database = {
           titulo: string
         }
         Update: {
+          alarme_em?: string | null
+          alarme_lembrete_id?: string | null
           cliente_id?: string | null
           concluida?: boolean
           concluida_em?: string | null
@@ -166,6 +172,7 @@ export type Database = {
       }
       clientes: {
         Row: {
+          planilha_referencias_url: string | null
           user_id: string | null
           created_at: string | null
           id: string
@@ -178,6 +185,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          planilha_referencias_url?: string | null
           user_id?: string | null
           arquivado?: boolean
           created_at?: string | null
@@ -190,6 +198,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          planilha_referencias_url?: string | null
           arquivado?: boolean
           created_at?: string | null
           id?: string
@@ -1516,6 +1525,36 @@ export type Database = {
           },
         ]
       }
+      relatorio_registros: {
+        Row: {
+          cliente_id: string | null
+          created_at: string
+          data: string
+          id: string
+          registrado_em: string
+          texto: string
+          user_id: string
+        }
+        Insert: {
+          cliente_id?: string | null
+          created_at?: string
+          data?: string
+          id?: string
+          registrado_em?: string
+          texto: string
+          user_id?: string
+        }
+        Update: {
+          cliente_id?: string | null
+          created_at?: string
+          data?: string
+          id?: string
+          registrado_em?: string
+          texto?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       respostas_pesquisa: {
         Row: {
           created_at: string
@@ -1722,6 +1761,10 @@ export type Database = {
       videos_referencia: {
         Row: {
           cliente_id: string
+          criador: string | null
+          data_publicacao: string | null
+          visualizacoes: number | null
+          transcricao: string | null
           created_at: string
           id: string
           link_video: string | null
@@ -1732,6 +1775,10 @@ export type Database = {
         }
         Insert: {
           cliente_id: string
+          criador?: string | null
+          data_publicacao?: string | null
+          visualizacoes?: number | null
+          transcricao?: string | null
           created_at?: string
           id?: string
           link_video?: string | null
@@ -1742,6 +1789,10 @@ export type Database = {
         }
         Update: {
           cliente_id?: string
+          criador?: string | null
+          data_publicacao?: string | null
+          visualizacoes?: number | null
+          transcricao?: string | null
           created_at?: string
           id?: string
           link_video?: string | null
@@ -1754,6 +1805,7 @@ export type Database = {
       }
       videos_vertical: {
         Row: {
+          ideia_origem_id: string | null
           arquivo_chave: string | null
           arquivo_nome: string | null
           arquivo_tamanho: number | null
@@ -1776,6 +1828,7 @@ export type Database = {
           titulo: string
         }
         Insert: {
+          ideia_origem_id?: string | null
           arquivo_chave?: string | null
           arquivo_nome?: string | null
           arquivo_tamanho?: number | null
@@ -1798,6 +1851,7 @@ export type Database = {
           titulo: string
         }
         Update: {
+          ideia_origem_id?: string | null
           arquivo_chave?: string | null
           arquivo_nome?: string | null
           arquivo_tamanho?: number | null

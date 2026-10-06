@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Plus, Trash, ExternalLink, Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 
 interface LinkCheckout {
   nome: string;
@@ -143,7 +144,7 @@ export function ProdutoInfoGeral({ produto, onUpdate }: ProdutoInfoGeralProps) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => window.open(link.url, "_blank")}
+                    onClick={() => void abrirLinkExterno(link.url)}
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>

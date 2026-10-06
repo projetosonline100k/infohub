@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { pedirTexto } from "@/components/DialogosGlobais";
 
 interface DocumentToolbarProps {
   editor: Editor | null;
@@ -84,8 +85,8 @@ export function DocumentToolbar({ editor }: DocumentToolbarProps) {
     return "paragraph";
   };
 
-  const addLink = () => {
-    const url = window.prompt("URL do link:");
+  const addLink = async () => {
+    const url = await pedirTexto("URL do link:");
     if (url) {
       editor.chain().focus().setLink({ href: url }).run();
     }

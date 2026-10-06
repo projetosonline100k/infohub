@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow, BookOpen, FolderPlus, Folder, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,9 @@ import { DocumentEditor } from "./DocumentEditor";
 import { CadernoEditor, createEmptyCadernoContent, isCadernoContent } from "./CadernoEditor";
 import { MindMapEditor, createEmptyMindMapContent, isMindMapContent } from "./MindMapEditor";
 import { toast } from "sonner";
+import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { ehNota } from "@/hooks/useAssistantDocumentos";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface Documento {
   id: string;
@@ -39,6 +43,9 @@ interface DocumentosViewProps {
 }
 
 export function DocumentosView({ clienteId }: DocumentosViewProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { openTab } = useWorkspaceTabs();
   const [pastas, setPastas] = useState<{ id: string; nome: string }[]>([]);
   const [pastaAtiva, setPastaAtiva] = useState("todas");
   const [novaPasta, setNovaPasta] = useState(false);
@@ -67,7 +74,9 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       .order("updated_at", { ascending: false });
 
     if (!error && data) {
-      setDocumentos(data);
+      // Notas rápidas moram na mesma tabela, mas não são documentos: abrir
+      // uma aqui e salvar apagava a marca de nota e ela sumia das Notas.
+      setDocumentos(data.filter((d) => !ehNota(d.conteudo)));
 
       // Carregar atividades vinculadas
       const atividadeIds = data
@@ -290,9 +299,23 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     setMindMapEditorOpen(true);
   };
 
+  // Aba aberta com ?documento=… abre o editor uma única vez; fechar o editor
+  // dentro da aba volta pra lista em vez de reabrir o documento.
+  const documentoDaUrlAberto = useRef<string | null>(null);
+  useEffect(() => {
+    const docId = new URLSearchParams(location.search).get("documento");
+    if (!docId || loading || documentoDaUrlAberto.current === docId) return;
+    const doc = documentos.find((item) => item.id === docId);
+    if (!doc) return;
+    documentoDaUrlAberto.current = docId;
+    if (isMindMapContent(doc.conteudo)) abrirMapaMental(doc.id);
+    else if (isCadernoContent(doc.conteudo)) abrirCaderno(doc.id);
+    else abrirDocumento(doc.id);
+  }, [documentos, loading, location.search]);
+
   const excluirDocumento = async (e: React.MouseEvent, docId: string) => {
     e.stopPropagation();
-    if (!confirm("Tem certeza que deseja excluir este documento?")) return;
+    if (!(await confirmar("Tem certeza que deseja excluir este documento?"))) return;
 
     const { error } = await supabase.from("documentos").delete().eq("id", docId);
     
@@ -394,7 +417,17 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
           {documentosFiltrados.map(doc => {
             const tipo = tipoDocumento(doc);
             const Icon = tipo === "mapa" ? Workflow : tipo === "caderno" ? BookOpen : FileText;
-            const abrir = () => tipo === "mapa" ? abrirMapaMental(doc.id) : tipo === "caderno" ? abrirCaderno(doc.id) : abrirDocumento(doc.id);
+            const abrir = (event: React.MouseEvent) => {
+              // ⌘/Ctrl+clique abre o documento numa aba nova (esta continua na
+              // lista); clique normal abre aqui mesmo.
+              if (event.metaKey || event.ctrlKey) {
+                const path = `${location.pathname}?documento=${doc.id}`;
+                openTab(path, doc.titulo);
+                navigate(path);
+                return;
+              }
+              if (tipo === "mapa") abrirMapaMental(doc.id); else if (tipo === "caderno") abrirCaderno(doc.id); else abrirDocumento(doc.id);
+            };
             return <div key={doc.id} draggable onDragStart={event => event.dataTransfer.setData("application/documento-id", doc.id)}
               className={cn("rounded-lg border border-border bg-card transition-colors hover:border-primary/50 group")}>
               <div className="flex items-start gap-2 p-4 pb-2">

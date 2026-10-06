@@ -13,6 +13,8 @@ mod focus_monitor;
 mod global_shortcut;
 #[cfg(target_os = "macos")]
 mod mac_sleep;
+#[cfg(target_os = "macos")]
+mod lembretes;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,7 +30,10 @@ pub fn run() {
         // ver src/lib/desktop/autostart.ts.
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init());
+        .plugin(tauri_plugin_process::init())
+        // Abre links externos (post do Instagram, evento no Google, etc.) no
+        // navegador padrão — window.open não faz nada no app desktop.
+        .plugin(tauri_plugin_opener::init());
 
     // FocusActivityMonitor (item 3, rodada 3) + Encerrar o dia (atalho
     // global e repouso do Mac) — só macOS por enquanto.
@@ -42,6 +47,13 @@ pub fn run() {
             focus_monitor::open_accessibility_settings,
             global_shortcut::atalho_encerrar_dia_registrado,
             mac_sleep::dormir_mac,
+            lembretes::lembretes_criar_lote,
+            lembretes::lembrete_atualizar_dados,
+            lembretes::lembrete_remover,
+            lembretes::lembrete_atualizar,
+            lembretes::lembrete_desligar,
+            lembretes::lembrete_marcar,
+            lembretes::lembretes_sincronizar,
         ]);
 
     builder

@@ -6,7 +6,8 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
-import Highlight from "@tiptap/extension-highlight";
+import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
+import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { FileText, KeyRound, Loader2, LockKeyhole, LogOut, Mail, PanelLeft, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -258,7 +259,7 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Placeholder.configure({ placeholder: "Comece a escrever..." }),
       Link.configure({ openOnClick: true }),
-      Highlight.configure({ multicolor: false }),
+      ...extensoesEstiloTexto,
     ],
     content: "",
     onUpdate: ({ editor }) => {
@@ -364,6 +365,7 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
         <div className="mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
           <div className="px-5 py-6 sm:p-8 md:p-16">
             <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
+            {editor && <MenuSelecaoTexto editor={editor} />}
           </div>
         </div>
       </div>

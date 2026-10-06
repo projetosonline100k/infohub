@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAssistantProjeto } from "@/hooks/useAssistantProjeto";
 import { useAssistantDocumentos } from "@/hooks/useAssistantDocumentos";
 import { useNotasPastas } from "@/hooks/useNotasPastas";
@@ -21,6 +22,33 @@ export default function Notas() {
 
   const [filtro, setFiltro] = useState<FiltroNotas>({ tipo: "todas" });
   const [notaSelecionadaId, setNotaSelecionadaId] = useState<string | null>(null);
+  // Coluna de projeto/pastas recolhível (como a barra lateral do Notes), pra
+  // dar mais espaço à nota. Lembra a escolha entre aberturas.
+  const [pastasVisiveis, setPastasVisiveis] = useState(() => {
+    try { return localStorage.getItem("notas:pastasVisiveis") !== "0"; } catch { return true; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("notas:pastasVisiveis", pastasVisiveis ? "1" : "0"); } catch { /* sem storage */ }
+  }, [pastasVisiveis]);
+  // ⌘⌥S, mesmo atalho do Notes pra mostrar/ocultar a barra lateral.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey && event.altKey && event.code === "KeyS") {
+        event.preventDefault();
+        setPastasVisiveis((v) => !v);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const botaoPastas = (
+    <button type="button" onClick={() => setPastasVisiveis((v) => !v)}
+      title={pastasVisiveis ? "Ocultar pastas (⌥⌘S)" : "Mostrar pastas (⌥⌘S)"} aria-label={pastasVisiveis ? "Ocultar pastas" : "Mostrar pastas"}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground">
+      {pastasVisiveis ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+    </button>
+  );
 
   const notaSelecionada =
     notas.find((n) => n.id === notaSelecionadaId) ?? notasLixeira.find((n) => n.id === notaSelecionadaId) ?? null;
@@ -45,7 +73,7 @@ export default function Notas() {
   return (
     <div className="flex h-[calc(100vh-7rem)] divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">
       {/* Coluna 1: sidebar única — seletor de projeto + filtros + pastas */}
-      <div className="w-72 shrink-0 overflow-y-auto">
+      {pastasVisiveis && <div className="w-64 shrink-0 overflow-y-auto">
         {projetos.length === 0 && !loadingProjetos ? (
           <p className="p-4 text-sm text-muted-foreground">Nenhum projeto ainda.</p>
         ) : (
@@ -64,50 +92,54 @@ export default function Notas() {
             contagemLixeira={notasLixeira.length}
           />
         )}
-      </div>
+      </div>}
 
       {!projetoId ? (
         <div className="flex flex-1 items-center justify-center">
-          <p className="text-sm text-muted-foreground">Selecione um projeto à esquerda.</p>
+          {pastasVisiveis ? (
+            <p className="text-sm text-muted-foreground">Selecione um projeto à esquerda.</p>
+          ) : (
+            <button type="button" onClick={() => setPastasVisiveis(true)} className="text-sm text-primary hover:underline">Mostrar projetos e pastas</button>
+          )}
         </div>
       ) : (
-        <>
-          {/* Coluna 2: notas do filtro/pasta selecionado */}
-          <div className="w-96 shrink-0 overflow-y-auto p-4">
-            <NotasListPane
-              notas={notas}
-              notasLixeira={notasLixeira}
-              pastas={pastas}
-              filtro={filtro}
-              loading={loading}
-              notaSelecionadaId={notaSelecionadaId}
-              onSelecionar={setNotaSelecionadaId}
-              onCriar={criar}
-              onRestaurar={restaurarNota}
-              onExcluirPermanente={excluirNotaPermanente}
-            />
-          </div>
-
-          {/* Coluna 3: editor da nota selecionada */}
-          <div className="flex-1 overflow-hidden bg-background/40 p-8">
-            {notaSelecionada ? (
+        // Como no Notes: a grade de notas ocupa a área toda; clicar abre a
+        // nota no mesmo lugar (com "voltar"), sem uma terceira coluna.
+        <div className="min-w-0 flex-1 overflow-hidden">
+          {notaSelecionada ? (
+            <div className="h-full overflow-hidden bg-background/40 px-8 py-5">
               <NotaEditorPane
+                key={notaSelecionada.id}
                 nota={notaSelecionada}
+                onVoltar={() => setNotaSelecionadaId(null)}
                 onFixar={fixarNota}
-                onExcluir={excluirNota}
+                onExcluir={(id) => { excluirNota(id); setNotaSelecionadaId(null); }}
                 onDuplicar={duplicarNota}
                 onMoverParaPasta={moverNotaParaPasta}
                 pastas={pastas}
                 onRestaurar={restaurarNota}
                 onNotaAtualizada={atualizarNotaLocal}
+                acaoEsquerda={botaoPastas}
               />
-            ) : (
-              <div className="flex h-full items-center justify-center text-center text-sm text-muted-foreground">
-                Selecione uma nota, ou crie uma nova.
-              </div>
-            )}
-          </div>
-        </>
+            </div>
+          ) : (
+            <div className="h-full overflow-y-auto p-5">
+              <NotasListPane
+                notas={notas}
+                notasLixeira={notasLixeira}
+                pastas={pastas}
+                filtro={filtro}
+                loading={loading}
+                notaSelecionadaId={notaSelecionadaId}
+                onSelecionar={setNotaSelecionadaId}
+                onCriar={criar}
+                onRestaurar={restaurarNota}
+                onExcluirPermanente={excluirNotaPermanente}
+                acaoEsquerda={botaoPastas}
+              />
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

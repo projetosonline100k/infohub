@@ -21,6 +21,7 @@ import { AdminJarvisMensagens } from "@/components/admin/AdminJarvisMensagens";
 import { AdminJarvisSons } from "@/components/admin/AdminJarvisSons";
 import { AdminJarvisPrivacidade } from "@/components/admin/AdminJarvisPrivacidade";
 import { AdminJarvisAtalhos } from "@/components/admin/AdminJarvisAtalhos";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface Usuario {
   id: string;
@@ -133,7 +134,7 @@ const Admin = () => {
   };
 
   const excluirUsuario = async (usuario: Usuario) => {
-    if (!window.confirm(`Excluir a conta de ${usuario.email}? Essa ação não pode ser desfeita.`)) return;
+    if (!(await confirmar(`Excluir a conta de ${usuario.email}? Essa ação não pode ser desfeita.`))) return;
     try {
       await chamar({ action: "delete", userId: usuario.id });
       toast.success("Usuário excluído");

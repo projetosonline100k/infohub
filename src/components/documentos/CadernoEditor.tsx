@@ -20,6 +20,7 @@ import { Slider } from "@/components/ui/slider";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { usePersistentHistory } from "@/hooks/usePersistentHistory";
+import { confirmar } from "@/components/DialogosGlobais";
 
 const CADERNO_PREFIX = "__CADERNO_V1__";
 const CANVAS_WIDTH = 2400;
@@ -721,7 +722,7 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [undo, redo]);
 
-  const deleteSelectedOrClear = () => {
+  const deleteSelectedOrClear = async () => {
     if (selectedElementIdRef.current) {
       const nextElements = elementsRef.current.filter((element) => element.id !== selectedElementIdRef.current);
       selectedElementIdRef.current = null;
@@ -730,7 +731,7 @@ export function CadernoEditor({ documentoId, onClose }: CadernoEditorProps) {
       return;
     }
 
-    if (!confirm("Apagar todos os elementos deste caderno?")) return;
+    if (!(await confirmar("Apagar todos os elementos deste caderno?"))) return;
     commitElements([]);
   };
 

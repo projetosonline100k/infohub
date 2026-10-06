@@ -11,6 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { NotaPasta } from "@/hooks/useNotasPastas";
 import type { AssistantDocumento } from "@/hooks/useAssistantDocumentos";
+import { confirmar } from "@/components/DialogosGlobais";
 
 export type FiltroNotas =
   | { tipo: "todas" }
@@ -239,8 +240,8 @@ export function NotasFoldersPane({
               <button
                 type="button"
                 className="rounded p-1 text-muted-foreground hover:text-destructive"
-                onClick={() => {
-                  if (window.confirm(`Excluir a pasta "${pasta.nome}"? As notas continuam existindo, só saem da pasta.`)) {
+                onClick={async () => {
+                  if (await confirmar(`Excluir a pasta "${pasta.nome}"? As notas continuam existindo, só saem da pasta.`)) {
                     onExcluirPasta(pasta.id);
                   }
                 }}

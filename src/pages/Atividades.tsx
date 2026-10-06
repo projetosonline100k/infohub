@@ -33,14 +33,10 @@ const Atividades = () => {
   };
 
   return (
-    <div className="space-y-6 h-full">
+    <div className="space-y-3 h-full">
+      {/* Cabeçalho enxuto (uma linha só) pra sobrar espaço pras atividades. */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground mb-2">Atividades</h1>
-          <p className="text-muted-foreground">
-            Acompanhe suas tarefas e compromissos gerais
-          </p>
-        </div>
+        <h1 className="text-xl font-bold text-foreground">Atividades</h1>
 
         <div className="flex items-center gap-2">
           <FiltroResponsavel value={filtroResponsavel} onChange={selecionarResponsavel} />
@@ -69,7 +65,7 @@ const Atividades = () => {
         </div>
       </div>
 
-      <Card className="p-6 shadow-md w-full">
+      <Card className="p-4 shadow-md w-full">
         {secao === "pessoal" ? <AtividadesView filtroResponsavel={filtroResponsavel} /> : <AtividadesClientesView filtroResponsavel={filtroResponsavel} />}
       </Card>
     </div>

@@ -8,7 +8,7 @@ import {
   GoogleEventInput,
 } from "@/lib/googleCalendar";
 
-const STORAGE_KEY = "infopro.google-calendar.selected";
+export const STORAGE_KEY = "infopro.google-calendar.selected";
 
 export function useGoogleCalendar(anchorDate: Date) {
   const [loading, setLoading] = useState(true);

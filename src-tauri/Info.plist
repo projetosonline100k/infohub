@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Mostrado quando o macOS pede permissão pra criar os alarmes das
+       atividades no app Lembretes (src-tauri/src/lembretes.rs). -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>O Infopro Hub cria lembretes no app Lembretes para tocar os alarmes das suas atividades.</string>
+</dict>
+</plist>

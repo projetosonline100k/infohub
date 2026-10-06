@@ -30,6 +30,7 @@ tauri-plugin-process = "2"
 # Atalho global ⌘+Shift+E ("Encerrar o dia") — plugin oficial, funciona com
 # o app em segundo plano/sem foco.
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-opener = "2"
 
 # Monitoramento de foco nativo (item 3, rodada 3) — só macOS. objc2-app-kit
 # já era dependência transitiva do Tauri nessa plataforma; aqui vira direta

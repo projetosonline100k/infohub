@@ -3,11 +3,12 @@ import { LayoutGrid, List, Pin, Plus, RotateCcw, Search, Trash2 } from "lucide-r
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { conteudoDaNota, type AssistantDocumento } from "@/hooks/useAssistantDocumentos";
 import type { NotaPasta } from "@/hooks/useNotasPastas";
 import type { FiltroNotas } from "./NotasFoldersPane";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface NotasListPaneProps {
   notas: AssistantDocumento[];
@@ -24,6 +25,8 @@ interface NotasListPaneProps {
   onExcluirPermanente?: (id: string) => void;
   // Densidade — o Jarvis compacto usa menos respiro que a página /notas.
   compact?: boolean;
+  // Botão extra no começo da barra (página /notas: mostrar/ocultar pastas).
+  acaoEsquerda?: React.ReactNode;
 }
 
 function dentroDeDias(dataIso: string, dias: number): boolean {
@@ -81,9 +84,11 @@ export function NotasListPane({
   onRestaurar,
   onExcluirPermanente,
   compact,
+  acaoEsquerda,
 }: NotasListPaneProps) {
   const [busca, setBusca] = useState("");
-  const [visualizacao, setVisualizacao] = useState<"lista" | "grade">("lista");
+  // Página /notas abre em galeria (como o Notes); o Jarvis compacto, em lista.
+  const [visualizacao, setVisualizacao] = useState<"lista" | "grade">(compact ? "lista" : "grade");
 
   const naLixeira = filtro?.tipo === "lixeira";
 
@@ -113,13 +118,14 @@ export function NotasListPane({
   );
 
   const previewDe = (nota: AssistantDocumento) =>
-    conteudoDaNota(nota).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, compact ? 60 : 110);
+    conteudoDaNota(nota).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, compact ? 60 : 260);
 
   const nomePastaDe = (nota: AssistantDocumento) => pastas?.find((p) => p.id === nota.pasta_id)?.nome ?? null;
 
   return (
     <div className="flex h-full flex-col">
       <div className={cn("flex items-center gap-2", compact ? "pb-2" : "pb-3")}>
+        {acaoEsquerda}
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -169,7 +175,27 @@ export function NotasListPane({
               {secao.titulo && (
                 <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/80">{secao.titulo}</p>
               )}
-              <div className={cn(visualizacao === "grade" && !compact ? "grid grid-cols-2 gap-2" : "divide-y divide-border/60")}>
+              {visualizacao === "grade" && !compact && !naLixeira ? (
+                // Galeria tipo Notes: miniatura com título + começo do texto,
+                // e embaixo o título e a data.
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-x-4 gap-y-5 pt-1">
+                  {secao.itens.map((nota) => (
+                    <button key={nota.id} type="button" onClick={() => onSelecionar(nota.id)} className="group flex min-w-0 flex-col items-center text-center">
+                      <div className="h-36 w-full overflow-hidden rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors group-hover:border-primary/50">
+                        <p className="line-clamp-2 text-sm font-semibold leading-snug">{nota.titulo || "Nota sem título"}</p>
+                        <p className="mt-1.5 line-clamp-5 text-[11px] leading-relaxed text-muted-foreground">{previewDe(nota)}</p>
+                      </div>
+                      <p className="mt-2 flex w-full items-center justify-center gap-1 truncate text-sm font-medium">
+                        {nota.fixado && <Pin className="h-3 w-3 shrink-0 fill-current text-amber-500" />}
+                        <span className="truncate">{nota.titulo || "Nota sem título"}</span>
+                      </p>
+                      <p className="text-xs text-muted-foreground">{format(new Date(nota.updated_at), ehHoje(nota.updated_at) ? "HH:mm" : "dd/MM/yyyy")}</p>
+                      {nomePastaDe(nota) && <p className="truncate text-[11px] text-muted-foreground/70">{nomePastaDe(nota)}</p>}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+              <div className="divide-y divide-border/60">
                 {secao.itens.map((nota) => {
                   const preview = previewDe(nota);
                   const pastaNome = nomePastaDe(nota);
@@ -213,9 +239,9 @@ export function NotasListPane({
                                 role="button"
                                 tabIndex={0}
                                 className="rounded p-1 text-muted-foreground hover:text-destructive"
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                   e.stopPropagation();
-                                  if (window.confirm("Excluir esta nota definitivamente? Não dá pra desfazer.")) {
+                                  if (await confirmar("Excluir esta nota definitivamente? Não dá pra desfazer.")) {
                                     onExcluirPermanente(nota.id);
                                   }
                                 }}
@@ -240,6 +266,7 @@ export function NotasListPane({
                   );
                 })}
               </div>
+              )}
             </div>
           ))
         )}

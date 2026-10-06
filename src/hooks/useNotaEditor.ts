@@ -5,7 +5,8 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
-import Highlight from "@tiptap/extension-highlight";
+import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
+import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
 import { toast } from "sonner";
@@ -71,9 +72,10 @@ export function useNotaEditor(nota: AssistantDocumento | null, onSalvo?: (id: st
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Placeholder.configure({ placeholder: "Escreva alguma coisa..." }),
       Link.configure({ openOnClick: true }),
-      Highlight.configure({ multicolor: false }),
+      ...extensoesEstiloTexto,
       TaskList,
       TaskItem.configure({ nested: true }),
+      TituloRecolhivel,
     ],
     content: nota ? conteudoDaNota(nota) : "",
     // Fica sempre com o título mais recente via ref (o closure aqui é fixado

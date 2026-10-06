@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ehNota } from "@/hooks/useAssistantDocumentos";
 import { FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandItem } from "@/components/ui/command";
@@ -38,7 +39,7 @@ export function DocumentQuickAccess({ clienteId }: { clienteId: string }) {
     void supabase.from("documentos").select("id, titulo, conteudo").eq("cliente_id", clienteId)
       .order("updated_at", { ascending: false }).then(({ data, error }) => {
         if (!active) return;
-        setDocs(data || []);
+        setDocs((data || []).filter((doc) => !ehNota(doc.conteudo)));
         setError(!!error);
         setLoading(false);
       });

@@ -7,6 +7,7 @@ import { Plus, Pencil, X } from "lucide-react";
 
 interface Atividade {
   id: string;
+  alarme_em?: string | null;
   titulo: string;
   descricao: string | null;
   concluida: boolean;
@@ -169,6 +170,7 @@ export const KanbanColumn = ({
                       timerIniciadoEm={atividade.timer_iniciado_em}
                       timerDecorridoSegundos={atividade.timer_decorrido_segundos}
                       responsavelNome={atividade.responsavel_nome}
+                      alarmeEm={atividade.alarme_em}
                       checklist={checklistPorAtividade?.[atividade.id]}
                       onClick={onCardClick}
                       onToggleConcluida={onToggleConcluida}

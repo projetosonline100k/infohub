@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { confirmar } from "@/components/DialogosGlobais";
 
 interface Documento {
   id: string;
@@ -46,7 +47,7 @@ export function DocumentosList({ atividadeId, clienteId, onOpenDoc }: Documentos
 
   const excluirDocumento = async (e: React.MouseEvent, docId: string) => {
     e.stopPropagation();
-    if (!confirm("Tem certeza que deseja excluir este documento?")) return;
+    if (!(await confirmar("Tem certeza que deseja excluir este documento?"))) return;
 
     await supabase.from("documentos").delete().eq("id", docId);
     setDocumentos((prev) => prev.filter((d) => d.id !== docId));

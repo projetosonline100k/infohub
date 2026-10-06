@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { addDays, endOfWeek, format, parseISO, startOfWeek } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -259,7 +259,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const [, forceTick] = useState(0);
 
   const navigate = useNavigate();
-  const { id: clienteRotaId } = useParams<{ id: string }>();
+  const { pathname } = useLocation();
+  const clienteRotaId = matchPath("/clientes/:id", pathname)?.params.id;
   const { session, user } = useAuth();
   const meusNomesResponsavel = useIdentidadeResponsavel();
   const [filtroResponsavel, setFiltroResponsavel] = useState<FiltroResponsavel>(() => {
@@ -687,10 +688,12 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       await concluir(id);
       if (id === currentTaskId) setCurrentTaskId(null);
       dispararCelebracao();
+      // Atualiza o "Foco de hoje" (N/3) — o plano não tem realtime próprio.
+      void dailyPlan.refetch();
     } catch {
       toast.error("Não foi possível concluir a tarefa");
     }
-  }, [concluir, currentTaskId, setCurrentTaskId, dispararCelebracao]);
+  }, [concluir, currentTaskId, setCurrentTaskId, dispararCelebracao, dailyPlan]);
 
   // Fechar continua imediato (não precisa esperar nada) — quem encolhe a
   // janela de volta é o efeito reativo de `janelaModo` mais abaixo.

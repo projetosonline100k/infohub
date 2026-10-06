@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 
 interface Atividade {
   id: string;
+  alarme_em?: string | null;
   titulo: string;
   descricao: string | null;
   concluida: boolean;
