@@ -15,10 +15,14 @@ permissions:
 
 jobs:
   release:
-    # Só macOS por enquanto — único alvo testado até aqui (ver
-    # docs/DESKTOP.md). Adicionar windows-latest/ubuntu-latest depois, se
-    # o app passar a ser distribuído pra essas plataformas também.
-    runs-on: macos-latest
+    # Mac e Windows em paralelo, publicando na mesma release (o tauri-action
+    # junta os instaladores e o latest.json do auto-update). fail-fast: false
+    # — se um falhar, o outro ainda publica.
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +45,6 @@ jobs:
           tauriScript: npm run tauri
           tagName: ${{ github.ref_name }}
           releaseName: "Infopro Hub Desktop ${{ github.ref_name }}"
-          releaseBody: "Ver o changelog do commit. Instalação: baixe o .dmg, abra e, na primeira vez, clique com o botão direito no app → Abrir (o app ainda não é notarizado pela Apple)."
+          releaseBody: "Mac: baixe o .dmg, abra e, na primeira vez, clique com o botão direito no app → Abrir (ainda não notarizado pela Apple). Windows: baixe o instalador .exe; se o Windows avisar \"aplicativo não reconhecido\", clique em Mais informações → Executar assim mesmo (ainda sem certificado de assinatura)."
           releaseDraft: false
           prerelease: false
