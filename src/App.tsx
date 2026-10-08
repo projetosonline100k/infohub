@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import JarvisWindow from "./pages/JarvisWindow";
+import Privacidade from "./pages/Privacidade";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { WorkspaceTabsProvider } from "@/components/workspace/WorkspaceTabs";
 import { DialogosGlobais } from "@/components/DialogosGlobais";
@@ -38,6 +39,7 @@ const App = () => (
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
+          <Route path="/privacidade" element={<Privacidade />} />
 
           {/* Janela nativa `jarvis` (desktop, ver src-tauri/tauri.conf.json) —
               sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona
