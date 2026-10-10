@@ -1,7 +1,9 @@
 import { cn } from "@/lib/utils";
 import type { FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 
-export type AssistantAba = "hoje" | "kanban" | "docs" | "notas" | "performance" | "relatorio";
+// "creator" não aparece nesta barra: é um modo à parte (⌘ + J + C), com a
+// própria barra de ferramentas (ver AssistantPanel).
+export type AssistantAba = "hoje" | "kanban" | "docs" | "notas" | "performance" | "relatorio" | "whatsapp" | "conversa" | "creator";
 
 // Item 4 do pedido: sem aba "Projeto" isolada — o projeto agora é escolhido
 // direto dentro de Kanban e Notas (ver ProjetoSelectorInline), e o filtro
@@ -16,6 +18,10 @@ const ABAS: { id: AssistantAba; label: string }[] = [
   { id: "notas", label: "Notas" },
   // Diário rápido do dia (ver AssistantRelatorioTab).
   { id: "relatorio", label: "Relatório" },
+  // Respostas aos mentorados (ver AssistantWhatsappTab).
+  { id: "whatsapp", label: "WhatsApp" },
+  // Chat com a sessão "Inteligência do Infopro" (⌘+J abre direto aqui).
+  { id: "conversa", label: "Conversa" },
 ];
 
 interface AssistantTopNavProps {

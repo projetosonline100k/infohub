@@ -108,3 +108,18 @@ export async function onAbrirEncerrarDia(handler: () => void): Promise<() => voi
     return () => {};
   }
 }
+
+// ⌘+J (atalho global, src-tauri/src/global_shortcut.rs): o Rust avisa
+// quando aperta (o Jarvis ganha foco pra ouvir o C de ⌘+J+C) e quando solta
+// (aí abre a Conversa ou o modo Creator).
+export async function onAtalhoJ(aoApertar: () => void, aoSoltar: () => void): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const a = await listen("atalho-j-apertado", () => aoApertar());
+    const b = await listen("atalho-j-solto", () => aoSoltar());
+    return () => { a(); b(); };
+  } catch {
+    return () => {};
+  }
+}

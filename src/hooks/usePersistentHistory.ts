@@ -1,10 +1,53 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const DEFAULT_MAX = 25;
+const PREFIXO = "infopro:historico:";
+
+// O localStorage tem ~5 MB pro app inteiro. Um mapa mental com 15 passos de
+// desfazer chegou a ocupar 4 MB e lotou tudo: aí nada mais salvava (voz do
+// Jarvis, alfinete, tamanho do painel…). Limites: por documento e no total
+// dos históricos; o que passa é descartado do mais antigo pro mais novo.
+const MAX_POR_HISTORICO = 400_000;
+const MAX_TOTAL_HISTORICOS = 1_500_000;
 
 function chaveArmazenamento(chave: string) {
-  return `infopro:historico:${chave}`;
+  return `${PREFIXO}${chave}`;
 }
+
+function historicosGuardados() {
+  const lista: { chave: string; tamanho: number; em: number }[] = [];
+  for (let i = 0; i < window.localStorage.length; i++) {
+    const chave = window.localStorage.key(i);
+    if (!chave?.startsWith(PREFIXO)) continue;
+    const raw = window.localStorage.getItem(chave) || "";
+    let em = 0;
+    try { em = Number(JSON.parse(raw).em) || 0; } catch { /* corrompido: sai primeiro */ }
+    lista.push({ chave, tamanho: raw.length, em });
+  }
+  return lista;
+}
+
+// Apaga históricos (do mais antigo pro mais novo) até caberem no limite.
+// `preservar`: chave que não pode sair (a do documento aberto agora).
+export function liberarEspacoHistoricos(limite = MAX_TOTAL_HISTORICOS, preservar?: string) {
+  try {
+    const lista = historicosGuardados().sort((a, b) => a.em - b.em);
+    let total = lista.reduce((t, h) => t + h.tamanho, 0);
+    for (const h of lista) {
+      if (total <= limite) break;
+      if (h.chave === preservar) continue;
+      window.localStorage.removeItem(h.chave);
+      total -= h.tamanho;
+    }
+  } catch { /* sem storage */ }
+}
+
+// Ao carregar o app: corta o que já passou dos limites (inclusive históricos
+// gravados antes desta regra, que nem tinham data).
+try {
+  for (const h of historicosGuardados()) if (h.tamanho > MAX_POR_HISTORICO) window.localStorage.removeItem(h.chave);
+  liberarEspacoHistoricos();
+} catch { /* sem storage */ }
 
 function lerHistorico<T>(chave: string): { undo: T[]; redo: T[] } {
   try {
@@ -18,12 +61,25 @@ function lerHistorico<T>(chave: string): { undo: T[]; redo: T[] } {
 }
 
 function gravarHistorico<T>(chave: string, undo: T[], redo: T[]) {
+  const nome = chaveArmazenamento(chave);
+  // Descarta os passos mais antigos até caber no limite por documento. Se
+  // nem um passo cabe (documento enorme), não persiste: desfazer/refazer
+  // continua funcionando na aba atual, só não sobrevive a sair da página.
+  let u = undo;
+  let r = redo;
+  let json = JSON.stringify({ undo: u, redo: r, em: Date.now() });
+  while (json.length > MAX_POR_HISTORICO && (u.length || r.length)) {
+    if (u.length) u = u.slice(1); else r = r.slice(1);
+    json = JSON.stringify({ undo: u, redo: r, em: Date.now() });
+  }
   try {
-    window.localStorage.setItem(chaveArmazenamento(chave), JSON.stringify({ undo, redo }));
+    if (!u.length && !r.length) { window.localStorage.removeItem(nome); return; }
+    window.localStorage.setItem(nome, json);
+    liberarEspacoHistoricos(MAX_TOTAL_HISTORICOS, nome);
   } catch {
-    // Provavelmente estourou a cota do navegador (ex.: cadernos com muitas
-    // imagens em base64) — nesse caso o histórico persistido simplesmente
-    // não atualiza, mas desfazer/refazer na aba atual continua funcionando.
+    // Cota estourada mesmo assim: libera os outros históricos e tenta uma vez.
+    liberarEspacoHistoricos(0, nome);
+    try { window.localStorage.setItem(nome, json); } catch { /* segue só em memória */ }
   }
 }
 

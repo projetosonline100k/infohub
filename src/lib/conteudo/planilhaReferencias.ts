@@ -9,9 +9,11 @@ export interface LinhaReferencia {
   visualizacoes: number | null;
   criador: string | null;
   dataPublicacao: string | null; // yyyy-MM-dd
+  // URL pública da capa (só no atalho do iPhone; a planilha não tem).
+  capa?: string | null;
 }
 
-type Campo = keyof LinhaReferencia;
+type Campo = Exclude<keyof LinhaReferencia, "capa">;
 
 const normalizar = (texto: string) =>
   texto.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();

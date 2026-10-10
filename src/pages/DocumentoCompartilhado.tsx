@@ -9,6 +9,7 @@ import Link from "@tiptap/extension-link";
 import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
+import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
 import { FileText, KeyRound, Loader2, LockKeyhole, LogOut, Mail, PanelLeft, ShieldAlert } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -253,8 +254,9 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
 
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({ heading: { levels: [1, 2, 3] }, italic: false }),
+      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, italic: false }),
       ItalicSemAsterisco,
+      TituloRecolhivel,
       Underline,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Placeholder.configure({ placeholder: "Comece a escrever..." }),

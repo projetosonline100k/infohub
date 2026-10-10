@@ -35,8 +35,16 @@ import { useSleepToday } from "@/hooks/useSleepToday";
 import { useSleepMorningPrompt } from "@/hooks/useSleepMorningPrompt";
 import { SleepRegisterForm } from "@/components/sleep/SleepRegisterForm";
 import { enviarSessaoParaExtensao, enviarTarefaAtualParaExtensao, enviarEstadoFocoParaExtensao, enviarSnapshotTarefasParaExtensao } from "@/lib/extensionBridge";
-import { startWindowDrag, openMainWindow, setJarvisWindowMode, aoPerderFocoJanela, TAMANHO_CONTEUDO_PAINEL, type JarvisWindowMode } from "@/lib/desktop/window";
-import { onClienteAtualMudou, onAbrirEncerrarDia } from "@/lib/desktop/events";
+import { startWindowDrag, openMainWindow, setJarvisWindowMode, aoPerderFocoJanela, type JarvisWindowMode } from "@/lib/desktop/window";
+import { useTamanhoPainelJarvis } from "@/hooks/useTamanhoPainelJarvis";
+import { useJarvisClicaAtravessa } from "@/hooks/useJarvisClicaAtravessa";
+import { RESPOSTA_VOU_FAZER, useCobrancaInteligente } from "@/hooks/useCobrancaInteligente";
+import { useFilaCreator } from "@/hooks/useFilaCreator";
+import { falar } from "@/lib/desktop/voz";
+import { isDesktop } from "@/lib/platform";
+import { AssistantCobrancaCard } from "./AssistantCobrancaCard";
+import { pedirTexto } from "@/components/DialogosGlobais";
+import { onClienteAtualMudou, onAbrirEncerrarDia, onAtalhoJ } from "@/lib/desktop/events";
 import { checkAccessibilityTrusted, openAccessibilitySettings } from "@/lib/desktop/focusMonitor";
 import { dispararConfete } from "@/lib/assistant/confetti";
 import { playConclusaoSound } from "@/lib/assistant/sound";
@@ -156,11 +164,26 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // não existe Popover/clique-fora de DOM (a janela inteira é o conteúdo),
   // então o equivalente é a janela perder o foco pro SO. Na versão
   // embutida (Popover normal) isso já acontece sozinho, sem precisar disto.
+  // "Fixar" (alfinete no topo do painel): enquanto fixado, clicar fora não
+  // fecha — só o X ou a orbe. Fica salvo entre aberturas.
+  const [fixado, setFixado] = useState(() => {
+    try { return localStorage.getItem("jarvis:fixado") === "1"; } catch { return false; }
+  });
+  const fixadoRef = useRef(fixado);
+  fixadoRef.current = fixado;
+  const alternarFixado = useCallback(() => {
+    setFixado((atual) => {
+      const novo = !atual;
+      try { localStorage.setItem("jarvis:fixado", novo ? "1" : "0"); } catch { /* sem storage */ }
+      return novo;
+    });
+  }, []);
+
   useEffect(() => {
     if (variant !== "window") return;
     let unlisten: (() => void) | undefined;
     let cancelado = false;
-    aoPerderFocoJanela(() => setOpen(false)).then((fn) => {
+    aoPerderFocoJanela(() => { if (!fixadoRef.current) setOpen(false); }).then((fn) => {
       if (cancelado) fn();
       else unlisten = fn;
     });
@@ -189,6 +212,69 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     return () => {
       cancelado = true;
       unlisten?.();
+    };
+  }, [variant]);
+
+  // ⌘+J: abre o Jarvis direto na aba "Conversa" (chat com a Inteligência
+  // do Infopro). `focoConversa` muda a cada atalho pra a aba focar o campo.
+  const [focoConversa, setFocoConversa] = useState(0);
+  const [rascunhoConversa, setRascunhoConversa] = useState("");
+  // ⌘ + J + C (modo Creator): o C só vale até 2s depois do ⌘J — fora disso,
+  // ⌘C continua sendo "copiar".
+  const [focoCreator, setFocoCreator] = useState(0);
+  // Atalho ⌘+J / ⌘+J+C — age ao SOLTAR (pedido do Davi):
+  // - apertou ⌘J: o Rust só foca o Jarvis (pra ouvir o C) — nada abre ainda;
+  // - C com ⌘ pressionado no meio do atalho → modo Creator;
+  // - soltou o J: espera um instante (dá tempo do C de quem tecla ⌘, J, C)
+  //   e abre a Conversa, ou o Creator se o C veio.
+  // Fora desse momento, ⌘C continua sendo "copiar".
+  const atalhoJ = useRef<{ ativo: boolean; creator: boolean; decisao: ReturnType<typeof setTimeout> | null }>({ ativo: false, creator: false, decisao: null });
+  useEffect(() => {
+    if (variant !== "window") return;
+    const abrirCreator = () => {
+      setOpen(true);
+      setAba("creator");
+      setFocoCreator((n) => n + 1);
+    };
+    const abrirConversa = () => {
+      setOpen(true);
+      setAba("conversa");
+      setFocoConversa((n) => n + 1);
+    };
+    const tecla = (e: KeyboardEvent) => {
+      const a = atalhoJ.current;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "c" || !(a.ativo || a.decisao)) return;
+      e.preventDefault();
+      a.creator = true;
+      if (a.decisao) { clearTimeout(a.decisao); a.decisao = null; abrirCreator(); }
+    };
+    window.addEventListener("keydown", tecla, true);
+    let unlisten: (() => void) | undefined;
+    let cancelado = false;
+    onAtalhoJ(
+      () => {
+        const a = atalhoJ.current;
+        if (a.decisao) clearTimeout(a.decisao);
+        atalhoJ.current = { ativo: true, creator: false, decisao: null };
+      },
+      () => {
+        const a = atalhoJ.current;
+        if (!a.ativo) return;
+        a.ativo = false;
+        if (a.creator) { abrirCreator(); return; }
+        a.decisao = setTimeout(() => {
+          a.decisao = null;
+          if (a.creator) abrirCreator(); else abrirConversa();
+        }, 350);
+      },
+    ).then((fn) => {
+      if (cancelado) fn();
+      else unlisten = fn;
+    });
+    return () => {
+      cancelado = true;
+      unlisten?.();
+      window.removeEventListener("keydown", tecla, true);
     };
   }, [variant]);
 
@@ -600,6 +686,52 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Cartão "sua prioridade #1 ainda não começou" (usePriorityOneNudge) —
   // "Começar" tem o mesmo comportamento de handleComecarPrioridadeUm, mas
   // sem fechar um ritual (ele não está aberto quando esse cartão aparece).
+  // Cobrança inteligente (tarefa agendada do Claude a cada 30 min).
+  const cobrancaIA = useCobrancaInteligente(user?.id);
+  // Links mandados do iPhone (Atalho "Jarvis") são transcritos aqui, em
+  // segundo plano — só no Jarvis do Mac, onde roda a transcrição.
+  useFilaCreator(user?.id, variant === "window" && isDesktop() && /Mac/i.test(navigator.platform || navigator.userAgent));
+  // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
+  // cobrança é de uma atividade, já inicia o foco nela.
+  const handleCobrancaComecar = useCallback(async () => {
+    const id = cobrancaIA.cobranca?.atividade_id;
+    await cobrancaIA.comprometer();
+    if (id) await handleComecarPrioridadeUm(id);
+  }, [cobrancaIA, handleComecarPrioridadeUm]);
+  // Voz: fala cada cobrança NOVA uma vez (e quando volta perguntando se fez).
+  // Só na janela do Jarvis no desktop, pra não falar em dobro.
+  const ultimaFalaCobranca = useRef<string | null>(null);
+  useEffect(() => {
+    const c = cobrancaIA.cobranca;
+    if (!c || (isDesktop() && variant !== "window")) return;
+    const chave = `${c.id}:${c.resposta ?? ""}:${c.adiada_ate ?? ""}`;
+    if (ultimaFalaCobranca.current === chave) return;
+    ultimaFalaCobranca.current = chave;
+    const compromisso = c.resposta === RESPOSTA_VOU_FAZER;
+    void falar(compromisso ? `Davi, você disse que ia fazer: ${c.titulo}. Fez?` : [c.titulo, c.primeiro_passo].filter(Boolean).join(". "));
+  }, [cobrancaIA.cobranca, variant]);
+
+  const handleCobrancaDescartar = useCallback(async () => {
+    const motivo = await pedirTexto("Por que isso não é prioridade agora? (o Jarvis leva isso em conta nas próximas cobranças)");
+    if (motivo === null) return;
+    await cobrancaIA.descartar(motivo.trim() || null);
+  }, [cobrancaIA]);
+  // "Outra coisa agora": pergunta o quê e tira a cobrança por 1h.
+  const handleCobrancaOutraCoisa = useCallback(async () => {
+    const oQue = await pedirTexto("O que você precisa fazer agora? (o Jarvis leva isso em conta e volta nisso depois)");
+    if (oQue === null) return;
+    await cobrancaIA.outraCoisa(oQue.trim() || "não disse");
+  }, [cobrancaIA]);
+
+  // "O que está me travando…": abre a Conversa já com o assunto escrito.
+  const handleCobrancaFalar = useCallback(async () => {
+    const titulo = cobrancaIA.cobranca?.titulo ?? "";
+    await abrirPainel();
+    setAba("conversa");
+    setRascunhoConversa(`Sobre a cobrança "${titulo}": o que está me travando é `);
+    setFocoConversa((n) => n + 1);
+  }, [cobrancaIA.cobranca?.titulo, abrirPainel]);
+
   const priorityOneNudge = usePriorityOneNudge({
     panelAberto: open,
     mainPriorityActivityId: dailyPlan.prioridadeUm?.id ?? null,
@@ -712,7 +844,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // janelinha do Jarvis); na web/embutido, não existe uma janela separada,
   // então só navega a própria página.
   const abrirNoAppPrincipal = useCallback((route: string) => {
-    setOpen(false);
+    // Fixado: continua aberto ao lado do app principal.
+    if (!fixadoRef.current) setOpen(false);
     if (variant === "window") {
       void openMainWindow(route);
     } else {
@@ -944,7 +1077,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // dentro dos 460x620), nunca troca a janela pra modo notification com o
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
-    dialogoExcedido || celebracao || cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
+    dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
     priorityOneNudge.mostrar || startDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
@@ -992,10 +1125,32 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // própria) usa Popover de verdade; na nativa, painel e notificação são
   // divs simples que preenchem a janela inteira, sem nenhuma matemática de
   // anchor.
+  // Canto superior esquerdo do painel: arrastar redimensiona (o tamanho fica salvo).
+  const tamanhoPainel = useTamanhoPainelJarvis(open, variant === "window");
+  useJarvisClicaAtravessa(variant === "window");
+  const alcaRedimensionar = (
+    <div
+      role="separator"
+      aria-label="Redimensionar o Jarvis"
+      title="Arraste para aumentar ou diminuir o Jarvis"
+      onPointerDown={(e) => void tamanhoPainel.iniciarRedimensionamento(e)}
+      className="group/alca absolute left-0 top-0 z-30 flex h-6 w-6 cursor-nwse-resize items-start justify-start p-1"
+    >
+      <svg viewBox="0 0 10 10" className={`h-2.5 w-2.5 text-muted-foreground transition-opacity ${tamanhoPainel.redimensionando ? "opacity-100" : "opacity-40 group-hover/alca:opacity-100"}`}>
+        <path d="M1 9 L9 1 M1 5 L5 1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+      </svg>
+    </div>
+  );
+
   const painelJsx = (
     <AssistantPanel
       onClose={() => setOpen(false)}
       onExpandir={variant === "window" ? handleExpandir : undefined}
+      fixado={fixado}
+      onAlternarFixado={alternarFixado}
+      focoConversa={focoConversa}
+      rascunhoConversa={rascunhoConversa}
+      focoCreator={focoCreator}
       aba={aba}
       onMudarAba={setAba}
       filtroResponsavel={filtroResponsavel}
@@ -1108,6 +1263,16 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     />
   ) : acessibilidadeFaltando ? (
     <AssistantAccessibilityPrompt onAbrirAjustes={() => void openAccessibilitySettings()} onDispensar={() => setAcessibilidadeFaltando(false)} />
+  ) : cobrancaIA.cobranca ? (
+    <AssistantCobrancaCard
+      cobranca={cobrancaIA.cobranca}
+      onComecar={() => void handleCobrancaComecar()}
+      onFeita={() => void cobrancaIA.feita()}
+      onAdiar={() => void cobrancaIA.adiar()}
+      onDescartar={() => void handleCobrancaDescartar()}
+      onFalar={() => void handleCobrancaFalar()}
+      onOutraCoisa={() => void handleCobrancaOutraCoisa()}
+    />
   ) : priorityOneNudge.mostrar ? (
     <JarvisNotificationCard
       titulo="🔥 Sua prioridade #1 ainda não começou"
@@ -1207,6 +1372,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   return (
     <>
       <div
+        // data-jarvis-vazio: a folga transparente da janela deixa o clique
+        // passar pro que está atrás (useJarvisClicaAtravessa).
+        data-jarvis-vazio={variant === "window" ? "" : undefined}
         className={variant === "window" ? `fixed inset-0 z-50 flex flex-col ${alinhamentoWrapper}` : "fixed z-50"}
         style={variant === "window" ? undefined : { left: pos.x, top: pos.y }}
       >
@@ -1221,8 +1389,15 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 fechado, o outro só com o painel aberto). */}
             {!open && notificacaoJsx}
             {open && (
-              <div className="shrink-0 overflow-hidden" style={{ width: TAMANHO_CONTEUDO_PAINEL.width, height: TAMANHO_CONTEUDO_PAINEL.height }}>
+              // min(): nunca maior que a janela (descontando o p-6 e a orbe
+              // empilhada embaixo) — se a janela sair menor, o painel encolhe
+              // junto em vez de aparecer cortado.
+              <div className="relative shrink-0 overflow-hidden" style={{
+                width: `min(${tamanhoPainel.tamanho.width}px, calc(100vw - 48px))`,
+                height: `min(${tamanhoPainel.tamanho.height}px, calc(100vh - 196px))`,
+              }}>
                 {painelJsx}
+                {alcaRedimensionar}
               </div>
             )}
             <AssistantOrb
@@ -1263,9 +1438,13 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
               onPointerDownOutside={(e) => {
                 if (orbRef.current?.contains(e.target as Node)) e.preventDefault();
               }}
-              className="h-[620px] w-[460px] max-w-[calc(100vw-2rem)] border-none bg-transparent p-0 shadow-none"
+              // Fixado: nada de fora (clique ou foco) fecha o painel.
+              onInteractOutside={(e) => { if (fixado) e.preventDefault(); }}
+              className="relative max-h-[calc(100vh-6rem)] max-w-[calc(100vw-2rem)] border-none bg-transparent p-0 shadow-none"
+              style={{ width: tamanhoPainel.tamanho.width, height: tamanhoPainel.tamanho.height }}
             >
               {painelJsx}
+              {alcaRedimensionar}
             </PopoverContent>
           </Popover>
         )}

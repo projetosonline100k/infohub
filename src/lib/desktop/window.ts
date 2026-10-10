@@ -125,6 +125,31 @@ const ORB_TAMANHO: Tamanho = { width: 140, height: 140 };
 // sobre "painel e janela real de tamanhos diferentes").
 export const TAMANHO_CONTEUDO_PAINEL: Tamanho = { width: 460, height: 620 };
 
+// Tamanho do painel escolhido pela pessoa (arrastando o canto do painel) —
+// fica salvo e vale pras próximas aberturas. Mínimo pra nada quebrar.
+export const TAMANHO_MINIMO_PAINEL: Tamanho = { width: 380, height: 460 };
+export const TAMANHO_MAXIMO_PAINEL: Tamanho = { width: 1200, height: 1100 };
+const CHAVE_TAMANHO_PAINEL = "jarvis:tamanho-painel";
+
+export function limitarTamanhoPainel(t: Tamanho): Tamanho {
+  return {
+    width: Math.round(Math.min(TAMANHO_MAXIMO_PAINEL.width, Math.max(TAMANHO_MINIMO_PAINEL.width, t.width))),
+    height: Math.round(Math.min(TAMANHO_MAXIMO_PAINEL.height, Math.max(TAMANHO_MINIMO_PAINEL.height, t.height))),
+  };
+}
+
+export function lerTamanhoPainel(): Tamanho {
+  try {
+    const salvo = JSON.parse(localStorage.getItem(CHAVE_TAMANHO_PAINEL) || "null");
+    if (salvo && typeof salvo.width === "number" && typeof salvo.height === "number") return limitarTamanhoPainel(salvo);
+  } catch { /* sem storage */ }
+  return TAMANHO_CONTEUDO_PAINEL;
+}
+
+export function salvarTamanhoPainel(t: Tamanho): void {
+  try { localStorage.setItem(CHAVE_TAMANHO_PAINEL, JSON.stringify(limitarTamanhoPainel(t))); } catch { /* sem storage */ }
+}
+
 // Item novo (pedido do usuário): "quando abro o Jarvis, ele some de onde
 // está" — antes, o painel preenchia a janela inteira e cobria a orbe por
 // trás. Agora a orbe continua visível, empilhada embaixo do painel — mesmo
@@ -133,23 +158,27 @@ export const TAMANHO_CONTEUDO_PAINEL: Tamanho = { width: 460, height: 620 };
 const GAP_EMPILHADO = 8; // gap-2
 const PADDING_EMPILHADO = 24; // p-6, em cada lado
 
-const PANEL_TAMANHO: Tamanho = {
-  width: TAMANHO_CONTEUDO_PAINEL.width + PADDING_EMPILHADO * 2,
-  height: TAMANHO_CONTEUDO_PAINEL.height + GAP_EMPILHADO + ORB_TAMANHO.height + PADDING_EMPILHADO * 2,
-};
+// Janela no modo painel = painel (do tamanho escolhido) + orbe empilhada.
+const janelaDoPainel = (conteudo: Tamanho): Tamanho => ({
+  width: conteudo.width + PADDING_EMPILHADO * 2,
+  height: conteudo.height + GAP_EMPILHADO + ORB_TAMANHO.height + PADDING_EMPILHADO * 2,
+});
 
 // Rodada 12: 230 só cabia o card, sem sobra pra orbe também aparecer
 // (usuário queria ver a orbe junto da mensagem — "dá a impressão que ele
 // está falando comigo"). 360 dá espaço pro card (agora com altura de
 // conteúdo, não mais forçado a preencher tudo) empilhado ACIMA da orbe
 // (~140px), ambos alinhados no canto inferior direito.
-const NOTIFICATION_TAMANHO: Tamanho = { width: 380, height: 360 };
+// 560 de altura: cabe a cobrança inteligente inteira (AssistantCobrancaCard,
+// até 360px) + gap + orbe (140) + padding (48). A folga transparente não atrapalha cliques
+// (useJarvisClicaAtravessa).
+const NOTIFICATION_TAMANHO: Tamanho = { width: 380, height: 560 };
 
-const TAMANHOS: Record<JarvisWindowMode, Tamanho> = {
+const TAMANHOS: Record<Exclude<JarvisWindowMode, "panel">, Tamanho> = {
   orb: ORB_TAMANHO,
-  panel: PANEL_TAMANHO,
   notification: NOTIFICATION_TAMANHO,
 };
+const tamanhoDoModo = (mode: JarvisWindowMode): Tamanho => (mode === "panel" ? janelaDoPainel(lerTamanhoPainel()) : TAMANHOS[mode]);
 
 // Item 4, rodada 8: garante que a janela `jarvis` (em qualquer modo) fique
 // inteira dentro da área útil do monitor atual (sem tocar dock/menu bar),
@@ -247,7 +276,18 @@ export async function setJarvisWindowMode(mode: JarvisWindowMode): Promise<void>
     const win = getCurrentWindow();
     const scale = await win.scaleFactor();
     const ancora = await obterAncora(win, scale);
-    const target = TAMANHOS[mode];
+    let target = tamanhoDoModo(mode);
+    // Painel: o tamanho salvo pode não caber neste monitor (ou foi salvo em
+    // outro) — limita à área útil, senão a janela sai menor que o painel e
+    // ele aparece cortado.
+    if (mode === "panel") {
+      const { currentMonitor } = await import("@tauri-apps/api/window");
+      const monitor = await currentMonitor();
+      if (monitor) {
+        const area = (monitor.workArea ?? { size: monitor.size }).size.toLogical(scale);
+        target = { width: Math.min(target.width, area.width), height: Math.min(target.height, area.height) };
+      }
+    }
     const bruta = { x: ancora.x - target.width, y: ancora.y - target.height };
     const { x, y } = await posicaoDentroDoMonitor(bruta.x, bruta.y, target.width, target.height);
     // Tamanho primeiro, depois posição — se o painel está prestes a
@@ -263,5 +303,44 @@ export async function setJarvisWindowMode(mode: JarvisWindowMode): Promise<void>
     definirAncora({ x: x + target.width, y: y + target.height });
   } catch {
     /* ignora — Jarvis ainda funciona, só não redimensiona a janela */
+  }
+}
+
+// Redimensiona a janela `jarvis` enquanto a pessoa arrasta o canto do
+// painel — mantém o canto inferior direito (a orbe) parado, igual a troca de
+// modo. Sem reclampar no monitor a cada movimento (evita "pulos"); quem
+// chama já limita o tamanho.
+export async function redimensionarPainelJarvis(conteudo: Tamanho): Promise<void> {
+  if (!isDesktop()) return;
+  try {
+    const { getCurrentWindow, LogicalSize, LogicalPosition } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    const scale = await win.scaleFactor();
+    const ancora = await obterAncora(win, scale);
+    const alvo = janelaDoPainel(conteudo);
+    await win.setSize(new LogicalSize(alvo.width, alvo.height));
+    await win.setPosition(new LogicalPosition(ancora.x - alvo.width, ancora.y - alvo.height));
+  } catch {
+    /* ignora — o painel só não muda de tamanho */
+  }
+}
+
+// Maior painel que cabe na tela a partir da âncora (pra não crescer pra
+// fora do monitor). Na web usa a janela do navegador.
+export async function tamanhoMaximoNaTela(): Promise<Tamanho> {
+  const folga = { width: PADDING_EMPILHADO * 2, height: GAP_EMPILHADO + ORB_TAMANHO.height + PADDING_EMPILHADO * 2 };
+  if (!isDesktop()) return { width: window.innerWidth - 32, height: window.innerHeight - 120 };
+  try {
+    const { getCurrentWindow, currentMonitor } = await import("@tauri-apps/api/window");
+    const win = getCurrentWindow();
+    const scale = await win.scaleFactor();
+    const monitor = await currentMonitor();
+    const ancora = await obterAncora(win, scale);
+    if (!monitor) return TAMANHO_MAXIMO_PAINEL;
+    const area = monitor.workArea ?? { position: monitor.position, size: monitor.size };
+    const pos = area.position.toLogical(scale);
+    return { width: ancora.x - pos.x - folga.width, height: ancora.y - pos.y - folga.height };
+  } catch {
+    return TAMANHO_MAXIMO_PAINEL;
   }
 }

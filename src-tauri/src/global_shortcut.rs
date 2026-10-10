@@ -20,6 +20,11 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 pub const EVENTO_ABRIR_ENCERRAR_DIA: &str = "abrir-encerrar-dia";
+/// ⌘+J: age ao SOLTAR (pedido do Davi). Apertou → só foca o Jarvis (pra ele
+/// ouvir um C, que com ⌘ ainda pressionado vira ⌘+J+C = modo Creator);
+/// soltou → o React decide: Conversa, ou Creator se o C veio no meio.
+pub const EVENTO_ATALHO_J_APERTADO: &str = "atalho-j-apertado";
+pub const EVENTO_ATALHO_J_SOLTO: &str = "atalho-j-solto";
 
 /// Guarda se o registro do atalho deu certo, pra Administração → Jarvis →
 /// Atalhos poder avisar "não pôde ser registrado" (item 15) em vez de o app
@@ -27,7 +32,7 @@ pub const EVENTO_ABRIR_ENCERRAR_DIA: &str = "abrir-encerrar-dia";
 #[derive(Default, Clone)]
 pub struct AtalhoEncerrarDiaState(pub Arc<AtomicBool>);
 
-fn mostrar_e_focar_jarvis(app: &AppHandle) {
+fn mostrar_e_focar_jarvis(app: &AppHandle, evento: &str) {
     if let Some(jarvis) = app.get_webview_window("jarvis") {
         let _ = jarvis.show();
         let _ = jarvis.set_focus();
@@ -36,7 +41,7 @@ fn mostrar_e_focar_jarvis(app: &AppHandle) {
         // qualquer chance de a janela vir atrás de outro app no primeiro
         // acionamento do atalho.
         let _ = jarvis.set_always_on_top(true);
-        let _ = jarvis.emit(EVENTO_ABRIR_ENCERRAR_DIA, ());
+        let _ = jarvis.emit(evento, ());
     }
 }
 
@@ -48,12 +53,17 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
     let flag = state.0.clone();
     let app_para_handler = app.clone();
     let atalho = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyE);
+    let atalho_conversa = Shortcut::new(Some(Modifiers::SUPER), Code::KeyJ);
 
     let plugin_ok = app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |_app, recebido, event| {
-                if event.state() == ShortcutState::Pressed && recebido == &atalho {
-                    mostrar_e_focar_jarvis(&app_para_handler);
+                let apertou = event.state() == ShortcutState::Pressed;
+                if recebido == &atalho && apertou {
+                    mostrar_e_focar_jarvis(&app_para_handler, EVENTO_ABRIR_ENCERRAR_DIA);
+                } else if recebido == &atalho_conversa {
+                    let evento = if apertou { EVENTO_ATALHO_J_APERTADO } else { EVENTO_ATALHO_J_SOLTO };
+                    mostrar_e_focar_jarvis(&app_para_handler, evento);
                 }
             })
             .build(),
@@ -65,6 +75,8 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
             .register(Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyE))
             .is_ok();
         flag.store(registrou, Ordering::SeqCst);
+        // ⌘+J é independente: se outro app já usar, só esse atalho falha.
+        let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::SUPER), Code::KeyJ));
     }
 
     state

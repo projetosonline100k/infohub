@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow, BookOpen, FolderPlus, Folder, X } from "lucide-react";
+import { FileText, Plus, Search, Trash2, Link as LinkIcon, Workflow, BookOpen, FolderPlus, Folder, X, LayoutTemplate, ChevronDown } from "lucide-react";
+import { MODELOS_DOCUMENTO, type ModeloDocumento } from "@/lib/documentos/modelos";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -244,6 +246,27 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     }
   };
 
+  // Documento já preenchido a partir de um modelo (ex.: Mentoria Core).
+  const criarDoModelo = async (modelo: ModeloDocumento) => {
+    const { data, error } = await supabase
+      .from("documentos")
+      .insert({
+        cliente_id: clienteId,
+        pasta_id: pastaAtiva === "todas" || pastaAtiva === "sem-pasta" ? null : pastaAtiva,
+        titulo: modelo.titulo,
+        conteudo: modelo.html(),
+      })
+      .select()
+      .single();
+
+    if (data && !error) {
+      setSelectedDocId(data.id);
+      setDocEditorOpen(true);
+    } else {
+      toast.error("Erro ao criar documento do modelo");
+    }
+  };
+
   const criarNovoCaderno = async () => {
     const { data, error } = await supabase
       .from("documentos")
@@ -333,6 +356,15 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     setMindMapEditorOpen(false);
     setSelectedDocId(null);
     carregarDocumentos();
+    // Guia aberta com ?documento=…: tira o documento do endereço ao fechar,
+    // senão sair da guia e voltar reabria o documento sozinho.
+    const params = new URLSearchParams(location.search);
+    if (params.has("documento")) {
+      params.delete("documento");
+      const resto = params.toString();
+      documentoDaUrlAberto.current = null;
+      navigate(`${location.pathname}${resto ? `?${resto}` : ""}`, { replace: true });
+    }
   };
 
   const tipoDocumento = (doc: Documento) => isMindMapContent(doc.conteudo) ? "mapa" : isCadernoContent(doc.conteudo) ? "caderno" : "documento";
@@ -372,6 +404,24 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
             <Plus className="h-4 w-4 mr-1" />
             Novo Mapa Mental
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline">
+                <LayoutTemplate className="h-4 w-4 mr-1" />
+                Modelos
+                <ChevronDown className="h-3.5 w-3.5 ml-1 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Criar documento a partir de</DropdownMenuLabel>
+              {MODELOS_DOCUMENTO.map((modelo) => (
+                <DropdownMenuItem key={modelo.id} onClick={() => void criarDoModelo(modelo)} className="flex flex-col items-start gap-0.5">
+                  <span className="font-medium">{modelo.nome}</span>
+                  <span className="text-xs text-muted-foreground">{modelo.descricao}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button size="sm" onClick={criarNovoDocumento}>
             <Plus className="h-4 w-4 mr-1" />
             Novo Documento

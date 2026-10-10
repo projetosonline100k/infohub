@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Maximize2, X } from "lucide-react";
+import { Clapperboard, Maximize2, Pin, PinOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AssistantTarefa, ColunaAtividade, NovaAtividadeInput } from "@/hooks/useAssistantAtividades";
 import type { AssistantEstadoPainel } from "@/hooks/useAssistantCobranca";
@@ -16,6 +16,11 @@ import { AssistantDocsTab } from "./tabs/AssistantDocsTab";
 import { AssistantNotasTab } from "./tabs/AssistantNotasTab";
 import { AssistantPerformanceTab } from "./tabs/AssistantPerformanceTab";
 import { AssistantRelatorioTab } from "./tabs/AssistantRelatorioTab";
+import { AssistantWhatsappTab } from "./tabs/AssistantWhatsappTab";
+import { AssistantConversaTab } from "./tabs/AssistantConversaTab";
+import { JarvisVozBotao } from "./JarvisVozBotao";
+import { AssistantCreatorTab } from "./tabs/AssistantCreatorTab";
+import { JarvisUsoClaude } from "./JarvisUsoClaude";
 import { EndOfDayFlow } from "./enddoday/EndOfDayFlow";
 import { StartDayFlow } from "./startday/StartDayFlow";
 import type { AtividadeDoPlano, PlanoDiario } from "@/lib/productivity/DailyPlanService";
@@ -61,6 +66,15 @@ interface AssistantPanelProps {
   // (não existe no modo web embutido — ali não há uma janela separada pra
   // focar, então o botão some quando esta prop não é passada).
   onExpandir?: () => void;
+  // Fixado: clicar fora não fecha o painel (só o X ou a orbe).
+  fixado: boolean;
+  onAlternarFixado: () => void;
+  // Muda a cada ⌘+J: a aba Conversa foca o campo de mensagem.
+  focoConversa?: number;
+  // Texto já escrito na Conversa ao abrir (ex.: "O que está me travando…").
+  rascunhoConversa?: string;
+  // Muda a cada ⌘ + J + C: a aba Creator foca o campo do link.
+  focoCreator?: number;
   aba: AssistantAba;
   onMudarAba: (aba: AssistantAba) => void;
   filtroResponsavel: FiltroResponsavel;
@@ -165,6 +179,11 @@ export function AssistantPanel(props: AssistantPanelProps) {
   const {
     onClose,
     onExpandir,
+    fixado,
+    onAlternarFixado,
+    focoConversa,
+    rascunhoConversa,
+    focoCreator,
     aba,
     onMudarAba,
     estado,
@@ -258,6 +277,20 @@ export function AssistantPanel(props: AssistantPanelProps) {
           >
             <span aria-hidden="true">🌙</span>
           </button>
+          <JarvisVozBotao />
+          <button
+            type="button"
+            onClick={onAlternarFixado}
+            aria-pressed={fixado}
+            aria-label={fixado ? "Desafixar o Jarvis" : "Fixar o Jarvis"}
+            title={fixado ? "Fixado: clicar fora não fecha. Clique para desafixar" : "Fixar: clicar fora não fecha o Jarvis"}
+            className={cn(
+              "rounded-md p-1 transition-colors hover:bg-accent hover:text-accent-foreground",
+              fixado ? "bg-accent text-foreground" : "text-muted-foreground",
+            )}
+          >
+            {fixado ? <Pin className="h-4 w-4 fill-current" /> : <PinOff className="h-4 w-4" />}
+          </button>
           {onExpandir && (
             <button
               type="button"
@@ -289,7 +322,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
       {/* Sem navegação por aba durante um ritual (encerrar/começar o dia) —
           item 8 ("sensação de ritual"), evita trocar de aba no meio do
           questionário e perder a noção de onde estava. */}
-      {!fluxoRitualAberto && (
+      {!fluxoRitualAberto && aba !== "creator" && (
         <div className="shrink-0">
           <AssistantTopNav
             aba={aba}
@@ -297,6 +330,23 @@ export function AssistantPanel(props: AssistantPanelProps) {
             filtroResponsavel={props.filtroResponsavel}
             onMudarFiltroResponsavel={props.onMudarFiltroResponsavel}
           />
+        </div>
+      )}
+      {/* Modo Creator (⌘ + J + C): some a barra normal e ficam só as
+          ferramentas de criador (escolhidas dentro da aba). */}
+      {!fluxoRitualAberto && aba === "creator" && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-border bg-violet-500/10 px-2 py-1.5">
+          <span className="mr-1 inline-flex items-center gap-1 px-1 text-[11px] font-bold uppercase tracking-wide text-violet-600 dark:text-violet-300">
+            <Clapperboard className="h-3.5 w-3.5" /> Creator
+          </span>
+          <button
+            type="button"
+            onClick={() => onMudarAba("hoje")}
+            title="Sair do modo Creator"
+            className="ml-auto rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            Sair do Creator
+          </button>
         </div>
       )}
 
@@ -391,6 +441,12 @@ export function AssistantPanel(props: AssistantPanelProps) {
 
         {!fluxoRitualAberto && aba === "relatorio" && <AssistantRelatorioTab />}
 
+        {!fluxoRitualAberto && aba === "whatsapp" && <AssistantWhatsappTab />}
+
+        {!fluxoRitualAberto && aba === "conversa" && <AssistantConversaTab foco={focoConversa ?? 0} rascunho={rascunhoConversa} />}
+
+        {!fluxoRitualAberto && aba === "creator" && <AssistantCreatorTab foco={focoCreator ?? 0} />}
+
         {!fluxoRitualAberto && aba === "notas" && (
           <AssistantNotasTab
             projetoId={props.projetoId}
@@ -406,6 +462,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
           />
         )}
       </div>
+      <JarvisUsoClaude />
     </div>
   );
 }

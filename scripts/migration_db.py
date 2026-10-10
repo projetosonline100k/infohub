@@ -26,7 +26,7 @@ if not values.get('PGPASSWORD'):
     print('PASSWORD_EMPTY')
     sys.exit(2)
 
-def connect():
+def _connect_uma_vez():
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     ssl_context.load_verify_locations(
         cafile=str(Path(__file__).resolve().parents[1] / 'prod-ca-2021.crt')
@@ -40,3 +40,16 @@ def connect():
         password=values['PGPASSWORD'], timeout=15,
         ssl_context=ssl_context,
     )
+
+
+def connect(tentativas=4):
+    """Conecta com novas tentativas: o pooler às vezes derruba o handshake
+    (SSL EOF, "network error", connection reset). Espera 1s, 2s, 4s."""
+    import time
+    for n in range(tentativas):
+        try:
+            return _connect_uma_vez()
+        except (pg8000.dbapi.InterfaceError, ssl.SSLError, OSError):
+            if n == tentativas - 1:
+                raise
+            time.sleep(2 ** n)

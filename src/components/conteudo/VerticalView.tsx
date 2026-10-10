@@ -956,7 +956,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       {/* Kanban View */}
       {viewMode === "quadro" && (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <div className="flex gap-4 overflow-x-auto pb-4">
+          <div className="flex w-0 min-w-full gap-4 overflow-x-auto overscroll-x-contain pb-4">
             {KANBAN_COLUMNS.filter((column) => column.id !== "ideia").map((column) => (
               <div key={column.id} className={`flex-shrink-0 min-w-[260px] w-72 rounded-lg border p-3 ${column.color}`}>
                 <h4 className="font-medium text-sm mb-3 flex items-center justify-between gap-2">
@@ -1106,7 +1106,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
               Nenhum vídeo adicionado ainda
             </p>
           ) : (
-            <div className="flex gap-3 overflow-x-auto pb-2">
+            <div className="flex w-0 min-w-full gap-3 overflow-x-auto overscroll-x-contain pb-2">
               {videosReferencia.map((video) => (
                 <div
                   key={video.id}

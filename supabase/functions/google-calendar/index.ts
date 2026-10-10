@@ -275,6 +275,23 @@ serve(async (req) => {
       });
       return json({ event: { ...event, calendarId } });
     }
+    // Responder a um convite (aceitar/talvez/recusar). Muda só a SUA linha na
+    // lista de convidados e avisa o organizador, como o botão do Google.
+    if (action === "respond") {
+      const respostas: Record<string, string> = { aceitar: "accepted", talvez: "tentative", recusar: "declined" };
+      const responseStatus = respostas[body.resposta];
+      if (!body.eventId || !responseStatus) return json({ error: "Resposta invalida" }, 400);
+      const calendarId = body.calendarId || "primary";
+      const caminho = `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(body.eventId)}`;
+      const atual = await googleFetch(caminho, accessToken);
+      const attendees = (atual.attendees || []) as Record<string, unknown>[];
+      if (!attendees.some((a) => a.self === true)) return json({ error: "Voce nao esta na lista de convidados deste evento" }, 400);
+      const event = await googleFetch(`${caminho}?sendUpdates=all`, accessToken, {
+        method: "PATCH",
+        body: JSON.stringify({ attendees: attendees.map((a) => (a.self === true ? { ...a, responseStatus } : a)) }),
+      });
+      return json({ event: { ...event, calendarId } });
+    }
     if (action === "delete") {
       if (!body.eventId) return json({ error: "Evento invalido" }, 400);
       const calendarId = body.calendarId || "primary";

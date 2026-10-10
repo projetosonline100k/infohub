@@ -87,7 +87,9 @@ export default function ClienteDetalhe() {
     setAcesso({ proprietario: false, permissoes: permissoesVazias() });
     // Ao abrir um projeto, vai direto para Atividades — mas alguém sem
     // permissão nessa área ainda cai em Informações gerais (ver abaixo).
-    setAbaAtiva("atividades");
+    // Guia aberta num documento (?documento=…, ex.: ⌘+clique) vai pra
+    // Documentos: senão este reset passava por cima e a guia abria em Atividades.
+    setAbaAtiva(searchParams.get("documento") ? "documentos" : "atividades");
 
     try {
       const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();

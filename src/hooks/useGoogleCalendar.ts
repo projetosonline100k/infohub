@@ -3,9 +3,11 @@ import { endOfMonth, endOfWeek, startOfMonth, startOfWeek, subMonths, addMonths 
 import { toast } from "sonner";
 import {
   chamarGoogleCalendar,
+  GoogleCalendarExpirado,
   GoogleCalendar,
   GoogleCalendarEvent,
   GoogleEventInput,
+  RespostaConvite,
 } from "@/lib/googleCalendar";
 
 export const STORAGE_KEY = "infopro.google-calendar.selected";
@@ -39,6 +41,7 @@ export function useGoogleCalendar(anchorDate: Date) {
         setSelectedIds(valid.length ? valid : defaults.length ? defaults : response.calendars.slice(0, 1).map((calendar) => calendar.id));
       }
     } catch (error) {
+      if (error instanceof GoogleCalendarExpirado) setConnected(false);
       toast.error(error instanceof Error ? error.message : "Nao foi possivel carregar a agenda");
     } finally {
       setLoading(false);
@@ -61,6 +64,7 @@ export function useGoogleCalendar(anchorDate: Date) {
       });
       setEvents(response.events.filter((event) => event.status !== "cancelled"));
     } catch (error) {
+      if (error instanceof GoogleCalendarExpirado) setConnected(false);
       toast.error(error instanceof Error ? error.message : "Nao foi possivel carregar os eventos");
     } finally {
       setLoadingEvents(false);
@@ -105,9 +109,14 @@ export function useGoogleCalendar(anchorDate: Date) {
     await loadEvents();
   };
 
+  const responderConvite = async (event: GoogleCalendarEvent, resposta: RespostaConvite) => {
+    await chamarGoogleCalendar({ action: "respond", calendarId: event.calendarId, eventId: event.id, resposta });
+    await loadEvents();
+  };
+
   return {
     loading, connected, email, calendars, selectedIds, events, loadingEvents,
-    connect, disconnect, toggleCalendar, reload: loadEvents, saveEvent, deleteEvent,
+    connect, disconnect, toggleCalendar, reload: loadEvents, saveEvent, deleteEvent, responderConvite,
   };
 }
 

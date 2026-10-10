@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { AlertTriangle, Check, Expand, Maximize, Minus, Plus, Shrink } from "lucide-react";
 import { cn, iniciais } from "@/lib/utils";
@@ -205,7 +206,7 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       className={cn("cursor-grab touch-none select-none overflow-hidden bg-muted/20 active:cursor-grabbing",
         // Tela cheia abaixo da barra de abas (h-10) e abaixo dos painéis (z-50),
         // pra o card da atividade ainda abrir por cima do mapa.
-        telaCheia ? "fixed inset-x-0 bottom-0 top-10 z-[45] bg-background" : "relative h-[calc(100vh-15rem)] min-h-[420px] rounded-lg border")}
+        telaCheia ? "fixed inset-0 z-[45] bg-background" : "relative h-[calc(100vh-15rem)] min-h-[420px] rounded-lg border")}
       style={{
         backgroundImage: "radial-gradient(hsl(var(--muted-foreground) / 0.18) 1px, transparent 1px)",
         backgroundSize: `${24 * visao.escala}px ${24 * visao.escala}px`,
@@ -324,14 +325,16 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       </div>
       <p className="pointer-events-none absolute right-3 top-4 text-[11px] text-muted-foreground">Arraste o fundo para navegar · pinça, ⌘+roda ou ⌘− / ⌘= para zoom</p>
 
-      {arrasto && (
+      {/* Portal pro body: dentro da guia a prévia ficaria deslocada do mouse. */}
+      {arrasto && createPortal(
         <div className="pointer-events-none fixed z-[300] rounded-lg border bg-background p-2 text-sm shadow-xl"
           style={{ left: arrasto.x + 10, top: arrasto.y + 10, width: LARGURA_COLUNA - 16 }}>
           <p className="line-clamp-2">{arrasto.atividade.titulo}</p>
           {arrasto.alvo && arrasto.alvo.clienteId !== arrasto.atividade.cliente_id && (
             <p className="mt-1 text-[11px] text-destructive">Só dá pra mover dentro do mesmo projeto</p>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

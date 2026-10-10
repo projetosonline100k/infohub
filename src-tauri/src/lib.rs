@@ -5,6 +5,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::MacosLauncher;
 
+mod janelas;
 #[cfg(target_os = "macos")]
 mod active_window;
 #[cfg(target_os = "macos")]
@@ -15,6 +16,10 @@ mod global_shortcut;
 mod mac_sleep;
 #[cfg(target_os = "macos")]
 mod lembretes;
+#[cfg(target_os = "macos")]
+mod voz;
+#[cfg(target_os = "macos")]
+mod creator;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -40,6 +45,8 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder
         .manage(focus_monitor::FocusMonitorState::default())
+        .manage(voz::VozState::default())
+        .manage(creator::CreatorState::default())
         .invoke_handler(tauri::generate_handler![
             focus_monitor::start_focus_monitor,
             focus_monitor::stop_focus_monitor,
@@ -54,7 +61,15 @@ pub fn run() {
             lembretes::lembrete_desligar,
             lembretes::lembrete_marcar,
             lembretes::lembretes_sincronizar,
+            janelas::destacar_aba,
+            voz::voz_falar,
+            voz::voz_parar,
+            voz::voz_listar,
+            creator::creator_transcrever,
         ]);
+    // Fora do macOS só existe o comando de destacar aba.
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![janelas::destacar_aba]);
 
     builder
         .setup(|app| {

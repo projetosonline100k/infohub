@@ -5,10 +5,10 @@ import {
   subDays, subMonths, subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, CalendarDays, ChevronLeft, ListTodo, ChevronRight, Loader2, LogOut, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ListTodo, ChevronRight, Loader2, LogOut, MailQuestion, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { atividadeDoEvento, corDoTexto, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendarEvent, propriedadesInfopro } from "@/lib/googleCalendar";
+import { atividadeDoEvento, corDoTexto, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendarEvent, propriedadesInfopro, statusConvite, type StatusConvite } from "@/lib/googleCalendar";
 import { estaAtrasada, useAtividadesDaAgenda, type AtividadeVinculada } from "@/hooks/useAtividadesDaAgenda";
 import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
 import { supabase } from "@/integrations/supabase/client";
@@ -229,7 +229,7 @@ export default function Agenda() {
         {atividadesVisiveis && <AtividadesArrastaveis onSoltar={agendarAtividade} onFechar={() => setAtividadesVisiveis(false)} agendadas={vinculadas.agendadas} onPrevia={setPreviaDrop} />}
       </div>
 
-      <EventoDialog open={dialogOpen} onOpenChange={setDialogOpen} initialDate={dialogDate} initialEnd={dialogEnd} event={selectedEvent} calendars={calendar.calendars} onSave={calendar.saveEvent} onDelete={calendar.deleteEvent}
+      <EventoDialog open={dialogOpen} onOpenChange={setDialogOpen} initialDate={dialogDate} initialEnd={dialogEnd} event={selectedEvent} calendars={calendar.calendars} onSave={calendar.saveEvent} onDelete={calendar.deleteEvent} onResponder={calendar.responderConvite}
         atividade={resumoAtividade} onAbrirAtividade={atividadeSelecionada ? () => { setCardAtividadeId(atividadeSelecionada.id); setDialogOpen(false); } : undefined} />
 
       {/* Card completo da atividade (o mesmo painel da tela de Atividades). */}
@@ -427,6 +427,16 @@ function GridDay({ day, onNew, previa, children }: { day: Date; onNew: (date: Da
 const SNAP_MINUTES = 15;
 const HOUR_HEIGHT = 64;
 
+// Visual dos convites, como no Google Agenda: pendente = só contorno
+// tracejado (falta responder); talvez = listrado; recusado = apagado e riscado.
+function estiloConvite(color: string, status: StatusConvite | null): { style: React.CSSProperties; className?: string } {
+  if (status === "pendente") return { style: { background: "hsl(var(--background))", color, border: `2px dashed ${color}` } };
+  if (status === "talvez") return { style: { background: `repeating-linear-gradient(135deg, ${color} 0 6px, color-mix(in srgb, ${color} 55%, white) 6px 12px)`, color: corDoTexto(color) } };
+  if (status === "recusado") return { style: { background: "hsl(var(--background))", color, border: `1px solid ${color}` }, className: "opacity-60 line-through" };
+  return { style: { background: color, color: corDoTexto(color) } };
+}
+const ROTULO_CONVITE: Record<StatusConvite, string> = { pendente: "Convite: falta responder", talvez: "Convite: você respondeu talvez", recusado: "Convite recusado" };
+
 function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen, onReschedule }: {
   event: GoogleCalendarEvent; color: string; position: PosicaoEvento; dayIndex: number; dayCount: number;
   marca: { atrasada: boolean } | null;
@@ -530,19 +540,21 @@ function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen,
   const title = event.summary || "Sem titulo";
   const duracao = duracaoTexto(minutes);
   const horario = `${format(start, "HH:mm")}–${format(end, "HH:mm")}`;
+  const convite = statusConvite(event);
+  const visual = estiloConvite(color, convite);
 
-  return <div role="button" tabIndex={0} title={`${title}\n${horario} · ${duracao}`} onPointerDown={beginMove} onClick={() => { if (!ignoreClick.current) onOpen(event); }} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") onOpen(event); }}
-    className={cn("absolute overflow-hidden rounded-md border border-card px-1.5 text-left text-xs leading-tight focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1", minutes < 50 ? "py-0.5" : "py-1", dragging ? "cursor-grabbing opacity-90 shadow-lg" : "cursor-grab", saving && "opacity-80")}
-    style={{ top, height: Math.max(20, height - 1), ...horizontal, zIndex: dragging ? 50 : Math.min(position.z, 40), background: color, color: corDoTexto(color), transform: draft?.dayShift ? `translateX(${draft.dayShift * draft.columnWidth}px)` : undefined }}>
+  return <div role="button" tabIndex={0} title={`${title}\n${horario} · ${duracao}${convite ? `\n${ROTULO_CONVITE[convite]}` : ""}`} onPointerDown={beginMove} onClick={() => { if (!ignoreClick.current) onOpen(event); }} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") onOpen(event); }}
+    className={cn("absolute overflow-hidden rounded-md border border-card px-1.5 text-left text-xs leading-tight focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1", minutes < 50 ? "py-0.5" : "py-1", dragging ? "cursor-grabbing opacity-90 shadow-lg" : "cursor-grab", saving && "opacity-80", visual.className)}
+    style={{ top, height: Math.max(20, height - 1), ...horizontal, zIndex: dragging ? 50 : Math.min(position.z, 40), ...visual.style, transform: draft?.dayShift ? `translateX(${draft.dayShift * draft.columnWidth}px)` : undefined }}>
     <div onPointerDown={(pointer) => beginResize("start", pointer)} className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize" aria-label="Arraste para alterar o início" />
     {/* A duração vem primeiro e em negrito: em coluna estreita, o que corta
         é o horário, nunca o "quanto tempo leva". */}
     {minutes < 50
       // Evento curto: uma linha, "Título ······ 45min".
-      ? <p className="flex items-center gap-1">{marca && <ListTodo className="h-3 w-3 shrink-0" />}<span className="min-w-0 flex-1 truncate font-medium">{title}</span>{marca?.atrasada && <AlertTriangle className="h-3 w-3 shrink-0 text-red-600" aria-label="Atrasada" />}<span className="shrink-0 font-bold">{saving ? "…" : duracao}</span></p>
+      ? <p className="flex items-center gap-1">{convite === "pendente" && <MailQuestion className="h-3 w-3 shrink-0" aria-label="Convite pendente" />}{marca && <ListTodo className="h-3 w-3 shrink-0" />}<span className="min-w-0 flex-1 truncate font-medium">{title}</span>{marca?.atrasada && <AlertTriangle className="h-3 w-3 shrink-0 text-red-600" aria-label="Atrasada" />}<span className="shrink-0 font-bold">{saving ? "…" : duracao}</span></p>
       : <>
         {/* Bloco de até ~1h15: título numa linha só, pra caber duração e horário. */}
-        <p className={cn("font-medium", minutes < 75 ? "truncate" : "line-clamp-2")}>{marca && <ListTodo className="mr-1 inline h-3 w-3 align-[-2px]" />}{title}</p>
+        <p className={cn("font-medium", minutes < 75 ? "truncate" : "line-clamp-2")}>{convite === "pendente" && <MailQuestion className="mr-1 inline h-3 w-3 align-[-2px]" aria-label="Convite pendente" />}{marca && <ListTodo className="mr-1 inline h-3 w-3 align-[-2px]" />}{title}</p>
         <p className="truncate font-bold">{saving ? "Salvando..." : duracao}</p>
         {/* Horário em linha própria e compacto, pra não ser cortado em coluna estreita. */}
         {!saving && <p className="whitespace-nowrap text-[11px] tabular-nums opacity-80">{horario}</p>}
@@ -553,5 +565,7 @@ function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen,
 }
 
 function EventChip({ event, color, marca, onClick }: { event: GoogleCalendarEvent; color: string; marca?: { atrasada: boolean } | null; onClick: () => void }) {
-  return <button onClick={(e) => { e.stopPropagation(); onClick(); }} className="flex w-full items-center gap-1.5 overflow-hidden rounded px-1.5 py-1 text-left text-[11px] font-medium" style={{ background: color, color: corDoTexto(color) }}>{marca && <ListTodo className="h-3 w-3 shrink-0" />}<span className="truncate">{event.start.dateTime && `${format(eventStart(event), "HH:mm")} `}{event.summary || "Sem titulo"}</span>{marca?.atrasada && <AlertTriangle className="ml-auto h-3 w-3 shrink-0 text-red-200" aria-label="Atrasada" />}</button>;
+  const convite = statusConvite(event);
+  const visual = estiloConvite(color, convite);
+  return <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={convite ? ROTULO_CONVITE[convite] : undefined} className={cn("flex w-full items-center gap-1.5 overflow-hidden rounded px-1.5 py-1 text-left text-[11px] font-medium", visual.className)} style={visual.style}>{convite === "pendente" && <MailQuestion className="h-3 w-3 shrink-0" aria-label="Convite pendente" />}{marca && <ListTodo className="h-3 w-3 shrink-0" />}<span className="truncate">{event.start.dateTime && `${format(eventStart(event), "HH:mm")} `}{event.summary || "Sem titulo"}</span>{marca?.atrasada && <AlertTriangle className="ml-auto h-3 w-3 shrink-0 text-red-200" aria-label="Atrasada" />}</button>;
 }

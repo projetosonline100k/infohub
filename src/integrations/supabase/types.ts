@@ -170,6 +170,39 @@ export type Database = {
         }
         Relationships: []
       }
+      claude_uso: {
+        Row: {
+          atualizado_em: string
+          extra_ativo: boolean
+          janela_5h_pct: number | null
+          janela_5h_renova_em: string | null
+          plano: string | null
+          semanal_pct: number | null
+          semanal_renova_em: string | null
+          user_id: string
+        }
+        Insert: {
+          atualizado_em?: string
+          extra_ativo?: boolean
+          janela_5h_pct?: number | null
+          janela_5h_renova_em?: string | null
+          plano?: string | null
+          semanal_pct?: number | null
+          semanal_renova_em?: string | null
+          user_id: string
+        }
+        Update: {
+          atualizado_em?: string
+          extra_ativo?: boolean
+          janela_5h_pct?: number | null
+          janela_5h_renova_em?: string | null
+          plano?: string | null
+          semanal_pct?: number | null
+          semanal_renova_em?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       clientes: {
         Row: {
           planilha_referencias_url: string | null
@@ -741,6 +774,186 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      creator_analises: {
+        Row: {
+          cliente_id: string | null
+          concluida_em: string | null
+          criada_em: string
+          erro: string | null
+          id: string
+          nicho_livre: string | null
+          resultado: Json | null
+          status: string
+          transcricao_ids: string[]
+          user_id: string
+        }
+        Insert: {
+          cliente_id?: string | null
+          concluida_em?: string | null
+          criada_em?: string
+          erro?: string | null
+          id?: string
+          nicho_livre?: string | null
+          resultado?: Json | null
+          status?: string
+          transcricao_ids: string[]
+          user_id?: string
+        }
+        Update: {
+          cliente_id?: string | null
+          concluida_em?: string | null
+          criada_em?: string
+          erro?: string | null
+          id?: string
+          nicho_livre?: string | null
+          resultado?: Json | null
+          status?: string
+          transcricao_ids?: string[]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      creator_atalho_clientes: {
+        Row: { cliente_id: string; criado_em: string; id: string; token_hash: string; user_id: string }
+        Insert: { cliente_id: string; criado_em?: string; id?: string; token_hash: string; user_id: string }
+        Update: { cliente_id?: string; criado_em?: string; id?: string; token_hash?: string; user_id?: string }
+        Relationships: []
+      }
+      creator_ideias: {
+        Row: {
+          criada_em: string
+          documento_id: string | null
+          erro: string | null
+          headline_original: string | null
+          headline_pt: string | null
+          id: string
+          idioma: string | null
+          link: string
+          numero: number
+          pasta_id: string
+          status: string
+          traducao_pt: string | null
+          transcricao_id: string | null
+          user_id: string
+        }
+        Insert: {
+          criada_em?: string
+          documento_id?: string | null
+          erro?: string | null
+          headline_original?: string | null
+          headline_pt?: string | null
+          id?: string
+          idioma?: string | null
+          link: string
+          numero?: number
+          pasta_id: string
+          status?: string
+          traducao_pt?: string | null
+          transcricao_id?: string | null
+          user_id?: string
+        }
+        Update: {
+          criada_em?: string
+          documento_id?: string | null
+          erro?: string | null
+          headline_original?: string | null
+          headline_pt?: string | null
+          id?: string
+          idioma?: string | null
+          link?: string
+          numero?: number
+          pasta_id?: string
+          status?: string
+          traducao_pt?: string | null
+          transcricao_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      creator_modo: {
+        Row: { atualizado_em: string; pasta_id: string | null; user_id: string }
+        Insert: { atualizado_em?: string; pasta_id?: string | null; user_id?: string }
+        Update: { atualizado_em?: string; pasta_id?: string | null; user_id?: string }
+        Relationships: []
+      }
+      creator_links: {
+        Row: {
+          cliente_id: string | null
+          criada_em: string
+          erro: string | null
+          id: string
+          link: string
+          origem: string
+          pasta_id: string | null
+          status: string
+          transcricao_id: string | null
+          user_id: string
+        }
+        Insert: {
+          cliente_id?: string | null
+          criada_em?: string
+          erro?: string | null
+          id?: string
+          link: string
+          origem?: string
+          pasta_id?: string | null
+          status?: string
+          transcricao_id?: string | null
+          user_id: string
+        }
+        Update: {
+          cliente_id?: string | null
+          criada_em?: string
+          erro?: string | null
+          id?: string
+          link?: string
+          origem?: string
+          pasta_id?: string | null
+          status?: string
+          transcricao_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      creator_transcricoes: {
+        Row: {
+          autor: string | null
+          criada_em: string
+          duracao_segundos: number | null
+          id: string
+          idioma: string | null
+          levou_segundos: number | null
+          link: string
+          texto: string
+          titulo: string | null
+          user_id: string
+        }
+        Insert: {
+          autor?: string | null
+          criada_em?: string
+          duracao_segundos?: number | null
+          id?: string
+          idioma?: string | null
+          levou_segundos?: number | null
+          link: string
+          texto: string
+          titulo?: string | null
+          user_id?: string
+        }
+        Update: {
+          autor?: string | null
+          criada_em?: string
+          duracao_segundos?: number | null
+          id?: string
+          idioma?: string | null
+          levou_segundos?: number | null
+          link?: string
+          texto?: string
+          titulo?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       daily_plan_activities: {
         Row: {
@@ -1766,6 +1979,9 @@ export type Database = {
           visualizacoes: number | null
           transcricao: string | null
           created_at: string
+          idioma: string | null
+          titulo_pt: string | null
+          transcricao_pt: string | null
           id: string
           link_video: string | null
           ordem: number
@@ -1780,6 +1996,9 @@ export type Database = {
           visualizacoes?: number | null
           transcricao?: string | null
           created_at?: string
+          idioma?: string | null
+          titulo_pt?: string | null
+          transcricao_pt?: string | null
           id?: string
           link_video?: string | null
           ordem?: number
@@ -1794,6 +2013,9 @@ export type Database = {
           visualizacoes?: number | null
           transcricao?: string | null
           created_at?: string
+          idioma?: string | null
+          titulo_pt?: string | null
+          transcricao_pt?: string | null
           id?: string
           link_video?: string | null
           ordem?: number
@@ -1815,6 +2037,7 @@ export type Database = {
           editado_tamanho: number | null
           editado_url: string | null
           cliente_id: string
+          comentario: string | null
           created_at: string
           data_postagem: string | null
           descricao: string | null
@@ -1838,6 +2061,7 @@ export type Database = {
           editado_tamanho?: number | null
           editado_url?: string | null
           cliente_id: string
+          comentario?: string | null
           created_at?: string
           data_postagem?: string | null
           descricao?: string | null
@@ -1861,6 +2085,7 @@ export type Database = {
           editado_tamanho?: number | null
           editado_url?: string | null
           cliente_id?: string
+          comentario?: string | null
           created_at?: string
           data_postagem?: string | null
           descricao?: string | null
@@ -1982,11 +2207,141 @@ export type Database = {
         }
         Relationships: []
       }
+      jarvis_cobrancas: {
+        Row: {
+          adiada_ate: string | null
+          atividade_id: string | null
+          criada_em: string
+          etiqueta: string | null
+          fatos: string[]
+          minutos: number | null
+          primeiro_passo: string | null
+          proximos: string[]
+          id: string
+          motivo: string | null
+          respondida_em: string | null
+          resposta: string | null
+          status: string
+          texto: string
+          titulo: string
+          urgencia: number
+          user_id: string
+          vezes_adiada: number
+        }
+        Insert: {
+          adiada_ate?: string | null
+          atividade_id?: string | null
+          criada_em?: string
+          etiqueta?: string | null
+          fatos?: string[]
+          minutos?: number | null
+          primeiro_passo?: string | null
+          proximos?: string[]
+          id?: string
+          motivo?: string | null
+          respondida_em?: string | null
+          resposta?: string | null
+          status?: string
+          texto: string
+          titulo: string
+          urgencia?: number
+          user_id: string
+          vezes_adiada?: number
+        }
+        Update: {
+          adiada_ate?: string | null
+          atividade_id?: string | null
+          criada_em?: string
+          etiqueta?: string | null
+          fatos?: string[]
+          minutos?: number | null
+          primeiro_passo?: string | null
+          proximos?: string[]
+          id?: string
+          motivo?: string | null
+          respondida_em?: string | null
+          resposta?: string | null
+          status?: string
+          texto?: string
+          titulo?: string
+          urgencia?: number
+          user_id?: string
+          vezes_adiada?: number
+        }
+        Relationships: []
+      }
+      jarvis_conversa: {
+        Row: {
+          criada_em: string
+          id: string
+          papel: string
+          resposta_a: string | null
+          status: string | null
+          texto: string
+          user_id: string
+        }
+        Insert: {
+          criada_em?: string
+          id?: string
+          papel: string
+          resposta_a?: string | null
+          status?: string | null
+          texto: string
+          user_id?: string
+        }
+        Update: {
+          criada_em?: string
+          id?: string
+          papel?: string
+          resposta_a?: string | null
+          status?: string | null
+          texto?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      whatsapp_painel: {
+        Row: {
+          atualizacao_mensagem: string | null
+          atualizacao_pedida_em: string | null
+          atualizacao_status: string | null
+          atualizado_em: string
+          cards: Json
+          historico: Json
+          respondidos: Json
+          user_id: string
+        }
+        Insert: {
+          atualizacao_mensagem?: string | null
+          atualizacao_pedida_em?: string | null
+          atualizacao_status?: string | null
+          atualizado_em?: string
+          cards?: Json
+          historico?: Json
+          respondidos?: Json
+          user_id?: string
+        }
+        Update: {
+          atualizacao_mensagem?: string | null
+          atualizacao_pedida_em?: string | null
+          atualizacao_status?: string | null
+          atualizado_em?: string
+          cards?: Json
+          historico?: Json
+          respondidos?: Json
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      atalho_configurado: { Args: Record<PropertyKey, never>; Returns: string | null }
+      gerar_token_atalho: { Args: Record<PropertyKey, never>; Returns: string }
+      gerar_token_atalho_cliente: { Args: { p_cliente: string }; Returns: string }
+      receber_link_atalho: { Args: { p_token: string; p_url: string }; Returns: string }
       team_access: { Args: { target: string }; Returns: Json }
     }
     Enums: {

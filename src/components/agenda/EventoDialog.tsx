@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { addHours, addDays, format } from "date-fns";
 import { AlertTriangle, BellRing, ExternalLink, ListTodo, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   alarmeDoEvento, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendar, GoogleCalendarEvent, GoogleEventInput, propriedadesInfopro,
+  minhaRespostaConvite, type RespostaConvite,
 } from "@/lib/googleCalendar";
 import { OPCOES_ALARME } from "@/lib/agendaAlarmes";
 import { avisarAlarmesAlterados } from "@/hooks/useAlarmesAgenda";
@@ -41,6 +43,8 @@ interface EventoDialogProps {
   calendars: GoogleCalendar[];
   onSave: (calendarId: string, event: GoogleEventInput, existing?: GoogleCalendarEvent) => Promise<void>;
   onDelete: (event: GoogleCalendarEvent) => Promise<void>;
+  // Convites: aceitar/talvez/recusar sem sair do app.
+  onResponder?: (event: GoogleCalendarEvent, resposta: RespostaConvite) => Promise<void>;
   atividade?: AtividadeDoEvento | null;
   onAbrirAtividade?: () => void;
 }
@@ -48,8 +52,23 @@ interface EventoDialogProps {
 const localDateTime = (date: Date) => format(date, "yyyy-MM-dd'T'HH:mm");
 
 export function EventoDialog({
-  open, onOpenChange, initialDate, initialEnd, event, calendars, onSave, onDelete, atividade, onAbrirAtividade,
+  open, onOpenChange, initialDate, initialEnd, event, calendars, onSave, onDelete, onResponder, atividade, onAbrirAtividade,
 }: EventoDialogProps) {
+  const [respondendo, setRespondendo] = useState<RespostaConvite | null>(null);
+  const minhaResposta = event ? minhaRespostaConvite(event) : null;
+  const responder = async (resposta: RespostaConvite) => {
+    if (!event || !onResponder) return;
+    setRespondendo(resposta);
+    try {
+      await onResponder(event, resposta);
+      toast.success(resposta === "aceitar" ? "Convite aceito" : resposta === "talvez" ? "Respondido: talvez" : "Convite recusado");
+      onOpenChange(false);
+    } catch (erro) {
+      toast.error(erro instanceof Error ? erro.message : "Não consegui responder o convite");
+    } finally {
+      setRespondendo(null);
+    }
+  };
   const writable = useMemo(
     () => calendars.filter((calendar) => ["writer", "owner"].includes(calendar.accessRole)),
     [calendars],
@@ -130,6 +149,27 @@ export function EventoDialog({
           <DialogTitle>{event ? "Editar evento" : "Novo evento"}</DialogTitle>
           <DialogDescription>As alteracoes sao sincronizadas diretamente com o Google Calendar.</DialogDescription>
         </DialogHeader>
+        {event && minhaResposta && (
+          // Convite: responde direto daqui (o organizador recebe a resposta).
+          <div className={`space-y-2 rounded-lg px-3 py-2 text-sm ${minhaResposta === "pendente" ? "border-2 border-dashed border-primary/50" : "border"}`}>
+            <p>{minhaResposta === "pendente" ? <><b>Convite pendente.</b> Você vai participar?</> : <>Você foi convidado. Vai participar?</>}</p>
+            <div className="flex flex-wrap gap-2">
+              {([["aceitar", "Sim"], ["talvez", "Talvez"], ["recusar", "Não"]] as [RespostaConvite, string][]).map(([valor, rotulo]) => (
+                <Button
+                  key={valor}
+                  type="button"
+                  size="sm"
+                  variant={minhaResposta === valor ? "default" : "outline"}
+                  disabled={!!respondendo || !onResponder}
+                  onClick={() => void responder(valor)}
+                >
+                  {respondendo === valor && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                  {rotulo}
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
         {atividade && (
           // Evento criado a partir de uma atividade: mostra o card dela.
           <div className="space-y-2 rounded-lg border bg-muted/40 p-3">

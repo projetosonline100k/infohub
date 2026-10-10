@@ -44,6 +44,7 @@ export const extensoesEstiloTexto = [
 
 export const FONTES = [
   { nome: "Padrão", valor: "" },
+  { nome: "Poppins", valor: "Poppins, sans-serif" },
   { nome: "Serifada", valor: "Georgia, 'Times New Roman', serif" },
   { nome: "Mono", valor: "ui-monospace, 'SF Mono', Menlo, monospace" },
   { nome: "Arredondada", valor: "ui-rounded, 'SF Pro Rounded', system-ui, sans-serif" },

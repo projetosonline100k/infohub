@@ -50,6 +50,7 @@ export async function salvarLinhas(clienteId: string, linhas: LinhaReferencia[])
       data_publicacao: l.dataPublicacao,
       visualizacoes: l.visualizacoes,
       transcricao: l.transcricao,
+      thumbnail_url: l.capa ?? null,
       ordem: ordemRef + i + 1,
     })))
     .select("id, link_video");

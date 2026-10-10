@@ -32,6 +32,13 @@
   margin-bottom: 0.5em;
 }
 
+.document-editor .ProseMirror h4 {
+  font-size: 1.05em;
+  font-weight: 700;
+  margin-top: 0.75em;
+  margin-bottom: 0.4em;
+}
+
 .document-editor .ProseMirror p {
   margin-top: 0.5em;
   margin-bottom: 0.5em;
@@ -163,10 +170,11 @@
   user-select: none;
 }
 
-/* Títulos recolhíveis (Notas) — ver src/lib/tiptapTituloRecolhivel.ts */
+/* Títulos recolhíveis (Notas e Documentos) — ver src/lib/tiptapTituloRecolhivel.ts */
 .document-editor .ProseMirror h1,
 .document-editor .ProseMirror h2,
-.document-editor .ProseMirror h3 {
+.document-editor .ProseMirror h3,
+.document-editor .ProseMirror h4 {
   position: relative;
 }
 
@@ -208,17 +216,17 @@
   background: hsl(var(--muted));
 }
 
-.document-editor .ProseMirror :is(h1, h2, h3):hover > .titulo-recolhivel-seta,
-.document-editor .ProseMirror :is(h1, h2, h3)[data-collapsed="true"] > .titulo-recolhivel-seta {
+.document-editor .ProseMirror :is(h1, h2, h3, h4):hover > .titulo-recolhivel-seta,
+.document-editor .ProseMirror :is(h1, h2, h3, h4)[data-collapsed="true"] > .titulo-recolhivel-seta {
   opacity: 1;
 }
 
 /* Recolhido: seta para a direita, e uma marca discreta de "tem mais aqui". */
-.document-editor .ProseMirror :is(h1, h2, h3)[data-collapsed="true"] > .titulo-recolhivel-seta::before {
+.document-editor .ProseMirror :is(h1, h2, h3, h4)[data-collapsed="true"] > .titulo-recolhivel-seta::before {
   transform: translateX(-15%) rotate(-45deg);
 }
 
-.document-editor .ProseMirror :is(h1, h2, h3)[data-collapsed="true"]::after {
+.document-editor .ProseMirror :is(h1, h2, h3, h4)[data-collapsed="true"]::after {
   content: "…";
   margin-left: 0.35em;
   color: hsl(var(--muted-foreground));

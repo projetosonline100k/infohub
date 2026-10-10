@@ -65,7 +65,9 @@ export const DashboardLayout = () => {
           <SidebarInset className="min-h-0 min-w-0">
             {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
             <DesktopUpdateBanner />
-            <main className="flex-1 overflow-auto">
+            {/* Quem rola é cada guia (ou cada metade, com a tela dividida) —
+                ver WorkspacePages. */}
+            <main className="min-h-0 flex-1 overflow-hidden">
               <WorkspacePages />
             </main>
           </SidebarInset>

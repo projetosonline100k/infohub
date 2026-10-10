@@ -50,6 +50,27 @@ export interface GoogleEventInput {
 const PROP_ATIVIDADE = "infoproAtividadeId";
 const PROP_ALARME = "infoproAlarme";
 
+// Convites: o Google diz, na lista de convidados, qual é a SUA resposta
+// (o convidado com `self: true`). Eventos que você mesmo organizou não são
+// convite. null = evento normal ou convite já aceito.
+export type StatusConvite = "pendente" | "talvez" | "recusado";
+export function statusConvite(event: GoogleCalendarEvent): StatusConvite | null {
+  const eu = event.attendees?.find((a) => a.self === true);
+  if (!eu || eu.organizer === true) return null;
+  if (eu.responseStatus === "needsAction") return "pendente";
+  if (eu.responseStatus === "tentative") return "talvez";
+  if (eu.responseStatus === "declined") return "recusado";
+  return null;
+}
+
+// Sua resposta atual a um convite (inclui "aceito"), ou null se o evento não
+// é convite (você organizou ou não está na lista).
+export function minhaRespostaConvite(event: GoogleCalendarEvent): RespostaConvite | "pendente" | null {
+  const eu = event.attendees?.find((a) => a.self === true);
+  if (!eu || eu.organizer === true) return null;
+  return ({ accepted: "aceitar", tentative: "talvez", declined: "recusar" } as Record<string, RespostaConvite>)[String(eu.responseStatus)] ?? "pendente";
+}
+
 export const atividadeDoEvento = (event: GoogleCalendarEvent): string | null =>
   event.extendedProperties?.private?.[PROP_ATIVIDADE] || null;
 
@@ -118,7 +139,16 @@ type CalendarAction =
   | { action: "events"; calendarIds: string[]; timeMin: string; timeMax: string; timeZone: string }
   | { action: "create"; calendarId: string; event: GoogleEventInput }
   | { action: "update"; calendarId: string; eventId: string; event: GoogleEventInput }
-  | { action: "delete"; calendarId: string; eventId: string };
+  | { action: "delete"; calendarId: string; eventId: string }
+  | { action: "respond"; calendarId: string; eventId: string; resposta: RespostaConvite };
+
+export type RespostaConvite = "aceitar" | "talvez" | "recusar";
+
+// A autorização do Google venceu ou foi revogada (ex.: app OAuth em modo
+// "Teste" no Google Cloud, onde a autorização dura só 7 dias). Aí não tem o
+// que tentar de novo: é preciso conectar a conta outra vez.
+export class GoogleCalendarExpirado extends Error {}
+const AUTORIZACAO_VENCIDA = /invalid_grant|expired or revoked|token has been expired/i;
 
 export async function chamarGoogleCalendar<T>(body: CalendarAction): Promise<T> {
   const { data, error } = await supabase.functions.invoke("google-calendar", { body });
@@ -133,6 +163,7 @@ export async function chamarGoogleCalendar<T>(body: CalendarAction): Promise<T> 
         // Mantem a mensagem original quando a resposta nao e JSON.
       }
     }
+    if (AUTORIZACAO_VENCIDA.test(message)) throw new GoogleCalendarExpirado("A conexão com o Google Agenda expirou. Clique em “Conectar Google Calendar” para ligar de novo.");
     throw new Error(message);
   }
   if (data?.error) throw new Error(data.error);

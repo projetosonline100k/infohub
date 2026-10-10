@@ -5,6 +5,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 
 interface Guia {
   id: string;
@@ -40,6 +43,9 @@ export function DocumentSidebar({
   onMudarPasta,
   className,
 }: DocumentSidebarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { openTab, abrirAoLado } = useWorkspaceTabs();
   const [pastas, setPastas] = useState<Pasta[]>([]);
   const [guias, setGuias] = useState<Guia[]>([]);
   const guiaAnteriorRef = useRef<{ id: string; titulo: string } | null>(null);
@@ -150,9 +156,21 @@ export function DocumentSidebar({
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
           {guias.map((guia) => (
+            <ContextMenu key={guia.id}>
+              <ContextMenuTrigger asChild>
             <button
-              key={guia.id}
-              onClick={() => onTrocarDocumento(guia.id)}
+              onClick={(event) => {
+                // ⌘/Ctrl+clique abre o documento numa guia nova do Infopro
+                // (a atual continua aqui), igual à lista do Docs.
+                if (event.metaKey || event.ctrlKey) {
+                  const path = `${location.pathname}?documento=${guia.id}`;
+                  openTab(path, guia.titulo || "Documento");
+                  navigate(path);
+                  return;
+                }
+                onTrocarDocumento(guia.id);
+              }}
+              title="Clique para abrir · ⌘+clique ou botão direito: nova guia / tela dividida"
               className={cn(
                 "w-full text-left p-2 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
                 guia.id === documentoAtualId && "bg-muted font-medium"
@@ -163,6 +181,16 @@ export function DocumentSidebar({
                 {guia.id === documentoAtualId ? tituloAtual || "Sem título" : guia.titulo || "Sem título"}
               </span>
             </button>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="z-[300]">
+                <ContextMenuItem onSelect={() => { const path = `${location.pathname}?documento=${guia.id}`; openTab(path, guia.titulo || "Documento"); navigate(path); }}>
+                  Abrir em nova guia
+                </ContextMenuItem>
+                <ContextMenuItem onSelect={() => navigate(abrirAoLado(`${location.pathname}?documento=${guia.id}`, guia.titulo || "Documento").path)}>
+                  Abrir ao lado (tela dividida)
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           ))}
 
           {!pastaId && (

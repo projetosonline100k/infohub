@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertTriangle, CalendarCheck, GripVertical, Loader2, Search, X } from "lucide-react";
@@ -167,11 +168,13 @@ export function AtividadesArrastaveis({ onSoltar, onFechar, agendadas, onPrevia 
           );
         })}
     </div>
-    {arrasto && <div className="pointer-events-none fixed z-[300] w-56 rounded-md border bg-background px-3 py-2 text-sm shadow-lg" style={{ left: arrasto.x + 12, top: arrasto.y + 8 }}>
+    {/* Portal pro body: dentro da guia (que "prende" camadas fixas, ver
+        WorkspacePages) a prévia ficaria deslocada do mouse. */}
+    {arrasto && createPortal(<div className="pointer-events-none fixed z-[300] w-56 rounded-md border bg-background px-3 py-2 text-sm shadow-lg" style={{ left: arrasto.x + 12, top: arrasto.y + 8 }}>
       <p className="truncate font-medium">{arrasto.atividade.titulo}</p>
       <p className="text-[11px] text-muted-foreground">{arrasto.destino
         ? arrasto.destino.diaInteiro ? `${format(arrasto.destino.inicio, "EEE, d MMM", { locale: ptBR })} · dia todo` : format(arrasto.destino.inicio, "EEE, d MMM · HH:mm", { locale: ptBR })
         : "Solte num dia ou horário"}</p>
-    </div>}
+    </div>, document.body)}
   </aside></div>;
 }

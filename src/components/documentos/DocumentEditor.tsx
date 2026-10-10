@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
+import { BotaoModelos, EscolherModelo } from "./EscolherModelo";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
@@ -8,6 +9,7 @@ import Link from "@tiptap/extension-link";
 import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
+import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
 import { ArrowLeft, Star, MoreHorizontal, PanelLeft, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,11 +78,14 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     extensions: [
       StarterKit.configure({
         heading: {
-          levels: [1, 2, 3],
+          // 4: subtítulo dentro de uma seção (ex.: "Transcrição" dentro de
+          // "IDEIA 02" no Separar ideias), que fecha e abre sozinho.
+          levels: [1, 2, 3, 4],
         },
         italic: false,
       }),
       ItalicSemAsterisco,
+      TituloRecolhivel,
       Underline,
       TextAlign.configure({
         types: ["heading", "paragraph"],
@@ -266,6 +271,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
               : `${totalCaracteres.toLocaleString("pt-BR")} caracteres`}
           </span>
           <span className="hidden md:inline text-sm text-muted-foreground">{getSaveStatus()}</span>
+          <BotaoModelos editor={editor} nome={titulo === "Documento sem título" ? "" : titulo} />
           <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
             <Share2 className="h-4 w-4 sm:mr-1.5" />
             <span className="hidden sm:inline">Compartilhar</span>
@@ -322,6 +328,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
           >
             <div className="px-5 py-6 sm:p-8 md:p-16">
               <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
+              {editor && <EscolherModelo editor={editor} nome={titulo === "Documento sem título" ? "" : titulo} />}
             {editor && <MenuSelecaoTexto editor={editor} />}
             </div>
           </div>
