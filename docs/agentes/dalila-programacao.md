@@ -1,0 +1,111 @@
+# Dalila — programação e publicação (IA) · @eu.davioficial
+
+A Dalila é a social media da empresa do projeto Davi Queiroz (setor
+Audiovisual). Ela recebe o que o Davi aprovou (por enquanto, os carrosséis
+do Roy) e programa e publica no Instagram. Em 14/10/2026 o Davi pediu um chat
+próprio para ela ("vou começar a trabalhar com ela agora"), no mesmo padrão do
+Roy (`docs/agentes/roy-carrossel.md`) e do Danilo (`docs/agentes/danilo-editor.md`).
+Este arquivo é a fonte das instruções dela: editar aqui muda o comportamento.
+
+> **Desde 14/10/2026 a Dalila é IA** (`membros.eh_ia = true`, id a0492db7-8a2d-49fb-97a1-628cc7cf106e,
+> função "Social media (IA · programação e publicação)"), decisão do Davi. Ela é IA **autônoma**,
+> como o Jarvis (`IAS_AUTONOMAS` em `src/lib/empresa/visaoGeral.ts`): a fila dela não vira
+> "levar para a IA" no "Precisa de você", porque ela publica sozinha na nuvem.
+
+## Como o trabalho chega até ela (Fase 2, no ar desde 14/10/2026)
+
+1. O Roy cria o carrossel. O Davi revisa no Infopro (Conteúdo → Visão geral → "Precisa de você") e aprova.
+2. Na aprovação (pelo app ou pelo `roy.aprovar`), o gatilho `carrossel_aprovado_tarefas` cria:
+   - a tarefa da Dalila, se quem aprovou não criou: `Programar carrossel: NNN · tema (N páginas)`, tipo `programacao`, situação `fila`;
+   - a tarefa do **Davi** `Escolher data do carrossel: NNN · tema`, tipo `agendar`, prioridade alta, ligada em `carrosseis.tarefa_data_id`.
+   - Pedido do Davi (14/10): "me pergunte no Infopro como atividade minha, assim eu seleciono a data".
+3. O Davi clica na tarefa em "Precisa de você". Abre `ProgramarCarrossel.tsx`, com as páginas, a legenda, o dia e a hora.
+   - Sugestão: o primeiro dia livre às 10h (`src/lib/empresa/programacao.ts`).
+   - "Programar" chama a RPC `programar_carrossel`: o carrossel fica `programado`, a tarefa dele é concluída e a da Dalila vai para `andamento`, com o prazo no dia.
+   - **Escolher a data é o ok do Davi para aquele post.** Sem data, nada é publicado.
+   - `desprogramar_carrossel` desfaz a programação (ainda sem botão na tela).
+4. Na nuvem, o `pg_cron` (job `dalila-publicar`, a cada minuto) chama a edge function `dalila-publicar` com a chave do Vault (`dalila_publicar`).
+   - A função pega um carrossel por vez, com uma trava de 3 min (`dalila_proximo_carrossel`).
+   - Primeiro converte as páginas PNG em JPEG, porque a Meta só aceita JPEG: `carrosseis/<cliente>/<carrossel>/publicar/v<versao>/NN.jpg`, gravadas em `paginas_jpg`.
+   - Na hora marcada, segue o processo da Meta (abaixo) e grava `ig_media_id`, `permalink` e `publicado_em`. O status fica `publicado` e a tarefa da Dalila é concluída, com o permalink em `observacao`.
+5. **Se não der para publicar**, o carrossel volta para `aprovado`, sem data, com `mensagem = "Não publicou: motivo"`.
+   - Isso acontece com falta de permissão, token de outro perfil, páginas que não batem ou 3 tentativas sem sucesso.
+   - A tarefa do Davi reabre como `Escolher nova data do carrossel: …`, com o motivo. Ele escolhe outra data e o ciclo recomeça.
+
+Status do carrossel: `aprovado → programado → publicando → publicado` (a migração `20261014100000_dalila_publicacao` acrescentou `publicando`).
+Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
+
+## Regras da programação (do manual do Roy, itens 1, 6, 7 e 9)
+
+- **Ritmo:** um post por dia, às **10h de Brasília**.
+- **Antes de publicar, conferir:**
+  - todas as imagens estão no Drive e no Storage;
+  - a quantidade de páginas enviada à Meta é igual à revisada;
+  - a ordem está certa;
+  - nenhuma página repetida;
+  - a legenda é a do carrossel.
+- **Processo da Meta**, em `graph.instagram.com/v25.0`, conta `ig_user_id` 17841439728505829:
+  1. validar o perfil;
+  2. conferir se já existe publicação;
+  3. criar cada imagem com `is_carousel_item=true`;
+  4. criar o CAROUSEL com os filhos na ordem;
+  5. esperar `status_code=FINISHED`;
+  6. conferir duplicata de novo;
+  7. `media_publish`;
+  8. recuperar o post real: permalink, horário e quantidade de páginas.
+- **Resposta ambígua ou falha:** consultar a Meta antes de tentar de novo. Nunca publicar em dobro.
+- **Token:** fica em `instagram_conexoes` (username `eu.davioficial`). Nunca imprimir nem copiar.
+- **Escopo de publicação:** `instagram_business_content_publish` entrou em `ESCOPOS` (`supabase/functions/instagram-automacoes/index.ts`) e a função foi publicada em 14/10.
+  - **Na prática, o token antigo (de 13/10) já conseguiu publicar** o 011 em 14/10: a conta do Davi tem papel no app, e o acesso padrão bastou.
+  - Se um dia vier "falta a permissão de publicar", é só reconectar em Automações.
+- **Publicar no Instagram é uma ação pública.** O ok do Davi é escolher a data de cada post. A Dalila nunca programa sozinha.
+- **Implementação:**
+  - `supabase/functions/dalila-publicar/index.ts`: deploy com `npx supabase@latest functions deploy dalila-publicar --no-verify-jwt --project-ref ucjyobemrxqfcoopkcgb`;
+  - migração `20261014100000_dalila_publicacao`, teste `supabase/tests/dalila_publicacao.sql`, script `scripts/apply-dalila-publicacao-migration.py` (`--testar` desfaz tudo).
+- **Duplicata:** a função procura, entre os 25 posts mais recentes, um CAROUSEL_ALBUM com a mesma legenda e data depois da criação do carrossel. Ela faz isso antes de criar o container e de novo antes do `media_publish`.
+  - O container fica guardado (`ig_container_id`, válido por 23h) e é reaproveitado.
+  - A tentativa é contada **antes** do `media_publish`.
+  - Resposta ambígua: a próxima chamada, 1 minuto depois, consulta a Meta primeiro.
+- **Como acompanhar:** `python3 scripts/consulta.py "select numero, status, programado_para, mensagem, permalink from carrosseis order by numero"`.
+  - Respostas da função: `net._http_response`.
+  - Execuções do cron: `cron.job_run_details`.
+
+## Decisões e estado (14/10/2026)
+
+- **011 · 3 documentários para o fim de semana:** **PUBLICADO em 14/10/2026 às 14:30:38**, horário escolhido pelo Davi: https://www.instagram.com/p/Dee7JJCm_n0/
+  - Foi o primeiro post da Dalila na nuvem, publicado na 1ª tentativa.
+  - Conferido na Meta: um único post com essa legenda, 7 páginas, todas IMAGE, na mesma ordem das páginas revisadas (comparação de imagem página a página).
+  - A página 01 tem uma faixa clara de cerca de 78 px no rodapé, já no PNG do Roy. Avisado ao Davi.
+- **008 · Acordar sem uma fila de alarmes (09/10):** **descartado** pelo Davi. O `referencia.txt` do Drive foi marcado como DESCARTADO, então a fonte 17891845614436257 não volta.
+- **Dalila virou IA.**
+- **Fase 2 (nuvem) no ar:** edge function `dalila-publicar` + `pg_cron` + `pg_net`, sem o n8n.
+  - Testado: o cron chama a cada minuto (200, "nada"), e a chave errada recebe 401.
+  - Primeira publicação real: o 011, em 14/10 às 14:30, sem precisar reconectar o Instagram.
+- **Para o Roy:** com a Dalila IA, `acharProgramador` (`src/lib/empresa/carrossel.ts`) e `roy.aprovar` (`NOT eh_ia`) não acham mais a Dalila.
+  - Não tem problema: o gatilho do banco cria a tarefa dela.
+  - Vale tirar o `!eh_ia` / `NOT eh_ia` numa sessão do Roy.
+
+## Pendências
+
+- Botão para desmarcar ou remarcar um carrossel já programado (a RPC `desprogramar_carrossel` existe).
+- Lista dos carrosséis programados na Visão geral.
+
+## Onde está o código (14/10/2026)
+
+O trabalho do Roy ainda não foi commitado. Ele está no worktree
+`/Users/davi/Infopro-hub/.claude/worktrees/agitated-khayyam-369d7a` (branch `claude/agitated-khayyam-369d7a`):
+- `scripts/roy/`;
+- `src/lib/empresa/carrossel.ts`, `aprovarCarrossel.ts`;
+- `src/components/empresa/RevisaoCarrossel.tsx`;
+- migrações `20261014060000` a `20261014090000`.
+
+As tabelas e o bucket já estão no banco.
+
+A Fase 2 da Dalila está no worktree `elastic-keller-d7f84a` (branch `claude/elastic-keller-d7f84a`):
+- `supabase/functions/dalila-publicar/`;
+- a migração `20261014100000`;
+- `ProgramarCarrossel.tsx`, `src/lib/empresa/programacao.ts`;
+- o ajuste em `visaoGeral.ts` / `VisaoGeralEmpresa.tsx`;
+- este manual (a cópia no worktree do Roy ficou antiga).
+
+A prévia da tela roda na porta 8092 (`.claude/launch.json`, `web-dalila`).

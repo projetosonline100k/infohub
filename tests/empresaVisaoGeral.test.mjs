@@ -79,11 +79,13 @@ test('programados: só futuros não postados, em ordem', () => {
 test('precisa de você: fila de IA operária vira "levar pra IA"; Jarvis não', () => {
   const comIa = [...membros,
     { id: 'm-ia', nome: 'Danilo IA', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: true },
-    { id: 'm-jarvis', nome: 'Jarvis', funcao: null, setor_id: 's-dir', conta_id: null, eh_ia: true }];
+    { id: 'm-jarvis', nome: 'Jarvis', funcao: null, setor_id: 's-dir', conta_id: null, eh_ia: true },
+    { id: 'm-dalila', nome: 'Dalila', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: true }];
   const itens = precisaDeVoce('eu', [], comIa, [
     tarefa('editar-1', 'm-ia'), tarefa('editar-2', 'm-ia'),
     tarefa('ja-com-ela', 'm-ia', { situacao: 'andamento' }),
     tarefa('do-jarvis', 'm-jarvis'),
+    tarefa('programar', 'm-dalila', { tipo: 'programacao' }), // a Dalila publica sozinha
   ], HOJE);
   assert.equal(itens.length, 1);
   assert.equal(itens[0].tipo, 'levar_ia');
