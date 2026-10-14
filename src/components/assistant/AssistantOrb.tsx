@@ -17,6 +17,8 @@ interface AssistantOrbProps extends React.ButtonHTMLAttributes<HTMLButtonElement
   // `pausado`, sem precisar mexer em AssistantEyes), glow mais fraco, 🌙
   // discreto. Volta ao normal sozinho (ver Assistant.tsx).
   diaEncerrado?: boolean;
+  // Modo voz (⌥+Espaço, ver useAssistantVoz): ouvindo / transcrevendo / esperando o Claude.
+  voz?: "ouvindo" | "entendendo" | "pensando" | null;
 }
 
 // Rodada 7, itens 3/4: isolado num componente memoizado à parte,
@@ -62,7 +64,7 @@ const AssistantOrbGlowFace = memo(function AssistantOrbGlowFace({ pulse, pausado
 // (drop-shadow + leve scale) e a interação (hover no botão externo,
 // arraste via onPointerDown vindo de fora).
 export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
-  ({ open, pulse, ring, pausado, diaEncerrado, className, ...props }, ref) => (
+  ({ open, pulse, ring, pausado, diaEncerrado, voz, className, ...props }, ref) => (
     <button
       ref={ref}
       type="button"
@@ -86,6 +88,22 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
           propósito além do círculo de 60px (ver AssistantOrbRing.tsx). */}
       {ring && <AssistantOrbRing progress={ring.progress} estado={ring.estado} />}
       <AssistantOrbGlowFace pulse={pulse} pausado={pausado || diaEncerrado} />
+      {voz && (
+        <>
+          {/* Anel do modo voz: fora do glow (filter) pra não brigar com a respiração. */}
+          <span aria-hidden="true" className={cn(
+            "pointer-events-none absolute -inset-1.5 rounded-full border-2",
+            voz === "ouvindo" && "animate-pulse border-rose-500 shadow-[0_0_18px_rgba(244,63,94,0.7)]",
+            voz === "entendendo" && "animate-pulse border-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.6)]",
+            voz === "pensando" && "animate-spin border-cyan-300/80 border-t-transparent [animation-duration:1.4s]",
+          )} />
+          <span className={cn("pointer-events-none absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] shadow",
+            voz === "ouvindo" ? "bg-rose-500" : voz === "entendendo" ? "bg-amber-400" : "bg-cyan-500")}
+            title={voz === "ouvindo" ? "Ouvindo (solte ⌥ Espaço pra mandar)" : voz === "entendendo" ? "Transcrevendo…" : "O Claude está trabalhando no seu pedido"}>
+            {voz === "pensando" ? "…" : "🎙️"}
+          </span>
+        </>
+      )}
       {diaEncerrado && (
         <span className="pointer-events-none absolute -right-0.5 -top-0.5 text-xs" aria-hidden="true">
           🌙

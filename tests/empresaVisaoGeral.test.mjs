@@ -1,0 +1,91 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+
+const source = readFileSync(new URL('../src/lib/empresa/visaoGeral.ts', import.meta.url), 'utf8');
+const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
+const { contarIndicadores, precisaDeVoce, jarvisCuidando, estadoDosMembros, videosProgramados, ordenarFila } =
+  await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+
+const HOJE = '2026-10-12';
+const video = (id, status, data_postagem = null) => ({ id, titulo: id, status, data_postagem, plataforma: 'vertical' });
+const tarefa = (id, responsavel_id, extra = {}) => ({
+  id, titulo: id, responsavel_id, setor_id: 's-av', situacao: 'fila', tipo: null, data_vencimento: null, concluida: false, progresso: null, ...extra,
+});
+const membros = [
+  { id: 'm-davi', nome: 'Davi', funcao: null, setor_id: 's-dir', conta_id: 'eu', eh_ia: false },
+  { id: 'm-danilo', nome: 'Danilo', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: false },
+  { id: 'm-roy', nome: 'Roy', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: false },
+];
+const setores = [{ id: 's-av', nome: 'Audiovisual', descricao: null, cor: null, icone: null }];
+
+test('indicadores contam cada etapa; agendado = não postado com data ou pronto', () => {
+  const n = contarIndicadores([
+    video('a', 'ideia'), video('b', 'ideia'), video('c', 'roteiro'), video('d', 'gravacao'),
+    video('e', 'edicao'), video('f', 'pronto'), video('g', 'roteiro', '2026-10-20'), video('h', 'postado', '2026-10-01'),
+  ]);
+  assert.deepEqual(n, { ideias: 2, roteiros: 1, paraGravar: 1, editando: 1, agendados: 2, postados: 1 });
+});
+
+test('precisa de você: gravar, aprovar e só as minhas tarefas abertas', () => {
+  const itens = precisaDeVoce('eu', [video('a', 'gravacao'), video('b', 'gravacao')], membros, [
+    tarefa('minha', 'm-davi', { data_vencimento: '2026-10-10' }),
+    tarefa('do-danilo', 'm-danilo'),
+    tarefa('aprovar', 'm-danilo', { situacao: 'aguardando_aprovacao' }),
+    tarefa('feita', 'm-davi', { concluida: true }),
+  ], HOJE);
+  assert.deepEqual(itens.map((i) => i.tipo), ['gravar', 'aprovar', 'tarefa']);
+  assert.equal(itens[0].quantidade, 2);
+  assert.equal(itens[2].tarefa.id, 'minha');
+  assert.equal(itens[2].atrasada, true);
+});
+
+test('jarvis cuidando agrupa por tipo e ignora o que é meu', () => {
+  const linhas = jarvisCuidando('eu', [video('v', 'edicao')], membros, setores, [
+    tarefa('c1', 'm-roy', { tipo: 'carrossel' }), tarefa('c2', 'm-roy', { tipo: 'carrossel' }),
+    tarefa('x', 'm-danilo'), tarefa('minha', 'm-davi', { tipo: 'carrossel' }),
+  ]);
+  assert.deepEqual(linhas.map((l) => l.rotulo), ['2 carrosséis em criação', '1 vídeo em edição', '1 tarefa no Audiovisual']);
+});
+
+test('estado do membro: tarefa atual é a em andamento, conta atrasos', () => {
+  const [, danilo] = estadoDosMembros(membros, [
+    tarefa('fila', 'm-danilo', { data_vencimento: '2026-10-01' }),
+    tarefa('agora', 'm-danilo', { situacao: 'andamento' }),
+  ], HOJE);
+  assert.equal(danilo.atual.id, 'agora');
+  assert.equal(danilo.abertas, 2);
+  assert.equal(danilo.atrasadas, 1);
+  assert.equal(danilo.ocupado, true);
+});
+
+test('ordem da fila: andamento, aprovação, fila; prazo mais cedo primeiro', () => {
+  const ids = ordenarFila([
+    tarefa('f2', 'x', { data_vencimento: '2026-10-20' }), tarefa('f1', 'x', { data_vencimento: '2026-10-13' }),
+    tarefa('ap', 'x', { situacao: 'aguardando_aprovacao' }), tarefa('an', 'x', { situacao: 'andamento' }),
+  ]).map((t) => t.id);
+  assert.deepEqual(ids, ['an', 'ap', 'f1', 'f2']);
+});
+
+test('programados: só futuros não postados, em ordem', () => {
+  const ids = videosProgramados([
+    video('passado', 'pronto', '2026-10-01'), video('b', 'pronto', '2026-10-15'),
+    video('a', 'edicao', '2026-10-12'), video('postado', 'postado', '2026-10-13'),
+  ], HOJE).map((v) => v.id);
+  assert.deepEqual(ids, ['a', 'b']);
+});
+
+test('precisa de você: fila de IA operária vira "levar pra IA"; Jarvis não', () => {
+  const comIa = [...membros,
+    { id: 'm-ia', nome: 'Danilo IA', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: true },
+    { id: 'm-jarvis', nome: 'Jarvis', funcao: null, setor_id: 's-dir', conta_id: null, eh_ia: true }];
+  const itens = precisaDeVoce('eu', [], comIa, [
+    tarefa('editar-1', 'm-ia'), tarefa('editar-2', 'm-ia'),
+    tarefa('ja-com-ela', 'm-ia', { situacao: 'andamento' }),
+    tarefa('do-jarvis', 'm-jarvis'),
+  ], HOJE);
+  assert.equal(itens.length, 1);
+  assert.equal(itens[0].tipo, 'levar_ia');
+  assert.deepEqual(itens[0].tarefas.map((t) => t.id), ['editar-1', 'editar-2']);
+});

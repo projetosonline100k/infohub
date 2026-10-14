@@ -119,3 +119,48 @@ pub async fn creator_transcrever(estado: tauri::State<'_, CreatorState>, url: St
     .map_err(|e| e.to_string())?
 }
 
+
+/// Modo voz da orbe (⌥+Espaço): transcreve o que o Davi falou. O áudio
+/// gravado no Jarvis vem em base64, vira um arquivo temporário e passa pelo
+/// mesmo trabalhador (Whisper no Mac, sem custo), em português.
+#[tauri::command]
+pub async fn voz_transcrever(estado: tauri::State<'_, CreatorState>, base64: String, extensao: String) -> Result<String, String> {
+    let bytes = decodificar_base64(&base64).ok_or("Áudio inválido")?;
+    let ext: String = extensao.chars().filter(|c| c.is_ascii_alphanumeric()).take(5).collect();
+    let arquivo = std::env::temp_dir().join(format!(
+        "jarvis-voz-comando-{}.{}",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0),
+        if ext.is_empty() { "m4a".to_string() } else { ext }
+    ));
+    std::fs::write(&arquivo, bytes).map_err(|e| e.to_string())?;
+    let caminho = arquivo.to_string_lossy().to_string();
+    let resposta = creator_transcrever(estado, caminho, Some("voz".to_string())).await;
+    let _ = std::fs::remove_file(&arquivo);
+    Ok(resposta?.get("texto").and_then(|t| t.as_str()).unwrap_or("").trim().to_string())
+}
+
+/// Base64 padrão → bytes (sem depender de mais uma biblioteca).
+fn decodificar_base64(texto: &str) -> Option<Vec<u8>> {
+    let valor = |c: u8| -> Option<u32> {
+        Some(match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32)
+    };
+    let limpo: Vec<u8> = texto.bytes().filter(|c| !c.is_ascii_whitespace() && *c != b'=').collect();
+    let mut saida = Vec::with_capacity(limpo.len() * 3 / 4);
+    for bloco in limpo.chunks(4) {
+        let mut n: u32 = 0;
+        for (i, &c) in bloco.iter().enumerate() {
+            n |= valor(c)? << (18 - 6 * i);
+        }
+        saida.push((n >> 16) as u8);
+        if bloco.len() > 2 { saida.push((n >> 8) as u8); }
+        if bloco.len() > 3 { saida.push(n as u8); }
+    }
+    Some(saida)
+}

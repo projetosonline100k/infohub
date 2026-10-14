@@ -59,7 +59,7 @@ export default function ClienteDetalhe() {
   const [abaAtiva, setAbaAtiva] = useState("atividades");
   const [conteudoExpandido, setConteudoExpandido] = useState(false);
   const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
-  const [subAbaConteudo, setSubAbaConteudo] = useState("brainstorm");
+  const [subAbaConteudo, setSubAbaConteudo] = useState("visao-geral");
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
@@ -197,6 +197,7 @@ export default function ClienteDetalhe() {
     { id: "documentos", label: "Documentos" },
   ].filter(item => item.id === "informacoes" || pode(item.id as AreaEquipe));
   const abasConteudo = [
+    { id: "visao-geral", label: "Visão geral" },
     { id: "brainstorm", label: "Brainstorm" },
     { id: "vertical", label: "Vertical" },
     { id: "youtube", label: "Youtube" },
@@ -467,7 +468,8 @@ export default function ClienteDetalhe() {
           )}
 
           {abaAtiva === "conteudo" && pode("conteudo") && (
-            <ConteudoSection clienteId={id!} subAba={subAbaConteudo} />
+            <ConteudoSection clienteId={id!} subAba={subAbaConteudo} onIrPara={setSubAbaConteudo}
+              onAbrirAtividades={() => setAbaAtiva("atividades")} />
           )}
 
           {abaAtiva === "documentos" && pode("documentos") && (

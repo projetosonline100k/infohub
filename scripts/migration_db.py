@@ -4,7 +4,10 @@ import socket
 import ssl
 import sys
 
+# Bibliotecas (pg8000, certifi): ~/.infopro-hub/py é fixa (o ouvinte do
+# Jarvis roda sozinho e sobrevive a reinício); /private/tmp é a antiga.
 sys.path.insert(0, '/private/tmp/infopro-db-check')
+sys.path.insert(0, str(Path.home() / '.infopro-hub' / 'py'))
 import pg8000.dbapi
 import certifi
 

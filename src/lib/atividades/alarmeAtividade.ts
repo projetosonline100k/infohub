@@ -24,6 +24,12 @@ async function invocar<T>(comando: string, args: Record<string, unknown>): Promi
   return invoke<T>(comando, args);
 }
 
+// Espelho no app Lembretes DESLIGADO (13/10/2026, pedido do Davi): o app
+// Lembretes não respondia (timeout a cada 15 s) e pesava no Mac. Os alarmes
+// continuam tocando no próprio Infopro. Pra religar, true aqui — e o Davi
+// quer pôr outra coisa no lugar.
+export const LEMBRETES_LIGADO = false;
+
 // Último estado de cada lembrete já combinado entre os dois lados (data e
 // título) — é o que permite saber QUEM mudou numa sincronização.
 const CHAVE_ULTIMAS = "lembretes:ultima-data";
@@ -99,7 +105,7 @@ export async function definirAlarmeAtividade(atividade: AlarmeDaAtividade, quand
     .eq("id", atividade.id);
   if (error) throw error;
   avisar();
-  if (isDesktop()) void atualizarLembreteDoAlarme(atividade, quando);
+  if (isDesktop() && LEMBRETES_LIGADO) void atualizarLembreteDoAlarme(atividade, quando);
 }
 
 async function atualizarLembreteDoAlarme(atividade: AlarmeDaAtividade, quando: Date | null) {
@@ -201,6 +207,7 @@ export function mesclarTitulo(ultimo: string | undefined, naAtividade: string, n
 const LOTE_MAXIMO = 60;
 
 export async function sincronizarLembretes(): Promise<void> {
+  if (!LEMBRETES_LIGADO) return;
   if (!isDesktop()) return;
   let mudou = false;
 

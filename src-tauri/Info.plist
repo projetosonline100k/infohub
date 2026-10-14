@@ -6,5 +6,8 @@
        atividades no app Lembretes (src-tauri/src/lembretes.rs). -->
   <key>NSAppleEventsUsageDescription</key>
   <string>O Infopro Hub cria lembretes no app Lembretes para tocar os alarmes das suas atividades.</string>
+  <!-- Gravar áudio pra mandar no WhatsApp pelo Jarvis (guia Conversas). -->
+  <key>NSMicrophoneUsageDescription</key>
+  <string>O Infopro Hub usa o microfone para gravar áudios que você envia pelo WhatsApp no Jarvis.</string>
 </dict>
 </plist>

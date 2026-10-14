@@ -8,7 +8,7 @@ import { isDesktop } from "@/lib/platform";
 import { STORAGE_KEY } from "@/hooks/useGoogleCalendar";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  concluirAtividade, definirAlarmeAtividade, deveTocarAtividade, EVENTO_ALARMES_ATIVIDADE, sincronizarLembretes,
+  concluirAtividade, definirAlarmeAtividade, deveTocarAtividade, EVENTO_ALARMES_ATIVIDADE, LEMBRETES_LIGADO, sincronizarLembretes,
 } from "@/lib/atividades/alarmeAtividade";
 import { AlarmeAtividadeToast } from "@/components/atividades/AlarmeAtividadeToast";
 
@@ -237,7 +237,8 @@ export function useAlarmesAgenda() {
       recarga = window.setInterval(() => void carregar(), 5 * 60_000);
       // Lembretes → Infopro: o macOS não avisa quando um lembrete muda, então
       // confere a cada 15 s (leitura leve: cada lista de uma vez) e ao voltar pro app.
-      recargaAtividades = window.setInterval(() => void rodadaAtividades(), 15_000);
+      // Com o espelho desligado, só recarrega os alarmes a cada minuto.
+      recargaAtividades = window.setInterval(() => void rodadaAtividades(), LEMBRETES_LIGADO ? 15_000 : 60_000);
       canalRealtime = supabase
         .channel(`lembretes-espelho-${Math.random().toString(36).slice(2)}`)
         .on("postgres_changes", { event: "*", schema: "public", table: "atividades" }, pedirSincronizacao)

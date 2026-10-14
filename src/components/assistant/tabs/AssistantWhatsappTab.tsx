@@ -5,6 +5,7 @@ import { Check, Copy, MessageCircle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
+import { WhatsappConversas } from "./WhatsappConversas";
 import { cn } from "@/lib/utils";
 import {
   DIFICULDADE, EMOJI_SATISFACAO, UPGRADE, calcularMetricas, cardRespondido, marcarCard, marcarItem, minutosRestantes, progressoCard, dataCurta, diasDesde, formatarMinutos, htmlSeguro, media, mediana, textoParaCopiar,
@@ -87,7 +88,33 @@ function BotaoCopiar({ texto }: { texto: string }) {
 // dos mentorados, desempenho e compromissos), agora lido do banco
 // (whatsapp_painel). A rotina publica com scripts/publicar-painel-whatsapp.py;
 // aqui só se marca o que já foi respondido.
+// Guia WhatsApp: "Painel" (sugestões de resposta, métricas) e "Conversas"
+// (o WhatsApp ao vivo, com áudios transcritos e resposta pelo Mac).
 export function AssistantWhatsappTab() {
+  const [modo, setModo] = useState<"painel" | "conversas">(() => ler("jarvis:whatsapp-modo", "painel"));
+  const trocar = (m: "painel" | "conversas") => { setModo(m); try { localStorage.setItem("jarvis:whatsapp-modo", m); } catch { /* sem storage */ } };
+  const seletor = (
+    <div className="mx-3 mb-2 flex rounded-lg bg-muted p-0.5 text-[12px] font-medium">
+      {([["painel", "Painel"], ["conversas", "Conversas"]] as const).map(([id, rotulo]) => (
+        <button key={id} type="button" onClick={() => trocar(id)}
+          className={cn("flex-1 rounded-md py-1 transition-colors", modo === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+          {rotulo}
+        </button>
+      ))}
+    </div>
+  );
+  if (modo === "conversas") {
+    return (
+      <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
+        {seletor}
+        <div className="min-h-0 flex-1"><WhatsappConversas /></div>
+      </div>
+    );
+  }
+  return <>{seletor}<PainelWhatsapp /></>;
+}
+
+function PainelWhatsapp() {
   const { user } = useAuth();
   const [painel, setPainel] = useState<Painel | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -244,7 +271,7 @@ export function AssistantWhatsappTab() {
       )}
       {painel.pedidoStatus === "pedida" && semResposta && (
         <div className={cn("mb-2 rounded-md px-2.5 py-1.5 text-[11px]", TOM.alta)}>
-          O Claude não pegou o pedido. Abra o chat dele e peça: “fica ouvindo o Jarvis”. Assim que ele começar, o pedido é atendido.
+          O ouvinte do Jarvis não pegou o pedido. Confira se o Mac está ligado e com internet — ele atende sozinho assim que voltar.
         </div>
       )}
       {painel.pedidoStatus === "rodando" && (

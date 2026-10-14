@@ -195,6 +195,21 @@ def transcrever(url, ffmpeg, modo="preciso"):
     }
 
 
+def transcrever_voz(caminho):
+    """Comando de voz da orbe (⌥+Espaço): arquivo local, sempre português.
+    O vocabulário ajuda o Whisper com os nomes do dia a dia do Davi."""
+    import mlx_whisper
+    if not os.path.exists(caminho):
+        return {"erro": "Áudio não encontrado."}
+    inicio = time.time()
+    resultado = mlx_whisper.transcribe(
+        caminho, path_or_hf_repo=MODELOS["preciso"], language="pt", verbose=None,
+        initial_prompt="Infopro, Jarvis, Claude, Danilo, Dalila, Roy, Supabase, Premiere, reels, legenda, timeline, deploy.")
+    texto = (resultado.get("text") or "").strip()
+    print(f"voz: {time.time() - inicio:.1f}s", file=sys.stderr, flush=True)
+    return {"texto": texto, "segundos": round(time.time() - inicio, 1)}
+
+
 def main():
     ffmpeg = preparar_ffmpeg()
     try:
@@ -218,6 +233,12 @@ def main():
                 responder({"id": id_, **traduzir(pedido.get("url") or "")})
             except Exception as e:
                 responder({"id": id_, "erro": f"Tradutor não respondeu: {str(e)[:200]}"})
+            continue
+        if pedido.get("modo") == "voz":
+            try:
+                responder({"id": id_, **transcrever_voz(pedido.get("url") or "")})
+            except Exception as e:
+                responder({"id": id_, "erro": f"Não consegui entender o áudio: {str(e)[:200]}"})
             continue
         url = (pedido.get("url") or "").strip()
         if not url.startswith(("http://", "https://")):

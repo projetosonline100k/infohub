@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      edicoes_video: {
+        Row: {
+          id: string
+          cliente_id: string
+          user_id: string | null
+          video_vertical_id: string | null
+          atividade_id: string | null
+          titulo: string
+          status: string
+          mensagem: string | null
+          bruto_drive: string | null
+          final_drive: string | null
+          duracao: number | null
+          versao: number
+          criado_em: string
+          atualizado_em: string
+        }
+        Insert: {
+          id?: string
+          cliente_id: string
+          user_id?: string | null
+          video_vertical_id?: string | null
+          atividade_id?: string | null
+          titulo: string
+          status?: string
+          mensagem?: string | null
+          bruto_drive?: string | null
+          final_drive?: string | null
+          duracao?: number | null
+          versao?: number
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: {
+          id?: string
+          cliente_id?: string
+          user_id?: string | null
+          video_vertical_id?: string | null
+          atividade_id?: string | null
+          titulo?: string
+          status?: string
+          mensagem?: string | null
+          bruto_drive?: string | null
+          final_drive?: string | null
+          duracao?: number | null
+          versao?: number
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Relationships: []
+      }
       instagram_automacoes: {
         Row: {
           id: string
@@ -139,6 +190,198 @@ export type Database = {
           },
         ]
       }
+      whatsapp_mensagens: {
+        Row: {
+          id: string
+          user_id: string
+          chat_id: string
+          chat_nome: string | null
+          eh_grupo: boolean
+          autor_id: string | null
+          autor_nome: string | null
+          de_mim: boolean
+          tipo: string
+          texto: string | null
+          midia_tipo: string | null
+          midia_arquivo: string | null
+          midia_duracao_s: number | null
+          transcricao: string | null
+          transcricao_status: string | null
+          responde_a: string | null
+          enviada_em: string
+          recebida_em: string
+        }
+        Insert: {
+          id: string
+          user_id: string
+          chat_id: string
+          chat_nome?: string | null
+          eh_grupo?: boolean
+          autor_id?: string | null
+          autor_nome?: string | null
+          de_mim?: boolean
+          tipo?: string
+          texto?: string | null
+          midia_tipo?: string | null
+          midia_arquivo?: string | null
+          midia_duracao_s?: number | null
+          transcricao?: string | null
+          transcricao_status?: string | null
+          responde_a?: string | null
+          enviada_em: string
+          recebida_em?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          chat_id?: string
+          chat_nome?: string | null
+          eh_grupo?: boolean
+          autor_id?: string | null
+          autor_nome?: string | null
+          de_mim?: boolean
+          tipo?: string
+          texto?: string | null
+          midia_tipo?: string | null
+          midia_arquivo?: string | null
+          midia_duracao_s?: number | null
+          transcricao?: string | null
+          transcricao_status?: string | null
+          responde_a?: string | null
+          enviada_em?: string
+          recebida_em?: string
+        }
+        Relationships: []
+      }
+      setores: {
+        Row: {
+          id: string
+          cliente_id: string
+          user_id: string | null
+          nome: string
+          descricao: string | null
+          cor: string | null
+          icone: string | null
+          ordem: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cliente_id: string
+          user_id?: string | null
+          nome: string
+          descricao?: string | null
+          cor?: string | null
+          icone?: string | null
+          ordem?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cliente_id?: string
+          user_id?: string | null
+          nome?: string
+          descricao?: string | null
+          cor?: string | null
+          icone?: string | null
+          ordem?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      membros: {
+        Row: {
+          id: string
+          cliente_id: string
+          setor_id: string | null
+          user_id: string | null
+          nome: string
+          funcao: string | null
+          responsabilidades: string[]
+          avatar_url: string | null
+          conta_id: string | null
+          eh_ia: boolean
+          link_ia: string | null
+          ativo: boolean
+          ordem: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          cliente_id: string
+          setor_id?: string | null
+          user_id?: string | null
+          nome: string
+          funcao?: string | null
+          responsabilidades?: string[]
+          avatar_url?: string | null
+          conta_id?: string | null
+          eh_ia?: boolean
+          link_ia?: string | null
+          ativo?: boolean
+          ordem?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          cliente_id?: string
+          setor_id?: string | null
+          user_id?: string | null
+          nome?: string
+          funcao?: string | null
+          responsabilidades?: string[]
+          avatar_url?: string | null
+          conta_id?: string | null
+          eh_ia?: boolean
+          link_ia?: string | null
+          ativo?: boolean
+          ordem?: number
+          created_at?: string
+        }
+        Relationships: []
+      }
+      historico_tarefas: {
+        Row: {
+          id: string
+          atividade_id: string
+          cliente_id: string | null
+          user_id: string | null
+          acao: string
+          de_membro_id: string | null
+          para_membro_id: string | null
+          de_situacao: string | null
+          para_situacao: string | null
+          autor_id: string | null
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          atividade_id: string
+          cliente_id?: string | null
+          user_id?: string | null
+          acao: string
+          de_membro_id?: string | null
+          para_membro_id?: string | null
+          de_situacao?: string | null
+          para_situacao?: string | null
+          autor_id?: string | null
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          atividade_id?: string
+          cliente_id?: string | null
+          user_id?: string | null
+          acao?: string
+          de_membro_id?: string | null
+          para_membro_id?: string | null
+          de_situacao?: string | null
+          para_situacao?: string | null
+          autor_id?: string | null
+          criado_em?: string
+        }
+        Relationships: []
+      }
       agentes_ia: {
         Row: {
           cliente_id: string
@@ -180,6 +423,15 @@ export type Database = {
           concluida: boolean
           concluida_em: string | null
           created_at: string
+          setor_id: string | null
+          responsavel_id: string | null
+          proximo_responsavel_id: string | null
+          video_vertical_id: string | null
+          video_youtube_id: string | null
+          tipo: string | null
+          situacao: string | null
+          progresso: number | null
+          observacao: string | null
           data_atividade: string
           data_inicio: string | null
           data_vencimento: string | null
@@ -205,6 +457,15 @@ export type Database = {
           concluida?: boolean
           concluida_em?: string | null
           created_at?: string
+          setor_id?: string | null
+          responsavel_id?: string | null
+          proximo_responsavel_id?: string | null
+          video_vertical_id?: string | null
+          video_youtube_id?: string | null
+          tipo?: string | null
+          situacao?: string | null
+          progresso?: number | null
+          observacao?: string | null
           data_atividade?: string
           data_inicio?: string | null
           data_vencimento?: string | null
@@ -230,6 +491,15 @@ export type Database = {
           concluida?: boolean
           concluida_em?: string | null
           created_at?: string
+          setor_id?: string | null
+          responsavel_id?: string | null
+          proximo_responsavel_id?: string | null
+          video_vertical_id?: string | null
+          video_youtube_id?: string | null
+          tipo?: string | null
+          situacao?: string | null
+          progresso?: number | null
+          observacao?: string | null
           data_atividade?: string
           data_inicio?: string | null
           data_vencimento?: string | null
@@ -2471,6 +2741,20 @@ export type Database = {
           token_expira_em: string | null
           cliente_id: string | null
           cliente_nome: string | null
+        }[]
+      }
+      whatsapp_conversas: {
+        Args: { p_limite?: number }
+        Returns: {
+          chat_id: string
+          chat_nome: string | null
+          eh_grupo: boolean
+          ultima_em: string
+          ultima_de_mim: boolean
+          ultima_tipo: string
+          ultima_texto: string | null
+          ultima_autor: string | null
+          total: number
         }[]
       }
       atalho_configurado: { Args: Record<PropertyKey, never>; Returns: string | null }

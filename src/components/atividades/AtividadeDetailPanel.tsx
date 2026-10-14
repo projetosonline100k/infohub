@@ -130,17 +130,21 @@ export const AtividadeDetailPanel = ({
     }
   }, [atividade]);
 
-  // Sugere nomes da equipe do cliente para preencher o responsável.
+  // Sugere nomes da equipe do cliente e das pessoas da empresa do projeto
+  // (setores/membros). Escolher um membro liga a tarefa a ele no banco
+  // (gatilho atividade_liga_membro), pelo nome.
   useEffect(() => {
     if (!atividade?.cliente_id) {
       setSugestoesEquipe([]);
       return;
     }
-    supabase
-      .from("equipe_cliente")
-      .select("nome_pessoa")
-      .eq("cliente_id", atividade.cliente_id)
-      .then(({ data }) => setSugestoesEquipe((data || []).map((m) => m.nome_pessoa)));
+    void Promise.all([
+      supabase.from("equipe_cliente").select("nome_pessoa").eq("cliente_id", atividade.cliente_id),
+      supabase.from("membros").select("nome").eq("cliente_id", atividade.cliente_id).eq("ativo", true).order("ordem"),
+    ]).then(([{ data: equipe }, { data: membros }]) => setSugestoesEquipe(Array.from(new Set([
+      ...(membros || []).map((m) => m.nome),
+      ...(equipe || []).map((m) => m.nome_pessoa),
+    ]))));
   }, [atividade?.cliente_id]);
 
   // Aceita overrides porque handlers de clique/seleção chamam salvar()

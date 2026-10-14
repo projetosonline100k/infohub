@@ -7,6 +7,7 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
+import { useAssistantVoz } from "@/hooks/useAssistantVoz";
 import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { AssistantOrb } from "./AssistantOrb";
 import { AssistantPanel } from "./AssistantPanel";
@@ -691,6 +692,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Links mandados do iPhone (Atalho "Jarvis") são transcritos aqui, em
   // segundo plano — só no Jarvis do Mac, onde roda a transcrição.
   useFilaCreator(user?.id, variant === "window" && isDesktop() && /Mac/i.test(navigator.platform || navigator.userAgent));
+  // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Jarvis).
+  const estadoVoz = useAssistantVoz(variant === "window" ? user?.id : undefined);
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
   // cobrança é de uma atividade, já inicia o foco nela.
   const handleCobrancaComecar = useCallback(async () => {
@@ -1407,6 +1410,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
               ring={ring}
               pausado={estado === "pausado"}
               diaEncerrado={diaEncerrado}
+              voz={estadoVoz}
               onPointerDown={handleOrbPointerDown}
             />
           </>
@@ -1420,6 +1424,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 ring={ring}
                 pausado={estado === "pausado"}
                 diaEncerrado={diaEncerrado}
+                voz={estadoVoz}
                 onPointerDown={handleOrbPointerDown}
               />
             </PopoverAnchor>

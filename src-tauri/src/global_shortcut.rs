@@ -25,6 +25,10 @@ pub const EVENTO_ABRIR_ENCERRAR_DIA: &str = "abrir-encerrar-dia";
 /// soltou → o React decide: Conversa, ou Creator se o C veio no meio.
 pub const EVENTO_ATALHO_J_APERTADO: &str = "atalho-j-apertado";
 pub const EVENTO_ATALHO_J_SOLTO: &str = "atalho-j-solto";
+/// ⌥+Espaço: falar com o Claude pela orbe (segura = grava, solta = manda).
+/// Só avisa a janela do Jarvis, sem roubar o foco de onde o Davi está.
+pub const EVENTO_VOZ_APERTADO: &str = "voz-apertado";
+pub const EVENTO_VOZ_SOLTO: &str = "voz-solto";
 
 /// Guarda se o registro do atalho deu certo, pra Administração → Jarvis →
 /// Atalhos poder avisar "não pôde ser registrado" (item 15) em vez de o app
@@ -54,6 +58,7 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
     let app_para_handler = app.clone();
     let atalho = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyE);
     let atalho_conversa = Shortcut::new(Some(Modifiers::SUPER), Code::KeyJ);
+    let atalho_voz = Shortcut::new(Some(Modifiers::ALT), Code::Space);
 
     let plugin_ok = app.plugin(
         tauri_plugin_global_shortcut::Builder::new()
@@ -61,6 +66,9 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
                 let apertou = event.state() == ShortcutState::Pressed;
                 if recebido == &atalho && apertou {
                     mostrar_e_focar_jarvis(&app_para_handler, EVENTO_ABRIR_ENCERRAR_DIA);
+                } else if recebido == &atalho_voz {
+                    let evento = if apertou { EVENTO_VOZ_APERTADO } else { EVENTO_VOZ_SOLTO };
+                    let _ = app_para_handler.emit_to("jarvis", evento, ());
                 } else if recebido == &atalho_conversa {
                     let evento = if apertou { EVENTO_ATALHO_J_APERTADO } else { EVENTO_ATALHO_J_SOLTO };
                     mostrar_e_focar_jarvis(&app_para_handler, evento);
@@ -77,6 +85,7 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
         flag.store(registrou, Ordering::SeqCst);
         // ⌘+J é independente: se outro app já usar, só esse atalho falha.
         let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::SUPER), Code::KeyJ));
+        let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::ALT), Code::Space));
     }
 
     state

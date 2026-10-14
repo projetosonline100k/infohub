@@ -20,6 +20,10 @@ mod lembretes;
 mod voz;
 #[cfg(target_os = "macos")]
 mod creator;
+#[cfg(target_os = "macos")]
+mod whatsapp;
+#[cfg(target_os = "macos")]
+mod danilo;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -66,6 +70,11 @@ pub fn run() {
             voz::voz_parar,
             voz::voz_listar,
             creator::creator_transcrever,
+            creator::voz_transcrever,
+            whatsapp::whatsapp_enviar,
+            whatsapp::whatsapp_enviar_audio,
+            whatsapp::whatsapp_midia_base,
+            danilo::danilo_base,
         ]);
     // Fora do macOS só existe o comando de destacar aba.
     #[cfg(not(target_os = "macos"))]
@@ -88,6 +97,50 @@ pub fn run() {
             {
                 let estado_atalho = global_shortcut::registrar(&app.handle().clone());
                 app.manage(estado_atalho);
+            }
+
+            // Menu do app (macOS) próprio: igual ao padrão, mas "Desfazer" e
+            // "Refazer" avisam o Infopro (evento "menu-desfazer"/"menu-refazer")
+            // em vez de irem direto pro WebKit. Assim o ⌘Z funciona também no
+            // editor de vídeo; em campo de texto, o front desfaz o texto.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{PredefinedMenuItem, Submenu};
+                let h = app.handle();
+                let app_menu = Submenu::with_items(h, "Infopro Hub", true, &[
+                    &PredefinedMenuItem::about(h, None, None)?,
+                    &PredefinedMenuItem::separator(h)?,
+                    &PredefinedMenuItem::hide(h, None)?,
+                    &PredefinedMenuItem::hide_others(h, None)?,
+                    &PredefinedMenuItem::separator(h)?,
+                    &PredefinedMenuItem::quit(h, None)?,
+                ])?;
+                let editar = Submenu::with_items(h, "Editar", true, &[
+                    &MenuItem::with_id(h, "menu-desfazer", "Desfazer", true, Some("CmdOrCtrl+Z"))?,
+                    &MenuItem::with_id(h, "menu-refazer", "Refazer", true, Some("CmdOrCtrl+Shift+Z"))?,
+                    &PredefinedMenuItem::separator(h)?,
+                    &PredefinedMenuItem::cut(h, None)?,
+                    &PredefinedMenuItem::copy(h, None)?,
+                    &PredefinedMenuItem::paste(h, None)?,
+                    &PredefinedMenuItem::select_all(h, None)?,
+                ])?;
+                let janela = Submenu::with_items(h, "Janela", true, &[
+                    &PredefinedMenuItem::minimize(h, None)?,
+                    &PredefinedMenuItem::fullscreen(h, None)?,
+                    &PredefinedMenuItem::close_window(h, None)?,
+                ])?;
+                app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
+                app.on_menu_event(|app, event| {
+                    let id = event.id.as_ref();
+                    if id == "menu-desfazer" || id == "menu-refazer" {
+                        // Vai pra janela em foco (principal ou Jarvis).
+                        for (_, w) in app.webview_windows() {
+                            if w.is_focused().unwrap_or(false) {
+                                let _ = tauri::Emitter::emit_to(app, w.label(), id, ());
+                            }
+                        }
+                    }
+                });
             }
 
             // Tray (seção 6): "Abrir" reexibe a janela principal (fechar
