@@ -56,7 +56,7 @@ Vale para **todo** funcionário, não só para o Ítalo. No Infopro, abra Conte�
   - O app guarda um link assinado de 7 dias.
   - `python3 scripts/inteligencia/processar.py` baixa, extrai o áudio com o ffmpeg do Danilo, transcreve com o mlx-whisper (pt) e devolve pela RPC `inteligencia_concluir`, com o token do item.
   - Ainda **não** roda sozinho: quem roda é a sessão do Ítalo, ou um serviço no futuro, como o do Roy.
-- **Link:** só serve link direto de arquivo. YouTube e Drive abrem uma página e dão erro; nesse caso é melhor baixar e subir o arquivo.
+- **Link:** link direto de arquivo ou **YouTube**, que é baixado pelo yt-dlp em `~/.infopro-hub/ytdlp`, com o `SSL_CERT_FILE` do certifi. Link do Drive abre uma página e dá erro; nesse caso, baixe e suba o arquivo.
 
 **Como o agente lê (antes de qualquer trabalho):**
 ```
@@ -111,6 +111,21 @@ python3 scripts/inteligencia/ler.py --cliente <cliente_id> --agente ítalo --sai
 - Enquanto isso, em 14/10 rodou um ouvinte de teste a partir deste worktree.
 
 **Ainda falta:** depois da confirmação, o funcionário **começar a fazer** sozinho. Para o Ítalo, isso é a Fase 1 (criar → o Davi revisa → aprova).
+
+## Estado e decisões
+
+**14/10/2026:**
+- **Publicado:** commit `a518255` em `main`.
+  - O Vercel atualizou, com a aba Inteligência e a conversa no ar.
+  - O ouvinte do Jarvis foi reiniciado com a linha de execução `briefing`.
+- **Primeira tarefa do Ítalo** (briefing confirmado pelo Davi): pesquisa de mercado do público de desenvolvimento pessoal para o Matheus, com prazo hoje às 17:30.
+  - **Entregue a v1** no documento "Pesquisa de mercado: dores, desejos e crenças (v1)" (projeto Matheus, pasta "Desafio 7 dias", ligado à atividade).
+  - Base: os ~30 comentários mais curtidos de 12 vídeos do Seja Uma Pessoa Melhor, coletados com o yt-dlp.
+  - Conteúdo: dores, desejos, crenças, itens conhecidos, dificuldades, 10 ganchos de headline, 10 perguntas de quiz e a lista dos vídeos.
+  - A tarefa foi para `aguardando_aprovacao`.
+  - Ficou de fora: Instagram (sem login) e canais mais recentes, que entram na v2.
+- **Inteligência do Ítalo:** os 2 vídeos do YouTube sobre quiz ("Quiz, metodo" e "10 Hacks Para Aumentar a Conversão do Seu Quiz") foram transcritos, com ~27 mil e ~29 mil caracteres.
+  - Ainda faltam os livros ($100M Offers e Palavras que vendem).
 
 ## A combinar com o Davi (primeira conversa)
 

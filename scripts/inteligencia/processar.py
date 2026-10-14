@@ -4,7 +4,7 @@
   python3 scripts/inteligencia/processar.py --listar → só mostra a fila
 
 Baixa pelo link (o app guarda um link assinado de 7 dias para arquivos
-enviados), extrai o áudio com o ffmpeg do Danilo e transcreve com o
+enviados; YouTube vai pelo yt-dlp), extrai o áudio com o ffmpeg do Danilo e transcreve com o
 mlx-whisper (pt). Devolve pela RPC com o token do item."""
 import os
 import subprocess
@@ -16,6 +16,9 @@ from pathlib import Path
 from comum import _ssl, concluir, consultar
 
 FF = os.path.expanduser('~/.infopro-hub/creator-bin/ffmpeg')
+# yt-dlp para links do YouTube: pip3 install --target ~/.infopro-hub/ytdlp yt-dlp
+YTDLP = os.path.expanduser('~/.infopro-hub/ytdlp')
+CERTS = os.path.expanduser('~/.infopro-hub/py/certifi/cacert.pem')
 MODELO = 'mlx-community/whisper-large-v3-turbo'
 
 
@@ -27,7 +30,23 @@ def fila():
          order by i.created_at""")
 
 
+def eh_youtube(link):
+    return any(d in link for d in ('youtube.com/', 'youtu.be/'))
+
+
+def baixar_youtube(link, destino):
+    if not os.path.isdir(YTDLP):
+        raise RuntimeError('yt-dlp não instalado neste Mac (ver scripts/inteligencia/processar.py)')
+    env = {**os.environ, 'PYTHONPATH': YTDLP, 'SSL_CERT_FILE': CERTS}
+    r = subprocess.run([sys.executable, '-m', 'yt_dlp', '-f', 'bestaudio/best', '--no-playlist', '-q',
+                        '--ffmpeg-location', FF, '-o', str(destino), link], env=env, capture_output=True, text=True)
+    if r.returncode != 0 or not Path(destino).exists():
+        raise RuntimeError('não consegui baixar do YouTube: ' + (r.stderr.strip().splitlines() or ['?'])[-1][:150])
+
+
 def baixar(link, destino):
+    if eh_youtube(link):
+        return baixar_youtube(link, destino)
     req = urllib.request.Request(link, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req, timeout=120, context=_ssl()) as r:
         tipo = r.headers.get('Content-Type', '')

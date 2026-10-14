@@ -185,7 +185,7 @@ export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; m
           <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Nome (ex.: Quizzes que funcionam)" className="h-8 text-sm" />
           {modo === "texto"
             ? <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Cole aqui o texto" rows={5} className="text-sm" />
-            : <Input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="https://… (link direto de vídeo ou áudio)" className="h-8 text-sm" />}
+            : <Input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="https://… (YouTube ou link direto de vídeo/áudio)" className="h-8 text-sm" />}
           <Button type="submit" size="sm" className="h-8" disabled={!texto.trim() || !!enviando}>Salvar</Button>
         </form>
       )}
