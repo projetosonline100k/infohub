@@ -74,7 +74,11 @@ def fontes_usadas():
         usadas.add(linha[0])
     if DRIVE.is_dir():
         for ref in DRIVE.glob("*/referencia.txt"):
-            m = re.search(r"ID da fonte:\s*(\d+)", ref.read_text(errors="replace"))
+            try:
+                texto = ref.read_text(errors="replace")
+            except OSError:  # Drive pode negar leitura ao processo em segundo plano
+                continue
+            m = re.search(r"ID da fonte:\s*(\d+)", texto)
             if m:
                 usadas.add(m.group(1))
     return usadas
@@ -142,7 +146,7 @@ def _registrar(reel):
     return db("""INSERT INTO public.carrosseis (cliente_id, numero, tema, fonte_id, fonte_permalink, fonte_data,
                   fonte_legenda, status, mensagem)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, 'produzindo', 'Transcrevendo o reel…') RETURNING id""",
-             (CLIENTE, numero, (reel.get("caption") or "Sem título").split("\n")[0][:80], media_id,
+             (CLIENTE, numero, (reel.get("caption") or "Sem título").split("\n")[0][:80], reel["id"],
               reel.get("permalink"), reel["timestamp"], reel.get("caption")))[0][0]
 
 

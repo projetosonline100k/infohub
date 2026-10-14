@@ -252,6 +252,16 @@ Tudo em `scripts/roy/`. Rodar com `PYTHONPATH=~/.infopro-hub/py` (certifi/pg8000
 - "Aprovar" com páginas excluídas ou texto/legenda editados na tela (sem pedido escrito) marca `aprovar_apos_ajuste`: o serviço remonta e, passando na revisão automática, já aprova e cria a tarefa da Dalila (`roy.aprovar`), sem voltar para o Davi;
 - se a revisão automática barrar, o carrossel vai para `erro` (vermelho no mapa).
 
-O Davi não precisa abrir chat para ajustes. Criar o lote novo (escolher reels e escrever o conteúdo) ainda é feito por uma sessão do Roy.
+O Davi não precisa abrir chat para ajustes.
+
+**Tarefas do Roy (14/10/2026):** atividade com `responsavel_id` = Roy, em `fila`, no projeto do Davi Queiroz: o `servico.py` (`atender_tarefa`) segue estes passos.
+1. Põe a tarefa em `andamento` (`FOR UPDATE SKIP LOCKED`, igual ao `scripts/empresa/execucao.py`).
+2. Chama o `claude -p` no papel do Roy (`PROMPT_TAREFA`): candidatos → iniciar → `conteudo.json` → `render.py`/`revisar`. A resposta termina com `CARROSSEIS: <ids>`.
+3. Liga cada carrossel em `carrosseis.atividade_roy_id` e roda `roy.renderizar`.
+4. Põe a tarefa em `aguardando_aprovacao`, com o recado de onde revisar.
+5. Quando o Davi aprova todos os carrosséis da tarefa (no app, `aprovarCarrossel.ts`, ou no aprovar automático, `roy.concluir_tarefa_roy`), a tarefa é concluída.
+6. Se falhar: volta para `fila` com "⚠️ Não consegui fazer sozinho: …" e não tenta de novo até o serviço reiniciar.
+
+O Roy **não** está em `scripts/empresa/briefing.py` `EXECUTORES`: se estivesse, o `execucao.py` do ouvinte disputaria as mesmas tarefas.
 
 **Prévia ao vivo (14/10/2026):** ao renderizar, o Roy também grava em `carrosseis.modelos` o molde HTML de cada página, o mesmo que vira o PNG, com `__TITULO__`/`__TEXTO__`. Fontes e ilustrações vão para `<cliente>/<carrossel>/<token>/assets/` no Storage (migração `20261014090000_carrosseis_modelos`). Na revisão, ao editar o texto, `PreviaPagina.tsx` desenha a página na hora, já com o encaixe do título e do texto. O PNG de verdade sai quando o Roy remonta, depois de "Aprovar" ou "Pedir ajuste".
