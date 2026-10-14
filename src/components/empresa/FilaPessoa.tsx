@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
+import { colunasDoProjeto } from "@/lib/empresa/colunas";
 import { ehIaOperaria, ordenarFila, tarefaAtrasada, type MembroResumo, type TarefaResumo } from "@/lib/empresa/visaoGeral";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 
@@ -60,15 +61,6 @@ const CORES_SITUACAO: Record<string, string> = {
 
 // Coluna do quadro em que a tarefa entra (a primeira que não conclui) e a de
 // conclusão — cada projeto tem as suas (no do Davi são dias da semana).
-async function colunasDoProjeto(clienteId: string) {
-  const { data } = await supabase.from("colunas_atividade").select("status_key, eh_conclusao, ordem")
-    .eq("cliente_id", clienteId).order("ordem");
-  const colunas = data || [];
-  return {
-    inicial: colunas.find((c) => !c.eh_conclusao)?.status_key ?? "backlog",
-    conclusao: colunas.find((c) => c.eh_conclusao)?.status_key ?? "finalizado",
-  };
-}
 
 export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: {
   clienteId: string;
@@ -171,7 +163,13 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
               <DialogDescription>{[membro.funcao, setorNome].filter(Boolean).join(" · ")}</DialogDescription>
             </DialogHeader>
 
-            {ia && (
+            {ia && membro.nome.toLowerCase() === "roy" ? (
+              // O Roy roda no Mac com o Claude (scripts/roy/servico.py): não precisa levar nada até ele.
+              <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
+                <p className="flex items-center gap-1.5 font-medium"><Bot className="h-4 w-4 text-emerald-500" />{membro.nome} trabalha sozinho, no seu Mac</p>
+                <p className="text-xs text-muted-foreground">Ele cria os carrosséis a partir dos reels e manda pra sua revisão em <b>Precisa de você</b>. Lá você aprova, exclui página, edita texto ou escreve o que ele deve mudar: ele refaz em segundo plano.</p>
+              </div>
+            ) : ia && (
               // IA operária (conversa do ChatGPT): o Davi leva o trabalho até ela.
               <div className="space-y-2 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-sm">
                 <p className="flex items-center gap-1.5 font-medium"><Bot className="h-4 w-4 text-sky-500" />{membro.nome} é uma conversa do ChatGPT</p>

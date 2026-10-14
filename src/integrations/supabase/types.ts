@@ -14,6 +14,90 @@ export type Database = {
   }
   public: {
     Tables: {
+      carrosseis: {
+        Row: {
+          id: string
+          cliente_id: string
+          user_id: string | null
+          estilo_id: string | null
+          atividade_id: string | null
+          numero: number | null
+          tema: string
+          fonte_id: string
+          fonte_permalink: string | null
+          fonte_data: string | null
+          fonte_legenda: string | null
+          status: string
+          mensagem: string | null
+          feedback: string | null
+          slides: Json
+          legenda: string | null
+          paginas: string[]
+          pasta_drive: string | null
+          versao: number
+          revisado_em: string | null
+          criado_em: string
+          atualizado_em: string
+          aprovar_apos_ajuste: boolean
+          modelos: string[]
+          atividade_roy_id: string | null
+        }
+        Insert: {
+          id?: string
+          cliente_id: string
+          user_id?: string | null
+          estilo_id?: string | null
+          atividade_id?: string | null
+          numero?: number | null
+          tema: string
+          fonte_id: string
+          fonte_permalink?: string | null
+          fonte_data?: string | null
+          fonte_legenda?: string | null
+          status?: string
+          mensagem?: string | null
+          feedback?: string | null
+          slides?: Json
+          legenda?: string | null
+          paginas?: string[]
+          pasta_drive?: string | null
+          versao?: number
+          revisado_em?: string | null
+          criado_em?: string
+          atualizado_em?: string
+          aprovar_apos_ajuste?: boolean
+          modelos?: string[]
+          atividade_roy_id?: string | null
+        }
+        Update: {
+          id?: string
+          cliente_id?: string
+          user_id?: string | null
+          estilo_id?: string | null
+          atividade_id?: string | null
+          numero?: number | null
+          tema?: string
+          fonte_id?: string
+          fonte_permalink?: string | null
+          fonte_data?: string | null
+          fonte_legenda?: string | null
+          status?: string
+          mensagem?: string | null
+          feedback?: string | null
+          slides?: Json
+          legenda?: string | null
+          paginas?: string[]
+          pasta_drive?: string | null
+          versao?: number
+          revisado_em?: string | null
+          criado_em?: string
+          atualizado_em?: string
+          aprovar_apos_ajuste?: boolean
+          modelos?: string[]
+          atividade_roy_id?: string | null
+        }
+        Relationships: []
+      }
       edicoes_video: {
         Row: {
           id: string
@@ -60,6 +144,45 @@ export type Database = {
           final_drive?: string | null
           duracao?: number | null
           versao?: number
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Relationships: []
+      }
+      estilos_carrossel: {
+        Row: {
+          id: string
+          cliente_id: string
+          user_id: string | null
+          nome: string
+          descricao: string | null
+          parametros: Json
+          exemplos: string[]
+          ativo: boolean
+          criado_em: string
+          atualizado_em: string
+        }
+        Insert: {
+          id?: string
+          cliente_id: string
+          user_id?: string | null
+          nome: string
+          descricao?: string | null
+          parametros?: Json
+          exemplos?: string[]
+          ativo?: boolean
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: {
+          id?: string
+          cliente_id?: string
+          user_id?: string | null
+          nome?: string
+          descricao?: string | null
+          parametros?: Json
+          exemplos?: string[]
+          ativo?: boolean
           criado_em?: string
           atualizado_em?: string
         }

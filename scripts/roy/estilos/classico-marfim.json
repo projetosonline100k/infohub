@@ -1,0 +1,97 @@
+{
+  "nome": "Clássico marfim",
+  "descricao": "Papel marfim texturizado, título enorme condensado em preto com palavras-chave em vermelho escuro, texto de apoio serifado e escultura clássica de mármore no canto inferior direito, às vezes com um círculo vermelho atrás.",
+  "largura": 1080,
+  "altura": 1350,
+  "marca": "@eu.davioficial",
+  "cores": {
+    "papel": "#ECE5D6",
+    "papel_borda": "#D9CFBB",
+    "texto": "#121110",
+    "destaque": "#A8141C"
+  },
+  "fontes": {
+    "titulo": {
+      "familia": "Anton",
+      "arquivo": "Anton-Regular.ttf"
+    },
+    "texto": {
+      "familia": "Libre Caslon Text",
+      "arquivo": "LibreCaslonText[wght].ttf"
+    },
+    "marca": {
+      "familia": "Inter",
+      "arquivo": "Inter[opsz,wght].ttf"
+    }
+  },
+  "layout": {
+    "margem": 66,
+    "marca": {
+      "topo": 62,
+      "tamanho": 29,
+      "peso": 600
+    },
+    "titulo": {
+      "topo": 138,
+      "tamanho_max": 228,
+      "tamanho_min": 104,
+      "altura_linha": 0.97,
+      "altura_max": 640,
+      "largura": 948,
+      "largura_com_icone": 700,
+      "caixa_alta": true
+    },
+    "texto": {
+      "espaco_acima": 34,
+      "tamanho": 52,
+      "tamanho_min": 40,
+      "altura_linha": 1.17,
+      "largura": 545,
+      "limite_inferior": 1190,
+      "peso": 500
+    },
+    "paginacao": {
+      "base": 1268,
+      "tamanho": 40
+    },
+    "ilustracao": {
+      "direita": -10,
+      "base": 0,
+      "altura": 620,
+      "circulo": {
+        "diametro": 400,
+        "rel_x": 0.56,
+        "rel_y": 0.3
+      }
+    },
+    "icone": {
+      "topo": 150,
+      "direita": 70,
+      "tamanho": 190
+    },
+    "papel": {
+      "grao": 0.6,
+      "manchas": 0.3
+    },
+    "capa": {
+      "largura": 440,
+      "largura_min": 320,
+      "direita": 62,
+      "base": 125,
+      "rotacao": 3,
+      "largura_texto": 470,
+      "circulo": {
+        "rel_x": 0.9,
+        "rel_y": 0.08
+      },
+      "largura_paisagem": 600
+    }
+  },
+  "ilustracoes": {
+    "modelo": "gpt-image-1.5",
+    "qualidade_escultura": "high",
+    "qualidade_icone": "medium",
+    "prompt_escultura": "A classical Greek or Roman white marble sculpture, {pose}. Realistic carved marble with soft natural light from the upper left, subtle warm shadows, museum photography, highly detailed curls and drapery. The figure is cut off at the chest/waist at the bottom edge of the image. Isolated object, fully transparent background, no pedestal, no text, no frame.",
+    "prompt_icone": "A minimal flat line icon of {assunto}, drawn with a single dark crimson red color (#A8141C), thin uniform stroke with a few solid filled shapes, simple and elegant like an editorial magazine pictogram. Centered, fully transparent background, no text, no shadow."
+  }
+}

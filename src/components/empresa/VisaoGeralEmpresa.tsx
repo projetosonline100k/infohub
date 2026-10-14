@@ -3,15 +3,19 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Clapperboard, Crown,
-  FileText, Instagram, Lightbulb, Loader2, Megaphone, Scissors, Users, Video, Youtube,
+  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Megaphone, Scissors, Users, Video, Youtube,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
+import { RevisaoCarrossel } from "./RevisaoCarrossel";
+import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
+import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import {
-  contarIndicadores, estadoDosMembros, jarvisCuidando, precisaDeVoce, videosProgramados,
+  contarIndicadores, estadoDosMembros, jarvisCuidando, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
 
@@ -26,6 +30,14 @@ const CORES: Record<string, { fundo: string; borda: string; texto: string; avata
 };
 const corDo = (cor: string | null) => CORES[cor ?? ""] ?? CORES.blue;
 const ICONES: Record<string, typeof Crown> = { crown: Crown, megaphone: Megaphone, clapperboard: Clapperboard };
+
+// Bolinha de cada pessoa no mapa (pedido do Davi, 14/10).
+const SINAIS: Record<Sinal, { cor: string; rotulo: string }> = {
+  trabalhando: { cor: "bg-emerald-500", rotulo: "Trabalhando" },
+  esperando: { cor: "bg-amber-400", rotulo: "Esperando resposta ou revisão" },
+  problema: { cor: "bg-rose-500", rotulo: "Algum problema" },
+  parado: { cor: "bg-zinc-400", rotulo: "Parado" },
+};
 
 const iniciais = (nome: string) => nome.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 const hojeIso = () => format(new Date(), "yyyy-MM-dd");
@@ -46,6 +58,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Edições do Danilo (editor IA): prontas pra revisar entram em "Precisa de você".
   const [edicoes, setEdicoes] = useState<EdicaoResumo[]>([]);
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
+  // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
+  const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
+  const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
@@ -66,6 +81,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .select("id, titulo, status, mensagem, versao, final_drive, duracao").eq("cliente_id", clienteId)
       .neq("status", "aprovado").order("criado_em", { ascending: false });
     setEdicoes((eds || []) as EdicaoResumo[]);
+    const { data: cars } = await supabase.from("carrosseis")
+      .select("id, numero, tema, status, mensagem, feedback, slides, legenda, paginas, modelos, versao, fonte_permalink, pasta_drive, atividade_id, atualizado_em")
+      .eq("cliente_id", clienteId).in("status", ["produzindo", "revisar", "ajuste", "erro"]).order("numero");
+    setCarrosseis((cars || []) as unknown as CarrosselResumo[]);
     setSetores((s.data || []) as SetorResumo[]);
     setMembros((m.data || []) as MembroResumo[]);
     setTarefas((t.data || []) as TarefaResumo[]);
@@ -89,6 +108,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const cuidando = useMemo(() => jarvisCuidando(contaId, videos, membros, setores, tarefas), [contaId, videos, membros, setores, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);
   const programados = useMemo(() => videosProgramados(videos, hoje), [videos, hoje]);
+  const trabalhoIa = useMemo(() => trabalhoDasIas(membros, carrosseis, edicoes), [membros, carrosseis, edicoes]);
 
   if (carregando) {
     return <div className="flex h-64 items-center justify-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>;
@@ -132,7 +152,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <AlertTriangle className="h-5 w-5 text-rose-500" />
             <h2 className="font-semibold text-rose-600 dark:text-rose-400">Precisa de você</h2>
             <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-400">
-              {precisa.length + edicoes.filter((e) => e.status === "revisar" || e.status === "erro").length} itens
+              {precisa.length + edicoes.filter((e) => e.status === "revisar" || e.status === "erro").length + carrosseis.filter(precisaRevisar).length} itens
             </span>
           </div>
           {edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => (
@@ -142,7 +162,16 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                 atrasada={e.status === "erro"} onClick={() => setEdicaoAberta(e)} />
             </div>
           ))}
-          {precisa.length === 0 && !edicoes.some((e) => e.status === "revisar" || e.status === "erro") ? (
+          <AprovarTodosCarrosseis clienteId={clienteId} prontos={carrosseis.filter((c) => c.status === "revisar")} onAprovou={() => { void carregar(); }} />
+          {carrosseis.filter(precisaRevisar).map((c) => {
+            const l = linhaPrecisa(c);
+            return (
+              <div key={c.id} className="mb-2">
+                <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)} />
+              </div>
+            );
+          })}
+          {precisa.length === 0 && !edicoes.some((e) => e.status === "revisar" || e.status === "erro") && !carrosseis.some(precisaRevisar) ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Nada esperando por você agora. 🎉</p>
           ) : (
             <div className="space-y-2">
@@ -173,10 +202,17 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <Bot className="h-5 w-5 text-emerald-500" />
             <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Jarvis está cuidando</h2>
             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-              {cuidando.reduce((s, l) => s + l.quantidade, 0)} em andamento
+              {cuidando.reduce((s, l) => s + l.quantidade, 0) + carrosseis.filter(emProducao).length} em andamento
             </span>
           </div>
-          {cuidando.length === 0 ? (
+          {carrosseis.some(emProducao) && (
+            <div className="mb-2">
+              <LinhaAcao icone={GalleryHorizontal} onClick={() => {}}
+                titulo={`Roy criando ${carrosseis.filter(emProducao).length} ${carrosseis.filter(emProducao).length === 1 ? "carrossel" : "carrosséis"}`}
+                detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")} />
+            </div>
+          )}
+          {cuidando.length === 0 && !carrosseis.some(emProducao) ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma tarefa da equipe em andamento. Atribua tarefas às pessoas em Atividades.</p>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">
@@ -192,6 +228,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-semibold">Mapa da operação</h2>
           <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
+          <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
+              <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
+            ))}
+          </span>
         </div>
         {setores.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">A empresa deste projeto ainda não tem setores cadastrados.</p>
@@ -219,26 +260,32 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                     </span>
                   </div>
                   <div className="relative grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
-                    {pessoas.map(({ membro, abertas: n, atrasadas: atr, atual, ocupado }) => {
+                    {pessoas.map((estado) => {
+                      const { membro, abertas: n, atrasadas: atr, atual } = estado;
+                      const ia = trabalhoIa.get(membro.id);
                       // O Jarvis coordena (sem fila própria); outras IAs (ex.: Danilo = ChatGPT,
                       // que edita os vídeos) têm tarefas como qualquer pessoa.
                       const coordenador = membro.eh_ia && membro.nome === "Jarvis";
-                      const ativo = coordenador || ocupado;
+                      const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
+                      const balao = coordenador ? "Coordenando a operação"
+                        : ia?.problema ? "Parou com problema"
+                        : ia?.esperando ? `${ia.esperando} esperando sua revisão`
+                        : atual?.titulo ?? ia?.atual ?? "Sem tarefa agora";
                       return (
                         <button key={membro.id} type="button" disabled={coordenador} onClick={() => setMembroAberto(membro)}
                           title={coordenador ? undefined : `Ver e adicionar tarefas de ${membro.nome}`}
                           className="group/mesa flex flex-col items-center rounded-lg border bg-background/80 p-2 text-center shadow-sm backdrop-blur transition-colors enabled:hover:border-primary/50 enabled:hover:shadow-md">
                           {/* Balão: o que está fazendo agora */}
                           <span className={cn("mb-1.5 line-clamp-2 min-h-[2.4em] w-full rounded-md px-1.5 py-0.5 text-[10.5px] leading-tight",
-                            atual ? "bg-primary/10 text-foreground" : "text-muted-foreground")}>
-                            {coordenador ? "Coordenando a operação" : atual ? atual.titulo : "Sem tarefa agora"}
+                            coordenador || atual || ia?.atual || ia?.esperando || ia?.problema ? "bg-primary/10 text-foreground" : "text-muted-foreground")}>
+                            {balao}
                           </span>
                           <span className="relative">
                             <span className={cn("flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white", membro.eh_ia ? "bg-gradient-to-br from-cyan-400 to-sky-600" : cor.avatar)}>
                               {membro.eh_ia ? <Bot className="h-5 w-5" /> : iniciais(membro.nome)}
                             </span>
-                            <span className={cn("absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background", ativo ? "bg-emerald-500" : "bg-zinc-400")}
-                              title={ativo ? "Trabalhando" : "Sem tarefa em andamento"} />
+                            <span className={cn("absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background", SINAIS[sinal].cor)}
+                              title={SINAIS[sinal].rotulo} />
                           </span>
                           <span className="mt-1 text-sm font-semibold leading-tight">{membro.nome}</span>
                           <span className="line-clamp-1 text-[10.5px] text-muted-foreground">{membro.funcao}</span>
@@ -259,6 +306,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         )}
       </section>
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
+      <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }} />
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
 

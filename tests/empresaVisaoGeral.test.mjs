@@ -89,3 +89,20 @@ test('precisa de você: fila de IA operária vira "levar pra IA"; Jarvis não', 
   assert.equal(itens[0].tipo, 'levar_ia');
   assert.deepEqual(itens[0].tarefas.map((t) => t.id), ['editar-1', 'editar-2']);
 });
+
+test('sinal: vermelho > amarelo > verde > cinza, juntando tarefas e trabalho das IAs', async () => {
+  const { sinalDoMembro, trabalhoDasIas, estadoDosMembros: estados } =
+    await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const ms = [...membros.filter((m) => m.id !== 'm-roy'), { id: 'm-roy', nome: 'Roy', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: true }];
+  const sinal = (id, ts, ia) => sinalDoMembro(estados(ms, ts, HOJE).find((e) => e.membro.id === id), ts, ia);
+  assert.equal(sinal('m-danilo', []), 'parado');
+  assert.equal(sinal('m-danilo', [tarefa('t', 'm-danilo', { situacao: 'andamento' })]), 'trabalhando');
+  assert.equal(sinal('m-danilo', [tarefa('t', 'm-danilo', { situacao: 'aguardando_aprovacao' })]), 'esperando');
+  assert.equal(sinal('m-danilo', [tarefa('t', 'm-danilo', { situacao: 'andamento', data_vencimento: '2026-10-01' })]), 'problema');
+  const ias = trabalhoDasIas(ms, [{ status: 'produzindo', tema: 'Docs' }, { status: 'aprovado', tema: 'x' }], []);
+  assert.deepEqual(ias.get('m-roy'), { trabalhando: 1, esperando: 0, problema: 0, atual: 'Criando carrossel: Docs' });
+  assert.equal(sinal('m-roy', [], ias.get('m-roy')), 'trabalhando');
+  assert.equal(sinal('m-roy', [], trabalhoDasIas(ms, [{ status: 'produzindo', tema: 'a' }, { status: 'revisar', tema: 'b' }], []).get('m-roy')), 'esperando');
+  assert.equal(sinal('m-roy', [], trabalhoDasIas(ms, [{ status: 'erro', tema: 'a' }, { status: 'revisar', tema: 'b' }], []).get('m-roy')), 'problema');
+  assert.equal(trabalhoDasIas(ms, [], []).has('m-danilo'), false); // Danilo aqui não é IA
+});

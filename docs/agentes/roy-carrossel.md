@@ -221,3 +221,37 @@ Foi criado um registro de publicações no Drive para receber os dados dos posts
 A ativação da agenda foi verificada naquela ocasião. A publicação efetiva de todos os sete posts não foi conferida nesta resposta. Como as datas já passaram, o Claude deve consultar esse registro, as execuções do n8n e a Meta antes de retomar, corrigir ou republicar qualquer item.
 
 O lote de uma semana foi programado. A criação… (texto cortado aqui)
+
+---
+
+## Parte E — como o Roy roda (Fase 1, montada em 14/10/2026)
+
+Tudo em `scripts/roy/`. Rodar com `PYTHONPATH=~/.infopro-hub/py` (certifi/pg8000). Nada aqui publica no Instagram.
+
+| Passo | Comando | O que faz |
+|---|---|---|
+| Escolher | `python3 roy.py candidatos 10` | reels pela data real, sem as fontes já usadas (manual item 8, `referencia.txt` do Drive, tabela `carrosseis`) e sem reels repostados com a mesma legenda. **Conferir o tema também**: "Todo jovem que quer morar sozinho…" (18092360102190525) é o mesmo assunto do 002. |
+| Começar | `python3 roy.py iniciar <media_id>` | cria a linha em `carrosseis` com status `produzindo` (EM PRODUÇÃO; o `UNIQUE (cliente_id, fonte_id)` impede duplicar), baixa o vídeo (API; sem `media_url`, yt-dlp do Creator) e transcreve com mlx-whisper. Pasta: `~/.infopro-hub/roy/carrosseis/<id>/`. Se falhou antes, rodar de novo retoma. |
+| Escrever | o Claude escreve `conteudo.json` na pasta | formato em `render.py`: `theme`, `caption`, `slides[{titulo, texto, ilustracao, circulo, icone}]`; `*palavra*` = vermelho; paginação automática. Regras do manual (item 3). |
+| Ilustrar | `python3 ilustracoes.py escultura <nome> "<pose>"` / `icone <nome> "<assunto>"` | OpenAI (gpt-image-1.5), guardadas em `~/.infopro-hub/roy/ilustracoes/` e reaproveitadas. Sem fundo transparente, recorta com o Vision do macOS (`bin/recortar`). Gasto anotado em `~/.infopro-hub/roy/gastos.jsonl`. |
+| Capa real | `python3 capas.py filme <nome> "<título original>" --ano N` / `livro <nome> "<título autor>" --n N` / `youtube <nome> <id-do-vídeo>` (documentário no YouTube: a miniatura do vídeo; ex.: "O Sistema do Dinheiro" = System of Money, Moconomy, kw0QVwt7LVI) / `url <nome> <url> "<descrição>"` | **Pedido do Davi (14/10/2026): quando o carrossel citar filme, documentário, série ou livro, a página usa o pôster/capa REAL, não escultura.** Filme: IMDb (alta resolução). Livro: Apple Books BR (lista as opções: escolher a edição certa com `--n`; a 1ª pode ser outra edição ou um "caderno de atividades"), Open Library de reserva. No `conteudo.json`: `"capa": "<nome>"` (a escultura sai, o texto estreita, o pôster entra inclinado com moldura; `circulo` fica atrás dele). Sempre olhar a imagem baixada antes de usar. Se não der para identificar a obra com certeza, perguntar ao Davi em vez de chutar. A fonte de cada capa vai para o `referencia.txt`. |
+| Montar e entregar | `python3 roy.py renderizar <id>` | HTML → PNG 1080×1350 pelo Chrome headless; revisão automática (6–8 páginas, ordem, última página com CTA, PNG repetido por SHA256, tamanho exato, margens, texto por cima da escultura, OCR do macOS conferindo as palavras); Drive `NNN - data - tema` com `referencia.txt` (hashes) e conferência; Storage; status `revisar`. |
+| Ajustes | `python3 roy.py ajustes` | lista os pedidos de ajuste do Davi e copia para o `conteudo.json` os textos que ele editou e as páginas que ele excluiu na tela (casa cada slide pelo `pagina` original, então capa/ilustração continuam na página certa; mínimo 6 páginas e a última, de CTA, não sai). Depois, `renderizar` gera a versão seguinte. |
+| Estilos | `python3 roy.py estilos` | grava `scripts/roy/estilos/*.json` na tabela `estilos_carrossel`. Estilo novo = um JSON novo (cores, fontes em `~/.infopro-hub/roy/fontes/`, layout, prompts) e `renderizar --estilo <arquivo>`. |
+
+**Banco** (`20261014060000_carrosseis_roy`, `20261014070000_carrosseis_envio`): o app só lê, aprova, pede ajuste e edita texto. As páginas vão para o bucket público `carrosseis` com a chave pública. O Storage só aceita na pasta `<cliente>/<carrossel>/<token_envio>/NN.png` enquanto o carrossel está `produzindo` (no Mac não há chave de servidor: o `SUPABASE_SECRET_KEY` do `.env.migration.local` é na verdade a chave publishable).
+
+**Revisão no Infopro:** Conteúdo → Visão geral → "Precisa de você" → `RevisaoCarrossel.tsx` (páginas, legenda, editar texto, pedir ajuste, aprovar). Ao aprovar, nasce a tarefa "Programar carrossel: NNN · tema" na fila da Dalila (tipo `programacao`), com os links das páginas e a legenda na descrição. Com 2 ou mais prontos, "Aprovar todos" em "Precisa de você" aprova o lote inteiro de uma vez (`src/lib/empresa/aprovarCarrossel.ts`, o mesmo caminho do aprovar de um).
+
+**Custo da OpenAI** (preços de 14/10/2026, gpt-image-1.5): escultura em qualidade alta, 1024×1536, US$ 0,20; ícone em qualidade média, 1024×1024, US$ 0,034. As esculturas são reaproveitadas.
+
+**Serviço em segundo plano (14/10/2026, autorizado pelo Davi):** `scripts/roy/servico.py`, instalado como LaunchAgent `com.infoprohub.roy` por `scripts/roy/instalar.sh`. Log em `~/.infopro-hub/roy/servico.log`. A cada 20 s ele procura carrosséis em `ajuste`:
+- página excluída ou texto editado na tela: só remonta;
+- pedido escrito no campo "O que o Roy deve mudar?": chama o Claude em segundo plano (`claude -p`, mesmo login do ouvinte do Jarvis) para editar o `conteudo.json` e depois remonta;
+- o resumo do que mudou aparece na tela de revisão ("Roy: …");
+- "Aprovar" com páginas excluídas ou texto/legenda editados na tela (sem pedido escrito) marca `aprovar_apos_ajuste`: o serviço remonta e, passando na revisão automática, já aprova e cria a tarefa da Dalila (`roy.aprovar`), sem voltar para o Davi;
+- se a revisão automática barrar, o carrossel vai para `erro` (vermelho no mapa).
+
+O Davi não precisa abrir chat para ajustes. Criar o lote novo (escolher reels e escrever o conteúdo) ainda é feito por uma sessão do Roy.
+
+**Prévia ao vivo (14/10/2026):** ao renderizar, o Roy também grava em `carrosseis.modelos` o molde HTML de cada página, o mesmo que vira o PNG, com `__TITULO__`/`__TEXTO__`. Fontes e ilustrações vão para `<cliente>/<carrossel>/<token>/assets/` no Storage (migração `20261014090000_carrosseis_modelos`). Na revisão, ao editar o texto, `PreviaPagina.tsx` desenha a página na hora, já com o encaixe do título e do texto. O PNG de verdade sai quando o Roy remonta, depois de "Aprovar" ou "Pedir ajuste".
