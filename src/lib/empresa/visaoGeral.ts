@@ -169,3 +169,46 @@ export function videosProgramados(videos: VideoResumo[], hoje: string, limite = 
     .sort((a, b) => a.data_postagem!.localeCompare(b.data_postagem!))
     .slice(0, limite);
 }
+
+// Sinal de cada pessoa no mapa: verde = trabalhando, cinza = parada,
+// amarelo = esperando resposta/revisão do Davi, vermelho = algum problema
+// (trabalho com erro ou tarefa atrasada). Vale o mais grave.
+export type Sinal = "trabalhando" | "parado" | "esperando" | "problema";
+
+export interface TrabalhoIa {
+  trabalhando: number; // carrossel/edição sendo feito agora
+  esperando: number;   // pronto, esperando o Davi revisar
+  problema: number;    // parou com erro
+  atual?: string;      // o que está fazendo agora (balão)
+}
+
+// O trabalho das IAs que não vira tarefa: carrosséis (Roy) e edições (Danilo).
+export function trabalhoDasIas(
+  membros: MembroResumo[],
+  carrosseis: { status: string; tema: string }[],
+  edicoes: { status: string; titulo: string }[],
+): Map<string, TrabalhoIa> {
+  const mapa = new Map<string, TrabalhoIa>();
+  const contar = (nome: string, itens: { status: string; nome: string }[], fazendo: string[], verbo: string) => {
+    const m = membros.find((x) => x.eh_ia && x.nome.toLowerCase() === nome);
+    if (!m) return;
+    const agora = itens.filter((i) => fazendo.includes(i.status));
+    mapa.set(m.id, {
+      trabalhando: agora.length,
+      esperando: itens.filter((i) => i.status === "revisar").length,
+      problema: itens.filter((i) => i.status === "erro").length,
+      atual: agora[0] ? `${verbo}: ${agora[0].nome}` : undefined,
+    });
+  };
+  contar("roy", carrosseis.map((c) => ({ status: c.status, nome: c.tema })), ["produzindo", "ajuste"], "Criando carrossel");
+  contar("danilo", edicoes.map((e) => ({ status: e.status, nome: e.titulo })), ["na_fila", "editando", "renderizando", "aprovando"], "Editando");
+  return mapa;
+}
+
+export function sinalDoMembro(estado: EstadoMembro, tarefas: TarefaResumo[], ia?: TrabalhoIa): Sinal {
+  const minhas = tarefas.filter((t) => t.responsavel_id === estado.membro.id && tarefaAberta(t));
+  if (estado.atrasadas > 0 || (ia?.problema ?? 0) > 0) return "problema";
+  if (minhas.some((t) => t.situacao === "aguardando_aprovacao") || (ia?.esperando ?? 0) > 0) return "esperando";
+  if (estado.ocupado || (ia?.trabalhando ?? 0) > 0) return "trabalhando";
+  return "parado";
+}
