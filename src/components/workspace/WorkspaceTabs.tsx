@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Columns2, X } from "lucide-react";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent,
@@ -7,6 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { isDesktop } from "@/lib/platform";
+import { lerSessao, salvarSessao } from "@/lib/workspace/sessao";
 
 export interface WorkspaceTab {
   id: string;
@@ -66,8 +67,10 @@ const titleForPath = (path: string) => {
 };
 
 export function WorkspaceTabsProvider({ children }: { children: React.ReactNode }) {
-  const [tabs, setTabs] = useState<WorkspaceTab[]>([{ id: "tab-inicial", path: "/", title: "Painel" }]);
-  const [activeId, setActiveIdState] = useState("tab-inicial");
+  // Sessão anterior (guias, ativa, tela dividida): só na janela principal do Mac.
+  const sessao = useRef(lerSessao()).current;
+  const [tabs, setTabs] = useState<WorkspaceTab[]>(() => sessao?.tabs ?? [{ id: "tab-inicial", path: "/", title: "Painel" }]);
+  const [activeId, setActiveIdState] = useState(() => sessao?.activeId ?? "tab-inicial");
   // Ref evita closures velhas: syncPath roda num efeito e precisa da aba ativa atual.
   const activeIdRef = useRef(activeId);
   const setActiveId = useCallback((id: string) => { activeIdRef.current = id; setActiveIdState(id); }, []);
@@ -105,8 +108,9 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     });
   }, [setActiveId]);
 
-  const [divisao, setDivisaoState] = useState<string[] | null>(null);
-  const [larguras, setLarguras] = useState<number[]>([]);
+  const [divisao, setDivisaoState] = useState<string[] | null>(() => sessao?.divisao ?? null);
+  const [larguras, setLarguras] = useState<number[]>(() => sessao?.larguras ?? []);
+  useEffect(() => { salvarSessao({ tabs, activeId, divisao, larguras }); }, [tabs, activeId, divisao, larguras]);
   // Toda mudança na lista de painéis volta pra larguras iguais (a não ser a
   // de 2 guias, que lembra a última proporção usada).
   const setDivisao = useCallback((ids: string[] | null) => {

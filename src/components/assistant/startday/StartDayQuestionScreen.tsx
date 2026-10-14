@@ -1,17 +1,9 @@
-import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { OPCOES_BLOQUEIO_PLANO } from "@/lib/productivity/DailyPlanService";
 import type { RespostasPlano } from "@/hooks/useStartDayFlow";
-
-const OPCOES_TEMPO = [
-  { valor: 60, label: "1h" },
-  { valor: 120, label: "2h" },
-  { valor: 180, label: "3h" },
-  { valor: 240, label: "4h" },
-  { valor: 300, label: "5h+" },
-];
+import { StartDayFocoTimeline } from "./StartDayFocoTimeline";
 
 interface StartDayQuestionScreenProps {
   tipo: "obrigatorio" | "tempo" | "bloqueio";
@@ -25,16 +17,6 @@ interface StartDayQuestionScreenProps {
 // ver StartDayActivityPicker/StartDayPickPriorityOne). Visual calmo, mesmo
 // critério do irmão: sem transições chamativas, uma pergunta por tela.
 export function StartDayQuestionScreen({ tipo, respostas, onResponder }: StartDayQuestionScreenProps) {
-  const [mostrarCustom, setMostrarCustom] = useState(false);
-
-  useEffect(() => {
-    if (tipo !== "tempo") return;
-    setMostrarCustom(
-      respostas.focusTimeAvailableMinutes != null && !OPCOES_TEMPO.some((o) => o.valor === respostas.focusTimeAvailableMinutes)
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tipo]);
-
   if (tipo === "obrigatorio") {
     return (
       <div className="space-y-4">
@@ -52,56 +34,8 @@ export function StartDayQuestionScreen({ tipo, respostas, onResponder }: StartDa
   }
 
   if (tipo === "tempo") {
-    return (
-      <div className="space-y-4">
-        <h3 className="text-lg font-medium leading-snug">Quanto tempo real de foco você tem hoje?</h3>
-        <div className="grid grid-cols-3 gap-2">
-          {OPCOES_TEMPO.map((op) => (
-            <button
-              key={op.valor}
-              type="button"
-              onClick={() => {
-                setMostrarCustom(false);
-                onResponder("focusTimeAvailableMinutes", op.valor);
-              }}
-              className={cn(
-                "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-                !mostrarCustom && respostas.focusTimeAvailableMinutes === op.valor
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border text-muted-foreground hover:bg-muted"
-              )}
-            >
-              {op.label}
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
-              setMostrarCustom(true);
-              if (OPCOES_TEMPO.some((o) => o.valor === respostas.focusTimeAvailableMinutes)) {
-                onResponder("focusTimeAvailableMinutes", null);
-              }
-            }}
-            className={cn(
-              "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
-              mostrarCustom ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
-            )}
-          >
-            Personalizado
-          </button>
-        </div>
-        {mostrarCustom && (
-          <Input
-            type="number"
-            min={1}
-            autoFocus
-            value={respostas.focusTimeAvailableMinutes ?? ""}
-            onChange={(e) => onResponder("focusTimeAvailableMinutes", e.target.value ? Number(e.target.value) : null)}
-            placeholder="Minutos"
-          />
-        )}
-      </div>
-    );
+    // As 24h do dia numa régua (como a Agenda): marca os blocos de foco arrastando.
+    return <StartDayFocoTimeline onMudar={(min) => onResponder("focusTimeAvailableMinutes", min)} />;
   }
 
   return (

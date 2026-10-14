@@ -90,12 +90,18 @@ function BotaoCopiar({ texto }: { texto: string }) {
 // aqui só se marca o que já foi respondido.
 // Guia WhatsApp: "Painel" (sugestões de resposta, métricas) e "Conversas"
 // (o WhatsApp ao vivo, com áudios transcritos e resposta pelo Mac).
+// "Dividido": painel à esquerda e a conversa ao vivo à direita — o botão
+// "Abrir conversa" de cada card abre a conversa daquela pessoa do lado.
+type ModoWhatsapp = "painel" | "conversas" | "dividido";
+
 export function AssistantWhatsappTab() {
-  const [modo, setModo] = useState<"painel" | "conversas">(() => ler("jarvis:whatsapp-modo", "painel"));
-  const trocar = (m: "painel" | "conversas") => { setModo(m); try { localStorage.setItem("jarvis:whatsapp-modo", m); } catch { /* sem storage */ } };
+  const [modo, setModo] = useState<ModoWhatsapp>(() => ler<ModoWhatsapp>("jarvis:whatsapp-modo", "painel"));
+  const [pedido, setPedido] = useState<{ nome: string; when: string; n: number } | null>(null);
+  const trocar = (m: ModoWhatsapp) => { setModo(m); try { localStorage.setItem("jarvis:whatsapp-modo", m); } catch { /* sem storage */ } };
+  const abrirConversa = useCallback((c: CardWhatsapp) => setPedido((p) => ({ nome: c.nome, when: c.when, n: (p?.n ?? 0) + 1 })), []);
   const seletor = (
     <div className="mx-3 mb-2 flex rounded-lg bg-muted p-0.5 text-[12px] font-medium">
-      {([["painel", "Painel"], ["conversas", "Conversas"]] as const).map(([id, rotulo]) => (
+      {([["painel", "Painel"], ["conversas", "Conversas"], ["dividido", "Dividido"]] as const).map(([id, rotulo]) => (
         <button key={id} type="button" onClick={() => trocar(id)}
           className={cn("flex-1 rounded-md py-1 transition-colors", modo === id ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
           {rotulo}
@@ -103,6 +109,17 @@ export function AssistantWhatsappTab() {
       ))}
     </div>
   );
+  if (modo === "dividido") {
+    return (
+      <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
+        {seletor}
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-[3] overflow-y-auto px-4 pb-4"><PainelWhatsapp onAbrirConversa={abrirConversa} /></div>
+          <div className="min-h-0 min-w-[300px] flex-[2] border-l border-border pt-1"><WhatsappConversas pedido={pedido} /></div>
+        </div>
+      </div>
+    );
+  }
   if (modo === "conversas") {
     return (
       <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
@@ -114,7 +131,7 @@ export function AssistantWhatsappTab() {
   return <>{seletor}<PainelWhatsapp /></>;
 }
 
-function PainelWhatsapp() {
+function PainelWhatsapp({ onAbrirConversa }: { onAbrirConversa?: (c: CardWhatsapp) => void } = {}) {
   const { user } = useAuth();
   const [painel, setPainel] = useState<Painel | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -360,6 +377,7 @@ function PainelWhatsapp() {
               onMarcar={(v) => marcar(c, v)}
               onMarcarItem={(itemId, v) => marcarParte(c, itemId, v)}
               refCard={(el) => { refsCards.current[c.id] = el; }}
+              onAbrir={onAbrirConversa ? () => onAbrirConversa(c) : undefined}
             />
           ))}
 
@@ -381,10 +399,11 @@ function PainelWhatsapp() {
 
 type Metricas = ReturnType<typeof calcularMetricas>;
 
-function CardResposta({ card: c, feito, atual, espera, meta, cor, respondidos, onMarcar, onMarcarItem, refCard }: {
+function CardResposta({ card: c, feito, atual, espera, meta, cor, respondidos, onMarcar, onMarcarItem, refCard, onAbrir }: {
   card: CardWhatsapp; feito?: boolean; atual?: boolean; espera?: number; meta: number; cor?: (min: number) => string;
   respondidos: Record<string, boolean>;
   onMarcar: (feito: boolean) => void; onMarcarItem: (itemId: string, feito: boolean) => void; refCard: (el: HTMLDivElement | null) => void;
+  onAbrir?: () => void;
 }) {
   const itens = c.itens ?? [];
   const progresso = progressoCard(c, respondidos);
@@ -412,6 +431,12 @@ function CardResposta({ card: c, feito, atual, espera, meta, cor, respondidos, o
         <div className="flex shrink-0 flex-col items-end gap-1">
           <Tag tom={c.tagc}>{c.tag}</Tag>
           {atual && <span className="text-[11px] font-bold text-green-600">Próximo</span>}
+          {onAbrir && (
+            <button type="button" onClick={onAbrir}
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-600/50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400">
+              <MessageCircle className="h-3 w-3" />Abrir conversa
+            </button>
+          )}
         </div>
       </div>
 

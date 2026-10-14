@@ -43,6 +43,11 @@ interface Produto {
   ideias?: string;
 }
 
+const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
+  if (!id) return {};
+  try { return JSON.parse(localStorage.getItem(`projeto-aba:${id}`) || "{}"); } catch { return {}; }
+};
+
 export default function ClienteDetalhe() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -56,10 +61,18 @@ export default function ClienteDetalhe() {
   const [erroCliente, setErroCliente] = useState("");
   const [avisoPermissoes, setAvisoPermissoes] = useState("");
   const requisicaoAtual = useRef(0);
-  const [abaAtiva, setAbaAtiva] = useState("atividades");
+  const [abaAtiva, setAbaAtiva] = useState(() => lerAbaProjeto(id).aba ?? "atividades");
   const [conteudoExpandido, setConteudoExpandido] = useState(false);
   const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
-  const [subAbaConteudo, setSubAbaConteudo] = useState("visao-geral");
+  const [subAbaConteudo, setSubAbaConteudo] = useState(() => lerAbaProjeto(id).sub ?? "visao-geral");
+  // Lembra a seção aberta de cada projeto pra reabrir igual (fechar e abrir o app).
+  // (Ao trocar de projeto na mesma guia não grava: a seção ainda é a do anterior.)
+  const idDaAba = useRef(id);
+  useEffect(() => {
+    if (!id) return;
+    if (idDaAba.current !== id) { idDaAba.current = id; return; }
+    try { localStorage.setItem(`projeto-aba:${id}`, JSON.stringify({ aba: abaAtiva, sub: subAbaConteudo })); } catch { /* sem storage */ }
+  }, [id, abaAtiva, subAbaConteudo]);
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
@@ -89,7 +102,10 @@ export default function ClienteDetalhe() {
     // permissão nessa área ainda cai em Informações gerais (ver abaixo).
     // Guia aberta num documento (?documento=…, ex.: ⌘+clique) vai pra
     // Documentos: senão este reset passava por cima e a guia abria em Atividades.
-    setAbaAtiva(searchParams.get("documento") ? "documentos" : "atividades");
+    // Senão, volta pra seção em que o Davi estava neste projeto (se houver).
+    const salva = lerAbaProjeto(id);
+    setAbaAtiva(searchParams.get("documento") ? "documentos" : salva.aba ?? "atividades");
+    if (salva.sub) setSubAbaConteudo(salva.sub);
 
     try {
       const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();

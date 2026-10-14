@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertTriangle, Calendar, CalendarClock, Clock, Plus, Search } from "lucide-react";
+import { AlertTriangle, Calendar, CalendarClock, Clock, LayoutGrid, List, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,6 +13,11 @@ import {
 } from "@/hooks/useAssistantAtividades";
 import type { AssistantProjetoOpcao } from "@/hooks/useAssistantProjeto";
 import { StartDayCreateActivityForm } from "./StartDayCreateActivityForm";
+import { StartDayKanbanPicker } from "./StartDayKanbanPicker";
+
+// Lista (atrasadas/hoje/próximas) ou Kanban (colunas do projeto, como o Davi se guia).
+const CHAVE_MODO = "jarvis:iniciar-dia-modo";
+const lerModo = (): "lista" | "kanban" => { try { return localStorage.getItem(CHAVE_MODO) === "lista" ? "lista" : "kanban"; } catch { return "kanban"; } };
 
 const TODOS_PROJETOS = "__todos__";
 const LIMITE = 3;
@@ -62,6 +67,8 @@ export function StartDayActivityPicker({
   const [busca, setBusca] = useState("");
   const [filtroProjetoId, setFiltroProjetoId] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
+  const [modo, setModoEstado] = useState(lerModo);
+  const setModo = (m: "lista" | "kanban") => { setModoEstado(m); try { localStorage.setItem(CHAVE_MODO, m); } catch { /* sem storage */ } };
 
   const nomeDoProjeto = (clienteId: string | null) => (clienteId ? projetos.find((p) => p.id === clienteId)?.nome ?? "Sem projeto" : "Sem projeto");
 
@@ -102,9 +109,47 @@ export function StartDayActivityPicker({
     <div className="space-y-3">
       <div className="space-y-1">
         <h3 className="text-lg font-medium leading-snug">Escolha até 3 atividades que realmente importam hoje</h3>
-        <p className="text-xs text-muted-foreground">{selecionadas.length} de {LIMITE} selecionadas</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">{selecionadas.length} de {LIMITE} selecionadas</p>
+          <div className="flex items-center gap-0.5 rounded-md bg-muted p-0.5">
+            {(["kanban", "lista"] as const).map((m) => (
+              <button key={m} type="button" onClick={() => setModo(m)}
+                className={cn("flex items-center gap-1 rounded px-2 py-1 text-xs font-medium transition-colors", modo === m ? "bg-background shadow-sm" : "text-muted-foreground")}>
+                {m === "kanban" ? <LayoutGrid className="h-3.5 w-3.5" /> : <List className="h-3.5 w-3.5" />}
+                {m === "kanban" ? "Kanban" : "Lista"}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
+      {modo === "kanban" && selecionadas.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {selecionadas.map((id) => {
+            const titulo = tarefas.find((t) => t.id === id)?.titulo ?? atividadesForaDaLista?.find((a) => a.id === id)?.titulo ?? "Atividade";
+            return (
+              <button key={id} type="button" onClick={() => onAlternar(id)} title="Tirar da seleção"
+                className="flex max-w-full items-center gap-1 rounded-full border border-primary bg-primary/10 px-2 py-0.5 text-xs text-primary hover:bg-primary/20">
+                <span className="truncate">✓ {titulo}</span><span aria-hidden="true">×</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {modo === "kanban" ? (
+        <StartDayKanbanPicker
+          tarefas={tarefas}
+          projetos={projetos}
+          projetoIdAtual={projetoIdAtual}
+          selecionadas={selecionadas}
+          limite={LIMITE}
+          onAlternar={onAlternar}
+          colunasDoProjeto={colunasDoProjeto}
+          onCriarAtividade={onCriarAtividade}
+          onAtividadeCriada={onAtividadeCriada}
+        />
+      ) : (<>
       <div className="flex items-center gap-1.5">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -185,9 +230,11 @@ export function StartDayActivityPicker({
         )}
       </div>
 
+      </>)}
+
       <Button type="button" variant="outline" className="w-full gap-1.5" onClick={() => setCriando(true)}>
         <Plus className="h-3.5 w-3.5" />
-        Nova atividade
+        {modo === "kanban" ? "Nova atividade (formulário completo)" : "Nova atividade"}
       </Button>
     </div>
   );

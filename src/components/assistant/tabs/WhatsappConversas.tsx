@@ -59,7 +59,22 @@ const resumo = (c: Conversa) => {
   return pre + corpo;
 };
 
-export function WhatsappConversas() {
+// Acha a conversa de um card do painel: pelo telefone (últimos 8 dígitos,
+// que não mudam com o 9 extra) ou, se não tiver, pelo nome.
+function acharConversa(conversas: Conversa[], nome: string, when: string): Conversa | null {
+  const numeros = (when.match(/\+?\d[\d\s().-]{8,}\d/g) || []).map((d) => d.replace(/\D/g, "")).filter((d) => d.length >= 10);
+  for (const n of numeros) {
+    const c = conversas.find((x) => x.chat_id.split("@")[0].replace(/\D/g, "").endsWith(n.slice(-8)));
+    if (c) return c;
+  }
+  const alvo = nome.trim().toLowerCase();
+  if (!alvo) return null;
+  return conversas.find((x) => (x.chat_nome ?? "").trim().toLowerCase() === alvo)
+    ?? conversas.find((x) => { const n = (x.chat_nome ?? "").trim().toLowerCase(); return !!n && (n.includes(alvo) || alvo.includes(n)); })
+    ?? null;
+}
+
+export function WhatsappConversas({ pedido }: { pedido?: { nome: string; when: string; n: number } | null } = {}) {
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -102,6 +117,17 @@ export function WhatsappConversas() {
       return novo;
     });
   }, []);
+
+  // Pedido do painel (modo Dividido): abre a conversa daquele card.
+  const pedidoAtendido = useRef(0);
+  useEffect(() => {
+    if (!pedido || pedido.n === pedidoAtendido.current || carregando) return;
+    pedidoAtendido.current = pedido.n;
+    const c = acharConversa(conversas, pedido.nome, pedido.when);
+    if (c) { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }
+    else toast.error(`Não achei a conversa de ${pedido.nome} no WhatsApp do Mac`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido, conversas, carregando]);
 
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
