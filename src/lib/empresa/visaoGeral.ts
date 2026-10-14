@@ -22,8 +22,10 @@ export interface MembroResumo {
 }
 
 // IA "operária" (ex.: Danilo/Roy = ChatGPT): tem fila, mas quem leva o
-// trabalho até ela é o Davi. O Jarvis só coordena.
-export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && m.nome !== "Jarvis";
+// trabalho até ela é o Davi. O Jarvis só coordena; a Dalila publica sozinha
+// na nuvem (edge dalila-publicar), então a fila dela não depende do Davi.
+const IAS_AUTONOMAS = new Set(["jarvis", "dalila"]);
+export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && !IAS_AUTONOMAS.has(m.nome.toLowerCase());
 
 export interface SetorResumo {
   id: string;

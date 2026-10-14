@@ -13,6 +13,7 @@ import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
+import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import {
   contarIndicadores, estadoDosMembros, jarvisCuidando, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
@@ -55,6 +56,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
   const [videos, setVideos] = useState<VideoResumo[]>([]);
   const [membroAberto, setMembroAberto] = useState<MembroResumo | null>(null);
+  // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
+  const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Edições do Danilo (editor IA): prontas pra revisar entram em "Precisa de você".
   const [edicoes, setEdicoes] = useState<EdicaoResumo[]>([]);
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
@@ -188,6 +191,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                 if (item.tipo === "aprovar") {
                   return <LinhaAcao key="aprovar" icone={CheckCircle2} titulo={`Aprovar ${item.tarefas.length} ${item.tarefas.length === 1 ? "entrega" : "entregas"}`} detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={onAbrirAtividades} />;
                 }
+                if (item.tarefa.tipo === "agendar") {
+                  return <LinhaAcao key={item.tarefa.id} icone={CalendarClock} titulo={item.tarefa.titulo}
+                    detalhe="Escolha o dia e a hora · a Dalila publica" onClick={() => setAgendarAberto(item.tarefa.id)} />;
+                }
                 return <LinhaAcao key={item.tarefa.id} icone={FileText} titulo={item.tarefa.titulo} atrasada={item.atrasada}
                   detalhe={item.tarefa.data_vencimento ? `${item.atrasada ? "Atrasada desde" : "Prazo"} ${dataCurta(item.tarefa.data_vencimento)}` : "Sem prazo"} onClick={onAbrirAtividades} />;
               })}
@@ -309,6 +316,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }} />
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
+      <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
 
       {/* 4. O que vai ser publicado. */}
       <section className="rounded-xl border bg-card p-4">

@@ -23,7 +23,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const GRAPH = "https://graph.instagram.com/v23.0";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://infopro-hub.vercel.app";
-const ESCOPOS = "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages";
+// content_publish: a Dalila publica os carrosséis (edge dalila-publicar).
+const ESCOPOS = "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages,instagram_business_content_publish";
 const STATE_VALIDADE_MS = 7 * 24 * 60 * 60 * 1000;
 // Renova o token de longa duração (60 dias) quando faltar menos que isso.
 const RENOVAR_ANTES_MS = 20 * 24 * 60 * 60 * 1000;
