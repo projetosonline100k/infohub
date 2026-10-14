@@ -1,5 +1,5 @@
 import { NavLink as RouterNavLink, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, Sparkles, Gauge, CalendarDays } from "lucide-react";
+import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, Sparkles, Gauge, CalendarDays, Zap } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -33,7 +33,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { openTab } = useWorkspaceTabs();
   const { user } = useAuth();
-  const itens = ehAdmin(user?.email) ? [...menuItems, { title: "Administração", path: "/admin", icon: ShieldCheck }] : menuItems;
+  const itens = ehAdmin(user?.email) ? [...menuItems, { title: "Automações", path: "/automacoes", icon: Zap }, { title: "Administração", path: "/admin", icon: ShieldCheck }] : menuItems;
 
   return (
     <Sidebar collapsible="icon">

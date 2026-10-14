@@ -9,6 +9,7 @@ import Notas from "@/pages/Notas";
 import Produtividade from "@/pages/Produtividade";
 import Agenda from "@/pages/Agenda";
 import Admin from "@/pages/Admin";
+import Automacoes from "@/pages/Automacoes";
 import NotFound from "@/pages/NotFound";
 import { useWorkspaceTabs } from "./WorkspaceTabs";
 
@@ -77,6 +78,7 @@ export function WorkspacePages() {
               <Route path="/produtividade" element={<Produtividade />} />
               <Route path="/agenda" element={<Agenda />} />
               <Route path="/admin" element={<Admin />} />
+              <Route path="/automacoes" element={<Automacoes />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>

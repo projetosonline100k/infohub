@@ -19,3 +19,7 @@ verify_jwt = true
 # O callback OAuth vem do Google sem JWT; as demais acoes validam a sessao
 # explicitamente dentro da funcao.
 verify_jwt = false
+
+[functions.instagram-automacoes]
+# Webhook da Meta: chega sem JWT; a função valida a assinatura X-Hub-Signature-256.
+verify_jwt = false

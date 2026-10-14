@@ -20,6 +20,10 @@ redesign (só o dark era o pedido).
 @layer base {
   :root {
     --background: 0 0% 98%;
+    /* Gráficos (categórico, ordem fixa; validado p/ daltonismo — skill dataviz) */
+    --viz-1: #2a78d6;
+    --viz-2: #eb6834;
+    --viz-3: #1baf7a;
     --foreground: 0 0% 10%;
 
     --card: 0 0% 100%;
@@ -86,6 +90,9 @@ redesign (só o dark era o pedido).
   .dark {
     /* #071015 */
     --background: 201 50% 5%;
+    --viz-1: #3987e5;
+    --viz-2: #d95926;
+    --viz-3: #199e70;
     /* #F5F7F8 */
     --foreground: 200 18% 97%;
 

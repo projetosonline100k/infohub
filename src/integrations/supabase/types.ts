@@ -14,6 +14,125 @@ export type Database = {
   }
   public: {
     Tables: {
+      instagram_automacoes: {
+        Row: {
+          id: string
+          user_id: string
+          nome: string
+          palavras_chave: string[]
+          correspondencia: string
+          gatilhos: string[]
+          mensagem_dm: string
+          respostas_comentario: string[]
+          media_ids: string[] | null
+          ativo: boolean
+          disparos: number
+          rastrear_links: boolean
+          criado_em: string
+          atualizado_em: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          nome: string
+          palavras_chave: string[]
+          correspondencia?: string
+          gatilhos?: string[]
+          mensagem_dm: string
+          respostas_comentario?: string[]
+          media_ids?: string[] | null
+          ativo?: boolean
+          disparos?: number
+          rastrear_links?: boolean
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          nome?: string
+          palavras_chave?: string[]
+          correspondencia?: string
+          gatilhos?: string[]
+          mensagem_dm?: string
+          respostas_comentario?: string[]
+          media_ids?: string[] | null
+          ativo?: boolean
+          disparos?: number
+          rastrear_links?: boolean
+          criado_em?: string
+          atualizado_em?: string
+        }
+        Relationships: []
+      }
+      instagram_automacao_disparos: {
+        Row: {
+          id: string
+          user_id: string
+          automacao_id: string | null
+          evento_id: string
+          origem: string
+          media_id: string | null
+          autor_id: string | null
+          autor_username: string | null
+          texto: string | null
+          dm_status: string
+          resposta_status: string
+          erro: string | null
+          links: string[]
+          cliques: number
+          clicou_em: string | null
+          respondeu_em: string | null
+          criado_em: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          automacao_id?: string | null
+          evento_id: string
+          origem?: string
+          media_id?: string | null
+          autor_id?: string | null
+          autor_username?: string | null
+          texto?: string | null
+          dm_status?: string
+          resposta_status?: string
+          erro?: string | null
+          links?: string[]
+          cliques?: number
+          clicou_em?: string | null
+          respondeu_em?: string | null
+          criado_em?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          automacao_id?: string | null
+          evento_id?: string
+          origem?: string
+          media_id?: string | null
+          autor_id?: string | null
+          autor_username?: string | null
+          texto?: string | null
+          dm_status?: string
+          resposta_status?: string
+          erro?: string | null
+          links?: string[]
+          cliques?: number
+          clicou_em?: string | null
+          respondeu_em?: string | null
+          criado_em?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_automacao_disparos_automacao_id_fkey"
+            columns: ["automacao_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_automacoes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agentes_ia: {
         Row: {
           cliente_id: string
@@ -2338,6 +2457,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      instagram_conexao_status: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          ig_user_id: string
+          username: string | null
+          token_expira_em: string | null
+        }[]
+      }
       atalho_configurado: { Args: Record<PropertyKey, never>; Returns: string | null }
       gerar_token_atalho: { Args: Record<PropertyKey, never>; Returns: string }
       gerar_token_atalho_cliente: { Args: { p_cliente: string }; Returns: string }

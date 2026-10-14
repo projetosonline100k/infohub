@@ -30,6 +30,7 @@ Rotas internas (sidebar, `src/components/layout/AppSidebar.tsx`):
 | Notas | `/notas` | `Notas.tsx` | notas pessoais com pastas |
 | Produtividade | `/produtividade` | `Produtividade.tsx` | performance (rotinas/metas), sono, relatórios de foco |
 | Agenda | `/agenda` | `Agenda.tsx` | eventos, alarmes, sync com Google Calendar (`docs/GOOGLE_CALENDAR.md`) |
+| Automações | `/automacoes` | `Automacoes.tsx` | automações do Instagram por palavra-chave (só admin) |
 | Administração | `/admin` | `Admin.tsx` | só para o e-mail admin (`src/lib/admin.ts`) |
 
 Componentes por domínio em `src/components/<dominio>/`; lógica pura em `src/lib/<dominio>/`; hooks de dados em `src/hooks/` (o Assistant/Jarvis usa `useAssistant*`, produtividade usa `usePerformance*`, `useSleep*`, `useDailyPlan`, `useStartDay*`, `useEndOfDay*`).
@@ -66,7 +67,7 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 - `sleep_logs`, `sleep_goals`.
 - `jarvis_configuracoes`, `jarvis_mensagens` (mensagens/nudges da orbe).
 
-**Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`.
+**Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`; `instagram_conexoes` (token, sem acesso pelo app), `instagram_automacoes`, `instagram_automacao_disparos`.
 
 ## Permissões (RLS)
 
@@ -74,7 +75,7 @@ Acesso por dono + equipe. Funções: `team_allowed`, `team_access`, `team_row_al
 
 ## Edge functions (`supabase/functions/`)
 
-`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-insights` (Windsor), `google-calendar`. Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
+`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-insights` (Windsor), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
 
 ## Consultar dados reais (somente leitura)
 
@@ -91,6 +92,10 @@ python3 scripts/consulta.py "select ... "
 - Depende de `pg8000`/`certifi` em `/private/tmp/infopro-db-check`. Se sumir: `pip3 install --target /private/tmp/infopro-db-check pg8000 certifi`.
 - Filtre `deleted_at is null` e, quando fizer sentido, `clientes.arquivado = false`.
 - Escritas no banco só com pedido explícito do usuário, via migração em `supabase/migrations/` ou um script `scripts/apply-*.py` revisado.
+
+## Automações do Instagram (palavra-chave → DM)
+
+Quando o usuário pedir para criar, editar, pausar ou apagar uma automação ("cria a palavra QUERO mandando o link X"), use `python3 scripts/instagram-automacoes.py` (`listar`, `criar`, `editar`, `pausar`, `ativar`, `apagar`, `disparos`, `posts`, `status`). Gatilhos: `--gatilhos comentario,dm,story` (padrão: comentário). A mesma coisa dá para fazer na tela `/automacoes`. Pedido no chat = autorização para essas escritas. Antes de criar, confira `listar` para não duplicar palavra. Setup e limites da Meta: `docs/INSTAGRAM_AUTOMACOES.md`.
 
 ## Convenções
 
