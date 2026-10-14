@@ -23,11 +23,12 @@ type Props = {
   onFechar: () => void;
   automacao: InstagramAutomacao | null; // null = nova
   todas: InstagramAutomacao[];
-  conectado: boolean;
+  igUserId: string | null; // conta da automação (a escolhida na tela)
   onSalvar: (form: AutomacaoForm, id?: string) => Promise<void>;
 };
 
-export function AutomacaoDialog({ aberto, onFechar, automacao, todas, conectado, onSalvar }: Props) {
+export function AutomacaoDialog({ aberto, onFechar, automacao, todas, igUserId, onSalvar }: Props) {
+  const conectado = !!igUserId;
   const [nome, setNome] = useState("");
   const [palavrasTexto, setPalavrasTexto] = useState("");
   const [correspondencia, setCorrespondencia] = useState<Correspondencia>("contem");
@@ -42,6 +43,9 @@ export function AutomacaoDialog({ aberto, onFechar, automacao, todas, conectado,
   const [posts, setPosts] = useState<InstagramPost[] | null>(null);
   const [carregandoPosts, setCarregandoPosts] = useState(false);
   const [erroPosts, setErroPosts] = useState<string | null>(null);
+
+  // Trocou de conta: a lista de posts é outra.
+  useEffect(() => { setPosts(null); }, [igUserId]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -70,7 +74,7 @@ export function AutomacaoDialog({ aberto, onFechar, automacao, todas, conectado,
     setCarregandoPosts(true);
     setErroPosts(null);
     try {
-      setPosts(await buscarPostsInstagram());
+      setPosts(await buscarPostsInstagram(igUserId!));
     } catch (e) {
       setErroPosts(e instanceof Error ? e.message : "Não deu para buscar os posts.");
     } finally {

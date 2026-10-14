@@ -1,8 +1,15 @@
 """Gerencia as automações do Instagram ("comentou a palavra, recebe a DM").
 
+Várias contas: a sua ("Meu perfil") e as dos clientes. Todo comando aceita
+--conta <@usuario ou nome do cliente> ANTES do subcomando; sem ele, listar/
+disparos mostram todas e criar/posts usam o seu perfil.
+
 Uso:
+  python3 scripts/instagram-automacoes.py contas
+  python3 scripts/instagram-automacoes.py link [--cliente "Nome"]   (link de conexão OAuth, vale 7 dias)
   python3 scripts/instagram-automacoes.py status
-  python3 scripts/instagram-automacoes.py conectar          (pede o token sem ecoar)
+  python3 scripts/instagram-automacoes.py conectar [--cliente "Nome"]  (pede o token sem ecoar)
+  python3 scripts/instagram-automacoes.py --conta omatheuscidsouto criar ...
   python3 scripts/instagram-automacoes.py posts [--limite 15]
   python3 scripts/instagram-automacoes.py listar
   python3 scripts/instagram-automacoes.py criar --nome "Mentoria" --palavras "QUERO,EU QUERO" \\
@@ -37,6 +44,10 @@ SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
 GRAPH = 'https://graph.instagram.com/v23.0'
 ADMIN_EMAIL = 'eu.daviqueiroz22@gmail.com'  # mesmo de src/lib/admin.ts
+IG_APP_ID = '2227305607850526'  # app "Infopro Hub Automacoes-IG" (público)
+CALLBACK = 'https://ucjyobemrxqfcoopkcgb.supabase.co/functions/v1/instagram-automacoes/callback'
+ESCOPOS = 'instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages'
+ARGS = None  # argumentos globais (--conta), preenchidos em main()
 
 
 def http(metodo, url, params=None):
@@ -54,15 +65,7 @@ def http(metodo, url, params=None):
         raise SystemExit(f'ERRO da Meta ({e.code}): {msg or e.reason}')
 
 
-def conexao(q):
-    q.execute('select ig_user_id, user_id, username, access_token, token_expira_em from instagram_conexoes order by criado_em limit 1')
-    return q.fetchone()
-
-
 def dono(q):
-    c = conexao(q)
-    if c:
-        return c[1]
     q.execute('select id from auth.users where lower(email) = %s', (ADMIN_EMAIL,))
     row = q.fetchone()
     if not row:
@@ -70,11 +73,46 @@ def dono(q):
     return row[0]
 
 
-def exigir_conexao(q):
-    c = conexao(q)
-    if not c:
-        raise SystemExit('Instagram não conectado. Rode: python3 scripts/instagram-automacoes.py conectar')
-    return c
+def contas(q):
+    """(ig_user_id, username, access_token, token_expira_em, cliente_id, cliente_nome) do dono."""
+    q.execute("""select c.ig_user_id, c.username, c.access_token, c.token_expira_em, c.cliente_id, cl.nome_especialista
+                 from instagram_conexoes c left join clientes cl on cl.id = c.cliente_id
+                 where c.user_id = %s order by c.cliente_id nulls first, c.criado_em""", (dono(q),))
+    return q.fetchall()
+
+
+def rotulo(c):
+    return f"@{c[1]} ({c[5] or 'Meu perfil'})"
+
+
+def conta_escolhida(q, exigir=True):
+    """A conta de --conta (@usuario ou nome do cliente); sem ele, o seu perfil."""
+    todas = contas(q)
+    ref = (ARGS.conta or '').strip().lstrip('@').lower()
+    if ref:
+        achadas = [c for c in todas if (c[1] or '').lower() == ref or ref in (c[5] or '').lower()]
+        if len(achadas) != 1:
+            raise SystemExit(f'--conta "{ARGS.conta}" bate com {len(achadas)} contas. Contas: '
+                             + ', '.join(rotulo(c) for c in todas))
+        return achadas[0]
+    proprio = next((c for c in todas if c[4] is None), todas[0] if todas else None)
+    if not proprio and exigir:
+        raise SystemExit('Nenhuma conta conectada. Rode: python3 scripts/instagram-automacoes.py link')
+    return proprio
+
+
+def filtro_conta(q):
+    """ig_user_id para filtrar quando --conta foi passado; None = todas."""
+    return conta_escolhida(q)[0] if ARGS.conta else None
+
+
+def achar_cliente(q, nome):
+    q.execute("select id, nome_especialista from clientes where user_id = %s and nome_especialista ilike %s and not arquivado",
+              (dono(q), f'%{nome.strip()}%'))
+    achados = q.fetchall()
+    if len(achados) != 1:
+        raise SystemExit(f'Cliente "{nome}" bate com {len(achados)}: ' + ', '.join(c[1] for c in achados))
+    return achados[0]
 
 
 def resolver_posts(q, refs):
@@ -85,7 +123,7 @@ def resolver_posts(q, refs):
     for r in refs:
         (ids if r.strip().isdigit() else links).append(r.strip())
     if links:
-        ig_id, _, _, token, _ = exigir_conexao(q)
+        ig_id, _, token, *_ = conta_escolhida(q)
         midias = listar_midias(ig_id, token, 100)
         for link in links:
             codigo = link.rstrip('/').split('?')[0].rstrip('/').split('/')[-1]
@@ -105,7 +143,9 @@ def listar_midias(ig_id, token, limite):
 
 
 def achar(q, ref):
-    q.execute('select id, nome, palavras_chave from instagram_automacoes where user_id = %s', (dono(q),))
+    ig = filtro_conta(q)
+    q.execute('select id, nome, palavras_chave from instagram_automacoes where user_id = %s and (%s::text is null or ig_user_id = %s)',
+              (dono(q), ig, ig))
     alvo = ref.strip().lower()
     achados = [r for r in q.fetchall() if str(r[0]).startswith(alvo) or r[1].lower() == alvo
                or alvo in [p.lower() for p in r[2]]]
@@ -131,23 +171,40 @@ def palavras(texto):
     return [p.strip() for p in texto.split(',') if p.strip()]
 
 
+def cmd_contas(q, _a):
+    todas = contas(q)
+    if not todas:
+        print('Nenhuma conta conectada.')
+    for ig_id, username, _, expira, _, cliente in todas:
+        print(f"@{username}  ({cliente or 'Meu perfil'})  id {ig_id}  token até {expira:%d/%m/%Y}" if expira else f"@{username}")
+
+
 def cmd_status(q, _a):
-    c = conexao(q)
-    if not c:
-        print('Instagram: NÃO conectado.')
-    else:
-        ig_id, _, username, token, expira = c
-        print(f'Instagram: @{username} (id {ig_id})')
-        print(f'Token expira em: {expira.isoformat() if expira else "desconhecido"} (a função renova sozinha)')
+    todas = contas(q) if not ARGS.conta else [conta_escolhida(q)]
+    if not todas:
+        print('Instagram: NENHUMA conta conectada.')
+    for c in todas:
+        ig_id, username, token, expira, _, _ = c
         assin = http('GET', f'{GRAPH}/me/subscribed_apps', {'access_token': token})
         campos = sorted({f for app in assin.get('data', []) for f in app.get('subscribed_fields', [])})
-        print('Webhook inscrito em:', ', '.join(campos) or 'NADA (rode conectar de novo)')
-    q.execute('select count(*) filter (where ativo), count(*) from instagram_automacoes')
-    ativas, total = q.fetchone()
-    print(f'Automações: {ativas} ativas de {total}')
+        q.execute('select count(*) filter (where ativo), count(*) from instagram_automacoes where ig_user_id = %s', (ig_id,))
+        ativas, total = q.fetchone()
+        print(f"{rotulo(c)}  id {ig_id}")
+        print(f"   token até {expira:%d/%m/%Y} (renova sozinho) · webhook: {', '.join(campos) or 'NADA'} · automações: {ativas} ativas de {total}")
 
 
-def cmd_conectar(q, _a):
+def cmd_link(q, a):
+    import secrets
+    cliente = achar_cliente(q, a.cliente) if a.cliente else None
+    state = secrets.token_hex(24)
+    q.execute('insert into instagram_oauth_states (state, user_id, cliente_id) values (%s, %s, %s)',
+              (state, dono(q), cliente[0] if cliente else None))
+    url = 'https://www.instagram.com/oauth/authorize?' + urllib.parse.urlencode({
+        'client_id': IG_APP_ID, 'redirect_uri': CALLBACK, 'response_type': 'code', 'scope': ESCOPOS, 'state': state})
+    print(f"Link de conexão ({cliente[1] if cliente else 'Meu perfil'}), vale 7 dias:\n{url}")
+
+
+def cmd_conectar(q, a):
     token = getpass.getpass('Cole o token de acesso do Instagram (não aparece na tela): ').strip()
     if not token:
         raise SystemExit('Token vazio.')
@@ -164,18 +221,20 @@ def cmd_conectar(q, _a):
         segundos = 60 * 24 * 3600
     expira = datetime.now(timezone.utc) + timedelta(seconds=segundos)
     user_id = dono(q)
-    q.execute("""insert into instagram_conexoes (ig_user_id, user_id, username, access_token, token_expira_em)
-                 values (%s, %s, %s, %s, %s)
+    cliente_id = achar_cliente(q, a.cliente)[0] if a.cliente else None
+    q.execute("""insert into instagram_conexoes (ig_user_id, user_id, username, access_token, token_expira_em, cliente_id)
+                 values (%s, %s, %s, %s, %s, %s)
                  on conflict (ig_user_id) do update set username = excluded.username,
                    access_token = excluded.access_token, token_expira_em = excluded.token_expira_em,
+                   cliente_id = coalesce(excluded.cliente_id, instagram_conexoes.cliente_id),
                    token_atualizado_em = now()""",
-              (ig_id, user_id, eu.get('username'), token, expira))
+              (ig_id, user_id, eu.get('username'), token, expira, cliente_id))
     http('POST', f'{GRAPH}/me/subscribed_apps', {'subscribed_fields': 'comments,messages', 'access_token': token})
     print(f'Conectado: @{eu.get("username")} (id {ig_id}). Webhook de comentários e mensagens inscrito.')
 
 
 def cmd_posts(q, a):
-    ig_id, _, _, token, _ = exigir_conexao(q)
+    ig_id, _, token, *_ = conta_escolhida(q)
     for m in listar_midias(ig_id, token, a.limite):
         legenda = (m.get('caption') or '').replace('\n', ' ')[:70]
         print(f"{m['id']}  {m.get('media_product_type', ''):6} {m.get('timestamp', '')[:10]}  "
@@ -183,14 +242,20 @@ def cmd_posts(q, a):
 
 
 def cmd_listar(q, _a):
-    q.execute("""select id, nome, ativo, palavras_chave, correspondencia, mensagem_dm,
-                        respostas_comentario, media_ids, disparos, gatilhos
-                 from instagram_automacoes where user_id = %s order by criado_em""", (dono(q),))
+    ig = filtro_conta(q)
+    q.execute("""select a.id, a.nome, a.ativo, a.palavras_chave, a.correspondencia, a.mensagem_dm,
+                        a.respostas_comentario, a.media_ids, a.disparos, a.gatilhos,
+                        '@' || c.username || ' (' || coalesce(cl.nome_especialista, 'Meu perfil') || ')'
+                 from instagram_automacoes a
+                 join instagram_conexoes c on c.ig_user_id = a.ig_user_id
+                 left join clientes cl on cl.id = c.cliente_id
+                 where a.user_id = %s and (%s::text is null or a.ig_user_id = %s)
+                 order by c.cliente_id nulls first, a.criado_em""", (dono(q), ig, ig))
     linhas = q.fetchall()
     if not linhas:
         print('Nenhuma automação.')
-    for i, nome, ativo, pal, corr, dm, resp, midias, disp, gat in linhas:
-        print(f"[{str(i)[:8]}] {nome} — {'ATIVA' if ativo else 'pausada'} — {disp} DMs enviadas")
+    for i, nome, ativo, pal, corr, dm, resp, midias, disp, gat, conta in linhas:
+        print(f"[{str(i)[:8]}] {nome} — {conta} — {'ATIVA' if ativo else 'pausada'} — {disp} DMs enviadas")
         print(f"   palavras ({corr}): {', '.join(pal)}")
         print(f"   gatilhos: {', '.join(gat)}")
         print(f"   posts: {', '.join(midias) if midias else 'todos'}")
@@ -203,11 +268,11 @@ def cmd_criar(q, a):
     if not (a.nome and a.palavras and a.dm):
         raise SystemExit('criar precisa de --nome, --palavras e --dm.')
     q.execute("""insert into instagram_automacoes
-                   (user_id, nome, palavras_chave, correspondencia, mensagem_dm, respostas_comentario, media_ids, ativo, gatilhos)
-                 values (%s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
-              (dono(q), a.nome, palavras(a.palavras), 'exata' if a.exata else 'contem', a.dm,
+                   (user_id, ig_user_id, nome, palavras_chave, correspondencia, mensagem_dm, respostas_comentario, media_ids, ativo, gatilhos)
+                 values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
+              (dono(q), conta_escolhida(q)[0], a.nome, palavras(a.palavras), 'exata' if a.exata else 'contem', a.dm,
                a.resposta or [], resolver_posts(q, a.post), not a.pausada, gatilhos(a.gatilhos or 'comentario')))
-    print(f'Criada: [{str(q.fetchone()[0])[:8]}] {a.nome}')
+    print(f'Criada: [{str(q.fetchone()[0])[:8]}] {a.nome} em {rotulo(conta_escolhida(q))}')
 
 
 def cmd_editar(q, a):
@@ -256,6 +321,8 @@ def cmd_apagar(q, a):
 
 def cmd_disparos(q, a):
     filtro, vals = 'd.user_id = %s', [dono(q)]
+    if ARGS.conta:
+        filtro += ' and d.ig_user_id = %s'; vals.append(filtro_conta(q))
     if a.ref:
         filtro += ' and d.automacao_id = %s'; vals.append(achar(q, a.ref))
     q.execute(f"""select d.criado_em, coalesce(a.nome, '(apagada)'), d.origem, coalesce('@' || d.autor_username, d.autor_id), d.texto,
@@ -269,10 +336,14 @@ def cmd_disparos(q, a):
 
 
 def main():
+    global ARGS
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('--conta', help='@usuario ou nome do cliente (padrão: seu perfil)')
     sub = p.add_subparsers(dest='cmd', required=True)
     sub.add_parser('status')
-    sub.add_parser('conectar')
+    sub.add_parser('contas')
+    sub.add_parser('link').add_argument('--cliente')
+    sub.add_parser('conectar').add_argument('--cliente')
     sp = sub.add_parser('posts'); sp.add_argument('--limite', type=int, default=15)
     sub.add_parser('listar')
     for nome in ('criar', 'editar'):
@@ -294,10 +365,10 @@ def main():
     for nome in ('pausar', 'ativar', 'apagar'):
         sub.add_parser(nome).add_argument('ref')
     sp = sub.add_parser('disparos'); sp.add_argument('ref', nargs='?'); sp.add_argument('--limite', type=int, default=20)
-    a = p.parse_args()
+    a = ARGS = p.parse_args()
 
     comandos = {
-        'status': cmd_status, 'conectar': cmd_conectar, 'posts': cmd_posts, 'listar': cmd_listar,
+        'status': cmd_status, 'contas': cmd_contas, 'link': cmd_link, 'conectar': cmd_conectar, 'posts': cmd_posts, 'listar': cmd_listar,
         'criar': cmd_criar, 'editar': cmd_editar, 'pausar': cmd_estado(False), 'ativar': cmd_estado(True),
         'apagar': cmd_apagar, 'disparos': cmd_disparos,
     }

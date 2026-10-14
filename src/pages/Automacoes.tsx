@@ -10,9 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { confirmar } from "@/components/DialogosGlobais";
 import { AutomacaoDialog } from "@/components/automacoes/AutomacaoDialog";
 import { AutomacoesResultados } from "@/components/automacoes/AutomacoesResultados";
+import { ConectarContaDialog } from "@/components/automacoes/ConectarContaDialog";
 import { GATILHOS } from "@/lib/automacoes/instagram";
 import { cn } from "@/lib/utils";
-import { useInstagramAutomacoes, type InstagramAutomacao } from "@/hooks/useInstagramAutomacoes";
+import { nomeDaConta, useInstagramAutomacoes, type InstagramAutomacao } from "@/hooks/useInstagramAutomacoes";
 
 const rotuloGatilho = (g: string) => GATILHOS.find((x) => x.valor === g)?.rotulo ?? g;
 
@@ -21,7 +22,8 @@ const rotuloGatilho = (g: string) => GATILHOS.find((x) => x.valor === g)?.rotulo
 // tela só gerencia as regras e mostra o histórico. Setup em
 // docs/INSTAGRAM_AUTOMACOES.md.
 export default function Automacoes() {
-  const { automacoes, disparos, conexao, loading, recarregar, salvar, alternar, apagar } = useInstagramAutomacoes();
+  const { contas, conta, setContaId, automacoes, disparos, loading, recarregar, salvar, alternar, apagar } = useInstagramAutomacoes();
+  const [conectarAberto, setConectarAberto] = useState(false);
   const [editando, setEditando] = useState<InstagramAutomacao | null>(null);
   const [dialogAberto, setDialogAberto] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
@@ -59,33 +61,44 @@ export default function Automacoes() {
           <Button variant="outline" size="icon" onClick={atualizar} aria-label="Atualizar" title="Atualizar">
             <RefreshCw className={cn("h-4 w-4", atualizando && "animate-spin")} />
           </Button>
-          <Button onClick={() => abrir(null)}><Plus className="mr-1.5 h-4 w-4" /> Nova automação</Button>
+          <Button onClick={() => abrir(null)} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Nova automação</Button>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-4">
         <Card className="p-4 sm:col-span-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conta</p>
-          {conexao ? (
-            <div className="mt-1 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span className="font-semibold">@{conexao.username ?? conexao.ig_user_id}</span>
-              {conexao.token_expira_em && (
-                <span className="text-xs text-muted-foreground">
-                  · acesso renova sozinho (vence {formatDistanceToNow(new Date(conexao.token_expira_em), { locale: ptBR, addSuffix: true })})
-                </span>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Conta</p>
+            <button type="button" onClick={() => setConectarAberto(true)} className="text-xs font-medium text-primary hover:underline">
+              + Conectar conta
+            </button>
+          </div>
+          {conta ? (
+            <>
+              <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Conta do Instagram">
+                {contas.map((c) => (
+                  <button key={c.ig_user_id} type="button" onClick={() => setContaId(c.ig_user_id)} aria-pressed={c.ig_user_id === conta.ig_user_id}
+                    className={cn("rounded-full border px-2.5 py-1 text-left text-xs transition-colors",
+                      c.ig_user_id === conta.ig_user_id ? "border-primary bg-primary/10 text-foreground" : "border-border text-muted-foreground hover:bg-muted")}>
+                    <span className="font-semibold">@{c.username ?? c.ig_user_id}</span>
+                    <span className="ml-1 opacity-70">· {nomeDaConta(c)}</span>
+                  </button>
+                ))}
+              </div>
+              {conta.token_expira_em && (
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  acesso renova sozinho (vence {formatDistanceToNow(new Date(conta.token_expira_em), { locale: ptBR, addSuffix: true })})
+                </p>
               )}
-            </div>
+            </>
           ) : (
             <div className="mt-1">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full bg-amber-500" />
-                <span className="font-semibold">Instagram não conectado</span>
+                <span className="font-semibold">Nenhuma conta conectada</span>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Dá para criar as automações agora; elas começam a valer quando a conta for conectada
-                (passo a passo em docs/INSTAGRAM_AUTOMACOES.md, ou peça ao Claude).
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Clique em “Conectar conta” para gerar o link de autorização.</p>
             </div>
           )}
         </Card>
@@ -211,12 +224,14 @@ export default function Automacoes() {
         </TabsContent>
       </Tabs>
 
+      <ConectarContaDialog aberto={conectarAberto} onFechar={() => { setConectarAberto(false); recarregar(); }} />
+
       <AutomacaoDialog
         aberto={dialogAberto}
         onFechar={() => setDialogAberto(false)}
         automacao={editando}
         todas={automacoes}
-        conectado={!!conexao}
+        igUserId={conta?.ig_user_id ?? null}
         onSalvar={salvar}
       />
     </div>

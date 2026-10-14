@@ -10,10 +10,17 @@
 //                         para a tela /automacoes escolher onde vale.
 // GET  /l/<disparo>/<n>  → redirecionador dos links da DM: conta o clique e
 //                         manda para o destino original (funil da tela).
+// POST /link             → (JWT) gera o link de conexão de uma conta (sua ou
+//                         de um cliente) — OAuth do Instagram, vale 7 dias.
+// GET  /callback         → volta do OAuth: troca o code pelo token de 60 dias,
+//                         salva a conexão, inscreve o webhook e manda pro Hub.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const GRAPH = "https://graph.instagram.com/v23.0";
+const APP_URL = Deno.env.get("APP_URL") ?? "https://infopro-hub.vercel.app";
+const ESCOPOS = "instagram_business_basic,instagram_business_manage_comments,instagram_business_manage_messages";
+const STATE_VALIDADE_MS = 7 * 24 * 60 * 60 * 1000;
 // Renova o token de longa duração (60 dias) quando faltar menos que isso.
 const RENOVAR_ANTES_MS = 20 * 24 * 60 * 60 * 1000;
 
@@ -178,7 +185,7 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
   if (evento.origem !== "comentario") {
     const { data: ultima } = await admin.from("instagram_automacao_disparos")
       .select("id, respondeu_em")
-      .eq("user_id", conexao.user_id).eq("autor_id", evento.autorId).eq("dm_status", "enviada")
+      .eq("ig_user_id", igUserId).eq("autor_id", evento.autorId).eq("dm_status", "enviada")
       .gte("criado_em", new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
       .order("criado_em", { ascending: false }).limit(1).maybeSingle();
     if (ultima && !ultima.respondeu_em) {
@@ -191,7 +198,9 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
   const { data: automacoes } = await admin
     .from("instagram_automacoes")
     .select("id, palavras_chave, correspondencia, gatilhos, mensagem_dm, respostas_comentario, media_ids, disparos, rastrear_links")
-    .eq("user_id", conexao.user_id).eq("ativo", true).contains("gatilhos", [evento.origem])
+    // Conta + dono: automação de outro usuário nunca dispara nesta conta.
+    .eq("ig_user_id", igUserId).eq("user_id", conexao.user_id)
+    .eq("ativo", true).contains("gatilhos", [evento.origem])
     .order("criado_em", { ascending: false });
 
   const porPost = evento.origem === "comentario";
@@ -208,6 +217,7 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
     .insert({
       user_id: conexao.user_id,
       automacao_id: automacao.id,
+      ig_user_id: igUserId,
       evento_id: evento.eventoId,
       origem: evento.origem,
       media_id: evento.mediaId,
@@ -280,6 +290,97 @@ async function redirecionar(req: Request, admin: any, disparoId: string, indice:
   return new Response(null, { status: 302, headers: { Location: destino, "Cache-Control": "no-store" } });
 }
 
+const redirectUri = (supabaseUrl: string) => `${supabaseUrl}/functions/v1/instagram-automacoes/callback`;
+
+// deno-lint-ignore no-explicit-any
+async function gerarLink(req: Request, admin: any, supabaseUrl: string) {
+  const user = await usuarioDaRequisicao(req, supabaseUrl);
+  if (!user) return json({ error: "não autenticado" }, 401);
+  const appId = Deno.env.get("META_IG_APP_ID");
+  if (!appId) return json({ error: "META_IG_APP_ID não configurado" }, 500);
+  const { cliente_id: clienteId } = await req.json().catch(() => ({}));
+  if (clienteId) {
+    const { data: cliente } = await admin.from("clientes").select("id").eq("id", clienteId).eq("user_id", user.id).maybeSingle();
+    if (!cliente) return json({ error: "cliente não encontrado" }, 404);
+  }
+  const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const { error } = await admin.from("instagram_oauth_states").insert({ state, user_id: user.id, cliente_id: clienteId ?? null });
+  if (error) return json({ error: error.message }, 500);
+  const url = new URL("https://www.instagram.com/oauth/authorize");
+  url.searchParams.set("client_id", appId);
+  url.searchParams.set("redirect_uri", redirectUri(supabaseUrl));
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("scope", ESCOPOS);
+  url.searchParams.set("state", state);
+  return json({ url: url.toString() });
+}
+
+const voltarProHub = (params: Record<string, string>) =>
+  new Response(null, { status: 302, headers: { Location: `${APP_URL}/instagram/conectado?${new URLSearchParams(params)}` } });
+
+// deno-lint-ignore no-explicit-any
+async function callbackOAuth(url: URL, admin: any, supabaseUrl: string) {
+  const state = url.searchParams.get("state") ?? "";
+  const code = url.searchParams.get("code");
+  if (url.searchParams.get("error")) return voltarProHub({ erro: "Você cancelou a autorização no Instagram." });
+
+  const { data: pedido } = await admin.from("instagram_oauth_states")
+    .select("state, user_id, cliente_id, criado_em, usado_em").eq("state", state).maybeSingle();
+  if (!pedido || pedido.usado_em || Date.now() - Date.parse(pedido.criado_em) > STATE_VALIDADE_MS || !code) {
+    return voltarProHub({ erro: "Link de conexão inválido ou vencido. Peça um novo." });
+  }
+  await admin.from("instagram_oauth_states").update({ usado_em: new Date().toISOString() }).eq("state", state);
+
+  try {
+    const appId = Deno.env.get("META_IG_APP_ID")!;
+    const segredo = Deno.env.get("META_APP_SECRET")!;
+    const curto = await fetch("https://api.instagram.com/oauth/access_token", {
+      method: "POST",
+      body: new URLSearchParams({
+        client_id: appId, client_secret: segredo, grant_type: "authorization_code",
+        redirect_uri: redirectUri(supabaseUrl), code: code.replace(/#_$/, ""),
+      }),
+    }).then((r) => r.json());
+    if (!curto.access_token) throw new Error(curto.error_message ?? curto.error?.message ?? "troca do code falhou");
+
+    const longoUrl = new URL("https://graph.instagram.com/access_token");
+    longoUrl.searchParams.set("grant_type", "ig_exchange_token");
+    longoUrl.searchParams.set("client_secret", segredo);
+    longoUrl.searchParams.set("access_token", curto.access_token);
+    const longo = await fetch(longoUrl).then((r) => r.json());
+    if (!longo.access_token) throw new Error(longo.error?.message ?? "token de longa duração falhou");
+
+    const eu = await fetch(`${GRAPH}/me?fields=user_id,username`, {
+      headers: { Authorization: `Bearer ${longo.access_token}` },
+    }).then((r) => r.json());
+    const igUserId = String(eu.user_id ?? eu.id ?? "");
+    if (!igUserId) throw new Error(eu.error?.message ?? "não deu para ler a conta");
+
+    const { data: existente } = await admin.from("instagram_conexoes").select("user_id").eq("ig_user_id", igUserId).maybeSingle();
+    if (existente && existente.user_id !== pedido.user_id) throw new Error("essa conta já está conectada por outro usuário do Hub");
+
+    await admin.from("instagram_conexoes").upsert({
+      ig_user_id: igUserId,
+      user_id: pedido.user_id,
+      cliente_id: pedido.cliente_id,
+      username: eu.username ?? null,
+      access_token: longo.access_token,
+      token_expira_em: new Date(Date.now() + Number(longo.expires_in ?? 5184000) * 1000).toISOString(),
+      token_atualizado_em: new Date().toISOString(),
+    }, { onConflict: "ig_user_id" });
+
+    const inscricao = await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=comments,messages`, {
+      method: "POST", headers: { Authorization: `Bearer ${longo.access_token}` },
+    });
+    if (!inscricao.ok) console.error("inscrição do webhook falhou:", await inscricao.text());
+
+    return voltarProHub({ ok: "1", conta: eu.username ?? igUserId });
+  } catch (e) {
+    console.error("callback instagram:", (e as Error).message);
+    return voltarProHub({ erro: `Não deu para conectar: ${(e as Error).message}` });
+  }
+}
+
 const doComentario = (c: Comentario): Evento => ({
   origem: "comentario",
   eventoId: c.id ?? "",
@@ -302,20 +403,29 @@ const daMensagem = (m: Mensageria): Evento | null => {
   };
 };
 
-// deno-lint-ignore no-explicit-any
-async function listarPosts(req: Request, admin: any, supabaseUrl: string) {
-  const json = (corpo: unknown, status = 200) =>
-    new Response(JSON.stringify(corpo), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+const json = (corpo: unknown, status = 200) =>
+  new Response(JSON.stringify(corpo), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+
+async function usuarioDaRequisicao(req: Request, supabaseUrl: string) {
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const authorization = req.headers.get("authorization");
-  if (!anonKey || !authorization) return json({ error: "não autenticado" }, 401);
+  if (!anonKey || !authorization) return null;
   const caller = createClient(supabaseUrl, anonKey, { global: { headers: { Authorization: authorization } } });
   const { data: { user } } = await caller.auth.getUser();
-  if (!user) return json({ error: "não autenticado" }, 401);
+  return user;
+}
 
-  const { data: conexao } = await admin
+// deno-lint-ignore no-explicit-any
+async function listarPosts(req: Request, admin: any, supabaseUrl: string) {
+  const user = await usuarioDaRequisicao(req, supabaseUrl);
+  if (!user) return json({ error: "não autenticado" }, 401);
+  const { ig_user_id: igUserId } = await req.json().catch(() => ({}));
+
+  let consulta = admin
     .from("instagram_conexoes").select("ig_user_id, user_id, access_token, token_expira_em")
-    .eq("user_id", user.id).order("criado_em").limit(1).maybeSingle();
+    .eq("user_id", user.id);
+  if (igUserId) consulta = consulta.eq("ig_user_id", String(igUserId));
+  const { data: conexao } = await consulta.order("criado_em").limit(1).maybeSingle();
   if (!conexao) return json({ error: "Instagram não conectado" }, 404);
 
   const token = await tokenAtual(admin, conexao as Conexao);
@@ -340,6 +450,13 @@ serve(async (req) => {
     return redirecionar(req, createClient(supabaseUrl, serviceKey), link[1], Number(link[2]));
   }
 
+  if (req.method === "GET" && url.pathname.endsWith("/callback")) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceKey) return new Response("not configured", { status: 500 });
+    return callbackOAuth(url, createClient(supabaseUrl, serviceKey), supabaseUrl);
+  }
+
   if (req.method === "GET") {
     const verifyToken = Deno.env.get("META_VERIFY_TOKEN");
     if (
@@ -360,6 +477,7 @@ serve(async (req) => {
   const admin = createClient(supabaseUrl, serviceKey);
 
   if (url.pathname.endsWith("/posts")) return listarPosts(req, admin, supabaseUrl);
+  if (url.pathname.endsWith("/link")) return gerarLink(req, admin, supabaseUrl);
 
   const segredo = Deno.env.get("META_APP_SECRET");
   if (!segredo) {

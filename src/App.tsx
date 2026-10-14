@@ -10,6 +10,7 @@ import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import JarvisWindow from "./pages/JarvisWindow";
 import Privacidade from "./pages/Privacidade";
+import InstagramConectado from "./pages/InstagramConectado";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
 import { WorkspaceTabsProvider } from "@/components/workspace/WorkspaceTabs";
 import { DialogosGlobais } from "@/components/DialogosGlobais";
@@ -40,6 +41,7 @@ const App = () => (
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
           <Route path="/privacidade" element={<Privacidade />} />
+          <Route path="/instagram/conectado" element={<InstagramConectado />} />
 
           {/* Janela nativa `jarvis` (desktop, ver src-tauri/tauri.conf.json) —
               sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona

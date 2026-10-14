@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           id: string
           user_id: string
+          ig_user_id: string
           nome: string
           palavras_chave: string[]
           correspondencia: string
@@ -34,6 +35,7 @@ export type Database = {
         Insert: {
           id?: string
           user_id: string
+          ig_user_id: string
           nome: string
           palavras_chave: string[]
           correspondencia?: string
@@ -50,6 +52,7 @@ export type Database = {
         Update: {
           id?: string
           user_id?: string
+          ig_user_id?: string
           nome?: string
           palavras_chave?: string[]
           correspondencia?: string
@@ -70,6 +73,7 @@ export type Database = {
           id: string
           user_id: string
           automacao_id: string | null
+          ig_user_id: string | null
           evento_id: string
           origem: string
           media_id: string | null
@@ -89,6 +93,7 @@ export type Database = {
           id?: string
           user_id: string
           automacao_id?: string | null
+          ig_user_id?: string | null
           evento_id: string
           origem?: string
           media_id?: string | null
@@ -108,6 +113,7 @@ export type Database = {
           id?: string
           user_id?: string
           automacao_id?: string | null
+          ig_user_id?: string | null
           evento_id?: string
           origem?: string
           media_id?: string | null
@@ -2457,12 +2463,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      instagram_conexao_status: {
+      instagram_contas: {
         Args: Record<PropertyKey, never>
         Returns: {
           ig_user_id: string
           username: string | null
           token_expira_em: string | null
+          cliente_id: string | null
+          cliente_nome: string | null
         }[]
       }
       atalho_configurado: { Args: Record<PropertyKey, never>; Returns: string | null }
