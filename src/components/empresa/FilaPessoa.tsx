@@ -11,6 +11,8 @@ import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { colunasDoProjeto } from "@/lib/empresa/colunas";
 import { ehIaOperaria, ordenarFila, tarefaAtrasada, type MembroResumo, type TarefaResumo } from "@/lib/empresa/visaoGeral";
 import { abrirLinkExterno } from "@/lib/abrirLink";
+import { InteligenciaMembro } from "./InteligenciaMembro";
+import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 
 type TarefaFila = TarefaResumo & { video_vertical_id?: string | null; video_youtube_id?: string | null };
 
@@ -94,6 +96,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   const [prazo, setPrazo] = useState("");
   const [situacao, setSituacao] = useState("fila");
   const [salvando, setSalvando] = useState(false);
+  const [rapida, setRapida] = useState(false);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
   const carregar = useCallback(async () => {
@@ -137,6 +140,23 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
     }
   };
 
+  // Tarefa que nasce do briefing confirmado: o combinado vai na descrição.
+  const criarTarefaDoBriefing = async (t: TarefaDoBriefing) => {
+    if (!membro) throw new Error("sem funcionário");
+    const { inicial } = await colunasDoProjeto(clienteId);
+    const nova = await criarAtividade({
+      titulo: t.titulo, clienteId, pastaId: null, dataAtividade: t.prazo || hoje,
+      statusKey: inicial, concluida: false, ordem: 0,
+    });
+    const { error } = await supabase.from("atividades").update({
+      responsavel_id: membro.id, situacao: "fila", tipo: t.tipo, data_vencimento: t.prazo, descricao: t.descricao,
+    }).eq("id", nova.id);
+    if (error) throw error;
+    await carregar();
+    onMudou();
+    return nova.id;
+  };
+
   const mudarSituacao = async (tarefa: TarefaResumo, nova: string) => {
     const feita = nova === "concluida";
     const mudancas: Record<string, unknown> = { situacao: nova, concluida: feita };
@@ -167,10 +187,10 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
               // O Roy roda no Mac com o Claude (scripts/roy/servico.py): não precisa levar nada até ele.
               <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
                 <p className="flex items-center gap-1.5 font-medium"><Bot className="h-4 w-4 text-emerald-500" />{membro.nome} trabalha sozinho, no seu Mac</p>
-                <p className="text-xs text-muted-foreground">Ele cria os carrosséis a partir dos reels e manda pra sua revisão em <b>Precisa de você</b>. Lá você aprova, exclui página, edita texto ou escreve o que ele deve mudar: ele refaz em segundo plano.</p>
+                <p className="text-xs text-muted-foreground">Passe uma tarefa pra ele (ex.: “transforme um reel em carrossel”): ele cria e manda pra sua revisão em <b>Precisa de você</b>. Lá você aprova, exclui página, edita texto ou escreve o que ele deve mudar: ele refaz em segundo plano.</p>
               </div>
-            ) : ia && (
-              // IA operária (conversa do ChatGPT): o Davi leva o trabalho até ela.
+            ) : ia && membro.link_ia && (
+              // IA operária que ainda é conversa do ChatGPT: o Davi leva o trabalho até ela.
               <div className="space-y-2 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-sm">
                 <p className="flex items-center gap-1.5 font-medium"><Bot className="h-4 w-4 text-sky-500" />{membro.nome} é uma conversa do ChatGPT</p>
                 {membro.link_ia ? (
@@ -187,8 +207,12 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
               </div>
             )}
 
-            {/* Nova tarefa */}
-            <form className="space-y-2 rounded-lg border p-3" onSubmit={(e) => { e.preventDefault(); void adicionar(); }}>
+            {/* Nova tarefa: conversa com o funcionário; a tarefa rápida fica de reserva. */}
+            <BriefingTarefa clienteId={clienteId} membro={membro} onCriarTarefa={criarTarefaDoBriefing} />
+            <button type="button" onClick={() => setRapida(!rapida)} className="text-xs text-muted-foreground hover:text-foreground">
+              {rapida ? "Fechar tarefa rápida" : "+ Tarefa rápida, sem conversa"}
+            </button>
+            {rapida && <form className="space-y-2 rounded-lg border p-3" onSubmit={(e) => { e.preventDefault(); void adicionar(); }}>
               <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder={`O que ${membro.nome} vai fazer?`} autoFocus />
               <div className="flex flex-wrap gap-2">
                 <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Tipo">
@@ -202,7 +226,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                   {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Adicionar
                 </Button>
               </div>
-            </form>
+            </form>}
 
             {carregando ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
@@ -213,6 +237,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                 {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} onMudar={mudarSituacao} />}
               </div>
             )}
+
+            <InteligenciaMembro clienteId={clienteId} membro={membro} />
           </>
         )}
       </DialogContent>

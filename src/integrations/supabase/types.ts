@@ -2788,6 +2788,133 @@ export type Database = {
         }
         Relationships: []
       }
+      briefing_mensagens: {
+        Row: {
+          briefing_id: string
+          cliente_id: string
+          criada_em: string
+          id: string
+          papel: string
+          status: string | null
+          texto: string
+          user_id: string | null
+        }
+        Insert: {
+          briefing_id: string
+          cliente_id: string
+          criada_em?: string
+          id?: string
+          papel: string
+          status?: string | null
+          texto: string
+          user_id?: string | null
+        }
+        Update: {
+          briefing_id?: string
+          cliente_id?: string
+          criada_em?: string
+          id?: string
+          papel?: string
+          status?: string | null
+          texto?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      briefings: {
+        Row: {
+          atividade_id: string | null
+          atualizado_em: string
+          cliente_id: string
+          criado_em: string
+          id: string
+          membro_id: string
+          proposta: Json | null
+          status: string
+          user_id: string | null
+        }
+        Insert: {
+          atividade_id?: string | null
+          atualizado_em?: string
+          cliente_id: string
+          criado_em?: string
+          id?: string
+          membro_id: string
+          proposta?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Update: {
+          atividade_id?: string | null
+          atualizado_em?: string
+          cliente_id?: string
+          criado_em?: string
+          id?: string
+          membro_id?: string
+          proposta?: Json | null
+          status?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      inteligencia_membros: {
+        Row: {
+          agente: string
+          arquivo_path: string | null
+          caracteres: number
+          cliente_id: string
+          conteudo: string | null
+          created_at: string
+          escopo: string
+          id: string
+          link: string | null
+          membro_id: string | null
+          mensagem: string | null
+          nome: string
+          observacao: string | null
+          processado_em: string | null
+          status: string
+          tipo: string
+          user_id: string | null
+        }
+        Insert: {
+          agente: string
+          arquivo_path?: string | null
+          cliente_id: string
+          conteudo?: string | null
+          created_at?: string
+          escopo?: string
+          id?: string
+          link?: string | null
+          membro_id?: string | null
+          mensagem?: string | null
+          nome: string
+          observacao?: string | null
+          processado_em?: string | null
+          status?: string
+          tipo: string
+          user_id?: string | null
+        }
+        Update: {
+          agente?: string
+          arquivo_path?: string | null
+          cliente_id?: string
+          conteudo?: string | null
+          created_at?: string
+          escopo?: string
+          id?: string
+          link?: string | null
+          membro_id?: string | null
+          mensagem?: string | null
+          nome?: string
+          observacao?: string | null
+          processado_em?: string | null
+          status?: string
+          tipo?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       jarvis_conversa: {
         Row: {
           criada_em: string
@@ -2881,6 +3008,10 @@ export type Database = {
         }[]
       }
       atalho_configurado: { Args: Record<PropertyKey, never>; Returns: string | null }
+      inteligencia_concluir: {
+        Args: { p_id: string; p_token: string; p_status: string; p_conteudo?: string | null; p_mensagem?: string | null }
+        Returns: boolean
+      }
       gerar_token_atalho: { Args: Record<PropertyKey, never>; Returns: string }
       gerar_token_atalho_cliente: { Args: { p_cliente: string }; Returns: string }
       receber_link_atalho: { Args: { p_token: string; p_url: string }; Returns: string }

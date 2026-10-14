@@ -8,6 +8,12 @@ pasta do projeto. Substitui as sessões do Claude que precisavam ficar
     (inclusive /cobrar e /analisar <id>) com scripts/jarvis-conversa.py.
   - WhatsApp: botão "Atualizar" (whatsapp_painel.atualizacao_status =
     'pedida') → o Claude lê o WhatsApp Web (Claude in Chrome) e publica.
+  - Briefing de tarefa: o Davi conversa com um funcionário da empresa
+    (briefing_mensagens) → o Claude responde no papel dele
+    (scripts/empresa/briefing.py) até o Davi confirmar a tarefa.
+  - Execução: tarefa confirmada na fila de um funcionário IA que trabalha
+    sozinho (execucao.EXECUTORES, hoje o Ítalo) → o Claude faz e entrega um
+    documento para o Davi aprovar (scripts/empresa/execucao.py).
 
 Usa o login do Claude Code feito com `claude auth login` (o plano do Davi,
 sem API paga). Log em ~/.infopro-hub/ouvinte/ouvinte.log.
@@ -28,6 +34,9 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
+sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
+import briefing  # noqa: E402
+import execucao  # noqa: E402
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
 PASTA = Path.home() / ".infopro-hub" / "ouvinte"
@@ -282,6 +291,78 @@ def atender_whatsapp():
         log(f"whatsapp: {final}")
 
 
+# ---------------------------------------------------------------- Briefing
+
+PROMPT_BRIEFING = """Você é um funcionário da empresa de um projeto no Infopro Hub. O Davi está te passando uma TAREFA por uma conversa no app (clicou em você na Visão geral), como se falasse com a pessoa. Ele não vê este terminal: só vê o que você gravar com os comandos abaixo.
+
+Briefing: {bid}
+
+1. Rode `python3 scripts/empresa/briefing.py contexto {bid}`: projeto, quem você é, seu manual e a conversa até aqui.
+2. Leia o seu manual (se tiver) e a sua inteligência com o comando que o contexto mostra (use `--saida` numa pasta temporária se precisar ler os textos).
+3. Seu papel AGORA é ENTENDER a tarefa, não fazer. Responda como a pessoa, em português simples e curto:
+   - diga com suas palavras o que entendeu;
+   - pergunte só o que falta de verdade (no máximo 3 perguntas, as mais importantes: objetivo, para qual produto/público, formato da entrega, prazo, referências);
+   - diga com honestidade se consegue fazer, o que NÃO consegue (ex.: precisa de arquivo, acesso ou decisão do Davi) e o que precisa dele.
+   Se o funcionário for PESSOA (o contexto avisa), fale como o assistente que vai repassar para ela: ajude o Davi a deixar o pedido claro e diga o que a pessoa vai precisar.
+4. Quando estiver claro (ou o Davi disser que está bom), PRIMEIRO grave a proposta — o resumo que vira a tarefa:
+   python3 scripts/empresa/briefing.py propor {bid} <<'FIM'
+   {{"titulo": "...", "entendimento": "o que vou fazer, em 2-4 frases", "entregas": ["..."], "consigo": "sim|em_parte|nao", "limites": "o que não consigo / riscos", "precisa_de": ["o que preciso do Davi"], "prazo_sugerido": "AAAA-MM-DD", "tipo": "copy|pagina|carrossel|edicao|programacao|metricas|gravacao"}}
+   FIM
+   e termine a resposta com: "Se estiver certo, clique em **Confirmar e subir a tarefa**." Se o Davi corrigir algo depois, grave a proposta de novo.
+5. Por último, grave a resposta (é ela que avisa o app que você terminou):
+   python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
+   <texto>
+   FIM
+Regras: não comece a tarefa, não crie atividade, não publique nem envie nada, não escreva no banco fora desses comandos. Dados do negócio só com scripts/consulta.py (somente leitura). Hoje é {hoje}."""
+
+
+def atender_briefings():
+    for bid in briefing.pegar():
+        log("briefing:", bid)
+        ok, texto = rodar_claude(PROMPT_BRIEFING.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=12)
+        if briefing.sem_resposta(bid):
+            motivo = texto if not ok else "terminei sem gravar a resposta."
+            briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")
+            log("briefing: falhou —", motivo)
+        else:
+            log("briefing: ok")
+
+
+# ---------------------------------------------------------------- Execução
+
+PROMPT_EXECUCAO = """Você é um funcionário IA da empresa de um projeto no Infopro Hub (siga o CLAUDE.md e a memória do projeto). O Davi conversou com você, você disse o que entendeu, e ele CONFIRMOU a tarefa. Agora é para FAZER, sozinho, e entregar para ele revisar. Ele não vê este terminal.
+
+Tarefa: {aid}
+
+1. Rode `python3 scripts/empresa/execucao.py contexto {aid}`: o combinado, o prazo, o projeto e onde está o seu manual.
+2. Leia o seu manual inteiro e a sua inteligência (`ler.py` com `--saida` numa pasta temporária, e leia os textos que importam para esta tarefa). Leia também os documentos do projeto que o combinado citar (scripts/consulta.py, somente leitura; o conteúdo é HTML).
+3. Faça o trabalho de verdade, como combinado. Pesquisa na internet: WebSearch/WebFetch; comentários e vídeos do YouTube: yt-dlp (`PYTHONPATH=~/.infopro-hub/ytdlp SSL_CERT_FILE=~/.infopro-hub/py/certifi/cacert.pem python3 -m yt_dlp --skip-download --write-comments --write-info-json ...`), trabalhe numa pasta temporária. Cite só o que você realmente leu; frases do público, do jeito que escreveram; nunca invente dado, depoimento ou número. Se algo combinado não deu para fazer, diga no documento (seção "Limites desta versão").
+4. Entregue UM documento organizado (HTML simples: h2, h3, p, ul, ol, li, strong, em, a, blockquote):
+   python3 scripts/empresa/execucao.py entregar {aid} "<título do documento>" "<resumo de 1 linha do que entregou>" <<'FIM'
+   <html>
+   FIM
+   Isso cria o documento no projeto e manda a tarefa para a aprovação do Davi.
+5. Se não for possível fazer (falta arquivo, acesso ou decisão do Davi), não entregue pela metade sem avisar: rode
+   python3 scripts/empresa/execucao.py erro {aid} "<o que falta, em 1 frase>"
+Regras: não publique, não poste, não comente e não envie nada em nome do Davi; não escreva no banco fora desses comandos; sem git. Hoje é {hoje}."""
+
+_tentadas = set()
+
+
+def atender_execucao():
+    aid = execucao.pegar(ignorar=_tentadas)
+    if not aid:
+        return
+    _tentadas.add(aid)  # uma tentativa por tarefa enquanto o ouvinte estiver de pé
+    log("execução:", aid)
+    ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50)
+    if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
+        execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
+        log("execução: falhou —", texto[:200])
+    else:
+        log("execução:", execucao.situacao(aid))
+
+
 # ---------------------------------------------------------------- laço
 
 def laco(nome, funcao, intervalo):
@@ -303,4 +384,6 @@ if __name__ == "__main__":
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
+    threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
+    threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     laco("conversa", atender_conversa, 3)

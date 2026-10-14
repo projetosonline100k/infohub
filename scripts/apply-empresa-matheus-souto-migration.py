@@ -1,0 +1,42 @@
+from pathlib import Path
+import re
+import sys
+from migration_db import connect
+
+root = Path(__file__).resolve().parents[1]
+version = '20261014120000'
+name = 'empresa_matheus_souto'
+sql = (root / 'supabase/migrations' / f'{version}_{name}.sql').read_text()
+testar = '--testar' in sys.argv
+
+c = connect()
+phase = 'migration'
+try:
+    q = c.cursor()
+    q.execute(sql)
+    for test in ('empresa_matheus_souto.sql', 'italo_ia.sql'):
+        phase = test
+        q.execute('SAVEPOINT regression')
+        test_sql = (root / 'supabase/tests' / test).read_text()
+        q.execute(re.sub(r'^(?:BEGIN|ROLLBACK);\s*$', '', test_sql, flags=re.M))
+        q.execute('ROLLBACK TO SAVEPOINT regression')
+        print('TEST_OK', test, flush=True)
+    if testar:
+        c.rollback()
+        print('TESTE_OK_NADA_GRAVADO')
+        sys.exit(0)
+    phase = 'record_migration'
+    q.execute(
+        'INSERT INTO supabase_migrations.schema_migrations(version,name,statements) VALUES (%s,%s,%s) ON CONFLICT (version) DO NOTHING',
+        (version, name, [sql]),
+    )
+    q.execute("NOTIFY pgrst, 'reload schema'")
+    c.commit()
+    print('EMPRESA_MATHEUS_SOUTO_APPLIED')
+except Exception as e:
+    c.rollback()
+    d = e.args[0] if e.args and isinstance(e.args[0], dict) else {}
+    print('FAILED', phase, d.get('C'), d.get('M'))
+    sys.exit(1)
+finally:
+    c.close()
