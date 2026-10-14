@@ -26,6 +26,16 @@ Quando a equipe vai para outro projeto, ela **chega zerada**:
 - vai junto o conhecimento **geral** de cada agente, por exemplo os livros de copy do Ítalo;
 - não vai nada específico do projeto de origem: voz, estilo, Drive, Instagram, CTA e histórico.
 
+## Chats (14/10/2026)
+
+- O Davi notou que não havia chats nem pasta do Matheus. Foi criado o grupo **"Matheus Souto"** na barra lateral do Claude.
+- Três chats foram sugeridos para abrir lá:
+  - Danilo · Matheus;
+  - Roy · Matheus;
+  - Dalila · Matheus.
+- O Roy e a Dalila dependem do código ainda sem commit nos worktrees `agitated-khayyam-369d7a` e `elastic-keller-d7f84a`.
+- O Ítalo continua neste mesmo chat ("Implementar o Ítalo"), que atende os dois projetos. A conversa com ele também acontece dentro do Infopro, em cada projeto.
+
 ## O que falta para ficar 100% igual ao do Davi
 
 1. **Instagram do Matheus:** conectar o perfil dele em Automações, com `cliente_id` = Matheus. Sem isso, o Roy não lê os reels e a Dalila não publica. Hoje só existem `eu.davioficial` e `yuricbdicas`.
