@@ -8,6 +8,9 @@ pasta do projeto. Substitui as sessões do Claude que precisavam ficar
     (inclusive /cobrar e /analisar <id>) com scripts/jarvis-conversa.py.
   - WhatsApp: botão "Atualizar" (whatsapp_painel.atualizacao_status =
     'pedida') → o Claude lê o WhatsApp Web (Claude in Chrome) e publica.
+  - Briefing de tarefa: o Davi conversa com um funcionário da empresa
+    (briefing_mensagens) → o Claude responde no papel dele
+    (scripts/empresa/briefing.py) até o Davi confirmar a tarefa.
 
 Usa o login do Claude Code feito com `claude auth login` (o plano do Davi,
 sem API paga). Log em ~/.infopro-hub/ouvinte/ouvinte.log.
@@ -28,6 +31,8 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
+sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
+import briefing  # noqa: E402
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
 PASTA = Path.home() / ".infopro-hub" / "ouvinte"
@@ -282,6 +287,43 @@ def atender_whatsapp():
         log(f"whatsapp: {final}")
 
 
+# ---------------------------------------------------------------- Briefing
+
+PROMPT_BRIEFING = """Você é um funcionário da empresa de um projeto no Infopro Hub. O Davi está te passando uma TAREFA por uma conversa no app (clicou em você na Visão geral), como se falasse com a pessoa. Ele não vê este terminal: só vê o que você gravar com os comandos abaixo.
+
+Briefing: {bid}
+
+1. Rode `python3 scripts/empresa/briefing.py contexto {bid}`: projeto, quem você é, seu manual e a conversa até aqui.
+2. Leia o seu manual (se tiver) e a sua inteligência com o comando que o contexto mostra (use `--saida` numa pasta temporária se precisar ler os textos).
+3. Seu papel AGORA é ENTENDER a tarefa, não fazer. Responda como a pessoa, em português simples e curto:
+   - diga com suas palavras o que entendeu;
+   - pergunte só o que falta de verdade (no máximo 3 perguntas, as mais importantes: objetivo, para qual produto/público, formato da entrega, prazo, referências);
+   - diga com honestidade se consegue fazer, o que NÃO consegue (ex.: precisa de arquivo, acesso ou decisão do Davi) e o que precisa dele.
+   Se o funcionário for PESSOA (o contexto avisa), fale como o assistente que vai repassar para ela: ajude o Davi a deixar o pedido claro e diga o que a pessoa vai precisar.
+4. Quando estiver claro (ou o Davi disser que está bom), PRIMEIRO grave a proposta — o resumo que vira a tarefa:
+   python3 scripts/empresa/briefing.py propor {bid} <<'FIM'
+   {{"titulo": "...", "entendimento": "o que vou fazer, em 2-4 frases", "entregas": ["..."], "consigo": "sim|em_parte|nao", "limites": "o que não consigo / riscos", "precisa_de": ["o que preciso do Davi"], "prazo_sugerido": "AAAA-MM-DD", "tipo": "copy|pagina|carrossel|edicao|programacao|metricas|gravacao"}}
+   FIM
+   e termine a resposta com: "Se estiver certo, clique em **Confirmar e subir a tarefa**." Se o Davi corrigir algo depois, grave a proposta de novo.
+5. Por último, grave a resposta (é ela que avisa o app que você terminou):
+   python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
+   <texto>
+   FIM
+Regras: não comece a tarefa, não crie atividade, não publique nem envie nada, não escreva no banco fora desses comandos. Dados do negócio só com scripts/consulta.py (somente leitura). Hoje é {hoje}."""
+
+
+def atender_briefings():
+    for bid in briefing.pegar():
+        log("briefing:", bid)
+        ok, texto = rodar_claude(PROMPT_BRIEFING.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=12)
+        if briefing.sem_resposta(bid):
+            motivo = texto if not ok else "terminei sem gravar a resposta."
+            briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")
+            log("briefing: falhou —", motivo)
+        else:
+            log("briefing: ok")
+
+
 # ---------------------------------------------------------------- laço
 
 def laco(nome, funcao, intervalo):
@@ -303,4 +345,5 @@ if __name__ == "__main__":
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
+    threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
     laco("conversa", atender_conversa, 3)
