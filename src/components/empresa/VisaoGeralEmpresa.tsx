@@ -85,7 +85,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .neq("status", "aprovado").order("criado_em", { ascending: false });
     setEdicoes((eds || []) as EdicaoResumo[]);
     const { data: cars } = await supabase.from("carrosseis")
-      .select("id, numero, tema, status, mensagem, feedback, slides, legenda, paginas, modelos, versao, fonte_permalink, pasta_drive, atividade_id, atualizado_em")
+      .select("id, numero, tema, status, mensagem, feedback, slides, legenda, paginas, modelos, versao, fonte_permalink, pasta_drive, atividade_id, atividade_roy_id, atualizado_em")
       .eq("cliente_id", clienteId).in("status", ["produzindo", "revisar", "ajuste", "erro"]).order("numero");
     setCarrosseis((cars || []) as unknown as CarrosselResumo[]);
     setSetores((s.data || []) as SetorResumo[]);
@@ -107,7 +107,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const hoje = hojeIso();
   const contaId = user?.id ?? "";
   const indicadores = useMemo(() => contarIndicadores(videos), [videos]);
-  const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas, hoje), [contaId, videos, membros, tarefas, hoje]);
+  // Tarefa do Roy que já virou carrossel aparece só pelo card do carrossel (revisão com as páginas),
+  // não como "Aprovar entrega" (esse caminho é o do Ítalo, que entrega documento).
+  const tarefasComCarrossel = useMemo(() => new Set(carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter(Boolean)), [carrosseis]);
+  const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)), hoje),
+    [contaId, videos, membros, tarefas, hoje, tarefasComCarrossel]);
   const cuidando = useMemo(() => jarvisCuidando(contaId, videos, membros, setores, tarefas), [contaId, videos, membros, setores, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);
   const programados = useMemo(() => videosProgramados(videos, hoje), [videos, hoje]);
