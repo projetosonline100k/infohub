@@ -24,6 +24,9 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / 'scripts'))
 from migration_db import connect  # noqa: E402
 
+# Funcionários IA que fazem a tarefa sozinhos depois do briefing
+# (scripts/empresa/execucao.py). Roy, Danilo e Dalila têm o próprio fluxo.
+EXECUTORES = {'ítalo'}
 TIPOS = {'edicao', 'carrossel', 'programacao', 'copy', 'pagina', 'metricas', 'gravacao'}
 CONSIGO = {'sim', 'em_parte', 'nao'}
 
@@ -80,6 +83,8 @@ def contexto(bid):
     print('Responsabilidades: ' + ', '.join(resp or []))
     print(f'Manual: {manual.relative_to(RAIZ) if manual else "(não tem)"}')
     print(f'Inteligência: python3 scripts/inteligencia/ler.py --cliente {cliente_id} --agente "{nome.lower()}"')
+    if eh_ia and nome.lower() in EXECUTORES:
+        print('Depois que o Davi confirmar: você começa SOZINHO e entrega um documento para ele aprovar. Diga isso a ele.')
     print(f'Status do briefing: {status}')
     if proposta:
         print('Proposta já gravada: ' + json.dumps(proposta, ensure_ascii=False))

@@ -11,6 +11,9 @@ pasta do projeto. Substitui as sessões do Claude que precisavam ficar
   - Briefing de tarefa: o Davi conversa com um funcionário da empresa
     (briefing_mensagens) → o Claude responde no papel dele
     (scripts/empresa/briefing.py) até o Davi confirmar a tarefa.
+  - Execução: tarefa confirmada na fila de um funcionário IA que trabalha
+    sozinho (execucao.EXECUTORES, hoje o Ítalo) → o Claude faz e entrega um
+    documento para o Davi aprovar (scripts/empresa/execucao.py).
 
 Usa o login do Claude Code feito com `claude auth login` (o plano do Davi,
 sem API paga). Log em ~/.infopro-hub/ouvinte/ouvinte.log.
@@ -33,6 +36,7 @@ sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
 sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
 import briefing  # noqa: E402
+import execucao  # noqa: E402
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
 PASTA = Path.home() / ".infopro-hub" / "ouvinte"
@@ -324,6 +328,41 @@ def atender_briefings():
             log("briefing: ok")
 
 
+# ---------------------------------------------------------------- Execução
+
+PROMPT_EXECUCAO = """Você é um funcionário IA da empresa de um projeto no Infopro Hub (siga o CLAUDE.md e a memória do projeto). O Davi conversou com você, você disse o que entendeu, e ele CONFIRMOU a tarefa. Agora é para FAZER, sozinho, e entregar para ele revisar. Ele não vê este terminal.
+
+Tarefa: {aid}
+
+1. Rode `python3 scripts/empresa/execucao.py contexto {aid}`: o combinado, o prazo, o projeto e onde está o seu manual.
+2. Leia o seu manual inteiro e a sua inteligência (`ler.py` com `--saida` numa pasta temporária, e leia os textos que importam para esta tarefa). Leia também os documentos do projeto que o combinado citar (scripts/consulta.py, somente leitura; o conteúdo é HTML).
+3. Faça o trabalho de verdade, como combinado. Pesquisa na internet: WebSearch/WebFetch; comentários e vídeos do YouTube: yt-dlp (`PYTHONPATH=~/.infopro-hub/ytdlp SSL_CERT_FILE=~/.infopro-hub/py/certifi/cacert.pem python3 -m yt_dlp --skip-download --write-comments --write-info-json ...`), trabalhe numa pasta temporária. Cite só o que você realmente leu; frases do público, do jeito que escreveram; nunca invente dado, depoimento ou número. Se algo combinado não deu para fazer, diga no documento (seção "Limites desta versão").
+4. Entregue UM documento organizado (HTML simples: h2, h3, p, ul, ol, li, strong, em, a, blockquote):
+   python3 scripts/empresa/execucao.py entregar {aid} "<título do documento>" "<resumo de 1 linha do que entregou>" <<'FIM'
+   <html>
+   FIM
+   Isso cria o documento no projeto e manda a tarefa para a aprovação do Davi.
+5. Se não for possível fazer (falta arquivo, acesso ou decisão do Davi), não entregue pela metade sem avisar: rode
+   python3 scripts/empresa/execucao.py erro {aid} "<o que falta, em 1 frase>"
+Regras: não publique, não poste, não comente e não envie nada em nome do Davi; não escreva no banco fora desses comandos; sem git. Hoje é {hoje}."""
+
+_tentadas = set()
+
+
+def atender_execucao():
+    aid = execucao.pegar(ignorar=_tentadas)
+    if not aid:
+        return
+    _tentadas.add(aid)  # uma tentativa por tarefa enquanto o ouvinte estiver de pé
+    log("execução:", aid)
+    ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50)
+    if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
+        execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
+        log("execução: falhou —", texto[:200])
+    else:
+        log("execução:", execucao.situacao(aid))
+
+
 # ---------------------------------------------------------------- laço
 
 def laco(nome, funcao, intervalo):
@@ -346,4 +385,5 @@ if __name__ == "__main__":
     # trava a Conversa.
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
+    threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     laco("conversa", atender_conversa, 3)

@@ -110,7 +110,17 @@ python3 scripts/inteligencia/ler.py --cliente <cliente_id> --agente ítalo --sai
 - O ouvinte permanente (LaunchAgent) roda o código de `/Users/davi/Infopro-hub`. O briefing só funciona sozinho depois do merge e de reiniciar o ouvinte.
 - Enquanto isso, em 14/10 rodou um ouvinte de teste a partir deste worktree.
 
-**Ainda falta:** depois da confirmação, o funcionário **começar a fazer** sozinho. Para o Ítalo, isso é a Fase 1 (criar → o Davi revisa → aprova).
+**Execução automática (no ar desde 14/10/2026, pedido do Davi):**
+1. Depois do "Confirmar", a tarefa de um funcionário que trabalha sozinho (`EXECUTORES` em `scripts/empresa/briefing.py`, hoje só o **Ítalo**) é pega pelo ouvinte, na linha de execução `execucao`, a cada 10 s. Ela vai para `andamento`.
+2. O ouvinte chama o Claude no papel do Ítalo (`PROMPT_EXECUCAO`, até 50 min).
+3. O Ítalo lê o manual, a inteligência e os documentos citados, faz o trabalho e entrega com `scripts/empresa/execucao.py entregar`:
+   - o documento é criado no projeto, ligado à atividade;
+   - a tarefa vai para `aguardando_aprovacao`, e o Davi vê em "Precisa de você".
+4. Se não der para fazer, `execucao.py erro` devolve a tarefa para a `fila`, com "⚠️ Não consegui fazer sozinho: …" na observação.
+   - O ouvinte só tenta de novo depois de reiniciado.
+- Fase 1 do Ítalo = criar → o Davi revisa no Infopro → aprova.
+- Ainda falta decidir **para quem vai depois** da aprovação (Gabriel?).
+- A primeira execução automática ainda não foi testada de ponta a ponta. A primeira tarefa confirmada vai ser o teste.
 
 ## Estado e decisões
 

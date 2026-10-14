@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ROTULO_CONSIGO, descricaoDaTarefa, esperandoResposta, prazoValido, segundosEsperando,
+  ROTULO_CONSIGO, descricaoDaTarefa, esperandoResposta, prazoValido, segundosEsperando, trabalhaSozinho,
   type MensagemBriefing, type Proposta,
 } from "@/lib/empresa/briefing";
 import type { MembroResumo } from "@/lib/empresa/visaoGeral";
@@ -101,7 +101,9 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa }: {
       });
       const { error } = await supabase.from("briefings").update({ status: "confirmado", atividade_id: atividadeId }).eq("id", briefingId);
       if (error) throw error;
-      toast.success(`Tarefa subiu para ${membro.nome}`);
+      toast.success(trabalhaSozinho(membro.nome)
+        ? `Tarefa subiu: ${membro.nome} já começa e te entrega para aprovar`
+        : `Tarefa subiu para ${membro.nome}`);
       setBriefingId(null); setMensagens([]); setProposta(null);
     } catch {
       toast.error("Não consegui subir a tarefa");

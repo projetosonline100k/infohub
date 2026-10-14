@@ -52,4 +52,8 @@ export function descricaoDaTarefa(p: Proposta, mensagens: MensagemBriefing[], no
   return linhas.join("\n");
 }
 
+// Quem começa sozinho depois da confirmação (igual a EXECUTORES em scripts/empresa/briefing.py).
+export const TRABALHA_SOZINHO = ["ítalo"];
+export const trabalhaSozinho = (nome: string) => TRABALHA_SOZINHO.includes(nome.trim().toLowerCase());
+
 export const prazoValido = (prazo?: string) => !!prazo && /^\d{4}-\d{2}-\d{2}$/.test(prazo);
