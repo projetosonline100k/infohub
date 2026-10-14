@@ -196,11 +196,12 @@ def cmd_status(q, _a):
 def cmd_link(q, a):
     import secrets
     cliente = achar_cliente(q, a.cliente) if a.cliente else None
-    state = secrets.token_hex(24)
+    state = secrets.token_hex(12)
     q.execute('insert into instagram_oauth_states (state, user_id, cliente_id) values (%s, %s, %s)',
               (state, dono(q), cliente[0] if cliente else None))
-    url = 'https://www.instagram.com/oauth/authorize?' + urllib.parse.urlencode({
-        'client_id': IG_APP_ID, 'redirect_uri': CALLBACK, 'response_type': 'code', 'scope': ESCOPOS, 'state': state})
+    # Link curto do Hub (redireciona para a autorização): um link instagram.com
+    # direto é capturado pelo app do Instagram no celular e dá "página não disponível".
+    url = CALLBACK.replace('/callback', f'/c/{state}')
     print(f"Link de conexão ({cliente[1] if cliente else 'Meu perfil'}), vale 7 dias:\n{url}")
 
 

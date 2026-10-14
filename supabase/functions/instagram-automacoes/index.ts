@@ -12,6 +12,10 @@
 //                         manda para o destino original (funil da tela).
 // POST /link             → (JWT) gera o link de conexão de uma conta (sua ou
 //                         de um cliente) — OAuth do Instagram, vale 7 dias.
+// GET  /c/<state>        → link curto que vai para a autorização. No celular,
+//                         um link instagram.com/oauth é capturado pelo app do
+//                         Instagram ("página não disponível"); este abre no
+//                         navegador e só então redireciona.
 // GET  /callback         → volta do OAuth: troca o code pelo token de 60 dias,
 //                         salva a conexão, inscreve o webhook e manda pro Hub.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -303,16 +307,26 @@ async function gerarLink(req: Request, admin: any, supabaseUrl: string) {
     const { data: cliente } = await admin.from("clientes").select("id").eq("id", clienteId).eq("user_id", user.id).maybeSingle();
     if (!cliente) return json({ error: "cliente não encontrado" }, 404);
   }
-  const state = Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
+  const state = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join("");
   const { error } = await admin.from("instagram_oauth_states").insert({ state, user_id: user.id, cliente_id: clienteId ?? null });
   if (error) return json({ error: error.message }, 500);
+  return json({ url: `${supabaseUrl}/functions/v1/instagram-automacoes/c/${state}` });
+}
+
+// deno-lint-ignore no-explicit-any
+async function irParaAutorizacao(admin: any, supabaseUrl: string, state: string) {
+  const { data: pedido } = await admin.from("instagram_oauth_states")
+    .select("state, criado_em, usado_em").eq("state", state).maybeSingle();
+  if (!pedido || pedido.usado_em || Date.now() - Date.parse(pedido.criado_em) > STATE_VALIDADE_MS) {
+    return voltarProHub({ erro: "Link de conexão inválido ou vencido. Peça um novo." });
+  }
   const url = new URL("https://www.instagram.com/oauth/authorize");
-  url.searchParams.set("client_id", appId);
+  url.searchParams.set("client_id", Deno.env.get("META_IG_APP_ID") ?? "");
   url.searchParams.set("redirect_uri", redirectUri(supabaseUrl));
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", ESCOPOS);
   url.searchParams.set("state", state);
-  return json({ url: url.toString() });
+  return new Response(null, { status: 302, headers: { Location: url.toString(), "Cache-Control": "no-store" } });
 }
 
 const voltarProHub = (params: Record<string, string>) =>
@@ -448,6 +462,14 @@ serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     if (!supabaseUrl || !serviceKey) return new Response("not configured", { status: 500 });
     return redirecionar(req, createClient(supabaseUrl, serviceKey), link[1], Number(link[2]));
+  }
+
+  const curto = url.pathname.match(/\/c\/([0-9a-f]{16,64})\/?$/);
+  if (req.method === "GET" && curto) {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !serviceKey) return new Response("not configured", { status: 500 });
+    return irParaAutorizacao(createClient(supabaseUrl, serviceKey), supabaseUrl, curto[1]);
   }
 
   if (req.method === "GET" && url.pathname.endsWith("/callback")) {
