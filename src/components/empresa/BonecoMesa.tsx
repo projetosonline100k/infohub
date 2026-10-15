@@ -11,7 +11,7 @@ import type { Sinal } from "@/lib/empresa/visaoGeral";
 // Tudo em SVG + CSS: leve, sem imagem externa, e para em "reduzir movimento".
 
 type Cabelo = "curto" | "cacheado" | "longo" | "raspado";
-interface Visual { pele: string; cabelo: Cabelo; corCabelo: string; barba?: boolean; oculos?: boolean; camisa: string }
+export interface Visual { pele: string; cabelo: Cabelo; corCabelo: string; barba?: boolean; oculos?: boolean; camisa: string }
 
 // Aparência de quem já existe (inspirada na imagem do briefing); quem for novo
 // ganha uma combinação fixa a partir do nome.
@@ -30,7 +30,7 @@ const CABELOS: Cabelo[] = ["curto", "cacheado", "longo", "raspado"];
 const CORES_CABELO = ["#1f1611", "#3b2a1e", "#6b4a2b", "#a0703f", "#2b2b2b"];
 const CAMISAS = ["#3b6fd8", "#16a34a", "#9333ea", "#ea580c", "#0d9488", "#475569", "#db2777"];
 
-function visualDe(nome: string): Visual {
+export function visualDe(nome: string): Visual {
   const chave = nome.trim().toLowerCase().split(/\s+/)[0];
   if (VISUAIS[chave]) return VISUAIS[chave];
   let h = 0;
@@ -39,7 +39,7 @@ function visualDe(nome: string): Visual {
   return { pele: pega(PELES, 0), cabelo: pega(CABELOS, 3), corCabelo: pega(CORES_CABELO, 6), barba: ((h >>> 9) & 3) === 0, oculos: ((h >>> 11) & 3) === 0, camisa: pega(CAMISAS, 13) };
 }
 
-const ESTILO = `
+export const ESTILO = `
 .bnc *{transform-box:fill-box}
 .bnc-tecla-e{animation:bnc-tecla .32s ease-in-out infinite alternate}
 .bnc-tecla-d{animation:bnc-tecla .32s ease-in-out infinite alternate-reverse}
@@ -91,7 +91,20 @@ function Mesa({ tela }: { tela: boolean }) {
   );
 }
 
+// Cabelo e cabelo comprido de trás (desenho centrado em 60,39.5).
+export function cabeloDe(v: Visual) {
+  return {
+    curto: <path d="M46.5 38 Q46 24 60 24 Q74 24 73.5 38 Q71 31 60 31 Q49 31 46.5 38 Z" fill={v.corCabelo} />,
+    raspado: <path d="M47.5 36 Q48 26 60 26 Q72 26 72.5 36 Q70 31 60 31 Q50 31 47.5 36 Z" fill={v.corCabelo} opacity=".75" />,
+    cacheado: <g fill={v.corCabelo}>{[[49, 31], [54, 26.5], [60, 25], [66, 26.5], [71, 31], [47.5, 36], [72.5, 36], [57, 29], [63, 29]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r="4.6" />)}</g>,
+    longo: <path d="M46.5 39 Q46 24 60 24 Q74 24 73.5 39 Q70 30 62 30.5 Q55 33 46.5 39 Z" fill={v.corCabelo} />,
+  }[v.cabelo];
+}
+export const cabeloTras = (v: Visual) => v.cabelo === "longo"
+  ? <path d="M45 34 Q45 22 60 22 Q75 22 75 34 L78 62 Q60 66 42 62 Z" fill={v.corCabelo} /> : null;
+
 function Pessoa({ v, sinal }: { v: Visual; sinal: Sinal }) {
+  const cabelo = cabeloDe(v);
   const dormindo = sinal === "parado";
   const acenando = sinal === "esperando";
   const aflito = sinal === "problema";
@@ -102,18 +115,13 @@ function Pessoa({ v, sinal }: { v: Visual; sinal: Sinal }) {
   const boca = aflito ? <ellipse cx="60" cy="47" rx="2" ry="1.4" fill="#7c2d12" />
     : acenando ? <path d="M56.5 45.5 q3.5 3 7 0" stroke="#7c2d12" strokeWidth="1.1" fill="none" strokeLinecap="round" />
     : <path d="M57.5 46 q2.5 1.2 5 0" stroke="#7c2d12" strokeWidth="1" fill="none" strokeLinecap="round" />;
-  const cabelo = {
-    curto: <path d="M46.5 38 Q46 24 60 24 Q74 24 73.5 38 Q71 31 60 31 Q49 31 46.5 38 Z" fill={v.corCabelo} />,
-    raspado: <path d="M47.5 36 Q48 26 60 26 Q72 26 72.5 36 Q70 31 60 31 Q50 31 47.5 36 Z" fill={v.corCabelo} opacity=".75" />,
-    cacheado: <g fill={v.corCabelo}>{[[49, 31], [54, 26.5], [60, 25], [66, 26.5], [71, 31], [47.5, 36], [72.5, 36], [57, 29], [63, 29]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r="4.6" />)}</g>,
-    longo: <path d="M46.5 39 Q46 24 60 24 Q74 24 73.5 39 Q70 30 62 30.5 Q55 33 46.5 39 Z" fill={v.corCabelo} />,
-  }[v.cabelo];
+
   return (
     <>
       {/* Cadeira */}
       <rect x="35" y="36" width="50" height="46" rx="11" fill="#64748b" />
       <g className={dormindo ? "bnc-respirar" : undefined}>
-        {v.cabelo === "longo" && <path d="M45 34 Q45 22 60 22 Q75 22 75 34 L78 62 Q60 66 42 62 Z" fill={v.corCabelo} />}
+        {cabeloTras(v)}
         <rect x="39" y="55" width="42" height="32" rx="13" fill={v.camisa} />
         <rect x="55.5" y="50" width="9" height="8" rx="2" fill={v.pele} />
         <g className={aflito ? "bnc-tremer" : undefined}>
@@ -198,10 +206,30 @@ function Robo({ sinal }: { sinal: Sinal }) {
   );
 }
 
-export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, className }: { nome: string; ehIa: boolean; sinal: Sinal; className?: string }) {
-  const robo = ehIa && nome.trim().toLowerCase() === "jarvis";
+function MesaVazia() {
   return (
-    <svg viewBox="8 6 104 92" className={`bnc ${className ?? ""}`} role="img" aria-label={`${nome}: ${ROTULO[sinal]}`}>
+    <>
+      <rect x="35" y="36" width="50" height="46" rx="11" fill="#64748b" />
+      <rect x="16" y="72" width="88" height="7" rx="2" fill="#e9d5b5" />
+      <rect x="20" y="79" width="80" height="15" rx="2" fill="#d4b78f" />
+      <rect x="24" y="82" width="20" height="9" rx="1.5" fill="#c4a37a" />
+      <rect x="46" y="69" width="28" height="3.5" rx="1" fill="#cfd6e0" stroke="#9aa4b2" strokeWidth=".6" />
+      <rect x="91" y="64" width="7" height="8" rx="1.5" fill="#f8fafc" stroke="#cbd5e1" strokeWidth=".6" />
+      <path d="M94.5 64 C 90 56, 92 52, 94.5 50 C 97 52, 99 56, 94.5 64" fill="#22c55e" />
+      <rect x="23" y="66" width="6" height="6" rx="1.2" fill="#f97316" />
+    </>
+  );
+}
+
+export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, className, vazio, x, y, width, height }: {
+  nome: string; ehIa: boolean; sinal: Sinal; className?: string; vazio?: boolean;
+  // Dentro de outro SVG (cena do escritório): posição e tamanho do quadro.
+  x?: number; y?: number; width?: number; height?: number;
+}) {
+  const robo = ehIa && nome.trim().toLowerCase() === "jarvis";
+  if (vazio) return <svg viewBox="8 6 104 92" x={x} y={y} width={width} height={height} className={className}><MesaVazia /></svg>;
+  return (
+    <svg viewBox="8 6 104 92" x={x} y={y} width={width} height={height} className={`bnc ${className ?? ""}`} role="img" aria-label={`${nome}: ${ROTULO[sinal]}`}>
       <style>{ESTILO}</style>
       <ellipse cx="60" cy="95" rx="44" ry="3" fill="#000" opacity=".12" />
       {robo ? <Robo sinal={sinal} /> : <Pessoa v={visualDe(nome)} sinal={sinal} />}

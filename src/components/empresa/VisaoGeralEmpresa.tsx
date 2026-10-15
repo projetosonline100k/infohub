@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Clapperboard, Crown,
-  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Megaphone, Scissors, Users, Video, Youtube,
+  AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Crown,
+  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Scissors, Users, Video, Youtube,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
-import { BonecoMesa } from "./BonecoMesa";
+import { EscritorioEmpresa } from "./EscritorioEmpresa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
@@ -25,13 +25,7 @@ import {
 // Hierarquia (briefing de 12/10): 1) o que precisa de mim, 2) o que está
 // andando sem mim, 3) como está a empresa (mapa), 4) o que vai ser publicado.
 
-const CORES: Record<string, { fundo: string; borda: string; texto: string; avatar: string }> = {
-  amber: { fundo: "bg-amber-500/5", borda: "border-amber-500/30", texto: "text-amber-600 dark:text-amber-400", avatar: "bg-amber-500" },
-  violet: { fundo: "bg-violet-500/5", borda: "border-violet-500/30", texto: "text-violet-600 dark:text-violet-400", avatar: "bg-violet-500" },
-  blue: { fundo: "bg-sky-500/5", borda: "border-sky-500/30", texto: "text-sky-600 dark:text-sky-400", avatar: "bg-sky-500" },
-};
-const corDo = (cor: string | null) => CORES[cor ?? ""] ?? CORES.blue;
-const ICONES: Record<string, typeof Crown> = { crown: Crown, megaphone: Megaphone, clapperboard: Clapperboard };
+const COR_PLACA: Record<string, string> = { amber: "#f59e0b", violet: "#8b5cf6", blue: "#0ea5e9" };
 
 // Bolinha de cada pessoa no mapa (pedido do Davi, 14/10).
 const SINAIS: Record<Sinal, { cor: string; rotulo: string }> = {
@@ -264,72 +258,31 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         {setores.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">A empresa deste projeto ainda não tem setores cadastrados.</p>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-3">
-            {setores.map((setor) => {
-              const cor = corDo(setor.cor);
-              const Icone = ICONES[setor.icone ?? ""] ?? Users;
+          // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
+          <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
+            setores={setores.map((setor) => {
               const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
-              const abertas = pessoas.reduce((s, p) => s + p.abertas, 0);
-              const atrasadas = pessoas.reduce((s, p) => s + p.atrasadas, 0);
-              return (
-                <div key={setor.id} className={cn("relative overflow-hidden rounded-xl border p-3", cor.fundo, cor.borda)}>
-                  {/* "Piso" da sala */}
-                  <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:radial-gradient(currentColor_1px,transparent_1px)] [background-size:14px_14px]" />
-                  <div className="relative mb-3 flex items-center gap-2">
-                    <span className={cn("flex h-8 w-8 items-center justify-center rounded-lg text-white", cor.avatar)}><Icone className="h-4 w-4" /></span>
-                    <div className="min-w-0 flex-1">
-                      <h3 className={cn("font-semibold leading-tight", cor.texto)}>{setor.nome}</h3>
-                      <p className="truncate text-[11px] text-muted-foreground">{setor.descricao}</p>
-                    </div>
-                    <span className="shrink-0 text-right text-[11px] text-muted-foreground">
-                      {abertas} {abertas === 1 ? "tarefa" : "tarefas"}
-                      {atrasadas > 0 && <span className="block font-medium text-rose-500">{atrasadas} atrasada{atrasadas > 1 ? "s" : ""}</span>}
-                    </span>
-                  </div>
-                  <div className="relative grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
-                    {pessoas.map((estado) => {
-                      const { membro, abertas: n, atrasadas: atr, atual } = estado;
-                      const ia = trabalhoIa.get(membro.id);
-                      // O Jarvis coordena (sem fila própria); outras IAs (ex.: Danilo = ChatGPT,
-                      // que edita os vídeos) têm tarefas como qualquer pessoa.
-                      const coordenador = membro.eh_ia && membro.nome === "Jarvis";
-                      const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
-                      const balao = coordenador ? "Coordenando a operação"
-                        : ia?.problema ? "Parou com problema"
-                        : ia?.esperando ? `${ia.esperando} esperando sua revisão`
-                        : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
-                        : atual?.titulo ?? ia?.atual ?? "Sem tarefa agora";
-                      return (
-                        <button key={membro.id} type="button" disabled={coordenador} onClick={() => setMembroAberto(membro)}
-                          title={coordenador ? undefined : `Ver e adicionar tarefas de ${membro.nome}`}
-                          className="group/mesa flex flex-col items-center rounded-lg border bg-background/80 p-2 text-center shadow-sm backdrop-blur transition-colors enabled:hover:border-primary/50 enabled:hover:shadow-md">
-                          {/* Balão: o que está fazendo agora */}
-                          <span className={cn("mb-1.5 line-clamp-2 min-h-[2.4em] w-full rounded-md px-1.5 py-0.5 text-[10.5px] leading-tight",
-                            coordenador || atual || ia?.atual || ia?.esperando || ia?.problema ? "bg-primary/10 text-foreground" : "text-muted-foreground")}>
-                            {balao}
-                          </span>
-                          <span className="relative">
-                            {/* O boneco na mesa: digitando, dormindo, acenando (precisa de você) ou aflito. */}
-                            <BonecoMesa nome={membro.nome} ehIa={membro.eh_ia} sinal={sinal} className="h-20 w-[90px]" />
-                            <span className={cn("absolute bottom-1 right-0 h-3 w-3 rounded-full border-2 border-background", SINAIS[sinal].cor)}
-                              title={SINAIS[sinal].rotulo} />
-                          </span>
-                          <span className="mt-1 text-sm font-semibold leading-tight">{membro.nome}</span>
-                          <span className="line-clamp-1 text-[10.5px] text-muted-foreground">{membro.funcao}</span>
-                          {!coordenador && (
-                            <span className="mt-1 text-[10.5px] text-muted-foreground">
-                              <span className="group-hover/mesa:hidden">{n} {n === 1 ? "tarefa" : "tarefas"}{atr > 0 && <span className="font-medium text-rose-500"> · {atr} atrasada{atr > 1 ? "s" : ""}</span>}</span>
-                              <span className="hidden font-medium text-primary group-hover/mesa:inline">+ tarefa</span>
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+              return {
+                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue,
+                tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
+                pessoas: pessoas.map((estado) => {
+                  const { membro, abertas: n, atrasadas: atr, atual } = estado;
+                  const ia = trabalhoIa.get(membro.id);
+                  // O Jarvis coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
+                  const coordenador = membro.eh_ia && membro.nome === "Jarvis";
+                  const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
+                  const balao = coordenador ? "Coordenando a operação"
+                    : ia?.problema ? "Parou com problema"
+                    : ia?.esperando ? `${ia.esperando} esperando sua revisão`
+                    : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
+                    : atual?.titulo ?? ia?.atual ?? null;
+                  return {
+                    id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
+                    balao, tarefas: n, atrasadas: atr, clicavel: !coordenador,
+                  };
+                }),
+              };
+            })} />
         )}
       </section>
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
