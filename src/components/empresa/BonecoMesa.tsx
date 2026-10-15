@@ -70,6 +70,12 @@ export const ESTILO = `
 @keyframes bnc-piscar{0%,94%,100%{transform:scaleY(1)}97%{transform:scaleY(.1)}}
 .bnc-led{animation:bnc-led 1.4s steps(2) infinite}
 @keyframes bnc-led{0%{opacity:1}50%{opacity:.25}}
+.bnc-gole{transform-box:view-box;transform-origin:76px 62px;animation:bnc-gole 9s ease-in-out infinite}
+.bnc-gole-xic{transform-box:view-box;transform-origin:75.5px 72.5px;animation:bnc-gole-x 9s ease-in-out infinite}
+@keyframes bnc-gole{0%,60%{transform:rotate(0)}68%,80%{transform:rotate(135deg)}88%,100%{transform:rotate(0)}}
+@keyframes bnc-gole-x{0%,60%{transform:rotate(0)}68%,80%{transform:rotate(-135deg)}88%,100%{transform:rotate(0)}}
+.bnc-cabeca-relax{transform-origin:50% 100%;animation:bnc-relax 7s ease-in-out infinite}
+@keyframes bnc-relax{0%,100%{transform:rotate(0)}25%{transform:rotate(-4deg)}55%{transform:rotate(3deg)}}
 @media (prefers-reduced-motion:reduce){.bnc *{animation:none!important}}
 `;
 
@@ -105,9 +111,12 @@ export function cabeloDe(v: Visual) {
 export const cabeloTras = (v: Visual) => v.cabelo === "longo"
   ? <path d="M45 34 Q45 22 60 22 Q75 22 75 34 L78 62 Q60 66 42 62 Z" fill={v.corCabelo} /> : null;
 
-function Pessoa({ v, sinal }: { v: Visual; sinal: Sinal }) {
+// descansando: livre durante o dia, sentado na mesa (acordado, olhando em volta
+// e tomando um gole de café de vez em quando) — pedido do Davi, 15/10: "eles
+// podem ficar na sua mesa, nem sempre precisam ficar andando".
+function Pessoa({ v, sinal, descansando }: { v: Visual; sinal: Sinal; descansando?: boolean }) {
   const cabelo = cabeloDe(v);
-  const dormindo = sinal === "parado";
+  const dormindo = sinal === "parado" && !descansando;
   const acenando = sinal === "esperando";
   const aflito = sinal === "problema";
   const trabalhando = sinal === "trabalhando";
@@ -127,7 +136,7 @@ function Pessoa({ v, sinal }: { v: Visual; sinal: Sinal }) {
         <rect x="39" y="55" width="42" height="32" rx="13" fill={v.camisa} />
         <rect x="55.5" y="50" width="9" height="8" rx="2" fill={v.pele} />
         <g className={aflito ? "bnc-tremer" : undefined}>
-          <g className={dormindo ? "bnc-cabeca-dorme" : trabalhando ? "bnc-cabeca-trab" : undefined}>
+          <g className={dormindo ? "bnc-cabeca-dorme" : trabalhando ? "bnc-cabeca-trab" : descansando ? "bnc-cabeca-relax" : undefined}>
             <circle cx="46.8" cy="41.5" r="2.6" fill={v.pele} />
             <circle cx="73.2" cy="41.5" r="2.6" fill={v.pele} />
             <circle cx="60" cy="39.5" r="13.2" fill={v.pele} />
@@ -159,9 +168,18 @@ function Pessoa({ v, sinal }: { v: Visual; sinal: Sinal }) {
       ) : (
         <>
           <path d="M44 62 Q42 68 44 72" stroke={v.camisa} strokeWidth="5" strokeLinecap="round" fill="none" />
-          <path d="M76 62 Q78 68 76 72" stroke={v.camisa} strokeWidth="5" strokeLinecap="round" fill="none" />
           <g className={trabalhando ? "bnc-tecla-e" : undefined}><circle cx="44.5" cy="72.5" r="2.8" fill={v.pele} /></g>
-          <g className={trabalhando ? "bnc-tecla-d" : undefined}><circle cx="75.5" cy="72.5" r="2.8" fill={v.pele} /></g>
+          <g className={descansando ? "bnc-gole" : undefined}>
+            <path d="M76 62 Q78 68 76 72" stroke={v.camisa} strokeWidth="5" strokeLinecap="round" fill="none" />
+            {descansando && (
+              <g className="bnc-gole-xic">
+                <rect x="72.5" y="65" width="7" height="7" rx="1.4" fill="#fff" stroke="#cbd5e1" strokeWidth=".6" />
+                <path d="M79.5 66.5 q2.4 0 2.4 2 q0 2 -2.4 2" stroke="#cbd5e1" strokeWidth="1" fill="none" />
+                <rect x="73.5" y="65.6" width="5" height="1.3" fill="#7c4a24" />
+              </g>
+            )}
+            <g className={trabalhando ? "bnc-tecla-d" : undefined}><circle cx="75.5" cy="72.5" r="2.8" fill={v.pele} /></g>
+          </g>
         </>
       )}
       {dormindo && (
@@ -223,8 +241,9 @@ function MesaVazia() {
   );
 }
 
-export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, className, vazio, x, y, width, height }: {
+export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, className, vazio, descansando, x, y, width, height }: {
   nome: string; ehIa: boolean; sinal: Sinal; className?: string; vazio?: boolean;
+  descansando?: boolean;   // livre de dia: acordado na mesa (sem isso, "parado" = dormindo)
   // Dentro de outro SVG (cena do escritório): posição e tamanho do quadro.
   x?: number; y?: number; width?: number; height?: number;
 }) {
@@ -234,7 +253,7 @@ export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, classNam
     <svg viewBox="8 6 104 92" x={x} y={y} width={width} height={height} className={`bnc ${className ?? ""}`} role="img" aria-label={`${nome}: ${ROTULO[sinal]}`}>
       <style>{ESTILO}</style>
       <ellipse cx="60" cy="95" rx="44" ry="3" fill="#000" opacity=".12" />
-      {robo ? <Robo sinal={sinal} /> : <Pessoa v={visualDe(nome)} sinal={sinal} />}
+      {robo ? <Robo sinal={sinal} /> : <Pessoa v={visualDe(nome)} sinal={sinal} descansando={descansando && sinal === "parado"} />}
     </svg>
   );
 });

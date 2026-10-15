@@ -44,6 +44,7 @@ const ESTILO_SALA = `
 @keyframes esc-braco{0%,33%{transform:rotate(0)}38%,42%{transform:rotate(-70deg)}47%{transform:rotate(-25deg)}50%,54%{transform:rotate(-70deg)}58%,100%{transform:rotate(0)}}
 .esc-xicara{animation:esc-xicara var(--dur) step-end infinite;animation-delay:var(--atraso)}
 @keyframes esc-xicara{0%{opacity:0}30%{opacity:1}62%{opacity:0}}
+.esc-uma-vez *{animation-iteration-count:1!important;animation-fill-mode:both!important}
 .esc-fumaca{animation:esc-fumaca 2.4s ease-out infinite}
 @keyframes esc-fumaca{0%{opacity:0;transform:translateY(0) scale(.7)}30%{opacity:.7}100%{opacity:0;transform:translateY(-10px) scale(1.3)}}
 .esc-ponteiro{transform-origin:50% 100%;animation:esc-ponteiro 60s linear infinite}
@@ -53,8 +54,14 @@ const ESTILO_SALA = `
 function passoPar(p: number) { return Math.round(p / 2.5) % 2 === 0; }
 
 const ehRobo = (p: PessoaNaSala) => p.ehIa && p.nome.trim().toLowerCase() === "jarvis";
-// Sem nada pra fazer e de dia: sai da mesa (o Jarvis, robô, fica coordenando).
-const vaiPassear = (p: PessoaNaSala, noite: boolean) => p.sinal === "parado" && !noite && !ehRobo(p);
+// Sem nada pra fazer e de dia: fica descansando na mesa e, de vez em quando,
+// levanta pro café/TV (pedido do Davi, 15/10: "estão andando demais"). Cada
+// um tem a sua vez: uma janela de JANELA_MS a cada VOLTAS janelas, em revezamento.
+const JANELA_MS = 45_000;
+const VOLTAS = 6;
+const vezDe = (id: string) => [...id].reduce((s, c) => s + c.charCodeAt(0), 0);
+const livreDeDia = (p: PessoaNaSala, noite: boolean) => p.sinal === "parado" && !noite && !ehRobo(p);
+const vaiPassear = (p: PessoaNaSala, noite: boolean, ciclo: number) => livreDeDia(p, noite) && (vezDe(p.id) + ciclo) % VOLTAS === 0;
 const ehNoite = () => { const h = new Date().getHours(); return h >= 22 || h < 7; };
 
 // Boneco de pé (pés em 0,0), andando e tomando café.
@@ -216,6 +223,8 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
   const [noiteAgora, setNoite] = useState(ehNoite);
   const noite = forcarNoite ?? noiteAgora;
   useEffect(() => { const t = window.setInterval(() => setNoite(ehNoite()), 60_000); return () => window.clearInterval(t); }, []);
+  const [ciclo, setCiclo] = useState(() => Math.floor(Date.now() / JANELA_MS));
+  useEffect(() => { const t = window.setInterval(() => setCiclo(Math.floor(Date.now() / JANELA_MS)), 5_000); return () => window.clearInterval(t); }, []);
 
   const cima = setores.filter(ehDiretoria);
   const baixo = setores.filter((s) => !ehDiretoria(s));
@@ -318,7 +327,7 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
 
           {/* Mesas (a fileira de trás primeiro, pra a da frente ficar na frente) */}
           {mesas.map(({ p, x, yMesa }) => (
-            <BonecoMesa key={p.id} nome={p.nome} ehIa={p.ehIa} sinal={p.sinal} vazio={vaiPassear(p, noite)} x={x - 52} y={yMesa} width={104} height={92} />
+            <BonecoMesa key={p.id} nome={p.nome} ehIa={p.ehIa} sinal={p.sinal} vazio={vaiPassear(p, noite, ciclo)} descansando={livreDeDia(p, noite)} x={x - 52} y={yMesa} width={104} height={92} />
           ))}
           {/* Sala da diretoria fechada em vidro (frente baixa, com porta) */}
           {fileiras.length > 1 && zonas.filter((z) => z.r === 0).map(({ setor, x0, largura, yMesa }) => (
@@ -326,15 +335,16 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
           ))}
           {/* Quem está livre: vai e volta do descanso da fileira */}
           {mesas.map(({ p, x, r }, k) => {
-            if (!vaiPassear(p, noite)) return null;
+            if (!vaiPassear(p, noite, ciclo)) return null;
             const d = destinoDe(r, k), y0 = chao(r);
             const dur = DUR[k % DUR.length] + Math.min(14, Math.hypot(d.x - x, d.y - y0) / 60);
             const vars = {
               "--de": `${x}px`, "--de-y": `${y0}px`, "--cafe": `${d.x}px`, "--cafe-y": `${d.y}px`,
-              "--dur": `${dur}s`, "--atraso": `${-k * 6.1}s`, "--ida": d.x >= x ? 1 : -1,
+              "--dur": `${dur}s`, "--atraso": "0s", "--ida": d.x >= x ? 1 : -1,
             } as React.CSSProperties;
             return (
-              <g key={`andando-${p.id}`} style={vars}>
+              // Uma ida e volta só por vez (a chave muda a cada janela e recomeça a animação).
+              <g key={`andando-${p.id}-${ciclo}`} style={vars} className="esc-uma-vez">
                 <g className="esc-passeio"><g className="esc-vira"><BonecoAndando v={visualDe(p.nome)} /></g></g>
               </g>
             );
