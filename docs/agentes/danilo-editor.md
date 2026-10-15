@@ -283,3 +283,61 @@ Esses estados são históricos. Conferir as pastas antes de agir; arquivos podem
 
 ## 22. Orientação inicial para o Claude
 Leia este documento como o contexto operacional de Davi. Primeiro confira quais arquivos, referências e integrações você realmente consegue acessar. Preserve o padrão mais recente aprovado. Antes de automatizar, valide o fluxo real de baixar, editar, conferir e devolver um vídeo. Não considere uma credencial ou automação transferida apenas por constar neste texto. Informe limitações de forma direta e avance no que estiver autorizado e disponível.
+
+---
+
+## Parte B — como o Danilo roda no Infopro (estado em 15/10/2026)
+
+Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pelo Davi ("gostei… a edição está boa").
+
+**Motor e projeto** (`scripts/danilo/`):
+- `criar_projeto.py`: transcreve com mlx-whisper (`language="pt"`, com tempo por palavra), marca os silêncios como remoções e monta as legendas (head/leg), as escolhas e os zooms em blocos.
+- `motor.py`: monta o MP4 a partir do `projeto.json`. Tudo fica no **tempo do bruto**:
+  - `remocoes`;
+  - `lacunas` (buraco preto e mudo);
+  - `legendas`;
+  - `midias`;
+  - `musica`;
+  - `zooms` (camada de ajuste: suave/seco/lento);
+  - `cor` + `ajuste_cor` (Lumetri).
+- Com `--previa`, o motor faz uma prévia em 540×960 em cerca de 50 s.
+- ffmpeg: `~/.infopro-hub/creator-bin/ffmpeg`.
+
+**Serviço local** `servidor.py`:
+- Roda em 127.0.0.1:3103, como LaunchAgent `com.infoprohub.danilo`, instalado por `scripts/danilo/instalar.sh`.
+- A chave fica em `~/.infopro-hub/danilo/config.json`.
+- Rotas:
+  - `GET projeto`, `arquivo/<path>` (com Range);
+  - `ondas` (`?musica=1` para a música);
+  - `proxy` (cópia leve do bruto, 540p, quadro-chave a cada 1/3 s);
+  - `POST montagem` (prévia corrida só com os trechos mantidos; é o que faz o player tocar liso);
+  - `POST projeto` (`?previa=0` só salva);
+  - `POST midia`;
+  - `POST aprovar` (gera o Full HD, entrega no Drive e conclui a tarefa).
+
+**Banco**:
+- Tabela `edicoes_video` (status `na_fila/editando/revisar/renderizando/aprovando/aprovado/erro`).
+- O app só lê e muda `status`/`mensagem`.
+- As pastas das edições ficam em `~/.infopro-hub/danilo/edicoes/<id>/`.
+
+**Mini editor (estilo Premiere)** — `src/components/empresa/EditorVideo.tsx` + `src/lib/empresa/edicaoVideo.ts` (testes em `tests/edicaoVideo.test.mjs`):
+- Abre por "Precisa de você" › "Revisar edição".
+- Layout: o player vertical fica à esquerda; propriedades e linha do tempo à direita, com uma divisória que arrasta.
+- Faixas: Legendas, Zoom, V2 imagens, V1 vídeo, A1 voz (forma de onda) e A2 música (forma de onda). A altura de cada faixa se ajusta arrastando.
+- Ferramentas:
+  - navalha (C);
+  - "Juntar ao apagar" (desligado = buraco preto);
+  - ímã com linha amarela;
+  - marcadores (M);
+  - seleção múltipla;
+  - arrastar a ponta da legenda (trava na vizinha);
+  - cor Lumetri;
+  - blocos de zoom.
+- Atalhos: D/F zoom; W corta tudo na agulha; E apaga; ⌘R apaga e junta; Q/R aparam; ⌘Z/⇧⌘Z pelo menu do app.
+- **Player: toca a prévia montada (`montagem-<hash>.mp4`), não o bruto pulando cortes.** Pular dentro do vídeo no WebKit sempre engasgou. Selo "liso" ou "montando". Não voltar ao jeito antigo.
+
+**Pendências combinadas** (não feitas):
+1. Fluxo automático: ao mudar um vídeo de Gravação para Edição, ou ao entrar um bruto em `Eu.davi/Precisa de edição`, o Danilo cria a edição sozinho e edita. Isso inclui o Danilo pegar as tarefas da fila dele, como o Roy faz em `scripts/roy/servico.py` (`atender_tarefa`).
+2. Depois do "Aprovar", a tarefa segue para a Dalila postar.
+3. Desligar a tarefa agendada do ChatGPT que editava, para não editarem em dobro.
+4. Fazer o manual do Instalivros (pasta `Instalivros/EDIÇÃO/{BRUTOS,EDITADOS,APROVADOS}`).
