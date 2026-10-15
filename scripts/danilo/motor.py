@@ -12,6 +12,8 @@ projeto.json:
   lacunas        [{id, inicio, fim}]: trechos que ficam no tempo, mas em preto e mudo
                  (apagado no mini editor com "Juntar ao apagar" desligado)
   legendas       [{id, inicio, fim, texto, tipo: "head"|"leg"}]
+  destaques      [{texto, inicio, fim?}]: palavra fixa na tela (ex.: INSTALIVROS da 1ª menção
+                 até o último quadro; sem fim = até o fim do vídeo)
   midias         [{id, tipo: "imagem"|"video", arquivo, inicio, fim, x, y, w, h}]
   musica         {arquivo, volume} | null
   zooms          [{id, inicio, fim, z, tipo: "suave"|"seco"|"lento"}]: zoom como camada de ajuste
@@ -93,6 +95,7 @@ WrapStyle: 2
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Head,Arial,74,&H00FFFFFF,&H00FFFFFF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,4.5,2,2,60,60,0,1
 Style: Leg,Arial,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
+Style: Dest,Arial,84,&H00FFFFFF,&H00FFFFFF,&H00101010,&H64000000,-1,0,0,0,100,100,2,0,1,5,2.5,5,60,60,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -106,6 +109,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Head,,0,0,0,,{{\\an2\\pos(540,1110)\\fad(120,80)}}{texto}\n"
         else:
             ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Leg,,0,0,0,,{{\\an5\\pos(540,1080)}}{texto}\n"
+    for d in projeto.get("destaques", []):
+        a = mapa.para_final(d["inicio"], "inicio")
+        b = mapa.para_final(d["fim"], "fim") if d.get("fim") else mapa.duracao
+        if a is not None and b is not None and b - a > 0.15 and d.get("texto", "").strip():
+            ass += f"Dialogue: 1,{ts(a)},{ts(b)},Dest,,0,0,0,,{{\\an5\\pos(540,1400)\\fad(150,0)}}{d['texto']}\n"
     Path(destino).write_text(ass, encoding="utf-8")
 
 
