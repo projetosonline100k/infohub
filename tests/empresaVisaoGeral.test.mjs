@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/visaoGeral.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { contarIndicadores, precisaDeVoce, jarvisCuidando, estadoDosMembros, videosProgramados, ordenarFila } =
+const { contarIndicadores, precisaDeVoce, tarefasEmExecucao, estadoDosMembros, videosProgramados, ordenarFila } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const HOJE = '2026-10-12';
@@ -41,12 +41,17 @@ test('precisa de você: gravar, aprovar e só as minhas tarefas abertas', () => 
   assert.equal(itens[2].atrasada, true);
 });
 
-test('jarvis cuidando agrupa por tipo e ignora o que é meu', () => {
-  const linhas = jarvisCuidando('eu', [video('v', 'edicao')], membros, setores, [
-    tarefa('c1', 'm-roy', { tipo: 'carrossel' }), tarefa('c2', 'm-roy', { tipo: 'carrossel' }),
-    tarefa('x', 'm-danilo'), tarefa('minha', 'm-davi', { tipo: 'carrossel' }),
+test('tarefas sendo executadas: da equipe, fazendo agora primeiro; sem as minhas nem as que esperam aprovação', () => {
+  const comIa = [...membros, { id: 'm-ital', nome: 'Ítalo', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: true },
+    { id: 'm-gpt', nome: 'Editor GPT', funcao: null, setor_id: 's-av', conta_id: null, eh_ia: true }];
+  const linhas = tarefasEmExecucao('eu', comIa, [
+    tarefa('fila-danilo', 'm-danilo'), tarefa('agora-pouco', 'm-roy', { situacao: 'andamento', progresso: 10 }),
+    tarefa('agora-muito', 'm-ital', { situacao: 'andamento', progresso: 80 }), tarefa('fila-italo', 'm-ital'),
+    tarefa('minha', 'm-davi', { situacao: 'andamento' }), tarefa('aprovar', 'm-roy', { situacao: 'aguardando_aprovacao' }),
+    tarefa('feita', 'm-roy', { concluida: true }), tarefa('levar-gpt', 'm-gpt'),
   ]);
-  assert.deepEqual(linhas.map((l) => l.rotulo), ['2 carrosséis em criação', '1 vídeo em edição', '1 tarefa no Audiovisual']);
+  assert.deepEqual(linhas.map((l) => l.tarefa.id), ['agora-muito', 'agora-pouco', 'fila-danilo', 'fila-italo']);
+  assert.equal(linhas[0].agora, true);
 });
 
 test('estado do membro: tarefa atual é a em andamento, conta atrasos', () => {

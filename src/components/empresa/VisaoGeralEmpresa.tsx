@@ -20,11 +20,12 @@ import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
 import { RevisaoEntrega } from "./RevisaoEntrega";
+import { CabecaBoneco } from "./BonecoMesa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, estadoDosMembros, tarefasEmExecucao, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -147,7 +148,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const tarefasComCarrossel = useMemo(() => new Set(carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter(Boolean)), [carrosseis]);
   const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)), hoje),
     [contaId, videos, membros, tarefas, hoje, tarefasComCarrossel]);
-  const cuidando = useMemo(() => jarvisCuidando(contaId, videos, membros, setores, tarefas), [contaId, videos, membros, setores, tarefas]);
+  const executando = useMemo(() => tarefasEmExecucao(contaId, membros, tarefas), [contaId, membros, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);
   const programados = useMemo(() => videosProgramados(videos, hoje), [videos, hoje]);
   const trabalhoIa = useMemo(() => trabalhoDasIas(membros, carrosseis, edicoes), [membros, carrosseis, edicoes]);
@@ -165,6 +166,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     { rotulo: "Postados", valor: indicadores.postados, icone: CheckCircle2, cor: "text-teal-500 bg-teal-500/10", ir: "vertical" },
   ];
 
+  const edicoesRodando = edicoes.filter((e) => ["na_fila", "editando", "renderizando", "aprovando"].includes(e.status));
   const paraAprovar = precisa.flatMap((item) => (item.tipo === "aprovar" ? item.tarefas : []));
   const idsAgendar = precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : []));
   // Gaveta da equipe (Messenger): status e o que cada um está fazendo.
@@ -289,27 +291,48 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           )}
         </section>
 
-        {/* 2. O que a operação está tocando sem mim. */}
-        <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+        {/* 2. O que a equipe está tocando sem mim (15/10: "Tarefas sendo executadas"). */}
+        <section className="flex max-h-[520px] flex-col rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
           <div className="mb-3 flex items-center gap-2">
             <Bot className="h-5 w-5 text-emerald-500" />
-            <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Jarvis está cuidando</h2>
+            <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Tarefas sendo executadas</h2>
             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-              {cuidando.reduce((s, l) => s + l.quantidade, 0) + carrosseis.filter(emProducao).length} em andamento
+              {executando.filter((l) => l.agora).length + carrosseis.filter(emProducao).length + edicoesRodando.length} agora · {executando.filter((l) => !l.agora).length} na fila
             </span>
           </div>
-          {carrosseis.some(emProducao) && (
-            <div className="mb-2">
-              <LinhaAcao icone={GalleryHorizontal} onClick={() => {}}
-                titulo={`Roy criando ${carrosseis.filter(emProducao).length} ${carrosseis.filter(emProducao).length === 1 ? "carrossel" : "carrosséis"}`}
-                detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")} />
-            </div>
-          )}
-          {cuidando.length === 0 && !carrosseis.some(emProducao) ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">Nenhuma tarefa da equipe em andamento. Atribua tarefas às pessoas em Atividades.</p>
+          {executando.length === 0 && !carrosseis.some(emProducao) && edicoesRodando.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">A equipe não está tocando nada agora. Passe tarefas pela conversa com cada um.</p>
           ) : (
-            <div className="grid gap-2 sm:grid-cols-2">
-              {cuidando.map((l) => <LinhaAcao key={l.rotulo} icone={Video} titulo={l.rotulo} onClick={onAbrirAtividades} />)}
+            <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
+              {carrosseis.some(emProducao) && (
+                <LinhaAcao icone={GalleryHorizontal} onClick={() => { const r = membros.find((m) => /^roy$/i.test(m.nome)); if (r) setMembroAberto(r); }}
+                  titulo={`Roy criando ${carrosseis.filter(emProducao).length} ${carrosseis.filter(emProducao).length === 1 ? "carrossel" : "carrosséis"}`}
+                  detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")} />
+              )}
+              {edicoesRodando.map((e) => (
+                <LinhaAcao key={e.id} icone={Scissors} onClick={() => { const d = membros.find((m) => /^danilo$/i.test(m.nome)); if (d) setMembroAberto(d); }}
+                  titulo={`Danilo editando: ${e.titulo}`} detalhe={e.mensagem ?? e.status} />
+              ))}
+              {executando.map(({ tarefa: t, membro: m, agora }) => (
+                <button key={t.id} type="button" onClick={() => setMembroAberto(m)}
+                  className="flex w-full items-center gap-2.5 rounded-lg border bg-background p-2 text-left transition-colors hover:border-primary/40">
+                  <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-sky-100 dark:bg-slate-700"><CabecaBoneco nome={m.nome} ehIa={m.eh_ia} className="h-full w-full" /></span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-xs">
+                      <b className="font-semibold">{m.nome}</b>
+                      <span className={cn("rounded-full px-1.5 py-px text-[10px] font-medium", agora ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>
+                        {agora ? (t.tipo === "programacao" ? "programado" : "fazendo agora") : "na fila"}
+                      </span>
+                      {agora && t.progresso != null && t.progresso > 0 && <span className="ml-auto tabular-nums text-muted-foreground">{t.progresso}%</span>}
+                    </span>
+                    <span className="block truncate text-sm">{t.titulo}</span>
+                    {agora && t.progresso != null && t.progresso > 0 && (
+                      <span className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${t.progresso}%` }} /></span>
+                    )}
+                  </span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                </button>
+              ))}
             </div>
           )}
         </section>

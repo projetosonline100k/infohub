@@ -24,7 +24,11 @@ export interface MembroResumo {
 // IA "operária" (ex.: Danilo/Roy = ChatGPT): tem fila, mas quem leva o
 // trabalho até ela é o Davi. O Jarvis só coordena; a Dalila publica sozinha
 // na nuvem (edge dalila-publicar), então a fila dela não depende do Davi.
-const IAS_AUTONOMAS = new Set(["jarvis", "dalila"]);
+// IAs que pegam as tarefas da fila sozinhas (ouvinte do Jarvis, serviços do
+// Roy/Danilo): a tarefa delas não é do Davi (15/10: "tem coisa que não sou eu
+// que faço, a própria pessoa já está fazendo"). As outras IAs (via ChatGPT)
+// ainda dependem do Davi levar a tarefa.
+const IAS_AUTONOMAS = new Set(["jarvis", "dalila", "ítalo", "italo", "gabriel", "roy", "danilo"]);
 export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && !IAS_AUTONOMAS.has(m.nome.toLowerCase());
 
 export interface SetorResumo {
@@ -117,35 +121,21 @@ export interface LinhaCuidando { rotulo: string; quantidade: number; setor_id: s
 
 // "Jarvis está cuidando": o que a operação está tocando sem o dono da conta
 // (tarefas abertas de outras pessoas + vídeos em edição), agrupado por tipo.
-export function jarvisCuidando(contaId: string, videos: VideoResumo[], membros: MembroResumo[], setores: SetorResumo[], tarefas: TarefaResumo[]): LinhaCuidando[] {
-  const meus = new Set(membros.filter((m) => m.conta_id === contaId).map((m) => m.id));
-  // Na fila de uma IA operária ainda depende do Davi (está em "Precisa de você").
-  const ias = new Set(membros.filter(ehIaOperaria).map((m) => m.id));
-  const grupos = new Map<string, LinhaCuidando>();
-  const somar = (chave: string, rotulos: [string, string], setor: string | null) => {
-    const g = grupos.get(chave) ?? { rotulo: "", quantidade: 0, setor_id: setor };
-    g.quantidade++;
-    g.rotulo = `${g.quantidade} ${g.quantidade === 1 ? rotulos[0] : rotulos[1]}`;
-    grupos.set(chave, g);
-  };
-  const edicaoEmTarefa = tarefas.some((t) => tarefaAberta(t) && t.tipo === "edicao");
-  if (!edicaoEmTarefa) {
-    for (const v of videos) if (v.status === "edicao") somar("tipo:edicao", ROTULO_TIPO.edicao, null);
-  }
+// "Tarefas sendo executadas" (15/10, no lugar de "Jarvis está cuidando"): o que
+// a equipe está tocando sem o Davi — fazendo agora primeiro (mais adiantadas
+// antes), depois a fila. Fica de fora o que é do próprio Davi e o que espera a
+// aprovação dele (isso está em "Precisa de você").
+export interface TarefaEmExecucao { tarefa: TarefaResumo; membro: MembroResumo; agora: boolean }
+export function tarefasEmExecucao(contaId: string, membros: MembroResumo[], tarefas: TarefaResumo[]): TarefaEmExecucao[] {
+  const porId = new Map(membros.map((m) => [m.id, m]));
+  const linhas: TarefaEmExecucao[] = [];
   for (const t of tarefas) {
-    if (!tarefaAberta(t) || t.situacao === "aguardando_aprovacao" || !t.responsavel_id || meus.has(t.responsavel_id)) continue;
-    if (ias.has(t.responsavel_id) && (t.situacao ?? "fila") === "fila") continue;
-    // Post da Dalila: com a data escolhida pelo Davi já está programado; sem ela, espera o Davi.
-    if (t.tipo === "programacao") {
-      if (t.situacao === "andamento") somar("tipo:programacao", ["post programado", "posts programados"], t.setor_id);
-      else somar("tipo:programacao-data", ["post esperando você escolher a data", "posts esperando você escolher a data"], t.setor_id);
-      continue;
-    }
-    if (t.tipo && ROTULO_TIPO[t.tipo]) { somar(`tipo:${t.tipo}`, ROTULO_TIPO[t.tipo], t.setor_id); continue; }
-    const setor = setores.find((s) => s.id === t.setor_id);
-    somar(`setor:${t.setor_id}`, [`tarefa no ${setor?.nome ?? "time"}`, `tarefas no ${setor?.nome ?? "time"}`], t.setor_id);
+    const m = t.responsavel_id ? porId.get(t.responsavel_id) : undefined;
+    if (!m || m.conta_id === contaId || !tarefaAberta(t) || t.situacao === "aguardando_aprovacao") continue;
+    if (ehIaOperaria(m) && (t.situacao ?? "fila") === "fila") continue;   // ainda depende do Davi levar
+    linhas.push({ tarefa: t, membro: m, agora: t.situacao === "andamento" });
   }
-  return [...grupos.values()].sort((a, b) => b.quantidade - a.quantidade);
+  return linhas.sort((a, b) => Number(b.agora) - Number(a.agora) || (b.tarefa.progresso ?? 0) - (a.tarefa.progresso ?? 0));
 }
 
 export interface EstadoMembro {
