@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CheckCircle2, FileText, Loader2 } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -42,8 +42,13 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
-  const [quiz, setQuiz] = useState<{ titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string; titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
   const [verEsboco, setVerEsboco] = useState(false);
+  // Editar o quiz aqui mesmo (pedido do Davi, 15/10): clica no texto ou na imagem.
+  // O quiz só recomeça quando a estrutura muda por fora (o Roy salvou).
+  const [editandoQuiz, setEditandoQuiz] = useState(false);
+  const [chaveQuiz, setChaveQuiz] = useState(0);
+  const estruturaConhecida = useRef("");
   const [info, setInfo] = useState<{ observacao: string | null; responsavel: string | null; responsavelId: string | null } | null>(null);
   const [versao, setVersao] = useState(0);
   const [carregando, setCarregando] = useState(false);
@@ -64,8 +69,14 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     void (async () => {
       const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
-        db.from("quizzes").select("titulo, status, estrutura").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
-          .then((r) => { if (vivo) setQuiz((r.data as typeof quiz) ?? null); }),
+        db.from("quizzes").select("id, titulo, status, estrutura").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+          .then((r) => {
+            if (!vivo) return;
+            const novo = (r.data as typeof quiz) ?? null;
+            const json = JSON.stringify(novo?.estrutura ?? null);
+            if (json !== estruturaConhecida.current) { estruturaConhecida.current = json; setChaveQuiz((k) => k + 1); }
+            setQuiz(novo);
+          }),
         supabase.from("atividades").select("observacao, responsavel_id").eq("id", tarefaId).maybeSingle(),
       ]);
       const { data: m } = a?.responsavel_id ? await supabase.from("membros").select("nome").eq("id", a.responsavel_id).maybeSingle() : { data: null };
@@ -85,7 +96,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     })();
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
-  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setVerEsboco(false); }, [tarefaId]);
+  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setVerEsboco(false); setEditandoQuiz(false); estruturaConhecida.current = ""; }, [tarefaId]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
@@ -109,6 +120,21 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     setSalvando(true);
     try { depois(await aprovarEPassarParaRoy(tarefa.id, clienteId)); }
     catch (e) { toast.error(e instanceof Error ? e.message : "Não consegui passar para o Roy"); } finally { setSalvando(false); }
+  };
+  const salvarQuiz = async (estrutura: EstruturaQuiz) => {
+    if (!quiz) return;
+    estruturaConhecida.current = JSON.stringify(estrutura);
+    setQuiz({ ...quiz, estrutura });
+    const { error } = await db.from("quizzes").update({ estrutura }).eq("id", quiz.id);
+    if (error) toast.error("Não consegui salvar a mudança no quiz");
+  };
+  const enviarImagemQuiz = async (arquivo: File) => {
+    const { data: u } = await supabase.auth.getUser();
+    const ext = (arquivo.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const caminho = `${u.user?.id}/${quiz?.id}/${Date.now()}.${ext}`;
+    const { error } = await supabase.storage.from("quiz-imagens").upload(caminho, arquivo, { contentType: arquivo.type || undefined });
+    if (error) { toast.error("Não consegui enviar a imagem"); throw error; }
+    return supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
   };
   // Esboço de quiz de outro funcionário (sem quiz ligado ainda): dá pra mandar pro Roy criar.
   const esbocoParaRoy = !quiz && !/^roy$/i.test(info?.responsavel ?? "") && pareceEsbocoDeQuiz(tarefa?.titulo, docs[0]?.titulo);
@@ -142,10 +168,17 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 text-sm">
                     <button type="button" onClick={() => setVerEsboco(false)} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
                     <button type="button" onClick={() => setVerEsboco(true)} className={cn("flex-1 rounded-md px-3 py-1", verEsboco && "bg-background font-medium shadow-sm")}>Esboço aprovado</button>
+                    {!verEsboco && (
+                      <button type="button" onClick={() => setEditandoQuiz((v) => !v)} title="Clique num texto pra mudar a palavra, ou numa imagem pra enviar"
+                        className={cn("flex items-center gap-1 rounded-md px-3 py-1", editandoQuiz && "bg-amber-500/20 font-medium text-amber-700 dark:text-amber-300")}>
+                        <Pencil className="h-3.5 w-3.5" />{editandoQuiz ? "Editando" : "Editar"}
+                      </button>
+                    )}
                   </div>
                 )}
                 {quiz?.estrutura && !verEsboco ? (
-                  <QuizPlayer key={JSON.stringify(quiz.estrutura).length + versao} titulo={quiz.titulo} estrutura={quiz.estrutura} teste />
+                  <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste
+                    editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
                 ) : carregando ? (
                   <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 ) : docs.length === 0 ? (

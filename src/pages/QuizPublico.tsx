@@ -22,7 +22,7 @@ export default function QuizPublico() {
   }, [slug]);
 
   return (
-    <div className="min-h-screen bg-background px-4 py-8 text-foreground sm:py-14">
+    <div className={quiz?.estrutura.tema === "escuro" ? "min-h-screen bg-neutral-950 px-4 py-8 text-neutral-100 sm:py-14" : "min-h-screen bg-background px-4 py-8 text-foreground sm:py-14"}>
       {carregando ? (
         <div className="flex justify-center py-20"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
       ) : !quiz ? (

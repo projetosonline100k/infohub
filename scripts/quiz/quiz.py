@@ -54,6 +54,20 @@ def validar(e):
                 erros.append(f'pergunta {k}: opção sem texto')
             elif o.get('perfil') and o['perfil'] not in ids:
                 erros.append(f'pergunta {k}: perfil "{o["perfil"]}" não existe em perfis')
+    telas = e.get('telas') or []
+    if not isinstance(telas, list):
+        erros.append('telas: tem que ser uma lista')
+        telas = []
+    for k, t in enumerate(telas, 1):
+        if not isinstance(t, dict) or t.get('tipo') not in ('respiro', 'especialista', 'carregando', 'resultado'):
+            erros.append(f'tela {k}: tipo tem que ser respiro, especialista, carregando ou resultado')
+        elif t.get('depois_de') != 'intro' and t.get('depois_de') not in vistos:
+            erros.append(f'tela {k}: depois_de "{t.get("depois_de")}" não é "intro" nem id de pergunta')
+        elif not t.get('id'):
+            t['id'] = f't{k}'
+    for b in ((e.get('resultado') or {}).get('grafico') or {}).get('barras', []):
+        if any(pid not in ids for pid in b.get('perfis', [])):
+            erros.append(f'resultado.grafico: barra "{b.get("rotulo")}" com perfil que não existe')
     cap = e.get('captura') or {}
     if cap and any(c not in ('nome', 'email', 'whatsapp') for c in cap.get('pedir', [])):
         erros.append('captura.pedir: só nome, email e whatsapp')
