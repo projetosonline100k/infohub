@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
+import { BonecoMesa } from "./BonecoMesa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
@@ -40,7 +41,6 @@ const SINAIS: Record<Sinal, { cor: string; rotulo: string }> = {
   parado: { cor: "bg-zinc-400", rotulo: "Parado" },
 };
 
-const iniciais = (nome: string) => nome.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 const hojeIso = () => format(new Date(), "yyyy-MM-dd");
 interface CarrosselProgramado { id: string; numero: number | null; tema: string; status: string; programado_para: string | null; paginas: string[] | null }
 // "hoje às 12:00", "amanhã às 10:00", "sex, 17 out às 10:00".
@@ -309,10 +309,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                             {balao}
                           </span>
                           <span className="relative">
-                            <span className={cn("flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white", membro.eh_ia ? "bg-gradient-to-br from-cyan-400 to-sky-600" : cor.avatar)}>
-                              {membro.eh_ia ? <Bot className="h-5 w-5" /> : iniciais(membro.nome)}
-                            </span>
-                            <span className={cn("absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-background", SINAIS[sinal].cor)}
+                            {/* O boneco na mesa: digitando, dormindo, acenando (precisa de você) ou aflito. */}
+                            <BonecoMesa nome={membro.nome} ehIa={membro.eh_ia} sinal={sinal} className="h-20 w-[90px]" />
+                            <span className={cn("absolute bottom-1 right-0 h-3 w-3 rounded-full border-2 border-background", SINAIS[sinal].cor)}
                               title={SINAIS[sinal].rotulo} />
                           </span>
                           <span className="mt-1 text-sm font-semibold leading-tight">{membro.nome}</span>
