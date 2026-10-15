@@ -19,6 +19,7 @@ import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
+import { RevisaoEntrega } from "./RevisaoEntrega";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
   contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
@@ -88,6 +89,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
   const [filtroPrecisa, setFiltroPrecisa] = useState<Categoria | "todos">("todos");
   const [loteAberto, setLoteAberto] = useState(false);
+  const [revisaoAberta, setRevisaoAberta] = useState(false);
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
@@ -159,6 +161,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     { rotulo: "Postados", valor: indicadores.postados, icone: CheckCircle2, cor: "text-teal-500 bg-teal-500/10", ir: "vertical" },
   ];
 
+  const paraAprovar = precisa.flatMap((item) => (item.tipo === "aprovar" ? item.tarefas : []));
   const idsAgendar = precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : []));
   // Gaveta da equipe (Messenger): status e o que cada um está fazendo.
   const pessoasChat = estados.map((estado) => {
@@ -200,7 +203,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       }
       if (item.tipo === "aprovar") {
         return { chave: "aprovar", categoria: categoriaDaTarefa(item.tarefas[0]?.tipo),
-          no: <LinhaAcao icone={CheckCircle2} titulo={`Aprovar ${item.tarefas.length} ${item.tarefas.length === 1 ? "entrega" : "entregas"}`} detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={onAbrirAtividades} /> };
+          no: <LinhaAcao icone={CheckCircle2} titulo={`Aprovar ${item.tarefas.length} ${item.tarefas.length === 1 ? "entrega" : "entregas"}`} detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={() => setRevisaoAberta(true)} /> };
       }
       if (item.tarefa.tipo === "agendar") {
         return { chave: item.tarefa.id, categoria: "programar" as Categoria,
@@ -356,6 +359,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} />
+      <RevisaoEntrega clienteId={clienteId} tarefas={paraAprovar} aberto={revisaoAberta} onFechar={() => setRevisaoAberta(false)} onMudou={() => { void carregar(); }} />
       <ProgramarLote clienteId={clienteId} tarefaIds={idsAgendar} aberto={loteAberto} onFechar={() => { setLoteAberto(false); void carregar(); }} />
 
       {/* 4. O que vai ser publicado. */}

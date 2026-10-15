@@ -24,6 +24,7 @@ sys.path.insert(0, str(RAIZ / 'scripts'))
 sys.path.insert(0, str(RAIZ / 'scripts' / 'empresa'))
 from migration_db import connect  # noqa: E402
 from briefing import EXECUTORES, manual_do  # noqa: E402
+AJUSTE = '--- Ajuste pedido pelo Davi'   # mesmo texto de src/lib/empresa/entregas.ts
 TAGS = {'h2', 'h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'br'}
 
 
@@ -70,6 +71,9 @@ def contexto(aid):
         q.execute("""SELECT id, titulo, updated_at FROM documentos WHERE cliente_id = %s AND deleted_at IS NULL
                       ORDER BY updated_at DESC LIMIT 15""", (cliente_id,))
         docs = q.fetchall()
+        q.execute("""SELECT id, titulo FROM documentos WHERE atividade_id = %s AND deleted_at IS NULL
+                      ORDER BY updated_at DESC LIMIT 1""", (aid,))
+        anterior = q.fetchone()
     finally:
         c.rollback()
         c.close()
@@ -83,6 +87,10 @@ def contexto(aid):
     for d_id, d_tit, d_quando in docs:
         print(f'  - {d_tit} · {d_quando:%d/%m} · {d_id}')
     print('\nO combinado (briefing confirmado):\n' + (descricao or '(sem descrição)'))
+    if anterior and AJUSTE in (descricao or ''):
+        print(f'\n⚠️ É um AJUSTE: o Davi leu a versão anterior e pediu mudanças (o último "{AJUSTE}" acima).'
+              f'\nVersão anterior: "{anterior[1]}" ({anterior[0]}). Leia com scripts/consulta.py, faça só o que ele pediu'
+              ' sem perder o que estava bom, e entregue de novo (o entregar atualiza o mesmo documento).')
 
 
 def limpar_html(s):
@@ -111,10 +119,17 @@ def entregar(aid, titulo, resumo, conteudo):
         q.execute("""SELECT pasta_id FROM documentos WHERE cliente_id = %s AND deleted_at IS NULL AND pasta_id IS NOT NULL
                       ORDER BY updated_at DESC LIMIT 1""", (cliente_id,))
         pasta = q.fetchone()
-        q.execute("""INSERT INTO documentos (cliente_id, atividade_id, titulo, conteudo, user_id, pasta_id)
-                     VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
-                  (cliente_id, aid, titulo.strip()[:150], html, dono, pasta[0] if pasta else None))
-        did = q.fetchone()[0]
+        # Ajuste: a nova versão substitui a anterior no mesmo documento.
+        q.execute("""UPDATE documentos SET titulo = %s, conteudo = %s, updated_at = now()
+                      WHERE id = (SELECT id FROM documentos WHERE atividade_id = %s AND deleted_at IS NULL
+                                   ORDER BY updated_at DESC LIMIT 1) RETURNING id""", (titulo.strip()[:150], html, aid))
+        r = q.fetchone()
+        if not r:
+            q.execute("""INSERT INTO documentos (cliente_id, atividade_id, titulo, conteudo, user_id, pasta_id)
+                         VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
+                      (cliente_id, aid, titulo.strip()[:150], html, dono, pasta[0] if pasta else None))
+            r = q.fetchone()
+        did = r[0]
         obs = f'Entregue no documento "{titulo.strip()[:150]}". {resumo.strip()[:400]}'
         q.execute("SELECT a.tipo, lower(m.nome) FROM atividades a LEFT JOIN membros m ON m.id = a.responsavel_id WHERE a.id = %s", (aid,))
         tipo, quem = q.fetchone()

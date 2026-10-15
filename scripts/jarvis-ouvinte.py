@@ -298,7 +298,7 @@ PROMPT_BRIEFING = """Você é um funcionário da empresa de um projeto no Infopr
 Briefing: {bid}
 
 1. Rode `python3 scripts/empresa/briefing.py contexto {bid}`: projeto, quem você é, seu manual e a conversa até aqui.
-2. Leia o seu manual (se tiver) e a sua inteligência com o comando que o contexto mostra (use `--saida` numa pasta temporária se precisar ler os textos).
+2. Leia o seu manual (se tiver) e a sua inteligência com o comando que o contexto mostra (use `--saida` numa pasta temporária se precisar ler os textos). Arquivo anexado pelo Davi (linha com 📎 e "documento <id>"): leia esse documento antes, com `python3 scripts/consulta.py "select titulo, conteudo from documentos where id = '<id>'"`.
 3. Seu papel AGORA é ENTENDER a tarefa, não fazer. Responda como a pessoa, em português simples e curto:
    - diga com suas palavras o que entendeu;
    - pergunte só o que falta de verdade (no máximo 3 perguntas, as mais importantes: objetivo, para qual produto/público, formato da entrega, prazo, referências);
@@ -338,7 +338,7 @@ PROMPT_EXECUCAO = """Você é um funcionário IA da empresa de um projeto no Inf
 Tarefa: {aid}
 
 1. Rode `python3 scripts/empresa/execucao.py contexto {aid}`: o combinado, o prazo, o projeto e onde está o seu manual.
-2. Leia o seu manual inteiro e a sua inteligência (`ler.py` com `--saida` numa pasta temporária, e leia os textos que importam para esta tarefa). Leia também os documentos do projeto que o combinado citar (scripts/consulta.py, somente leitura; o conteúdo é HTML).
+2. Leia o seu manual inteiro e a sua inteligência (`ler.py` com `--saida` numa pasta temporária, e leia os textos que importam para esta tarefa). Leia também os documentos do projeto que o combinado citar (scripts/consulta.py, somente leitura; o conteúdo é HTML). Arquivo anexado pelo Davi (linha com 📎 e "documento <id>"): leia esse documento antes, com `python3 scripts/consulta.py "select titulo, conteudo from documentos where id = '<id>'"`. Se o contexto avisar que é um AJUSTE, refaça em cima da versão anterior só o que o Davi pediu.
 3. Faça o trabalho de verdade, como combinado. Pesquisa na internet: WebSearch/WebFetch; comentários e vídeos do YouTube: yt-dlp (`PYTHONPATH=~/.infopro-hub/ytdlp SSL_CERT_FILE=~/.infopro-hub/py/certifi/cacert.pem python3 -m yt_dlp --skip-download --write-comments --write-info-json ...`), trabalhe numa pasta temporária. Cite só o que você realmente leu; frases do público, do jeito que escreveram; nunca invente dado, depoimento ou número. Se algo combinado não deu para fazer, diga no documento (seção "Limites desta versão").
 4. Entregue UM documento organizado (HTML simples: h2, h3, p, ul, ol, li, strong, em, a, blockquote):
    python3 scripts/empresa/execucao.py entregar {aid} "<título do documento>" "<resumo de 1 linha do que entregou>" <<'FIM'
@@ -366,6 +366,7 @@ def atender_execucao():
         execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
         log("execução: falhou —", texto[:200])
     else:
+        _tentadas.discard(aid)  # entregou: se o Davi pedir ajuste, a tarefa volta pra fila e pode ser refeita
         log("execução:", execucao.situacao(aid))
 
 

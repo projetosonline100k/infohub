@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Bot, CalendarDays, Copy, ExternalLink, Loader2, Plus, X } from "lucide-react";
+import { Bot, CalendarDays, Copy, ExternalLink, Eye, Loader2, Plus, X } from "lucide-react";
 import { confirmar } from "@/components/DialogosGlobais";
 import { cancelarTarefa } from "@/lib/empresa/cancelar";
 import { toast } from "sonner";
@@ -16,6 +16,7 @@ import { ehIaOperaria, ordenarFila, tarefaAtrasada, type MembroResumo, type Tare
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
+import { RevisaoEntrega } from "./RevisaoEntrega";
 
 type TarefaFila = TarefaResumo & {
   video_vertical_id?: string | null; video_youtube_id?: string | null;
@@ -154,6 +155,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   const [passarTarefa, setPassarTarefa] = useState(false);
   const [trabalho, setTrabalho] = useState<TrabalhoAgora[]>([]);
   const [agora, setAgora] = useState(() => Date.now());
+  const [revisando, setRevisando] = useState(false);
   useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
@@ -328,7 +330,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                 {/* 2. As tarefas, por situação */}
                 <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
                 <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
-                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} />}
+                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} />}
                 {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
               </div>
             )}
@@ -366,6 +368,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
             </div>
 
             <InteligenciaMembro clienteId={clienteId} membro={membro} />
+            <RevisaoEntrega clienteId={clienteId} tarefas={esperando} aberto={revisando} onFechar={() => setRevisando(false)}
+              onMudou={() => { void carregar(); onMudou(); }} />
           </>
         )}
       </DialogContent>
@@ -373,7 +377,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   );
 }
 
-function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar }: {
+function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar }: {
+  onRevisar?: (t: TarefaFila) => void;
   titulo: string; vazio?: string; tarefas: TarefaFila[]; hoje: string; agora: number; onMudar: (t: TarefaResumo, situacao: string) => void;
   onCancelar?: (t: TarefaFila) => void;
   onCopiar?: (t: TarefaFila) => void;
@@ -399,6 +404,12 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, 
                   </p>
                   {!t.concluida && (() => { const tt = tempoDaTarefa(t, agora); return tt.pct != null && tt.pct > 0 ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500" style={{ width: `${tt.pct}%` }} /></div> : null; })()}
                 </div>
+                {onRevisar && !t.concluida && (
+                  <button type="button" onClick={() => onRevisar(t)} title="Ler a entrega e aprovar ou pedir ajuste"
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">
+                    <Eye className="h-3 w-3" />Ver e aprovar
+                  </button>
+                )}
                 {onCopiar && !t.concluida && (
                   <button type="button" onClick={() => onCopiar(t)} title="Copiar título e roteiro pro ChatGPT"
                     className="flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-xs hover:bg-accent">
