@@ -29,8 +29,9 @@ function quadrosPernas(sinal: 1 | -1) {
   return q.join("");
 }
 const ESTILO_SALA = `
+.esc svg *{transform-box:fill-box}
 .esc-passeio{animation:esc-passeio var(--dur) linear infinite;animation-delay:var(--atraso)}
-@keyframes esc-passeio{0%,6%{transform:translateX(var(--de))}30%,60%{transform:translateX(var(--cafe))}84%,100%{transform:translateX(var(--de))}}
+@keyframes esc-passeio{0%,6%{transform:translate(var(--de),var(--de-y))}30%,60%{transform:translate(var(--cafe),var(--cafe-y))}84%,100%{transform:translate(var(--de),var(--de-y))}}
 .esc-vira{animation:esc-vira var(--dur) step-end infinite;animation-delay:var(--atraso)}
 @keyframes esc-vira{0%{transform:scaleX(var(--ida))}60%{transform:scaleX(calc(var(--ida) * -1))}84%{transform:scaleX(var(--ida))}}
 .esc-gingado{animation:esc-gingado var(--dur) linear infinite;animation-delay:var(--atraso)}
@@ -184,15 +185,19 @@ function Copa({ x, y }: { x: number; y: number }) {
   );
 }
 
-// Mesa de reunião (enche a fileira de cima ao lado da diretoria).
-function Reuniao({ x, y }: { x: number; y: number }) {
+// Mesa de reunião (enche a fileira de cima ao lado da diretoria). Em duas
+// partes: quem vai "sentar" fica entre as cadeiras do fundo e o tampo.
+const LUGARES_REUNIAO = [-34, -12, 10, 32];
+function ReuniaoFundo({ x, y }: { x: number; y: number }) {
+  return <g transform={`translate(${x} ${y})`}>{LUGARES_REUNIAO.map((cx) => <rect key={cx} x={cx - 7} y="-2" width="14" height="16" rx="5" fill="#64748b" />)}</g>;
+}
+function ReuniaoFrente({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
-      {[-34, -12, 10, 32].map((cx) => <rect key={cx} x={cx - 7} y="-2" width="14" height="16" rx="5" fill="#64748b" />)}
       <ellipse cx="0" cy="24" rx="52" ry="14" fill="#a16207" />
       <ellipse cx="0" cy="22" rx="52" ry="14" fill="#ca8a04" />
       <rect x="-10" y="16" width="20" height="8" rx="2" fill="#f8fafc" opacity=".8" />
-      {[-34, -12, 10, 32].map((cx) => <rect key={`f${cx}`} x={cx - 7} y="36" width="14" height="14" rx="5" fill="#475569" />)}
+      {LUGARES_REUNIAO.map((cx) => <rect key={`f${cx}`} x={cx - 7} y="36" width="14" height="14" rx="5" fill="#475569" />)}
       <text x="0" y="66" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569" fontFamily="system-ui, sans-serif">REUNIÃO</text>
     </g>
   );
@@ -232,6 +237,20 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     x: z.x0 + LARGURA_MESA / 2 + k * LARGURA_MESA + (z.largura - z.setor.pessoas.length * LARGURA_MESA) / 2,
   })));
   const fimCima = fileiras.length > 1 ? larguraFileira(fileiras[0]) : LARGURA;
+  const reuniao = fileiras.length > 1 && fimCima + 150 < xDescanso - 60 ? { x: (fimCima + xDescanso - 60) / 2, y: Y_MESA + 26 } : null;
+  const chao = (r: number) => Y_MESA + r * ALTURA_FILEIRA + PE - (r === 0 && fileiras.length > 1 ? 4 : 0);
+  // Pra onde cada um vai quando está livre: café (fileira de cima), copa (de baixo)
+  // ou sentar na mesa de reunião — alternando entre as pessoas.
+  let lugarLivre = 0;
+  const destinoDe = (r: number, k: number): { x: number; y: number } => {
+    const opcoes = r === 0 ? ["cafe", "reuniao"] : ["copa", "reuniao", "cafe"];
+    const escolha = opcoes[k % opcoes.length];
+    if (escolha === "reuniao" && reuniao && lugarLivre < LUGARES_REUNIAO.length) {
+      return { x: reuniao.x + LUGARES_REUNIAO[lugarLivre++], y: reuniao.y + 20 };
+    }
+    if (escolha === "copa" && fileiras.length > 1) return { x: xDescanso - 46 + (k % 3) * 16, y: chao(1) };
+    return { x: xDescanso - 26 + (k % 3) * 14, y: chao(0) };
+  };
   const pctX = (x: number) => `${(x / LARGURA) * 100}%`;
   const pctY = (y: number) => `${(y / ALTURA_TOTAL) * 100}%`;
 
@@ -282,7 +301,7 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
             );
           })}
           {/* Fileira de cima: reunião no espaço livre e o café no canto */}
-          {fileiras.length > 1 && fimCima + 150 < xDescanso - 60 && <Reuniao x={(fimCima + xDescanso - 60) / 2} y={Y_MESA + 26} />}
+          {reuniao && <ReuniaoFundo x={reuniao.x} y={reuniao.y} />}
           <Cafe x={xDescanso} y={Y_MESA + 16} />
           {fileiras.length > 1 && <Copa x={xDescanso} y={Y_MESA + ALTURA_FILEIRA + 24} />}
           <Planta x={12} y={Y_MESA + 72} s={0.95} />
@@ -297,17 +316,22 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
             <VidroFrente key={`frente-${setor.id}`} x0={x0 - 8} x1={x0 + largura + FOLGA_SETOR / 2 - 4} yTopo={yMesa + 70} yBase={yMesa + 100} porta={x0 + largura - 30} />
           ))}
           {/* Quem está livre: vai e volta do descanso da fileira */}
-          {mesas.map(({ p, x, r, yMesa }, k) => {
+          {mesas.map(({ p, x, r }, k) => {
             if (!vaiPassear(p, noite)) return null;
-            const destino = xDescanso - 26 + (k % 4) * 14;
-            const dur = DUR[k % DUR.length] + Math.min(14, Math.abs(destino - x) / 60);
-            const vars = { "--de": `${x}px`, "--cafe": `${destino}px`, "--dur": `${dur}s`, "--atraso": `${-k * 6.1}s`, "--ida": destino >= x ? 1 : -1 } as React.CSSProperties;
+            const d = destinoDe(r, k), y0 = chao(r);
+            const dur = DUR[k % DUR.length] + Math.min(14, Math.hypot(d.x - x, d.y - y0) / 60);
+            const vars = {
+              "--de": `${x}px`, "--de-y": `${y0}px`, "--cafe": `${d.x}px`, "--cafe-y": `${d.y}px`,
+              "--dur": `${dur}s`, "--atraso": `${-k * 6.1}s`, "--ida": d.x >= x ? 1 : -1,
+            } as React.CSSProperties;
             return (
-              <g key={`andando-${p.id}`} transform={`translate(0 ${yMesa + PE - (r === 0 && fileiras.length > 1 ? 4 : 0)})`} style={vars}>
+              <g key={`andando-${p.id}`} style={vars}>
                 <g className="esc-passeio"><g className="esc-vira"><BonecoAndando v={visualDe(p.nome)} /></g></g>
               </g>
             );
           })}
+          {/* Tampo da reunião por cima: quem foi pra lá aparece sentado atrás dele */}
+          {reuniao && <ReuniaoFrente x={reuniao.x} y={reuniao.y} />}
         </svg>
 
         {/* Placas dos setores */}
