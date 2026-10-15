@@ -26,6 +26,19 @@ export const DashboardLayout = () => {
   // Alarmes da Agenda tocam em qualquer tela do app (não só na Agenda).
   useAlarmesAgenda();
 
+  // ⌘R recarrega o app (no Mac o atalho não fazia nada; 15/10). Com uma janela aberta
+  // por cima (ex.: editor de vídeo, onde ⌘R é "apagar e juntar"), o atalho é dela.
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "r" || e.defaultPrevented) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      e.preventDefault();
+      window.location.reload();
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
+
   useEffect(() => {
     syncPath(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search, syncPath]);
