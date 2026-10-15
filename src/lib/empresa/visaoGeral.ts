@@ -135,6 +135,12 @@ export function jarvisCuidando(contaId: string, videos: VideoResumo[], membros: 
   for (const t of tarefas) {
     if (!tarefaAberta(t) || t.situacao === "aguardando_aprovacao" || !t.responsavel_id || meus.has(t.responsavel_id)) continue;
     if (ias.has(t.responsavel_id) && (t.situacao ?? "fila") === "fila") continue;
+    // Post da Dalila: com a data escolhida pelo Davi já está programado; sem ela, espera o Davi.
+    if (t.tipo === "programacao") {
+      if (t.situacao === "andamento") somar("tipo:programacao", ["post programado", "posts programados"], t.setor_id);
+      else somar("tipo:programacao-data", ["post esperando você escolher a data", "posts esperando você escolher a data"], t.setor_id);
+      continue;
+    }
     if (t.tipo && ROTULO_TIPO[t.tipo]) { somar(`tipo:${t.tipo}`, ROTULO_TIPO[t.tipo], t.setor_id); continue; }
     const setor = setores.find((s) => s.id === t.setor_id);
     somar(`setor:${t.setor_id}`, [`tarefa no ${setor?.nome ?? "time"}`, `tarefas no ${setor?.nome ?? "time"}`], t.setor_id);

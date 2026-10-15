@@ -42,6 +42,16 @@ const SINAIS: Record<Sinal, { cor: string; rotulo: string }> = {
 
 const iniciais = (nome: string) => nome.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 const hojeIso = () => format(new Date(), "yyyy-MM-dd");
+interface CarrosselProgramado { id: string; numero: number | null; tema: string; status: string; programado_para: string | null; paginas: string[] | null }
+// "hoje às 12:00", "amanhã às 10:00", "sex, 17 out às 10:00".
+const quandoPublica = (iso: string) => {
+  const d = new Date(iso), hoje = new Date(), amanha = new Date();
+  amanha.setDate(hoje.getDate() + 1);
+  const hora = format(d, "HH:mm");
+  if (d.toDateString() === hoje.toDateString()) return `hoje às ${hora}`;
+  if (d.toDateString() === amanha.toDateString()) return `amanhã às ${hora}`;
+  return `${format(d, "EEE, d MMM", { locale: ptBR })} às ${hora}`;
+};
 const dataCurta = (iso: string) => format(new Date(`${iso.slice(0, 10)}T12:00:00`), "EEE, d MMM", { locale: ptBR });
 
 export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
@@ -63,6 +73,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
   // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
+  const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
 
   const carregar = useCallback(async () => {
@@ -88,6 +99,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .select("id, numero, tema, status, mensagem, feedback, slides, legenda, paginas, modelos, versao, fonte_permalink, pasta_drive, atividade_id, atividade_roy_id, atualizado_em")
       .eq("cliente_id", clienteId).in("status", ["produzindo", "revisar", "ajuste", "erro"]).order("numero");
     setCarrosseis((cars || []) as unknown as CarrosselResumo[]);
+    // Carrosséis com data marcada: a Dalila publica sozinha na nuvem.
+    const { data: prog } = await supabase.from("carrosseis")
+      .select("id, numero, tema, status, programado_para, paginas")
+      .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
+    setCarrosseisProgramados((prog || []) as unknown as CarrosselProgramado[]);
     setSetores((s.data || []) as SetorResumo[]);
     setMembros((m.data || []) as MembroResumo[]);
     setTarefas((t.data || []) as TarefaResumo[]);
@@ -326,15 +342,31 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <section className="rounded-xl border bg-card p-4">
         <div className="mb-3 flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Vídeos programados</h2>
+          <h2 className="font-semibold">Programados</h2>
           <button type="button" onClick={() => onIrPara("cronograma")} className="ml-auto flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs hover:bg-muted">
             Ver cronograma completo <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
-        {programados.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nenhum vídeo com data de postagem daqui pra frente. Marque a data no Cronograma.</p>
+        {programados.length === 0 && carrosseisProgramados.length === 0 ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Nada com data de postagem daqui pra frente. Marque a data no Cronograma.</p>
         ) : (
           <div className="flex w-0 min-w-full snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2">
+            {carrosseisProgramados.map((c) => (
+              <div key={c.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2">
+                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
+                  {c.paginas?.[0] && <img src={c.paginas[0]} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                  <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white"><Instagram className="h-3 w-3" /></span>
+                </div>
+                <div className="min-w-0">
+                  <p className="line-clamp-2 text-sm font-medium leading-snug">Carrossel {String(c.numero ?? "").padStart(3, "0")} · {c.tema}</p>
+                  <p className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    <CalendarDays className="h-3 w-3" />
+                    {c.status === "publicando" ? "Publicando agora…" : c.programado_para ? `Programado · ${quandoPublica(c.programado_para)}` : "Programado"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">A Dalila publica sozinha</p>
+                </div>
+              </div>
+            ))}
             {programados.map((v) => (
               <div key={v.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border p-2">
                 <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-primary/30 to-fuchsia-600/30">
