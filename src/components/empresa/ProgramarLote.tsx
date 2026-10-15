@@ -26,12 +26,14 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(0);
 
+  const chave = tarefaIds.join(",");   // a lista nova a cada render do pai não refaz a proposta
   useEffect(() => {
-    if (!aberto || !tarefaIds.length) return;
+    const ids = chave ? chave.split(",") : [];
+    if (!aberto || !ids.length) return;
     setCarregando(true);
     void (async () => {
       const { data } = await db.from("carrosseis").select("id, numero, tema, paginas, tarefa_data_id")
-        .in("tarefa_data_id", tarefaIds).order("numero");
+        .in("tarefa_data_id", ids).order("numero");
       const atual = await carregarAgenda(clienteId);
       const ocupados = atual.filter((a) => a.tipo === "carrossel").map((a) => a.dia);
       const lista: Proposta[] = [];
@@ -44,7 +46,7 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
       setAgenda([...atual, ...lista.map((p) => ({ dia: p.dia, tipo: "carrossel" as const, titulo: `${p.titulo} (proposto)`, capa: p.capa, publicado: false, hora: HORA_PADRAO }))]);
       setCarregando(false);
     })();
-  }, [aberto, tarefaIds, clienteId]);
+  }, [aberto, chave, clienteId]);
 
   const confirmar = async () => {
     let feitos = 0;

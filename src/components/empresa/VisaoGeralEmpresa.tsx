@@ -155,7 +155,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     { rotulo: "Postados", valor: indicadores.postados, icone: CheckCircle2, cor: "text-teal-500 bg-teal-500/10", ir: "vertical" },
   ];
 
-  const idsAgendar = useMemo(() => precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : [])), [precisa]);
+  const idsAgendar = precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : []));
   // "Precisa de você" numa lista só, cada item com a categoria pro filtro.
   const linhasPrecisa: { chave: string; categoria: Categoria; no: React.ReactNode }[] = [
     ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
