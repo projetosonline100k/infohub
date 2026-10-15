@@ -284,7 +284,7 @@ Pedido do Davi: o Roy assumiu o que era do Gabriel (que virou o funcionário de 
     - a copy de cada uma (puxe do Ítalo/copy do projeto se existir, sem inventar promessa);
     - a sugestão visual (no estilo do Davi: marfim, preto e vermelho, esculturas clássicas quando couber);
     - os CTAs e o que precisa do Davi (fotos, preços, links de checkout).
-  - **Quiz:**
+  - **Quiz (desde 15/10/2026 tem aba própria: Conteúdo → Quiz; siga docs/QUIZ.md):** em duas etapas. Primeiro o esboço em documento; depois que o Davi aprova, o quiz é criado no Infopro com `scripts/quiz/quiz.py salvar`, com link público. O esboço leva:
     - objetivo e público;
     - as perguntas com as opções;
     - a lógica de resultado (perfis e como pontuar);

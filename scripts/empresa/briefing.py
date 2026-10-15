@@ -73,11 +73,14 @@ def contexto(bid):
             raise SystemExit('briefing não encontrado')
         status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id = r
         entrega = None
+        quiz = None
         if status == 'revisando' and atividade_id:
             q.execute("""SELECT a.titulo, a.situacao, d.id, d.titulo FROM atividades a
                            LEFT JOIN LATERAL (SELECT id, titulo FROM documentos WHERE atividade_id = a.id AND deleted_at IS NULL
                                                ORDER BY updated_at DESC LIMIT 1) d ON true WHERE a.id = %s""", (atividade_id,))
             entrega = q.fetchone()
+            q.execute("SELECT status FROM quizzes WHERE atividade_id = %s ORDER BY criado_em DESC LIMIT 1", (atividade_id,))
+            quiz = q.fetchone()
         q.execute("""SELECT nome_produto, status FROM produtos_cliente WHERE cliente_id = %s ORDER BY status, nome_produto""", (cliente_id,))
         produtos = q.fetchall()
         q.execute("""SELECT papel, texto, criada_em FROM briefing_mensagens WHERE briefing_id = %s ORDER BY criada_em""", (bid,))
@@ -112,6 +115,10 @@ def contexto(bid):
         t_tit, t_sit, d_id, d_tit = entrega
         print(f'CONVERSA SOBRE A ENTREGA da tarefa "{t_tit}" (id {atividade_id}, situação {t_sit}).')
         print(f'Documento entregue: "{d_tit}" ({d_id}). Leia: python3 scripts/consulta.py "select conteudo from documentos where id = \'{d_id}\'"' if d_id else 'Documento entregue: (não achei)')
+        if quiz:
+            print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
+                  + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'
+                     else f'O Davi está testando o QUIZ criado. Veja: python3 scripts/quiz/quiz.py ver {atividade_id} · ajuste: python3 scripts/quiz/quiz.py salvar {atividade_id} (JSON inteiro). Não use o entregar.'))
     if proposta:
         print('Proposta já gravada: ' + json.dumps(proposta, ensure_ascii=False))
     print('\nConversa:')

@@ -219,6 +219,7 @@ export default function ClienteDetalhe() {
     { id: "youtube", label: "Youtube" },
     { id: "cronograma", label: "Cronograma" },
     { id: "conhecimento", label: "Fonte de conhecimento" },
+    { id: "quiz", label: "Quiz" },
   ];
 
   return (

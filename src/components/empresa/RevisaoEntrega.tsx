@@ -11,6 +11,11 @@ import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
 import { aprovarEntrega } from "@/lib/empresa/entregas";
 import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
+import { QuizPlayer } from "@/components/quiz/QuizPlayer";
+import type { EstruturaQuiz, StatusQuiz } from "@/lib/quiz/quiz";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+const db = supabase as unknown as SupabaseClient;   // quizzes ainda não está nos tipos gerados
 
 // "Aprovar entrega" (pedido do Davi, 15/10): abre o documento que o
 // funcionário entregou, pra ler ali mesmo e aprovar ou pedir ajuste. Ao lado,
@@ -35,6 +40,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
 }) {
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
+  // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
+  const [quiz, setQuiz] = useState<{ titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
+  const [verEsboco, setVerEsboco] = useState(false);
   const [info, setInfo] = useState<{ observacao: string | null; responsavel: string | null; responsavelId: string | null } | null>(null);
   const [versao, setVersao] = useState(0);
   const [carregando, setCarregando] = useState(false);
@@ -53,8 +61,10 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     let vivo = true;
     if (versao === 0) setCarregando(true);
     void (async () => {
-      const [{ data: d }, { data: a }] = await Promise.all([
+      const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
+        db.from("quizzes").select("titulo, status, estrutura").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+          .then((r) => { if (vivo) setQuiz((r.data as typeof quiz) ?? null); }),
         supabase.from("atividades").select("observacao, responsavel_id").eq("id", tarefaId).maybeSingle(),
       ]);
       const { data: m } = a?.responsavel_id ? await supabase.from("membros").select("nome").eq("id", a.responsavel_id).maybeSingle() : { data: null };
@@ -74,7 +84,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     })();
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
-  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; }, [tarefaId]);
+  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setVerEsboco(false); }, [tarefaId]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
@@ -91,7 +101,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
 
   const aprovar = async () => {
     setSalvando(true);
-    try { await aprovarEntrega(tarefa.id, clienteId); depois("Aprovado: a tarefa foi concluída"); }
+    try { depois(await aprovarEntrega(tarefa.id, clienteId)); }
     catch { toast.error("Não consegui aprovar"); } finally { setSalvando(false); }
   };
   let marcouPrimeira = false;
@@ -120,7 +130,15 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             )}
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden">
               <div className="min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0">
-                {carregando ? (
+                {quiz?.estrutura && (
+                  <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+                    <button type="button" onClick={() => setVerEsboco(false)} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
+                    <button type="button" onClick={() => setVerEsboco(true)} className={cn("flex-1 rounded-md px-3 py-1", verEsboco && "bg-background font-medium shadow-sm")}>Esboço aprovado</button>
+                  </div>
+                )}
+                {quiz?.estrutura && !verEsboco ? (
+                  <QuizPlayer key={JSON.stringify(quiz.estrutura).length + versao} titulo={quiz.titulo} estrutura={quiz.estrutura} teste />
+                ) : carregando ? (
                   <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 ) : docs.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">Não achei documento ligado a esta tarefa. Veja a observação acima ou abra em Atividades.</p>
@@ -159,10 +177,13 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
               <p className="mr-auto text-xs text-muted-foreground">
-                {escrevendo ? `${info?.responsavel ?? "Ele"} está trabalhando: o documento muda aqui na hora.` : "Converse com ele: elogio, ajuste ou refazer, ele entende pela conversa."}
+                {escrevendo ? `${info?.responsavel ?? "Ele"} está trabalhando: o documento muda aqui na hora.`
+                  : quiz?.status === "esboco" ? "Aprovar o esboço: o Roy começa a criar o quiz no Infopro."
+                  : quiz?.status === "revisar" ? "Teste o quiz. Aprovar publica e libera o link."
+                  : "Converse com ele: elogio, ajuste ou refazer, ele entende pela conversa."}
               </p>
               <Button className="gap-1.5" disabled={salvando || escrevendo} title={escrevendo ? "Espere ele terminar a resposta" : undefined} onClick={() => void aprovar()}>
-                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Aprovar
+                {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{quiz?.status === "esboco" ? "Aprovar esboço" : quiz?.status === "revisar" ? "Aprovar e publicar" : "Aprovar"}
               </Button>
             </div>
           </>

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { DashboardLayout } from "./components/DashboardLayout";
 import FormularioPublico from "./pages/FormularioPublico";
+import QuizPublico from "./pages/QuizPublico";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
@@ -39,6 +40,7 @@ const App = () => (
           <Route path="/redefinir-senha" element={<RedefinirSenha />} />
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
+          <Route path="/quiz/:slug" element={<QuizPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
           <Route path="/privacidade" element={<Privacidade />} />
           <Route path="/instagram/conectado" element={<InstagramConectado />} />

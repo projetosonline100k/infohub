@@ -43,7 +43,9 @@ def pegar(ignorar=()):
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
                   AND m.eh_ia AND m.ativo AND lower(m.nome) = ANY(%s)
                   -- Briefing confirmado; o Gabriel (estudos) também pega pedido rápido, sem conversa.
-                  AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel')
+                  AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel'
+                       -- Quiz pedido pela aba Quiz vai direto pro Roy (o esboço é a primeira entrega).
+                       OR (lower(m.nome) = 'roy' AND a2.tipo = 'quiz'))
                   -- Carrossel do Roy é com o serviço dele (scripts/roy/servico.py); aqui só página e quiz.
                   AND NOT (lower(m.nome) = 'roy' AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz'))
                   AND NOT (a2.id = ANY(%s::uuid[]))
@@ -75,6 +77,8 @@ def contexto(aid):
         q.execute("""SELECT id, titulo FROM documentos WHERE atividade_id = %s AND deleted_at IS NULL
                       ORDER BY updated_at DESC LIMIT 1""", (aid,))
         anterior = q.fetchone()
+        q.execute("SELECT id, status, slug FROM quizzes WHERE atividade_id = %s ORDER BY criado_em DESC LIMIT 1", (aid,))
+        quiz = q.fetchone()
     finally:
         c.rollback()
         c.close()
@@ -88,6 +92,17 @@ def contexto(aid):
     for d_id, d_tit, d_quando in docs:
         print(f'  - {d_tit} · {d_quando:%d/%m} · {d_id}')
     print('\nO combinado (briefing confirmado):\n' + (descricao or '(sem descrição)'))
+    if tipo == 'quiz':
+        print('\nQUIZ (fluxo e formato em docs/QUIZ.md, leia antes):')
+        if quiz and quiz[1] == 'criando':
+            print(f'ETAPA 2 de 2: CRIAR O QUIZ. O Davi aprovou o esboço ("{anterior[1] if anterior else "-"}", documento '
+                  f'{anterior[0] if anterior else "-"}; leia com scripts/consulta.py). Monte a estrutura JSON do docs/QUIZ.md seguindo o esboço'
+                  f' e a conversa, e salve (isso manda o quiz para o Davi testar e aprovar; NÃO use o entregar):\n'
+                  f"  python3 scripts/quiz/quiz.py salvar {aid} <<'FIM'\n  {{...json...}}\n  FIM")
+        else:
+            print('ETAPA 1 de 2: ESBOÇO. Entregue um DOCUMENTO com o esboço (nome do quiz e promessa, as partes, TODAS as perguntas'
+                  ' com as opções, os perfis de resultado e a ponte para a oferta) com o entregar abaixo. Depois que o Davi aprovar o esboço,'
+                  ' a tarefa volta pra você na etapa 2 (criar o quiz no Infopro).')
     if anterior and AJUSTE in (descricao or ''):
         print(f'\n⚠️ É um AJUSTE: o Davi leu a versão anterior e pediu mudanças (o último "{AJUSTE}" acima).'
               f'\nVersão anterior: "{anterior[1]}" ({anterior[0]}). Leia com scripts/consulta.py, faça só o que ele pediu'
@@ -131,6 +146,10 @@ def entregar(aid, titulo, resumo, conteudo):
                       (cliente_id, aid, titulo.strip()[:150], html, dono, pasta[0] if pasta else None))
             r = q.fetchone()
         did = r[0]
+        # Quiz pedido por conversa (sem passar pela aba Quiz): nasce a linha do quiz junto com o esboço.
+        q.execute("""INSERT INTO quizzes (cliente_id, user_id, atividade_id, titulo)
+                     SELECT a.cliente_id, a.user_id, a.id, a.titulo FROM atividades a
+                      WHERE a.id = %s AND a.tipo = 'quiz' AND NOT EXISTS (SELECT 1 FROM quizzes WHERE atividade_id = a.id)""", (aid,))
         obs = f'Entregue no documento "{titulo.strip()[:150]}". {resumo.strip()[:400]}'
         q.execute("SELECT a.tipo, lower(m.nome) FROM atividades a LEFT JOIN membros m ON m.id = a.responsavel_id WHERE a.id = %s", (aid,))
         tipo, quem = q.fetchone()

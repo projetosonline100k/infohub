@@ -375,6 +375,7 @@ Progresso (o Davi acompanha numa barra): ao terminar cada etapa, informe quanto 
    <html>
    FIM
    Isso cria o documento no projeto e manda a tarefa para a aprovação do Davi.
+   Se o contexto mostrar ETAPAS (ex.: QUIZ, docs/QUIZ.md), faça só a etapa indicada e entregue do jeito que ela manda (no quiz, a etapa 2 salva com scripts/quiz/quiz.py, não com o entregar).
 5. Se não for possível fazer (falta arquivo, acesso ou decisão do Davi), não entregue pela metade sem avisar: rode
    python3 scripts/empresa/execucao.py erro {aid} "<o que falta, em 1 frase>"
 6. Aprendizado (vale para TODOS os funcionários): se o Davi te corrigir ou disser como gosta ou não gosta das coisas, e isso valer para as próximas vezes (não só esta tarefa), anote em 1 frase curta e geral:
