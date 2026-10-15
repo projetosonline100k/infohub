@@ -24,6 +24,8 @@ const VISUAIS: Record<string, Visual> = {
   danilo: { pele: "#d9a574", cabelo: "curto", corCabelo: "#241812", barba: true, oculos: true, camisa: "#18181b" },
   roy: { pele: "#e2ad7e", cabelo: "cacheado", corCabelo: "#2e1f16", oculos: true, camisa: "#6b7280" },
   dalila: { pele: "#f0c8a4", cabelo: "longo", corCabelo: "#3a2418", camisa: "#e8799b" },
+  // Especialista do projeto Matheus Souto (Diretoria, desde 15/10).
+  matheus: { pele: "#e8b98f", cabelo: "curto", corCabelo: "#4a3020", barba: true, camisa: "#7f1d1d" },
 };
 const PELES = ["#f1c9a5", "#e0ac7e", "#c68a5a", "#9c6a43", "#6e4a2f"];
 const CABELOS: Cabelo[] = ["curto", "cacheado", "longo", "raspado"];

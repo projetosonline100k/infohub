@@ -12,8 +12,12 @@ BEGIN
     SELECT nome FROM public.membros WHERE cliente_id = v_de
     EXCEPT SELECT nome FROM public.membros WHERE cliente_id = v_para) THEN
     RAISE EXCEPTION 'faltou alguém da equipe'; END IF;
-  IF (SELECT count(*) FROM public.membros WHERE cliente_id = v_para) <> (SELECT count(*) FROM public.membros WHERE cliente_id = v_de) THEN
+  -- Sem ninguém duplicado (o projeto do Matheus tem a mais o próprio Matheus na Diretoria, desde 15/10).
+  IF EXISTS (SELECT nome FROM public.membros WHERE cliente_id = v_para GROUP BY nome HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'equipe duplicada'; END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.membros m JOIN public.setores s ON s.id = m.setor_id
+                  WHERE m.cliente_id = v_para AND m.nome = 'Matheus' AND s.nome = 'Diretoria' AND NOT m.eh_ia) THEN
+    RAISE EXCEPTION 'Matheus fora da Diretoria'; END IF;
   -- Cada pessoa no setor de mesmo nome, mas do projeto do Matheus.
   IF EXISTS (SELECT 1 FROM public.membros mp JOIN public.membros md ON md.cliente_id = v_de AND md.nome = mp.nome
               LEFT JOIN public.setores sp ON sp.id = mp.setor_id LEFT JOIN public.setores sd ON sd.id = md.setor_id
