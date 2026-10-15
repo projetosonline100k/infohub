@@ -213,10 +213,14 @@ export function trabalhoDasIas(
   return mapa;
 }
 
+export const postProgramado = (t: TarefaResumo) => t.tipo === "programacao" && t.situacao === "andamento";
+
 export function sinalDoMembro(estado: EstadoMembro, tarefas: TarefaResumo[], ia?: TrabalhoIa): Sinal {
   const minhas = tarefas.filter((t) => t.responsavel_id === estado.membro.id && tarefaAberta(t));
   if (estado.atrasadas > 0 || (ia?.problema ?? 0) > 0) return "problema";
   if (minhas.some((t) => t.situacao === "aguardando_aprovacao") || (ia?.esperando ?? 0) > 0) return "esperando";
+  // Post programado (Dalila): já está tudo certo, só esperando a hora de publicar → amarelo.
+  if (minhas.some(postProgramado)) return "esperando";
   if (estado.ocupado || (ia?.trabalhando ?? 0) > 0) return "trabalhando";
   return "parado";
 }

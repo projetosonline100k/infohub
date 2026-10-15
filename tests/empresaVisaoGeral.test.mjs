@@ -107,4 +107,7 @@ test('sinal: vermelho > amarelo > verde > cinza, juntando tarefas e trabalho das
   assert.equal(sinal('m-roy', [], trabalhoDasIas(ms, [{ status: 'produzindo', tema: 'a' }, { status: 'revisar', tema: 'b' }], []).get('m-roy')), 'esperando');
   assert.equal(sinal('m-roy', [], trabalhoDasIas(ms, [{ status: 'erro', tema: 'a' }, { status: 'revisar', tema: 'b' }], []).get('m-roy')), 'problema');
   assert.equal(trabalhoDasIas(ms, [], []).has('m-danilo'), false); // Danilo aqui não é IA
+  // Post programado (Dalila): data escolhida, esperando a hora → amarelo, não verde.
+  assert.equal(sinal('m-danilo', [tarefa('p', 'm-danilo', { situacao: 'andamento', tipo: 'programacao' })]), 'esperando');
+  assert.equal(sinal('m-danilo', [tarefa('p', 'm-danilo', { situacao: 'fila', tipo: 'programacao' })]), 'parado');
 });

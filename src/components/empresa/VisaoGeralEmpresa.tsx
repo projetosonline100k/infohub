@@ -15,7 +15,7 @@ import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import {
-  contarIndicadores, estadoDosMembros, jarvisCuidando, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -297,6 +297,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                       const balao = coordenador ? "Coordenando a operação"
                         : ia?.problema ? "Parou com problema"
                         : ia?.esperando ? `${ia.esperando} esperando sua revisão`
+                        : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
                         : atual?.titulo ?? ia?.atual ?? "Sem tarefa agora";
                       return (
                         <button key={membro.id} type="button" disabled={coordenador} onClick={() => setMembroAberto(membro)}
