@@ -35,6 +35,18 @@ const SINAIS: Record<Sinal, { cor: string; rotulo: string }> = {
   parado: { cor: "bg-zinc-400", rotulo: "Parado" },
 };
 
+// Filtro do "Precisa de você".
+type Categoria = "video" | "carrossel" | "programar" | "copy" | "gravar" | "outros";
+const CATEGORIAS: Categoria[] = ["video", "carrossel", "programar", "copy", "gravar", "outros"];
+const ROTULO_CATEGORIA: Record<Categoria | "todos", string> = {
+  todos: "Todos", video: "Vídeo", carrossel: "Carrossel", programar: "Programar post", copy: "Copy", gravar: "Gravar", outros: "Outros",
+};
+const categoriaDaTarefa = (tipo?: string | null): Categoria =>
+  tipo === "edicao" ? "video" : tipo === "carrossel" ? "carrossel" : tipo === "copy" ? "copy"
+  : tipo === "agendar" || tipo === "programacao" ? "programar" : "outros";
+const categoriaDoMembro = (nome: string): Categoria =>
+  /danilo/i.test(nome) ? "video" : /roy/i.test(nome) ? "carrossel" : /[íi]talo/i.test(nome) ? "copy" : /dalila/i.test(nome) ? "programar" : "outros";
+
 const hojeIso = () => format(new Date(), "yyyy-MM-dd");
 interface CarrosselProgramado { id: string; numero: number | null; tema: string; status: string; programado_para: string | null; paginas: string[] | null }
 // "hoje às 12:00", "amanhã às 10:00", "sex, 17 out às 10:00".
@@ -69,6 +81,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
+  const [filtroPrecisa, setFiltroPrecisa] = useState<Categoria | "todos">("todos");
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
@@ -140,6 +153,44 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     { rotulo: "Postados", valor: indicadores.postados, icone: CheckCircle2, cor: "text-teal-500 bg-teal-500/10", ir: "vertical" },
   ];
 
+  // "Precisa de você" numa lista só, cada item com a categoria pro filtro.
+  const linhasPrecisa: { chave: string; categoria: Categoria; no: React.ReactNode }[] = [
+    ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
+      chave: `ed-${e.id}`, categoria: "video" as Categoria,
+      no: <LinhaAcao icone={Video} titulo={`${e.status === "erro" ? "Edição com problema" : "Revisar edição"}: ${e.titulo}`}
+        detalhe={e.status === "erro" ? e.mensagem ?? "erro" : `Danilo terminou · versão ${e.versao}${e.duracao ? ` · ${Math.round(e.duracao)}s` : ""}`}
+        atrasada={e.status === "erro"} onClick={() => setEdicaoAberta(e)} />,
+    })),
+    ...carrosseis.filter(precisaRevisar).map((c) => {
+      const l = linhaPrecisa(c);
+      return { chave: `car-${c.id}`, categoria: "carrossel" as Categoria,
+        no: <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)} /> };
+    }),
+    ...precisa.map((item) => {
+      if (item.tipo === "gravar") {
+        return { chave: "gravar", categoria: "gravar" as Categoria,
+          no: <LinhaAcao icone={Camera} titulo={`Gravar ${item.quantidade} ${item.quantidade === 1 ? "roteiro" : "roteiros"}`} detalhe="Vídeos na etapa Gravação" onClick={() => onIrPara("vertical")} /> };
+      }
+      if (item.tipo === "levar_ia") {
+        const n = item.tarefas.length;
+        return { chave: `ia-${item.membro.id}`, categoria: categoriaDoMembro(item.membro.nome),
+          no: <LinhaAcao icone={Bot} titulo={`Levar ${n} ${n === 1 ? "tarefa" : "tarefas"} pro ${item.membro.nome}`}
+            detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={() => setMembroAberto(item.membro)} /> };
+      }
+      if (item.tipo === "aprovar") {
+        return { chave: "aprovar", categoria: categoriaDaTarefa(item.tarefas[0]?.tipo),
+          no: <LinhaAcao icone={CheckCircle2} titulo={`Aprovar ${item.tarefas.length} ${item.tarefas.length === 1 ? "entrega" : "entregas"}`} detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={onAbrirAtividades} /> };
+      }
+      if (item.tarefa.tipo === "agendar") {
+        return { chave: item.tarefa.id, categoria: "programar" as Categoria,
+          no: <LinhaAcao icone={CalendarClock} titulo={item.tarefa.titulo} detalhe="Escolha o dia e a hora · a Dalila publica" onClick={() => setAgendarAberto(item.tarefa.id)} /> };
+      }
+      return { chave: item.tarefa.id, categoria: categoriaDaTarefa(item.tarefa.tipo),
+        no: <LinhaAcao icone={FileText} titulo={item.tarefa.titulo} atrasada={item.atrasada}
+          detalhe={item.tarefa.data_vencimento ? `${item.atrasada ? "Atrasada desde" : "Prazo"} ${dataCurta(item.tarefa.data_vencimento)}` : "Sem prazo"} onClick={onAbrirAtividades} /> };
+    }),
+  ];
+
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <header>
@@ -169,50 +220,32 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <AlertTriangle className="h-5 w-5 text-rose-500" />
             <h2 className="font-semibold text-rose-600 dark:text-rose-400">Precisa de você</h2>
             <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-xs font-medium text-rose-600 dark:text-rose-400">
-              {precisa.length + edicoes.filter((e) => e.status === "revisar" || e.status === "erro").length + carrosseis.filter(precisaRevisar).length} itens
+              {linhasPrecisa.length} itens
             </span>
           </div>
-          {edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => (
-            <div key={e.id} className="mb-2">
-              <LinhaAcao icone={Video} titulo={`${e.status === "erro" ? "Edição com problema" : "Revisar edição"}: ${e.titulo}`}
-                detalhe={e.status === "erro" ? e.mensagem ?? "erro" : `Danilo terminou · versão ${e.versao}${e.duracao ? ` · ${Math.round(e.duracao)}s` : ""}`}
-                atrasada={e.status === "erro"} onClick={() => setEdicaoAberta(e)} />
+          {/* Filtros por tipo + lista com rolagem (a caixa não cresce a página) */}
+          {linhasPrecisa.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              {(["todos", ...CATEGORIAS.filter((c) => linhasPrecisa.some((l) => l.categoria === c))] as const).map((c) => {
+                const n = c === "todos" ? linhasPrecisa.length : linhasPrecisa.filter((l) => l.categoria === c).length;
+                return (
+                  <button key={c} type="button" onClick={() => setFiltroPrecisa(c)}
+                    className={cn("rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                      filtroPrecisa === c ? "border-rose-500 bg-rose-500 text-white" : "border-rose-500/30 text-muted-foreground hover:bg-rose-500/10")}>
+                    {ROTULO_CATEGORIA[c]} <span className="opacity-70">{n}</span>
+                  </button>
+                );
+              })}
             </div>
-          ))}
-          <AprovarTodosCarrosseis clienteId={clienteId} prontos={carrosseis.filter((c) => c.status === "revisar")} onAprovou={() => { void carregar(); }} />
-          {carrosseis.filter(precisaRevisar).map((c) => {
-            const l = linhaPrecisa(c);
-            return (
-              <div key={c.id} className="mb-2">
-                <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)} />
-              </div>
-            );
-          })}
-          {precisa.length === 0 && !edicoes.some((e) => e.status === "revisar" || e.status === "erro") && !carrosseis.some(precisaRevisar) ? (
+          )}
+          {linhasPrecisa.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">Nada esperando por você agora. 🎉</p>
           ) : (
-            <div className="space-y-2">
-              {precisa.slice(0, 6).map((item) => {
-                if (item.tipo === "gravar") {
-                  return <LinhaAcao key="gravar" icone={Camera} titulo={`Gravar ${item.quantidade} ${item.quantidade === 1 ? "roteiro" : "roteiros"}`} detalhe="Vídeos na etapa Gravação" onClick={() => onIrPara("vertical")} />;
-                }
-                if (item.tipo === "levar_ia") {
-                  const n = item.tarefas.length;
-                  return <LinhaAcao key={`ia-${item.membro.id}`} icone={Bot}
-                    titulo={`Levar ${n} ${n === 1 ? "tarefa" : "tarefas"} pro ${item.membro.nome} (ChatGPT)`}
-                    detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={() => setMembroAberto(item.membro)} />;
-                }
-                if (item.tipo === "aprovar") {
-                  return <LinhaAcao key="aprovar" icone={CheckCircle2} titulo={`Aprovar ${item.tarefas.length} ${item.tarefas.length === 1 ? "entrega" : "entregas"}`} detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={onAbrirAtividades} />;
-                }
-                if (item.tarefa.tipo === "agendar") {
-                  return <LinhaAcao key={item.tarefa.id} icone={CalendarClock} titulo={item.tarefa.titulo}
-                    detalhe="Escolha o dia e a hora · a Dalila publica" onClick={() => setAgendarAberto(item.tarefa.id)} />;
-                }
-                return <LinhaAcao key={item.tarefa.id} icone={FileText} titulo={item.tarefa.titulo} atrasada={item.atrasada}
-                  detalhe={item.tarefa.data_vencimento ? `${item.atrasada ? "Atrasada desde" : "Prazo"} ${dataCurta(item.tarefa.data_vencimento)}` : "Sem prazo"} onClick={onAbrirAtividades} />;
-              })}
-              {precisa.length > 6 && <button type="button" onClick={onAbrirAtividades} className="w-full pt-1 text-center text-xs text-muted-foreground hover:text-foreground">+ {precisa.length - 6} em Atividades</button>}
+            <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+              {(filtroPrecisa === "todos" || filtroPrecisa === "carrossel") && (
+                <AprovarTodosCarrosseis clienteId={clienteId} prontos={carrosseis.filter((c) => c.status === "revisar")} onAprovou={() => { void carregar(); }} />
+              )}
+              {linhasPrecisa.filter((l) => filtroPrecisa === "todos" || l.categoria === filtroPrecisa).map((l) => <div key={l.chave}>{l.no}</div>)}
             </div>
           )}
         </section>
