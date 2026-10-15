@@ -10,6 +10,7 @@ e a tarefa vai para "aguardando aprovação" do Davi.
   python3 scripts/empresa/execucao.py entregar <atividade_id> "<título do documento>" "<resumo de 1 linha>" <<'FIM'
   <html do documento: h2, h3, p, ul, ol, li, strong, em, a, blockquote>
   FIM
+  python3 scripts/empresa/execucao.py progresso <atividade_id> <0-100> "<o que está fazendo agora>"
   python3 scripts/empresa/execucao.py erro <atividade_id> "<motivo>"
   python3 scripts/empresa/execucao.py pegar        → (ouvinte) próxima tarefa, já em andamento
 
@@ -148,6 +149,20 @@ def entregar(aid, titulo, resumo, conteudo):
     print('ENTREGUE', did)
 
 
+def progresso(aid, pct, etapa):
+    """Quanto do trabalho já foi feito (a barra na janela do funcionário) e o que está fazendo agora."""
+    pct = max(5, min(95, int(pct)))   # 100 só quando entrega
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""UPDATE atividades SET progresso = %s, observacao = %s WHERE id = %s AND situacao = 'andamento'""",
+                  (pct, f'Agora: {etapa.strip()[:200]}', aid))
+        c.commit()
+    finally:
+        c.close()
+    print('PROGRESSO', pct)
+
+
 def erro(aid, motivo):
     c = connect()
     try:
@@ -182,6 +197,8 @@ if __name__ == '__main__':
         contexto(a[1])
     elif a[0] == 'entregar':
         entregar(a[1], a[2], a[3] if len(a) > 3 else '', sys.stdin.read())
+    elif a[0] == 'progresso':
+        progresso(a[1], a[2], a[3] if len(a) > 3 else '')
     elif a[0] == 'erro':
         erro(a[1], a[2])
     else:

@@ -30,24 +30,19 @@ interface TrabalhoAgora { id: string; titulo: string; etapa: string; desde: stri
 
 const minutos = (ms: number) => Math.max(0, Math.round(ms / 60000));
 const duracaoTexto = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : `${min} min`);
-// Quanto já foi trabalhado (cronômetro da tarefa) e quanto falta pelo tempo estimado.
+// Barra = quanto do trabalho a pessoa já fez (pedido do Davi, 15/10): o
+// funcionário informa o progresso (IA: execucao.py progresso; pessoa: o Davi
+// arrasta). Sem progresso informado, vale o cronômetro sobre o tempo estimado.
+// O prazo (ou a hora em que a Dalila publica) é só texto: "entrega em 2 dias".
 function tempoDaTarefa(t: TarefaFila, agora: number) {
   const rodando = t.timer_iniciado_em ? (agora - new Date(t.timer_iniciado_em).getTime()) / 1000 : 0;
   const feito = Math.round(((t.timer_decorrido_segundos ?? 0) + Math.max(0, rodando)) / 60);
   const estimado = t.tempo_estimado ?? null;
-  if (estimado != null) {
-    const pct = t.progresso != null && t.progresso > 0 ? t.progresso : Math.min(100, Math.round((feito / estimado) * 100));
-    return { feito, falta: Math.max(0, estimado - feito), pct, rodando: !!t.timer_iniciado_em, alvo: null as Date | null, rotuloAlvo: "" };
-  }
-  // Sem estimativa: a barra vai de quando a tarefa nasceu até a publicação (Dalila) ou o prazo (fim do dia).
+  const pct = t.progresso != null && t.progresso > 0 ? Math.min(100, t.progresso)
+    : estimado ? Math.min(99, Math.round((feito / estimado) * 100)) : null;
   const alvo = t.publica_em ? new Date(t.publica_em) : t.data_vencimento ? new Date(`${t.data_vencimento}T23:59:00`) : null;
-  const inicio = t.created_at ? new Date(t.created_at).getTime() : null;
-  if (alvo && inicio != null) {
-    const total = Math.max(1, alvo.getTime() - inicio);
-    const pct = Math.max(0, Math.min(100, Math.round(((agora - inicio) / total) * 100)));
-    return { feito, falta: Math.max(0, Math.round((alvo.getTime() - agora) / 60000)), pct, rodando: !!t.timer_iniciado_em, alvo, rotuloAlvo: t.publica_em ? "publica" : "prazo" };
-  }
-  return { feito, falta: null as number | null, pct: t.progresso || null, rodando: !!t.timer_iniciado_em, alvo: null as Date | null, rotuloAlvo: "" };
+  const falta = alvo ? Math.max(0, Math.round((alvo.getTime() - agora) / 60000)) : null;
+  return { feito, falta, pct, rodando: !!t.timer_iniciado_em, alvo, rotuloAlvo: t.publica_em ? "publica" : alvo ? "prazo" : "" };
 }
 // "2 dias 3h", "5h20", "40 min".
 function faltaTexto(min: number) {
@@ -235,6 +230,20 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
     try { await cancelarTarefa(t.id); toast.success("Tarefa cancelada"); await carregar(); onMudou(); } catch { toast.error("Não consegui cancelar"); }
   };
 
+  const mudarPrazo = async (t: TarefaResumo, data: string | null) => {
+    const { error } = await supabase.from("atividades").update({ data_vencimento: data }).eq("id", t.id);
+    if (error) { toast.error("Não consegui mudar a data"); return; }
+    toast.success(data ? `Nova data: ${format(new Date(`${data}T12:00:00`), "EEE, d 'de' MMM", { locale: ptBR })}` : "Sem prazo");
+    await carregar(); onMudou();
+  };
+
+  const mudarProgresso = async (t: TarefaResumo, pct: number) => {
+    if (pct === (t.progresso ?? 0)) return;
+    const { error } = await supabase.from("atividades").update({ progresso: pct }).eq("id", t.id);
+    if (error) { toast.error("Não consegui salvar o progresso"); return; }
+    await carregar(); onMudou();
+  };
+
   const mudarSituacao = async (tarefa: TarefaResumo, nova: string) => {
     const feita = nova === "concluida";
     const mudancas: Record<string, unknown> = { situacao: nova, concluida: feita };
@@ -256,7 +265,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
 
   return (
     <Dialog open={!!membro} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-h-[90vh] max-w-xl grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden">
         {membro && (
           <>
             <DialogHeader>
@@ -311,13 +320,20 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                           <div key={t.id}>
                             <div className="flex items-baseline justify-between gap-2">
                               <p className="min-w-0 break-words text-sm font-medium">{t.titulo}</p>
-                              {tt.falta != null && <span className="shrink-0 text-xs font-semibold text-sky-700 dark:text-sky-400">falta {faltaTexto(tt.falta)}</span>}
+                              <span className="shrink-0 text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{tt.pct ?? 0}%</span>
                             </div>
-                            {tt.pct != null && <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct}%` }} /></div>}
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `Desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "Em andamento"}
-                              {tt.alvo && <> · {tt.rotuloAlvo === "publica" ? "a Dalila publica" : "prazo"} <b className="text-foreground">{format(tt.alvo, tt.rotuloAlvo === "publica" ? "EEE, d MMM 'às' HH:mm" : "EEE, d MMM", { locale: ptBR })}</b></>}
-                              {!tt.alvo && t.data_vencimento && <> · prazo {format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
+                            <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct ?? 0}%` }} /></div>
+                            {!membro.eh_ia && (
+                              <input key={`${t.id}-${tt.pct ?? 0}`} type="range" min={0} max={100} step={10} defaultValue={tt.pct ?? 0} aria-label="Quanto já foi feito"
+                                onPointerUp={(e) => void mudarProgresso(t, Number((e.target as HTMLInputElement).value))}
+                                onKeyUp={(e) => void mudarProgresso(t, Number((e.target as HTMLInputElement).value))}
+                                className="mt-1 h-1 w-full cursor-pointer accent-sky-500" title="Arraste para marcar quanto já foi feito" />
+                            )}
+                            <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
+                              <span>{tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `Desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "Em andamento"} ·</span>
+                              {tt.rotuloAlvo === "publica" && tt.alvo
+                                ? <span>a Dalila publica <b className="text-foreground">{format(tt.alvo, "EEE, d MMM 'às' HH:mm", { locale: ptBR })}</b></span>
+                                : <span className="inline-flex items-center gap-1">entrega <b className="text-foreground"><PrazoEditavel valor={t.data_vencimento} onMudar={(d) => void mudarPrazo(t, d)} /></b>{tt.falta != null && <> (em {faltaTexto(tt.falta)})</>}</span>}
                             </p>
                             {t.observacao && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">“{t.observacao}”</p>}
                           </div>
@@ -328,9 +344,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                 </section>
 
                 {/* 2. As tarefas, por situação */}
-                <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
-                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
-                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} />}
+                <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
+                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
+                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />}
                 {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
               </div>
             )}
@@ -377,8 +393,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   );
 }
 
-function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar }: {
+function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar, onMudarPrazo }: {
   onRevisar?: (t: TarefaFila) => void;
+  onMudarPrazo?: (t: TarefaFila, data: string | null) => void;
   titulo: string; vazio?: string; tarefas: TarefaFila[]; hoje: string; agora: number; onMudar: (t: TarefaResumo, situacao: string) => void;
   onCancelar?: (t: TarefaFila) => void;
   onCopiar?: (t: TarefaFila) => void;
@@ -397,10 +414,13 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, 
               <div key={t.id} className="flex items-center gap-2 rounded-lg border p-2">
                 <div className="min-w-0 flex-1">
                   <p className={cn("break-words text-sm font-medium", t.concluida && "text-muted-foreground line-through")}>{t.titulo}</p>
-                  <p className={cn("flex items-center gap-1 text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>
-                    {t.data_vencimento && <><CalendarDays className="h-3 w-3" />{atrasada ? "Atrasada · " : ""}{format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
-                    {t.tipo && <span>{t.data_vencimento ? " · " : ""}{TIPOS.find((x) => x.valor === t.tipo)?.rotulo ?? t.tipo}</span>}
-                    {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.falta != null ? <span> · falta {faltaTexto(tt.falta)}{tt.rotuloAlvo === "publica" ? " pra publicar" : ""}</span> : null; })()}
+                  <p className={cn("flex flex-wrap items-center gap-x-1 text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>
+                    {onMudarPrazo && !t.concluida
+                      ? <PrazoEditavel valor={t.data_vencimento} atrasada={atrasada} onMudar={(d) => onMudarPrazo(t, d)} />
+                      : t.data_vencimento && <><CalendarDays className="h-3 w-3" />{atrasada ? "Atrasada · " : ""}{format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
+                    {t.tipo && <span>· {TIPOS.find((x) => x.valor === t.tipo)?.rotulo ?? t.tipo}</span>}
+                    {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.pct != null && tt.pct > 0 ? <span className="font-medium text-sky-600 dark:text-sky-400">· {tt.pct}% feito</span> : null; })()}
+                    {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.falta != null && tt.rotuloAlvo === "publica" ? <span>· publica em {faltaTexto(tt.falta)}</span> : null; })()}
                   </p>
                   {!t.concluida && (() => { const tt = tempoDaTarefa(t, agora); return tt.pct != null && tt.pct > 0 ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500" style={{ width: `${tt.pct}%` }} /></div> : null; })()}
                 </div>
@@ -432,5 +452,19 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, 
         </div>
       )}
     </div>
+  );
+}
+
+// Data clicável: abre o calendário do sistema e troca o prazo da tarefa.
+function PrazoEditavel({ valor, atrasada, onMudar }: { valor: string | null; atrasada?: boolean; onMudar: (data: string | null) => void }) {
+  return (
+    <label className={cn("relative inline-flex cursor-pointer items-center gap-1 rounded px-0.5 hover:bg-muted hover:underline", atrasada && "text-rose-500")}
+      title="Mudar a data de entrega">
+      <CalendarDays className="h-3 w-3" />
+      {valor ? <>{atrasada ? "Atrasada · " : ""}{format(new Date(`${valor}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</> : "sem prazo"}
+      <input type="date" value={valor ?? ""} onChange={(e) => onMudar(e.target.value || null)}
+        onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* sem picker */ } }}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Data de entrega" />
+    </label>
   );
 }

@@ -164,7 +164,7 @@ export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; m
         </span>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5">
+      <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-1.5">
         {ALCANCES.map((a) => (
           <button key={a.valor} type="button" onClick={() => setAlcance(a.valor)}
             className={cn("rounded-md border p-2 text-left text-xs transition-colors", alcance === a.valor ? "border-violet-500 bg-violet-500/10" : "hover:bg-muted")}>
