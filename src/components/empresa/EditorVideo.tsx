@@ -152,6 +152,14 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     setRecarga((n) => n + 1);
   }, []);
 
+  // Versão nova gerada fora do editor (o Danilo pelo chat, `danilo.py versao`): recarrega também.
+  const versaoVista = useRef<number | null>(null);
+  useEffect(() => {
+    const v = estado?.versao ?? null;
+    if (v != null && versaoVista.current != null && v > versaoVista.current) danilomudou();
+    versaoVista.current = v;
+  }, [estado?.versao, danilomudou]);
+
   useEffect(() => {
     if (!cfg || !edicao) return;
     void fetch(url(`projeto${recarga ? `?r=${recarga}` : ""}`)).then((r) => (r.ok ? r.json() : null)).then((p: ProjetoEdicao | null) => {
