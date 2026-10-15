@@ -15,6 +15,7 @@ import { RevisaoCarrossel } from "./RevisaoCarrossel";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
+import { ProgramarLote } from "./ProgramarLote";
 import {
   contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
@@ -82,6 +83,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
   const [filtroPrecisa, setFiltroPrecisa] = useState<Categoria | "todos">("todos");
+  const [loteAberto, setLoteAberto] = useState(false);
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
@@ -153,6 +155,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     { rotulo: "Postados", valor: indicadores.postados, icone: CheckCircle2, cor: "text-teal-500 bg-teal-500/10", ir: "vertical" },
   ];
 
+  const idsAgendar = useMemo(() => precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : [])), [precisa]);
   // "Precisa de você" numa lista só, cada item com a categoria pro filtro.
   const linhasPrecisa: { chave: string; categoria: Categoria; no: React.ReactNode }[] = [
     ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
@@ -242,6 +245,15 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <p className="py-6 text-center text-sm text-muted-foreground">Nada esperando por você agora. 🎉</p>
           ) : (
             <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+              {(filtroPrecisa === "todos" || filtroPrecisa === "programar") && idsAgendar.length >= 2 && (
+                <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 p-2.5">
+                  <span className="min-w-0 flex-1 text-sm">{idsAgendar.length} carrosséis esperando data</span>
+                  <button type="button" onClick={() => setLoteAberto(true)}
+                    className="shrink-0 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90">
+                    Dalila preenche os próximos dias
+                  </button>
+                </div>
+              )}
               {(filtroPrecisa === "todos" || filtroPrecisa === "carrossel") && (
                 <AprovarTodosCarrosseis clienteId={clienteId} prontos={carrosseis.filter((c) => c.status === "revisar")} onAprovou={() => { void carregar(); }} />
               )}
@@ -323,6 +335,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
+      <ProgramarLote clienteId={clienteId} tarefaIds={idsAgendar} aberto={loteAberto} onFechar={() => { setLoteAberto(false); void carregar(); }} />
 
       {/* 4. O que vai ser publicado. */}
       <section className="rounded-xl border bg-card p-4">

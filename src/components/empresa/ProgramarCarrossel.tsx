@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { HORA_PADRAO, diaLocal, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
+import { cn } from "@/lib/utils";
 
 // "Escolher data do carrossel" (tarefa do Davi, tipo 'agendar'): ele escolhe
 // dia e hora e a Dalila publica sozinha na nuvem (edge dalila-publicar).
@@ -19,6 +20,7 @@ const db = supabase as unknown as SupabaseClient;
 
 interface CarrosselParaProgramar {
   id: string;
+  cliente_id: string;
   numero: number | null;
   tema: string;
   status: string;
@@ -35,17 +37,18 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
   const [hora, setHora] = useState(HORA_PADRAO);
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(false);
+  const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
 
   useEffect(() => {
     if (!tarefaId) return;
     setCarregando(true);
     void (async () => {
       const { data: c } = await db.from("carrosseis")
-        .select("id, numero, tema, status, mensagem, legenda, paginas, programado_para")
+        .select("id, cliente_id, numero, tema, status, mensagem, legenda, paginas, programado_para")
         .eq("tarefa_data_id", tarefaId).maybeSingle();
-      const { data: outros } = await db.from("carrosseis").select("id, programado_para")
-        .in("status", ["programado", "publicando"]).not("programado_para", "is", null);
-      const dias = (outros || []).filter((o) => o.id !== c?.id).map((o) => diaLocal(new Date(o.programado_para)));
+      const agenda = c ? await carregarAgenda(c.cliente_id, c.id) : [];
+      setAgenda(agenda);
+      const dias = agenda.filter((a) => a.tipo === "carrossel").map((a) => a.dia);
       setOcupados(dias);
       setCarrossel((c as CarrosselParaProgramar) ?? null);
       if (c?.programado_para) {
@@ -79,7 +82,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
 
   return (
     <Dialog open={!!tarefaId} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><CalendarClock className="h-5 w-5" /> Quando publicar?</DialogTitle>
           <DialogDescription>{nome || "Carrossel"}</DialogDescription>
@@ -97,9 +100,13 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
             </div>
             {carrossel.legenda && <p className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{carrossel.legenda}</p>}
             {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
+            <CalendarioPosts agenda={agenda} selecionado={data} onEscolher={setData} />
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1 text-sm">
-                <span className="text-muted-foreground">Dia</span>
+                <span className="flex items-center justify-between text-muted-foreground">Dia
+                  <button type="button" onClick={() => { setData(sugerirData(new Date(), ocupados)); setHora(HORA_PADRAO); }}
+                    className="text-xs font-medium text-primary hover:underline">A Dalila escolhe</button>
+                </span>
                 <Input type="date" value={data} min={diaLocal(new Date())} onChange={(e) => setData(e.target.value)} />
               </label>
               <label className="space-y-1 text-sm">
@@ -123,5 +130,70 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// O que já está na agenda de publicação do projeto: carrosséis (programados,
+// publicando ou publicados) e vídeos com data de postagem.
+export interface ItemAgenda { dia: string; tipo: "carrossel" | "video"; titulo: string; capa: string | null; publicado: boolean; hora: string | null }
+
+export async function carregarAgenda(clienteId: string, ignorar?: string): Promise<ItemAgenda[]> {
+  const [cars, vids] = await Promise.all([
+    db.from("carrosseis").select("id, numero, tema, status, paginas, programado_para, publicado_em")
+      .eq("cliente_id", clienteId).in("status", ["programado", "publicando", "publicado"]),
+    db.from("videos_vertical").select("id, titulo, status, data_postagem").eq("cliente_id", clienteId).not("data_postagem", "is", null),
+  ]);
+  const itens: ItemAgenda[] = [];
+  for (const c of (cars.data || []) as { id: string; numero: number | null; tema: string; status: string; paginas: string[] | null; programado_para: string | null; publicado_em: string | null }[]) {
+    if (c.id === ignorar) continue;
+    const quando = c.publicado_em ?? c.programado_para;
+    if (!quando) continue;
+    const d = new Date(quando);
+    itens.push({ dia: diaLocal(d), tipo: "carrossel", titulo: `${c.numero ? `${String(c.numero).padStart(3, "0")} · ` : ""}${c.tema}`, capa: c.paginas?.[0] ?? null, publicado: c.status === "publicado", hora: format(d, "HH:mm") });
+  }
+  for (const v of (vids.data || []) as { titulo: string; status: string; data_postagem: string }[]) {
+    itens.push({ dia: v.data_postagem.slice(0, 10), tipo: "video", titulo: v.titulo, capa: null, publicado: v.status === "postado", hora: null });
+  }
+  return itens;
+}
+
+// Calendário das próximas 5 semanas: o que já está programado em cada dia; clicar num dia escolhe.
+export function CalendarioPosts({ agenda, selecionado, onEscolher }: { agenda: ItemAgenda[]; selecionado?: string; onEscolher?: (dia: string) => void }) {
+  const hoje = diaLocal(new Date());
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - ((inicio.getDay() + 6) % 7));   // segunda-feira desta semana
+  const dias = Array.from({ length: 35 }, (_, k) => { const d = new Date(inicio); d.setDate(inicio.getDate() + k); return d; });
+  return (
+    <div>
+      <div className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase text-muted-foreground">
+        {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => <span key={d}>{d}</span>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {dias.map((d) => {
+          const dia = diaLocal(d);
+          const itens = agenda.filter((a) => a.dia === dia);
+          const passado = dia < hoje;
+          const livre = !itens.some((a) => a.tipo === "carrossel");
+          return (
+            <button key={dia} type="button" disabled={passado || !onEscolher} onClick={() => onEscolher?.(dia)}
+              title={itens.map((a) => `${a.tipo === "carrossel" ? "Carrossel" : "Vídeo"} ${a.titulo}${a.hora ? ` · ${a.hora}` : ""}${a.publicado ? " (publicado)" : ""}`).join("\n") || (passado ? "" : "Livre")}
+              className={cn("flex min-h-[58px] flex-col rounded-md border p-1 text-left transition-colors",
+                passado ? "opacity-40" : livre ? "border-emerald-500/30 hover:bg-emerald-500/10" : "hover:bg-muted",
+                selecionado === dia && "border-primary bg-primary/10 ring-2 ring-primary",
+                dia === hoje && "border-sky-500")}>
+              <span className={cn("text-[11px] font-semibold", dia === hoje && "text-sky-600 dark:text-sky-400")}>{d.getDate()}{d.getDate() === 1 ? ` ${format(d, "MMM", { locale: ptBR })}` : ""}</span>
+              <span className="mt-0.5 flex flex-wrap gap-0.5">
+                {itens.slice(0, 3).map((a, k) => a.capa
+                  ? <img key={k} src={a.capa} alt="" className={cn("h-6 w-5 rounded-sm object-cover", a.publicado && "opacity-60 grayscale")} />
+                  : <span key={k} className="rounded-sm bg-violet-500/20 px-1 text-[9px] text-violet-700 dark:text-violet-300">▶</span>)}
+                {itens.length > 3 && <span className="text-[9px] text-muted-foreground">+{itens.length - 3}</span>}
+              </span>
+              {!passado && livre && itens.length === 0 && <span className="mt-auto text-[9px] text-emerald-600 dark:text-emerald-400">livre</span>}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-[10px] text-muted-foreground">Miniatura = carrossel (cinza = já publicado) · ▶ = vídeo com data · verde = dia livre</p>
+    </div>
   );
 }
