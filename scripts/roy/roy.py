@@ -240,9 +240,9 @@ def revisar(pasta, estilo="classico-marfim"):
         pag = f"página {i:02d}"
         if not s.get("titulo", "").strip():
             prob.append(f"{pag}: sem título")
-        if len((s.get("titulo") or "").replace("*", "").split()) > 9:
-            prob.append(f"{pag}: título longo demais ({len(s['titulo'].split())} palavras)")
-        if len((s.get("texto") or "").split()) > 28:
+        # Sem limite de palavras no título: o Davi quer a headline do reel como ele falou
+        # (15/10/2026). O que barra é não caber (estouro, abaixo) ou um texto enorme.
+        if len((s.get("texto") or "").split()) > 45:
             prob.append(f"{pag}: texto longo demais ({len(s['texto'].split())} palavras)")
         if r.get("estouro_titulo") or r.get("estouro_texto"):
             prob.append(f"{pag}: texto não coube no espaço")
@@ -454,7 +454,8 @@ def renderizar(alvo, estilo="classico-marfim", drive=True, nova_versao=False):
                for i, s_ in enumerate(slides_r, 1)]
     est = db("SELECT id FROM public.estilos_carrossel WHERE cliente_id = %s AND nome = %s",
              (CLIENTE, render.carregar_estilo(estilo)["nome"]))
-    slides = [{"titulo": s["titulo"], "texto": s.get("texto", ""), "pagina": f"{i:02d}/{len(pngs):02d}"}
+    slides = [{"titulo": s["titulo"], "texto": s.get("texto", ""), "pagina": f"{i:02d}/{len(pngs):02d}",
+               **({"opcoes": s["opcoes"]} if s.get("opcoes") else {})}
               for i, s in enumerate(render.normalizar(conteudo), 1)]
     db("""UPDATE public.carrosseis SET status = 'revisar', mensagem = null, tema = %s, slides = %s, legenda = %s,
               paginas = %s, modelos = %s, versao = %s, pasta_drive = coalesce(%s, pasta_drive), estilo_id = coalesce(%s, estilo_id),

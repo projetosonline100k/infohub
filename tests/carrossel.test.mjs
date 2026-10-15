@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/carrossel.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { montarPrevia, paginaVisivel, historicoVazio, excluirPagina, desfazerExclusao, refazerExclusao, podeExcluir, precisaRevisar, emProducao, linhaPrecisa, partesDoTitulo, semMarcas, paginasEditadas, montarPedidoAjuste, tarefaDaDalila, acharProgramador } =
+const { opcoesDeTitulo, montarPrevia, paginaVisivel, historicoVazio, excluirPagina, desfazerExclusao, refazerExclusao, podeExcluir, precisaRevisar, emProducao, linhaPrecisa, partesDoTitulo, semMarcas, paginasEditadas, montarPedidoAjuste, tarefaDaDalila, acharProgramador } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const car = (extra = {}) => ({
@@ -89,4 +89,11 @@ test('prévia ao vivo: põe o texto editado no molde, com destaque e sem quebrar
   const molde = '<div id="titulo">__TITULO__</div><div id="texto">__TEXTO__</div>';
   assert.equal(montarPrevia(molde, '*3* DOCS <b>', 'Linha 1\nR$ 5 & "mais" $&'),
     '<div id="titulo"><span class="d">3</span> DOCS &lt;b&gt;</div><div id="texto">Linha 1<br>R$ 5 &amp; &quot;mais&quot; $&amp;</div>');
+});
+
+test('opções de título: sugestões do Roy + o original, sem o que já está na página', () => {
+  const o = { titulo: 'HEADLINE DO *REEL*', texto: '', pagina: '01/07', opcoes: ['CURTA', 'headline do reel', 'OUTRA'] };
+  assert.deepEqual(opcoesDeTitulo(o, 'HEADLINE DO *REEL*'), ['CURTA', 'OUTRA']);
+  assert.deepEqual(opcoesDeTitulo(o, 'CURTA'), ['HEADLINE DO *REEL*', 'OUTRA']);
+  assert.deepEqual(opcoesDeTitulo({ titulo: 'X', texto: '', pagina: '02/07' }, 'X'), []);
 });

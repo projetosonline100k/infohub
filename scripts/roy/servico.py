@@ -73,6 +73,7 @@ Faça o ajuste pedido editando SÓ o {pasta}/conteudo.json (formato em scripts/r
 - Se precisar de escultura ou ícone novo: scripts/roy/ilustracoes.py (custa dinheiro: só se o pedido exigir).
 - Para conferir o visual, pode rodar `python3 scripts/roy/render.py {pasta}` e olhar os PNGs; NÃO rode roy.py renderizar (o serviço faz isso depois).
 - Mantenha as regras do manual: 6 a 8 páginas, última página com chamada para ação, pouco texto, sem inventar informação.
+- REGRA DO DAVI (15/10/2026): mude o MÍNIMO em relação ao reel. A página 1 é a headline do reel, com as palavras que ele falou (pode ser longa; só ajuste se não couber). As outras páginas seguem as ideias e as frases do vídeo, na ordem dele; corte, mas não reescreva com palavras suas. Se achar que outro título funcionaria melhor (ex.: mais curto), NÃO troque: ponha em "opcoes": ["...", "..."] naquela página (2 ou 3), que o Davi escolhe na revisão.
 - Não publique nada no Instagram.
 
 No fim, responda em 1 ou 2 frases simples, em português, o que você mudou (vai aparecer pro Davi)."""
@@ -141,7 +142,8 @@ O Davi te passou esta tarefa no Infopro:
 Faça o carrossel (ou os carrosséis, se a tarefa pedir mais de um), assim:
 1. `python3 scripts/roy/roy.py candidatos 15`: reels ainda não usados, do mais novo para o mais antigo. Se a tarefa citar um reel ou tema, use esse. Senão, pegue o mais novo elegível. Confira também o TEMA: não repita assunto de carrossel que já existe (veja os nomes das pastas em "~/Library/CloudStorage/GoogleDrive-metafocando@gmail.com/Meu Drive/Projeto 100k/Eu.davi/Carrossel /", que tem um espaço no fim). Pule vídeo sem fala útil.
 2. `python3 scripts/roy/roy.py iniciar <media_id>`: marca EM PRODUÇÃO, baixa e transcreve (pode levar alguns minutos). A saída traz o id do carrossel e a pasta.
-3. Leia a transcricao.txt e escreva <pasta>/conteudo.json seguindo as regras do manual (item 3 da Parte D) e o formato de scripts/roy/render.py:
+3. REGRA DO DAVI (15/10/2026): mude o MÍNIMO em relação ao reel. A página 1 é a headline do reel, com as palavras que ele falou (pode ser longa; só ajuste se não couber). As outras páginas seguem as ideias e as frases do vídeo, na ordem dele; corte, mas não reescreva com palavras suas. Se achar que outro título funcionaria melhor (ex.: mais curto), NÃO troque: ponha em "opcoes": ["...", "..."] naquela página (2 ou 3), que o Davi escolhe na revisão.
+   Leia a transcricao.txt e escreva <pasta>/conteudo.json seguindo as regras do manual (item 3 da Parte D) e o formato de scripts/roy/render.py:
    - 6 a 8 páginas, última com chamada para ação;
    - *destaque* em vermelho;
    - legenda (caption) no padrão das anteriores, com INSTALIVROS no fim;

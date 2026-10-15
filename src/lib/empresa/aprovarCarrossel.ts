@@ -35,7 +35,7 @@ export async function aprovarCarrosseis(clienteId: string, carrosseis: Carrossel
     const agora = new Date().toISOString();
     const { error } = await supabase.from("carrosseis").update({
       status: "aprovado", revisado_em: agora, atividade_id: atividadeId, atualizado_em: agora,
-    }).eq("id", c.id).eq("status", "revisar");
+    }).eq("id", c.id).in("status", ["revisar", "erro"]);
     if (error) throw error;
     aprovados++;
     await concluirTarefaDoRoy(c.id, conclusao);

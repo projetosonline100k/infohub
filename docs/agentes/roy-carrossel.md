@@ -141,6 +141,11 @@ A adaptação deve manter as ideias do vídeo, com:
 - Português brasileiro e linguagem simples.
 - Cuidado para não transformar afirmações do vídeo em garantias ou acrescentar informações sem fundamento.
 
+**Regra do Davi (15/10/2026), acima das orientações acima:** "os carrosséis estão mudando demais, preciso que mantenha o máximo possível, principalmente a headline".
+- A página 1 é a **headline do reel**, com as palavras que ele falou. Pode ser longa: a revisão automática não limita palavras no título, só barra se não couber.
+- As outras páginas seguem as ideias e as frases do vídeo, na ordem dele. Cortar pode; reescrever com palavras novas, não.
+- Se o Roy achar que outro título funcionaria melhor (mais curto, mais forte), ele **não troca**: coloca em `"opcoes": [...]` naquela página do `conteudo.json`, com 2 ou 3 alternativas. Na revisão, o Davi vê "Outras opções de título" e escolhe com um clique, com a prévia ao vivo.
+
 ### 4. Padrão visual aprovado
 Cada carrossel deve ter 6 a 8 imagens individuais, com identidade consistente:
 - Formato retrato 4:5.

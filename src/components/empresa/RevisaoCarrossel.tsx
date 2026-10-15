@@ -10,7 +10,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 import {
   STATUS_CARROSSEL, desfazerExclusao, excluirPagina, historicoVazio, montarPedidoAjuste, montarPrevia, paginaVisivel, paginasEditadas,
-  partesDoTitulo, podeExcluir, refazerExclusao,
+  opcoesDeTitulo, partesDoTitulo, podeExcluir, refazerExclusao,
   type CarrosselResumo, type SlideCarrossel,
 } from "@/lib/empresa/carrossel";
 import { aprovarCarrosseis } from "@/lib/empresa/aprovarCarrossel";
@@ -84,7 +84,9 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
   const c = carrossel;
   const editadas = paginasEditadas(c.slides, slides);
   const legendaMudou = (c.legenda ?? "").trim() !== legenda.trim();
-  const podeRevisar = c.status === "revisar";
+  // "Com problema" (a revisão automática barrou a versão nova): as páginas que já existem
+  // continuam valendo, então dá pra editar, pedir ajuste ou aprovar do mesmo jeito.
+  const podeRevisar = c.status === "revisar" || (c.status === "erro" && c.paginas.length > 0);
   const pagina = atual + 1;
   const visiveis = c.paginas.map((u, i) => ({ u, i })).filter(({ i }) => !excluidas.includes(i + 1));
   const posicao = visiveis.findIndex(({ i }) => i === atual) + 1; // "3/7" já sem as excluídas
@@ -238,6 +240,20 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
                   <p className="mt-1 text-sm text-muted-foreground">{slides[atual].texto}</p>
                 </div>
               ))}
+              {podeRevisar && slides[atual] && opcoesDeTitulo(c.slides[atual], slides[atual].titulo).length > 0 && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Outras opções de título (clique pra trocar):</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {opcoesDeTitulo(c.slides[atual], slides[atual].titulo).map((op) => (
+                      <button key={op} type="button" onClick={() => setSlides(slides.map((s, i) => (i === atual ? { ...s, titulo: op } : s)))}
+                        className="rounded-md border bg-background px-2 py-1 text-left text-xs font-semibold uppercase leading-tight hover:border-primary/50 hover:bg-muted">
+                        {partesDoTitulo(op).map((p, i) => <span key={i} className={p.destaque ? "text-red-700 dark:text-red-400" : undefined}>{p.texto}</span>)}
+                        {op === c.slides[atual].titulo && <span className="ml-1 font-normal normal-case text-muted-foreground">(original)</span>}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {excluidas.length > 0 && (
                 <p className="mt-1 text-xs text-rose-600">
                   {excluidas.length === 1 ? "1 página excluída" : `${excluidas.length} páginas excluídas`} (⌘Z desfaz). Clique em "Pedir ajuste" para o Roy remontar o carrossel.

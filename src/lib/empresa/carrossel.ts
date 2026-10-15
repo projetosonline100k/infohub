@@ -6,6 +6,7 @@ export interface SlideCarrossel {
   titulo: string; // *palavra* = cor de destaque
   texto: string;
   pagina: string; // "01/08"
+  opcoes?: string[]; // outros títulos que o Roy sugere (a página 1 vem com a headline do reel)
 }
 
 export interface CarrosselResumo {
@@ -134,4 +135,18 @@ export function montarPrevia(modelo: string, titulo: string, texto: string): str
   const tituloHtml = partesDoTitulo(titulo).map((p) => (p.destaque ? `<span class="d">${escapar(p.texto)}</span>` : escapar(p.texto))).join("");
   const textoHtml = escapar(texto).replace(/\n/g, "<br>");
   return modelo.replace("__TITULO__", () => tituloHtml).replace("__TEXTO__", () => textoHtml);
+}
+
+// Opções de título pra escolher na revisão: o atual + as sugestões do Roy + o
+// título original da página (pra voltar), sem repetir.
+export function opcoesDeTitulo(original: SlideCarrossel | undefined, atual: string): string[] {
+  if (!original?.opcoes?.length) return [];
+  const todas = [original.titulo, ...original.opcoes];
+  const vistas = new Set<string>();
+  return todas.filter((t) => {
+    const k = semMarcas(t).trim().toLowerCase();
+    if (!k || vistas.has(k)) return false;
+    vistas.add(k);
+    return true;
+  }).filter((t) => semMarcas(t).trim().toLowerCase() !== semMarcas(atual).trim().toLowerCase());
 }
