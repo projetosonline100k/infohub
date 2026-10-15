@@ -169,10 +169,11 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
   // ⌘1 com o Jarvis em foco (⌘J abre aqui, então ⌘J → ⌘1).
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); pedirCobranca(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); e.stopPropagation(); pedirCobranca(); }
     };
-    window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
+    // Captura: chega antes do ⌘1 das abas do app (WorkspaceTabs), que então não troca de aba.
+    window.addEventListener("keydown", tecla, true);
+    return () => window.removeEventListener("keydown", tecla, true);
   }, [pedirCobranca]);
 
   const limpar = async () => {

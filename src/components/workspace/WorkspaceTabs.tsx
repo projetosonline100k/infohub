@@ -267,6 +267,22 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
   const setArrasto = (valor: Arrasto | null) => { arrastoRef.current = valor; setArrastoState(valor); };
   const podeDestacar = tabs.length > 1;
 
+  // ⌘1…⌘8 vão para a aba daquela posição e ⌘9 para a última, como no
+  // navegador (pedido do Davi, 15/10). Com a conversa do Jarvis aberta, o ⌘1
+  // é dela (AssistantConversaTab pega antes, na captura).
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !/^[1-9]$/.test(e.key)) return;
+      const n = Number(e.key);
+      const alvo = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
+      if (!alvo) return;
+      e.preventDefault();
+      if (alvo.id !== activeId) onNavigate(alvo.path);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [tabs, activeId, onNavigate]);
+
   const fallbackDe = (id: string) => {
     const index = tabs.findIndex((tab) => tab.id === id);
     return tabs[index - 1] || tabs[index + 1];
