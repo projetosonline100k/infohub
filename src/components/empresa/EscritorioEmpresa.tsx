@@ -16,8 +16,6 @@ export interface PessoaNaSala {
 }
 
 const LARGURA_MESA = 120;
-const ALTURA = 228;
-const CHAO = 214;            // onde ficam os pés de quem está andando
 const DUR = [18, 21, 16, 23, 19];
 
 // Pernas e braço do café sincronizados com o passeio: anda em 6–30% e 60–84%.
@@ -104,11 +102,106 @@ export interface SetorNoEscritorio {
 
 const MARGEM = 26;          // borda esquerda do escritório
 const FOLGA_SETOR = 34;     // espaço da divisória entre setores
-const LARGURA_CAFE = 150;
+const LARGURA_DESCANSO = 150;
+const PAREDE = 106;          // altura da parede do fundo
+const ALTURA_FILEIRA = 126;  // distância entre a fileira de cima e a de baixo
+const Y_MESA = 104;          // topo do quadro da mesa na fileira de cima
+const PE = 110;              // dos pés de quem anda até o topo do quadro da mesa
 
-// O escritório inteiro (pedido do Davi: "tudo junto, um escritório mesmo"):
-// os setores lado a lado separados por divisórias de vidro, cada um com a
-// placa na parede, e um cantinho do café só, no fim, pra onde todo mundo vai.
+const ehDiretoria = (s: SetorNoEscritorio) => /diretoria/i.test(s.nome);
+
+// Parede de vidro de pé (lateral): painel translúcido com moldura e reflexo.
+function VidroLateral({ x, yTopo, yBase }: { x: number; yTopo: number; yBase: number }) {
+  const h = yBase - yTopo;
+  return (
+    <g>
+      <path d={`M${x - 5} ${yTopo} L${x + 9} ${yTopo + 8} L${x + 9} ${yBase + 8} L${x - 5} ${yBase} Z`} fill="#bfe3ff" opacity=".42" />
+      <path d={`M${x - 5} ${yTopo} L${x + 9} ${yTopo + 8}`} stroke="#94a3b8" strokeWidth="2.5" />
+      <path d={`M${x - 5} ${yBase} L${x + 9} ${yBase + 8}`} stroke="#94a3b8" strokeWidth="3" />
+      <path d={`M${x - 5} ${yTopo} V${yBase}`} stroke="#94a3b8" strokeWidth="1.6" />
+      <path d={`M${x + 9} ${yTopo + 8} V${yBase + 8}`} stroke="#cbd5e1" strokeWidth="1.2" />
+      <path d={`M${x - 1} ${yTopo + h * 0.18} L${x + 5} ${yTopo + h * 0.18 + 10}`} stroke="#fff" strokeWidth="1.6" opacity=".8" />
+      <path d={`M${x - 1} ${yTopo + h * 0.3} L${x + 5} ${yTopo + h * 0.3 + 6}`} stroke="#fff" strokeWidth="1" opacity=".7" />
+    </g>
+  );
+}
+
+// Parede de vidro da frente (sala fechada): baixa o bastante pra ver quem está dentro.
+function VidroFrente({ x0, x1, yTopo, yBase, porta }: { x0: number; x1: number; yTopo: number; yBase: number; porta?: number }) {
+  const trechos = porta != null ? [[x0, porta - 18], [porta + 18, x1]] : [[x0, x1]];
+  return (
+    <g>
+      {trechos.map(([a, b], k) => (
+        <g key={k}>
+          <rect x={a} y={yTopo} width={b - a} height={yBase - yTopo} fill="#bfe3ff" opacity=".22" />
+          <rect x={a} y={yTopo - 2} width={b - a} height="3" fill="#94a3b8" />
+          <rect x={a} y={yBase - 2} width={b - a} height="3.5" fill="#94a3b8" />
+          {Array.from({ length: Math.max(1, Math.floor((b - a) / 70)) + 1 }, (_, i2) => {
+            const partes = Math.max(1, Math.floor((b - a) / 70));
+            return <rect key={i2} x={a + ((b - a) * i2) / partes - 1} y={yTopo} width="2" height={yBase - yTopo} fill="#a5b4c6" />;
+          })}
+          <path d={`M${a + 12} ${yBase - 6} L${a + 26} ${yTopo + 6}`} stroke="#fff" strokeWidth="1.4" opacity=".7" />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+function Cafe({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x - 39} ${y})`}>
+      <rect width="78" height="58" rx="3" fill="#cbd5e1" />
+      <rect y="-4" width="78" height="6" rx="2" fill="#94a3b8" />
+      <rect x="8" y="-30" width="26" height="28" rx="3" fill="#1f2937" />
+      <rect x="12" y="-26" width="18" height="7" rx="1.5" fill="#0f172a" />
+      <circle cx="27" cy="-22" r="1.6" fill="#ef4444" />
+      <rect x="17" y="-9" width="8" height="7" rx="1.5" fill="#fff" />
+      <path className="esc-fumaca" d="M20 -12 q-2 -4 0 -7 q2 -3 0 -6" stroke="#cbd5e1" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <path className="esc-fumaca" style={{ animationDelay: "1.2s" }} d="M23 -12 q-2 -4 0 -7 q2 -3 0 -6" stroke="#cbd5e1" strokeWidth="1.4" fill="none" strokeLinecap="round" />
+      <rect x="44" y="-14" width="22" height="12" rx="2" fill="#a16207" />
+      {[48, 54, 60].map((cx) => <rect key={cx} x={cx} y="-20" width="4.5" height="6" rx="1" fill="#fff" stroke="#cbd5e1" strokeWidth=".5" />)}
+      <text x="39" y="32" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569" fontFamily="system-ui, sans-serif">☕ CAFÉ</text>
+    </g>
+  );
+}
+
+// Copa da fileira da frente: sofá e bebedouro.
+function Copa({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x - 60} ${y})`}>
+      <rect x="0" y="22" width="76" height="26" rx="8" fill="#334155" />
+      <rect x="0" y="8" width="76" height="20" rx="8" fill="#475569" />
+      <rect x="-6" y="16" width="12" height="32" rx="5" fill="#334155" />
+      <rect x="70" y="16" width="12" height="32" rx="5" fill="#334155" />
+      <rect x="14" y="14" width="18" height="12" rx="4" fill="#f59e0b" opacity=".85" />
+      <g transform="translate(98 -6)">
+        <rect x="-9" y="20" width="18" height="34" rx="3" fill="#e2e8f0" stroke="#94a3b8" />
+        <rect x="-7" y="0" width="14" height="22" rx="5" fill="#93c5fd" opacity=".85" />
+        <rect x="-3" y="30" width="6" height="3" rx="1" fill="#3b82f6" />
+      </g>
+      <text x="44" y="64" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569" fontFamily="system-ui, sans-serif">COPA</text>
+    </g>
+  );
+}
+
+// Mesa de reunião (enche a fileira de cima ao lado da diretoria).
+function Reuniao({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      {[-34, -12, 10, 32].map((cx) => <rect key={cx} x={cx - 7} y="-2" width="14" height="16" rx="5" fill="#64748b" />)}
+      <ellipse cx="0" cy="24" rx="52" ry="14" fill="#a16207" />
+      <ellipse cx="0" cy="22" rx="52" ry="14" fill="#ca8a04" />
+      <rect x="-10" y="16" width="20" height="8" rx="2" fill="#f8fafc" opacity=".8" />
+      {[-34, -12, 10, 32].map((cx) => <rect key={`f${cx}`} x={cx - 7} y="36" width="14" height="14" rx="5" fill="#475569" />)}
+      <text x="0" y="66" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569" fontFamily="system-ui, sans-serif">REUNIÃO</text>
+    </g>
+  );
+}
+
+// O escritório inteiro (pedido do Davi): a Diretoria em cima, no fundo, com a
+// reunião e o café; os outros setores embaixo, na frente, lado a lado
+// (divisórias de vidro) com a copa no canto. Quem está livre anda até o
+// descanso da própria fileira e volta.
 export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite }: {
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean;
 }) {
@@ -116,23 +209,36 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
   const noite = forcarNoite ?? noiteAgora;
   useEffect(() => { const t = window.setInterval(() => setNoite(ehNoite()), 60_000); return () => window.clearInterval(t); }, []);
 
-  // Posição de cada setor e de cada mesa.
-  let cursor = MARGEM;
-  const zonas = setores.map((setor) => {
-    const largura = Math.max(2, setor.pessoas.length) * LARGURA_MESA;
-    const z = { setor, x0: cursor, largura };
-    cursor += largura + FOLGA_SETOR;
-    return z;
+  const cima = setores.filter(ehDiretoria);
+  const baixo = setores.filter((s) => !ehDiretoria(s));
+  const fileiras = [cima, baixo].filter((f) => f.length);
+  const larguraFileira = (f: SetorNoEscritorio[]) =>
+    MARGEM + f.reduce((t, s) => t + Math.max(2, s.pessoas.length) * LARGURA_MESA + FOLGA_SETOR, 0) - FOLGA_SETOR;
+  const LARGURA = Math.max(...fileiras.map(larguraFileira), 640) + LARGURA_DESCANSO + 30;
+  const ALTURA_TOTAL = Y_MESA + (fileiras.length - 1) * ALTURA_FILEIRA + PE + 30;
+  const xDescanso = LARGURA - LARGURA_DESCANSO / 2 - 14;
+
+  const zonas = fileiras.flatMap((f, r) => {
+    let cursor = MARGEM;
+    return f.map((setor) => {
+      const largura = Math.max(2, setor.pessoas.length) * LARGURA_MESA;
+      const z = { setor, r, x0: cursor, largura, yMesa: Y_MESA + r * ALTURA_FILEIRA };
+      cursor += largura + FOLGA_SETOR;
+      return z;
+    });
   });
-  const LARGURA = cursor + LARGURA_CAFE - FOLGA_SETOR + 20;
-  const xCafe = LARGURA - LARGURA_CAFE / 2 - 10;
-  const mesas = zonas.flatMap((z) => z.setor.pessoas.map((p, k) => ({ p, x: z.x0 + LARGURA_MESA / 2 + k * LARGURA_MESA + (z.largura - z.setor.pessoas.length * LARGURA_MESA) / 2 })));
-  const pct = (x: number) => `${(x / LARGURA) * 100}%`;
+  const mesas = zonas.flatMap((z) => z.setor.pessoas.map((p, k) => ({
+    p, r: z.r, yMesa: z.yMesa,
+    x: z.x0 + LARGURA_MESA / 2 + k * LARGURA_MESA + (z.largura - z.setor.pessoas.length * LARGURA_MESA) / 2,
+  })));
+  const fimCima = fileiras.length > 1 ? larguraFileira(fileiras[0]) : LARGURA;
+  const pctX = (x: number) => `${(x / LARGURA) * 100}%`;
+  const pctY = (y: number) => `${(y / ALTURA_TOTAL) * 100}%`;
 
   return (
     <div className="w-full overflow-x-auto overscroll-x-contain rounded-xl">
-      <div className="esc relative min-w-[880px] overflow-hidden rounded-xl border border-black/5" style={{ aspectRatio: `${LARGURA} / ${ALTURA}` }}>
-        <svg viewBox={`0 0 ${LARGURA} ${ALTURA}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <div className="esc relative min-w-[820px] overflow-hidden rounded-xl border border-black/5" style={{ aspectRatio: `${LARGURA} / ${ALTURA_TOTAL}` }}>
+        <svg viewBox={`0 0 ${LARGURA} ${ALTURA_TOTAL}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
           <style>{ESTILO + ESTILO_SALA}</style>
           <defs>
             <linearGradient id="esc-ceu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#bae6fd" /><stop offset="1" stopColor="#e0f2fe" /></linearGradient>
@@ -140,79 +246,74 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
               <rect width="60" height="14" fill="#e7cfa6" /><path d="M0 13.5 H60 M30 0 V14" stroke="#d6b98a" strokeWidth="1" />
             </pattern>
           </defs>
-          {/* Parede contínua e piso */}
-          <rect width={LARGURA} height="106" fill="#eef2f7" />
-          <rect y="100" width={LARGURA} height="6" fill="#d9e0ea" />
-          <rect y="106" width={LARGURA} height={ALTURA - 106} fill="url(#esc-piso)" />
-          {zonas.map(({ setor, x0, largura }, k) => (
-            <g key={setor.id}>
-              {/* Janela de cada área */}
-              <g transform={`translate(${x0 + largura - 84} 18)`}>
-                <rect width="64" height="50" rx="4" fill="url(#esc-ceu)" stroke="#94a3b8" strokeWidth="3" />
-                <path d="M32 0 V50 M0 25 H64" stroke="#94a3b8" strokeWidth="2" />
-                <ellipse cx="16" cy="13" rx="8" ry="3.5" fill="#fff" opacity=".9" />
-              </g>
-              {/* Tapete da área, na cor do setor */}
-              <rect x={x0 + 6} y={ALTURA - 26} width={largura - 12} height="16" rx="8" fill={setor.corPlaca} opacity=".14" />
-              {/* Divisória de vidro antes da próxima área */}
-              {k < zonas.length - 1 && (
-                <g transform={`translate(${x0 + largura + FOLGA_SETOR / 2} 0)`}>
-                  <rect x="-3" y="58" width="6" height={ALTURA - 58} fill="#bfdbfe" opacity=".45" />
-                  <rect x="-3" y="58" width="6" height="3" fill="#94a3b8" />
-                  <Planta x={0} y={ALTURA - 28} s={0.8} />
-                </g>
-              )}
+          {/* Parede do fundo, janelas e piso */}
+          <rect width={LARGURA} height={PAREDE} fill="#eef2f7" />
+          <rect y={PAREDE - 6} width={LARGURA} height="6" fill="#d9e0ea" />
+          <rect y={PAREDE} width={LARGURA} height={ALTURA_TOTAL - PAREDE} fill="url(#esc-piso)" />
+          {Array.from({ length: Math.floor((LARGURA - 200) / 230) }, (_, k) => (
+            <g key={k} transform={`translate(${170 + k * 230} 18)`}>
+              <rect width="64" height="50" rx="4" fill="url(#esc-ceu)" stroke="#94a3b8" strokeWidth="3" />
+              <path d="M32 0 V50 M0 25 H64" stroke="#94a3b8" strokeWidth="2" />
+              <ellipse cx="16" cy="13" rx="8" ry="3.5" fill="#fff" opacity=".9" />
             </g>
           ))}
-          {/* Estante e relógio perto do café */}
-          <g transform={`translate(${xCafe - 50} 30)`}>
+          <g transform={`translate(${xDescanso - 50} 30)`}>
             <rect width="60" height="4" rx="1" fill="#a16207" />
             {["#ef4444", "#3b82f6", "#f59e0b", "#10b981", "#8b5cf6"].map((c, k) => <rect key={k} x={4 + k * 9} y={-16 + (k % 2) * 2} width="7" height={16 - (k % 2) * 2} rx="1" fill={c} />)}
           </g>
-          <g transform={`translate(${xCafe + 40} 40)`}>
+          <g transform={`translate(${xDescanso + 40} 40)`}>
             <circle r="11" fill="#fff" stroke="#475569" strokeWidth="2.5" />
             <rect className="esc-ponteiro" x="-.8" y="-8" width="1.6" height="8" rx=".8" fill="#ef4444" />
             <rect x="-.9" y="-6" width="1.8" height="6" rx=".9" fill="#334155" transform="rotate(120)" />
           </g>
-          {/* Cantinho do café (um só, de todo mundo) */}
-          <g transform={`translate(${xCafe - 39} 120)`}>
-            <rect width="78" height="58" rx="3" fill="#cbd5e1" />
-            <rect y="-4" width="78" height="6" rx="2" fill="#94a3b8" />
-            <rect x="8" y="-30" width="26" height="28" rx="3" fill="#1f2937" />
-            <rect x="12" y="-26" width="18" height="7" rx="1.5" fill="#0f172a" />
-            <circle cx="27" cy="-22" r="1.6" fill="#ef4444" />
-            <rect x="17" y="-9" width="8" height="7" rx="1.5" fill="#fff" />
-            <path className="esc-fumaca" d="M20 -12 q-2 -4 0 -7 q2 -3 0 -6" stroke="#cbd5e1" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-            <path className="esc-fumaca" style={{ animationDelay: "1.2s" }} d="M23 -12 q-2 -4 0 -7 q2 -3 0 -6" stroke="#cbd5e1" strokeWidth="1.4" fill="none" strokeLinecap="round" />
-            <rect x="44" y="-14" width="22" height="12" rx="2" fill="#a16207" />
-            {[48, 54, 60].map((x) => <rect key={x} x={x} y="-20" width="4.5" height="6" rx="1" fill="#fff" stroke="#cbd5e1" strokeWidth=".5" />)}
-            <text x="39" y="32" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569" fontFamily="system-ui, sans-serif">☕ CAFÉ</text>
-          </g>
-          <Planta x={14} y={176} s={1} />
-          <Planta x={LARGURA - 12} y={176} s={0.9} />
+          {/* Corredor entre as fileiras */}
+          {fileiras.length > 1 && <rect y={Y_MESA + PE - 12} width={LARGURA} height="20" fill="#d6b98a" opacity=".35" />}
 
-          {/* Mesas e quem está nelas */}
-          {mesas.map(({ p, x }) => (
-            <BonecoMesa key={p.id} nome={p.nome} ehIa={p.ehIa} sinal={p.sinal} vazio={vaiPassear(p, noite)} x={x - 52} y={104} width={104} height={92} />
-          ))}
-          {/* Quem está livre: vai e volta do café */}
-          {mesas.map(({ p, x }, k) => {
-            if (!vaiPassear(p, noite)) return null;
-            const cafe = xCafe - 26 + (k % 4) * 14;
-            const dur = DUR[k % DUR.length] + Math.min(14, Math.abs(cafe - x) / 60);
-            const vars = { "--de": `${x}px`, "--cafe": `${cafe}px`, "--dur": `${dur}s`, "--atraso": `${-k * 6.1}s`, "--ida": cafe >= x ? 1 : -1 } as React.CSSProperties;
+          {/* Áreas: tapete na cor do setor e divisória de vidro entre vizinhos */}
+          {zonas.map(({ setor, x0, largura, yMesa }, k) => {
+            const vizinho = zonas[k + 1];
             return (
-              <g key={`andando-${p.id}`} transform={`translate(0 ${CHAO})`} style={vars}>
+              <g key={setor.id}>
+                <rect x={x0 + 6} y={yMesa + 86} width={largura - 12} height="14" rx="7" fill={setor.corPlaca} opacity=".16" />
+                {vizinho && vizinho.r === zonas[k].r && <VidroLateral x={x0 + largura + FOLGA_SETOR / 2} yTopo={yMesa - (zonas[k].r === 0 ? 46 : 8)} yBase={yMesa + 96} />}
+                {/* A última área de cada fileira também fecha com vidro antes do descanso */}
+                {(!vizinho || vizinho.r !== zonas[k].r) && <VidroLateral x={x0 + largura + FOLGA_SETOR / 2} yTopo={yMesa - (zonas[k].r === 0 ? 46 : 8)} yBase={yMesa + 96} />}
+              </g>
+            );
+          })}
+          {/* Fileira de cima: reunião no espaço livre e o café no canto */}
+          {fileiras.length > 1 && fimCima + 150 < xDescanso - 60 && <Reuniao x={(fimCima + xDescanso - 60) / 2} y={Y_MESA + 26} />}
+          <Cafe x={xDescanso} y={Y_MESA + 16} />
+          {fileiras.length > 1 && <Copa x={xDescanso} y={Y_MESA + ALTURA_FILEIRA + 24} />}
+          <Planta x={12} y={Y_MESA + 72} s={0.95} />
+          <Planta x={LARGURA - 12} y={ALTURA_TOTAL - 34} s={0.9} />
+
+          {/* Mesas (a fileira de trás primeiro, pra a da frente ficar na frente) */}
+          {mesas.map(({ p, x, yMesa }) => (
+            <BonecoMesa key={p.id} nome={p.nome} ehIa={p.ehIa} sinal={p.sinal} vazio={vaiPassear(p, noite)} x={x - 52} y={yMesa} width={104} height={92} />
+          ))}
+          {/* Sala da diretoria fechada em vidro (frente baixa, com porta) */}
+          {fileiras.length > 1 && zonas.filter((z) => z.r === 0).map(({ setor, x0, largura, yMesa }) => (
+            <VidroFrente key={`frente-${setor.id}`} x0={x0 - 8} x1={x0 + largura + FOLGA_SETOR / 2 - 4} yTopo={yMesa + 70} yBase={yMesa + 100} porta={x0 + largura - 30} />
+          ))}
+          {/* Quem está livre: vai e volta do descanso da fileira */}
+          {mesas.map(({ p, x, r, yMesa }, k) => {
+            if (!vaiPassear(p, noite)) return null;
+            const destino = xDescanso - 26 + (k % 4) * 14;
+            const dur = DUR[k % DUR.length] + Math.min(14, Math.abs(destino - x) / 60);
+            const vars = { "--de": `${x}px`, "--cafe": `${destino}px`, "--dur": `${dur}s`, "--atraso": `${-k * 6.1}s`, "--ida": destino >= x ? 1 : -1 } as React.CSSProperties;
+            return (
+              <g key={`andando-${p.id}`} transform={`translate(0 ${yMesa + PE - (r === 0 && fileiras.length > 1 ? 4 : 0)})`} style={vars}>
                 <g className="esc-passeio"><g className="esc-vira"><BonecoAndando v={visualDe(p.nome)} /></g></g>
               </g>
             );
           })}
         </svg>
 
-        {/* Placas dos setores na parede */}
-        {zonas.map(({ setor, x0 }) => (
+        {/* Placas dos setores */}
+        {zonas.map(({ setor, x0, yMesa, r }) => (
           <div key={setor.id} className="pointer-events-none absolute flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm"
-            style={{ left: pct(x0 + 10), top: "7%" }}>
+            style={{ left: pctX(x0 + 8), top: r === 0 ? "4%" : pctY(yMesa + 104) }}>
             <span className="h-2.5 w-2.5 rounded-sm" style={{ background: setor.corPlaca }} />
             <span className="text-[11px] font-bold text-slate-800">{setor.nome}</span>
             <span className="text-[10px] text-slate-500">{setor.tarefas} {setor.tarefas === 1 ? "tarefa" : "tarefas"}{setor.atrasadas > 0 && <b className="text-rose-500"> · {setor.atrasadas} atrasada{setor.atrasadas > 1 ? "s" : ""}</b>}</span>
@@ -220,11 +321,11 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
         ))}
 
         {/* Balões, nomes e o clique de cada mesa */}
-        {mesas.map(({ p, x }) => (
+        {mesas.map(({ p, x, yMesa }) => (
           <button key={p.id} type="button" disabled={!p.clicavel} onClick={() => onAbrir(p.id)}
             title={p.clicavel ? `Ver e adicionar tarefas de ${p.nome}` : undefined}
             className="group/mesa absolute flex -translate-x-1/2 flex-col items-center justify-between rounded-lg outline-none transition-colors enabled:hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary"
-            style={{ left: pct(x), top: "34%", height: "64%", width: pct(LARGURA_MESA - 6) }}>
+            style={{ left: pctX(x), top: pctY(yMesa - 14), height: pctY(110), width: pctX(LARGURA_MESA - 6) }}>
             {p.balao ? (
               <span className={cn("line-clamp-2 max-w-full rounded-md border bg-white/95 px-1.5 py-0.5 text-center text-[10px] font-medium leading-tight text-slate-800 shadow-sm",
                 p.sinal === "esperando" && "border-amber-400", p.sinal === "problema" && "border-rose-400")}>{p.balao}</span>
