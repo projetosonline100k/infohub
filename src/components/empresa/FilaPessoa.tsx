@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Bot, CalendarDays, Copy, ExternalLink, Loader2, Plus } from "lucide-react";
+import { Bot, CalendarDays, Copy, ExternalLink, Loader2, Plus, X } from "lucide-react";
+import { confirmar } from "@/components/DialogosGlobais";
+import { cancelarTarefa } from "@/lib/empresa/cancelar";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -224,6 +226,11 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
     return id;
   };
 
+  const cancelar = async (t: TarefaFila) => {
+    if (!(await confirmar(`Cancelar "${t.titulo}"? Sai da fila de ${membro?.nome ?? "da pessoa"} e vai pra Lixeira (dá pra recuperar).`, { botao: "Cancelar tarefa", destrutivo: true }))) return;
+    try { await cancelarTarefa(t.id); toast.success("Tarefa cancelada"); await carregar(); onMudou(); } catch { toast.error("Não consegui cancelar"); }
+  };
+
   const mudarSituacao = async (tarefa: TarefaResumo, nova: string) => {
     const feita = nova === "concluida";
     const mudancas: Record<string, unknown> = { situacao: nova, concluida: feita };
@@ -317,9 +324,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                 </section>
 
                 {/* 2. As tarefas, por situação */}
-                <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
-                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
-                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
+                <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
+                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
+                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} />}
                 {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
               </div>
             )}
@@ -364,8 +371,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   );
 }
 
-function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar }: {
+function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar }: {
   titulo: string; vazio?: string; tarefas: TarefaFila[]; hoje: string; agora: number; onMudar: (t: TarefaResumo, situacao: string) => void;
+  onCancelar?: (t: TarefaFila) => void;
   onCopiar?: (t: TarefaFila) => void;
 }) {
   return (
@@ -393,6 +401,12 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar }
                   <button type="button" onClick={() => onCopiar(t)} title="Copiar título e roteiro pro ChatGPT"
                     className="flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-xs hover:bg-accent">
                     <Copy className="h-3 w-3" />Copiar
+                  </button>
+                )}
+                {onCancelar && !t.concluida && (
+                  <button type="button" onClick={() => onCancelar(t)} title="Cancelar tarefa (vai pra Lixeira)"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600">
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 )}
                 <select value={sit} onChange={(e) => onMudar(t, e.target.value)} aria-label="Situação"

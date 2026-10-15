@@ -6,6 +6,8 @@ import {
   FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Scissors, Users, Video, Youtube,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { confirmar } from "@/components/DialogosGlobais";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
@@ -17,6 +19,7 @@ import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
+import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
   contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
@@ -164,18 +167,25 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
     return { membro: estado.membro, sinal, atual: estado.atual?.titulo ?? ia?.atual ?? null };
   });
+  // Cancelar uma entrega: pergunta antes e recarrega.
+  const cancelar = async (oQue: string, acao: () => Promise<void>) => {
+    if (!(await confirmar(`Cancelar ${oQue}? Sai da lista e não segue; a tarefa vai pra Lixeira (dá pra recuperar).`, { botao: "Cancelar entrega", destrutivo: true }))) return;
+    try { await acao(); toast.success("Cancelado"); void carregar(); } catch { toast.error("Não consegui cancelar"); }
+  };
   // "Precisa de você" numa lista só, cada item com a categoria pro filtro.
   const linhasPrecisa: { chave: string; categoria: Categoria; no: React.ReactNode }[] = [
     ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
       chave: `ed-${e.id}`, categoria: "video" as Categoria,
       no: <LinhaAcao icone={Video} titulo={`${e.status === "erro" ? "Edição com problema" : "Revisar edição"}: ${e.titulo}`}
         detalhe={e.status === "erro" ? e.mensagem ?? "erro" : `Danilo terminou · versão ${e.versao}${e.duracao ? ` · ${Math.round(e.duracao)}s` : ""}`}
-        atrasada={e.status === "erro"} onClick={() => setEdicaoAberta(e)} />,
+        atrasada={e.status === "erro"} onClick={() => setEdicaoAberta(e)}
+        onCancelar={() => void cancelar(`a edição "${e.titulo}"`, () => cancelarEdicao(e.id))} />,
     })),
     ...carrosseis.filter(precisaRevisar).map((c) => {
       const l = linhaPrecisa(c);
       return { chave: `car-${c.id}`, categoria: "carrossel" as Categoria,
-        no: <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)} /> };
+        no: <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)}
+          onCancelar={() => void cancelar(`o carrossel "${c.tema}"`, () => cancelarCarrossel(c.id))} /> };
     }),
     ...precisa.map((item) => {
       if (item.tipo === "gravar") {
@@ -194,11 +204,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       }
       if (item.tarefa.tipo === "agendar") {
         return { chave: item.tarefa.id, categoria: "programar" as Categoria,
-          no: <LinhaAcao icone={CalendarClock} titulo={item.tarefa.titulo} detalhe="Escolha o dia e a hora · a Dalila publica" onClick={() => setAgendarAberto(item.tarefa.id)} /> };
+          no: <LinhaAcao icone={CalendarClock} titulo={item.tarefa.titulo} detalhe="Escolha o dia e a hora · a Dalila publica" onClick={() => setAgendarAberto(item.tarefa.id)}
+            onCancelar={() => void cancelar("este carrossel (não vai ser publicado)", () => cancelarPelaTarefaDeData(item.tarefa.id))} /> };
       }
       return { chave: item.tarefa.id, categoria: categoriaDaTarefa(item.tarefa.tipo),
         no: <LinhaAcao icone={FileText} titulo={item.tarefa.titulo} atrasada={item.atrasada}
-          detalhe={item.tarefa.data_vencimento ? `${item.atrasada ? "Atrasada desde" : "Prazo"} ${dataCurta(item.tarefa.data_vencimento)}` : "Sem prazo"} onClick={onAbrirAtividades} /> };
+          detalhe={item.tarefa.data_vencimento ? `${item.atrasada ? "Atrasada desde" : "Prazo"} ${dataCurta(item.tarefa.data_vencimento)}` : "Sem prazo"} onClick={onAbrirAtividades}
+          onCancelar={() => void cancelar(`a tarefa "${item.tarefa.titulo}"`, () => cancelarTarefa(item.tarefa.id))} /> };
     }),
   ];
 
@@ -396,17 +408,27 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   );
 }
 
-function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick }: {
+function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancelar }: {
   icone: typeof Crown; titulo: string; detalhe?: string; atrasada?: boolean; onClick: () => void;
+  // Cancelar a entrega (não vai seguir): aparece um × ao passar o mouse.
+  onCancelar?: () => void;
 }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-lg border bg-background p-2.5 text-left transition-colors hover:border-primary/40">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Icone className="h-4 w-4" /></span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-medium">{titulo}</span>
-        {detalhe && <span className={cn("block truncate text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>{detalhe}</span>}
-      </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-    </button>
+    <div className="group/linha relative">
+      <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-lg border bg-background p-2.5 text-left transition-colors hover:border-primary/40">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Icone className="h-4 w-4" /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{titulo}</span>
+          {detalhe && <span className={cn("block truncate text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>{detalhe}</span>}
+        </span>
+        <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground", onCancelar && "group-hover/linha:opacity-0")} />
+      </button>
+      {onCancelar && (
+        <button type="button" onClick={onCancelar} title="Cancelar (não vai seguir)"
+          className="absolute right-2 top-1/2 hidden -translate-y-1/2 rounded-md border bg-background px-2 py-1 text-xs text-muted-foreground hover:border-rose-500/50 hover:text-rose-600 group-hover/linha:block">
+          Cancelar
+        </button>
+      )}
+    </div>
   );
 }
