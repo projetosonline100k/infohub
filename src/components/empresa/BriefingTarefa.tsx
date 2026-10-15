@@ -36,7 +36,7 @@ const paraBase64 = (blob: Blob) => new Promise<string>((ok, erro) => {
   r.readAsDataURL(blob);
 });
 
-function TextoMensagem({ texto }: { texto: string }) {
+export function TextoMensagem({ texto }: { texto: string }) {
   const linhas = texto.split("\n");
   const anexos = linhas.map((l) => l.match(LINHA_ANEXO)?.[1]).filter((x): x is string => !!x);
   const corpo = linhas.filter((l) => !LINHA_ANEXO.test(l)).join("\n").trimEnd();

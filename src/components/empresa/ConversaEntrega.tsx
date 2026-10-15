@@ -1,0 +1,124 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Loader2, MessageCircle, Send } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { esperandoResposta, segundosEsperando, type MensagemBriefing } from "@/lib/empresa/briefing";
+import { cn } from "@/lib/utils";
+import { TextoMensagem } from "./BriefingTarefa";
+
+// Chat sobre a entrega (pedido do Davi, 15/10): na tela "Ver e aprovar" ele
+// conversa com quem entregou: elogia, reforça o que deve ficar, pergunta ou
+// pede mudança. É um briefing 'revisando' ligado à tarefa; o ouvinte do Jarvis
+// responde como o funcionário, anota o reforço nos aprendizados e, se for
+// mudança clara, atualiza o mesmo documento (onDocumentoMudou recarrega).
+export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInicial, onDocumentoMudou }: {
+  clienteId: string; tarefaId: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
+}) {
+  const [conversaId, setConversaId] = useState<string | null>(null);
+  const [mensagens, setMensagens] = useState<MensagemBriefing[]>([]);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [agora, setAgora] = useState(Date.now());
+  const fimRef = useRef<HTMLDivElement>(null);
+  const respostas = useRef(0);
+
+  const carregar = useCallback(async (id: string) => {
+    const { data } = await supabase.from("briefing_mensagens").select("id, papel, texto, status, criada_em").eq("briefing_id", id).order("criada_em");
+    const lista = (data || []) as MensagemBriefing[];
+    const n = lista.filter((m) => m.papel === "funcionario").length;
+    if (n > respostas.current && respostas.current > 0) onDocumentoMudou();   // a resposta pode ter vindo com nova versão
+    respostas.current = n;
+    setMensagens(lista);
+  }, [onDocumentoMudou]);
+
+  useEffect(() => {
+    let vivo = true;
+    setConversaId(null); setMensagens([]); respostas.current = 0;
+    void supabase.from("briefings").select("id").eq("atividade_id", tarefaId).eq("status", "revisando")
+      .order("atualizado_em", { ascending: false }).limit(1).then(({ data }) => {
+        if (!vivo || !data?.[0]) return;
+        setConversaId(data[0].id);
+        void carregar(data[0].id).then(() => { respostas.current = Math.max(respostas.current, 1); });
+      });
+    return () => { vivo = false; };
+  }, [tarefaId, carregar]);
+
+  // Texto que o Davi já tinha escrito na caixa de baixo vem pro chat.
+  useEffect(() => { if (textoInicial) setTexto(textoInicial); }, [textoInicial]);
+
+  const esperando = esperandoResposta(mensagens);
+  useEffect(() => {
+    if (!conversaId || !esperando) return;
+    const t = window.setInterval(() => { setAgora(Date.now()); void carregar(conversaId); }, 3000);
+    return () => window.clearInterval(t);
+  }, [conversaId, esperando, carregar]);
+  useEffect(() => { fimRef.current?.scrollIntoView({ block: "nearest" }); }, [mensagens.length, esperando]);
+
+  const enviar = async () => {
+    const valor = texto.trim();
+    if (!valor || enviando) return;
+    setEnviando(true);
+    try {
+      let id = conversaId;
+      if (!id) {
+        id = crypto.randomUUID();
+        const { error } = await supabase.from("briefings").insert({ id, cliente_id: clienteId, membro_id: membroId, atividade_id: tarefaId, status: "revisando" });
+        if (error) throw error;
+        setConversaId(id);
+        respostas.current = Math.max(respostas.current, 1);
+      }
+      const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: valor });
+      if (error) throw error;
+      setTexto("");
+      setAgora(Date.now());
+      await carregar(id);
+    } catch {
+      toast.error("Não consegui mandar a mensagem");
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const esperou = segundosEsperando(mensagens, agora);
+
+  return (
+    <div className="flex h-full min-h-0 flex-col rounded-lg border bg-card">
+      <p className="flex items-center gap-1.5 border-b px-3 py-2 text-sm font-semibold"><MessageCircle className="h-4 w-4 text-primary" />Conversar com {nome}</p>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
+        {mensagens.length === 0 && (
+          <p className="rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
+            Elogie o que gostou (ele guarda para manter nas próximas), pergunte ou peça uma mudança: se estiver claro, {nome} já atualiza o documento aqui do lado.
+          </p>
+        )}
+        {mensagens.map((m) => (
+          <div key={m.id} className={cn("flex", m.papel === "davi" ? "justify-end" : "justify-start")}>
+            <div className={cn("max-w-[90%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm",
+              m.papel === "davi" ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted")}>
+              <TextoMensagem texto={m.texto} />
+              <span className="mt-0.5 block text-right text-[10px] opacity-60">{format(new Date(m.criada_em), "HH:mm", { locale: ptBR })}</span>
+            </div>
+          </div>
+        ))}
+        {esperando && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {esperou > 180 ? "Ninguém respondeu ainda. O ouvinte do Jarvis está ligado neste Mac?" : `${nome} está lendo…`}
+          </p>
+        )}
+        <div ref={fimRef} />
+      </div>
+      <form className="flex items-end gap-1.5 border-t p-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+        <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2} className="min-h-0 text-sm"
+          placeholder={`Fale com ${nome}… (Enter envia)`}
+          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
+        <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!texto.trim() || enviando}>
+          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+        </Button>
+      </form>
+    </div>
+  );
+}

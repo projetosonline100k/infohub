@@ -61,14 +61,20 @@ def contexto(bid):
         q = c.cursor()
         q.execute('SET TRANSACTION READ ONLY')
         q.execute("""SELECT b.status, b.proposta, b.cliente_id, cl.nome_especialista, cl.nicho,
-                            m.nome, m.funcao, m.responsabilidades, m.eh_ia, s.nome
+                            m.nome, m.funcao, m.responsabilidades, m.eh_ia, s.nome, b.atividade_id
                        FROM briefings b JOIN clientes cl ON cl.id = b.cliente_id
                        JOIN membros m ON m.id = b.membro_id LEFT JOIN setores s ON s.id = m.setor_id
                       WHERE b.id = %s""", (bid,))
         r = q.fetchone()
         if not r:
             raise SystemExit('briefing não encontrado')
-        status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor = r
+        status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id = r
+        entrega = None
+        if status == 'revisando' and atividade_id:
+            q.execute("""SELECT a.titulo, a.situacao, d.id, d.titulo FROM atividades a
+                           LEFT JOIN LATERAL (SELECT id, titulo FROM documentos WHERE atividade_id = a.id AND deleted_at IS NULL
+                                               ORDER BY updated_at DESC LIMIT 1) d ON true WHERE a.id = %s""", (atividade_id,))
+            entrega = q.fetchone()
         q.execute("""SELECT nome_produto, status FROM produtos_cliente WHERE cliente_id = %s ORDER BY status, nome_produto""", (cliente_id,))
         produtos = q.fetchall()
         q.execute("""SELECT papel, texto, criada_em FROM briefing_mensagens WHERE briefing_id = %s ORDER BY criada_em""", (bid,))
@@ -99,6 +105,10 @@ def contexto(bid):
     if eh_ia and nome.lower() in EXECUTORES:
         print('Depois que o Davi confirmar: você começa SOZINHO e entrega um documento para ele aprovar. Diga isso a ele.')
     print(f'Status do briefing: {status}')
+    if entrega:
+        t_tit, t_sit, d_id, d_tit = entrega
+        print(f'CONVERSA SOBRE A ENTREGA da tarefa "{t_tit}" (id {atividade_id}, situação {t_sit}).')
+        print(f'Documento entregue: "{d_tit}" ({d_id}). Leia: python3 scripts/consulta.py "select conteudo from documentos where id = \'{d_id}\'"' if d_id else 'Documento entregue: (não achei)')
     if proposta:
         print('Proposta já gravada: ' + json.dumps(proposta, ensure_ascii=False))
     print('\nConversa:')
@@ -154,6 +164,17 @@ def propor(bid, bruto):
     finally:
         c.close()
     print('PROPOSTA_GRAVADA')
+
+
+def status(bid):
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("SELECT status FROM public.briefings WHERE id = %s", (bid,))
+        r = q.fetchone()
+        return r[0] if r else None
+    finally:
+        c.close()
 
 
 def sem_resposta(bid):
