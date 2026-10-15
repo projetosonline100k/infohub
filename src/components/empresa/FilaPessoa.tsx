@@ -14,7 +14,25 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 
-type TarefaFila = TarefaResumo & { video_vertical_id?: string | null; video_youtube_id?: string | null };
+type TarefaFila = TarefaResumo & {
+  video_vertical_id?: string | null; video_youtube_id?: string | null;
+  tempo_estimado?: number | null; timer_iniciado_em?: string | null; timer_decorrido_segundos?: number | null;
+  observacao?: string | null; created_at?: string | null;
+};
+// Trabalho das IAs que não é tarefa: carrossel do Roy montando, edição do Danilo.
+interface TrabalhoAgora { id: string; titulo: string; etapa: string; desde: string }
+
+const minutos = (ms: number) => Math.max(0, Math.round(ms / 60000));
+const duracaoTexto = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : `${min} min`);
+// Quanto já foi trabalhado (cronômetro da tarefa) e quanto falta pelo tempo estimado.
+function tempoDaTarefa(t: TarefaFila, agora: number) {
+  const rodando = t.timer_iniciado_em ? (agora - new Date(t.timer_iniciado_em).getTime()) / 1000 : 0;
+  const feito = Math.round(((t.timer_decorrido_segundos ?? 0) + Math.max(0, rodando)) / 60);
+  const estimado = t.tempo_estimado ?? null;
+  const falta = estimado != null ? Math.max(0, estimado - feito) : null;
+  const pct = t.progresso != null && t.progresso > 0 ? t.progresso : estimado ? Math.min(100, Math.round((feito / estimado) * 100)) : null;
+  return { feito, falta, pct, rodando: !!t.timer_iniciado_em };
+}
 
 // O que o Davi cola na conversa do ChatGPT (as instruções já estão lá):
 // o vídeo, o roteiro e o link do bruto, quando subiu pelo Infopro.
@@ -97,22 +115,39 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   const [situacao, setSituacao] = useState("fila");
   const [salvando, setSalvando] = useState(false);
   const [rapida, setRapida] = useState(false);
+  const [passarTarefa, setPassarTarefa] = useState(false);
+  const [trabalho, setTrabalho] = useState<TrabalhoAgora[]>([]);
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
   const carregar = useCallback(async () => {
     if (!membro) return;
     setCarregando(true);
     const { data } = await supabase.from("atividades")
-      .select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, concluida_em, video_vertical_id, video_youtube_id")
+      .select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, concluida_em, video_vertical_id, video_youtube_id, tempo_estimado, timer_iniciado_em, timer_decorrido_segundos, observacao, created_at")
       .eq("responsavel_id", membro.id).is("deleted_at", null)
       // Abertas + as concluídas hoje (pra ver o que já saiu).
       .or(`concluida.eq.false,concluida_em.gte.${hoje}T00:00:00`);
     setTarefas((data || []) as TarefaFila[]);
+    // O que a IA está fazendo fora das tarefas (carrossel / edição em curso).
+    const nome = membro.nome.toLowerCase();
+    if (nome === "roy") {
+      const { data: cs } = await supabase.from("carrosseis").select("id, numero, tema, status, mensagem, atualizado_em")
+        .eq("cliente_id", clienteId).in("status", ["produzindo", "ajuste"]);
+      setTrabalho((cs || []).map((c) => ({ id: c.id, titulo: `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}`,
+        etapa: c.status === "ajuste" ? "Refazendo com o seu ajuste" : c.mensagem || "Montando as páginas", desde: c.atualizado_em })));
+    } else if (nome === "danilo") {
+      const { data: es } = await supabase.from("edicoes_video").select("id, titulo, status, mensagem, atualizado_em")
+        .eq("cliente_id", clienteId).in("status", ["na_fila", "editando", "renderizando", "aprovando"]);
+      const ETAPA: Record<string, string> = { na_fila: "Na fila de edição", editando: "Editando", renderizando: "Gerando a versão", aprovando: "Gerando o vídeo final" };
+      setTrabalho((es || []).map((e) => ({ id: e.id, titulo: e.titulo, etapa: e.mensagem || ETAPA[e.status] || e.status, desde: e.atualizado_em })));
+    } else setTrabalho([]);
     setCarregando(false);
-  }, [membro, hoje]);
+  }, [membro, hoje, clienteId]);
 
   useEffect(() => {
-    setTitulo(""); setTipo(""); setPrazo(""); setSituacao("fila");
+    setTitulo(""); setTipo(""); setPrazo(""); setSituacao("fila"); setPassarTarefa(false); setRapida(false);
     void carregar();
   }, [carregar]);
 
@@ -170,7 +205,10 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
     onMudou();
   };
 
-  const abertas = ordenarFila(tarefas.filter((t) => !t.concluida));
+  const abertas = ordenarFila(tarefas.filter((t) => !t.concluida)) as TarefaFila[];
+  const emAndamento = abertas.filter((t) => t.situacao === "andamento");
+  const naFila = abertas.filter((t) => (t.situacao ?? "fila") === "fila");
+  const esperando = abertas.filter((t) => t.situacao === "aguardando_aprovacao");
   const feitasHoje = tarefas.filter((t) => t.concluida);
 
   return (
@@ -207,36 +245,84 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
               </div>
             )}
 
-            {/* Nova tarefa: conversa com o funcionário; a tarefa rápida fica de reserva. */}
-            <BriefingTarefa clienteId={clienteId} membro={membro} onCriarTarefa={criarTarefaDoBriefing} />
-            <button type="button" onClick={() => setRapida(!rapida)} className="text-xs text-muted-foreground hover:text-foreground">
-              {rapida ? "Fechar tarefa rápida" : "+ Tarefa rápida, sem conversa"}
-            </button>
-            {rapida && <form className="space-y-2 rounded-lg border p-3" onSubmit={(e) => { e.preventDefault(); void adicionar(); }}>
-              <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder={`O que ${membro.nome} vai fazer?`} autoFocus />
-              <div className="flex flex-wrap gap-2">
-                <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Tipo">
-                  {TIPOS.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
-                </select>
-                <select value={situacao} onChange={(e) => setSituacao(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Situação">
-                  {SITUACOES.map((s) => <option key={s.valor} value={s.valor}>{s.rotulo}</option>)}
-                </select>
-                <Input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="h-9 w-auto" aria-label="Prazo" />
-                <Button type="submit" size="sm" className="ml-auto h-9 gap-1" disabled={!titulo.trim() || salvando}>
-                  {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Adicionar
-                </Button>
-              </div>
-            </form>}
-
+            {/* 1. O que está fazendo agora */}
             {carregando ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
               <div className="space-y-4">
-                <ListaTarefas titulo="Tarefas" vazio={`${membro.nome} não tem tarefas abertas.`} tarefas={abertas} hoje={hoje} onMudar={mudarSituacao}
-                  onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
-                {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} onMudar={mudarSituacao} />}
+                <section className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">Agora</p>
+                  {emAndamento.length === 0 && trabalho.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{membro.nome} não está fazendo nada agora{abertas.length ? ` · ${abertas.length} na fila` : ""}.</p>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {trabalho.map((w) => (
+                        <div key={w.id}>
+                          <p className="text-sm font-medium">{w.titulo}</p>
+                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />{w.etapa} · desde {format(new Date(w.desde), "HH:mm")} ({duracaoTexto(minutos(agora - new Date(w.desde).getTime()))})</p>
+                        </div>
+                      ))}
+                      {emAndamento.map((t) => {
+                        const tt = tempoDaTarefa(t, agora);
+                        return (
+                          <div key={t.id}>
+                            <div className="flex items-baseline justify-between gap-2">
+                              <p className="text-sm font-medium">{t.titulo}</p>
+                              {tt.pct != null && <span className="shrink-0 text-xs font-semibold text-sky-700 dark:text-sky-400">{tt.pct}%</span>}
+                            </div>
+                            {tt.pct != null && <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct}%` }} /></div>}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `Na mão desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "Em andamento"}
+                              {tt.falta != null && <> · <b className="text-foreground">falta ~{duracaoTexto(tt.falta)}</b></>}
+                              {t.data_vencimento && <> · prazo {format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
+                            </p>
+                            {t.observacao && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">“{t.observacao}”</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* 2. As tarefas, por situação */}
+                <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
+                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} />
+                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
+                {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
               </div>
             )}
+
+            {/* 3. Passar tarefa: conversa com o funcionário; a tarefa rápida fica de reserva. */}
+            <div className="rounded-lg border">
+              <button type="button" onClick={() => setPassarTarefa(!passarTarefa)}
+                className="flex w-full items-center gap-1.5 px-3 py-2 text-sm font-medium hover:bg-muted/50">
+                <Plus className="h-4 w-4" />Passar tarefa para {membro.nome}
+              </button>
+              {passarTarefa && (
+                <div className="space-y-2 border-t p-3">
+                  <BriefingTarefa clienteId={clienteId} membro={membro} onCriarTarefa={criarTarefaDoBriefing} />
+                  <button type="button" onClick={() => setRapida(!rapida)} className="text-xs text-muted-foreground hover:text-foreground">
+                    {rapida ? "Fechar tarefa rápida" : "+ Tarefa rápida, sem conversa"}
+                  </button>
+                  {rapida && <form className="space-y-2 rounded-lg border p-3" onSubmit={(e) => { e.preventDefault(); void adicionar(); }}>
+                    <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder={`O que ${membro.nome} vai fazer?`} autoFocus />
+                    <div className="flex flex-wrap gap-2">
+                      <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Tipo">
+                        {TIPOS.map((t) => <option key={t.valor} value={t.valor}>{t.rotulo}</option>)}
+                      </select>
+                      <select value={situacao} onChange={(e) => setSituacao(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" aria-label="Situação">
+                        {SITUACOES.map((s) => <option key={s.valor} value={s.valor}>{s.rotulo}</option>)}
+                      </select>
+                      <Input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="h-9 w-auto" aria-label="Prazo" />
+                      <Button type="submit" size="sm" className="ml-auto h-9 gap-1" disabled={!titulo.trim() || salvando}>
+                        {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Adicionar
+                      </Button>
+                    </div>
+                  </form>}
+
+                </div>
+              )}
+            </div>
 
             <InteligenciaMembro clienteId={clienteId} membro={membro} />
           </>
@@ -246,8 +332,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   );
 }
 
-function ListaTarefas({ titulo, vazio, tarefas, hoje, onMudar, onCopiar }: {
-  titulo: string; vazio?: string; tarefas: TarefaFila[]; hoje: string; onMudar: (t: TarefaResumo, situacao: string) => void;
+function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar }: {
+  titulo: string; vazio?: string; tarefas: TarefaFila[]; hoje: string; agora: number; onMudar: (t: TarefaResumo, situacao: string) => void;
   onCopiar?: (t: TarefaFila) => void;
 }) {
   return (
@@ -267,7 +353,9 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, onMudar, onCopiar }: {
                   <p className={cn("flex items-center gap-1 text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>
                     {t.data_vencimento && <><CalendarDays className="h-3 w-3" />{atrasada ? "Atrasada · " : ""}{format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
                     {t.tipo && <span>{t.data_vencimento ? " · " : ""}{TIPOS.find((x) => x.valor === t.tipo)?.rotulo ?? t.tipo}</span>}
+                    {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.falta != null ? <span> · falta ~{duracaoTexto(tt.falta)}</span> : !t.concluida && t.tempo_estimado ? <span> · ~{duracaoTexto(t.tempo_estimado)}</span> : null; })()}
                   </p>
+                  {!t.concluida && (() => { const tt = tempoDaTarefa(t, agora); return tt.pct != null && tt.pct > 0 ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500" style={{ width: `${tt.pct}%` }} /></div> : null; })()}
                 </div>
                 {onCopiar && !t.concluida && (
                   <button type="button" onClick={() => onCopiar(t)} title="Copiar título e roteiro pro ChatGPT"
