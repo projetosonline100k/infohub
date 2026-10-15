@@ -20,6 +20,8 @@ import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
 import { RevisaoEntrega } from "./RevisaoEntrega";
+import { ProgramarSemana, TelaTv } from "./TvEscritorio";
+import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
   contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
@@ -90,6 +92,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [filtroPrecisa, setFiltroPrecisa] = useState<Categoria | "todos">("todos");
   const [loteAberto, setLoteAberto] = useState(false);
   const [revisaoAberta, setRevisaoAberta] = useState(false);
+  const [tvAberta, setTvAberta] = useState(false);
+  const { semana, recarregar: recarregarSemana } = useSemanaEquipe(clienteId);
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
@@ -328,6 +332,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         ) : (
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
           <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
+            tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
             setores={setores.map((setor) => {
               const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
               return {
@@ -359,6 +364,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} />
+      <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
+        onMudou={() => { void recarregarSemana(); void carregar(); }} />
       <RevisaoEntrega clienteId={clienteId} tarefas={paraAprovar} aberto={revisaoAberta} onFechar={() => setRevisaoAberta(false)} onMudou={() => { void carregar(); }} />
       <ProgramarLote clienteId={clienteId} tarefaIds={idsAgendar} aberto={loteAberto} onFechar={() => { setLoteAberto(false); void carregar(); }} />
 

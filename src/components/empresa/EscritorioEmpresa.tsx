@@ -41,7 +41,7 @@ const ESTILO_SALA = `
 @keyframes esc-perna-e{${quadrosPernas(1)}}
 @keyframes esc-perna-d{${quadrosPernas(-1)}}
 .esc-braco{transform-origin:50% 8%;animation:esc-braco var(--dur) ease-in-out infinite;animation-delay:var(--atraso)}
-@keyframes esc-braco{0%,33%{transform:rotate(0)}38%,42%{transform:rotate(-125deg)}47%{transform:rotate(-20deg)}50%,54%{transform:rotate(-125deg)}58%,100%{transform:rotate(0)}}
+@keyframes esc-braco{0%,33%{transform:rotate(0)}38%,42%{transform:rotate(-70deg)}47%{transform:rotate(-25deg)}50%,54%{transform:rotate(-70deg)}58%,100%{transform:rotate(0)}}
 .esc-xicara{animation:esc-xicara var(--dur) step-end infinite;animation-delay:var(--atraso)}
 @keyframes esc-xicara{0%{opacity:0}30%{opacity:1}62%{opacity:0}}
 .esc-fumaca{animation:esc-fumaca 2.4s ease-out infinite}
@@ -185,20 +185,22 @@ function Copa({ x, y }: { x: number; y: number }) {
   );
 }
 
-// Mesa de reunião (enche a fileira de cima ao lado da diretoria). Em duas
-// partes: quem vai "sentar" fica entre as cadeiras do fundo e o tampo.
-const LUGARES_REUNIAO = [-34, -12, 10, 32];
-function ReuniaoFundo({ x, y }: { x: number; y: number }) {
-  return <g transform={`translate(${x} ${y})`}>{LUGARES_REUNIAO.map((cx) => <rect key={cx} x={cx - 7} y="-2" width="14" height="16" rx="5" fill="#64748b" />)}</g>;
-}
-function ReuniaoFrente({ x, y }: { x: number; y: number }) {
+// TV grande na parede (pedido do Davi, 15/10, no lugar da mesa de reunião):
+// a moldura é SVG; a tela é HTML por cima (prop `tv`), com a semana e o
+// resultado. Quem está livre vai assistir em pé, dos lados da TV.
+function MolduraTv({ x, y, w, h, chaoY }: { x: number; y: number; w: number; h: number; chaoY: number }) {
   return (
-    <g transform={`translate(${x} ${y})`}>
-      <ellipse cx="0" cy="24" rx="52" ry="14" fill="#a16207" />
-      <ellipse cx="0" cy="22" rx="52" ry="14" fill="#ca8a04" />
-      <rect x="-10" y="16" width="20" height="8" rx="2" fill="#f8fafc" opacity=".8" />
-      {LUGARES_REUNIAO.map((cx) => <rect key={`f${cx}`} x={cx - 7} y="36" width="14" height="14" rx="5" fill="#475569" />)}
-      <text x="0" y="66" textAnchor="middle" fontSize="9" fontWeight="700" fill="#475569" fontFamily="system-ui, sans-serif">REUNIÃO</text>
+    <g>
+      <rect x={x - w / 2 - 6} y={y - 6} width={w + 12} height={h + 12} rx="5" fill="#0f172a" />
+      <rect x={x - w / 2 - 6} y={y - 6} width={w + 12} height={h + 12} rx="5" fill="none" stroke="#334155" strokeWidth="1.5" />
+      <rect x={x - w / 2} y={y} width={w} height={h} rx="2" fill="#0b1220" />
+      <circle cx={x} cy={y + h + 3} r="1.3" fill="#38bdf8" />
+      {/* Rack embaixo da TV, no chão */}
+      <rect x={x - w / 2 + 10} y={chaoY - 26} width={w - 20} height="20" rx="3" fill="#a16207" />
+      <rect x={x - w / 2 + 10} y={chaoY - 26} width={w - 20} height="4" rx="2" fill="#ca8a04" />
+      <rect x={x - w / 2 + 16} y={chaoY - 6} width="4" height="6" fill="#78350f" />
+      <rect x={x + w / 2 - 20} y={chaoY - 6} width="4" height="6" fill="#78350f" />
+      <Planta x={x - w / 2 + 26} y={chaoY - 42} s={0.5} />
     </g>
   );
 }
@@ -207,8 +209,9 @@ function ReuniaoFrente({ x, y }: { x: number; y: number }) {
 // reunião e o café; os outros setores embaixo, na frente, lado a lado
 // (divisórias de vidro) com a copa no canto. Quem está livre anda até o
 // descanso da própria fileira e volta.
-export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite }: {
+export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite, tv }: {
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean;
+  tv?: React.ReactNode;   // o que passa na TV (TelaTv)
 }) {
   const [noiteAgora, setNoite] = useState(ehNoite);
   const noite = forcarNoite ?? noiteAgora;
@@ -237,16 +240,22 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     x: z.x0 + LARGURA_MESA / 2 + k * LARGURA_MESA + (z.largura - z.setor.pessoas.length * LARGURA_MESA) / 2,
   })));
   const fimCima = fileiras.length > 1 ? larguraFileira(fileiras[0]) : LARGURA;
-  const reuniao = fileiras.length > 1 && fimCima + 150 < xDescanso - 60 ? { x: (fimCima + xDescanso - 60) / 2, y: Y_MESA + 26 } : null;
   const chao = (r: number) => Y_MESA + r * ALTURA_FILEIRA + PE - (r === 0 && fileiras.length > 1 ? 4 : 0);
+  // A TV ocupa o espaço livre da fileira de cima, entre a diretoria e o café.
+  const livreTv = xDescanso - 60 - fimCima;
+  const tvW = Math.min(livreTv - 70, 330);
+  const tvGeo = fileiras.length > 1 && tvW >= 170
+    ? { x: (fimCima + xDescanso - 60) / 2, y: 12, w: tvW, h: Math.min(Math.round(tvW * 0.56), chao(0) - 12 - 52) }
+    : null;
+  const lugaresTv = tvGeo ? [-(tvGeo.w / 2 + 18), tvGeo.w / 2 + 18, -(tvGeo.w / 2 + 36), tvGeo.w / 2 + 36] : [];
   // Pra onde cada um vai quando está livre: café (fileira de cima), copa (de baixo)
-  // ou sentar na mesa de reunião — alternando entre as pessoas.
+  // ou ver a TV em pé, do lado dela — alternando entre as pessoas.
   let lugarLivre = 0;
   const destinoDe = (r: number, k: number): { x: number; y: number } => {
-    const opcoes = r === 0 ? ["cafe", "reuniao"] : ["copa", "reuniao", "cafe"];
+    const opcoes = r === 0 ? ["cafe", "tv"] : ["copa", "tv", "cafe"];
     const escolha = opcoes[k % opcoes.length];
-    if (escolha === "reuniao" && reuniao && lugarLivre < LUGARES_REUNIAO.length) {
-      return { x: reuniao.x + LUGARES_REUNIAO[lugarLivre++], y: reuniao.y + 20 };
+    if (escolha === "tv" && tvGeo && lugarLivre < lugaresTv.length) {
+      return { x: tvGeo.x + lugaresTv[lugarLivre++], y: chao(0) };
     }
     if (escolha === "copa" && fileiras.length > 1) return { x: xDescanso - 46 + (k % 3) * 16, y: chao(1) };
     return { x: xDescanso - 26 + (k % 3) * 14, y: chao(0) };
@@ -300,8 +309,8 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
               </g>
             );
           })}
-          {/* Fileira de cima: reunião no espaço livre e o café no canto */}
-          {reuniao && <ReuniaoFundo x={reuniao.x} y={reuniao.y} />}
+          {/* Fileira de cima: a TV no espaço livre e o café no canto */}
+          {tvGeo && <MolduraTv x={tvGeo.x} y={tvGeo.y} w={tvGeo.w} h={tvGeo.h} chaoY={chao(0)} />}
           <Cafe x={xDescanso} y={Y_MESA + 16} />
           {fileiras.length > 1 && <Copa x={xDescanso} y={Y_MESA + ALTURA_FILEIRA + 24} />}
           <Planta x={12} y={Y_MESA + 72} s={0.95} />
@@ -330,9 +339,12 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
               </g>
             );
           })}
-          {/* Tampo da reunião por cima: quem foi pra lá aparece sentado atrás dele */}
-          {reuniao && <ReuniaoFrente x={reuniao.x} y={reuniao.y} />}
         </svg>
+
+        {/* A tela da TV (HTML por cima do desenho) */}
+        {tvGeo && tv && (
+          <div className="absolute" style={{ left: pctX(tvGeo.x - tvGeo.w / 2), top: pctY(tvGeo.y), width: pctX(tvGeo.w), height: pctY(tvGeo.h) }}>{tv}</div>
+        )}
 
         {/* Placas dos setores */}
         {zonas.map(({ setor, x0, yMesa, r }) => (
