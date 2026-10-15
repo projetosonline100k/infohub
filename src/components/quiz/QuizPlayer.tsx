@@ -114,9 +114,12 @@ function Botao({ children, onClick, href }: { children: React.ReactNode; onClick
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
-export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem }: {
+export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela }: {
   titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; teste?: boolean;
   editar?: boolean; onMudar?: (e: EstruturaQuiz) => void; onImagem?: (arquivo: File) => Promise<string>;
+  // Link público no celular (15/10): ocupa a tela toda, barra de progresso fixa no
+  // topo e o conteúdo centralizado; a cada tela nova o pai volta a rolagem pro início.
+  telaCheia?: boolean; onTrocarTela?: () => void;
 }) {
   const e = estrutura;
   const cor = corDoQuiz(e);
@@ -134,6 +137,17 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
   const f = (t?: string) => preencher(t, e, escolhas, perfil);
   const temTelaResultado = telas.some((t) => t.tipo === "resultado");
+
+  // Depois da abertura, baixa as imagens das próximas telas: a troca de tela não fica esperando a imagem.
+  useEffect(() => {
+    const urls = JSON.stringify(e).match(/https?:\/\/[^"]+\.(?:webp|jpe?g|png|gif)/gi) ?? [];
+    const t = setTimeout(() => { for (const u of new Set(urls)) new Image().src = u; }, 1200);
+    return () => clearTimeout(t);
+  }, [e]);
+
+  const trocou = useRef(onTrocarTela);
+  trocou.current = onTrocarTela;
+  useEffect(() => { trocou.current?.(); }, [pos]);
 
   const ctx: Ctx = {
     editar, mostrarFaltas: !!teste, cor, escuro,
@@ -169,7 +183,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
   return (
     <QuizCtx.Provider value={ctx}>
-      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro && "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7")}>
+      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5",
+        telaCheia ? "flex-1" : escuro && "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7")}>
         {teste && !editar && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra imagem que ainda falta.</p>}
         {editar && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
@@ -178,13 +193,15 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             <button type="button" onClick={() => setPos((p) => Math.min(passos.length - 1, p + 1))} disabled={pos >= passos.length - 1} className="flex items-center gap-1 disabled:opacity-40">Próxima<ArrowRight className="h-3 w-3" /></button>
           </div>
         )}
-        {passo.tipo !== "intro" && passo.tipo !== "fim" && (
-          <div className={cn("h-2 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
+        {passo.tipo !== "intro" && passo.tipo !== "fim" ? (
+          <div className={cn("h-2 shrink-0 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progresso}%`, background: cor, boxShadow: `0 0 12px ${cor}` }} />
           </div>
-        )}
+        ) : telaCheia && <div className="h-2 shrink-0" />}
 
-        <div key={pos} className={ENTRA}>
+        {/* Tela cheia: a pergunta começa sempre na mesma altura (título fixo, imagem abaixo dele);
+            abertura, respiro e "analisando" ficam no centro da tela. */}
+        <div key={pos} className={cn(ENTRA, telaCheia && (passo.tipo === "pergunta" ? "mt-[6dvh] w-full" : "my-auto w-full"))}>
           {passo.tipo === "intro" && (
             <div className="space-y-5 py-4 text-center">
               <Img caminho="intro.imagem" url={e.intro?.imagem} nota={e.intro?.imagem_nota} redonda className="mx-auto h-24 w-24" />
@@ -209,9 +226,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             return (
               <div className="space-y-4">
                 <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Pergunta {nPergunta} de {perguntas.length}</p>
-                {(q.imagem || q.imagem_nota) && <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] w-full" />}
                 <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />
                 <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />
+                {(q.imagem || q.imagem_nota) && <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />}
                 <div className={cn(cartoes ? "grid grid-cols-2 gap-2" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
                     const marcada = escolhas[q.id] === k;
@@ -293,7 +310,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
     <div className={cn("space-y-5 py-2", especialista && "text-center")}>
       {(t.imagem || t.imagem_nota) && (
         <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
-          className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] w-full"} />
+          className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] max-h-[30dvh] w-full"} />
       )}
       <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className="block text-2xl font-bold leading-snug" />
       {!!t.credenciais?.length && (
@@ -449,7 +466,7 @@ function Oferta({ e, perfil, iPerfil, f, suave }: { e: EstruturaQuiz; perfil: Pe
         <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="block text-3xl font-extrabold leading-tight" />
         <Txt caminho="oferta.subtitulo" valor={o.subtitulo} mostrar={f(o.subtitulo)} as="p" className={cn("block text-base", suave)} />
       </div>
-      <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] w-full" />
+      <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />
       <Txt caminho="oferta.texto" valor={o.texto} mostrar={f(o.texto)} as="p" className="block text-base leading-relaxed" />
       <div className="rounded-2xl border-2 p-4 text-center" style={{ borderColor: cor }}>
         <Txt caminho="oferta.produto" valor={o.produto} as="p" className="block text-lg font-bold" />
@@ -480,6 +497,7 @@ function Oferta({ e, perfil, iPerfil, f, suave }: { e: EstruturaQuiz; perfil: Pe
         <div className={cn(caixa, "flex gap-3 text-sm")}><ShieldCheck className="h-6 w-6 shrink-0" style={{ color: cor }} /><Txt caminho="oferta.garantia" valor={o.garantia} /></div>
       )}
       <Txt caminho="oferta.preco" valor={o.preco} as="p" className="block text-center text-2xl font-extrabold" />
+      <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe} as="p" className={cn("-mt-3 block text-center text-sm", suave)} />
       {url ? <Botao href={url}><Txt caminho="oferta.cta_texto" valor={texto} /></Botao>
         : <Button size="lg" className="h-auto min-h-12 w-full whitespace-normal text-white" style={{ background: cor }} disabled>{texto} (link ainda não definido)</Button>}
       <Txt caminho="oferta.fechamento" valor={o.fechamento} mostrar={f(o.fechamento)} as="p" className={cn("block text-center text-sm italic", suave)} />

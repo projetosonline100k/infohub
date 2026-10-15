@@ -58,7 +58,7 @@ Pedido do Davi: quiz cru (só texto e botão) não serve. Referências dele: inl
   - `resultado`: mostra o perfil no meio do quiz (`titulo`, `texto`, `botao`); as perguntas depois dela continuam (sequência de sins).
 - `resultado.grafico`: `{titulo, barras:[{rotulo, perfis:[ids]}]}`; cada barra é a % dos pontos dos perfis dela. Sem isso, uma barra por perfil.
 - Perfil: `imagem`, `imagem_nota`, `resumo`, `virada` (a frase do perfil dentro da oferta). A `descricao` é dividida em blocos por linha em branco; o bloco que começa com "O que está te sabotando" ganha destaque.
-- `oferta`: a página de vendas no fim (`titulo`, `subtitulo`, `texto`, `produto`, `dias`, `itens`, `depoimentos`, `garantia`, `preco`, `imagem`, `cta_texto`, `cta_url`, `fechamento`). Se não tiver `cta_url`, usa a do perfil.
+- `oferta`: a página de vendas no fim (`titulo`, `subtitulo`, `texto`, `produto`, `dias`, `itens`, `depoimentos`, `garantia`, `preco`, `preco_detalhe` (linha menor embaixo do preço), `imagem`, `cta_texto`, `cta_url`, `fechamento`). Se não tiver `cta_url`, usa a do perfil.
 - Nos textos: `{perfil}` vira o nome do perfil e `{resposta:q1}` a resposta da pergunta q1 (o `resumo` da opção ou o texto).
 - **Imagem com URL vazia é lugar reservado**: no teste aparece pontilhada com o `imagem_nota` ("Falta: foto do Matheus"); no link público some. Não invente foto do especialista nem depoimento: deixe vazio com a nota.
 - **O Davi edita na tela:** em "Ver e aprovar" → Testar o quiz → **Editar**, ele clica num texto para mudar a palavra ou numa imagem para enviar (bucket público `quiz-imagens`). Grava direto em `quizzes.estrutura`; antes de ajustar, rode `ver` de novo para não desfazer o que ele mudou.

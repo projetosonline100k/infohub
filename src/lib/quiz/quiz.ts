@@ -36,7 +36,7 @@ export interface OfertaQuiz {
   titulo?: string; subtitulo?: string; texto?: string; produto?: string;
   dias?: string[]; itens?: string[];
   depoimentos?: Depoimento[]; depoimentos_nota?: string;
-  garantia?: string; preco?: string; fechamento?: string;
+  garantia?: string; preco?: string; preco_detalhe?: string; fechamento?: string;
   imagem?: string; imagem_nota?: string;
   cta_texto?: string; cta_url?: string;
 }
