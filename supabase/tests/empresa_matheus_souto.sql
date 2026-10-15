@@ -8,8 +8,9 @@ BEGIN
   IF (SELECT count(*) FROM public.setores WHERE cliente_id = v_para) <> (SELECT count(*) FROM public.setores WHERE cliente_id = v_de) THEN
     RAISE EXCEPTION 'setores diferentes'; END IF;
   IF EXISTS (
-    SELECT nome, funcao, eh_ia, ativo, responsabilidades, conta_id FROM public.membros WHERE cliente_id = v_de
-    EXCEPT SELECT nome, funcao, eh_ia, ativo, responsabilidades, conta_id FROM public.membros WHERE cliente_id = v_para) THEN
+    -- Mesmas pessoas (o cargo de cada uma pode mudar em um projeto só, ex.: Gabriel/Roy no do Davi em 15/10).
+    SELECT nome FROM public.membros WHERE cliente_id = v_de
+    EXCEPT SELECT nome FROM public.membros WHERE cliente_id = v_para) THEN
     RAISE EXCEPTION 'faltou alguém da equipe'; END IF;
   IF (SELECT count(*) FROM public.membros WHERE cliente_id = v_para) <> (SELECT count(*) FROM public.membros WHERE cliente_id = v_de) THEN
     RAISE EXCEPTION 'equipe duplicada'; END IF;

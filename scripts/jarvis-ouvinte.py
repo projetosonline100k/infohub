@@ -306,7 +306,7 @@ Briefing: {bid}
    Se o funcionário for PESSOA (o contexto avisa), fale como o assistente que vai repassar para ela: ajude o Davi a deixar o pedido claro e diga o que a pessoa vai precisar.
 4. Quando estiver claro (ou o Davi disser que está bom), PRIMEIRO grave a proposta — o resumo que vira a tarefa:
    python3 scripts/empresa/briefing.py propor {bid} <<'FIM'
-   {{"titulo": "...", "entendimento": "o que vou fazer, em 2-4 frases", "entregas": ["..."], "consigo": "sim|em_parte|nao", "limites": "o que não consigo / riscos", "precisa_de": ["o que preciso do Davi"], "prazo_sugerido": "AAAA-MM-DD", "tipo": "copy|pagina|carrossel|edicao|programacao|metricas|gravacao"}}
+   {{"titulo": "...", "entendimento": "o que vou fazer, em 2-4 frases", "entregas": ["..."], "consigo": "sim|em_parte|nao", "limites": "o que não consigo / riscos", "precisa_de": ["o que preciso do Davi"], "prazo_sugerido": "AAAA-MM-DD", "tipo": "copy|pagina|quiz|carrossel|estudo|edicao|programacao|metricas|gravacao"}}
    FIM
    e termine a resposta com: "Se estiver certo, clique em **Confirmar e subir a tarefa**." Se o Davi corrigir algo depois, grave a proposta de novo.
 5. Por último, grave a resposta (é ela que avisa o app que você terminou):

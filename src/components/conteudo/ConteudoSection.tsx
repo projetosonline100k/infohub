@@ -1,4 +1,5 @@
 import { BrainstormView } from "./BrainstormView";
+import { FonteConhecimento } from "./FonteConhecimento";
 import { CronogramaView } from "./CronogramaView";
 import { VerticalView } from "./VerticalView";
 import { YoutubeView } from "./YoutubeView";
@@ -23,6 +24,7 @@ export function ConteudoSection({ clienteId, subAba, onIrPara, onAbrirAtividades
       {subAba === "youtube" && <YoutubeView clienteId={clienteId} />}
       
       {subAba === "cronograma" && <CronogramaView clienteId={clienteId} />}
+      {subAba === "conhecimento" && <FonteConhecimento clienteId={clienteId} />}
     </div>
   );
 }

@@ -180,6 +180,8 @@ def atender_tarefa():
                                     WHERE a2.cliente_id = %s AND a2.responsavel_id = %s AND a2.deleted_at IS NULL
                                       AND NOT a2.concluida AND coalesce(a2.situacao, 'fila') = 'fila'
                                       AND NOT (a2.id = ANY(%s::uuid[]))
+                                      -- Página e quiz são feitos pela execução (scripts/empresa/execucao.py).
+                                      AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz', 'estudo')
                                     ORDER BY a2.created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
                       RETURNING a.id, a.titulo, a.descricao""", (roy.CLIENTE, roy_id, list(_tentadas)))
     if not linha:

@@ -163,7 +163,8 @@ export function estadoDosMembros(membros: MembroResumo[], tarefas: TarefaResumo[
     return {
       membro,
       abertas: minhas.length,
-      atrasadas: minhas.filter((t) => tarefaAtrasada(t, hoje)).length,
+      // Entregue e esperando o Davi aprovar: o atraso não é da pessoa (não fica vermelho).
+      atrasadas: minhas.filter((t) => tarefaAtrasada(t, hoje) && t.situacao !== "aguardando_aprovacao").length,
       atual: minhas[0] ?? null,
       ocupado: minhas.some((t) => t.situacao === "andamento"),
     };

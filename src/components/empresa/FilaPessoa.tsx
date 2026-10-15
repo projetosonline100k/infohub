@@ -88,6 +88,8 @@ export const TIPOS = [
   { valor: "programacao", rotulo: "Programação" },
   { valor: "copy", rotulo: "Copy" },
   { valor: "pagina", rotulo: "Página" },
+  { valor: "quiz", rotulo: "Quiz" },
+  { valor: "estudo", rotulo: "Estudo / pesquisa" },
   { valor: "metricas", rotulo: "Métricas" },
   { valor: "gravacao", rotulo: "Gravação" },
 ] as const;

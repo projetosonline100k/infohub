@@ -270,3 +270,24 @@ O Davi não precisa abrir chat para ajustes.
 O Roy **não** está em `scripts/empresa/briefing.py` `EXECUTORES`: se estivesse, o `execucao.py` do ouvinte disputaria as mesmas tarefas.
 
 **Prévia ao vivo (14/10/2026):** ao renderizar, o Roy também grava em `carrosseis.modelos` o molde HTML de cada página, o mesmo que vira o PNG, com `__TITULO__`/`__TEXTO__`. Fontes e ilustrações vão para `<cliente>/<carrossel>/<token>/assets/` no Storage (migração `20261014090000_carrosseis_modelos`). Na revisão, ao editar o texto, `PreviaPagina.tsx` desenha a página na hora, já com o encaixe do título e do texto. O PNG de verdade sai quando o Roy remonta, depois de "Aprovar" ou "Pedir ajuste".
+
+---
+
+## Parte F — páginas e quizzes (desde 15/10/2026)
+
+Pedido do Davi: o Roy assumiu o que era do Gabriel (que virou o funcionário de estudos). "Como ele já manja de design, para ele vai ser um dois."
+
+- **Carrossel continua no serviço** (`scripts/roy/servico.py`, `atender_tarefa`), que pega as tarefas do Roy **menos** as de tipo `pagina`, `quiz` e `estudo`.
+- **Página e quiz** vão pela execução, como o Ítalo (`scripts/empresa/execucao.py`): o Davi conversa com o Roy (briefing), confirma, e o Roy faz sozinho e entrega um documento para aprovar.
+- O que entregar (por enquanto em documento, até existir publicação de páginas no Infopro):
+  - **Página de vendas / landing:** as seções na ordem, com:
+    - a copy de cada uma (puxe do Ítalo/copy do projeto se existir, sem inventar promessa);
+    - a sugestão visual (no estilo do Davi: marfim, preto e vermelho, esculturas clássicas quando couber);
+    - os CTAs e o que precisa do Davi (fotos, preços, links de checkout).
+  - **Quiz:**
+    - objetivo e público;
+    - as perguntas com as opções;
+    - a lógica de resultado (perfis e como pontuar);
+    - o texto de cada resultado, com a oferta indicada;
+    - a sugestão visual das telas.
+- Se o Davi quiser a página "de verdade" (HTML no ar), avisar que isso ainda não existe no fluxo e perguntar onde publicar.

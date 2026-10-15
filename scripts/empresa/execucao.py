@@ -37,11 +37,15 @@ def pegar(ignorar=()):
              WHERE a.id = (
                SELECT a2.id FROM public.atividades a2
                  JOIN public.membros m ON m.id = a2.responsavel_id
-                 JOIN public.briefings b ON b.atividade_id = a2.id AND b.status = 'confirmado'
+                 LEFT JOIN public.briefings b ON b.atividade_id = a2.id AND b.status = 'confirmado'
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
                   AND m.eh_ia AND m.ativo AND lower(m.nome) = ANY(%s)
+                  -- Briefing confirmado; o Gabriel (estudos) também pega pedido rápido, sem conversa.
+                  AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel')
+                  -- Carrossel do Roy é com o serviço dele (scripts/roy/servico.py); aqui só página e quiz.
+                  AND NOT (lower(m.nome) = 'roy' AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz'))
                   AND NOT (a2.id = ANY(%s::uuid[]))
-                ORDER BY a2.created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+                ORDER BY a2.created_at LIMIT 1 FOR UPDATE OF a2 SKIP LOCKED)
             RETURNING a.id""", (sorted(EXECUTORES), list(ignorar)))
         r = q.fetchone()
         c.commit()
@@ -111,8 +115,18 @@ def entregar(aid, titulo, resumo, conteudo):
                      VALUES (%s, %s, %s, %s, %s, %s) RETURNING id""",
                   (cliente_id, aid, titulo.strip()[:150], html, dono, pasta[0] if pasta else None))
         did = q.fetchone()[0]
-        q.execute("""UPDATE atividades SET situacao = 'aguardando_aprovacao', progresso = 100, observacao = %s WHERE id = %s""",
-                  (f'Entregue no documento "{titulo.strip()[:150]}". {resumo.strip()[:400]}', aid))
+        obs = f'Entregue no documento "{titulo.strip()[:150]}". {resumo.strip()[:400]}'
+        q.execute("SELECT a.tipo, lower(m.nome) FROM atividades a LEFT JOIN membros m ON m.id = a.responsavel_id WHERE a.id = %s", (aid,))
+        tipo, quem = q.fetchone()
+        if tipo == 'estudo' or quem == 'gabriel':
+            # Estudo não precisa de aprovação: vai direto pra Fonte de conhecimento e a tarefa conclui.
+            q.execute("SELECT status_key FROM colunas_atividade WHERE cliente_id = %s AND eh_conclusao ORDER BY ordem LIMIT 1", (cliente_id,))
+            col = q.fetchone()
+            q.execute("""UPDATE atividades SET situacao = 'concluida', concluida = true, progresso = 100, observacao = %s,
+                           status = coalesce(%s, status) WHERE id = %s""", (obs, col[0] if col else None, aid))
+        else:
+            q.execute("""UPDATE atividades SET situacao = 'aguardando_aprovacao', progresso = 100, observacao = %s WHERE id = %s""",
+                      (obs, aid))
         c.commit()
     finally:
         c.close()
