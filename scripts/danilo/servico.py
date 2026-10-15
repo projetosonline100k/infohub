@@ -281,7 +281,7 @@ def atender_tarefa():
 if __name__ == "__main__":
     if "--uma-vez" in sys.argv:
         danilo.ligar_tarefas()
-    while atender_tarefa() or atender_drive():
+        while atender_tarefa() or atender_drive():
             pass
         sys.exit(0)
     log("serviço do Danilo iniciado")
