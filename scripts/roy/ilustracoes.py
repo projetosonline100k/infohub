@@ -48,10 +48,12 @@ def _ssl():
         import certifi
         return ssl.create_default_context(cafile=certifi.where())
     except ImportError:
-        return ssl.create_default_context()
+        # Rodando pelo serviço (sem PYTHONPATH): o certifi instalado em ~/.infopro-hub/py.
+        pem = Path.home() / ".infopro-hub/py/certifi/cacert.pem"
+        return ssl.create_default_context(cafile=str(pem)) if pem.exists() else ssl.create_default_context()
 
 
-def gerar(prompt, destino, modelo="gpt-image-1.5", qualidade="medium", tamanho="1024x1024", transparente=True):
+def gerar(prompt, destino, modelo="gpt-image-1.5", qualidade="medium", tamanho="1024x1024", transparente=True, recortar=True):
     corpo = {"model": modelo, "prompt": prompt, "size": tamanho, "quality": qualidade, "n": 1, "output_format": "png"}
     if transparente:
         corpo["background"] = "transparent"
@@ -64,7 +66,7 @@ def gerar(prompt, destino, modelo="gpt-image-1.5", qualidade="medium", tamanho="
         msg = e.read().decode(errors="replace")[:400]
         if transparente and "background" in msg:  # modelo sem fundo transparente: gera com fundo e recorta
             return gerar(prompt.replace("fully transparent background", "plain flat light grey background"),
-                         destino, modelo, qualidade, tamanho, transparente=False)
+                         destino, modelo, qualidade, tamanho, transparente=False, recortar=recortar)
         raise RuntimeError(f"OpenAI recusou ({e.code}): {msg}") from None
     bruto = Path(destino).with_suffix(".bruto.png")
     bruto.write_bytes(base64.b64decode(d["data"][0]["b64_json"]))
@@ -72,7 +74,10 @@ def gerar(prompt, destino, modelo="gpt-image-1.5", qualidade="medium", tamanho="
         f.write(json.dumps({"quando": datetime.now().isoformat(timespec="seconds"), "modelo": modelo,
                             "qualidade": qualidade, "tamanho": tamanho, "arquivo": Path(destino).name,
                             "usd": PRECOS.get((modelo, qualidade, tamanho))}) + "\n")
-    _recortar_se_preciso(bruto, Path(destino))
+    if recortar:
+        _recortar_se_preciso(bruto, Path(destino))
+    else:  # imagem de cena inteira (quiz): fica como veio
+        bruto.replace(destino)
     return Path(destino)
 
 
