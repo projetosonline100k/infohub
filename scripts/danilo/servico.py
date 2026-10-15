@@ -21,7 +21,6 @@ import re
 import sys
 import time
 import traceback
-import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -32,7 +31,6 @@ import danilo  # noqa: E402
 
 LOG = danilo.BASE / "servico.log"
 ESTADO = danilo.BASE / "servico.json"
-CFG = json.loads((danilo.BASE / "config.json").read_text())
 
 
 def log(*partes):
@@ -131,21 +129,6 @@ def _referencia(e):
             "no mini editor, e faça este vídeo com os mesmos ajustes.\n")
 
 
-def gerar_previa(id_):
-    """Pede ao servidor do Danilo (porta 3103, uma montagem por vez) a prévia
-    oficial: ele grava a versão e põe a edição em 'revisar'."""
-    projeto = (danilo.pasta(id_) / "projeto.json").read_bytes()
-    req = urllib.request.Request(f"http://127.0.0.1:{CFG['porta']}/edicoes/{id_}/projeto", data=projeto, method="POST",
-                                 headers={"X-Chave": CFG["chave"], "Content-Type": "application/json"})
-    urllib.request.urlopen(req, timeout=30).read()
-    for _ in range(180):           # até 30 min
-        time.sleep(10)
-        st = danilo.db("SELECT status, mensagem FROM public.edicoes_video WHERE id = %s", (id_,))[0]
-        if st[0] in ("revisar", "erro"):
-            return st
-    raise RuntimeError("a prévia passou de 30 min")
-
-
 def editar(arquivo, e):
     nome = Path(arquivo).name
     log("bruto novo:", nome)
@@ -159,7 +142,7 @@ def editar(arquivo, e):
         raise RuntimeError(f"o Claude não terminou a edição: {(texto or '')[-250:]}")
     resumo = re.sub(r"\n?PRONTO:.*$", "", texto.strip()).strip()
     log("claude:", resumo[:400])
-    st = gerar_previa(id_)
+    st = danilo.nova_versao(id_)
     if st[0] == "erro":
         raise RuntimeError(st[1] or "a prévia falhou")
     aviso = "" if ctx.get("card") else " Não achei o card deste vídeo pela fala: me diga qual é."

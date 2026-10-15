@@ -149,9 +149,11 @@ def contexto(bid, como=None):
             e_id, e_tit, e_st, e_v = edicao
             print(f'É uma EDIÇÃO DE VÍDEO: "{e_tit}" (edição {e_id}, versão {e_v}, status {e_st}). O Davi está no EDITOR do Danilo, '
                   f'vendo a edição e conversando com você. Pasta: ~/.infopro-hub/danilo/edicoes/{e_id}/ (projeto.json, escolhas.json). '
-                  'Manual: docs/agentes/danilo-editor.md (Parte B). Ferramentas: python3 scripts/danilo/danilo.py texto|ouvir|quadros|pintura|montar|conferir. '
-                  f'Para mudar a edição: ajuste o escolhas.json (ou o projeto.json), rode `danilo.py montar {e_id}` e confira com `danilo.py conferir {e_id}`; '
-                  'o editor recarrega a edição quando você responder. NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão do editor). '
+                  'Manual: docs/agentes/danilo-editor.md (Parte B). Ferramentas: python3 scripts/danilo/danilo.py texto|ouvir|quadros|pintura|versao|conferir. '
+                  'Para mudar a edição: edite o projeto.json DIRETO (tempos no bruto; ele já tem o que o Davi mexeu no editor). '
+                  'NÃO rode o montar (ele refaz o projeto do escolhas.json e apaga os ajustes do Davi). '
+                  f'Depois rode `danilo.py versao {e_id}` (o servidor gera a nova versão e o editor recarrega sozinho) e confira com '
+                  f'`danilo.py conferir {e_id} --so-olhar`. NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão do editor). '
                   'O que o Davi corrigir ou elogiar e valer para os próximos vídeos, anote nos aprendizados (aprender.py, agente "danilo").')
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '

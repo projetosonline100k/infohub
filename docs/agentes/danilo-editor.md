@@ -346,6 +346,7 @@ Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pel
 - **Tarefa "Editar: <vídeo>"** (tipo `edicao`, criada pela automação quando o card vai para Edição): é ligada à edição (`danilo.ligar_tarefas`). Aprovar conclui a tarefa. Sem bruto, ela fica "Esperando o bruto…".
 - **Outras tarefas da fila do Danilo:** `atender_tarefa`, igual ao Roy. Pedido de "editar os brutos da pasta" vira o acompanhamento do lote na barra.
 - **Ferramentas do Claude:** `scripts/danilo/danilo.py`, com `texto`, `ouvir` (retranscreve um trecho), `quadros`, `pintura buscar/baixar` (Wikimedia, só livre, com a fonte em `imagens/fontes.json`), `montar` e `conferir`.
+- **Ajuste numa edição que o Davi já viu** (chat do Danilo dentro do editor, `scripts/empresa/briefing.py`): edite o `projeto.json` direto e rode `danilo.py versao <id>`. Esse comando manda o projeto ao servidor, que gera a nova versão e o editor recarrega. O `montar` só vale na 1ª edição: ele refaz o projeto do `escolhas.json` e recusa quando a edição já saiu de `editando`.
 - **Cuidados aprendidos no piloto de 15/10:**
   - O whisper do bruto inteiro **pula uma das tomadas repetidas** e inventa "3º/4º/5º" nas emendas. Sempre use `ouvir` nos trechos com som e sem texto.
   - O `escolhas.json` aceita `cortes` (retomadas) e `destaques` (INSTALIVROS fixo até o último quadro; o motor tem a camada `destaques`).

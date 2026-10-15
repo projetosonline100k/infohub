@@ -9,8 +9,13 @@ os comandos abaixo na parte "de gosto" (retomadas, headline, pinturas).
   python3 danilo.py quadros <id> <t1> <t2>...   foto do bruto nesses tempos (grade em _quadros.jpg)
   python3 danilo.py pintura buscar "<termos>"   procura pinturas no Wikimedia Commons
   python3 danilo.py pintura baixar <id> <nome> "<File:...>"   baixa (só domínio público/CC) e registra a fonte
-  python3 danilo.py montar <id>                 escolhas.json → projeto.json
-  python3 danilo.py conferir <id>               prévia + transcrição dela + grade de quadros (_conferir.jpg)
+  python3 danilo.py montar <id>                 escolhas.json → projeto.json (só na 1ª edição; refaz tudo)
+  python3 danilo.py conferir <id> [--so-olhar]  prévia + transcrição dela + grade de quadros (_conferir.jpg)
+  python3 danilo.py versao <id>                 manda o projeto.json ao servidor: nova versão oficial em Revisar edição
+
+Ajuste numa edição que o Davi já viu: edite o projeto.json DIRETO (tempos no bruto;
+ele já tem o que o Davi mudou no mini editor) e rode `versao`. NÃO rode `montar`:
+ele reconstrói o projeto do escolhas.json e apaga os ajustes do Davi.
 """
 import json
 import os
@@ -287,20 +292,49 @@ def pintura_baixar(id_, nome, titulo):
 
 
 # ---------------------------------------------------------------- montar e conferir
-def montar(id_):
+def montar(id_, refazer=False):
     import criar_projeto
     p = pasta(id_)
+    st = db("SELECT status FROM public.edicoes_video WHERE id = %s", (id_,))
+    if (p / "projeto.json").exists() and st and st[0][0] != "editando" and not refazer:
+        raise SystemExit("Esta edição já foi para o Davi: o montar apagaria os ajustes dele no projeto.json. "
+                         "Edite o projeto.json direto e rode `danilo.py versao <id>` (ou use --refazer de propósito).")
     esc = json.loads((p / "escolhas.json").read_text())
     proj = criar_projeto.montar(p, esc)
     print(f"{len(proj['remocoes'])} remoções · {len(proj['legendas'])} legendas · {len(proj['midias'])} mídias")
 
 
-def conferir(id_):
+def nova_versao(id_, minutos=30):
+    """Manda o projeto.json ao servidor do Danilo (porta 3103, uma montagem por
+    vez): ele guarda a versão anterior, gera a prévia oficial e põe a edição em
+    'revisar' (o editor do Davi recarrega sozinho). Devolve (status, mensagem)."""
+    import time
+    cfg = json.loads((BASE / "config.json").read_text())
+    antes = db("SELECT versao FROM public.edicoes_video WHERE id = %s", (id_,))[0][0]
+    req = urllib.request.Request(f"http://127.0.0.1:{cfg['porta']}/edicoes/{id_}/projeto",
+                                 data=(pasta(id_) / "projeto.json").read_bytes(), method="POST",
+                                 headers={"X-Chave": cfg["chave"], "Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=30).read()
+    for _ in range(minutos * 6):
+        time.sleep(10)
+        st, msg, v = db("SELECT status, mensagem, versao FROM public.edicoes_video WHERE id = %s", (id_,))[0]
+        if st == "erro" or (st == "revisar" and v > antes):
+            return st, msg
+    raise RuntimeError(f"a prévia passou de {minutos} min")
+
+
+def conferir(id_, so_olhar=False):
     """Monta a prévia, transcreve o vídeo montado (a fala tem que correr inteira,
-    sem tomada repetida nem sílaba cortada) e tira quadros pra olhar."""
+    sem tomada repetida nem sílaba cortada) e tira quadros pra olhar.
+    so_olhar: confere a previa.mp4 que já existe (ex.: logo depois do `versao`)."""
     import motor
     p = pasta(id_)
-    previa, dur = motor.renderizar(p, previa=True)
+    if so_olhar:
+        previa = p / "previa.mp4"
+        import criar_projeto
+        dur = criar_projeto.duracao(previa)
+    else:
+        previa, dur = motor.renderizar(p, previa=True)
     wav = p / "_previa.wav"
     subprocess.run([FF, "-v", "error", "-y", "-i", str(previa), "-vn", "-ac", "1", "-ar", "16000", str(wav)], check=True)
     r = _whisper(wav, palavras=False)
@@ -332,8 +366,10 @@ if __name__ == "__main__":
     elif cmd == "pintura" and a[1] == "baixar":
         pintura_baixar(a[2], a[3], a[4])
     elif cmd == "montar":
-        montar(a[1])
+        montar(a[1], refazer="--refazer" in a)
     elif cmd == "conferir":
-        conferir(a[1])
+        conferir(a[1], so_olhar="--so-olhar" in a)
+    elif cmd == "versao":
+        print(*nova_versao(a[1]))
     else:
         raise SystemExit(__doc__)
