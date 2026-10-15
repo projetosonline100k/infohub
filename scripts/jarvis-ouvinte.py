@@ -313,7 +313,10 @@ Briefing: {bid}
    python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
    <texto>
    FIM
-Regras: não comece a tarefa, não crie atividade, não publique nem envie nada, não escreva no banco fora desses comandos. Dados do negócio só com scripts/consulta.py (somente leitura). Hoje é {hoje}."""
+6. Aprendizado (vale para TODOS os funcionários): se o Davi te corrigir ou disser como gosta ou não gosta das coisas, e isso valer para as próximas vezes (não só esta tarefa), anote em 1 frase curta e geral:
+   python3 scripts/inteligencia/aprender.py anotar --cliente <cliente_id> --agente "<seu nome>" "<a regra>"
+   Os aprendizados aparecem no topo do ler.py ("SIGA SEMPRE"): siga sempre.
+Regras: não comece a tarefa, não crie atividade, não publique nem envie nada, não escreva no banco fora desses comandos (o aprender.py é permitido). Dados do negócio só com scripts/consulta.py (somente leitura). Hoje é {hoje}."""
 
 
 def atender_briefings():
@@ -344,7 +347,10 @@ Tarefa: {aid}
    Isso cria o documento no projeto e manda a tarefa para a aprovação do Davi.
 5. Se não for possível fazer (falta arquivo, acesso ou decisão do Davi), não entregue pela metade sem avisar: rode
    python3 scripts/empresa/execucao.py erro {aid} "<o que falta, em 1 frase>"
-Regras: não publique, não poste, não comente e não envie nada em nome do Davi; não escreva no banco fora desses comandos; sem git. Hoje é {hoje}."""
+6. Aprendizado (vale para TODOS os funcionários): se o Davi te corrigir ou disser como gosta ou não gosta das coisas, e isso valer para as próximas vezes (não só esta tarefa), anote em 1 frase curta e geral:
+   python3 scripts/inteligencia/aprender.py anotar --cliente <cliente_id> --agente "<seu nome>" "<a regra>"
+   Os aprendizados aparecem no topo do ler.py ("SIGA SEMPRE"): siga sempre. O combinado da tarefa e as correções do Davi na conversa contam.
+Regras: não publique, não poste, não comente e não envie nada em nome do Davi; não escreva no banco fora desses comandos (o aprender.py é permitido); sem git. Hoje é {hoje}."""
 
 _tentadas = set()
 

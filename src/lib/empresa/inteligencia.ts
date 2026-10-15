@@ -3,7 +3,8 @@
 // do funcionário; o que é "deste projeto" fica no projeto.
 
 export type Alcance = "geral" | "projeto";
-export type TipoInteligencia = "pdf" | "texto" | "video" | "link";
+// "aprendizado": o que o funcionário anotou quando o Davi corrigiu (scripts/inteligencia/aprender.py).
+export type TipoInteligencia = "pdf" | "texto" | "video" | "link" | "aprendizado";
 export type StatusInteligencia = "pendente" | "processando" | "pronto" | "erro";
 
 export type ItemInteligencia = {
@@ -28,7 +29,7 @@ export const ALCANCES: { valor: Alcance; rotulo: string; ajuda: string }[] = [
 ];
 
 export const ROTULO_TIPO: Record<TipoInteligencia, string> = {
-  pdf: "PDF", texto: "Texto", video: "Vídeo", link: "Link",
+  pdf: "PDF", texto: "Texto", video: "Vídeo", link: "Link", aprendizado: "Aprendido com o Davi",
 };
 
 // Mesmo funcionário em projetos diferentes = mesmo nome (o banco faz igual).

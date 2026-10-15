@@ -59,7 +59,7 @@ def pedido_escrito(feedback):
 
 PROMPT = """Você é o Roy, o criador de carrosséis do @eu.davioficial (projeto Infopro Hub). Está rodando em segundo plano: o Davi não vê este terminal.
 
-Leia primeiro docs/agentes/roy-carrossel.md (manual e Parte E, principalmente as regras do conteúdo e das capas reais).
+Leia primeiro docs/agentes/roy-carrossel.md (manual e Parte E, principalmente as regras do conteúdo e das capas reais) e os seus aprendizados com o Davi: `python3 scripts/inteligencia/ler.py --cliente {cliente} --agente roy` (os "SIGA SEMPRE" do topo valem sempre).
 
 O Davi revisou o carrossel "{tema}" no Infopro e pediu:
 ---
@@ -75,6 +75,9 @@ Faça o ajuste pedido editando SÓ o {pasta}/conteudo.json (formato em scripts/r
 - Mantenha as regras do manual: 6 a 8 páginas, última página com chamada para ação, pouco texto, sem inventar informação.
 - REGRA DO DAVI (15/10/2026): mude o MÍNIMO em relação ao reel. A página 1 é a headline do reel, com as palavras que ele falou (pode ser longa; só ajuste se não couber). As outras páginas seguem as ideias e as frases do vídeo, na ordem dele; corte, mas não reescreva com palavras suas. Se achar que outro título funcionaria melhor (ex.: mais curto), NÃO troque: ponha em "opcoes": ["...", "..."] naquela página (2 ou 3), que o Davi escolhe na revisão.
 - Não publique nada no Instagram.
+
+- APRENDA com o pedido: se ele mostrar como o Davi gosta (ou não gosta) das coisas e valer para os próximos carrosséis, anote em 1 frase curta e geral:
+  python3 scripts/inteligencia/aprender.py anotar --cliente {cliente} --agente roy "<a regra>"
 
 No fim, responda em 1 ou 2 frases simples, em português, o que você mudou (vai aparecer pro Davi)."""
 
@@ -102,7 +105,7 @@ def atender():
             roy.db("UPDATE public.carrosseis SET mensagem = %s, atualizado_em = now() WHERE id = %s",
                    (f"Roy está ajustando: {escrito[:120]}", id_))
             antes = (pasta / "conteudo.json").read_text()
-            ok, resumo = _ouvinte().rodar_claude(PROMPT.format(tema=tema, pedido=escrito, pasta=pasta), minutos=25)
+            ok, resumo = _ouvinte().rodar_claude(PROMPT.format(tema=tema, pedido=escrito, pasta=pasta, cliente=roy.CLIENTE), minutos=25)
             if not ok:
                 raise RuntimeError(f"o Claude não conseguiu ajustar: {resumo}")
             json.loads((pasta / "conteudo.json").read_text())  # continua um JSON válido?
@@ -131,7 +134,7 @@ def atender():
 
 PROMPT_TAREFA = """Você é o Roy, o criador de carrosséis do @eu.davioficial (projeto Infopro Hub). Está rodando em segundo plano: o Davi não vê este terminal.
 
-Leia primeiro docs/agentes/roy-carrossel.md inteiro (manual, Parte E e regras das capas reais).
+Leia primeiro docs/agentes/roy-carrossel.md inteiro (manual, Parte E e regras das capas reais) e os seus aprendizados com o Davi: `python3 scripts/inteligencia/ler.py --cliente {cliente} --agente roy` (os "SIGA SEMPRE" do topo valem sempre).
 
 O Davi te passou esta tarefa no Infopro:
 ---
@@ -184,7 +187,7 @@ def atender_tarefa():
     aid, titulo, descricao = str(linha[0][0]), linha[0][1], linha[0][2] or ""
     log("tarefa:", titulo[:150])
     try:
-        ok, texto = _ouvinte().rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao), minutos=45)
+        ok, texto = _ouvinte().rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao, cliente=roy.CLIENTE), minutos=45)
         if not ok:
             raise RuntimeError(texto)
         m = re.search(r"CARROSSEIS:\s*([0-9a-f,\s-]+)\s*$", texto.strip())

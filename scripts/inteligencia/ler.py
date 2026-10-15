@@ -20,11 +20,11 @@ def main():
     agente = a.agente.strip().lower()
     itens = consultar("""
         select i.id, i.escopo, i.tipo, i.nome, i.status, i.mensagem, i.caracteres, i.observacao,
-               case when %s then i.conteudo end as conteudo
+               case when %s or i.tipo = 'aprendizado' then i.conteudo end as conteudo
           from inteligencia_membros i join clientes c on c.id = %s
          where i.agente = %s and i.user_id = c.user_id
            and (i.escopo = 'geral' or i.cliente_id = c.id)
-         order by i.escopo, i.created_at""", (bool(a.saida), a.cliente, agente))
+         order by (i.tipo = 'aprendizado') desc, i.escopo, i.created_at""", (bool(a.saida), a.cliente, agente))
     if not itens:
         print(f'{agente}: sem inteligência neste projeto ainda.')
         return
@@ -37,6 +37,10 @@ def main():
         if i['mensagem']:
             linha += f" · {i['mensagem']}"
         print(linha)
+        if i['tipo'] == 'aprendizado' and i['conteudo']:
+            print('    SIGA SEMPRE (o Davi já te ensinou):')
+            for regra in i['conteudo'].splitlines():
+                print(f'    {regra}')
         if saida and i['conteudo']:
             nome = re.sub(r'[^a-z0-9]+', '-', i['nome'].lower()).strip('-')[:60] or 'item'
             (saida / f"{n:02d}-{i['escopo']}-{nome}.txt").write_text(i['conteudo'])

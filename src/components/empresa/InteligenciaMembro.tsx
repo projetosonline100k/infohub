@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Brain, Clock, FileText, Link2, Loader2, Trash2, Type, Upload, Video } from "lucide-react";
+import { AlertTriangle, Brain, Clock, FileText, GraduationCap, Link2, Loader2, Trash2, Type, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesInsert } from "@/integrations/supabase/types";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 const CAMPOS = "id, cliente_id, agente, escopo, tipo, nome, observacao, arquivo_path, link, caracteres, status, mensagem, created_at";
 const LINK_VALIDO_DIAS = 7;
-const ICONES: Record<TipoInteligencia, typeof FileText> = { pdf: FileText, texto: Type, video: Video, link: Link2 };
+const ICONES: Record<TipoInteligencia, typeof FileText> = { pdf: FileText, texto: Type, video: Video, link: Link2, aprendizado: GraduationCap };
 
 export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; membro: MembroResumo }) {
   const [itens, setItens] = useState<ItemInteligencia[]>([]);
@@ -140,7 +140,15 @@ export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; m
     if (aberto?.id === item.id) { setAberto(null); return; }
     const { data } = await supabase.from("inteligencia_membros").select("conteudo").eq("id", item.id).maybeSingle();
     const conteudo = (data as { conteudo: string | null } | null)?.conteudo ?? "";
-    setAberto({ id: item.id, texto: conteudo.slice(0, 1500) + (conteudo.length > 1500 ? "…" : "") });
+    setAberto({ id: item.id, texto: item.tipo === "aprendizado" ? conteudo : conteudo.slice(0, 1500) + (conteudo.length > 1500 ? "…" : "") });
+  };
+  // O Davi corrige o que o funcionário aprendeu (uma regra por linha).
+  const salvarAprendizado = async (item: ItemInteligencia, texto: string) => {
+    const { error } = await supabase.from("inteligencia_membros").update({ conteudo: texto.trim() || null }).eq("id", item.id);
+    if (error) { toast.error("Não consegui salvar"); return; }
+    toast.success("Aprendizados salvos");
+    setAberto({ id: item.id, texto });
+    void carregar();
   };
 
   const { geral, projeto } = separarPorAlcance(itens, clienteId);
@@ -197,18 +205,19 @@ export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; m
       ) : (
         <div className="space-y-3">
           <Lista titulo="Geral (vai para todo projeto)" itens={geral} vazio="Nada geral ainda." aberto={aberto}
-            onVer={verTrecho} onExcluir={excluir} onAlcance={mudarAlcance} />
+            onVer={verTrecho} onExcluir={excluir} onAlcance={mudarAlcance} onSalvarAprendizado={salvarAprendizado} />
           <Lista titulo="Só deste projeto" itens={projeto} vazio="Nada deste projeto ainda." aberto={aberto}
-            onVer={verTrecho} onExcluir={excluir} onAlcance={mudarAlcance} />
+            onVer={verTrecho} onExcluir={excluir} onAlcance={mudarAlcance} onSalvarAprendizado={salvarAprendizado} />
         </div>
       )}
     </div>
   );
 }
 
-function Lista({ titulo, itens, vazio, aberto, onVer, onExcluir, onAlcance }: {
+function Lista({ titulo, itens, vazio, aberto, onVer, onExcluir, onAlcance, onSalvarAprendizado }: {
   titulo: string; itens: ItemInteligencia[]; vazio: string; aberto: { id: string; texto: string } | null;
   onVer: (i: ItemInteligencia) => void; onExcluir: (i: ItemInteligencia) => void; onAlcance: (i: ItemInteligencia, a: Alcance) => void;
+  onSalvarAprendizado: (i: ItemInteligencia, texto: string) => void;
 }) {
   return (
     <div>
@@ -240,14 +249,25 @@ function Lista({ titulo, itens, vazio, aberto, onVer, onExcluir, onAlcance }: {
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                {aberto?.id === item.id && (
-                  <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap border-t bg-muted/40 p-2 text-[11px] leading-relaxed">{aberto.texto || "(vazio)"}</pre>
-                )}
+                {aberto?.id === item.id && (item.tipo === "aprendizado"
+                  ? <EditarAprendizado texto={aberto.texto} onSalvar={(t) => onSalvarAprendizado(item, t)} />
+                  : <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap border-t bg-muted/40 p-2 text-[11px] leading-relaxed">{aberto.texto || "(vazio)"}</pre>)}
               </div>
             );
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+function EditarAprendizado({ texto, onSalvar }: { texto: string; onSalvar: (t: string) => void }) {
+  const [valor, setValor] = useState(texto);
+  return (
+    <div className="space-y-1.5 border-t bg-muted/40 p-2">
+      <p className="text-[11px] text-muted-foreground">O que ele aprendeu com você (uma regra por linha). Corrija ou apague o que não vale.</p>
+      <Textarea value={valor} onChange={(e) => setValor(e.target.value)} rows={Math.min(10, Math.max(3, valor.split("\n").length + 1))} className="text-xs" />
+      <div className="flex justify-end"><Button size="sm" className="h-7" disabled={valor === texto} onClick={() => onSalvar(valor)}>Salvar</Button></div>
     </div>
   );
 }

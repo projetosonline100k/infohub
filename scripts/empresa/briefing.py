@@ -73,6 +73,13 @@ def contexto(bid):
         produtos = q.fetchall()
         q.execute("""SELECT papel, texto, criada_em FROM briefing_mensagens WHERE briefing_id = %s ORDER BY criada_em""", (bid,))
         msgs = q.fetchall()
+        # Memória: os últimos pedidos já combinados com este funcionário (e como terminaram).
+        q.execute("""SELECT b.atualizado_em, b.proposta->>'titulo', a.situacao, a.concluida, a.deleted_at IS NOT NULL
+                       FROM briefings b LEFT JOIN atividades a ON a.id = b.atividade_id
+                      WHERE b.membro_id = (SELECT membro_id FROM briefings WHERE id = %s)
+                        AND b.id <> %s AND b.status = 'confirmado'
+                      ORDER BY b.atualizado_em DESC LIMIT 6""", (bid, bid))
+        anteriores = q.fetchall()
     finally:
         c.rollback()
         c.close()
@@ -82,7 +89,13 @@ def contexto(bid):
     print(f'Funcionário: {nome} · {funcao or "-"} · setor {setor or "-"} · {"IA" if eh_ia else "PESSOA (você ajuda a detalhar o pedido para ela)"}')
     print('Responsabilidades: ' + ', '.join(resp or []))
     print(f'Manual: {manual.relative_to(RAIZ) if manual else "(não tem)"}')
-    print(f'Inteligência: python3 scripts/inteligencia/ler.py --cliente {cliente_id} --agente "{nome.lower()}"')
+    print(f'Inteligência (os "SIGA SEMPRE" do topo são o que o Davi já te ensinou): python3 scripts/inteligencia/ler.py --cliente {cliente_id} --agente "{nome.lower()}"')
+    print(f'Aprendeu algo que vale para as próximas vezes? python3 scripts/inteligencia/aprender.py anotar --cliente {cliente_id} --agente "{nome.lower()}" "<a regra>"')
+    if anteriores:
+        print('Pedidos anteriores que vocês já combinaram:')
+        for quando, titulo, situacao, concluida, cancelada in anteriores:
+            fim = 'cancelado' if cancelada else 'concluído' if concluida else (situacao or 'na fila')
+            print(f'  - {quando:%d/%m}: {titulo or "(sem título)"} ({fim})')
     if eh_ia and nome.lower() in EXECUTORES:
         print('Depois que o Davi confirmar: você começa SOZINHO e entrega um documento para ele aprovar. Diga isso a ele.')
     print(f'Status do briefing: {status}')
