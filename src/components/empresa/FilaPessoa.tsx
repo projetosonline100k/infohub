@@ -297,13 +297,13 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
               </div>
             )}
 
-            {/* 1. O que está fazendo agora */}
+            {/* 1. Em andamento (15/10: um bloco só — o "Agora" repetia a mesma lista) */}
             {carregando ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
               <div className="space-y-4">
                 <section className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">Agora</p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">Em andamento ({emAndamento.length + trabalho.length})</p>
                   {emAndamento.length === 0 && trabalho.length === 0 ? (
                     <p className="text-sm text-muted-foreground">{membro.nome} não está fazendo nada agora{abertas.length ? ` · ${abertas.length} na fila` : ""}.</p>
                   ) : (
@@ -318,9 +318,19 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                         const tt = tempoDaTarefa(t, agora);
                         return (
                           <div key={t.id}>
-                            <div className="flex items-baseline justify-between gap-2">
-                              <p className="min-w-0 break-words text-sm font-medium">{t.titulo}</p>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="min-w-0 flex-1 break-words text-sm font-medium">{t.titulo}</p>
                               <span className="shrink-0 text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{tt.pct ?? 0}%</span>
+                              {ia && (
+                                <button type="button" onClick={() => void copiarParaIa(t)} title="Copiar título e roteiro pro ChatGPT"
+                                  className="flex h-6 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] hover:bg-accent"><Copy className="h-3 w-3" />Copiar</button>
+                              )}
+                              <button type="button" onClick={() => void cancelar(t)} title="Cancelar tarefa (vai pra Lixeira)"
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
+                              <select value={t.situacao ?? "andamento"} onChange={(e) => void mudarSituacao(t, e.target.value)} aria-label="Situação"
+                                className={cn("h-6 shrink-0 rounded-md border-0 px-1.5 text-[11px] font-medium", CORES_SITUACAO[t.situacao ?? "andamento"])}>
+                                {SITUACOES.map((x) => <option key={x.valor} value={x.valor}>{x.rotulo}</option>)}
+                              </select>
                             </div>
                             <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct ?? 0}%` }} /></div>
                             {!membro.eh_ia && (
@@ -344,7 +354,6 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                 </section>
 
                 {/* 2. As tarefas, por situação */}
-                <ListaTarefas titulo="Em andamento" tarefas={emAndamento} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
                 <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
                 {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />}
                 {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
