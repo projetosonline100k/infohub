@@ -182,11 +182,22 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
+        .run(|app_handle, event| {
             // Cobre Cmd+Q / "sair" do menu do sistema: sem isso o app
             // encerraria mesmo com a janela principal só escondida.
-            if let RunEvent::ExitRequested { api, .. } = event {
-                api.prevent_exit();
+            match event {
+                RunEvent::ExitRequested { api, .. } => api.prevent_exit(),
+                // Clicar no ícone do Dock traz a janela principal de volta (ela só
+                // fica escondida quando o Davi fecha; 15/10 parecia que o app "não abria").
+                #[cfg(target_os = "macos")]
+                RunEvent::Reopen { .. } => {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
+                _ => {}
             }
         });
 }
