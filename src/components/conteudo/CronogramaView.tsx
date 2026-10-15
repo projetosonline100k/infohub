@@ -121,8 +121,17 @@ const parseDraggableId = (draggableId: string) => {
   return { platform, id };
 };
 
+// Carrosséis do Roy com data (a Dalila publica na nuvem): aparecem no dia,
+// sem arrastar — mudar a data é pela tarefa "Escolher data" (é o ok do Davi).
+interface CarrosselNoCronograma {
+  id: string; numero: number | null; tema: string; status: string;
+  programado_para: string | null; publicado_em: string | null; permalink: string | null; paginas: string[] | null;
+}
+const quandoDoCarrossel = (c: CarrosselNoCronograma) => c.publicado_em ?? c.programado_para;
+
 export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const [videos, setVideos] = useState<ScheduledVideo[]>([]);
+  const [carrosseis, setCarrosseis] = useState<CarrosselNoCronograma[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("mes");
   const [referenceDate, setReferenceDate] = useState(new Date());
@@ -172,6 +181,10 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
     }));
 
     setVideos([...verticalVideos, ...youtubeVideos]);
+    const { data: cars } = await supabase.from("carrosseis")
+      .select("id, numero, tema, status, programado_para, publicado_em, permalink, paginas")
+      .eq("cliente_id", clienteId).in("status", ["programado", "publicando", "publicado"]);
+    setCarrosseis(((cars || []) as unknown as CarrosselNoCronograma[]).filter((c) => quandoDoCarrossel(c)));
     setLoading(false);
   };
 
@@ -211,6 +224,30 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   });
 
   const postedCount = videos.filter((video) => video.status === "postado").length;
+
+  const getCarrosseisForDay = (day: Date) =>
+    carrosseis.filter((c) => isSameDay(new Date(quandoDoCarrossel(c)!), day))
+      .sort((a, b) => quandoDoCarrossel(a)!.localeCompare(quandoDoCarrossel(b)!));
+
+  const renderCarrossel = (c: CarrosselNoCronograma) => {
+    const publicado = c.status === "publicado";
+    const quando = new Date(quandoDoCarrossel(c)!);
+    return (
+      <button key={c.id} type="button" disabled={!c.permalink}
+        onClick={() => c.permalink && window.open(c.permalink, "_blank")}
+        title={publicado ? "Abrir o post" : "A Dalila publica sozinha neste horário"}
+        className={cn("flex w-full items-center gap-1.5 rounded-md border p-1 text-left text-[11px] leading-tight",
+          publicado ? "border-emerald-600/40 bg-emerald-600/10 hover:bg-emerald-600/20" : "border-amber-500/50 bg-amber-500/10")}>
+        {c.paginas?.[0] && <img src={c.paginas[0]} alt="" className="h-9 w-7 shrink-0 rounded-sm object-cover" loading="lazy" />}
+        <span className="min-w-0">
+          <span className="line-clamp-2 font-medium">Carrossel {String(c.numero ?? "").padStart(3, "0")} · {c.tema}</span>
+          <span className={cn("block", publicado ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
+            {publicado ? `Publicado ${format(quando, "HH:mm")}` : c.status === "publicando" ? "Publicando…" : `Programado ${format(quando, "HH:mm")}`}
+          </span>
+        </span>
+      </button>
+    );
+  };
 
   const getVideosForDay = (day: Date) =>
     scheduledVideos
@@ -496,6 +533,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
                   </div>
 
                   <div className="space-y-2">
+                    {getCarrosseisForDay(day).map(renderCarrossel)}
                     {dayVideos.map((video, index) => renderVideoCard(video, index, true))}
                     {provided.placeholder}
                   </div>
@@ -517,6 +555,15 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
       <Droppable droppableId="scheduled-list" isDropDisabled>
         {(provided) => (
           <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3">
+            {[...carrosseis].sort((a, b) => quandoDoCarrossel(a)!.localeCompare(quandoDoCarrossel(b)!)).map((c) => (
+              <div key={c.id} className="rounded-lg border bg-card p-3">
+                <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4" />
+                  {format(new Date(quandoDoCarrossel(c)!), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                </div>
+                {renderCarrossel(c)}
+              </div>
+            ))}
             {sortedVideos.map((video, index) => (
               <div key={getDraggableId(video)} className="rounded-lg border bg-card p-3">
                 <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -529,7 +576,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
               </div>
             ))}
             {provided.placeholder}
-            {sortedVideos.length === 0 && (
+            {sortedVideos.length === 0 && carrosseis.length === 0 && (
               <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
                 Nenhuma publicação agendada
               </div>
