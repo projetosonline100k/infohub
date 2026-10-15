@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Bot, CalendarDays, Copy, ExternalLink, Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,8 @@ type TarefaFila = TarefaResumo & {
   video_vertical_id?: string | null; video_youtube_id?: string | null;
   tempo_estimado?: number | null; timer_iniciado_em?: string | null; timer_decorrido_segundos?: number | null;
   observacao?: string | null; created_at?: string | null;
+  // Quando a Dalila publica (post programado): vira o "fim" da barra.
+  publica_em?: string | null;
 };
 // Trabalho das IAs que não é tarefa: carrossel do Roy montando, edição do Danilo.
 interface TrabalhoAgora { id: string; titulo: string; etapa: string; desde: string }
@@ -29,9 +32,24 @@ function tempoDaTarefa(t: TarefaFila, agora: number) {
   const rodando = t.timer_iniciado_em ? (agora - new Date(t.timer_iniciado_em).getTime()) / 1000 : 0;
   const feito = Math.round(((t.timer_decorrido_segundos ?? 0) + Math.max(0, rodando)) / 60);
   const estimado = t.tempo_estimado ?? null;
-  const falta = estimado != null ? Math.max(0, estimado - feito) : null;
-  const pct = t.progresso != null && t.progresso > 0 ? t.progresso : estimado ? Math.min(100, Math.round((feito / estimado) * 100)) : null;
-  return { feito, falta, pct, rodando: !!t.timer_iniciado_em };
+  if (estimado != null) {
+    const pct = t.progresso != null && t.progresso > 0 ? t.progresso : Math.min(100, Math.round((feito / estimado) * 100));
+    return { feito, falta: Math.max(0, estimado - feito), pct, rodando: !!t.timer_iniciado_em, alvo: null as Date | null, rotuloAlvo: "" };
+  }
+  // Sem estimativa: a barra vai de quando a tarefa nasceu até a publicação (Dalila) ou o prazo (fim do dia).
+  const alvo = t.publica_em ? new Date(t.publica_em) : t.data_vencimento ? new Date(`${t.data_vencimento}T23:59:00`) : null;
+  const inicio = t.created_at ? new Date(t.created_at).getTime() : null;
+  if (alvo && inicio != null) {
+    const total = Math.max(1, alvo.getTime() - inicio);
+    const pct = Math.max(0, Math.min(100, Math.round(((agora - inicio) / total) * 100)));
+    return { feito, falta: Math.max(0, Math.round((alvo.getTime() - agora) / 60000)), pct, rodando: !!t.timer_iniciado_em, alvo, rotuloAlvo: t.publica_em ? "publica" : "prazo" };
+  }
+  return { feito, falta: null as number | null, pct: t.progresso || null, rodando: !!t.timer_iniciado_em, alvo: null as Date | null, rotuloAlvo: "" };
+}
+// "2 dias 3h", "5h20", "40 min".
+function faltaTexto(min: number) {
+  if (min >= 24 * 60) { const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60); return `${d} ${d === 1 ? "dia" : "dias"}${h ? ` ${h}h` : ""}`; }
+  return duracaoTexto(min);
 }
 
 // O que o Davi cola na conversa do ChatGPT (as instruções já estão lá):
@@ -143,7 +161,15 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
       .eq("responsavel_id", membro.id).is("deleted_at", null)
       // Abertas + as concluídas hoje (pra ver o que já saiu).
       .or(`concluida.eq.false,concluida_em.gte.${hoje}T00:00:00`);
-    setTarefas((data || []) as TarefaFila[]);
+    const lista = (data || []) as TarefaFila[];
+    const programacao = lista.filter((t) => t.tipo === "programacao").map((t) => t.id);
+    if (programacao.length) {
+      const { data: cs } = await (supabase as unknown as SupabaseClient).from("carrosseis")
+        .select("atividade_id, programado_para").in("atividade_id", programacao);
+      const quando = new Map(((cs || []) as { atividade_id: string; programado_para: string | null }[]).map((c) => [c.atividade_id, c.programado_para]));
+      for (const t of lista) if (quando.get(t.id)) t.publica_em = quando.get(t.id);
+    }
+    setTarefas(lista);
     // O que a IA está fazendo fora das tarefas (carrossel / edição em curso).
     const nome = membro.nome.toLowerCase();
     if (nome === "roy") {
@@ -219,7 +245,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
 
   return (
     <Dialog open={!!membro} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto overflow-x-hidden">
         {membro && (
           <>
             <DialogHeader>
@@ -273,14 +299,14 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                         return (
                           <div key={t.id}>
                             <div className="flex items-baseline justify-between gap-2">
-                              <p className="text-sm font-medium">{t.titulo}</p>
-                              {tt.pct != null && <span className="shrink-0 text-xs font-semibold text-sky-700 dark:text-sky-400">{tt.pct}%</span>}
+                              <p className="min-w-0 break-words text-sm font-medium">{t.titulo}</p>
+                              {tt.falta != null && <span className="shrink-0 text-xs font-semibold text-sky-700 dark:text-sky-400">falta {faltaTexto(tt.falta)}</span>}
                             </div>
                             {tt.pct != null && <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct}%` }} /></div>}
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `Na mão desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "Em andamento"}
-                              {tt.falta != null && <> · <b className="text-foreground">falta ~{duracaoTexto(tt.falta)}</b></>}
-                              {t.data_vencimento && <> · prazo {format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
+                              {tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `Desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "Em andamento"}
+                              {tt.alvo && <> · {tt.rotuloAlvo === "publica" ? "a Dalila publica" : "prazo"} <b className="text-foreground">{format(tt.alvo, tt.rotuloAlvo === "publica" ? "EEE, d MMM 'às' HH:mm" : "EEE, d MMM", { locale: ptBR })}</b></>}
+                              {!tt.alvo && t.data_vencimento && <> · prazo {format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
                             </p>
                             {t.observacao && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">“{t.observacao}”</p>}
                           </div>
@@ -355,11 +381,11 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar }
             return (
               <div key={t.id} className="flex items-center gap-2 rounded-lg border p-2">
                 <div className="min-w-0 flex-1">
-                  <p className={cn("truncate text-sm font-medium", t.concluida && "text-muted-foreground line-through")}>{t.titulo}</p>
+                  <p className={cn("break-words text-sm font-medium", t.concluida && "text-muted-foreground line-through")}>{t.titulo}</p>
                   <p className={cn("flex items-center gap-1 text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>
                     {t.data_vencimento && <><CalendarDays className="h-3 w-3" />{atrasada ? "Atrasada · " : ""}{format(new Date(`${t.data_vencimento}T12:00:00`), "EEE, d MMM", { locale: ptBR })}</>}
                     {t.tipo && <span>{t.data_vencimento ? " · " : ""}{TIPOS.find((x) => x.valor === t.tipo)?.rotulo ?? t.tipo}</span>}
-                    {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.falta != null ? <span> · falta ~{duracaoTexto(tt.falta)}</span> : !t.concluida && t.tempo_estimado ? <span> · ~{duracaoTexto(t.tempo_estimado)}</span> : null; })()}
+                    {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.falta != null ? <span> · falta {faltaTexto(tt.falta)}{tt.rotuloAlvo === "publica" ? " pra publicar" : ""}</span> : null; })()}
                   </p>
                   {!t.concluida && (() => { const tt = tempoDaTarefa(t, agora); return tt.pct != null && tt.pct > 0 ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500" style={{ width: `${tt.pct}%` }} /></div> : null; })()}
                 </div>

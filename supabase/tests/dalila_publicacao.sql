@@ -51,7 +51,7 @@ BEGIN
  IF (SELECT status FROM public.carrosseis WHERE id = '10000000-0000-0000-0000-000000000166') <> 'programado' THEN
    RAISE EXCEPTION 'não ficou programado'; END IF;
  IF NOT (SELECT concluida FROM public.atividades WHERE id = c.tarefa_data_id) THEN RAISE EXCEPTION 'tarefa do Davi aberta'; END IF;
- IF (SELECT situacao FROM public.atividades WHERE id = c.atividade_id) <> 'andamento' THEN RAISE EXCEPTION 'Dalila não andou'; END IF;
+ IF (SELECT situacao FROM public.atividades WHERE id = c.atividade_id) <> 'concluida' THEN RAISE EXCEPTION 'Dalila não concluiu ao programar'; END IF;
 
  -- O app não chama a fila da nuvem nem lê a chave.
  BEGIN
