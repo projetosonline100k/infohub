@@ -28,7 +28,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -309,6 +309,8 @@ Briefing: {bid}
    {{"titulo": "...", "entendimento": "o que vou fazer, em 2-4 frases", "entregas": ["..."], "consigo": "sim|em_parte|nao", "limites": "o que não consigo / riscos", "precisa_de": ["o que preciso do Davi"], "prazo_sugerido": "AAAA-MM-DD", "tipo": "copy|pagina|quiz|carrossel|estudo|edicao|programacao|metricas|gravacao"}}
    FIM
    e termine a resposta com: "Se estiver certo, clique em **Confirmar e subir a tarefa**." Se o Davi corrigir algo depois, grave a proposta de novo.
+   Precisa de um colega (ex.: copy/nomes com o Ítalo, visual com o Roy)? Chame-o para ESTA conversa, em vez de mandar o Davi abrir outra:
+   python3 scripts/empresa/briefing.py convidar {bid} "<nome>"   (ele responde logo depois de você; diga isso na sua resposta)
 5. Por último, grave a resposta (é ela que avisa o app que você terminou):
    python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
    <texto>
@@ -339,6 +341,8 @@ Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em po
      Se NÃO está claro o que ele quer (ou a mudança é grande e há caminhos bem diferentes), pergunte antes (no máximo 2 perguntas) e não mexa.
    - Pergunta ou comentário: responda direto, citando o documento.
    Correção que vale para as próximas vezes: anote também (aprender.py).
+   Precisa de um colega (ex.: copy/nomes com o Ítalo, visual com o Roy)? Chame-o para ESTA conversa, em vez de mandar o Davi abrir outra:
+   python3 scripts/empresa/briefing.py convidar {bid} "<nome>"   (ele responde logo depois de você; diga isso na sua resposta)
 4. Por último, grave a resposta (é ela que avisa o app que você terminou):
    python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
    <texto curto, como num chat>
@@ -354,17 +358,52 @@ _conversas = set()
 _trava_conversas = threading.Lock()
 
 
+PROMPT_PARTICIPANTE = """Você é {nome}, funcionário IA da empresa de um projeto no Infopro Hub. O Davi (ou um colega) te CHAMOU para uma conversa em grupo no app: a conversa é de outro funcionário, e o Davi quer ver o que cada um pensa. Ele não vê este terminal.
+
+Conversa: {bid}
+
+1. Rode `python3 scripts/empresa/briefing.py contexto {bid} --como "{nome}"`: quem você é, de quem é a conversa, quem mais está nela e o que já foi dito.
+2. Leia o seu manual e a sua inteligência (ler.py, os "SIGA SEMPRE" do topo) e o que a conversa citar (documento entregue, anexos 📎, com scripts/consulta.py).
+3. Responda à ÚLTIMA mensagem do Davi PELA SUA ÁREA (ex.: o copywriter fala de copy, nomes, promessa; quem faz o design fala de visual), em português simples e curto, como num chat. Se o colega já disse o que você diria, concorde em 1 frase e acrescente só o que falta. Proponha concreto (ex.: os 4 nomes prontos), não "posso ajudar".
+   Não mexa nos entregáveis do colega: quem aplica é o dono da conversa, que lê a sua resposta.
+   Se o Davi te corrigir algo que vale para as próximas vezes, anote (python3 scripts/inteligencia/aprender.py anotar --cliente <cliente_id> --agente "{nome_min}" "<a regra>").
+4. Grave a sua fala:
+   python3 scripts/empresa/briefing.py responder {bid} --como "{nome}" <<'FIM'
+   <texto>
+   FIM
+Regras: não publique, não poste e não envie nada em nome do Davi; não escreva no banco fora desses comandos; sem git. Hoje é {hoje}."""
+
+
+def _falar_como(bid, nome):
+    desde = datetime.now(timezone.utc)
+    ok, texto = rodar_claude(PROMPT_PARTICIPANTE.format(bid=bid, nome=nome, nome_min=nome.lower(), hoje=f"{datetime.now():%d/%m/%Y}"), minutos=15)
+    if not briefing.respondeu(bid, nome, desde):
+        log("briefing: participante não respondeu —", bid, nome, (texto or "")[:150])
+
+
 def _atender_briefing(bid):
     try:
         log("briefing:", bid)
         modelo = PROMPT_REVISAO if briefing.status(bid) == "revisando" else PROMPT_BRIEFING
+        # Conversa em grupo (15/10): quem já está nela fala primeiro (cada um pela sua área),
+        # o dono responde por último e aplica; quem ele chamar fala logo depois.
+        antes = briefing.participantes(bid)
+        for _, nome in antes:
+            _falar_como(bid, nome)
+        desde = datetime.now(timezone.utc)
         ok, texto = rodar_claude(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=40 if modelo is PROMPT_REVISAO else 12)
-        if briefing.sem_resposta(bid):
+        if not briefing.respondeu(bid, None, desde):
             motivo = texto if not ok else "terminei sem gravar a resposta."
             briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")
             log("briefing: falhou —", bid, motivo)
         else:
             log("briefing: ok", bid)
+        ja = {i for i, _ in antes}
+        novos = [(i, n) for i, n in briefing.participantes(bid) if i not in ja]
+        for _, nome in novos:
+            _falar_como(bid, nome)
+        if antes or novos:
+            briefing.finalizar(bid)
     except Exception as e:  # rede caiu etc.
         log("briefing: erro —", bid, repr(e)[:300])
     finally:

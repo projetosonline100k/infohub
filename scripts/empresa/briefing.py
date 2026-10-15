@@ -72,7 +72,7 @@ def reenfileirar():
         c.close()
 
 
-def contexto(bid):
+def contexto(bid, como=None):
     c = connect()
     try:
         q = c.cursor()
@@ -97,8 +97,16 @@ def contexto(bid):
             quiz = q.fetchone()
         q.execute("""SELECT nome_produto, status FROM produtos_cliente WHERE cliente_id = %s ORDER BY status, nome_produto""", (cliente_id,))
         produtos = q.fetchall()
-        q.execute("""SELECT papel, texto, criada_em FROM briefing_mensagens WHERE briefing_id = %s ORDER BY criada_em""", (bid,))
+        q.execute("""SELECT bm.papel, bm.texto, bm.criada_em, mm.nome FROM briefing_mensagens bm
+                       LEFT JOIN membros mm ON mm.id = bm.membro_id WHERE bm.briefing_id = %s ORDER BY bm.criada_em""", (bid,))
         msgs = q.fetchall()
+        q.execute("""SELECT m.nome, m.funcao FROM briefings b JOIN membros m ON m.id = ANY(b.participantes) WHERE b.id = %s""", (bid,))
+        participantes = q.fetchall()
+        eu = None
+        if como:
+            q.execute("""SELECT m.nome, m.funcao, m.responsabilidades, s.nome FROM briefings b JOIN membros m ON m.cliente_id = b.cliente_id
+                          LEFT JOIN setores s ON s.id = m.setor_id WHERE b.id = %s AND lower(m.nome) = lower(%s) LIMIT 1""", (bid, como))
+            eu = q.fetchone()
         # Memória: os últimos pedidos já combinados com este funcionário (e como terminaram).
         q.execute("""SELECT b.atualizado_em, b.proposta->>'titulo', a.situacao, a.concluida, a.deleted_at IS NOT NULL
                        FROM briefings b LEFT JOIN atividades a ON a.id = b.atividade_id
@@ -109,6 +117,10 @@ def contexto(bid):
     finally:
         c.rollback()
         c.close()
+    dono = nome
+    if eu:
+        nome, funcao, resp, setor = eu
+        print(f'VOCÊ É {nome} ({funcao or "-"}), CHAMADO PARA ESTA CONVERSA. A conversa é do {dono}; responda pela sua área.')
     manual = manual_do(nome)
     print(f'Projeto: {especialista} (nicho: {nicho or "-"}) · cliente_id {cliente_id}')
     print('Produtos: ' + (', '.join(f'{p} ({s})' for p, s in produtos) or 'nenhum'))
@@ -135,20 +147,29 @@ def contexto(bid):
                      else f'O Davi está testando o QUIZ criado. Veja: python3 scripts/quiz/quiz.py ver {atividade_id} · ajuste: python3 scripts/quiz/quiz.py salvar {atividade_id} (JSON inteiro). Não use o entregar.'))
     if proposta:
         print('Proposta já gravada: ' + json.dumps(proposta, ensure_ascii=False))
+    if participantes:
+        print(f'Conversa em GRUPO. Dono: {dono}. Também na conversa: ' + ', '.join(f'{n} ({f or "-"})' for n, f in participantes))
+    print(f'Chamar um colega pra conversa: python3 scripts/empresa/briefing.py convidar {bid} "<nome>" (ele responde logo depois)')
     print('\nConversa:')
-    for papel, texto, quando in msgs:
-        print(f'[{quando:%d/%m %H:%M}] {"Davi" if papel == "davi" else nome}: {texto}')
+    for papel, texto, quando, quem in msgs:
+        print(f'[{quando:%d/%m %H:%M}] {"Davi" if papel == "davi" else (quem or dono)}: {texto}')
 
 
-def responder(bid, texto):
+def responder(bid, texto, como=None):
+    """Grava a fala do funcionário (o dono da conversa, ou `como`, um participante). Em conversa
+    em grupo, quem fecha a rodada (marca a mensagem do Davi como respondida) é o ouvinte."""
     texto = texto.strip()
     if not texto:
         raise SystemExit('resposta vazia')
     c = connect()
     try:
         q = c.cursor()
-        q.execute("INSERT INTO public.briefing_mensagens(briefing_id, papel, texto) VALUES (%s, 'funcionario', %s)", (bid, texto))
-        q.execute("UPDATE public.briefing_mensagens SET status = 'respondida' WHERE briefing_id = %s AND status IN ('enviada', 'lida')", (bid,))
+        q.execute("""SELECT coalesce((SELECT m.id FROM membros m WHERE m.cliente_id = b.cliente_id AND lower(m.nome) = lower(%s) LIMIT 1), b.membro_id),
+                            cardinality(b.participantes) FROM briefings b WHERE b.id = %s""", (como or '', bid))
+        quem, n_part = q.fetchone()
+        q.execute("INSERT INTO public.briefing_mensagens(briefing_id, papel, texto, membro_id) VALUES (%s, 'funcionario', %s, %s)", (bid, texto, quem))
+        if not n_part:
+            q.execute("UPDATE public.briefing_mensagens SET status = 'respondida' WHERE briefing_id = %s AND status IN ('enviada', 'lida')", (bid,))
         c.commit()
     finally:
         c.close()
@@ -188,6 +209,60 @@ def propor(bid, bruto):
     finally:
         c.close()
     print('PROPOSTA_GRAVADA')
+
+
+def finalizar(bid):
+    """Fim da rodada de uma conversa em grupo: a mensagem do Davi fica respondida."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.briefing_mensagens SET status = 'respondida' WHERE briefing_id = %s AND status IN ('enviada', 'lida')", (bid,))
+        c.commit()
+    finally:
+        c.close()
+
+
+def convidar(bid, nome):
+    """Chama um colega IA do mesmo projeto pra conversa (ele responde logo depois de quem chamou)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""UPDATE public.briefings b SET participantes = array_append(b.participantes, m.id)
+                       FROM membros m WHERE b.id = %s AND m.cliente_id = b.cliente_id AND lower(m.nome) = lower(%s)
+                        AND m.eh_ia AND m.ativo AND m.id <> b.membro_id AND NOT (m.id = ANY(b.participantes))
+                     RETURNING m.nome""", (bid, nome.strip()))
+        r = q.fetchone()
+        c.commit()
+    finally:
+        c.close()
+    print(f'CHAMADO {r[0]}' if r else 'nada a fazer (não achei esse funcionário IA no projeto, ou ele já está na conversa)')
+
+
+def participantes(bid):
+    """[(id, nome)] de quem foi chamado pra conversa (sem o dono), na ordem em que entrou."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""SELECT m.id, m.nome FROM briefings b, unnest(b.participantes) WITH ORDINALITY p(id, k)
+                       JOIN membros m ON m.id = p.id WHERE b.id = %s ORDER BY p.k""", (bid,))
+        return [(str(i), n) for i, n in q.fetchall()]
+    finally:
+        c.close()
+
+
+def respondeu(bid, nome, desde):
+    """`nome` (ou o dono, se None) falou na conversa depois de `desde`?"""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""SELECT count(*) FROM briefing_mensagens bm JOIN briefings b ON b.id = bm.briefing_id
+                       JOIN membros m ON m.id = coalesce(bm.membro_id, b.membro_id)
+                      WHERE bm.briefing_id = %s AND bm.papel = 'funcionario' AND bm.criada_em >= %s
+                        AND (CASE WHEN %s::text IS NULL THEN m.id = b.membro_id ELSE lower(m.nome) = lower(%s::text) END)""",
+                  (bid, desde, nome, nome))
+        return q.fetchone()[0] > 0
+    finally:
+        c.close()
 
 
 def agora(bid, texto):
@@ -233,9 +308,11 @@ if __name__ == '__main__':
     if cmd == 'pegar':
         print(json.dumps(pegar()))
     elif cmd == 'contexto':
-        contexto(args[1])
+        contexto(args[1], args[3] if len(args) > 3 and args[2] == '--como' else None)
     elif cmd == 'responder':
-        responder(args[1], sys.stdin.read())
+        responder(args[1], sys.stdin.read(), args[3] if len(args) > 3 and args[2] == '--como' else None)
+    elif cmd == 'convidar':
+        convidar(args[1], args[2])
     elif cmd == 'propor':
         propor(args[1], sys.stdin.read())
     elif cmd == 'agora':
