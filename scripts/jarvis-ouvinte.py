@@ -339,6 +339,7 @@ Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em po
      FIM
      Mude só o que ele pediu; o que ele elogiou fica. Refazer do zero: siga o seu manual e a conversa, pesquisando o que precisar. Na resposta, diga em poucas linhas o que mudou.
      Se NÃO está claro o que ele quer (ou a mudança é grande e há caminhos bem diferentes), pergunte antes (no máximo 2 perguntas) e não mexa.
+   - Se o contexto disser que é EDIÇÃO DE VÍDEO ou QUIZ, mude do jeito que ele indica (não com o entregar).
    - Pergunta ou comentário: responda direto, citando o documento.
    Correção que vale para as próximas vezes: anote também (aprender.py).
    Precisa de um colega (ex.: copy/nomes com o Ítalo, visual com o Roy)? Chame-o para ESTA conversa, em vez de mandar o Davi abrir outra:

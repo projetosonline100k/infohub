@@ -88,6 +88,7 @@ def contexto(bid, como=None):
         status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id = r
         entrega = None
         quiz = None
+        edicao = None
         if status == 'revisando' and atividade_id:
             q.execute("""SELECT a.titulo, a.situacao, d.id, d.titulo FROM atividades a
                            LEFT JOIN LATERAL (SELECT id, titulo FROM documentos WHERE atividade_id = a.id AND deleted_at IS NULL
@@ -95,6 +96,9 @@ def contexto(bid, como=None):
             entrega = q.fetchone()
             q.execute("SELECT status FROM quizzes WHERE atividade_id = %s ORDER BY criado_em DESC LIMIT 1", (atividade_id,))
             quiz = q.fetchone()
+            q.execute("""SELECT id, titulo, status, versao FROM edicoes_video WHERE atividade_id = %s
+                          ORDER BY atualizado_em DESC LIMIT 1""", (atividade_id,))
+            edicao = q.fetchone()
         q.execute("""SELECT nome_produto, status FROM produtos_cliente WHERE cliente_id = %s ORDER BY status, nome_produto""", (cliente_id,))
         produtos = q.fetchall()
         q.execute("""SELECT bm.papel, bm.texto, bm.criada_em, mm.nome FROM briefing_mensagens bm
@@ -141,6 +145,14 @@ def contexto(bid, como=None):
         t_tit, t_sit, d_id, d_tit = entrega
         print(f'CONVERSA SOBRE A ENTREGA da tarefa "{t_tit}" (id {atividade_id}, situação {t_sit}).')
         print(f'Documento entregue: "{d_tit}" ({d_id}). Leia: python3 scripts/consulta.py "select conteudo from documentos where id = \'{d_id}\'"' if d_id else 'Documento entregue: (não achei)')
+        if edicao:
+            e_id, e_tit, e_st, e_v = edicao
+            print(f'É uma EDIÇÃO DE VÍDEO: "{e_tit}" (edição {e_id}, versão {e_v}, status {e_st}). O Davi está no EDITOR do Danilo, '
+                  f'vendo a edição e conversando com você. Pasta: ~/.infopro-hub/danilo/edicoes/{e_id}/ (projeto.json, escolhas.json). '
+                  'Manual: docs/agentes/danilo-editor.md (Parte B). Ferramentas: python3 scripts/danilo/danilo.py texto|ouvir|quadros|pintura|montar|conferir. '
+                  f'Para mudar a edição: ajuste o escolhas.json (ou o projeto.json), rode `danilo.py montar {e_id}` e confira com `danilo.py conferir {e_id}`; '
+                  'o editor recarrega a edição quando você responder. NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão do editor). '
+                  'O que o Davi corrigir ou elogiar e valer para os próximos vídeos, anote nos aprendizados (aprender.py, agente "danilo").')
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'

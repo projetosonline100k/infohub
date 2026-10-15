@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-  Bookmark, CheckCircle2, Download, Film, ImagePlus, Link2, Loader2, Magnet, MousePointer2, Music, Palette, Pause, Play, Redo2, RotateCcw, Save, Slice,
+  Bookmark, CheckCircle2, Download, Film, ImagePlus, Link2, Loader2, Magnet, MessageCircle, MousePointer2, Music, Palette, Pause, Play, Redo2, RotateCcw, Save, Slice,
   Trash2, Undo2, ZoomIn,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
 import { EVENTO_DESFAZER, EVENTO_REFAZER } from "@/lib/desktop/desfazer";
 import { confirmar } from "@/components/DialogosGlobais";
+import { ConversaEntrega } from "./ConversaEntrega";
 import { cn } from "@/lib/utils";
 import {
   COR_NEUTRA, PRESETS_COR, apagarIntervalo, blocosZoom, clipes, dividirLegenda, dividirMidia, dividirZoom, duracaoFinal, fecharLacuna, lacunaEm,
@@ -125,14 +126,40 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     return () => { vivo = false; window.clearTimeout(timer); };
   }, [cfg, edicao, url, proxyPronto]);
 
+  // Chat com o Danilo dentro do editor (pedido do Davi, 15/10: "é importante para ele aprender
+  // o que eu quero, principalmente no começo"). É a conversa da tarefa ligada à edição
+  // (ConversaEntrega): o elogio vira aprendizado e o ajuste ele faz na própria edição.
+  const [chatAberto, setChatAberto] = usePrefSimples<boolean>("editor-video-chat", true);
+  const [conversa, setConversa] = useState<{ tarefaId: string; clienteId: string; membroId: string } | null>(null);
+  useEffect(() => {
+    setConversa(null);
+    if (!edicao) return;
+    let vivo = true;
+    void (async () => {
+      const { data: ed } = await supabase.from("edicoes_video").select("atividade_id, cliente_id").eq("id", edicao.id).maybeSingle();
+      if (!ed?.atividade_id) return;
+      const { data: d } = await supabase.from("membros").select("id").eq("cliente_id", ed.cliente_id).eq("eh_ia", true).ilike("nome", "danilo").limit(1).maybeSingle();
+      if (vivo && d) setConversa({ tarefaId: ed.atividade_id, clienteId: ed.cliente_id, membroId: d.id });
+    })();
+    return () => { vivo = false; };
+  }, [edicao]);
+  const [recarga, setRecarga] = useState(0);
+  const mudouRef = useRef(mudou);
+  mudouRef.current = mudou;
+  // O Danilo respondeu: pode ter mexido na edição. Recarrega, se o Davi não tiver mudança sem salvar.
+  const danilomudou = useCallback(() => {
+    if (mudouRef.current) { toast("O Danilo respondeu e pode ter mudado a edição: salve ou desfaça as suas mudanças para ver a dele."); return; }
+    setRecarga((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     if (!cfg || !edicao) return;
-    void fetch(url("projeto")).then((r) => (r.ok ? r.json() : null)).then((p: ProjetoEdicao | null) => {
+    void fetch(url(`projeto${recarga ? `?r=${recarga}` : ""}`)).then((r) => (r.ok ? r.json() : null)).then((p: ProjetoEdicao | null) => {
       // Zoom antigo (pontos) vira blocos na hora de abrir.
       if (p) setProjeto({ ...p, zooms: blocosZoom(p) }); else toast.error("Não achei o projeto dessa edição no Mac");
     });
     void fetch(url("ondas")).then((r) => (r.ok ? r.json() : null)).then((o) => { if (o) setOnda(o); }).catch(() => {});
-  }, [cfg, edicao, url]);
+  }, [cfg, edicao, url, recarga]);
   const arquivoMusica = projeto?.musica?.arquivo;
   useEffect(() => {
     if (!cfg || !edicao || !arquivoMusica) { setOndaMusica(null); return; }
@@ -479,6 +506,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
               : estado?.status === "erro" ? estado.mensagem : estado?.status === "aprovado" ? "Aprovado e entregue" : `Versão ${estado?.versao}${mudou ? " · não salvo" : ""}`}
           </span>
           <div className="ml-auto flex items-center gap-1.5">
+            {conversa && <BotaoBarra onClick={() => setChatAberto(!chatAberto)} ativo={chatAberto}><MessageCircle className="h-3.5 w-3.5" />Danilo</BotaoBarra>}
             <BotaoBarra onClick={() => setVerVersao((v) => !v)} ativo={verVersao}>{verVersao ? "Voltar à montagem" : "Ver versão gerada"}</BotaoBarra>
             <BotaoBarra onClick={() => void salvar(false)} disabled={!mudou}><Save className="h-3.5 w-3.5" />Salvar</BotaoBarra>
             <BotaoBarra onClick={() => void salvar(true)} disabled={ocupado}>Gerar versão</BotaoBarra>
@@ -490,6 +518,8 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
           </div>
         </div>
 
+        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {!desktop ? <Aviso>O editor funciona no app do Mac (o vídeo e a montagem ficam nele).</Aviso>
           : !cfg ? <Aviso>O serviço do Danilo não está ligado neste Mac.</Aviso>
           : !projeto ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
@@ -569,6 +599,15 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
               </div>
             </div>
           )}
+        </div>
+        {conversa && chatAberto && (
+          // "dark": o chat segue o tema escuro do editor.
+          <aside className="dark w-[330px] shrink-0 border-l border-zinc-700 bg-[#1e1e1e] p-2 text-zinc-100">
+            <ConversaEntrega key={conversa.tarefaId} clienteId={conversa.clienteId} tarefaId={conversa.tarefaId} membroId={conversa.membroId}
+              nome="Danilo" onDocumentoMudou={danilomudou} />
+          </aside>
+        )}
+        </div>
       </DialogContent>
     </Dialog>
   );
