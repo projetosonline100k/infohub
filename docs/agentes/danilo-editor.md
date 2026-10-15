@@ -336,8 +336,22 @@ Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pel
 - Atalhos: D/F zoom; W corta tudo na agulha; E apaga; ⌘R apaga e junta; Q/R aparam; ⌘Z/⇧⌘Z pelo menu do app.
 - **Player: toca a prévia montada (`montagem-<hash>.mp4`), não o bruto pulando cortes.** Pular dentro do vídeo no WebKit sempre engasgou. Selo "liso" ou "montando". Não voltar ao jeito antigo.
 
+**Fluxo automático (no ar desde 15/10/2026)** — `scripts/danilo/servico.py`, LaunchAgent `com.infoprohub.danilo-servico` (o `instalar.sh` instala os dois serviços do Danilo). Log em `~/.infopro-hub/danilo/servico.log`.
+- A cada 5 min, o serviço olha `Eu.davi/Precisa de edição`. Um vídeo novo (sem `[EM EDIÇÃO]`/`[EDITADO]`, parado há 3 min) segue estes passos:
+  1. `danilo.py preparar`: renomeia para `[EM EDIÇÃO]`, copia para `~/.infopro-hub/danilo/brutos/`, cria a `edicoes_video` e transcreve.
+  2. Descobre o card comparando a fala com o roteiro (trigramas; o piloto deu 0,79 contra 0,02 dos outros). Move o card de Gravação para Edição.
+  3. O Claude em segundo plano (`claude -p`, `PROMPT_EDICAO`) acha as retomadas, escreve o `escolhas.json`, baixa as pinturas e confere a prévia.
+  4. O servidor gera a prévia oficial e a edição aparece em "Precisa de você › Revisar edição".
+- **Piloto primeiro:** com vários brutos de uma vez, edita 1 e espera o Davi aprovar. Os outros seguem o que ele mudou no piloto. O estado fica em `~/.infopro-hub/danilo/servico.json`.
+- **Tarefa "Editar: <vídeo>"** (tipo `edicao`, criada pela automação quando o card vai para Edição): é ligada à edição (`danilo.ligar_tarefas`). Aprovar conclui a tarefa. Sem bruto, ela fica "Esperando o bruto…".
+- **Outras tarefas da fila do Danilo:** `atender_tarefa`, igual ao Roy. Pedido de "editar os brutos da pasta" vira o acompanhamento do lote na barra.
+- **Ferramentas do Claude:** `scripts/danilo/danilo.py`, com `texto`, `ouvir` (retranscreve um trecho), `quadros`, `pintura buscar/baixar` (Wikimedia, só livre, com a fonte em `imagens/fontes.json`), `montar` e `conferir`.
+- **Cuidados aprendidos no piloto de 15/10:**
+  - O whisper do bruto inteiro **pula uma das tomadas repetidas** e inventa "3º/4º/5º" nas emendas. Sempre use `ouvir` nos trechos com som e sem texto.
+  - O `escolhas.json` aceita `cortes` (retomadas) e `destaques` (INSTALIVROS fixo até o último quadro; o motor tem a camada `destaques`).
+- A rotina antiga do ChatGPT foi desligada (o Davi confirmou na tarefa de 15/10).
+
 **Pendências combinadas** (não feitas):
-1. Fluxo automático: ao mudar um vídeo de Gravação para Edição, ou ao entrar um bruto em `Eu.davi/Precisa de edição`, o Danilo cria a edição sozinho e edita. Isso inclui o Danilo pegar as tarefas da fila dele, como o Roy faz em `scripts/roy/servico.py` (`atender_tarefa`).
-2. Depois do "Aprovar", a tarefa segue para a Dalila postar.
-3. Desligar a tarefa agendada do ChatGPT que editava, para não editarem em dobro.
-4. Fazer o manual do Instalivros (pasta `Instalivros/EDIÇÃO/{BRUTOS,EDITADOS,APROVADOS}`).
+1. Depois do "Aprovar", a tarefa segue para a Dalila postar.
+2. Fazer o manual do Instalivros (pasta `Instalivros/EDIÇÃO/{BRUTOS,EDITADOS,APROVADOS}`).
+3. Vídeo de demonstração com fundo verde do INSTALIVROS: o Davi ainda não mandou.

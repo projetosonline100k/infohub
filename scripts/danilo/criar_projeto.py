@@ -12,7 +12,11 @@ escolhas.json (opcional):
   {"fim_fala": 137.7, "palavras_head": 21, "blocos_head": [3,4,2,3,3,4,2],
    "correcoes": [{"de": "impedirem,", "para": "pedirem,"}],
    "midias": [{"tipo":"imagem","arquivo":"...","inicio":7.4,"fim":15.6,"x":95,"y":1180,"w":425,"h":450}],
-   "musica": {"arquivo": "...", "volume": 0.07}, "enfases": [32.1, 129.0]}
+   "musica": {"arquivo": "...", "volume": 0.07}, "enfases": [32.1, 129.0],
+   "cortes": [{"inicio": 74.3, "fim": 79.4, "motivo": "retomada"}],
+   "destaques": [{"texto": "INSTALIVROS", "inicio": 191.3}]}
+cortes = retomadas que o Danilo achou ouvindo (somam às pausas automáticas);
+destaques = palavra fixa na tela (sem "fim" = até o último quadro).
 """
 import json
 import os
@@ -94,6 +98,19 @@ def remocoes_auto(pasta, fim_fala, dur):
             for i, (a, b) in enumerate(rem)]
 
 
+def juntar_remocoes(rem):
+    """Remoções sobrepostas viram uma só (a do Danilo vence no motivo)."""
+    out = []
+    for r in sorted(rem, key=lambda r: r["inicio"]):
+        if out and r["inicio"] <= out[-1]["fim"] + 0.001:
+            out[-1]["fim"] = max(out[-1]["fim"], r["fim"])
+            if r["origem"] != "auto":
+                out[-1].update(origem=r["origem"], motivo=r["motivo"])
+        else:
+            out.append(dict(r))
+    return out
+
+
 def legendas(palavras, n_head, blocos_head):
     """Headline = as n_head primeiras palavras (o gancho), em blocos, 2 por tela.
     Depois, legendas de até ~24 caracteres quebrando na pontuação."""
@@ -141,6 +158,9 @@ def montar(pasta, escolhas=None):
     fim_fala = esc.get("fim_fala") or max(s["end"] for s in tr["segments"] if s["text"].strip())
     palavras = [{"word": w["word"].strip(), "start": w["start"], "end": min(w["end"], fim_fala)}
                 for s in tr["segments"] for w in s.get("words", []) if w["start"] < fim_fala]
+    # Palavras das retomadas cortadas não viram legenda.
+    cortes = esc.get("cortes", [])
+    palavras = [w for w in palavras if not any(c["inicio"] <= (w["start"] + w["end"]) / 2 <= c["fim"] for c in cortes)]
     for c in esc.get("correcoes", []):        # {"de", "para", "antes_de"?}
         for i, w in enumerate(palavras):
             prox = palavras[i + 1]["word"].lower() if i + 1 < len(palavras) else ""
@@ -149,10 +169,13 @@ def montar(pasta, escolhas=None):
     projeto = {
         "fonte": str(bruto),
         "duracao_fonte": round(dur, 3),
-        "remocoes": remocoes_auto(pasta, fim_fala, dur),
+        "remocoes": juntar_remocoes(remocoes_auto(pasta, fim_fala, dur) + [
+            {"id": f"d{i}", "inicio": c["inicio"], "fim": c["fim"], "origem": "davi", "motivo": c.get("motivo", "retomada")}
+            for i, c in enumerate(esc.get("cortes", []))]),
         "legendas": legendas(palavras, esc.get("palavras_head", 0), esc.get("blocos_head", [])),
         "midias": esc.get("midias", []),
         "musica": esc.get("musica"),
+        "destaques": esc.get("destaques", []),
         "cor": "cinema",
         "zoom": [],
         "palavras": [{"t": w["word"], "s": round(w["start"], 3), "e": round(w["end"], 3)} for w in palavras],
