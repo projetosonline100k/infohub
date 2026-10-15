@@ -238,3 +238,29 @@ export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, classNam
 });
 
 const ROTULO: Record<Sinal, string> = { trabalhando: "trabalhando", parado: "parado", esperando: "precisa de você", problema: "com problema" };
+
+// Só a cabeça do boneco (lista da equipe / chat).
+export function CabecaBoneco({ nome, ehIa, className }: { nome: string; ehIa: boolean; className?: string }) {
+  if (ehIa && nome.trim().toLowerCase() === "jarvis") {
+    return (
+      <svg viewBox="40 16 40 34" className={className} aria-hidden="true">
+        <rect x="44" y="20" width="32" height="26" rx="12" fill="#0f172a" stroke="#22d3ee" strokeWidth="1.4" />
+        <rect x="51" y="29" width="6" height="8" rx="3" fill="#67e8f9" /><rect x="63" y="29" width="6" height="8" rx="3" fill="#67e8f9" />
+      </svg>
+    );
+  }
+  const v = visualDe(nome);
+  return (
+    <svg viewBox="42 20 36 38" className={className} aria-hidden="true">
+      {cabeloTras(v)}
+      <circle cx="46.8" cy="41.5" r="2.6" fill={v.pele} />
+      <circle cx="73.2" cy="41.5" r="2.6" fill={v.pele} />
+      <circle cx="60" cy="39.5" r="13.2" fill={v.pele} />
+      {cabeloDe(v)}
+      {v.barba && <path d="M47.6 42 Q48.5 54.5 60 55 Q71.5 54.5 72.4 42 Q70.5 49 60 49.5 Q49.5 49 47.6 42 Z" fill={v.corCabelo} opacity=".92" />}
+      <circle cx="55" cy="40.5" r="1.5" fill="#2a1d15" /><circle cx="65" cy="40.5" r="1.5" fill="#2a1d15" />
+      <path d="M57.5 46 q2.5 1.4 5 0" stroke="#7c2d12" strokeWidth="1" fill="none" strokeLinecap="round" />
+      {v.oculos && <g fill="none" stroke="#1f2937" strokeWidth="1"><circle cx="55" cy="40.5" r="3.6" /><circle cx="65" cy="40.5" r="3.6" /><path d="M58.6 40.5 h2.8" /></g>}
+    </svg>
+  );
+}

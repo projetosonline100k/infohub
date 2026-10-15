@@ -82,6 +82,20 @@ const CORES_SITUACAO: Record<string, string> = {
 // Coluna do quadro em que a tarefa entra (a primeira que não conclui) e a de
 // conclusão — cada projeto tem as suas (no do Davi são dias da semana).
 
+// Cria a tarefa combinada no briefing (usado aqui e na gaveta da equipe).
+export async function criarTarefaParaMembro(clienteId: string, membroId: string, t: TarefaDoBriefing): Promise<string> {
+  const { inicial } = await colunasDoProjeto(clienteId);
+  const nova = await criarAtividade({
+    titulo: t.titulo, clienteId, pastaId: null, dataAtividade: t.prazo || format(new Date(), "yyyy-MM-dd"),
+    statusKey: inicial, concluida: false, ordem: 0,
+  });
+  const { error } = await supabase.from("atividades").update({
+    responsavel_id: membroId, situacao: "fila", tipo: t.tipo, data_vencimento: t.prazo, descricao: t.descricao,
+  }).eq("id", nova.id);
+  if (error) throw error;
+  return nova.id;
+}
+
 export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: {
   clienteId: string;
   membro: MembroResumo | null;
@@ -178,18 +192,10 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   // Tarefa que nasce do briefing confirmado: o combinado vai na descrição.
   const criarTarefaDoBriefing = async (t: TarefaDoBriefing) => {
     if (!membro) throw new Error("sem funcionário");
-    const { inicial } = await colunasDoProjeto(clienteId);
-    const nova = await criarAtividade({
-      titulo: t.titulo, clienteId, pastaId: null, dataAtividade: t.prazo || hoje,
-      statusKey: inicial, concluida: false, ordem: 0,
-    });
-    const { error } = await supabase.from("atividades").update({
-      responsavel_id: membro.id, situacao: "fila", tipo: t.tipo, data_vencimento: t.prazo, descricao: t.descricao,
-    }).eq("id", nova.id);
-    if (error) throw error;
+    const id = await criarTarefaParaMembro(clienteId, membro.id, t);
     await carregar();
     onMudou();
-    return nova.id;
+    return id;
   };
 
   const mudarSituacao = async (tarefa: TarefaResumo, nova: string) => {

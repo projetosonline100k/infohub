@@ -16,6 +16,7 @@ import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarLote } from "./ProgramarLote";
+import { EquipeMessenger } from "./EquipeMessenger";
 import {
   contarIndicadores, estadoDosMembros, jarvisCuidando, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
@@ -156,6 +157,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   ];
 
   const idsAgendar = precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : []));
+  // Gaveta da equipe (Messenger): status e o que cada um está fazendo.
+  const pessoasChat = estados.map((estado) => {
+    const ia = trabalhoIa.get(estado.membro.id);
+    const coordenador = estado.membro.eh_ia && estado.membro.nome === "Jarvis";
+    const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
+    return { membro: estado.membro, sinal, atual: estado.atual?.titulo ?? ia?.atual ?? null };
+  });
   // "Precisa de você" numa lista só, cada item com a categoria pro filtro.
   const linhasPrecisa: { chave: string; categoria: Categoria; no: React.ReactNode }[] = [
     ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
@@ -335,6 +343,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
+      <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} />
       <ProgramarLote clienteId={clienteId} tarefaIds={idsAgendar} aberto={loteAberto} onFechar={() => { setLoteAberto(false); void carregar(); }} />
 
       {/* 4. O que vai ser publicado. */}

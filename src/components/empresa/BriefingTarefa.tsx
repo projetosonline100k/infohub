@@ -21,10 +21,12 @@ export type TarefaDoBriefing = { titulo: string; tipo: string | null; prazo: str
 
 const AVISO_SEM_OUVINTE = 120; // segundos
 
-export function BriefingTarefa({ clienteId, membro, onCriarTarefa }: {
+export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: {
   clienteId: string;
   membro: MembroResumo;
   onCriarTarefa: (t: TarefaDoBriefing) => Promise<string>;
+  // Na gaveta da equipe (estilo Messenger): sem moldura, ocupa a altura e o Enter envia.
+  messenger?: boolean;
 }) {
   const [briefingId, setBriefingId] = useState<string | null>(null);
   const [proposta, setProposta] = useState<Proposta | null>(null);
@@ -121,10 +123,10 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa }: {
   const esperou = segundosEsperando(mensagens, agora);
 
   return (
-    <div className="space-y-2 rounded-lg border p-3">
+    <div className={messenger ? "flex h-full min-h-0 flex-col gap-2 p-3" : "space-y-2 rounded-lg border p-3"}>
       <div className="flex items-center gap-2">
-        <MessageSquare className="h-4 w-4 text-sky-500" />
-        <p className="text-sm font-semibold">Nova tarefa: converse com {membro.nome}</p>
+        {!messenger && <MessageSquare className="h-4 w-4 text-sky-500" />}
+        {!messenger && <p className="text-sm font-semibold">Nova tarefa: converse com {membro.nome}</p>}
         {briefingId && (
           <button type="button" onClick={() => void cancelar()} className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
             <X className="h-3 w-3" />Descartar
@@ -133,16 +135,17 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa }: {
       </div>
 
       {mensagens.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
+        <p className={cn("text-xs text-muted-foreground", messenger && "mt-auto rounded-lg bg-muted/60 p-3")}>
           Explique o que precisa como se falasse com {membro.eh_ia ? "ele" : "a pessoa"}. {membro.nome} diz o que entendeu, pergunta o que falta e se consegue fazer.
           A tarefa só sobe quando você confirmar.
         </p>
       ) : (
-        <div className="max-h-80 space-y-2 overflow-y-auto pr-1">
+        <div className={cn("space-y-2 overflow-y-auto pr-1", messenger ? "min-h-0 flex-1" : "max-h-80")}>
           {mensagens.map((m) => (
             <div key={m.id} className={cn("flex", m.papel === "davi" ? "justify-end" : "justify-start")}>
-              <div className={cn("max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm",
-                m.papel === "davi" ? "bg-primary text-primary-foreground" : "bg-muted")}>
+              <div className={cn("max-w-[85%] whitespace-pre-wrap px-3 py-2 text-sm",
+                messenger ? "rounded-2xl" : "rounded-lg",
+                m.papel === "davi" ? cn("bg-primary text-primary-foreground", messenger && "rounded-br-md") : cn("bg-muted", messenger && "rounded-bl-md"))}>
                 {m.texto}
                 <span className="mt-0.5 block text-right text-[10px] opacity-60">{format(new Date(m.criada_em), "HH:mm", { locale: ptBR })}</span>
               </div>
@@ -185,10 +188,12 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa }: {
       )}
 
       <form className="flex items-end gap-1.5" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
-        <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={mensagens.length ? 2 : 3}
+        <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={messenger ? 2 : mensagens.length ? 2 : 3}
           placeholder={mensagens.length ? "Responder…" : `O que ${membro.nome} precisa fazer? Objetivo, produto, prazo, referências…`}
           className="min-h-0 text-sm"
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void enviar(); } }} />
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey || (messenger && !e.shiftKey))) { e.preventDefault(); void enviar(); }
+          }} />
         <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!texto.trim() || enviando} title="Enviar (⌘ Enter)">
           {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
