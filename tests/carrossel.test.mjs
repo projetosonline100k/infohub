@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/carrossel.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { opcoesDeTitulo, montarPrevia, paginaVisivel, historicoVazio, excluirPagina, desfazerExclusao, refazerExclusao, podeExcluir, precisaRevisar, emProducao, linhaPrecisa, partesDoTitulo, semMarcas, paginasEditadas, montarPedidoAjuste, tarefaDaDalila, acharProgramador } =
+const { chaveRascunho, rascunhoTemMudanca, lerRascunho, opcoesDeTitulo, montarPrevia, paginaVisivel, historicoVazio, excluirPagina, desfazerExclusao, refazerExclusao, podeExcluir, precisaRevisar, emProducao, linhaPrecisa, partesDoTitulo, semMarcas, paginasEditadas, montarPedidoAjuste, tarefaDaDalila, acharProgramador } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const car = (extra = {}) => ({
@@ -96,4 +96,19 @@ test('opções de título: sugestões do Roy + o original, sem o que já está n
   assert.deepEqual(opcoesDeTitulo(o, 'HEADLINE DO *REEL*'), ['CURTA', 'OUTRA']);
   assert.deepEqual(opcoesDeTitulo(o, 'CURTA'), ['HEADLINE DO *REEL*', 'OUTRA']);
   assert.deepEqual(opcoesDeTitulo({ titulo: 'X', texto: '', pagina: '02/07' }, 'X'), []);
+});
+
+test('rascunho da revisão: guarda por versão, volta ao reabrir e não serve pra outra versão', () => {
+  const slides = [{ titulo: 'A', texto: 'a', pagina: '01/02' }, { titulo: 'B', texto: 'b', pagina: '02/02' }];
+  const c = { slides, legenda: 'leg' };
+  assert.equal(chaveRascunho('c1', 3), 'roy-rascunho:c1:v3');
+  const vazio = { slides, legenda: 'leg', pedido: '', historico: { excluidas: [], feitas: [], desfeitas: [] } };
+  assert.equal(rascunhoTemMudanca(c, vazio), false);
+  const r = { ...vazio, slides: [slides[0], { ...slides[1], texto: 'novo' }], historico: { excluidas: [1], feitas: [1], desfeitas: [] } };
+  assert.equal(rascunhoTemMudanca(c, r), true);
+  assert.deepEqual(lerRascunho(JSON.stringify(r), c), r);
+  assert.equal(lerRascunho(JSON.stringify(r), { slides: [slides[0]] }), null);          // páginas mudaram
+  assert.equal(lerRascunho('{quebrado', c), null);
+  assert.equal(lerRascunho(null, c), null);
+  assert.equal(lerRascunho(JSON.stringify({ slides, legenda: 'x' }), c).pedido, '');  // rascunho antigo sem pedido
 });

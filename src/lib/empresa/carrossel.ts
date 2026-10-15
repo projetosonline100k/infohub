@@ -150,3 +150,33 @@ export function opcoesDeTitulo(original: SlideCarrossel | undefined, atual: stri
     return true;
   }).filter((t) => semMarcas(t).trim().toLowerCase() !== semMarcas(atual).trim().toLowerCase());
 }
+
+// Rascunho da revisão (o que o Davi mexeu e ainda não enviou): fica salvo no
+// app por carrossel e versão, e volta ao reabrir. Versão nova do Roy = outro
+// rascunho (o antigo não vale pra páginas novas).
+export interface RascunhoRevisao {
+  slides: SlideCarrossel[];
+  legenda: string;
+  pedido: string;
+  historico: HistoricoExclusao;
+}
+export const chaveRascunho = (id: string, versao: number) => `roy-rascunho:${id}:v${versao}`;
+
+// Só vale a pena guardar se há algo diferente do que o Roy entregou.
+export function rascunhoTemMudanca(c: Pick<CarrosselResumo, "slides" | "legenda">, r: RascunhoRevisao): boolean {
+  return paginasEditadas(c.slides, r.slides).length > 0 || (c.legenda ?? "").trim() !== r.legenda.trim()
+    || r.pedido.trim() !== "" || r.historico.excluidas.length > 0;
+}
+
+// Lê o rascunho salvo e confere se ainda casa com o carrossel (mesmas páginas).
+export function lerRascunho(texto: string | null, c: Pick<CarrosselResumo, "slides">): RascunhoRevisao | null {
+  if (!texto) return null;
+  try {
+    const r = JSON.parse(texto) as RascunhoRevisao;
+    if (!Array.isArray(r.slides) || r.slides.length !== c.slides.length || typeof r.legenda !== "string") return null;
+    if (r.slides.some((s, i) => s.pagina !== c.slides[i]?.pagina)) return null;
+    return { slides: r.slides, legenda: r.legenda, pedido: r.pedido ?? "", historico: r.historico ?? historicoVazio() };
+  } catch {
+    return null;
+  }
+}

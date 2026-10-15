@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 import {
-  STATUS_CARROSSEL, desfazerExclusao, excluirPagina, historicoVazio, montarPedidoAjuste, montarPrevia, paginaVisivel, paginasEditadas,
+  STATUS_CARROSSEL, chaveRascunho, desfazerExclusao, lerRascunho, rascunhoTemMudanca, excluirPagina, historicoVazio, montarPedidoAjuste, montarPrevia, paginaVisivel, paginasEditadas,
   opcoesDeTitulo, partesDoTitulo, podeExcluir, refazerExclusao,
   type CarrosselResumo, type SlideCarrossel,
 } from "@/lib/empresa/carrossel";
@@ -32,15 +32,51 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
   const [historico, setHistorico] = useState(historicoVazio);
   const excluidas = historico.excluidas;
   const [salvando, setSalvando] = useState<"aprovar" | "ajuste" | null>(null);
+  // Rascunho: o que o Davi mexeu fica salvo no app (por carrossel e versão) e volta ao reabrir.
+  const [restaurado, setRestaurado] = useState(false);
+  const chaveCarregada = useRef<string | null>(null);
 
   useEffect(() => {
     setAtual(0);
-    setSlides(carrossel?.slides ?? []);
-    setLegenda(carrossel?.legenda ?? "");
-    setPedido("");
     setEditando(false);
-    setHistorico(historicoVazio());
+    chaveCarregada.current = null;
+    if (!carrossel) return;
+    const chave = chaveRascunho(carrossel.id, carrossel.versao);
+    let salvo = null;
+    try { salvo = lerRascunho(localStorage.getItem(chave), carrossel); } catch { /* sem storage */ }
+    setSlides(salvo?.slides ?? carrossel.slides);
+    setLegenda(salvo?.legenda ?? carrossel.legenda ?? "");
+    setPedido(salvo?.pedido ?? "");
+    setHistorico(salvo?.historico ?? historicoVazio());
+    setRestaurado(!!salvo && rascunhoTemMudanca(carrossel, salvo));
+    chaveCarregada.current = chave;
   }, [carrossel]);
+
+  // Salva a cada mudança (e apaga quando volta a ficar igual ao que o Roy entregou).
+  useEffect(() => {
+    const chave = chaveCarregada.current;
+    if (!carrossel || !chave || chave !== chaveRascunho(carrossel.id, carrossel.versao)) return;
+    const r = { slides, legenda, pedido, historico };
+    try {
+      if (rascunhoTemMudanca(carrossel, r)) localStorage.setItem(chave, JSON.stringify(r));
+      else localStorage.removeItem(chave);
+    } catch { /* sem storage: segue sem rascunho */ }
+  }, [carrossel, slides, legenda, pedido, historico]);
+
+  const apagarRascunho = () => {
+    if (!carrossel) return;
+    try { localStorage.removeItem(chaveRascunho(carrossel.id, carrossel.versao)); } catch { /* sem storage */ }
+  };
+  const descartarRascunho = () => {
+    if (!carrossel) return;
+    apagarRascunho();
+    setSlides(carrossel.slides);
+    setLegenda(carrossel.legenda ?? "");
+    setPedido("");
+    setHistorico(historicoVazio());
+    setRestaurado(false);
+    setAtual(0);
+  };
 
   const total = carrossel?.paginas.length ?? 0;
   const dois = (n: number) => String(n).padStart(2, "0");
@@ -119,6 +155,7 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
     }).eq("id", c.id);
     setSalvando(null);
     if (error) { toast.error("Não consegui enviar o pedido de ajuste"); return; }
+    apagarRascunho();
     toast.success("Pedido enviado ao Roy");
     onFechar();
   };
@@ -139,6 +176,7 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
       }).eq("id", c.id);
       setSalvando(null);
       if (error) { toast.error("Não consegui aprovar"); return; }
+      apagarRascunho();
       toast.success("Aprovado! O Roy remonta com as suas mudanças e já manda para a Dalila programar.");
       onFechar();
       return;
@@ -146,6 +184,7 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
     setSalvando("aprovar");
     try {
       const { programador } = await aprovarCarrosseis(clienteId, [c]);
+      apagarRascunho();
       toast.success(programador ? `Aprovado. Foi para a fila da ${programador} programar.` : "Aprovado. (Não achei a Dalila no projeto para criar a tarefa.)");
       onFechar();
     } catch {
@@ -170,6 +209,12 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
           </DialogDescription>
         </DialogHeader>
 
+        {restaurado && podeRevisar && (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-sm">
+            <span className="min-w-0 flex-1">Rascunho restaurado: o que você tinha mexido antes voltou.</span>
+            <Button size="sm" variant="ghost" className="h-7" onClick={descartarRascunho}>Descartar rascunho</Button>
+          </div>
+        )}
         {c.status === "revisar" && c.mensagem && (
           <p className="rounded-md border bg-muted/40 p-2.5 text-sm">{c.mensagem}</p>
         )}
