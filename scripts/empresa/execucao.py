@@ -95,8 +95,8 @@ def contexto(aid):
     if tipo == 'quiz':
         print('\nQUIZ (fluxo e formato em docs/QUIZ.md, leia antes):')
         if quiz and quiz[1] == 'criando':
-            print(f'ETAPA 2 de 2: CRIAR O QUIZ. O Davi aprovou o esboço ("{anterior[1] if anterior else "-"}", documento '
-                  f'{anterior[0] if anterior else "-"}; leia com scripts/consulta.py). Monte a estrutura JSON do docs/QUIZ.md seguindo o esboço'
+            esboco = f'"{anterior[1]}", documento {anterior[0]}' if anterior else 'o documento anexado com 📎 no combinado abaixo'
+            print(f'ETAPA 2 de 2: CRIAR O QUIZ. O Davi aprovou o esboço ({esboco}; leia com scripts/consulta.py). Monte a estrutura JSON do docs/QUIZ.md seguindo o esboço'
                   f' e a conversa, e salve (isso manda o quiz para o Davi testar e aprovar; NÃO use o entregar):\n'
                   f"  python3 scripts/quiz/quiz.py salvar {aid} <<'FIM'\n  {{...json...}}\n  FIM")
         else:

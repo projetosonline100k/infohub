@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
 import { aprovarEntrega } from "@/lib/empresa/entregas";
+import { aprovarEPassarParaRoy, pareceEsbocoDeQuiz } from "@/lib/quiz/passarParaRoy";
 import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
@@ -104,6 +105,13 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     try { depois(await aprovarEntrega(tarefa.id, clienteId)); }
     catch { toast.error("Não consegui aprovar"); } finally { setSalvando(false); }
   };
+  const passarParaRoy = async () => {
+    setSalvando(true);
+    try { depois(await aprovarEPassarParaRoy(tarefa.id, clienteId)); }
+    catch (e) { toast.error(e instanceof Error ? e.message : "Não consegui passar para o Roy"); } finally { setSalvando(false); }
+  };
+  // Esboço de quiz de outro funcionário (sem quiz ligado ainda): dá pra mandar pro Roy criar.
+  const esbocoParaRoy = !quiz && !/^roy$/i.test(info?.responsavel ?? "") && pareceEsbocoDeQuiz(tarefa?.titulo, docs[0]?.titulo);
   let marcouPrimeira = false;
 
   return (
@@ -182,6 +190,12 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   : quiz?.status === "revisar" ? "Teste o quiz. Aprovar publica e libera o link."
                   : "Converse com ele: elogio, ajuste ou refazer, ele entende pela conversa."}
               </p>
+              {esbocoParaRoy && (
+                <Button variant="outline" className="gap-1.5" disabled={salvando || escrevendo} onClick={() => void passarParaRoy()}
+                  title="Aprova o esboço e o Roy cria o quiz no Infopro (aba Quiz)">
+                  <CheckCircle2 className="h-4 w-4" />Aprovar e passar pro Roy criar o quiz
+                </Button>
+              )}
               <Button className="gap-1.5" disabled={salvando || escrevendo} title={escrevendo ? "Espere ele terminar a resposta" : undefined} onClick={() => void aprovar()}>
                 {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{quiz?.status === "esboco" ? "Aprovar esboço" : quiz?.status === "revisar" ? "Aprovar e publicar" : "Aprovar"}
               </Button>

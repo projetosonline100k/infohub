@@ -2,6 +2,8 @@
 Formato e fluxo: docs/QUIZ.md.
 
   python3 scripts/quiz/quiz.py ver <atividade_id>              → status, slug e a estrutura atual
+  python3 scripts/quiz/quiz.py de-esboco <atividade_id>         → esboço aprovado de OUTRO funcionário (ex.: Ítalo)
+                                                                   vira tarefa do Roy já na etapa 2 (criar o quiz)
   python3 scripts/quiz/quiz.py salvar <atividade_id> <<'FIM'   → valida e salva a estrutura
   { ...json... }
   FIM
@@ -109,10 +111,58 @@ def salvar(aid, bruto):
     print('SALVO', qid, novo)
 
 
+def de_esboco(origem):
+    """O Davi aprovou um esboço de quiz feito por outro funcionário: nasce a tarefa do
+    Roy do mesmo projeto e o quiz já em 'criando' (o esboço vai anexado com 📎)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("SELECT cliente_id, user_id, titulo, pasta_id, data_vencimento FROM atividades WHERE id = %s", (origem,))
+        r = q.fetchone()
+        if not r:
+            raise SystemExit('tarefa de origem não encontrada')
+        cliente_id, dono, titulo, pasta, prazo = r
+        q.execute("SELECT 1 FROM quizzes WHERE atividade_id IN (SELECT id FROM atividades WHERE descricao LIKE %s) AND status <> 'cancelado'",
+                  (f'%(origem {origem})%',))
+        if q.fetchone():
+            raise SystemExit('este esboço já foi passado para o Roy')
+        q.execute("""SELECT id, titulo FROM documentos WHERE atividade_id = %s AND deleted_at IS NULL
+                      ORDER BY updated_at DESC LIMIT 1""", (origem,))
+        doc = q.fetchone()
+        if not doc:
+            raise SystemExit('a tarefa de origem não tem documento de esboço')
+        q.execute("""SELECT id, nome FROM membros WHERE cliente_id = %s AND eh_ia AND ativo AND lower(nome) = 'roy' LIMIT 1""", (cliente_id,))
+        roy = q.fetchone()
+        if not roy:
+            raise SystemExit('este projeto não tem o Roy (IA) ativo')
+        q.execute("""SELECT status_key FROM colunas_atividade WHERE cliente_id = %s AND NOT eh_conclusao ORDER BY ordem LIMIT 1""", (cliente_id,))
+        col = q.fetchone()
+        nome = re.sub(r'^\s*(esbo[cç]o d[oa]s?\s*)', '', titulo, flags=re.I).strip() or titulo
+        nome = nome[:1].upper() + nome[1:]
+        descricao = (f'Criar no Infopro o quiz do esboço APROVADO pelo Davi (origem {origem}).\n'
+                     f'O esboço já está pronto e aprovado: não refaça o esboço, vá direto para a etapa 2 (docs/QUIZ.md) e siga o que ele diz '
+                     f'(nome, palavras, perguntas, opções, perfis e ponte para a oferta).\n\n'
+                     f'📎 Para ler: "{doc[1]}" (documento {doc[0]})')
+        q.execute("""INSERT INTO atividades (cliente_id, user_id, titulo, status, pasta_id, responsavel_id, situacao, tipo, descricao, data_vencimento)
+                     VALUES (%s, %s, %s, %s, %s, %s, 'fila', 'quiz', %s, %s) RETURNING id""",
+                  (cliente_id, dono, f'Criar o quiz: {nome}'[:200], col[0] if col else 'backlog', pasta, roy[0], descricao, prazo))
+        aid = q.fetchone()[0]
+        q.execute("""INSERT INTO quizzes (cliente_id, user_id, atividade_id, titulo, pedido, status)
+                     VALUES (%s, %s, %s, %s, %s, 'criando') RETURNING id""",
+                  (cliente_id, dono, aid, nome[:150], f'Esboço aprovado: {doc[1]}'))
+        qid = q.fetchone()[0]
+        c.commit()
+    finally:
+        c.close()
+    print('PASSADO', aid, qid)
+
+
 if __name__ == '__main__':
     a = sys.argv[1:]
     if len(a) >= 2 and a[0] == 'ver':
         ver(a[1])
+    elif len(a) >= 2 and a[0] == 'de-esboco':
+        de_esboco(a[1])
     elif len(a) >= 2 and a[0] == 'salvar':
         salvar(a[1], sys.stdin.read())
     else:
