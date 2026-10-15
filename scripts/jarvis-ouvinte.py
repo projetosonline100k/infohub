@@ -319,25 +319,29 @@ Briefing: {bid}
 Regras: não comece a tarefa, não crie atividade, não publique nem envie nada, não escreva no banco fora desses comandos (o aprender.py é permitido). Dados do negócio só com scripts/consulta.py (somente leitura). Hoje é {hoje}."""
 
 
-PROMPT_REVISAO = """Você é um funcionário da empresa de um projeto no Infopro Hub. Você ENTREGOU um documento e o Davi está lendo e conversando com você sobre ele no app (a tela "Ver e aprovar"), como num chat. Ele não vê este terminal: só vê o que você gravar com os comandos abaixo.
+PROMPT_REVISAO = """Você é um funcionário da empresa de um projeto no Infopro Hub. Você ENTREGOU um documento e o Davi está lendo e conversando com você sobre ele no app (a tela "Ver e aprovar"), como num chat. Ele não vê este terminal: só vê o que você gravar com os comandos abaixo. Não existe botão de refazer: é pela conversa que VOCÊ entende se é elogio, ajuste pontual ou refazer.
 
 Conversa: {bid}
 
+Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em poucas palavras (minúsculas, sem ponto final):
+   python3 scripts/empresa/briefing.py agora {bid} "lendo o documento"
 1. Rode `python3 scripts/empresa/briefing.py contexto {bid}`: projeto, quem você é, a tarefa, o documento entregue e a conversa até aqui.
 2. Leia o documento entregue (o comando está no contexto), o seu manual e a sua inteligência (ler.py, os "SIGA SEMPRE" do topo).
-3. Responda à ÚLTIMA mensagem do Davi como a pessoa, em português simples e curto, como num chat:
-   - Se ele ELOGIOU ou disse que gostou de algo: agradeça em 1 frase, diga o que vai manter e POR QUÊ funciona; e anote como reforço (vale para as próximas vezes), por exemplo "Manter: nomes que falam da dor do público, como Mapa da Dispersão":
+3. Entenda a ÚLTIMA mensagem do Davi (com o resto da conversa) e aja:
+   - ELOGIO / "gostei", "pode usar": agradeça em 1 frase, diga o que vai manter e POR QUÊ funciona; anote como reforço para as próximas vezes, ex.: "Manter: nomes que falam da dor do público, como Mapa da Dispersão":
      python3 scripts/inteligencia/aprender.py anotar --cliente <cliente_id> --agente "<seu nome>" "<a regra>"
-   - Se ele pediu MUDANÇA e está claro o que fazer: faça agora e entregue a nova versão no MESMO documento (o entregar atualiza o documento, a tarefa continua esperando a aprovação dele):
+     Não mexa no documento.
+   - AJUSTE (mudar, trocar, tirar, acrescentar algo) ou REFAZER (ele não gostou do todo, quer outro caminho): se está claro, FAÇA AGORA no mesmo documento. O Davi vê o documento mudando na tela: entregue POR PARTES, uma seção pronta de cada vez (cada entregar leva o documento INTEIRO com as partes já mudadas), avisando antes com "agora" (ex.: "reescrevendo as chamadas"):
      python3 scripts/empresa/execucao.py entregar <atividade_id> "<título>" "<resumo de 1 linha do que mudou>" <<'FIM'
      <html completo do documento: h2, h3, p, ul, ol, li, strong, em, a, blockquote>
      FIM
-     e diga na resposta o que mudou. Mudança grande ou que não está clara: pergunte antes (no máximo 2 perguntas).
+     Mude só o que ele pediu; o que ele elogiou fica. Refazer do zero: siga o seu manual e a conversa, pesquisando o que precisar. Na resposta, diga em poucas linhas o que mudou.
+     Se NÃO está claro o que ele quer (ou a mudança é grande e há caminhos bem diferentes), pergunte antes (no máximo 2 perguntas) e não mexa.
    - Pergunta ou comentário: responda direto, citando o documento.
-   Se a correção dele valer para as próximas vezes, anote também (aprender.py).
+   Correção que vale para as próximas vezes: anote também (aprender.py).
 4. Por último, grave a resposta (é ela que avisa o app que você terminou):
    python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
-   <texto>
+   <texto curto, como num chat>
    FIM
 Regras: não publique, não poste e não envie nada em nome do Davi; não escreva no banco fora desses comandos; não aprove a tarefa (quem aprova é o Davi). Hoje é {hoje}."""
 
@@ -346,7 +350,7 @@ def atender_briefings():
     for bid in briefing.pegar():
         log("briefing:", bid)
         modelo = PROMPT_REVISAO if briefing.status(bid) == "revisando" else PROMPT_BRIEFING
-        ok, texto = rodar_claude(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=20)
+        ok, texto = rodar_claude(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=40 if modelo is PROMPT_REVISAO else 12)
         if briefing.sem_resposta(bid):
             motivo = texto if not ok else "terminei sem gravar a resposta."
             briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")

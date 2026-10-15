@@ -15,9 +15,12 @@ import { TextoMensagem } from "./BriefingTarefa";
 // pede mudança. É um briefing 'revisando' ligado à tarefa; o ouvinte do Jarvis
 // responde como o funcionário, anota o reforço nos aprendizados e, se for
 // mudança clara, atualiza o mesmo documento (onDocumentoMudou recarrega).
-export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInicial, onDocumentoMudou }: {
+export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando }: {
   clienteId: string; tarefaId: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
+  onEsperando?: (esperando: boolean) => void;
 }) {
+  // O que ele está fazendo agora (briefing.py agora): "lendo o documento", "reescrevendo as chamadas"…
+  const [fazendo, setFazendo] = useState<string | null>(null);
   const [conversaId, setConversaId] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<MensagemBriefing[]>([]);
   const [texto, setTexto] = useState("");
@@ -27,7 +30,12 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
   const respostas = useRef(0);
 
   const carregar = useCallback(async (id: string) => {
-    const { data } = await supabase.from("briefing_mensagens").select("id, papel, texto, status, criada_em").eq("briefing_id", id).order("criada_em");
+    const [{ data }, { data: b }] = await Promise.all([
+      supabase.from("briefing_mensagens").select("id, papel, texto, status, criada_em").eq("briefing_id", id).order("criada_em"),
+      supabase.from("briefings").select("proposta").eq("id", id).maybeSingle(),
+    ]);
+    const agora = (b?.proposta as { agora?: string } | null)?.agora;
+    setFazendo(typeof agora === "string" && agora.trim() ? agora.trim() : null);
     const lista = (data || []) as MensagemBriefing[];
     const n = lista.filter((m) => m.papel === "funcionario").length;
     if (n > respostas.current && respostas.current > 0) onDocumentoMudou();   // a resposta pode ter vindo com nova versão
@@ -51,6 +59,8 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
   useEffect(() => { if (textoInicial) setTexto(textoInicial); }, [textoInicial]);
 
   const esperando = esperandoResposta(mensagens);
+  useEffect(() => { onEsperando?.(esperando); }, [esperando, onEsperando]);
+  useEffect(() => () => onEsperando?.(false), [onEsperando]);
   useEffect(() => {
     if (!conversaId || !esperando) return;
     const t = window.setInterval(() => { setAgora(Date.now()); void carregar(conversaId); }, 3000);
@@ -91,7 +101,7 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2.5">
         {mensagens.length === 0 && (
           <p className="rounded-lg bg-muted/60 p-2.5 text-xs text-muted-foreground">
-            Elogie o que gostou (ele guarda para manter nas próximas), pergunte ou peça uma mudança: se estiver claro, {nome} já atualiza o documento aqui do lado.
+            Converse como num chat: elogie o que gostou (ele guarda para manter nas próximas), pergunte, peça uma mudança ou que refaça. {nome} entende pela conversa e, se for mexer, você vê o documento mudando aqui do lado.
           </p>
         )}
         {mensagens.map((m) => (
@@ -106,7 +116,8 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
         {esperando && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {esperou > 180 ? "Ninguém respondeu ainda. O ouvinte do Jarvis está ligado neste Mac?" : `${nome} está lendo…`}
+            {fazendo ? `${nome}: ${fazendo}…`
+              : esperou > 180 ? "Ninguém respondeu ainda. O ouvinte do Jarvis está ligado neste Mac?" : `${nome} está lendo…`}
           </p>
         )}
         <div ref={fimRef} />

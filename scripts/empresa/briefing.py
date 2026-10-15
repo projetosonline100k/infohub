@@ -49,6 +49,9 @@ def pegar():
         q.execute("""UPDATE public.briefing_mensagens SET status = 'lida'
                       WHERE status = 'enviada' RETURNING briefing_id""")
         ids = sorted({str(r[0]) for r in q.fetchall()})
+        # Revisão: o "fazendo agora" da rodada anterior sai antes da nova resposta.
+        if ids:
+            q.execute("UPDATE public.briefings SET proposta = NULL WHERE status = 'revisando' AND id = ANY(%s::uuid[])", (ids,))
         c.commit()
         return ids
     finally:
@@ -166,6 +169,19 @@ def propor(bid, bruto):
     print('PROPOSTA_GRAVADA')
 
 
+def agora(bid, texto):
+    """Revisão: o que o funcionário está fazendo agora (aparece no chat enquanto o Davi espera)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.briefings SET proposta = jsonb_build_object('agora', %s::text) WHERE id = %s AND status = 'revisando'",
+                  (texto.strip()[:120], bid))
+        c.commit()
+    finally:
+        c.close()
+    print('OK')
+
+
 def status(bid):
     c = connect()
     try:
@@ -201,6 +217,8 @@ if __name__ == '__main__':
         responder(args[1], sys.stdin.read())
     elif cmd == 'propor':
         propor(args[1], sys.stdin.read())
+    elif cmd == 'agora':
+        agora(args[1], args[2])
     else:
         print(__doc__)
         sys.exit(1)
