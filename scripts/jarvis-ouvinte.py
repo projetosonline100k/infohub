@@ -346,17 +346,41 @@ Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em po
 Regras: não publique, não poste e não envie nada em nome do Davi; não escreva no banco fora desses comandos; não aprove a tarefa (quem aprova é o Davi). Hoje é {hoje}."""
 
 
-def atender_briefings():
-    for bid in briefing.pegar():
+# Cada conversa no seu próprio fio (15/10: a revisão longa do Roy travava a
+# resposta do Gabriel). Mensagem nova numa conversa que já está sendo atendida
+# espera ela terminar.
+MAX_CONVERSAS = 4
+_conversas = set()
+_trava_conversas = threading.Lock()
+
+
+def _atender_briefing(bid):
+    try:
         log("briefing:", bid)
         modelo = PROMPT_REVISAO if briefing.status(bid) == "revisando" else PROMPT_BRIEFING
         ok, texto = rodar_claude(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=40 if modelo is PROMPT_REVISAO else 12)
         if briefing.sem_resposta(bid):
             motivo = texto if not ok else "terminei sem gravar a resposta."
             briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")
-            log("briefing: falhou —", motivo)
+            log("briefing: falhou —", bid, motivo)
         else:
-            log("briefing: ok")
+            log("briefing: ok", bid)
+    except Exception as e:  # rede caiu etc.
+        log("briefing: erro —", bid, repr(e)[:300])
+    finally:
+        with _trava_conversas:
+            _conversas.discard(bid)
+
+
+def atender_briefings():
+    with _trava_conversas:
+        ocupadas = set(_conversas)
+    if len(ocupadas) >= MAX_CONVERSAS:
+        return
+    for bid in briefing.pegar(ignorar=ocupadas):
+        with _trava_conversas:
+            _conversas.add(bid)
+        threading.Thread(target=_atender_briefing, args=(bid,), daemon=True).start()
 
 
 # ---------------------------------------------------------------- Execução
@@ -419,6 +443,12 @@ if __name__ == "__main__":
         print(rodar_claude("Responda apenas: OK", minutos=2))
         sys.exit(0)
     log("ouvinte iniciado; claude =", claude_bin())
+    try:
+        n = briefing.reenfileirar()
+        if n:
+            log(f"briefing: {n} mensagem(ns) de atendimento interrompido de volta na fila")
+    except Exception as e:
+        log("briefing: não reenfileirei —", repr(e)[:200])
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()

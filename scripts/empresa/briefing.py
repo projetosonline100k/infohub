@@ -41,19 +41,33 @@ def manual_do(nome):
     return achados[0] if achados else None
 
 
-def pegar():
-    """Marca as mensagens 'enviada' como 'lida' e devolve os briefings que têm mensagem nova."""
+def pegar(ignorar=()):
+    """Marca as mensagens 'enviada' como 'lida' e devolve os briefings que têm mensagem nova
+    (menos os de `ignorar`, que já estão sendo atendidos: a mensagem nova espera a vez deles)."""
     c = connect()
     try:
         q = c.cursor()
         q.execute("""UPDATE public.briefing_mensagens SET status = 'lida'
-                      WHERE status = 'enviada' RETURNING briefing_id""")
+                      WHERE status = 'enviada' AND NOT (briefing_id = ANY(%s::uuid[])) RETURNING briefing_id""", (list(ignorar),))
         ids = sorted({str(r[0]) for r in q.fetchall()})
         # Revisão: o "fazendo agora" da rodada anterior sai antes da nova resposta.
         if ids:
             q.execute("UPDATE public.briefings SET proposta = NULL WHERE status = 'revisando' AND id = ANY(%s::uuid[])", (ids,))
         c.commit()
         return ids
+    finally:
+        c.close()
+
+
+def reenfileirar():
+    """Ao ligar o ouvinte: mensagem 'lida' sem resposta é de um atendimento que caiu no meio. Volta pra fila."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.briefing_mensagens SET status = 'enviada' WHERE status = 'lida' RETURNING briefing_id")
+        n = len(q.fetchall())
+        c.commit()
+        return n
     finally:
         c.close()
 
