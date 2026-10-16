@@ -67,7 +67,7 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 - `sleep_logs`, `sleep_goals`.
 - `jarvis_configuracoes`, `jarvis_mensagens` (mensagens/nudges da orbe Atlas).
 
-**Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`; `instagram_conexoes` (token, sem acesso pelo app), `instagram_automacoes`, `instagram_automacao_disparos`.
+**Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`; `instagram_conexoes` (token, sem acesso pelo app), `instagram_automacoes`, `instagram_automacao_disparos`, `instagram_metricas_diarias` (histórico diário de cada conta; painel do cronograma).
 
 ## Permissões (RLS)
 
@@ -75,7 +75,7 @@ Acesso por dono + equipe. Funções: `team_allowed`, `team_access`, `team_row_al
 
 ## Edge functions (`supabase/functions/`)
 
-`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-insights` (Windsor), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
+`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-metricas` (seguidores/alcance/visualizações por dia, pg_cron às 03:10), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
 
 ## Consultar dados reais (somente leitura)
 

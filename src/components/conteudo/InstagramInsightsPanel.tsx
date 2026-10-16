@@ -1,83 +1,94 @@
 import { useCallback, useEffect, useState } from "react";
-import { BarChart3, Clock3, RefreshCw, Users } from "lucide-react";
+import { Eye, RefreshCw, TrendingUp, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { resumoInstagram, type MetricaDiaria, type Periodo } from "@/lib/instagramMetricas";
 
-type Video = { id: string; type: string; url: string; caption: string; timestamp: string; views: number; reach: number; engagement: number; likes: number; comments: number };
-type Breakdown = { label: string; value: number };
-type Insights = {
-  accountName: string; followers: number; growth: number; videosOver3k: Video[]; topVideos: Video[]; fetchedAt: string;
-  audience: { genderAge: Breakdown[]; cities: Breakdown[]; countries: Breakdown[]; activeHours: Breakdown[] };
-};
+// Crescimento do Instagram do projeto: histórico diário gravado pela edge
+// instagram-metricas (pg_cron todo dia às 03:10 e o botão "Atualizar").
 
 const formatNumber = (value: number) => value.toLocaleString("pt-BR");
-const videoName = (video: Video) => video.caption.trim() || "Vídeo sem legenda";
+const formatDia = (dia: string) => dia.split("-").reverse().slice(0, 2).join("/");
 
-export function InstagramInsightsPanel() {
-  const [insights, setInsights] = useState<Insights | null>(null);
+function LinhaPeriodo({ titulo, periodo }: { titulo: string; periodo: Periodo }) {
+  return (
+    <div className="rounded-md bg-muted/40 p-2.5">
+      <p className="text-xs font-medium text-muted-foreground">{titulo}</p>
+      {periodo.ganho == null
+        ? <p className="text-sm text-muted-foreground">Juntando histórico…</p>
+        : <p className={`text-sm font-semibold ${periodo.ganho >= 0 ? "text-emerald-500" : "text-destructive"}`}>
+            {periodo.ganho >= 0 ? "+" : ""}{formatNumber(periodo.ganho)} seguidores
+            {periodo.desde && <span className="font-normal text-muted-foreground"> desde {formatDia(periodo.desde)}</span>}
+          </p>}
+      {(periodo.alcance != null || periodo.visualizacoes != null) && (
+        <p className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+          <Eye className="h-3 w-3" />
+          {periodo.alcance != null && `${formatNumber(periodo.alcance)} alcance`}
+          {periodo.alcance != null && periodo.visualizacoes != null && " · "}
+          {periodo.visualizacoes != null && `${formatNumber(periodo.visualizacoes)} visualizações`}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export function InstagramInsightsPanel({ clienteId }: { clienteId: string }) {
+  const [linhas, setLinhas] = useState<MetricaDiaria[]>([]);
   const [loading, setLoading] = useState(true);
+  const [atualizando, setAtualizando] = useState(false);
   const [error, setError] = useState("");
 
-  const loadInsights = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    const { data, error: requestError } = await supabase.functions.invoke<Insights>("instagram-insights");
-    if (requestError) {
-      let message = requestError.message;
-      if (requestError.context instanceof Response) {
-        const body = await requestError.context.json().catch(() => null) as { error?: unknown } | null;
-        if (typeof body?.error === "string") message = body.error;
-      }
-      setError(message || "Não foi possível atualizar os dados do Instagram.");
-    } else if (data) {
-      setInsights(data);
-    }
+  const carregar = useCallback(async () => {
+    const desde = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const { data, error: requestError } = await supabase.from("instagram_metricas_diarias")
+      .select("dia, username, seguidores, alcance, visualizacoes, erro")
+      .eq("cliente_id", clienteId).gte("dia", desde).order("dia");
+    if (requestError) setError("Não foi possível carregar as métricas do Instagram.");
+    else setLinhas(data ?? []);
     setLoading(false);
-  }, []);
+  }, [clienteId]);
 
-  useEffect(() => { void loadInsights(); }, [loadInsights]);
+  const atualizar = useCallback(async () => {
+    setAtualizando(true);
+    setError("");
+    const { error: requestError } = await supabase.functions.invoke("instagram-metricas");
+    if (requestError) setError("Não foi possível falar com o Instagram agora.");
+    await carregar();
+    setAtualizando(false);
+  }, [carregar]);
+
+  useEffect(() => { setLoading(true); void carregar(); }, [carregar]);
+
+  const resumo = resumoInstagram(linhas);
 
   return (
-    <div className="space-y-3">
-      <div className="rounded-lg border bg-card p-4">
-        <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 font-semibold"><Users className="h-4 w-4" />Instagram</div>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void loadInsights()} disabled={loading} aria-label="Atualizar insights">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-        {loading ? <p className="text-sm text-muted-foreground">Atualizando dados...</p> : error ? <p className="text-sm text-destructive">{error}</p> : insights && <>
-          <p className="text-2xl font-bold">{formatNumber(insights.followers)}</p>
-          <p className="text-xs text-muted-foreground">seguidores atuais{insights.accountName ? ` · ${insights.accountName}` : ""}</p>
-          <p className={`mt-3 text-sm font-medium ${insights.growth >= 0 ? "text-emerald-500" : "text-destructive"}`}>{insights.growth >= 0 ? "+" : ""}{formatNumber(insights.growth)} nos últimos 90 dias</p>
-        </>}
+    <div className="rounded-lg border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 font-semibold"><TrendingUp className="h-4 w-4" />Instagram</div>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void atualizar()} disabled={atualizando} aria-label="Atualizar métricas">
+          <RefreshCw className={`h-4 w-4 ${atualizando ? "animate-spin" : ""}`} />
+        </Button>
       </div>
-
-      {insights && <>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center gap-2 font-semibold"><BarChart3 className="h-4 w-4" />Vídeos acima de 3k</div>
-          <p className="mt-2 text-2xl font-bold">{insights.videosOver3k.length}</p>
-          <p className="text-xs text-muted-foreground">publicações com 3 mil+ impressões</p>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2 font-semibold"><Clock3 className="h-4 w-4" />Top 5 vídeos</div>
-          <div className="space-y-3">{insights.topVideos.length ? insights.topVideos.map((video, index) => (
-            <a key={video.id} href={video.url || undefined} target="_blank" rel="noreferrer" className="block rounded-md hover:bg-muted/50">
-              <p className="line-clamp-2 text-xs font-medium">{index + 1}. {videoName(video)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{formatNumber(video.views)} impressões · {formatNumber(video.engagement)} engajamentos</p>
-            </a>
-          )) : <p className="text-sm text-muted-foreground">Nenhum vídeo no período.</p>}</div>
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2 font-semibold"><Clock3 className="h-4 w-4" />Horários do público</div>
-          {insights.audience.activeHours.length ? <div className="space-y-1.5 text-sm">{insights.audience.activeHours.map((hour) => <p key={hour.label}><span className="font-medium">{hour.label}h</span> <span className="text-muted-foreground">· {formatNumber(hour.value)} ativos</span></p>)}</div> : <p className="text-xs text-muted-foreground">Indisponível para esta conta.</p>}
-        </div>
-        <div className="rounded-lg border bg-card p-4">
-          <div className="mb-3 flex items-center gap-2 font-semibold"><Users className="h-4 w-4" />Público</div>
-          {insights.audience.genderAge.length ? <div className="space-y-1.5 text-xs">{insights.audience.genderAge.slice(0, 5).map((item) => <p key={item.label}><span className="font-medium">{item.label}</span> <span className="text-muted-foreground">· {formatNumber(item.value)}</span></p>)}</div> : <p className="text-xs text-muted-foreground">Faixa etária indisponível para esta conta.</p>}
-          {(insights.audience.cities.length > 0 || insights.audience.countries.length > 0) && <p className="mt-3 text-xs text-muted-foreground">{[...insights.audience.cities, ...insights.audience.countries].slice(0, 5).map((item) => item.label).join(" · ")}</p>}
-        </div>
-      </>}
+      {loading ? <p className="text-sm text-muted-foreground">Carregando…</p>
+        : resumo.seguidores == null ? (
+          <p className="text-sm text-muted-foreground">
+            {error || "Sem métricas ainda. O Instagram deste projeto precisa estar conectado em Automações; a leitura é diária."}
+          </p>
+        ) : <>
+          <p className="text-2xl font-bold">{formatNumber(resumo.seguidores)}</p>
+          <p className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Users className="h-3 w-3" />seguidores{resumo.conta ? ` · @${resumo.conta}` : ""}
+            {resumo.atualizadoDia && ` · ${formatDia(resumo.atualizadoDia)}`}
+          </p>
+          <div className="mt-3 space-y-2">
+            <LinhaPeriodo titulo="Últimos 7 dias" periodo={resumo.semana} />
+            <LinhaPeriodo titulo="Últimos 30 dias" periodo={resumo.mes} />
+          </div>
+          {resumo.semInsights && (
+            <p className="mt-3 text-xs text-amber-600">Alcance e visualizações pedem a permissão de insights: reconecte esta conta em Automações.</p>
+          )}
+          {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+        </>}
     </div>
   );
 }

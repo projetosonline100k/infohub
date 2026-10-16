@@ -242,6 +242,48 @@ export type Database = {
         }
         Relationships: []
       }
+      instagram_metricas_diarias: {
+        Row: {
+          ig_user_id: string
+          dia: string
+          user_id: string
+          cliente_id: string | null
+          username: string | null
+          seguidores: number | null
+          publicacoes: number | null
+          alcance: number | null
+          visualizacoes: number | null
+          erro: string | null
+          atualizado_em: string
+        }
+        Insert: {
+          ig_user_id: string
+          dia: string
+          user_id?: string
+          cliente_id?: string | null
+          username?: string | null
+          seguidores?: number | null
+          publicacoes?: number | null
+          alcance?: number | null
+          visualizacoes?: number | null
+          erro?: string | null
+          atualizado_em?: string
+        }
+        Update: {
+          ig_user_id?: string
+          dia?: string
+          user_id?: string
+          cliente_id?: string | null
+          username?: string | null
+          seguidores?: number | null
+          publicacoes?: number | null
+          alcance?: number | null
+          visualizacoes?: number | null
+          erro?: string | null
+          atualizado_em?: string
+        }
+        Relationships: []
+      }
       instagram_automacao_disparos: {
         Row: {
           id: string
