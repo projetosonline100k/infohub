@@ -112,6 +112,36 @@ def identificar_card(fala):
     return None, [(t, round(n, 2)) for n, _, t in notas[:3]]
 
 
+def copiar_do_drive(origem, destino, minutos=60, log=print):
+    """Copia um arquivo do Google Drive do Mac (modo streaming). Recém-chegado,
+    o arquivo fica "dataless": o fcopyfile falha (Errno 11) e a leitura dá
+    timeout (Errno 60) até o Drive baixar tudo — o que a própria leitura dispara
+    (um bruto de 1 GB levou ~5 min). Então: lê em blocos e, se o Drive ainda
+    não entregou, espera e tenta de novo do ponto onde parou."""
+    import errno
+    import time
+    limite = time.time() + minutos * 60
+    feito, avisou = 0, False
+    with open(destino, "wb") as out:
+        while True:
+            try:
+                with open(origem, "rb") as f:
+                    f.seek(feito)
+                    while True:
+                        bloco = f.read(8 << 20)
+                        if not bloco:
+                            return destino
+                        out.write(bloco)
+                        feito += len(bloco)
+            except OSError as e:
+                if e.errno not in (errno.EDEADLK, errno.ETIMEDOUT, errno.EAGAIN, errno.EIO) or time.time() > limite:
+                    raise
+                if not avisou:
+                    log("Drive ainda baixando", Path(origem).name, f"({e.strerror}); esperando…")
+                    avisou = True
+                time.sleep(15)
+
+
 def transcrever(p):
     import criar_projeto
     return criar_projeto.transcrever(p)
@@ -130,7 +160,7 @@ def preparar(arquivo, log=print):
     try:
         BRUTOS.mkdir(parents=True, exist_ok=True)
         local = BRUTOS / nome
-        shutil.copyfile(marcado, local)
+        copiar_do_drive(marcado, local, log=log)
         p = pasta(id_)
         (p / "imagens").mkdir(parents=True)
         os.symlink(local, p / f"bruto{local.suffix.lower()}")
