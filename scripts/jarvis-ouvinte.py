@@ -327,6 +327,7 @@ Conversa: {bid}
 
 Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em poucas palavras (minúsculas, sem ponto final):
    python3 scripts/empresa/briefing.py agora {bid} "lendo o documento"
+   O app mostra ao lado há quanto tempo você está nisso. Antes de todo passo demorado (gerar versão de vídeo, pesquisar, reescrever uma parte grande), avise com "agora" dizendo qual é, ex.: "gerando a versão 7 do vídeo", "ajustando a pergunta 3 do quiz (1 de 2)". Assim ele não acha que você travou.
 1. Rode `python3 scripts/empresa/briefing.py contexto {bid}`: projeto, quem você é, a tarefa, o documento entregue e a conversa até aqui.
 2. Leia o documento entregue (o comando está no contexto), o seu manual e a sua inteligência (ler.py, os "SIGA SEMPRE" do topo).
 3. Entenda a ÚLTIMA mensagem do Davi (com o resto da conversa) e aja:
@@ -349,6 +350,7 @@ Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em po
    python3 scripts/empresa/briefing.py responder {bid} <<'FIM'
    <texto curto, como num chat>
    FIM
+   Se o Davi pediu mais de uma coisa, faça TODAS antes de responder. Se alguma ficou de fora (ex.: precisa dele, ou não deu), escreva na resposta o que JÁ fez e o que FALTA, com o motivo: ele não pode ficar achando que o resto ainda está vindo.
 Regras: não publique, não poste e não envie nada em nome do Davi; não escreva no banco fora desses comandos; não aprove a tarefa (quem aprova é o Davi). Hoje é {hoje}."""
 
 
