@@ -214,12 +214,29 @@ export default function ClienteDetalhe() {
 
   const pode = (area: AreaEquipe) => acesso.permissoes[area].acessar;
 
+  // 16/10: "Informações gerais" virou guia do Escritório e "Pesquisa" guia de Documentos. Só aparecem
+  // soltas no menu para quem não tem acesso ao Conteúdo / aos Documentos.
   const abasPrincipais = [
     { id: "informacoes", label: "Informações gerais" },
     { id: "pesquisa", label: "Pesquisa" },
     { id: "atividades", label: "Atividades" },
     { id: "documentos", label: "Documentos" },
-  ].filter(item => item.id === "informacoes" || pode(item.id as AreaEquipe));
+  ].filter((item) => (item.id === "informacoes" ? !pode("conteudo")
+    : item.id === "pesquisa" ? pode("pesquisa") && !pode("documentos")
+    : pode(item.id as AreaEquipe)));
+  // Guias no topo: Escritório | Informações gerais e Documentos | Pesquisa.
+  const guiasTopo: { id: string; label: string; ativa: boolean; ir: () => void }[] =
+    (abaAtiva === "informacoes" || (abaAtiva === "conteudo" && subAbaConteudo === "visao-geral")) && pode("conteudo")
+      ? [
+        { id: "escritorio", label: "Escritório", ativa: abaAtiva === "conteudo", ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo("visao-geral"); } },
+        { id: "informacoes", label: "Informações gerais", ativa: abaAtiva === "informacoes", ir: () => setAbaAtiva("informacoes") },
+      ]
+      : (abaAtiva === "documentos" || abaAtiva === "pesquisa") && pode("documentos") && pode("pesquisa")
+        ? [
+          { id: "documentos", label: "Documentos", ativa: abaAtiva === "documentos", ir: () => setAbaAtiva("documentos") },
+          { id: "pesquisa", label: "Pesquisa", ativa: abaAtiva === "pesquisa", ir: () => setAbaAtiva("pesquisa") },
+        ]
+        : [];
   // 16/10: "Visão geral" virou "Escritório" e Vertical/Youtube/Brainstorm/Cronograma viraram guias do "Creator".
   const abasConteudo = [
     { id: "visao-geral", label: "Escritório" },
@@ -305,7 +322,7 @@ export default function ClienteDetalhe() {
                   type="button"
                   onClick={() => setAbaAtiva(item.id)}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    abaAtiva === item.id
+                    abaAtiva === item.id || (item.id === "documentos" && abaAtiva === "pesquisa")
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   }`}
@@ -324,7 +341,8 @@ export default function ClienteDetalhe() {
                     setSubAbaConteudo(item.id === "creator" ? ultimaGuiaCreator() : item.id);
                   }}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "creator" && GUIAS_CREATOR.includes(subAbaConteudo)))
+                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "creator" && GUIAS_CREATOR.includes(subAbaConteudo))))
+                      || (item.id === "visao-geral" && abaAtiva === "informacoes")
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   }`}
@@ -344,6 +362,16 @@ export default function ClienteDetalhe() {
         {/* Conteúdo das abas */}
         <div className="p-6">
           {avisoPermissoes && <div role="status" className="mb-6 rounded-lg border border-border bg-muted/50 p-4 text-sm"><p>{avisoPermissoes}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carregarDados()}>Tentar novamente</Button></div>}
+          {guiasTopo.length > 0 && (
+            <div className="mb-4 inline-flex rounded-lg bg-muted p-0.5 text-sm font-medium">
+              {guiasTopo.map((g) => (
+                <button key={g.id} type="button" onClick={g.ir}
+                  className={`rounded-md px-3 py-1 transition-colors ${g.ativa ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
+          )}
           {abaAtiva === "informacoes" && (
             <div className="space-y-6">
               {/* Bloco superior: Meta e Equipe */}
