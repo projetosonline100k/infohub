@@ -284,8 +284,11 @@ async function finalizarReel(admin: Admin, r: Reel, token: string, mediaId: stri
     publicado_em: post.timestamp ? new Date(post.timestamp).toISOString() : new Date().toISOString(),
     mensagem: "Reel publicado",
   });
-  if (r.atividade_id) await admin.from("atividades").update({ concluida: true, situacao: "concluida" }).eq("id", r.atividade_id);
-  // Link do Instagram (e do YouTube, se já saiu) na tarefa da Dalila.
+  if (r.atividade_id) {
+    await admin.from("atividades").update({ concluida: true, situacao: "concluida", observacao: post.permalink ?? null }).eq("id", r.atividade_id);
+  }
+  // Link do Instagram (e do YouTube, se já saiu) na tarefa da Dalila. Sem a
+  // migração do YouTube (20261016121500) a RPC não existe e o link acima fica.
   await admin.rpc("reel_links_na_tarefa", { p_reel: r.id });
   return { publicado: post.permalink };
 }
