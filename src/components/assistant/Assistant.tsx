@@ -53,6 +53,8 @@ import { playConclusaoSound } from "@/lib/assistant/sound";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { useParaRevisar } from "@/hooks/useParaRevisar";
+import { useShirley } from "@/hooks/useShirley";
+import { tempoEsperando } from "@/lib/whatsapp/shirley";
 
 const ORB_SIZE = 64;
 const MARGEM_PADRAO = 24;
@@ -718,6 +720,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   useFilaCreator(user?.id, variant === "window" && isDesktop() && /Mac/i.test(navigator.platform || navigator.userAgent));
   // A equipe aprontou algo para o Davi revisar: o Atlas avisa (16/10). Só na orbe do app (o sininho cobre a web).
   const paraRevisar = useParaRevisar(user?.id, variant === "window");
+  // Shirley (CS): "Davi!! olha o WhatsApp!!" — cliente insatisfeito ou esperando, e cobra de novo (16/10).
+  const shirley = useShirley(user?.id, variant === "window");
   // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
   const estadoVoz = useAssistantVoz(variant === "window" ? user?.id : undefined);
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
@@ -1107,7 +1111,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || !!paraRevisar.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1302,6 +1306,23 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       onFalar={() => void handleCobrancaFalar()}
       onOutraCoisa={() => void handleCobrancaOutraCoisa()}
     />
+  ) : shirley.atual ? (
+    <JarvisNotificationCard
+      titulo={shirley.atual.motivo === "insatisfeito"
+        ? "🚨 Davi!! Olha o WhatsApp!!"
+        : shirley.atual.vezes > 0 ? `📱 Davi… ${shirley.atual.nome} AINDA está esperando` : `📱 Davi, ${shirley.atual.nome} está esperando`}
+      acoes={[
+        {
+          label: "Abrir WhatsApp",
+          onClick: () => { shirley.adiar(); setAba("whatsapp"); void abrirPainel(); },
+          variant: "default",
+        },
+        { label: shirley.atual.outros ? `Daqui a 30 min (+${shirley.atual.outros})` : "Daqui a 30 min", onClick: () => shirley.adiar(), variant: "outline" },
+      ]}
+    >
+      <span className="block text-[11px] font-semibold text-foreground">Shirley (CS) · {shirley.atual.motivo === "insatisfeito" ? `${shirley.atual.nome} pode estar insatisfeito` : `há ${tempoEsperando(shirley.atual.minutos)} sem resposta`}</span>
+      {shirley.atual.trecho && <span className="line-clamp-2">“{shirley.atual.trecho}”</span>}
+    </JarvisNotificationCard>
   ) : paraRevisar.atual ? (
     <JarvisNotificationCard
       titulo={`${paraRevisar.atual.tipo === "resposta" ? "💬" : "📬"} ${paraRevisar.atual.titulo}`}

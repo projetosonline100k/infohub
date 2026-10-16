@@ -1,0 +1,62 @@
+// Shirley, a CS (pedido do Davi, 16/10/2026): "atue como um CS mesmo, que me
+// cobre, veja se alguém pode ficar insatisfeito… sair de dentro do Atlas com
+// alerta: Davi!! olha o WhatsApp!!". Regras puras (testadas em
+// tests/shirley.test.mjs); o hook useShirley lê as conversas e mostra na orbe.
+
+export interface ConversaResumo {
+  chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean;
+  ultima_texto: string | null; ultima_autor: string | null;
+}
+
+export type MotivoAlerta = "insatisfeito" | "esperando";
+export interface AlertaShirley {
+  chatId: string; nome: string; motivo: MotivoAlerta; minutos: number; trecho: string; ultimaEm: string;
+}
+
+/** Sinais de cliente insatisfeito ou em risco (cancelar, reembolso, reclamação, sumiço de acesso…). */
+const INSATISFEITO = new RegExp(
+  [
+    "reembols", "cancel", "estorn", "devolu[cç]", "chargeback", "procon", "reclame aqui",
+    "insatisfeit", "decepcion", "frustrad", "arrependid", "p[ée]ssim", "horr[ií]vel", "absurd", "vergonha", "enganad", "golpe",
+    "n[aã]o (est[aá] |t[aá] )?funciona", "n[aã]o consigo (acessar|entrar|abrir)", "sem acesso", "n[aã]o recebi",
+    "ningu[ée]m (me )?respond", "sem resposta", "ainda n[aã]o (tive|recebi|me responderam)", "t[oô] esperando", "estou esperando",
+    "quero meu dinheiro", "n[aã]o vale", "desist",
+  ].join("|"),
+  "i",
+);
+
+export function pareceInsatisfeito(texto: string | null | undefined): boolean {
+  return !!texto && INSATISFEITO.test(texto);
+}
+
+/** Horário em que a Shirley cobra (8h às 22h): de madrugada ninguém é cobrado. */
+export function horarioDeCobrar(agora: Date): boolean {
+  const h = agora.getHours();
+  return h >= 8 && h < 22;
+}
+
+/**
+ * O que merece alerta agora: conversa individual (grupo não) em que a última
+ * mensagem é do cliente e (a) parece insatisfeito, ou (b) está esperando há
+ * mais de `esperaMin` minutos. Mais urgente primeiro (insatisfeito, depois quem espera há mais tempo).
+ * Conversa parada há mais de 3 dias fica de fora (já virou "sem resposta" antiga, é do painel).
+ */
+export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, esperaMin = 60): AlertaShirley[] {
+  const lista: AlertaShirley[] = [];
+  for (const c of conversas) {
+    if (c.eh_grupo || c.ultima_de_mim) continue;
+    const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
+    if (minutos < 0 || minutos > 3 * 24 * 60) continue;
+    const trecho = (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
+    const nome = c.chat_nome || c.ultima_autor || "Cliente";
+    if (pareceInsatisfeito(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "insatisfeito", minutos, trecho, ultimaEm: c.ultima_em });
+    else if (minutos >= esperaMin) lista.push({ chatId: c.chat_id, nome, motivo: "esperando", minutos, trecho, ultimaEm: c.ultima_em });
+  }
+  return lista.sort((a, b) => (a.motivo === b.motivo ? b.minutos - a.minutos : a.motivo === "insatisfeito" ? -1 : 1));
+}
+
+export function tempoEsperando(min: number): string {
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `${h}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : `${Math.floor(h / 24)} dia(s)`;
+}

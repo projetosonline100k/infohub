@@ -16,6 +16,17 @@ Criada em 16/10/2026 a pedido do Davi: "implementar um funcionário na Core do s
   - aviso antes de vencer a assinatura.
   - Ela entrega sempre as mensagens prontas para o Davi aprovar.
 
+## Alertas pela orbe do Atlas (16/10)
+
+"Que ela me cobre… sair de dentro do Atlas com alerta: Davi!! olha o WhatsApp!!". As regras estão em `src/lib/whatsapp/shirley.ts` (testes em `tests/shirley.test.mjs`) e o aviso em `src/hooks/useShirley.ts`.
+
+- **Quando avisa:** a cada 2 min, das 8h às 22h, ela olha as conversas individuais (grupos ficam de fora). Avisa quando a última mensagem é do cliente e:
+  - **o cliente parece insatisfeito** (cancelar, reembolso, sem acesso, "ninguém me respondeu"…): avisa na hora, com "🚨 Davi!! Olha o WhatsApp!!", e pede a atualização do painel para a resposta sugerida já estar pronta;
+  - **ou ele está esperando há mais de 1 hora.**
+- **Cobrança:** enquanto a conversa não for respondida, ela cobra de novo a cada 30 min ("… AINDA está esperando"). Quando o Davi responde, o alerta sai sozinho.
+- **Botões:** "Abrir WhatsApp" abre a guia do Atlas; "Daqui a 30 min" adia.
+- **O que não entra:** conversas paradas há mais de 3 dias ficam só no painel.
+
 ## Regras (iguais às do WhatsApp do Atlas)
 
 - **Nunca envia mensagem sozinha.** Ela prepara a resposta; quem envia é o Davi, no botão da conversa. Não existe exceção sem o Davi pedir.
