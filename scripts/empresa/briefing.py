@@ -78,14 +78,14 @@ def contexto(bid, como=None):
         q = c.cursor()
         q.execute('SET TRANSACTION READ ONLY')
         q.execute("""SELECT b.status, b.proposta, b.cliente_id, cl.nome_especialista, cl.nicho,
-                            m.nome, m.funcao, m.responsabilidades, m.eh_ia, s.nome, b.atividade_id
+                            m.nome, m.funcao, m.responsabilidades, m.eh_ia, s.nome, b.atividade_id, m.manual, m.autonomo
                        FROM briefings b JOIN clientes cl ON cl.id = b.cliente_id
                        JOIN membros m ON m.id = b.membro_id LEFT JOIN setores s ON s.id = m.setor_id
                       WHERE b.id = %s""", (bid,))
         r = q.fetchone()
         if not r:
             raise SystemExit('briefing não encontrado')
-        status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id = r
+        status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id, manual_cadastro, autonomo = r
         entrega = None
         quiz = None
         edicao = None
@@ -138,7 +138,9 @@ def contexto(bid, como=None):
         for quando, titulo, situacao, concluida, cancelada in anteriores:
             fim = 'cancelado' if cancelada else 'concluído' if concluida else (situacao or 'na fila')
             print(f'  - {quando:%d/%m}: {titulo or "(sem título)"} ({fim})')
-    if eh_ia and nome.lower() in EXECUTORES:
+    if manual_cadastro and not eu:
+        print('Seu manual (do cadastro no app, siga):\n' + manual_cadastro.strip())
+    if eh_ia and (nome.lower() in EXECUTORES or autonomo):
         print('Depois que o Davi confirmar: você começa SOZINHO e entrega um documento para ele aprovar. Diga isso a ele.')
     print(f'Status do briefing: {status}')
     if entrega:

@@ -41,7 +41,7 @@ def pegar(ignorar=()):
                  JOIN public.membros m ON m.id = a2.responsavel_id
                  LEFT JOIN public.briefings b ON b.atividade_id = a2.id AND b.status = 'confirmado'
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
-                  AND m.eh_ia AND m.ativo AND lower(m.nome) = ANY(%s)
+                  AND m.eh_ia AND m.ativo AND (lower(m.nome) = ANY(%s) OR m.autonomo)   -- autonomo: criado pelo app
                   -- Briefing confirmado; o Gabriel (estudos) também pega pedido rápido, sem conversa.
                   AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel'
                        -- Quiz pedido pela aba Quiz vai direto pro Roy (o esboço é a primeira entrega).
@@ -66,13 +66,13 @@ def contexto(aid):
         q = c.cursor()
         q.execute('SET TRANSACTION READ ONLY')
         q.execute("""SELECT a.titulo, a.descricao, a.data_vencimento, a.tipo, a.cliente_id, cl.nome_especialista, cl.nicho,
-                            m.nome, m.funcao
+                            m.nome, m.funcao, m.manual
                        FROM atividades a JOIN clientes cl ON cl.id = a.cliente_id JOIN membros m ON m.id = a.responsavel_id
                       WHERE a.id = %s""", (aid,))
         r = q.fetchone()
         if not r:
             raise SystemExit('tarefa não encontrada')
-        titulo, descricao, prazo, tipo, cliente_id, especialista, nicho, nome, funcao = r
+        titulo, descricao, prazo, tipo, cliente_id, especialista, nicho, nome, funcao, manual_cadastro = r
         q.execute("""SELECT id, titulo, updated_at FROM documentos WHERE cliente_id = %s AND deleted_at IS NULL
                       ORDER BY updated_at DESC LIMIT 15""", (cliente_id,))
         docs = q.fetchall()
@@ -89,6 +89,8 @@ def contexto(aid):
     print(f'Prazo: {prazo or "sem prazo"} · tipo: {tipo or "-"}')
     print(f'Projeto: {especialista} (nicho: {nicho or "-"}) · cliente_id {cliente_id}')
     print(f'Você: {nome} · {funcao or "-"} · manual: {manual.relative_to(RAIZ) if manual else "(não tem)"}')
+    if manual_cadastro:
+        print('Seu manual (do cadastro no app, siga):\n' + manual_cadastro.strip())
     print(f'Inteligência: python3 scripts/inteligencia/ler.py --cliente {cliente_id} --agente "{nome.lower()}" --saida <pasta temporária>')
     print('Documentos recentes do projeto (ler com scripts/consulta.py se precisar):')
     for d_id, d_tit, d_quando in docs:
