@@ -41,7 +41,8 @@ const nomeDe = (c: ConversaResumo) => (c.eh_grupo && c.chat_nome ? clienteDoGrup
 export function ehSoConfirmacao(texto: string | null | undefined): boolean {
   const t = (texto ?? "").trim().toLowerCase().replace(/[!.,;:\s]+$/u, "");
   if (!t) return false;
-  if (/^[\p{Extended_Pictographic}\u200d\ufe0f\s]+$/u.test(t)) return true;
+  // Só emoji (👍, 🙏, ❤️…): tira emojis, o seletor de variação e o "junta-emoji"; se não sobrar nada, é confirmação.
+  if (!t.replace(/\p{Extended_Pictographic}/gu, "").replace(/\u200d|\ufe0f|\s/g, "")) return true;
   return /^(ok(ay)?|ok obrigad[oa]|blz|beleza|show( de bola)?|top|perfeito|agendado|combinado|fechado|certo|certinho|obrigad[oa]( davi)?|muito obrigad[oa]|valeu|vlw|massa|am[eé]m|kk+|ha(ha)+|entendi|t[aá] bom|tudo certo|maravilha|[oó]timo|boa)$/.test(t);
 }
 
