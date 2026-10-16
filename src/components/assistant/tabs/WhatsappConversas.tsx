@@ -37,7 +37,7 @@ function useMidiaUrl() {
 
 // Foto de perfil da pessoa ou do grupo (16/10), pelo receptor do WhatsApp (/foto/<chat_id>);
 // sem foto (ou fora do app do Mac), a bolinha com a inicial / o ícone de grupo de sempre.
-function FotoChat({ chatId, nome, grupo, tamanho = "h-9 w-9" }: { chatId: string; nome: string | null; grupo: boolean; tamanho?: string }) {
+export function FotoChat({ chatId, nome, grupo, tamanho = "h-9 w-9" }: { chatId: string; nome: string | null; grupo: boolean; tamanho?: string }) {
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
   const [falhou, setFalhou] = useState(false);
   useEffect(() => {

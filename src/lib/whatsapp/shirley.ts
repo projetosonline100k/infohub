@@ -11,6 +11,7 @@ export interface ConversaResumo {
 export type MotivoAlerta = "insatisfeito" | "esperando";
 export interface AlertaShirley {
   chatId: string; nome: string; motivo: MotivoAlerta; minutos: number; trecho: string; ultimaEm: string;
+  chatNome?: string | null; grupo?: boolean;
 }
 
 /** Sinais de cliente insatisfeito ou em risco (cancelar, reembolso, reclamação, sumiço de acesso…). */
@@ -70,8 +71,8 @@ export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, espe
     if (minutos < 0 || minutos > 3 * 24 * 60) continue;
     const trecho = (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
     const nome = nomeDe(c);
-    if (pareceInsatisfeito(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "insatisfeito", minutos, trecho, ultimaEm: c.ultima_em });
-    else if (minutos >= esperaMin && !ehSoConfirmacao(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "esperando", minutos, trecho, ultimaEm: c.ultima_em });
+    if (pareceInsatisfeito(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "insatisfeito", minutos, trecho, ultimaEm: c.ultima_em, chatNome: c.chat_nome, grupo: c.eh_grupo });
+    else if (minutos >= esperaMin && !ehSoConfirmacao(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "esperando", minutos, trecho, ultimaEm: c.ultima_em, chatNome: c.chat_nome, grupo: c.eh_grupo });
   }
   return lista.sort((a, b) => (a.motivo === b.motivo ? b.minutos - a.minutos : a.motivo === "insatisfeito" ? -1 : 1));
 }
@@ -83,7 +84,8 @@ export function chegaramAgora(conversas: ConversaResumo[], agora: Date, janelaMi
     const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
     if (minutos < 0 || minutos >= janelaMin) return [];
     return [{ chatId: c.chat_id, nome: nomeDe(c), motivo: pareceInsatisfeito(c.ultima_texto) ? "insatisfeito" as const : "esperando" as const,
-      minutos, trecho: (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140), ultimaEm: c.ultima_em }];
+      minutos, trecho: (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140), ultimaEm: c.ultima_em,
+      chatNome: c.chat_nome, grupo: c.eh_grupo }];
   });
 }
 

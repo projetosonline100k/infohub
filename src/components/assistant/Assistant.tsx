@@ -54,6 +54,7 @@ import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
 import { OrbitaAtlas, type Lua } from "./OrbitaAtlas";
+import { CartaoWhatsapp } from "./CartaoWhatsapp";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
 import { prepararConversaAberta, useMensagensWhatsapp } from "@/hooks/useMensagensWhatsapp";
@@ -1330,47 +1331,37 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       {luaAberta.trecho && <span className="mt-1 line-clamp-3 block">“{luaAberta.trecho}”</span>}
     </JarvisNotificationCard>
   ) : mensagens.atual ? (
-    <JarvisNotificationCard
-      fala
-      titulo={`💬 ${mensagens.atual.nome}${mensagens.atual.quantas > 1 ? ` mandou ${mensagens.atual.quantas} mensagens` : " mandou mensagem"}`}
-      acoes={[
-        {
-          label: "Responder",
-          onClick: () => { const m = mensagens.atual!; mensagens.dispensar(m.chatId); prepararConversaAberta(m); setAba("whatsapp"); void abrirPainel(); },
-          variant: "default",
-        },
-        { label: mensagens.restantes ? `Depois (+${mensagens.restantes})` : "Depois", onClick: () => mensagens.dispensar(), variant: "outline" },
+    <CartaoWhatsapp
+      chatId={mensagens.atual.chatId} chatNome={mensagens.atual.chatNome} nome={mensagens.atual.nome} grupo={mensagens.atual.grupo}
+      tomFaixa="nova"
+      faixa={mensagens.atual.quantas > 1 ? `${mensagens.atual.quantas} mensagens novas agora` : "Mensagem nova agora"}
+      botoes={[
+        { label: "Responder", principal: true, onClick: () => { const m = mensagens.atual!; mensagens.dispensar(m.chatId); prepararConversaAberta(m); setAba("whatsapp"); void abrirPainel(); } },
+        { label: mensagens.restantes ? `Depois (+${mensagens.restantes})` : "Depois", onClick: () => mensagens.dispensar() },
       ]}
-    >
-      <span className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
-        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-slate-900"><CabecaBoneco nome="Shirley" ehIa className="h-full w-full" /></span>
-        Shirley (CS) · WhatsApp{mensagens.atual.grupo ? " · grupo" : ""}
-      </span>
-      <span className="mt-1 line-clamp-3 block">{mensagens.atual.autor ? `${mensagens.atual.autor.split(" ")[0]}: ` : ""}“{mensagens.atual.texto}”</span>
-    </JarvisNotificationCard>
+    />
   ) : shirley.atual ? (
-    <JarvisNotificationCard
-      fala
-      titulo={falaDaShirley(shirley.atual.humor, shirley.atual.nome, tempoEsperando(shirley.atual.minutos), shirley.atual.motivo === "insatisfeito")}
+    <CartaoWhatsapp
+      chatId={shirley.atual.chatId} chatNome={shirley.atual.chatNome ?? null} nome={shirley.atual.nome} grupo={!!shirley.atual.grupo}
       bravo={shirley.atual.humor >= 2}
-      acoes={[
-        {
-          label: shirley.atual.humor >= 3 ? "Responder agora" : "Abrir WhatsApp",
-          // Abriu e não respondeu? Ela volta (5 min furiosa).
-          onClick: () => { shirley.adiar(Math.min(ADIAR_MIN[shirley.atual!.humor] || 5, 10)); setAba("whatsapp"); void abrirPainel(); },
-          variant: "default",
-        },
-        // Furiosa não deixa adiar: só "já respondi por fora" (ligação, áudio no celular…).
+      tomFaixa={shirley.atual.humor >= 2 || shirley.atual.motivo === "insatisfeito" ? "brava" : "atraso"}
+      faixa={shirley.atual.humor === 0 && shirley.atual.motivo !== "insatisfeito"
+        ? `Sem resposta há ${tempoEsperando(shirley.atual.minutos)}`
+        : `${falaDaShirley(shirley.atual.humor, shirley.atual.nome, tempoEsperando(shirley.atual.minutos), shirley.atual.motivo === "insatisfeito")}`}
+      botoes={[
+        // Abriu e não respondeu? Ela volta (5 min furiosa).
+        { label: shirley.atual.humor >= 3 ? "Responder agora" : "Responder", principal: true, onClick: () => {
+          const a = shirley.atual!;
+          shirley.adiar(Math.min(ADIAR_MIN[a.humor] || 5, 10));
+          prepararConversaAberta({ chatId: a.chatId, chatNome: a.chatNome ?? null, nome: a.nome, grupo: !!a.grupo, autor: null, texto: a.trecho, quando: a.ultimaEm, quantas: 1 });
+          setAba("whatsapp"); void abrirPainel();
+        } },
+        // Furiosa não deixa adiar: só "já respondi" (por ligação, áudio no celular…).
         shirley.atual.humor >= 3
-          ? { label: "Já respondi por fora", onClick: () => shirley.jaRespondi(), variant: "ghost" as const }
-          : { label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (+${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiar(), variant: "outline" as const },
+          ? { label: "Já respondi", onClick: () => shirley.jaRespondi() }
+          : { label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (+${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiar() },
       ]}
-    >
-      <span className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
-        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-slate-900"><CabecaBoneco nome="Shirley" ehIa className="h-full w-full" /></span>
-        Shirley (CS) · {shirley.atual.motivo === "insatisfeito" ? `${shirley.atual.nome} pode estar insatisfeito` : `há ${tempoEsperando(shirley.atual.minutos)} sem resposta`}</span>
-      {shirley.atual.trecho && <span className="line-clamp-2">“{shirley.atual.trecho}”</span>}
-    </JarvisNotificationCard>
+    />
   ) : paraRevisar.atual ? (
     <JarvisNotificationCard
       fala
