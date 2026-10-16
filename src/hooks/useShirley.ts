@@ -69,5 +69,5 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     forcar((n) => n + 1);
   }, [atual, alertas]);
 
-  return { atual, adiar };
+  return { atual, adiar, todos: alertas };
 }

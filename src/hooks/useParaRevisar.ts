@@ -9,6 +9,15 @@ import { buscarAvisos, conversaLidaEm, type Aviso } from "@/lib/empresa/notifica
 // Também as respostas da equipe no chat ("quando retornar a mensagem no chat,
 // também me avisar pelo Atlas") — menos a da conversa que o Davi já está lendo.
 const CHAVE_DESDE = "atlas-revisar-desde";
+// "Depois": o aviso sai do balão mas continua girando em volta da orbe (OrbitaAtlas) por 12 h.
+const CHAVE_ADIADOS = "atlas-revisar-adiados";
+const ADIADO_POR_MS = 12 * 3600_000;
+const lerAdiados = (): Aviso[] => {
+  try { return (JSON.parse(localStorage.getItem(CHAVE_ADIADOS) || "[]") as Aviso[]).filter((a) => Date.now() - new Date(a.quando).getTime() < ADIADO_POR_MS); } catch { return []; }
+};
+const gravarAdiados = (v: Aviso[]) => { try { localStorage.setItem(CHAVE_ADIADOS, JSON.stringify(v)); } catch { /* sem storage */ } };
+/** Quem da equipe é o aviso ("Ítalo entregou…" → Ítalo; "Reel pronto… (Dalila)" → Dalila). */
+export const quemDoAviso = (a: Aviso) => a.titulo.match(/\(([^)]+)\)\s*$/)?.[1] ?? a.titulo.replace(/^[^\p{L}]+/u, "").split(/\s+/)[0] ?? "Equipe";
 const INTERVALO = 30_000;
 
 const ler = (): string => {
@@ -46,8 +55,20 @@ export function useParaRevisar(meuId: string | undefined, ativo: boolean) {
     return () => window.clearInterval(t);
   }, [ativo, buscar]);
 
-  const dispensar = useCallback(() => setFila((xs) => xs.slice(1)), []);
+  const [adiados, setAdiados] = useState<Aviso[]>(lerAdiados);
+  // "Depois": guarda na órbita; "Revisar agora" (concluir): some de vez.
+  const dispensar = useCallback(() => {
+    setFila((xs) => {
+      const [primeiro, ...resto] = xs;
+      if (primeiro) setAdiados((as) => { const n = [primeiro, ...as.filter((a) => a.id !== primeiro.id)].slice(0, 12); gravarAdiados(n); return n; });
+      return resto;
+    });
+  }, []);
+  const concluir = useCallback((id?: string) => {
+    setFila((xs) => (id ? xs.filter((x) => x.id !== id) : xs.slice(1)));
+    if (id) setAdiados((as) => { const n = as.filter((a) => a.id !== id); gravarAdiados(n); return n; });
+  }, []);
   const dispensarTodos = useCallback(() => setFila([]), []);
 
-  return { atual: fila[0] ?? null, restantes: Math.max(0, fila.length - 1), dispensar, dispensarTodos };
+  return { atual: fila[0] ?? null, restantes: Math.max(0, fila.length - 1), dispensar, concluir, dispensarTodos, adiados };
 }

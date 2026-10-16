@@ -52,7 +52,8 @@ import { dispararConfete } from "@/lib/assistant/confetti";
 import { playConclusaoSound } from "@/lib/assistant/sound";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
-import { useParaRevisar } from "@/hooks/useParaRevisar";
+import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
+import { OrbitaAtlas, type Lua } from "./OrbitaAtlas";
 import { useShirley } from "@/hooks/useShirley";
 import { tempoEsperando } from "@/lib/whatsapp/shirley";
 
@@ -1332,7 +1333,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
           label: paraRevisar.atual.tipo === "resposta" ? "Abrir conversa" : "Revisar agora",
           onClick: () => {
             const a = paraRevisar.atual;
-            paraRevisar.dispensar();
+            paraRevisar.concluir(a?.id);
             // Resposta no chat: abre direto a conversa com quem respondeu.
             abrirNoAppPrincipal(!a?.clienteId ? "/atividades"
               : a.tipo === "resposta" && a.membroId ? `/clientes/${a.clienteId}?conversa=${a.membroId}` : `/clientes/${a.clienteId}`);
@@ -1448,6 +1449,26 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // da caixa de 64px da orbe (ver AssistantOrbRing.tsx) — sem isso o anel
   // tocaria a borda física da janela quando a orbe está encostada no canto
   // (não mais centralizada, como no modo orbe sozinha).
+  // Órbitas (16/10, "o Sistema Solar do Atlas"): quem precisa do Davi gira em volta da orbe.
+  const abrirAviso = (a: { id: string; tipo: string; clienteId: string | null; membroId?: string }) => {
+    paraRevisar.concluir(a.id);
+    abrirNoAppPrincipal(!a.clienteId ? "/atividades"
+      : a.tipo === "resposta" && a.membroId ? `/clientes/${a.clienteId}?conversa=${a.membroId}` : `/clientes/${a.clienteId}`);
+  };
+  const luas: Lua[] = [
+    ...shirley.todos.map((w): Lua => ({
+      id: `w-${w.chatId}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
+      dica: `Shirley · WhatsApp: ${w.nome} ${w.motivo === "insatisfeito" ? "pode estar insatisfeito" : `há ${tempoEsperando(w.minutos)} sem resposta`}`,
+      onClick: () => { setAba("whatsapp"); void abrirPainel(); },
+    })),
+    ...paraRevisar.adiados.map((a): Lua => ({
+      id: `r-${a.id}`, nome: quemDoAviso(a), ehIa: true,
+      cor: a.tipo === "erro" ? "urgente" : a.tipo === "resposta" ? "resposta" : "revisar",
+      dica: `${a.titulo}${a.detalhe ? ` · ${a.detalhe}` : ""}`,
+      onClick: () => abrirAviso(a),
+    })),
+  ];
+
   const alinhamentoWrapper = variant !== "window" ? "" : janelaModo === "orb" ? "items-center justify-center" : "items-end justify-end gap-2 p-6";
 
   return (
@@ -1481,16 +1502,20 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 {alcaRedimensionar}
               </div>
             )}
-            <AssistantOrb
-              ref={orbRef}
-              open={open}
-              pulse={pulseGreen ? "green" : null}
-              ring={ring}
-              pausado={estado === "pausado"}
-              diaEncerrado={diaEncerrado}
-              voz={estadoVoz}
-              onPointerDown={handleOrbPointerDown}
-            />
+            <div className="relative">
+              <AssistantOrb
+                ref={orbRef}
+                open={open}
+                pulse={pulseGreen ? "green" : null}
+                ring={ring}
+                pausado={estado === "pausado"}
+                diaEncerrado={diaEncerrado}
+                voz={estadoVoz}
+                onPointerDown={handleOrbPointerDown}
+              />
+              {/* Só com a orbe sozinha: no balão/painel ela fica no canto e as luas sairiam da janela. */}
+              {janelaModo === "orb" && <OrbitaAtlas luas={luas} />}
+            </div>
           </>
         ) : (
           <Popover open={open} onOpenChange={setOpen}>
