@@ -85,10 +85,40 @@ def _danilo_id():
     return r[0][0] if r else None
 
 
-def progresso(aid, p, obs, situacao=None):
-    if aid:
+MIN_POR_VIDEO = 35   # baixar, transcrever, editar e gerar a prévia (medido nos primeiros)
+
+
+def progresso(aid, p, obs, situacao=None, faltam_videos=None, espera_min=0):
+    """Atualiza a barra da tarefa. faltam_videos → grava previsao_fim (o app usa
+    ela em vez do ritmo desde o início, que conta as horas paradas)."""
+    if not aid:
+        return
+    if faltam_videos is None:
         danilo.db("UPDATE public.atividades SET progresso = %s, observacao = %s, situacao = coalesce(%s, situacao) WHERE id = %s",
                   (p, obs[:900], situacao, aid))
+    else:
+        danilo.db("""UPDATE public.atividades SET progresso = %s, observacao = %s, situacao = coalesce(%s, situacao),
+                       previsao_fim = now() + make_interval(mins => %s) WHERE id = %s""",
+                  (p, obs[:900], situacao, int(faltam_videos * MIN_POR_VIDEO + espera_min), aid))
+
+
+def no_lote(e, id_, nome, titulo):
+    """Vídeo de um lote com tarefa: uma linha só no app. A tarefa "Editar: <card>"
+    que a automação do card cria é juntada à do lote (apagada com deleted_at,
+    a edição continua ligada ao card) e a barra do lote mostra o vídeo atual."""
+    if not e.get("atividade"):
+        return
+    vid = danilo.db("SELECT video_vertical_id FROM public.edicoes_video WHERE id = %s", (id_,))[0][0]
+    if vid:
+        danilo.db("""UPDATE public.atividades SET deleted_at = now(),
+                       observacao = 'Juntada à tarefa do lote (o andamento aparece lá).'
+                     WHERE video_vertical_id = %s AND tipo = 'edicao' AND NOT concluida AND deleted_at IS NULL AND id <> %s""",
+                  (vid, e["atividade"]))
+    danilo.db("UPDATE public.edicoes_video SET atividade_id = NULL WHERE id = %s", (id_,))
+    n, total = e.get("feitos", 0) + 1, e.get("total", 0)
+    progresso(e["atividade"], int(20 + 80 * (n - 1) / max(total, 1)),
+              f"Agora: editando {Path(nome).stem} ({n} de {total}) · {titulo}", "andamento",
+              faltam_videos=max(total - n, 0) + 0.8)
 
 
 PROMPT_EDICAO = """Você é o Danilo, o editor de vídeos (IA) do Eu.daviqueiroz (projeto Infopro Hub). Está rodando em segundo plano: o Davi não vê este terminal.
@@ -135,6 +165,7 @@ def editar(arquivo, e):
     id_ = danilo.preparar(arquivo, log=log)
     ctx = json.loads((danilo.pasta(id_) / "contexto.json").read_text())
     titulo = (ctx.get("card") or {}).get("titulo") or nome
+    no_lote(e, id_, nome, titulo)
     danilo._msg(id_, "Danilo editando: retomadas, headline, pinturas…")
     ok, texto = rodar_claude(PROMPT_EDICAO.format(id=id_, pasta=danilo.pasta(id_), cliente=danilo.CLIENTE,
                                                              referencia=_referencia(e)), minutos=75)
@@ -205,7 +236,8 @@ def atender_drive():
             progresso(e.get("atividade"), None if not e.get("total") else int(20 + 80 * e.get("feitos", 0) / e["total"]),
                       f"Esperando o Google Drive baixar os brutos no Mac ({len(brutos)} na fila). "
                       "Se demorar, confira se o Drive está aberto e se a pasta Precisa de edição está disponível off-line "
-                      "(ou mande por AirDrop e arraste para a pasta Para o Danilo, na Mesa).")
+                      "(ou mande por AirDrop e arraste para a pasta Para o Danilo, na Mesa).",
+                      faltam_videos=e.get("total", 0) - e.get("feitos", 0), espera_min=10)
         return False
     if e.pop("esperando_drive", None):
         salvar_estado(e)
@@ -243,7 +275,8 @@ def atender_drive():
                       "com os mesmos ajustes.", "aguardando_aprovacao")
         else:
             progresso(e["atividade"], int(20 + 80 * e["feitos"] / max(e["total"], 1)),
-                      f"Agora: {e['feitos']} de {e['total']} prontos em Revisar edição; editando o próximo.")
+                      f"Agora: {e['feitos']} de {e['total']} prontos em Revisar edição; começando o próximo.",
+                      faltam_videos=max(e["total"] - e["feitos"], 0))
     return True
 
 
