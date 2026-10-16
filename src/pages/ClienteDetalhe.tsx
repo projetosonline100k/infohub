@@ -43,9 +43,9 @@ interface Produto {
   ideias?: string;
 }
 
-// Guias do Creator (Vertical, Youtube, Brainstorm): o menu abre na última usada.
 const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm", "cronograma"];
-const ultimaGuiaCreator = () => { try { return localStorage.getItem("creator-guia") || "vertical"; } catch { return "vertical"; } };
+// 16/10: o Creator (Vertical, Youtube, Brainstorm, Cronograma) virou guias dentro do Escritório.
+const GUIAS_ESCRITORIO = ["visao-geral", ...GUIAS_CREATOR];
 const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
   if (!id) return {};
   try { return JSON.parse(localStorage.getItem(`projeto-aba:${id}`) || "{}"); } catch { return {}; }
@@ -111,9 +111,10 @@ export default function ClienteDetalhe() {
     // Senão, volta pra seção em que o Davi estava neste projeto (se houver).
     const salva = lerAbaProjeto(id);
     const conversa = !!searchParams.get("conversa");
-    setAbaAtiva(searchParams.get("documento") ? "documentos" : conversa ? "conteudo" : searchParams.get("atividade") ? "atividades" : salva.aba ?? "atividades");
-    if (conversa) setSubAbaConteudo("visao-geral");
-    else if (salva.sub) setSubAbaConteudo(salva.sub);
+    // 16/10: abrir um projeto entra sempre no Escritório (salvo link para documento/atividade).
+    void salva;
+    setAbaAtiva(searchParams.get("documento") ? "documentos" : searchParams.get("atividade") ? "atividades" : "conteudo");
+    if (conversa || (!searchParams.get("documento") && !searchParams.get("atividade"))) setSubAbaConteudo("visao-geral");
 
     try {
       const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
@@ -133,7 +134,8 @@ export default function ClienteDetalhe() {
         if (!acessoResolvido) throw new Error('Resposta de permissões inválida');
         setAcesso(acessoResolvido);
         setPermissoesDisponiveis(true);
-        if (!acessoResolvido.permissoes.atividades.acessar) setAbaAtiva("informacoes");
+        // Sem acesso ao Escritório (Conteúdo): Atividades, ou Informações gerais.
+        if (!acessoResolvido.permissoes.conteudo.acessar) setAbaAtiva(acessoResolvido.permissoes.atividades.acessar ? "atividades" : "informacoes");
       } catch (error) {
         if (!vigente()) return;
         console.error("Erro ao consultar permissões do cliente:", error);
@@ -226,11 +228,14 @@ export default function ClienteDetalhe() {
     : pode(item.id as AreaEquipe)));
   // Guias no topo: Escritório | Informações gerais e Documentos | Pesquisa.
   const guiasTopo: { id: string; label: string; ativa: boolean; ir: () => void }[] =
-    (abaAtiva === "informacoes" || (abaAtiva === "conteudo" && subAbaConteudo === "visao-geral")) && pode("conteudo")
+    (abaAtiva === "informacoes" || (abaAtiva === "conteudo" && GUIAS_ESCRITORIO.includes(subAbaConteudo))) && pode("conteudo")
       ? [
-        { id: "escritorio", label: "Escritório", ativa: abaAtiva === "conteudo", ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo("visao-geral"); } },
-        { id: "informacoes", label: "Informações gerais", ativa: abaAtiva === "informacoes", ir: () => setAbaAtiva("informacoes") },
-      ]
+        { id: "visao-geral", label: "Escritório" }, { id: "informacoes", label: "Informações gerais" },
+        { id: "vertical", label: "Vertical" }, { id: "youtube", label: "Youtube" },
+        { id: "brainstorm", label: "Brainstorm" }, { id: "cronograma", label: "Cronograma" },
+      ].map((g) => g.id === "informacoes"
+        ? { ...g, ativa: abaAtiva === "informacoes", ir: () => setAbaAtiva("informacoes") }
+        : { ...g, ativa: abaAtiva === "conteudo" && subAbaConteudo === g.id, ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo(g.id); } })
       : (abaAtiva === "documentos" || abaAtiva === "pesquisa") && pode("documentos") && pode("pesquisa")
         ? [
           { id: "documentos", label: "Documentos", ativa: abaAtiva === "documentos", ir: () => setAbaAtiva("documentos") },
@@ -240,7 +245,6 @@ export default function ClienteDetalhe() {
   // 16/10: "Visão geral" virou "Escritório" e Vertical/Youtube/Brainstorm/Cronograma viraram guias do "Creator".
   const abasConteudo = [
     { id: "visao-geral", label: "Escritório" },
-    { id: "creator", label: "Creator" },
     { id: "conhecimento", label: "Fonte de conhecimento" },
     { id: "quiz", label: "Quiz" },
   ];
@@ -338,10 +342,10 @@ export default function ClienteDetalhe() {
                   type="button"
                   onClick={() => {
                     setAbaAtiva("conteudo");
-                    setSubAbaConteudo(item.id === "creator" ? ultimaGuiaCreator() : item.id);
+                    setSubAbaConteudo(item.id);
                   }}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "creator" && GUIAS_CREATOR.includes(subAbaConteudo))))
+                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "visao-geral" && GUIAS_CREATOR.includes(subAbaConteudo))))
                       || (item.id === "visao-geral" && abaAtiva === "informacoes")
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
