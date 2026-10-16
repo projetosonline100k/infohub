@@ -42,6 +42,7 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 **Clientes e negócio**
 - `clientes` — o especialista: `nome_especialista`, `nicho`, `meta_atual`, `arquivado`, `planilha_referencias_url`.
 - `produtos_cliente` (status: `Ativo` | `Planejado` | `Pausado`), `produto_financeiro` (mensal), `produto_financeiro_diario` (receita, custos, reembolsos, vendas por dia).
+- Vendas automáticas: `produto_vendas_webhook` (chave secreta do link por produto, sem acesso pelo app) e `vendas_plataforma_eventos` (venda/reembolso da Kiwify/Hotmart; o trigger soma em `produto_financeiro_diario`). Quadro no Financeiro do produto (`VendasAutomaticas.tsx`).
 - `funil_vendas` + `funil_categorias` — funil visual do produto (nós com `parent_id`, posição x/y).
 - `equipe_cliente` — membros da equipe por cliente: `nome_pessoa`, `email`, `papel` (ex.: Joker, Expert, Head, Copy, Coprodutor), `clientes_permitidos`, `permissoes`.
 
@@ -75,7 +76,7 @@ Acesso por dono + equipe. Funções: `team_allowed`, `team_access`, `team_row_al
 
 ## Edge functions (`supabase/functions/`)
 
-`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-metricas` (seguidores/alcance/visualizações por dia, pg_cron às 03:10), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
+`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-metricas` (seguidores/alcance/visualizações por dia, pg_cron às 03:10), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`), `vendas-webhook` (Kiwify/Hotmart, `?chave=` do produto). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
 
 ## Consultar dados reais (somente leitura)
 

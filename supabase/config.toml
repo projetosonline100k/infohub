@@ -28,3 +28,7 @@ verify_jwt = false
 [functions.instagram-metricas]
 # Chamada pelo pg_cron (chave do Vault em x-metricas-chave) ou pelo app (a função confere o JWT).
 verify_jwt = false
+
+[functions.vendas-webhook]
+# Webhook da Kiwify/Hotmart: chega sem JWT; a chave secreta do produto vai na URL (?chave=).
+verify_jwt = false

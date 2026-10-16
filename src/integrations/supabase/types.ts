@@ -2531,6 +2531,45 @@ export type Database = {
         }
         Relationships: []
       }
+      vendas_plataforma_eventos: {
+        Row: {
+          id: string
+          produto_id: string
+          plataforma: string
+          transacao_id: string
+          tipo: string
+          valor: number
+          data: string
+          produto_plataforma: string | null
+          payload: Json | null
+          recebido_em: string
+        }
+        Insert: {
+          id?: string
+          produto_id: string
+          plataforma: string
+          transacao_id: string
+          tipo: string
+          valor?: number
+          data: string
+          produto_plataforma?: string | null
+          payload?: Json | null
+          recebido_em?: string
+        }
+        Update: {
+          id?: string
+          produto_id?: string
+          plataforma?: string
+          transacao_id?: string
+          tipo?: string
+          valor?: number
+          data?: string
+          produto_plataforma?: string | null
+          payload?: Json | null
+          recebido_em?: string
+        }
+        Relationships: []
+      }
       videos_referencia: {
         Row: {
           cliente_id: string
@@ -3054,6 +3093,8 @@ export type Database = {
         Args: { p_id: string; p_token: string; p_status: string; p_conteudo?: string | null; p_mensagem?: string | null }
         Returns: boolean
       }
+      produto_vendas_webhook_chave: { Args: { p_produto: string }; Returns: string }
+      vendas_plataforma_desfazer: { Args: { p_evento: string }; Returns: undefined }
       gerar_token_atalho: { Args: Record<PropertyKey, never>; Returns: string }
       gerar_token_atalho_cliente: { Args: { p_cliente: string }; Returns: string }
       receber_link_atalho: { Args: { p_token: string; p_url: string }; Returns: string }

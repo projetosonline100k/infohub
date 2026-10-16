@@ -15,7 +15,7 @@ const env = Object.fromEntries(
 const base = `${env.VITE_SUPABASE_URL}/functions/v1`;
 const key = env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-for (const fn of ['chat', 'process-pdf', 'backblaze-upload-url', 'instagram-metricas', 'admin-users', 'instagram-automacoes']) {
+for (const fn of ['chat', 'process-pdf', 'backblaze-upload-url', 'instagram-metricas', 'admin-users', 'instagram-automacoes', 'vendas-webhook']) {
   try {
     const res = await fetch(`${base}/${fn}`, {
       method: 'POST',

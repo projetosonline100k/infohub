@@ -34,6 +34,7 @@ import {
 import { format, startOfMonth, endOfMonth, subMonths, startOfYear, endOfYear, parseISO, isWithinInterval } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { confirmar } from "@/components/DialogosGlobais";
+import { VendasAutomaticas } from "./VendasAutomaticas";
 
 interface FinanceiroDiario {
   id: string;
@@ -883,6 +884,8 @@ export function ProdutoFinanceiro({ produtoId }: ProdutoFinanceiroProps) {
           </CardContent>
         </Card>
       )}
+
+      <VendasAutomaticas produtoId={produtoId} onMudou={carregarDados} />
     </div>
   );
 }
