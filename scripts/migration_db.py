@@ -40,7 +40,8 @@ def _connect_uma_vez():
     return pg8000.dbapi.connect(
         host=host, port=int(values.get('PGPORT', '5432')),
         database=values.get('PGDATABASE', 'postgres'), user=user,
-        password=values['PGPASSWORD'], timeout=15,
+        # 30 s (era 15): o pooler às vezes demora e dava "read operation timed out".
+        password=values['PGPASSWORD'], timeout=30,
         ssl_context=ssl_context,
     )
 

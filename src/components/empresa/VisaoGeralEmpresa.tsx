@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Crown,
-  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Rocket, Scissors, Users, Video, Youtube,
+  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Rocket, Scissors, Users, Video, WifiOff, Youtube,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,7 +29,7 @@ import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, ehCoordenador, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, ehCoordenador, equipeOfflineDesde, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -101,6 +101,21 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const t = window.setInterval(() => void carregarMelhorias(), 15_000);
     return () => window.clearInterval(t);
   }, [carregarMelhorias]);
+  // Último sinal do ouvinte (equipe de IAs): sem sinal há 3+ min = aviso "sem conexão".
+  const [ultimoSinal, setUltimoSinal] = useState<string | null>(null);
+  const [agoraSinal, setAgoraSinal] = useState(() => Date.now());
+  useEffect(() => {
+    const ler = async () => {
+      const { data, error } = await (supabase as unknown as SupabaseClient).from("servicos_sinal").select("ultimo_sinal")
+        .eq("servico", "ouvinte").maybeSingle();
+      if (!error) setUltimoSinal((data as { ultimo_sinal: string } | null)?.ultimo_sinal ?? null);
+      setAgoraSinal(Date.now());
+    };
+    void ler();
+    const t = window.setInterval(() => void ler(), 60_000);
+    return () => window.clearInterval(t);
+  }, []);
+  const offlineDesde = equipeOfflineDesde(ultimoSinal, agoraSinal);
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
   // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
@@ -255,6 +270,18 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         <h1 className="text-2xl font-bold tracking-tight">Visão geral</h1>
         <p className="text-sm text-muted-foreground">Toda a operação de conteúdo do projeto em um só lugar.</p>
       </header>
+
+      {offlineDesde && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-semibold text-amber-700 dark:text-amber-300">
+              Equipe de IAs sem conexão desde {format(offlineDesde, offlineDesde.toDateString() === new Date().toDateString() ? "HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
+            </p>
+            <p className="text-muted-foreground">As tarefas das IAs ficam paradas até voltar. Confira se o Mac está ligado, acordado e com internet: quando a conexão volta, elas voltam sozinhas.</p>
+          </div>
+        </div>
+      )}
 
       {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">

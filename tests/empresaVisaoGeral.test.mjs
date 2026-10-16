@@ -137,3 +137,11 @@ test('Pedro implementando melhoria do kanban conta como trabalhando (erro no kan
   const t = trabalhoDasIas(ms, [], [], [{ status: 'fazendo', titulo: 'Métricas do Instagram' }, { status: 'erro', titulo: 'x' }]);
   assert.deepEqual(t.get('m-pedro'), { trabalhando: 1, esperando: 0, problema: 0, atual: 'Implementando: Métricas do Instagram' });
 });
+
+test('equipe de IAs offline: mais de 3 min sem sinal do ouvinte', async () => {
+  const { equipeOfflineDesde } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const agora = Date.parse('2026-10-16T02:30:00Z');
+  assert.equal(equipeOfflineDesde(null, agora), null);
+  assert.equal(equipeOfflineDesde('2026-10-16T02:28:00Z', agora), null);
+  assert.equal(equipeOfflineDesde('2026-10-16T02:20:00Z', agora)?.toISOString(), '2026-10-16T02:20:00.000Z');
+});

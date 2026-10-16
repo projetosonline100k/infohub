@@ -70,6 +70,16 @@ export function minutosRestantes(t: Pick<TarefaResumo, "progresso" | "andamento_
   if (gasto < 1) return null;
   return Math.max(1, Math.round((gasto * (100 - p)) / p));
 }
+// Equipe de IAs sem conexão (16/10): o ouvinte grava um sinal por minuto em
+// servicos_sinal. Mais de 3 min sem sinal = offline; devolve desde quando.
+// Sem sinal nenhum (ouvinte antigo) não acusa nada.
+export const MINUTOS_SEM_SINAL = 3;
+export function equipeOfflineDesde(ultimoSinal: string | null | undefined, agora = Date.now()): Date | null {
+  if (!ultimoSinal) return null;
+  const desde = new Date(ultimoSinal);
+  return agora - desde.getTime() > MINUTOS_SEM_SINAL * 60_000 ? desde : null;
+}
+
 // "~12 min", "~1h20", "menos de 1 min".
 export function textoRestante(min: number): string {
   if (min <= 1) return "menos de 1 min";

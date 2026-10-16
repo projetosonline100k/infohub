@@ -585,6 +585,25 @@ def recarregar_modulos():
                 log("recarregar:", m.__name__, repr(e)[:200])
 
 
+# Último sinal (16/10): a cada minuto, numa thread própria (os outros laços
+# ficam presos enquanto o Claude trabalha). A Visão geral mostra "equipe sem
+# conexão desde HH:MM" quando passa de 3 min sem sinal.
+_iniciado_em = datetime.now(timezone.utc)
+
+
+def gravar_sinal():
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""INSERT INTO public.servicos_sinal (user_id, servico, ultimo_sinal, iniciado_em)
+                     VALUES (%s, 'ouvinte', now(), %s)
+                     ON CONFLICT (user_id, servico) DO UPDATE
+                     SET ultimo_sinal = now(), iniciado_em = EXCLUDED.iniciado_em""", (dono(q), _iniciado_em))
+        c.commit()
+    finally:
+        c.close()
+
+
 def laco(nome, funcao, intervalo):
     while True:
         try:
@@ -613,6 +632,7 @@ if __name__ == "__main__":
             log(f"{nome_fluxo}: não reenfileirei —", repr(e)[:200])
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
+    threading.Thread(target=laco, args=("sinal", gravar_sinal, 60), daemon=True).start()
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
