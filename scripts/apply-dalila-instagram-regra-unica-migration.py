@@ -1,12 +1,13 @@
-"""Aplica 20261015220000_dalila_publicacao e roda todos os testes SQL.
-`--testar` faz tudo e desfaz no fim (nada gravado)."""
+"""Aplica 20261015234500_dalila_publicacao e roda todos os testes SQL.
+`--testar` faz tudo e desfaz no fim (nada gravado). `--so-registrar` só anota no histórico
+(já aplicada em 15/10; os números 20261015220000 e 20261015230000 colidiram com outras migrações)."""
 from pathlib import Path
 import re
 import sys
 from migration_db import connect
 
 root = Path(__file__).resolve().parents[1]
-version = '20261015220000'
+version = '20261015234500'
 name = 'dalila_instagram_regra_unica'
 sql = (root / 'supabase/migrations' / f'{version}_{name}.sql').read_text()
 testar = '--testar' in sys.argv
@@ -15,7 +16,8 @@ c = connect()
 phase = 'migration'
 try:
     q = c.cursor()
-    q.execute(sql)
+    if '--so-registrar' not in sys.argv:
+        q.execute(sql)
     for test in sorted(p.name for p in (root / 'supabase/tests').glob('*.sql')):
         phase = test
         q.execute('SAVEPOINT regression')

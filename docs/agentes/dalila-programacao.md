@@ -87,7 +87,7 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 
 ## Regra: nunca no perfil errado (pedido do Davi, 15/10/2026)
 
-- **Uma regra só**, a função `dalila_conexao_do_projeto(cliente)` (migração `20261015220000_dalila_instagram_regra_unica`):
+- **Uma regra só**, a função `dalila_conexao_do_projeto(cliente)` (migração `20261015234500_dalila_instagram_regra_unica`):
   - vale o Instagram do **próprio projeto**;
   - a conexão geral da conta (sem projeto, o @eu.davioficial) vale **só para o projeto Davi Queiroz**;
   - projeto sem Instagram próprio devolve NULL e não cai em perfil nenhum.
