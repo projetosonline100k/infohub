@@ -26,7 +26,17 @@ const eventEnd = (event: GoogleCalendarEvent) => new Date(event.end.dateTime || 
 
 export default function Agenda() {
   const [anchor, setAnchor] = useState(new Date());
-  const [view, setView] = useState<View>("month");
+  // Abre na última visão usada (Mês, Semana ou Dia).
+  const [view, setViewEstado] = useState<View>(() => {
+    try {
+      const salva = localStorage.getItem("agenda:visao");
+      return salva === "week" || salva === "day" ? salva : "month";
+    } catch { return "month"; }
+  });
+  const setView = (proxima: View) => {
+    setViewEstado(proxima);
+    try { localStorage.setItem("agenda:visao", proxima); } catch { /* sem storage */ }
+  };
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogDate, setDialogDate] = useState(new Date());
   const [dialogEnd, setDialogEnd] = useState<Date | undefined>();
@@ -245,7 +255,8 @@ export default function Agenda() {
             </div>
           </div>
           {view === "month" ? (
-            <MonthView anchor={anchor} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} acaoFeito={acaoFeito} atividades={vinculadas.porId} previa={previaDrop} />
+            <MonthView anchor={anchor} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} acaoFeito={acaoFeito} atividades={vinculadas.porId} previa={previaDrop}
+              onAbrirDia={(dia) => { setAnchor(dia); setView("day"); }} />
           ) : (
             <TimeGrid anchor={anchor} view={view} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} acaoFeito={acaoFeito} onReschedule={rescheduleEvent} atividades={vinculadas.porId} previa={previaDrop} />
           )}
@@ -292,10 +303,10 @@ function marcaAtividade(event: GoogleCalendarEvent, atividades: AtividadesPorId)
   return { atrasada: !!atividade && estaAtrasada(atividade.data_vencimento, atividade.concluida) };
 }
 
-function MonthView({ anchor, events, colorFor, onNew, onEvent, acaoFeito, atividades, previa }: {
+function MonthView({ anchor, events, colorFor, onNew, onEvent, acaoFeito, atividades, previa, onAbrirDia }: {
   anchor: Date; events: GoogleCalendarEvent[]; colorFor: (event: GoogleCalendarEvent) => string;
   onNew: (date: Date) => void; onEvent: (event: GoogleCalendarEvent) => void; acaoFeito: AcaoFeito; atividades: AtividadesPorId;
-  previa: PreviaDrop | null;
+  previa: PreviaDrop | null; onAbrirDia: (dia: Date) => void;
 }) {
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(anchor), { weekStartsOn: 0 }),
@@ -318,7 +329,7 @@ function MonthView({ anchor, events, colorFor, onNew, onEvent, acaoFeito, ativid
               <button onClick={() => onNew(day)} className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-xs", isToday(day) && "bg-primary font-semibold text-primary-foreground")}>{format(day, "d")}</button>
               <div className="space-y-1">
                 {dayEvents.slice(0, 4).map((event) => <EventChip key={`${event.calendarId}-${event.id}`} event={event} color={colorFor(event)} marca={marcaAtividade(event, atividades)} onClick={() => onEvent(event)} onFeito={acaoFeito(event)} />)}
-                {dayEvents.length > 4 && <p className="px-1 text-xs text-muted-foreground">+{dayEvents.length - 4} eventos</p>}
+                {dayEvents.length > 4 && <button onClick={() => onAbrirDia(day)} onDoubleClick={(e) => e.stopPropagation()} title="Ver o dia inteiro" className="w-full rounded px-1 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground">+{dayEvents.length - 4} eventos</button>}
               </div>
             </div>
           );
