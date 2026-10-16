@@ -39,16 +39,25 @@ export interface OfertaQuiz {
   garantia?: string; preco?: string; preco_detalhe?: string; fechamento?: string;
   imagem?: string; imagem_nota?: string;
   cta_texto?: string; cta_url?: string;
+  faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
 }
 export type CampoCaptura = "nome" | "email" | "whatsapp";
+// Captura (16/10, pedido do Davi: nome e WhatsApp para contato). Com `depois_de`
+// (id de tela ou de pergunta) ela entra no meio do quiz, ex.: logo depois do
+// "analisando", e a resposta já é gravada ali, sem esperar o fim.
+export interface CapturaQuiz {
+  ativa?: boolean; titulo?: string; texto?: string; nota?: string; botao?: string;
+  pedir?: CampoCaptura[]; rotulos?: Partial<Record<CampoCaptura, string>>; depois_de?: string;
+}
 export interface EstruturaQuiz {
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[] };
   perguntas: PerguntaQuiz[];
   perfis: PerfilQuiz[];
   telas?: TelaQuiz[];
-  resultado?: { grafico?: { titulo?: string; barras: { rotulo: string; perfis: string[] }[] } };
+  // chamada: linha acima do nome do perfil quando a pessoa deu o nome ("{nome}, você é").
+  resultado?: { chamada?: string; grafico?: { titulo?: string; subtitulo?: string; barras: { rotulo: string; perfis: string[] }[] } };
   oferta?: OfertaQuiz;
-  captura?: { ativa?: boolean; titulo?: string; pedir?: CampoCaptura[] };
+  captura?: CapturaQuiz;
   cor?: string;
   tema?: "claro" | "escuro";
 }
@@ -95,7 +104,8 @@ export function barrasDoResultado(e: EstruturaQuiz, escolhas: Record<string, num
 }
 
 // A ordem das telas: abertura, cada pergunta seguida das telas "depois_de" dela,
-// captura (se pedir algo) e o fim (resultado e/ou oferta).
+// captura (se pedir algo: no fim, ou logo depois da tela/pergunta do captura.depois_de)
+// e o fim (resultado e/ou oferta).
 export type Passo =
   | { tipo: "intro" }
   | { tipo: "pergunta"; indice: number }
@@ -106,20 +116,30 @@ export type Passo =
 export function montarPassos(e: EstruturaQuiz, temCaptura: boolean): Passo[] {
   const telas = e.telas ?? [];
   const passos: Passo[] = [{ tipo: "intro" }];
-  const depois = (id: string) => telas.forEach((t, i) => { if (t.depois_de === id) passos.push({ tipo: "tela", indice: i }); });
+  const ponto = e.captura?.depois_de;
+  let capturou = !temCaptura;
+  const captura = (id: string) => { if (!capturou && id === ponto) { passos.push({ tipo: "captura" }); capturou = true; } };
+  const depois = (id: string) => telas.forEach((t, i) => {
+    if (t.depois_de !== id) return;
+    passos.push({ tipo: "tela", indice: i });
+    captura(t.id);
+  });
   depois("intro");
-  e.perguntas.forEach((q, i) => { passos.push({ tipo: "pergunta", indice: i }); depois(q.id); });
-  if (temCaptura) passos.push({ tipo: "captura" });
+  e.perguntas.forEach((q, i) => { passos.push({ tipo: "pergunta", indice: i }); captura(q.id); depois(q.id); });
+  if (!capturou) passos.push({ tipo: "captura" });
   passos.push({ tipo: "fim" });
   return passos;
 }
 
-// {perfil} → nome do perfil · {resposta:q2} → a resposta da pergunta q2
-// (o "resumo" da opção, se tiver, senão o texto com a 1ª letra minúscula).
-export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas: Record<string, number>, perfil: PerfilQuiz | null): string {
+// {perfil} → nome do perfil · {nome} → o primeiro nome da captura ·
+// {resposta:q2} → a resposta da pergunta q2 (o "resumo" da opção, se tiver,
+// senão o texto com a 1ª letra minúscula).
+export const primeiroNome = (nome?: string) => (nome ?? "").trim().split(/\s+/)[0] ?? "";
+export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas: Record<string, number>, perfil: PerfilQuiz | null, nome?: string): string {
   if (!texto) return "";
   return texto
     .replace(/\{perfil\}/g, perfil?.nome ?? "")
+    .replace(/\{nome\}/g, primeiroNome(nome))
     .replace(/\{resposta:([\w-]+)\}/g, (_, id: string) => {
       const q = e.perguntas.find((p) => p.id === id);
       const o = q?.opcoes[escolhas[id]];

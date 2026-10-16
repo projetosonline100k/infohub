@@ -71,6 +71,11 @@ def validar(e):
     cap = e.get('captura') or {}
     if cap and any(c not in ('nome', 'email', 'whatsapp') for c in cap.get('pedir', [])):
         erros.append('captura.pedir: só nome, email e whatsapp')
+    if cap.get('depois_de') and cap['depois_de'] not in vistos | {t.get('id') for t in telas if isinstance(t, dict)}:
+        erros.append(f'captura.depois_de "{cap["depois_de"]}" não é id de pergunta nem de tela')
+    for k, item in enumerate((e.get('oferta') or {}).get('faq') or [], 1):
+        if not isinstance(item, dict) or not str(item.get('pergunta', '')).strip() or not str(item.get('resposta', '')).strip():
+            erros.append(f'oferta.faq {k}: precisa de pergunta e resposta')
     return erros
 
 

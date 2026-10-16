@@ -1,9 +1,9 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ElementType } from "react";
-import { ArrowLeft, ArrowRight, Check, ImagePlus, Loader2, Mic, Quote, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ImagePlus, Loader2, Lock, Mic, Quote, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher,
+  barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher, primeiroNome,
   type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
 } from "@/lib/quiz/quiz";
 import { cn } from "@/lib/utils";
@@ -135,10 +135,11 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const [escolhas, setEscolhas] = useState<Record<string, number>>({});
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);
+  const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
   const passo = passos[Math.min(pos, passos.length - 1)];
   const perfil = useMemo(() => calcularPerfil(e, escolhas), [e, escolhas]);
   const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
-  const f = (t?: string) => preencher(t, e, escolhas, perfil);
+  const f = (t?: string) => preencher(t, e, escolhas, perfil, contato.nome);
   const temTelaResultado = telas.some((t) => t.tipo === "resultado");
 
   // Depois da abertura, baixa as imagens das próximas telas: a troca de tela não fica esperando a imagem.
@@ -164,14 +165,24 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     },
   };
 
-  const terminar = async (dados: Partial<Record<CampoCaptura, string>>) => {
+  const gravar = async (dados: Partial<Record<CampoCaptura, string>>) => {
+    if (enviado.current) return;
     setEnviando(true);
-    try { await onFim?.({ escolhas, perfil, contato: dados }); } finally { setEnviando(false); }
+    try { await onFim?.({ escolhas, perfil, contato: dados }); enviado.current = true; } finally { setEnviando(false); }
+  };
+  const terminar = async (dados: Partial<Record<CampoCaptura, string>>) => {
+    await gravar(dados);
     setPos(passos.length - 1);
+  };
+  // Captura no meio: grava já (quem sair antes do fim não se perde) e segue o quiz.
+  const enviarContato = async () => {
+    if (passos[pos + 1]?.tipo === "fim") { await terminar(contato); return; }
+    await gravar(contato);
+    setPos((p) => Math.min(p + 1, passos.length - 1));
   };
   const avancar = () => {
     const prox = pos + 1;
-    if (passos[prox]?.tipo === "fim" && !editar) void terminar({});
+    if (passos[prox]?.tipo === "fim" && !editar) void terminar(contato);
     else setPos(Math.min(prox, passos.length - 1));
   };
   const voltar = () => setPos((p) => Math.max(0, p - 1));
@@ -179,12 +190,17 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     setEscolhas((x) => ({ ...x, [qid]: k }));
     if (!editar) window.setTimeout(avancar, 280);
   };
-  const reiniciar = () => { setPos(0); setEscolhas({}); setContato({}); };
+  const reiniciar = () => { setPos(0); setEscolhas({}); setContato({}); enviado.current = false; };
 
   const meio = passos.filter((p) => p.tipo !== "intro" && p.tipo !== "fim").length;
   const progresso = passo.tipo === "intro" ? 0 : passo.tipo === "fim" ? 100 : Math.round((pos / (meio + 1)) * 100);
   const nPergunta = passo.tipo === "pergunta" ? passo.indice + 1 : 0;
-  const contatoOk = pedir.every((c) => (contato[c] ?? "").trim().length >= (c === "whatsapp" ? 8 : 2));
+  const contatoOk = pedir.every((c) => {
+    const v = (contato[c] ?? "").trim();
+    if (c === "whatsapp") return v.replace(/\D/g, "").length >= 10;   // com DDD
+    if (c === "email") return /^\S+@\S+\.\S+$/.test(v);
+    return v.length >= 2;
+  });
   const suave = escuro ? "text-neutral-400" : "text-muted-foreground";
 
   return (
@@ -267,31 +283,40 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             const t = telas[passo.indice];
             const base = `telas.${passo.indice}`;
             if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar ? undefined : avancar} suave={suave} />;
-            if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} f={f} onSeguir={avancar} suave={suave} />;
+            if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} onSeguir={avancar} suave={suave} />;
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}
 
           {passo.tipo === "captura" && (
-            <form className="space-y-3" onSubmit={(ev) => { ev.preventDefault(); if (contatoOk) void terminar(contato); }}>
-              <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} as="h2" className="block text-2xl font-bold leading-snug" />
+            <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
+              <div className="space-y-2 text-center">
+                <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} mostrar={f(e.captura?.titulo || "Para onde enviamos o seu resultado?")} as="h2" className="block text-2xl font-bold leading-snug" />
+                <Txt caminho="captura.texto" valor={e.captura?.texto} mostrar={f(e.captura?.texto)} as="p" className={cn("block text-base", suave)} />
+              </div>
               {pedir.map((c) => (
                 <label key={c} className="block space-y-1 text-sm">
-                  <span className={suave}>{ROTULO_CAMPO[c].rotulo}</span>
+                  <Txt caminho={`captura.rotulos.${c}`} valor={e.captura?.rotulos?.[c] || ROTULO_CAMPO[c].rotulo} className={suave} />
                   <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={ROTULO_CAMPO[c].exemplo}
-                    className={escuro ? "border-white/20 bg-white/5" : undefined}
+                    inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={c === "nome" ? "given-name" : c === "whatsapp" ? "tel" : "email"}
+                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
                     onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
                 </label>
               ))}
-              <Button type="submit" size="lg" className="w-full text-white" style={{ background: cor }} disabled={!contatoOk || enviando}>
-                {enviando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Ver meu resultado
+              <Button type={editar ? "button" : "submit"} size="lg" className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }} disabled={!editar && (!contatoOk || enviando)}>
+                {enviando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}<Txt caminho="captura.botao" valor={e.captura?.botao || "Ver meu resultado"} />
               </Button>
+              {(e.captura?.nota || editar) && (
+                <p className={cn("flex items-center justify-center gap-1.5 text-center text-xs", suave)}>
+                  <Lock className="h-3 w-3 shrink-0" /><Txt caminho="captura.nota" valor={e.captura?.nota} />
+                </p>
+              )}
             </form>
           )}
 
           {passo.tipo === "fim" && (
             <div className="space-y-8">
               {!temTelaResultado && (
-                <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} f={f} suave={suave} />
+                <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
               {e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
                 : perfil?.cta_texto && (
@@ -403,9 +428,9 @@ function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string
 }
 
 // Resultado: o perfil em destaque, o gráfico de onde o dia vaza e o texto em blocos.
-function Resultado({ e, t, base, perfil, iPerfil, escolhas, f, onSeguir, suave }: {
+function Resultado({ e, t, base, perfil, iPerfil, escolhas, nome, f, onSeguir, suave }: {
   e: EstruturaQuiz; t?: TelaQuiz; base: string; perfil: PerfilQuiz | null; iPerfil: number;
-  escolhas: Record<string, number>; f: (s?: string) => string; onSeguir?: () => void; suave: string;
+  escolhas: Record<string, number>; nome?: string; f: (s?: string) => string; onSeguir?: () => void; suave: string;
 }) {
   const { cor, escuro, editar } = useContext(QuizCtx);
   const barras = barrasDoResultado(e, escolhas);
@@ -419,6 +444,9 @@ function Resultado({ e, t, base, perfil, iPerfil, escolhas, f, onSeguir, suave }
           ? <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="p" className={cn("block text-xs font-semibold uppercase tracking-[0.2em]", suave)} />
           : <p className={cn("text-xs font-semibold uppercase tracking-[0.2em]", suave)}>Seu resultado</p>}
         {perfil && <Img caminho={`${pp}.imagem`} url={perfil.imagem} nota={perfil.imagem_nota} className="mx-auto aspect-square w-40" />}
+        {perfil && (primeiroNome(nome) || editar) && (
+          <Txt caminho="resultado.chamada" valor={e.resultado?.chamada || "{nome}, você é"} mostrar={f(e.resultado?.chamada || "{nome}, você é")} as="p" className="block text-lg font-medium" />
+        )}
         <h2 className="text-3xl font-extrabold leading-tight sm:text-4xl" style={{ color: cor }}>
           {perfil ? <Txt caminho={`${pp}.nome`} valor={perfil.nome} /> : "Obrigado!"}
         </h2>
@@ -426,7 +454,8 @@ function Resultado({ e, t, base, perfil, iPerfil, escolhas, f, onSeguir, suave }
       </div>
       {barras.length > 1 && (
         <div className={cn("space-y-2.5 rounded-2xl p-4", escuro ? "bg-white/5" : "bg-black/[0.03]")}>
-          <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>{e.resultado?.grafico?.titulo ?? "Onde o seu dia vaza"}</p>
+          <Txt caminho="resultado.grafico.titulo" valor={e.resultado?.grafico?.titulo ?? "Onde o seu dia vaza"} as="p" className={cn("block text-xs font-semibold uppercase tracking-wider", suave)} />
+          <Txt caminho="resultado.grafico.subtitulo" valor={e.resultado?.grafico?.subtitulo} as="p" className={cn("block text-sm", suave)} />
           {barras.map((b, k) => (
             <div key={k} className="space-y-1">
               <div className="flex justify-between text-sm"><span className={b.pct === maior ? "font-semibold" : undefined}>{b.rotulo}</span><span className="font-bold tabular-nums">{b.pct}%</span></div>
@@ -501,6 +530,20 @@ function Oferta({ e, perfil, iPerfil, f, suave }: { e: EstruturaQuiz; perfil: Pe
       <Depoimentos caminho="oferta.depoimentos" lista={o.depoimentos} nota={o.depoimentos_nota} />
       {o.garantia && (
         <div className={cn(caixa, "flex gap-3 text-sm")}><ShieldCheck className="h-6 w-6 shrink-0" style={{ color: cor }} /><Txt caminho="oferta.garantia" valor={o.garantia} /></div>
+      )}
+      {!!o.faq?.length && (
+        <div className="space-y-2">
+          <p className={cn("text-center text-xs font-semibold uppercase tracking-wider", suave)}>Perguntas frequentes</p>
+          {o.faq.map((q, k) => (
+            <details key={k} open={editar || undefined} className={cn(caixa, "group py-3 text-left")}>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                <Txt caminho={`oferta.faq.${k}.pergunta`} valor={q.pergunta} />
+                <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" style={{ color: cor }} />
+              </summary>
+              <Txt caminho={`oferta.faq.${k}.resposta`} valor={q.resposta} as="p" className={cn("mt-2 block text-sm leading-relaxed", suave)} />
+            </details>
+          ))}
+        </div>
       )}
       <Txt caminho="oferta.preco" valor={o.preco} as="p" className="block text-center text-2xl font-extrabold" />
       <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe} as="p" className={cn("-mt-3 block text-center text-sm", suave)} />

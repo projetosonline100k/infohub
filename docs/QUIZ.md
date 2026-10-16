@@ -42,6 +42,9 @@ Pedido do Davi (15/10/2026): quiz dentro do Infopro, com o **Roy de cada projeto
 - Pergunta sem perfil (só para identificar o público): as opções podem ir sem `perfil`.
 - `perfis`: de 2 a 5, cada `id` em minúsculas e sem espaço. `cta_url` pode ficar vazio se o Davi ainda não passou o link: avise na entrega.
 - `captura.pedir`: qualquer combinação de `nome`, `email` e `whatsapp`. Use `"ativa": false` para não pedir nada.
+- Captura no meio (16/10, pedido do Davi: nome e WhatsApp para entrar em contato): `captura.depois_de` com o id de uma tela ou pergunta (ex.: a tela "analisando", antes do resultado). A resposta é gravada ali mesmo, então quem sai antes do fim não se perde (as perguntas depois dela não entram). Também: `texto`, `nota` (linha pequena com cadeado), `botao` e `rotulos` (`{"nome": "Seu primeiro nome"}`). WhatsApp precisa ter DDD (10 dígitos ou mais). Se pedir contato, não escreva "é anônimo" na abertura.
+- `{nome}` nos textos vira o primeiro nome da captura; `resultado.chamada` (padrão "{nome}, você é") aparece acima do nome do perfil quando a pessoa deu o nome. `resultado.grafico.subtitulo`: linha que explica como ler o gráfico.
+- `oferta.faq`: `[{pergunta, resposta}]`, abre e fecha, fica antes do preço e do botão. Só com fato confirmado pelo Davi (prazo de acesso, como recebe etc.).
 - Textos na voz do especialista; nada de prometer resultado que o produto não entrega.
 
 ## Quiz "dopaminérgico" (desde 15/10/2026)
