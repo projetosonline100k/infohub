@@ -25,6 +25,9 @@ import { cn } from "@/lib/utils";
 // Rodada (16/10): das 8h às 22h, a cada 30 min, o Pedro traz até 5 ideias
 // sozinho; cartão novo tem o selo NOVO até o Davi abrir (visto_em). A coluna
 // "Não é prioridade agora" (adiada) guarda ideia sem descartar.
+// Falta reiniciar (16/10): mudança no ouvinte/Danilo/Roy só roda depois de
+// reiniciar o serviço; o cartão fica âmbar no Feito até o serviço voltar
+// (servicos_sinal.iniciado_em mais novo que o concluido_em).
 const db = supabase as unknown as SupabaseClient;   // melhorias_sistema ainda não está nos tipos gerados
 
 type Status = "ideia" | "pode_fazer" | "fazendo" | "pendente" | "feito" | "descartada" | "erro" | "adiada";
@@ -33,7 +36,7 @@ interface Melhoria {
   id: string; titulo: string; problema: string | null; porque: string | null; sugestao: string | null;
   impacto: number | null; esforco: number | null; status: Status; origem: "pedro" | "davi"; ordem: number;
   agora: string | null; progresso: number | null; resultado: string | null; commit_sha: string | null; notas: string | null;
-  briefing: string | null; pendencias: Pendencia[] | null;
+  briefing: string | null; pendencias: Pendencia[] | null; reiniciar: string[] | null;
   criado_em: string; concluido_em: string | null; visto_em: string | null;
 }
 const COLUNAS: { status: Status; titulo: string; icone: typeof Lightbulb; ajuda: string; podeSoltar: boolean }[] = [
@@ -47,6 +50,11 @@ const COLUNAS: { status: Status; titulo: string; icone: typeof Lightbulb; ajuda:
 const MOVEIS: Status[] = ["ideia", "pode_fazer", "erro", "descartada", "adiada"];
 const ehNova = (m: Melhoria) => m.origem === "pedro" && !m.visto_em;
 const NIVEL = ["", "baixo", "médio", "alto"];
+const NOME_SERVICO: Record<string, string> = { ouvinte: "o ouvinte do Atlas", danilo: "o serviço do Danilo", roy: "o serviço do Roy" };
+// Serviços que a melhoria mexeu e que ainda estão no ar desde antes dela ficar pronta.
+const faltaReiniciar = (m: Melhoria, ligados: Record<string, string>) =>
+  m.status !== "feito" || !m.concluido_em ? [] :
+    (m.reiniciar ?? []).filter((s) => !ligados[s] || new Date(ligados[s]) < new Date(m.concluido_em!));
 
 export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   const [itens, setItens] = useState<Melhoria[]>([]);
@@ -84,12 +92,15 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
     const t = window.setInterval(() => void carregar(), ativo ? 8000 : 60000);
     return () => window.clearInterval(t);
   }, [ativo, carregar]);
-  // Última rodada de ideias (o ouvinte grava em servicos_sinal, "pedro_rodada").
-  const [ultimaRodada, setUltimaRodada] = useState<string | null>(null);
+  // Quando cada serviço ligou (servicos_sinal): "pedro_rodada" = última rodada
+  // de ideias; ouvinte/danilo/roy = conferir se falta reiniciar.
+  const [ligados, setLigados] = useState<Record<string, string>>({});
   useEffect(() => {
-    void db.from("servicos_sinal").select("iniciado_em").eq("servico", "pedro_rodada").maybeSingle()
-      .then(({ data }) => setUltimaRodada((data as { iniciado_em: string | null } | null)?.iniciado_em ?? null));
+    void db.from("servicos_sinal").select("servico, iniciado_em")
+      .then(({ data }) => setLigados(Object.fromEntries(((data || []) as { servico: string; iniciado_em: string | null }[])
+        .filter((s) => s.iniciado_em).map((s) => [s.servico, s.iniciado_em as string]))));
   }, [itens]);
+  const ultimaRodada = ligados.pedro_rodada ?? null;
   // Abrir o cartão tira o selo NOVO.
   const abrir = (m: Melhoria) => {
     setAberta(aberta === m.id ? null : m.id);
@@ -146,7 +157,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
             <div ref={dp.innerRef} {...dp.draggableProps} {...dp.dragHandleProps} style={dp.draggableProps.style}>
               <CartaoMelhoria m={m} aberto={aberta === m.id} onAbrir={() => abrir(m)} arrastando={snap.isDragging}
                 onMover={(st) => void mover(m.id, st)} onMudou={() => void carregar()}
-                briefingNovo={!!m.briefing && !lidos.includes(m.id)} onBriefing={() => abrirBriefing(m)}
+                briefingNovo={!!m.briefing && !lidos.includes(m.id)} onBriefing={() => abrirBriefing(m)} reiniciar={faltaReiniciar(m, ligados)}
                 onApagar={() => void apagar(m)} onConversar={() => setConversa(m)} />
             </div>
           );
@@ -254,9 +265,9 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
 
 // Cartão do kanban. Fora do componente do quadro: assim o que o Davi está
 // escrevendo nos detalhes não some quando o quadro atualiza sozinho.
-function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, briefingNovo, onBriefing, onApagar, onConversar }: {
+function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, briefingNovo, onBriefing, onApagar, onConversar, reiniciar }: {
   m: Melhoria; aberto: boolean; onAbrir: () => void; arrastando: boolean; onMover: (status: Status) => void; onMudou: () => void;
-  briefingNovo: boolean; onBriefing: () => void; onApagar: () => void; onConversar: () => void;
+  briefingNovo: boolean; onBriefing: () => void; onApagar: () => void; onConversar: () => void; reiniciar: string[];
 }) {
   const pendencias = m.pendencias ?? [];
   const marcar = async (i: number) => {
@@ -288,7 +299,7 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, brie
   return (
     <div
       className={cn("group relative rounded-lg border bg-card p-2 text-xs shadow-sm", m.status === "pendente" && "border-orange-500/50", movel && !aberto && "cursor-grab active:cursor-grabbing", arrastando && "rotate-1 shadow-xl ring-2 ring-primary",
-        m.status === "erro" && "border-rose-500/40", nova && "border-fuchsia-500/60 bg-fuchsia-500/5", aberto && "ring-1 ring-primary/40")}>
+        m.status === "erro" && "border-rose-500/40", reiniciar.length > 0 && "border-amber-500/60 bg-amber-500/5", nova && "border-fuchsia-500/60 bg-fuchsia-500/5", aberto && "ring-1 ring-primary/40")}>
       {(m.status === "ideia" || m.status === "descartada") && !aberto && (
         <button type="button" onClick={(e) => { e.stopPropagation(); onApagar(); }} title={m.status === "descartada" ? "Apagar de vez" : "Descartar"}
           className="absolute -right-1.5 -top-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-rose-500 hover:text-white group-hover:flex">
@@ -306,6 +317,12 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, brie
         {m.impacto && <span>impacto {NIVEL[m.impacto]}</span>}
         {m.esforco && <span>· esforço {NIVEL[m.esforco]}</span>}
       </p>
+      {reiniciar.length > 0 && (
+        <p className="mt-1.5 flex items-start gap-1 rounded-md bg-amber-500/15 px-2 py-1 text-[11px] font-medium leading-snug text-amber-800 dark:text-amber-300"
+          title="A mudança está no código, mas o serviço no ar é de antes dela. O aviso some sozinho quando ele reiniciar.">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />Ainda não está rodando: falta reiniciar {reiniciar.map((s) => NOME_SERVICO[s] ?? s).join(" e ")}
+        </p>
+      )}
       {m.status === "feito" && (m.briefing || m.resultado) && (
         <button type="button" onClick={onBriefing}
           className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300">
