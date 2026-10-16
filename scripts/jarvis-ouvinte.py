@@ -487,7 +487,15 @@ Você está num worktree só desta melhoria: {obra} (ramo {ramo}). Trabalhe SÓ 
 3. Implemente. Banco só por migração + teste em supabase/tests + script apply (rode --testar antes e depois aplique). Siga o jeito do código ao redor, em português.
 4. Confira: `npx tsc --noEmit -p tsconfig.app.json` (sem erros NOVOS em relação ao começo), `npx eslint` nos arquivos que mudou, `node --test tests/*.test.mjs`.
 5. Commit no ramo (git add só dos seus arquivos; mensagem em português começando com "feat:" ou "fix:" e terminando com a linha "Co-Authored-By: Pedro (IA do Infopro) <noreply@anthropic.com>").
-6. Por último: python3 scripts/pedro/melhorias.py pronto {mid} "<o que mudou, em 2-4 frases simples pro Davi, e onde ver no app>"
+6. Por último, entregue com um BRIEFING pro Davi (ele lê no seu kanban e não pode ficar perdido). Português simples, sem jargão de programador, com estas seções:
+   O que mudou (em 2-3 frases, o antes → depois)
+   Onde fica no app (caminho de cliques: "Projetos → Davi Queiroz → Conteúdo → …")
+   Como usar (passo a passo numerado)
+   O que testar agora (2-4 conferências rápidas que ele faz em 1 minuto)
+   Limites e próximos passos (o que ficou de fora, se precisa reiniciar algo)
+   python3 scripts/pedro/melhorias.py pronto {mid} "<resumo de 1 linha>" <<'FIM'
+   <o briefing, com as seções acima>
+   FIM
    Se não der (precisa de decisão do Davi, é área de outro chat — Roy/Danilo/Dalila —, ou é grande demais): python3 scripts/pedro/melhorias.py erro {mid} "<por quê, simples>"
 Regras: sem git push, sem merge (o ouvinte junta), não reinstale o app, não reinicie o ouvinte, não envie WhatsApp/e-mail, não publique nada. Hoje é {hoje}."""
 

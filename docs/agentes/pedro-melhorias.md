@@ -20,7 +20,7 @@ Desde 15/10/2026 o Pedro do projeto Davi Queiroz é IA. A missão dele, nas pala
 
    Depois entregue um resumo curto com o `execucao.py entregar`. A tarefa conclui sozinha.
 2. **O Davi decide no kanban.** Ele arrasta as ideias para **Pode fazer** ou **Descartada**, e também escreve ideias dele.
-3. **Implementar (automático).** O ouvinte pega a próxima ideia em "Pode fazer", cria um worktree do git só para ela (`~/.infopro-hub/pedro/obras/<id>`, ramo `pedro/<id>`) e te chama lá. Você implementa, testa, faz commit no ramo e roda `melhorias.py pronto`. O ouvinte junta no `main`. Se não der para juntar (conflito com trabalho de outro chat), o cartão vai para **Erro**, com o motivo.
+3. **Implementar (automático).** O ouvinte pega a próxima ideia em "Pode fazer", cria um worktree do git só para ela (`~/.infopro-hub/pedro/obras/<id>`, ramo `pedro/<id>`) e te chama lá. Você implementa, testa, faz commit no ramo e roda `melhorias.py pronto` **com um briefing para o Davi**, mandado pelo stdin. O briefing tem as seções: o que mudou, onde fica no app, como usar (passo a passo), o que testar e limites. Sem briefing, o `pronto` é recusado: o Davi não pode ficar perdido. O ouvinte junta no `main`. Se não der para juntar (conflito com trabalho de outro chat), o cartão vai para **Erro**, com o motivo.
 
 ## Onde procurar melhorias
 

@@ -7,7 +7,9 @@ Ideias → Pode fazer (o Davi arrasta) → Fazendo (o Pedro implementa sozinho) 
   FIM
   python3 scripts/pedro/melhorias.py contexto <id>                → a ideia que está implementando
   python3 scripts/pedro/melhorias.py progresso <id> <0-100> "<o que está fazendo>"
-  python3 scripts/pedro/melhorias.py pronto <id> "<o que mudou, em palavras simples pro Davi>"
+  python3 scripts/pedro/melhorias.py pronto <id> "<resumo de 1 linha>" <<'FIM'
+  <briefing pro Davi: o que mudou · onde fica no app · como usar (passo a passo) · o que testar · limites>
+  FIM
   python3 scripts/pedro/melhorias.py erro <id> "<por que não deu>"
   (o ouvinte usa: pegar, situacao, feito)"""
 import json
@@ -94,9 +96,12 @@ def progresso(mid, pct, agora):
     print('OK')
 
 
-def pronto(mid, resumo):
-    _q("UPDATE melhorias_sistema SET progresso = 95, agora = 'juntando no sistema', resultado = %s WHERE id = %s AND status = 'fazendo'",
-       (resumo.strip()[:2000], mid), commit=True)
+def pronto(mid, resumo, briefing=''):
+    """`briefing` (stdin): o que o Davi lê no kanban — o que mudou, onde fica, como usar, o que testar, limites."""
+    if len((briefing or '').strip()) < 120:
+        raise SystemExit('Faltou o briefing pro Davi (mande pelo stdin, com as seções do manual: o que mudou, onde fica, como usar, o que testar, limites).')
+    _q("UPDATE melhorias_sistema SET progresso = 95, agora = 'juntando no sistema', resultado = %s, briefing = %s WHERE id = %s AND status = 'fazendo'",
+       (resumo.strip()[:2000], briefing.strip()[:12000], mid), commit=True)
     print('PRONTO (o ouvinte junta no sistema)')
 
 
@@ -128,7 +133,7 @@ if __name__ == '__main__':
     elif cmd == 'progresso' and len(a) > 3:
         progresso(a[1], a[2], a[3])
     elif cmd == 'pronto' and len(a) > 2:
-        pronto(a[1], a[2])
+        pronto(a[1], a[2], sys.stdin.read() if not sys.stdin.isatty() else '')
     elif cmd == 'erro' and len(a) > 2:
         erro(a[1], a[2])
     elif cmd == 'pegar':

@@ -4,8 +4,9 @@ import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-p
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AlertTriangle, CheckCircle2, ChevronDown, Lightbulb, Loader2, Mic, Plus, Rocket, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ClipboardList, Lightbulb, Loader2, Mic, Plus, Rocket, Square, Trash2 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
 import { useGravarAudio } from "@/hooks/useGravarAudio";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ interface Melhoria {
   id: string; titulo: string; problema: string | null; porque: string | null; sugestao: string | null;
   impacto: number | null; esforco: number | null; status: Status; origem: "pedro" | "davi"; ordem: number;
   agora: string | null; progresso: number | null; resultado: string | null; commit_sha: string | null; notas: string | null;
+  briefing: string | null;
   criado_em: string; concluido_em: string | null;
 }
 const COLUNAS: { status: Status; titulo: string; icone: typeof Lightbulb; ajuda: string; podeSoltar: boolean }[] = [
@@ -41,6 +43,16 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [nova, setNova] = useState("");
   const [verDescartadas, setVerDescartadas] = useState(false);
+  const [lendo, setLendo] = useState<Melhoria | null>(null);
+  const [lidos, setLidos] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("melhorias-briefing-lidos") || "[]"); } catch { return []; } });
+  const abrirBriefing = (m: Melhoria) => {
+    setLendo(m);
+    if (!lidos.includes(m.id)) {
+      const n = [...lidos, m.id];
+      setLidos(n);
+      try { localStorage.setItem("melhorias-briefing-lidos", JSON.stringify(n)); } catch { /* sem storage */ }
+    }
+  };
 
   const carregar = useCallback(async () => {
     const { data } = await db.from("melhorias_sistema").select("*").eq("cliente_id", clienteId).order("ordem").order("criado_em", { ascending: false });
@@ -88,7 +100,8 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
           const no = (
             <div ref={dp.innerRef} {...dp.draggableProps} {...dp.dragHandleProps} style={dp.draggableProps.style}>
               <CartaoMelhoria m={m} aberto={aberta === m.id} onAbrir={() => setAberta(aberta === m.id ? null : m.id)} arrastando={snap.isDragging}
-                onMover={(st) => void mover(m.id, st)} onMudou={() => void carregar()} />
+                onMover={(st) => void mover(m.id, st)} onMudou={() => void carregar()}
+                briefingNovo={!!m.briefing && !lidos.includes(m.id)} onBriefing={() => abrirBriefing(m)} />
             </div>
           );
           // Arrastando: desenha direto no body (a janela por cima desloca o cartão).
@@ -159,6 +172,15 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
             </div>
           )}
           </DragDropContext>
+          <Dialog open={!!lendo} onOpenChange={(a) => { if (!a) setLendo(null); }}>
+            <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><ClipboardList className="h-5 w-5 text-primary" />{lendo?.titulo}</DialogTitle>
+                <DialogDescription>Briefing do Pedro{lendo?.concluido_em ? ` · ${format(new Date(lendo.concluido_em), "d 'de' MMMM, HH:mm", { locale: ptBR })}` : ""}</DialogDescription>
+              </DialogHeader>
+              <TextoBriefing texto={lendo?.briefing ?? lendo?.resultado ?? ""} />
+            </DialogContent>
+          </Dialog>
         </>
       )}
     </section>
@@ -167,8 +189,9 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
 
 // Cartão do kanban. Fora do componente do quadro: assim o que o Davi está
 // escrevendo nos detalhes não some quando o quadro atualiza sozinho.
-function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou }: {
+function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, briefingNovo, onBriefing }: {
   m: Melhoria; aberto: boolean; onAbrir: () => void; arrastando: boolean; onMover: (status: Status) => void; onMudou: () => void;
+  briefingNovo: boolean; onBriefing: () => void;
 }) {
   const movel = m.status === "ideia" || m.status === "pode_fazer" || m.status === "erro" || m.status === "descartada";
   const editavel = m.status !== "fazendo" && m.status !== "feito";
@@ -203,6 +226,13 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou }: {
         {m.impacto && <span>impacto {NIVEL[m.impacto]}</span>}
         {m.esforco && <span>· esforço {NIVEL[m.esforco]}</span>}
       </p>
+      {m.status === "feito" && (m.briefing || m.resultado) && (
+        <button type="button" onClick={onBriefing}
+          className="mt-1.5 flex w-full items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300">
+          <ClipboardList className="h-3 w-3" />Ver o briefing
+          {briefingNovo && <span className="rounded-full bg-emerald-600 px-1.5 text-[9px] font-bold text-white">novo</span>}
+        </button>
+      )}
       {m.status === "fazendo" && (
         <div className="mt-1.5">
           <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${m.progresso ?? 5}%` }} /></div>
@@ -249,6 +279,24 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou }: {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Briefing do Pedro: texto simples; as linhas que abrem seção ("O que mudou",
+// "Onde fica no app"…) viram títulos, e "1." / "-" viram listas.
+const SECAO = /^(o que mudou|onde fica|como usar|o que testar|limites|pr[óo]ximos passos)/i;
+function TextoBriefing({ texto }: { texto: string }) {
+  const linhas = texto.split("\n");
+  return (
+    <div className="space-y-1.5 text-sm leading-relaxed">
+      {linhas.map((l, i) => {
+        const t = l.trim().replace(/^#+\s*/, "").replace(/\*\*/g, "");
+        if (!t) return <div key={i} className="h-1" />;
+        if (SECAO.test(t) && t.length < 60) return <h3 key={i} className="pt-2 text-sm font-semibold text-primary">{t.replace(/:$/, "")}</h3>;
+        if (/^(\d+[.)]|[-•])\s/.test(t)) return <p key={i} className="pl-4 -indent-3">{t}</p>;
+        return <p key={i}>{t}</p>;
+      })}
     </div>
   );
 }
