@@ -37,7 +37,7 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
         .in("tarefa_data_id", ids).order("numero");
       const atual = await carregarAgenda(clienteId);
       setInstagram(await instagramDoProjeto(clienteId));
-      const ocupados = atual.filter(ocupaDia).map((a) => a.dia);
+      const ocupados = atual.filter(ocupaDia("carrossel")).map((a) => a.dia);
       const lista: Proposta[] = [];
       for (const c of (data || []) as { id: string; numero: number | null; tema: string; paginas: string[] | null }[]) {
         const dia = sugerirData(new Date(), ocupados);
@@ -75,7 +75,7 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
           <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
         ) : (
           <div className="space-y-4">
-            <CalendarioPosts agenda={agenda} />
+            <CalendarioPosts agenda={agenda} tipo="carrossel" />
             <div className="space-y-1.5">
               {propostas.map((p) => (
                 <div key={p.carrosselId} className="flex items-center gap-2.5 rounded-md border p-2">

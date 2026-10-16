@@ -50,7 +50,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
       const agenda = c ? await carregarAgenda(c.cliente_id, c.id) : [];
       setInstagram(c ? await instagramDoProjeto(c.cliente_id) : null);
       setAgenda(agenda);
-      const dias = agenda.filter(ocupaDia).map((a) => a.dia);
+      const dias = agenda.filter(ocupaDia("carrossel")).map((a) => a.dia);
       setOcupados(dias);
       setCarrossel((c as CarrosselParaProgramar) ?? null);
       if (c?.programado_para) {
@@ -102,7 +102,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
             </div>
             {carrossel.legenda && <p className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{carrossel.legenda}</p>}
             {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
-            <CalendarioPosts agenda={agenda} selecionado={data} onEscolher={setData} />
+            <CalendarioPosts agenda={agenda} tipo="carrossel" selecionado={data} onEscolher={setData} />
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1 text-sm">
                 <span className="flex items-center justify-between text-muted-foreground">Dia
@@ -116,7 +116,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
                 <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
               </label>
             </div>
-            {diaOcupado && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem um post programado neste dia (o padrão é 1 por dia).</p>}
+            {diaOcupado && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem um carrossel programado neste dia (o padrão é 1 carrossel por dia; o reel não conta).</p>}
             {problema && data && <p className="text-xs text-rose-600 dark:text-rose-400">{problema}</p>}
             {instagram ? (
               <p className="text-xs text-muted-foreground">
@@ -156,8 +156,9 @@ export function SemInstagram() {
 // O que já está na agenda de publicação do projeto: carrosséis (programados,
 // publicando ou publicados) e vídeos com data de postagem.
 export interface ItemAgenda { dia: string; tipo: "carrossel" | "reel" | "video"; titulo: string; capa: string | null; publicado: boolean; hora: string | null }
-// Post da Dalila (carrossel ou reel) ocupa o dia: o padrão é 1 por dia, os dois juntos.
-export const ocupaDia = (a: ItemAgenda) => a.tipo === "carrossel" || a.tipo === "reel";
+// Cada tipo ocupa o dia só para ele (pedido do Davi, 16/10): 1 carrossel e 1 reel
+// por dia, um não toma o dia do outro.
+export const ocupaDia = (tipo: "carrossel" | "reel") => (a: ItemAgenda) => a.tipo === tipo;
 
 export async function carregarAgenda(clienteId: string, ignorar?: string): Promise<ItemAgenda[]> {
   const [cars, vids, reels] = await Promise.all([
@@ -188,7 +189,8 @@ export async function carregarAgenda(clienteId: string, ignorar?: string): Promi
 }
 
 // Calendário das próximas 5 semanas: o que já está programado em cada dia; clicar num dia escolhe.
-export function CalendarioPosts({ agenda, selecionado, onEscolher }: { agenda: ItemAgenda[]; selecionado?: string; onEscolher?: (dia: string) => void }) {
+// `tipo`: "livre" = dia sem post desse tipo (sem tipo: sem carrossel nem reel).
+export function CalendarioPosts({ agenda, tipo, selecionado, onEscolher }: { agenda: ItemAgenda[]; tipo?: "carrossel" | "reel"; selecionado?: string; onEscolher?: (dia: string) => void }) {
   const hoje = diaLocal(new Date());
   const inicio = new Date();
   inicio.setDate(inicio.getDate() - ((inicio.getDay() + 6) % 7));   // segunda-feira desta semana
@@ -203,7 +205,7 @@ export function CalendarioPosts({ agenda, selecionado, onEscolher }: { agenda: I
           const dia = diaLocal(d);
           const itens = agenda.filter((a) => a.dia === dia);
           const passado = dia < hoje;
-          const livre = !itens.some(ocupaDia);
+          const livre = !itens.some((a) => (tipo ? a.tipo === tipo : a.tipo !== "video"));
           return (
             <button key={dia} type="button" disabled={passado || !onEscolher} onClick={() => onEscolher?.(dia)}
               title={itens.map((a) => `${a.tipo === "carrossel" ? "Carrossel" : a.tipo === "reel" ? "Reel" : "Vídeo"} ${a.titulo}${a.hora ? ` · ${a.hora}` : ""}${a.publicado ? " (publicado)" : ""}`).join("\n") || (passado ? "" : "Livre")}
@@ -218,7 +220,7 @@ export function CalendarioPosts({ agenda, selecionado, onEscolher }: { agenda: I
                   : <span key={k} className="rounded-sm bg-violet-500/20 px-1 text-[9px] text-violet-700 dark:text-violet-300">▶</span>)}
                 {itens.length > 3 && <span className="text-[9px] text-muted-foreground">+{itens.length - 3}</span>}
               </span>
-              {!passado && livre && itens.length === 0 && <span className="mt-auto text-[9px] text-emerald-600 dark:text-emerald-400">livre</span>}
+              {!passado && livre && <span className="mt-auto text-[9px] text-emerald-600 dark:text-emerald-400">livre</span>}
             </button>
           );
         })}
