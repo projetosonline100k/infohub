@@ -124,8 +124,130 @@ def _data_iso(yyyymmdd):
     return f"{d[:4]}-{d[4:6]}-{d[6:]}"
 
 
-def transcrever(url, ffmpeg, modo="preciso"):
+def baixar(url, opcoes):
+    """Baixa com o yt-dlp; no Instagram tenta antes logado na conta reserva."""
     import yt_dlp
+    perfil = perfil_instagram(url)
+    if perfil:
+        try:
+            with yt_dlp.YoutubeDL({**opcoes, "cookiesfrombrowser": ("chrome", perfil)}) as ydl:
+                return ydl.extract_info(url, download=True) or {}
+        except Exception as e:  # sessão caiu: segue deslogado (sem views)
+            print(f"instagram logado falhou: {e}", file=sys.stderr, flush=True)
+    with yt_dlp.YoutubeDL(opcoes) as ydl:
+        return ydl.extract_info(url, download=True) or {}
+
+
+def duracao_do_arquivo(ffmpeg, arquivo):
+    """Segundos do arquivo (o Instagram nem sempre informa a duração)."""
+    import re
+    import subprocess
+    try:
+        r = subprocess.run([ffmpeg, "-i", arquivo], capture_output=True, text=True, timeout=30)
+        h, m, s = re.search(r"Duration: (\d+):(\d+):([\d.]+)", r.stderr).groups()
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except Exception:
+        return None
+
+
+def sem_fala(texto, resultado, duracao):
+    """Reel só com música/texto na tela: o Whisper devolve "Thank you.",
+    meia dúzia de palavras ou trecho de letra de música."""
+    import re
+    limpo = re.sub(r"[^\w\s]|\d|_", " ", texto).strip().lower()
+    palavras = limpo.split()
+    if len(palavras) < 6 or re.fullmatch(r"(thank you\s*)+", limpo):
+        return True
+    if max(len(p) for p in palavras) > 30:  # Whisper "alucinando" (letra repetida)
+        return True
+    if duracao and len(palavras) / duracao < 0.8:  # fala normal: ~2,5 palavras/s
+        return True
+    segmentos = resultado.get("segments") or []
+    if segmentos:
+        sem_voz = sum(s.get("no_speech_prob") or 0 for s in segmentos) / len(segmentos)
+        if sem_voz > 0.5:
+            return True
+    return False
+
+
+# Leitura do texto da tela com o Vision do macOS (o mesmo OCR do "Texto ao
+# Vivo" das fotos). Compila uma vez em ~/.infopro-hub/creator-bin.
+OCR_SWIFT = r'''
+import Foundation
+import Vision
+import AppKit
+for caminho in CommandLine.arguments.dropFirst() {
+    guard let img = NSImage(contentsOfFile: caminho)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { print(""); continue }
+    let pedido = VNRecognizeTextRequest()
+    pedido.recognitionLevel = .accurate
+    pedido.recognitionLanguages = ["pt-BR", "en-US", "es-ES"]
+    pedido.usesLanguageCorrection = true
+    try? VNImageRequestHandler(cgImage: img, options: [:]).perform([pedido])
+    let linhas = (pedido.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+    print(linhas.joined(separator: " "))
+}
+'''
+
+
+def ocr_binario():
+    import hashlib
+    import subprocess
+    versao = hashlib.sha1(OCR_SWIFT.encode()).hexdigest()[:8]
+    pasta = os.path.expanduser("~/.infopro-hub/creator-bin")
+    binario = os.path.join(pasta, f"ocr-tela-{versao}")
+    if not os.path.exists(binario):
+        fonte = os.path.join(pasta, "ocr-tela.swift")
+        with open(fonte, "w") as f:
+            f.write(OCR_SWIFT)
+        subprocess.run(["swiftc", "-O", "-o", binario, fonte], check=True, capture_output=True, timeout=180)
+    return binario
+
+
+def texto_da_tela(url, ffmpeg, duracao):
+    """Baixa o vídeo (sem áudio), tira 3 quadros e lê o texto de cada um.
+    O 1º quadro costuma ter o gancho: vira a 1ª linha (a headline). Devolve
+    "" se não der."""
+    import subprocess
+    try:
+        with tempfile.TemporaryDirectory(prefix="jarvis-creator-tela-") as pasta:
+            opcoes = {
+                "format": "bv*[height<=1080]/b",
+                "outtmpl": os.path.join(pasta, "video.%(ext)s"),
+                "quiet": True, "no_warnings": True, "noprogress": True, "noplaylist": True,
+                "ffmpeg_location": ffmpeg,
+            }
+            baixar(url, opcoes)
+            video = next(os.path.join(pasta, f) for f in os.listdir(pasta) if f.startswith("video."))
+            momentos = [0.5, duracao * 0.35, duracao * 0.7] if duracao else [0.5, 3, 6]
+            quadros = []
+            for n, t in enumerate(momentos):
+                quadro = os.path.join(pasta, f"q{n}.png")
+                subprocess.run([ffmpeg, "-loglevel", "error", "-y", "-ss", f"{t:.2f}", "-i", video, "-frames:v", "1", quadro],
+                               capture_output=True, timeout=60)
+                if os.path.exists(quadro):
+                    quadros.append(quadro)
+            if not quadros:
+                return ""
+            saida = subprocess.run([ocr_binario(), *quadros], capture_output=True, text=True, timeout=120).stdout
+        # Um quadro por linha; o mesmo texto em quadros seguidos (só com uma
+        # palavra a mais) fica uma vez só, na versão mais completa.
+        frases = []
+        for linha in saida.splitlines():
+            linha = linha.strip()
+            if not linha or any(linha.lower() in f.lower() for f in frases):
+                continue
+            contida = next((i for i, f in enumerate(frases) if f.lower() in linha.lower()), None)
+            if contida is None:
+                frases.append(linha)
+            else:
+                frases[contida] = linha
+        return "\n".join(frases)
+    except Exception as e:
+        print(f"texto da tela: {e}", file=sys.stderr, flush=True)
+        return ""
+
+
+def transcrever(url, ffmpeg, modo="preciso"):
     import mlx_whisper
 
     inicio = time.time()
@@ -153,18 +275,8 @@ def transcrever(url, ffmpeg, modo="preciso"):
             "noplaylist": True,
             "ffmpeg_location": ffmpeg,
         }
-        perfil = perfil_instagram(url)
         try:
-            info = None
-            if perfil:
-                try:
-                    with yt_dlp.YoutubeDL({**opcoes, "cookiesfrombrowser": ("chrome", perfil)}) as ydl:
-                        info = ydl.extract_info(url, download=True) or {}
-                except Exception as e:  # sessão caiu: segue deslogado (sem views)
-                    print(f"instagram logado falhou: {e}", file=sys.stderr, flush=True)
-            if info is None:
-                with yt_dlp.YoutubeDL(opcoes) as ydl:
-                    info = ydl.extract_info(url, download=True) or {}
+            info = baixar(url, opcoes)
         except Exception as e:  # link privado, removido, pedindo login…
             msg = str(e)
             if "Sign in" in msg or "login" in msg.lower():
@@ -174,16 +286,28 @@ def transcrever(url, ffmpeg, modo="preciso"):
         if not arquivos:
             return {"erro": "O vídeo não tem áudio para transcrever."}
         baixou = time.time()
+        duracao = info.get("duration") or duracao_do_arquivo(ffmpeg, arquivos[0])
         modelo = MODELOS.get(modo, MODELOS["preciso"])
         resultado = mlx_whisper.transcribe(arquivos[0], path_or_hf_repo=modelo, verbose=None)
         print(f"tempo: download {baixou - inicio:.1f}s, transcrição {time.time() - baixou:.1f}s", file=sys.stderr, flush=True)
 
+    texto = (resultado.get("text") or "").strip()
+    origem = "fala"
+    # Sem fala: o texto da tela substitui. Fala curta (pode ser letra de
+    # música): se a tela tem mais texto, ele vem antes (vira a headline).
+    nada = sem_fala(texto, resultado, duracao)
+    if nada or len(texto.split()) < 25:
+        tela = texto_da_tela(url, ffmpeg, duracao)
+        if len(tela.split()) >= 4 and (nada or len(tela.split()) > len(texto.split())):
+            texto, origem = (tela if nada else f"{tela}\n\n{texto}"), "tela"
+
     return {
-        "texto": (resultado.get("text") or "").strip(),
+        "texto": texto,
+        "origem": origem,
         "idioma": resultado.get("language"),
         "titulo": info.get("title") or (info.get("description") or "")[:80] or None,
         "autor": info.get("uploader") or info.get("channel"),
-        "duracao": info.get("duration"),
+        "duracao": duracao,
         # Pras "Ideias em destaque" do cliente (views e data, quando o site informa).
         "visualizacoes": info.get("view_count") or info.get("play_count"),
         "curtidas": info.get("like_count"),
