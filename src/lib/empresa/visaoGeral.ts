@@ -49,6 +49,30 @@ export interface TarefaResumo {
   data_vencimento: string | null;
   concluida: boolean;
   progresso: number | null;
+  andamento_desde?: string | null;   // quando entrou em andamento (trigger no banco)
+  previsao_fim?: string | null;      // quando o próprio funcionário acha que termina
+}
+
+// Quanto falta (pedido do Davi, 15/10: "além da porcentagem, o tempo estimado"):
+// a previsão que o funcionário informou; sem ela, o ritmo até aqui (tempo
+// gasto ÷ % feita). Antes de 10% o ritmo ainda não diz nada.
+export function minutosRestantes(t: Pick<TarefaResumo, "progresso" | "andamento_desde" | "previsao_fim">, agora = Date.now()): number | null {
+  if (t.previsao_fim) {
+    const falta = (new Date(t.previsao_fim).getTime() - agora) / 60000;
+    if (falta > 0) return Math.max(1, Math.round(falta));
+  }
+  const p = t.progresso ?? 0;
+  if (!t.andamento_desde || p < 10 || p >= 100) return null;
+  const gasto = (agora - new Date(t.andamento_desde).getTime()) / 60000;
+  if (gasto < 1) return null;
+  return Math.max(1, Math.round((gasto * (100 - p)) / p));
+}
+// "~12 min", "~1h20", "menos de 1 min".
+export function textoRestante(min: number): string {
+  if (min <= 1) return "menos de 1 min";
+  if (min < 60) return `~${min} min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return `~${h}h${m ? String(m).padStart(2, "0") : ""}`;
 }
 
 export interface Indicadores {

@@ -10,7 +10,7 @@ e a tarefa vai para "aguardando aprovação" do Davi.
   python3 scripts/empresa/execucao.py entregar <atividade_id> "<título do documento>" "<resumo de 1 linha>" <<'FIM'
   <html do documento: h2, h3, p, ul, ol, li, strong, em, a, blockquote>
   FIM
-  python3 scripts/empresa/execucao.py progresso <atividade_id> <0-100> "<o que está fazendo agora>"
+  python3 scripts/empresa/execucao.py progresso <atividade_id> <0-100> "<o que está fazendo agora>" [minutos que ainda faltam]
   python3 scripts/empresa/execucao.py erro <atividade_id> "<motivo>"
   python3 scripts/empresa/execucao.py pegar        → (ouvinte) próxima tarefa, já em andamento
 
@@ -168,14 +168,23 @@ def entregar(aid, titulo, resumo, conteudo):
     print('ENTREGUE', did)
 
 
-def progresso(aid, pct, etapa):
-    """Quanto do trabalho já foi feito (a barra na janela do funcionário) e o que está fazendo agora."""
+def progresso(aid, pct, etapa, falta_min=None):
+    """Quanto do trabalho já foi feito (a barra na janela do funcionário), o que está fazendo agora
+    e, se souber, quantos minutos acha que ainda faltam (vira a previsão "faltam ~X min")."""
     pct = max(5, min(95, int(pct)))   # 100 só quando entrega
+    falta = None
+    if falta_min not in (None, ''):
+        try:
+            falta = max(1, min(600, int(float(falta_min))))
+        except ValueError:
+            falta = None
     c = connect()
     try:
         q = c.cursor()
-        q.execute("""UPDATE atividades SET progresso = %s, observacao = %s WHERE id = %s AND situacao = 'andamento'""",
-                  (pct, f'Agora: {etapa.strip()[:200]}', aid))
+        q.execute("""UPDATE atividades SET progresso = %s, observacao = %s,
+                            previsao_fim = CASE WHEN %s::int IS NULL THEN previsao_fim ELSE now() + make_interval(mins => %s::int) END
+                      WHERE id = %s AND situacao = 'andamento'""",
+                  (pct, f'Agora: {etapa.strip()[:200]}', falta, falta, aid))
         c.commit()
     finally:
         c.close()
@@ -217,7 +226,7 @@ if __name__ == '__main__':
     elif a[0] == 'entregar':
         entregar(a[1], a[2], a[3] if len(a) > 3 else '', sys.stdin.read())
     elif a[0] == 'progresso':
-        progresso(a[1], a[2], a[3] if len(a) > 3 else '')
+        progresso(a[1], a[2], a[3] if len(a) > 3 else '', a[4] if len(a) > 4 else None)
     elif a[0] == 'erro':
         erro(a[1], a[2])
     else:

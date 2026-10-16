@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { colunasDoProjeto } from "@/lib/empresa/colunas";
-import { ehIaOperaria, ordenarFila, tarefaAtrasada, type MembroResumo, type TarefaResumo } from "@/lib/empresa/visaoGeral";
+import { ehIaOperaria, minutosRestantes, ordenarFila, tarefaAtrasada, textoRestante, type MembroResumo, type TarefaResumo } from "@/lib/empresa/visaoGeral";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
@@ -157,8 +157,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   const carregar = useCallback(async () => {
     if (!membro) return;
     setCarregando(true);
-    const { data } = await supabase.from("atividades")
-      .select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, concluida_em, video_vertical_id, video_youtube_id, tempo_estimado, timer_iniciado_em, timer_decorrido_segundos, observacao, created_at")
+    // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
+    const { data } = await (supabase as unknown as SupabaseClient).from("atividades")
+      .select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, concluida_em, video_vertical_id, video_youtube_id, tempo_estimado, timer_iniciado_em, timer_decorrido_segundos, observacao, created_at, andamento_desde, previsao_fim")
       .eq("responsavel_id", membro.id).is("deleted_at", null)
       // Abertas + as concluídas hoje (pra ver o que já saiu).
       .or(`concluida.eq.false,concluida_em.gte.${hoje}T00:00:00`);
@@ -320,7 +321,10 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                           <div key={t.id}>
                             <div className="flex items-start justify-between gap-2">
                               <p className="min-w-0 flex-1 break-words text-sm font-medium">{t.titulo}</p>
-                              <span className="shrink-0 text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{tt.pct ?? 0}%</span>
+                              <span className="shrink-0 text-right">
+                                <span className="block text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{tt.pct ?? 0}%</span>
+                                {(() => { const m = minutosRestantes(t, agora); return m != null ? <span className="block text-[10px] text-muted-foreground">faltam {textoRestante(m)}</span> : null; })()}
+                              </span>
                               {ia && (
                                 <button type="button" onClick={() => void copiarParaIa(t)} title="Copiar título e roteiro pro ChatGPT"
                                   className="flex h-6 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] hover:bg-accent"><Copy className="h-3 w-3" />Copiar</button>

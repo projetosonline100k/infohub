@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/visaoGeral.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { contarIndicadores, precisaDeVoce, tarefasEmExecucao, estadoDosMembros, videosProgramados, ordenarFila } =
+const { contarIndicadores, precisaDeVoce, tarefasEmExecucao, estadoDosMembros, videosProgramados, ordenarFila, minutosRestantes, textoRestante } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const HOJE = '2026-10-12';
@@ -115,4 +115,18 @@ test('sinal: vermelho > amarelo > verde > cinza, juntando tarefas e trabalho das
   // Post programado (Dalila): data escolhida, esperando a hora → amarelo, não verde.
   assert.equal(sinal('m-danilo', [tarefa('p', 'm-danilo', { situacao: 'andamento', tipo: 'programacao' })]), 'esperando');
   assert.equal(sinal('m-danilo', [tarefa('p', 'm-danilo', { situacao: 'fila', tipo: 'programacao' })]), 'parado');
+});
+
+test('tempo restante: previsão do funcionário; sem ela, o ritmo até aqui (a partir de 10%)', () => {
+  const agora = Date.parse('2026-10-15T12:00:00Z');
+  const ha = (min) => new Date(agora - min * 60000).toISOString();
+  const daqui = (min) => new Date(agora + min * 60000).toISOString();
+  assert.equal(minutosRestantes({ progresso: 50, andamento_desde: ha(10), previsao_fim: daqui(25) }, agora), 25);
+  assert.equal(minutosRestantes({ progresso: 50, andamento_desde: ha(10), previsao_fim: null }, agora), 10);
+  assert.equal(minutosRestantes({ progresso: 25, andamento_desde: ha(10), previsao_fim: ha(1) }, agora), 30);   // previsão vencida: vale o ritmo
+  assert.equal(minutosRestantes({ progresso: 5, andamento_desde: ha(10) }, agora), null);
+  assert.equal(minutosRestantes({ progresso: 50, andamento_desde: null }, agora), null);
+  assert.equal(textoRestante(12), '~12 min');
+  assert.equal(textoRestante(80), '~1h20');
+  assert.equal(textoRestante(120), '~2h');
 });

@@ -5,6 +5,7 @@ import {
   AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Crown,
   FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Scissors, Users, Video, Youtube,
 } from "lucide-react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { confirmar } from "@/components/DialogosGlobais";
@@ -25,7 +26,7 @@ import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, estadoDosMembros, tarefasEmExecucao, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -100,7 +101,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const [s, m, t, vv, vy] = await Promise.all([
       supabase.from("setores").select("id, nome, descricao, cor, icone").eq("cliente_id", clienteId).order("ordem"),
       supabase.from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
-      supabase.from("atividades").select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso")
+      // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
+      (supabase as unknown as SupabaseClient).from("atividades").select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, andamento_desde, previsao_fim")
         .eq("cliente_id", clienteId).is("deleted_at", null).eq("concluida", false),
       supabase.from("videos_vertical").select("id, titulo, status, data_postagem, referencia_id").eq("cliente_id", clienteId),
       supabase.from("videos_youtube").select("id, titulo, status, data_postagem").eq("cliente_id", clienteId),
@@ -323,7 +325,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                       <span className={cn("rounded-full px-1.5 py-px text-[10px] font-medium", agora ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-muted text-muted-foreground")}>
                         {agora ? (t.tipo === "programacao" ? "programado" : "fazendo agora") : "na fila"}
                       </span>
-                      {agora && t.progresso != null && t.progresso > 0 && <span className="ml-auto tabular-nums text-muted-foreground">{t.progresso}%</span>}
+                      {agora && t.progresso != null && t.progresso > 0 && (
+                        <span className="ml-auto tabular-nums text-muted-foreground">
+                          {t.progresso}%{(() => { const m = minutosRestantes(t); return m != null ? ` · faltam ${textoRestante(m)}` : ""; })()}
+                        </span>
+                      )}
                     </span>
                     <span className="block truncate text-sm">{t.titulo}</span>
                     {agora && t.progresso != null && t.progresso > 0 && (
