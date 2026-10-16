@@ -55,6 +55,10 @@ CLIENTE = "e4b24f93-0eda-43fc-b50e-3ebe24f8905f"   # projeto Davi Queiroz
 DRIVE = Path.home() / "Library/CloudStorage/GoogleDrive-metafocando@gmail.com/Meu Drive/Projeto 100k/Eu.davi"
 ENTRADA = DRIVE / "Precisa de edição"
 DESTINO = DRIVE / "Editado"
+# Entrada direta no Mac (AirDrop → arrastar pra cá), sem passar pelo Drive.
+# Depois de aprovado, o bruto vai pra LOCAL/Editados.
+LOCAL = Path.home() / "Desktop" / "Para o Danilo"
+LOCAL_EDITADOS = LOCAL / "Editados"
 BASE = Path.home() / ".infopro-hub" / "danilo"
 EDICOES = BASE / "edicoes"
 BRUTOS = BASE / "brutos"
@@ -82,25 +86,61 @@ def pasta(id_):
 
 
 # ---------------------------------------------------------------- brutos novos
+_tamanhos = {}   # arquivo local → (tamanho, quando viu): espera a cópia/AirDrop terminar
+
+
+def _local_parado(f, segundos=30):
+    """Arquivo local pronto: o tamanho não muda há `segundos`."""
+    tam, agora = f.stat().st_size, datetime.now().timestamp()
+    visto = _tamanhos.get(str(f))
+    if not visto or visto[0] != tam:
+        _tamanhos[str(f)] = (tam, agora)
+        return False
+    return tam > 0 and agora - visto[1] >= segundos
+
+
 def novos(minutos_parado=3):
-    """Vídeos da pasta de entrada sem [EM EDIÇÃO]/[EDITADO], que ninguém
-    registrou ainda e que pararam de subir (não mudam há alguns minutos)."""
-    if not ENTRADA.is_dir():
-        raise OSError(f"pasta do Drive não encontrada: {ENTRADA}")
+    """Vídeos sem [EM EDIÇÃO]/[EDITADO] que ninguém registrou ainda, nas duas
+    entradas: a pasta Precisa de edição do Drive (parados há alguns minutos) e
+    a pasta local Para o Danilo (tamanho parado: a cópia terminou)."""
     registrados = {Path(r[0]).name.replace(EM_EDICAO, "").replace(EDITADO, "")
                    for r in db("SELECT bruto_drive FROM public.edicoes_video WHERE cliente_id = %s "
                                "AND bruto_drive IS NOT NULL AND status <> 'cancelado'", (CLIENTE,))}
     agora = datetime.now().timestamp()
+    pastas = [p for p in (LOCAL, ENTRADA) if p.is_dir()]
+    if not pastas:
+        raise OSError(f"nenhuma pasta de entrada encontrada ({LOCAL} / {ENTRADA})")
     out = []
-    for f in sorted(ENTRADA.iterdir(), key=lambda f: f.name.replace(EM_EDICAO, "")):
-        # "[EM EDIÇÃO]" sem edição registrada = o serviço caiu no meio: pega de novo.
-        orfao = f.name.startswith(EM_EDICAO) and f.name[len(EM_EDICAO):] not in registrados
-        if f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not orfao):
-            continue
-        if f.name.replace(EM_EDICAO, "") in registrados or agora - f.stat().st_mtime < minutos_parado * 60:
-            continue
-        out.append(f)
-    return out
+    for pasta_ in pastas:
+        for f in pasta_.iterdir():
+            # "[EM EDIÇÃO]" sem edição registrada = o serviço caiu no meio: pega de novo.
+            orfao = f.name.startswith(EM_EDICAO) and f.name[len(EM_EDICAO):] not in registrados
+            if not f.is_file() or f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not orfao):
+                continue
+            if f.name.replace(EM_EDICAO, "") in registrados:
+                continue
+            if pasta_ == LOCAL:
+                if not _local_parado(f):
+                    continue
+            elif agora - f.stat().st_mtime < minutos_parado * 60:
+                continue
+            out.append(f)
+    return sorted(out, key=lambda f: (f.parent != LOCAL, f.name.replace(EM_EDICAO, "")))
+
+
+def guardar_editados(log=print):
+    """Bruto local de edição aprovada ([EDITADO] …) vai pra Para o Danilo/Editados."""
+    if not LOCAL.is_dir():
+        return
+    for f in LOCAL.iterdir():          # (glob não serve: "[" vira padrão)
+        if f.is_file() and f.name.startswith(EDITADO):
+            LOCAL_EDITADOS.mkdir(exist_ok=True)
+            destino = LOCAL_EDITADOS / f.name
+            if not destino.exists():
+                f.rename(destino)
+                db("UPDATE public.edicoes_video SET bruto_drive = %s WHERE bruto_drive = %s",
+                   (str(destino), str(f.with_name(EM_EDICAO + f.name[len(EDITADO):]))))
+                log("bruto aprovado guardado em Editados:", f.name)
 
 
 def _palavras(t):

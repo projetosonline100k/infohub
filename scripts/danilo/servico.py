@@ -204,7 +204,8 @@ def atender_drive():
             log(f"esperando o Google Drive baixar {len(brutos)} bruto(s) (pasta off-line)")
             progresso(e.get("atividade"), None if not e.get("total") else int(20 + 80 * e.get("feitos", 0) / e["total"]),
                       f"Esperando o Google Drive baixar os brutos no Mac ({len(brutos)} na fila). "
-                      "Se demorar, confira se o Drive está aberto e se a pasta Precisa de edição está disponível off-line.")
+                      "Se demorar, confira se o Drive está aberto e se a pasta Precisa de edição está disponível off-line "
+                      "(ou mande por AirDrop e arraste para a pasta Para o Danilo, na Mesa).")
         return False
     if e.pop("esperando_drive", None):
         salvar_estado(e)
@@ -316,9 +317,10 @@ if __name__ == "__main__":
     while True:
         try:
             danilo.ligar_tarefas()
+            danilo.guardar_editados(log)
             if atender_tarefa():
                 continue
-            if time.time() - ultima_drive > 300:      # a cada 5 min olha a pasta do Drive
+            if time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
                 ultima_drive = time.time()
                 if atender_drive():
                     ultima_drive = 0.0                # editou um: já olha o próximo
