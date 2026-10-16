@@ -12,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { HORA_REEL, diaLocal, horaDoReel, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
 import { LIMITE_DURACAO_SHORT, LIMITE_TITULO_SHORT, problemaNoTitulo, tituloDoShort } from "@/lib/empresa/youtube";
 import { CalendarioPosts, SemInstagram, carregarAgenda, instagramDoProjeto, ocupaDia, type ItemAgenda } from "./ProgramarCarrossel";
-import { conectarYoutube, youtubeDoProjeto } from "./CanalYoutube";
+import { conectarYoutube, estadoYoutube } from "./CanalYoutube";
 
 // "Escolher data do reel" (tarefa do Davi, tipo 'agendar_reel'): o Danilo
 // editou, o Davi aprovou, a Dalila preparou o vídeo e sugeriu a legenda. Aqui
@@ -44,6 +44,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
   const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
   const [instagram, setInstagram] = useState<string | null>(null);
   const [canal, setCanal] = useState<string | null>(null);
+  const [youtubeLigado, setYoutubeLigado] = useState(false);
   const [noYoutube, setNoYoutube] = useState(false);
   const [tituloYt, setTituloYt] = useState("");
   const [legenda, setLegenda] = useState("");
@@ -66,8 +67,10 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
       const lista = r ? await carregarAgenda(r.cliente_id, r.id) : [];
       setAgenda(lista);
       setInstagram(r ? await instagramDoProjeto(r.cliente_id) : null);
-      const c = r ? await youtubeDoProjeto(r.cliente_id) : null;
+      const yt = r ? await estadoYoutube(r.cliente_id) : { ligado: false, canal: null };
+      const c = yt.canal;
       setCanal(c);
+      setYoutubeLigado(yt.ligado);
       // Com canal ligado, o padrão é ir junto para o YouTube (o Davi desmarca se não quiser).
       setNoYoutube(!!c && !r?.yt_url && (r?.yt_status ? r.yt_publicar : true));
       setTituloYt(r?.yt_titulo ?? tituloDoShort(r?.titulo ?? ""));
@@ -158,7 +161,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
             </div>
             {data && ocupados.includes(data) && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem reel neste dia: sugeri 12h para este (o ritmo por enquanto é 1 reel por dia).</p>}
             {problema && data && <p className="text-xs text-rose-600 dark:text-rose-400">{problema}</p>}
-            <div className="space-y-2 rounded-md border p-3 text-sm">
+            {youtubeLigado && <div className="space-y-2 rounded-md border p-3 text-sm">
               {shortJaSaiu ? (
                 <p className="flex items-center gap-2 text-muted-foreground"><Youtube className="h-4 w-4 text-red-600" />
                   O Short já está no YouTube: <a href={reel.yt_url!} target="_blank" rel="noreferrer" className="text-primary hover:underline">{reel.yt_url}</a></p>
@@ -189,7 +192,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
                     className="font-medium text-primary hover:underline">Conectar o canal do projeto</button>
                 </p>
               )}
-            </div>
+            </div>}
             {instagram ? (
               <p className="text-xs text-muted-foreground">
                 A Dalila publica o reel sozinha no @{instagram} neste dia e hora, mesmo com o Mac desligado. Escolher a data é o seu ok.

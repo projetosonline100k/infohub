@@ -139,7 +139,7 @@ Mesmo esquema do reel; setup e passo a passo em `docs/YOUTUBE.md`.
   - Ela cria o cron `dalila-youtube`, que chamaria a edge `youtube`, e essa edge ainda não está no ar. A ordem para ligar é: credenciais do Google com o Davi → deploy da edge `youtube` → aplicar a migração.
   - Até lá, `ProgramarReel` funciona sem as colunas `yt_*` (correção do chat geral).
   - A `dalila-publicar` no ar (o código do main) também funciona sem elas: grava o link do Instagram na tarefa e ignora `reel_links_na_tarefa` quando a RPC não existe.
-  - O botão "Conectar canal do YouTube" falha até a edge existir.
+  - Os botões de YouTube (o "Conectar canal" da Visão geral e o quadro do Short no "Escolher data do reel") ficam **escondidos** até a RPC `youtube_do_projeto` existir (`estadoYoutube` em `CanalYoutube.tsx`). Aplicada a migração, eles aparecem sozinhos.
 
 ## Pendências
 

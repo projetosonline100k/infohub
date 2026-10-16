@@ -11,9 +11,12 @@ import { retornoDoYoutube } from "@/lib/empresa/youtube";
 // Davi programar em ProgramarReel. O app só vê o nome do canal.
 const db = supabase as unknown as SupabaseClient;
 
-export async function youtubeDoProjeto(clienteId: string): Promise<string | null> {
-  const { data } = await db.rpc("youtube_do_projeto", { p_cliente: clienteId });
-  return (data as string | null) ?? null;
+// `ligado` = a parte do YouTube está no ar (a RPC da migração
+// 20261016121500 existe, e ela só é aplicada depois da edge `youtube`). Até lá,
+// nenhum botão de YouTube aparece, para o Davi não clicar em algo que dá erro.
+export async function estadoYoutube(clienteId: string): Promise<{ ligado: boolean; canal: string | null }> {
+  const { data, error } = await db.rpc("youtube_do_projeto", { p_cliente: clienteId });
+  return { ligado: !error, canal: error ? null : (data as string | null) ?? null };
 }
 
 async function chamarYoutube<T>(body: Record<string, unknown>): Promise<T> {
@@ -44,20 +47,23 @@ export async function conectarYoutube(clienteId: string) {
 
 export function useCanalYoutube(clienteId: string | null | undefined) {
   const [canal, setCanal] = useState<string | null>(null);
+  const [ligado, setLigado] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const recarregar = useCallback(async () => {
     if (!clienteId) return;
     setCarregando(true);
-    setCanal(await youtubeDoProjeto(clienteId));
+    const estado = await estadoYoutube(clienteId);
+    setCanal(estado.canal);
+    setLigado(estado.ligado);
     setCarregando(false);
   }, [clienteId]);
   useEffect(() => { void recarregar(); }, [recarregar]);
-  return { canal, carregando, recarregar };
+  return { canal, ligado, carregando, recarregar };
 }
 
 // Botão do cabeçalho da Visão geral: conectar, ver e desligar o canal.
 export function CanalYoutube({ clienteId }: { clienteId: string }) {
-  const { canal, carregando, recarregar } = useCanalYoutube(clienteId);
+  const { canal, ligado, carregando, recarregar } = useCanalYoutube(clienteId);
   const [indo, setIndo] = useState(false);
 
   // Volta do Google: avisa e limpa a URL.
@@ -83,7 +89,7 @@ export function CanalYoutube({ clienteId }: { clienteId: string }) {
     } catch (e) { toast.error((e as Error).message); }
   };
 
-  if (carregando) return null;
+  if (carregando || !ligado) return null;
   return canal ? (
     <button type="button" onClick={() => void desligar()} title="Canal onde a Dalila publica os Shorts (clique para desconectar)"
       className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs text-muted-foreground hover:bg-muted">
