@@ -46,8 +46,10 @@ def pegar(ignorar=()):
                   AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel'
                        -- Quiz pedido pela aba Quiz vai direto pro Roy (o esboço é a primeira entrega).
                        OR (lower(m.nome) = 'roy' AND a2.tipo = 'quiz'))
-                  -- Carrossel do Roy é com o serviço dele (scripts/roy/servico.py); aqui só página e quiz.
-                  AND NOT (lower(m.nome) = 'roy' AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz'))
+                  -- Carrossel do Roy no projeto Davi Queiroz é com o serviço dele (scripts/roy/servico.py);
+                  -- nos outros projetos (o serviço ainda é só do Davi, 15/10) tudo do Roy vem por aqui.
+                  AND NOT (lower(m.nome) = 'roy' AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz')
+                           AND a2.cliente_id = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f')
                   AND NOT (a2.id = ANY(%s::uuid[]))
                 ORDER BY a2.created_at LIMIT 1 FOR UPDATE OF a2 SKIP LOCKED)
             RETURNING a.id""", (sorted(EXECUTORES), list(ignorar)))
