@@ -87,6 +87,8 @@ def _danilo_id():
 
 
 MIN_POR_VIDEO = 35   # baixar, transcrever, editar e gerar a prévia (medido nos primeiros)
+ALERTA = "⚠️ Não vou editar"
+_alerta = ""         # bruto quebrado do lote: fica no topo de toda atualização da barra
 
 
 def progresso(aid, p, obs, situacao=None, faltam_videos=None, espera_min=0):
@@ -94,6 +96,8 @@ def progresso(aid, p, obs, situacao=None, faltam_videos=None, espera_min=0):
     ela em vez do ritmo desde o início, que conta as horas paradas)."""
     if not aid:
         return
+    if _alerta:
+        obs = f"{_alerta}\n{obs}"
     if faltam_videos is None:
         danilo.db("UPDATE public.atividades SET progresso = %s, observacao = %s, situacao = coalesce(%s, situacao) WHERE id = %s",
                   (p, obs[:900], situacao, aid))
@@ -208,9 +212,37 @@ def espaco_ok(e, bruto):
     return False
 
 
+def avisar_quebrados(e):
+    """Bruto que chegou cortado é avisado logo que aparece no Mac, com o motivo,
+    e não espera o resto do lote (antes o aviso só saía no fim, horas depois).
+    O aviso fica no topo da observação da tarefa do lote até o Davi reenviar."""
+    global _alerta
+    for q in [q for q in danilo._quebrados if not Path(q).exists()]:
+        danilo._quebrados.pop(q)                 # apagado ou trocado: some do aviso
+    itens = [f"{Path(q).stem.replace(danilo.EM_EDICAO, '')} ({m})" for q, m in sorted(danilo._quebrados.items())]
+    _alerta = (f"{ALERTA} {', '.join(itens)}. Mande de novo do celular e deixe o app do Drive aberto até "
+               "terminar o envio (ou use AirDrop para a pasta Para o Danilo, na Mesa). Enquanto isso sigo com os outros."
+               ) if itens else ""
+    if _alerta == e.get("aviso_quebrados", ""):
+        return
+    e["aviso_quebrados"] = _alerta
+    salvar_estado(e)
+    log("brutos quebrados:", itens or "nenhum (reenviados)")
+    if not e.get("atividade"):
+        return
+    r = danilo.db("SELECT coalesce(observacao, '') FROM public.atividades WHERE id = %s", (e["atividade"],))
+    linhas = (r[0][0] if r else "").split("\n")
+    if linhas[0].startswith(ALERTA):
+        linhas = linhas[1:]                      # troca o aviso anterior pelo novo
+    danilo.db("UPDATE public.atividades SET observacao = %s WHERE id = %s",
+              ("\n".join(([_alerta] if _alerta else []) + linhas).strip()[:900], e["atividade"]))
+
+
 def atender_drive():
     """Um bruto por vez. Lote com vários: piloto primeiro."""
     e = estado()
+    brutos = danilo.novos()          # antes da espera do piloto: o bruto quebrado é avisado na hora
+    avisar_quebrados(e)
     if e.get("aguardando_piloto"):
         st = danilo.db("SELECT status FROM public.edicoes_video WHERE id = %s", (e["aguardando_piloto"],))
         if st and st[0][0] == "aprovado":
@@ -224,17 +256,18 @@ def atender_drive():
         else:
             e.pop("aguardando_piloto")
             salvar_estado(e)
-    brutos = danilo.novos()
-    if not brutos and danilo._quebrados and e.get("atividade") and e.get("feitos", 0) < e.get("total", 0):
-        nomes = sorted(Path(q).name.replace(danilo.EM_EDICAO, "").replace(".MOV", "") for q in danilo._quebrados if Path(q).exists())
-        aviso = (f"{e['feitos']} de {e['total']} prontos. Faltam {', '.join(nomes)}: o arquivo está corrompido (não abre). "
-                 "Mande de novo do celular por AirDrop para a pasta Para o Danilo, na Mesa, que eu edito sozinho.")
-        if nomes and e.get("aviso_quebrados") != aviso:
-            e["aviso_quebrados"] = aviso
+    if not brutos and danilo._quebrados and e.get("atividade"):
+        # Os outros estão prontos: o lote só espera o reenvio (o aviso já saiu em avisar_quebrados).
+        if not e.get("esperando_reenvio"):
+            e["esperando_reenvio"] = True
             salvar_estado(e)
-            log("parado: brutos corrompidos", nomes)
-            progresso(e["atividade"], int(20 + 80 * e["feitos"] / e["total"]), aviso, "andamento")
+            log("parado: esperando o reenvio dos brutos quebrados")
+            progresso(e["atividade"], int(20 + 80 * e.get("feitos", 0) / max(e.get("total", 0) + len(danilo._quebrados), 1)),
+                      f"{e.get('feitos', 0)} prontos em Revisar edição. Só falta o reenvio dos vídeos acima; edito sozinho quando chegarem.",
+                      "andamento")
         return False
+    if e.pop("esperando_reenvio", None):
+        salvar_estado(e)
     # Processo do launchd não consegue fazer o Drive baixar (a leitura trava ou
     # dá timeout). A pasta Precisa de edição fica "disponível off-line": o
     # próprio Drive baixa, e o Danilo só pega o bruto que já está no Mac.

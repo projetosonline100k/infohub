@@ -86,16 +86,45 @@ def pasta(id_):
 
 
 # ---------------------------------------------------------------- brutos novos
-_quebrados = set()
+_quebrados = {}   # bruto quebrado → motivo (pro aviso na tarefa do lote)
+
+
+def faltando(f):
+    """Bytes que faltam no fim do vídeo. O MOV/MP4 é uma fila de caixas (ftyp,
+    mdat, moov…) e cada uma diz o próprio tamanho no cabeçalho: se a última
+    passa do fim do arquivo, o envio parou no meio (ex.: o celular cortou o
+    upload). Só lê os cabeçalhos (alguns bytes), não o vídeo."""
+    total = os.path.getsize(f)
+    pos = 0
+    with open(f, "rb") as arq:
+        while pos + 8 <= total:
+            arq.seek(pos)
+            cab = arq.read(16)
+            tam = int.from_bytes(cab[:4], "big")
+            if tam == 1 and len(cab) == 16:
+                tam = int.from_bytes(cab[8:16], "big")      # caixa grande (64 bits)
+            elif tam == 0:
+                return 0                                    # "vai até o fim do arquivo"
+            if tam < 8:
+                return 0                                    # não é MOV/MP4 que eu entenda: deixa o ffmpeg julgar
+            pos += tam
+    return max(pos - total, 0)
 
 
 def abre(f):
-    """O vídeo abre? Arquivo truncado (ex.: o Drive cortou com o disco cheio) fica
-    sem o 'moov' e o ffmpeg não lê. Só olha arquivo já no Mac (não dispara download)."""
+    """O vídeo abre? Devolve o motivo se não abre (None se está ok). Arquivo
+    truncado fica sem o fim (às vezes sem o 'moov') e o ffmpeg não lê ou cai
+    no meio da edição. Só olha arquivo já no Mac (não dispara download)."""
     if not no_mac(f):
-        return True
+        return None
+    falta = faltando(f)
+    if falta:
+        return (f"o envio do celular parou no meio: faltaram {falta / 1e6:.0f} MB "
+                f"(chegou {os.path.getsize(f) / 1e6:.0f} de {(os.path.getsize(f) + falta) / 1e6:.0f} MB)")
     r = subprocess.run([FF, "-hide_banner", "-i", str(f)], capture_output=True, text=True).stderr
-    return "Duration:" in r and "moov atom not found" not in r
+    if "Duration:" in r and "moov atom not found" not in r:
+        return None
+    return "o vídeo não abre (arquivo corrompido)"
 
 
 _tamanhos = {}   # arquivo local → (tamanho, quando viu): espera a cópia/AirDrop terminar
@@ -136,11 +165,13 @@ def novos(minutos_parado=3):
                     continue
             elif agora - f.stat().st_mtime < minutos_parado * 60:
                 continue
-            if not abre(f):
+            motivo = abre(f)
+            if motivo:
                 if str(f) not in _quebrados:
-                    _quebrados.add(str(f))
-                    print(f"bruto quebrado (o vídeo não abre): {f}", flush=True)
+                    print(f"bruto quebrado ({motivo}): {f}", flush=True)
+                _quebrados[str(f)] = motivo
                 continue
+            _quebrados.pop(str(f), None)      # reenviado com o mesmo nome e agora inteiro
             out.append(f)
     return sorted(out, key=lambda f: (f.parent != LOCAL, f.name.replace(EM_EDICAO, "")))
 
