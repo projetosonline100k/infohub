@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useAssistantProjeto } from "@/hooks/useAssistantProjeto";
 import { useAssistantDocumentos } from "@/hooks/useAssistantDocumentos";
@@ -49,6 +50,26 @@ export default function Notas() {
       {pastasVisiveis ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
     </button>
   );
+
+  // ?projeto=<id>&nota=<id> (busca ⌘K): troca pro projeto da nota (uma vez)
+  // e abre a nota quando ela aparecer na lista; aí limpa a URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const notaDaUrl = searchParams.get("nota");
+  const projetoDaUrl = searchParams.get("projeto");
+  const projetoDaUrlAplicado = useRef<string | null>(null);
+  useEffect(() => {
+    if (!projetoDaUrl || projetoDaUrlAplicado.current === projetoDaUrl) return;
+    projetoDaUrlAplicado.current = projetoDaUrl;
+    if (projetoDaUrl !== projetoId) {
+      setProjetoId(projetoDaUrl);
+      setFiltro({ tipo: "todas" });
+    }
+  }, [projetoDaUrl, projetoId, setProjetoId]);
+  useEffect(() => {
+    if (!notaDaUrl || !notas.some((n) => n.id === notaDaUrl)) return;
+    setNotaSelecionadaId(notaDaUrl);
+    setSearchParams({}, { replace: true });
+  }, [notaDaUrl, notas, setSearchParams]);
 
   const notaSelecionada =
     notas.find((n) => n.id === notaSelecionadaId) ?? notasLixeira.find((n) => n.id === notaSelecionadaId) ?? null;

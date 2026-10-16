@@ -80,6 +80,8 @@ export default function ClienteDetalhe() {
 
   useEffect(() => {
     if (searchParams.get("documento")) setAbaAtiva("documentos");
+    // ?atividade=<id> (busca ⌘K, links das Notas): a aba Atividades abre o painel da tarefa.
+    if (searchParams.get("atividade")) setAbaAtiva("atividades");
     // ?conversa=<membro> (o Atlas avisou de uma resposta): Conteúdo → Visão geral, onde fica a gaveta da Equipe.
     if (searchParams.get("conversa")) { setAbaAtiva("conteudo"); setSubAbaConteudo("visao-geral"); }
   }, [searchParams]);
@@ -107,7 +109,7 @@ export default function ClienteDetalhe() {
     // Senão, volta pra seção em que o Davi estava neste projeto (se houver).
     const salva = lerAbaProjeto(id);
     const conversa = !!searchParams.get("conversa");
-    setAbaAtiva(searchParams.get("documento") ? "documentos" : conversa ? "conteudo" : salva.aba ?? "atividades");
+    setAbaAtiva(searchParams.get("documento") ? "documentos" : conversa ? "conteudo" : searchParams.get("atividade") ? "atividades" : salva.aba ?? "atividades");
     if (conversa) setSubAbaConteudo("visao-geral");
     else if (salva.sub) setSubAbaConteudo(salva.sub);
 
