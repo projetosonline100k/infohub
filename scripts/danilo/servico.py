@@ -193,6 +193,22 @@ def atender_drive():
             e.pop("aguardando_piloto")
             salvar_estado(e)
     brutos = danilo.novos()
+    # Processo do launchd não consegue fazer o Drive baixar (a leitura trava ou
+    # dá timeout). A pasta Precisa de edição fica "disponível off-line": o
+    # próprio Drive baixa, e o Danilo só pega o bruto que já está no Mac.
+    baixados = [b for b in brutos if danilo.no_mac(b)]
+    if brutos and not baixados:
+        if not e.get("esperando_drive"):
+            e["esperando_drive"] = True
+            salvar_estado(e)
+            log(f"esperando o Google Drive baixar {len(brutos)} bruto(s) (pasta off-line)")
+            progresso(e.get("atividade"), None if not e.get("total") else int(20 + 80 * e.get("feitos", 0) / e["total"]),
+                      f"Esperando o Google Drive baixar os brutos no Mac ({len(brutos)} na fila). "
+                      "Se demorar, confira se o Drive está aberto e se a pasta Precisa de edição está disponível off-line.")
+        return False
+    if e.pop("esperando_drive", None):
+        salvar_estado(e)
+    brutos = baixados + [b for b in brutos if b not in baixados]
     if brutos and not espaco_ok(e, brutos[0]):
         return False
     if not brutos:
