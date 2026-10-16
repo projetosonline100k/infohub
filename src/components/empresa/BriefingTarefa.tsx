@@ -13,6 +13,8 @@ import {
 import type { MembroResumo } from "@/lib/empresa/visaoGeral";
 import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
+import { marcarConversaLida } from "@/lib/empresa/notificacoes";
 
 // Nova tarefa = conversa com o funcionário (pedido do Davi, 14/10/2026). Ele
 // diz o que entendeu, pergunta o que falta e se consegue fazer; quando o
@@ -67,6 +69,9 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const [confirmando, setConfirmando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
   const fimRef = useRef<HTMLDivElement>(null);
+  const abaAtiva = useAbaAtiva();
+  const abaAtivaRef = useRef(abaAtiva);
+  abaAtivaRef.current = abaAtiva;
   const campoRef = useRef<HTMLTextAreaElement>(null);
   // @ → documentos do projeto
   const [docs, setDocs] = useState<DocProjeto[] | null>(null);
@@ -86,6 +91,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
     if (b?.status !== "conversando") { setBriefingId(null); setMensagens([]); setProposta(null); return; }
     setProposta((b?.proposta as Proposta | null) ?? null);
     setMensagens((m || []) as MensagemBriefing[]);
+    if (abaAtivaRef.current) marcarConversaLida(id);   // está na tela: conta como lida (bolinha some)
   }, []);
 
   // Retoma a conversa aberta com esse funcionário, se houver.

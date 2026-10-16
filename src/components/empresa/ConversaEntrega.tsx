@@ -11,6 +11,8 @@ import { esperandoResposta, segundosEsperando, type MensagemBriefing } from "@/l
 import { cn } from "@/lib/utils";
 import { TextoMensagem } from "./BriefingTarefa";
 import { CabecaBoneco } from "./BonecoMesa";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
+import { marcarConversaLida } from "@/lib/empresa/notificacoes";
 import { ehCoordenador } from "@/lib/empresa/visaoGeral";
 
 const db = supabase as unknown as SupabaseClient;   // participantes e membro_id ainda não estão nos tipos gerados
@@ -39,6 +41,9 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
   const [enviando, setEnviando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
   const fimRef = useRef<HTMLDivElement>(null);
+  const abaAtiva = useAbaAtiva();
+  const abaAtivaRef = useRef(abaAtiva);
+  abaAtivaRef.current = abaAtiva;
   const respostas = useRef(0);
 
   const carregar = useCallback(async (id: string) => {
@@ -54,6 +59,7 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
     if (n > respostas.current && respostas.current > 0) onDocumentoMudou();   // a resposta pode ter vindo com nova versão
     respostas.current = n;
     setMensagens(lista);
+    if (abaAtivaRef.current) marcarConversaLida(id);   // está na tela: conta como lida
   }, [onDocumentoMudou]);
 
   useEffect(() => {

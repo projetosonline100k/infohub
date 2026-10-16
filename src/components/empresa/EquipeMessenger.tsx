@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { naoLidasPorMembro } from "@/lib/empresa/notificacoes";
 import { ArrowLeft, ListTodo, MessageCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MembroResumo, Sinal } from "@/lib/empresa/visaoGeral";
@@ -25,6 +26,16 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
 }) {
   const [aberta, setAberta] = useState(false);
   const [conversa, setConversa] = useState<PessoaChat | null>(null);
+  // Respostas não lidas por pessoa (bolinha, como num app de mensagens; 15/10).
+  const [naoLidas, setNaoLidas] = useState<Map<string, number>>(new Map());
+  const contar = useCallback(() => { void naoLidasPorMembro(clienteId).then(setNaoLidas).catch(() => {}); }, [clienteId]);
+  useEffect(() => {
+    contar();
+    const t = window.setInterval(contar, 15_000);
+    window.addEventListener("conversa-lida", contar);
+    return () => { window.clearInterval(t); window.removeEventListener("conversa-lida", contar); };
+  }, [contar]);
+  const totalNaoLidas = [...naoLidas.values()].reduce((s, n) => s + n, 0);
   // O Atlas conversa pela orbe (⌘J); aqui fica o resto da equipe.
   const lista = pessoas.filter((p) => !ehCoordenador(p.membro));
   const precisam = lista.filter((p) => p.sinal === "esperando").length;
@@ -43,6 +54,7 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
           ))}
         </span>
         <span className="text-[10px] font-semibold [writing-mode:vertical-rl]">Equipe</span>
+        {totalNaoLidas > 0 && <span className="animate-pulse rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white" title="Respostas não lidas">{totalNaoLidas}</span>}
         {precisam > 0 && <span className="rounded-full bg-amber-400 px-1.5 text-[10px] font-bold text-slate-900">{precisam}</span>}
       </button>
     );
@@ -83,9 +95,14 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
               className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted">
               <Avatar p={p} />
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{p.membro.nome}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">{p.atual ?? STATUS[p.sinal].texto}</span>
+                <span className={cn("block truncate text-sm", naoLidas.get(p.membro.id) ? "font-bold" : "font-medium")}>{p.membro.nome}</span>
+                <span className={cn("block truncate text-[11px]", naoLidas.get(p.membro.id) ? "font-semibold text-foreground" : "text-muted-foreground")}>
+                  {naoLidas.get(p.membro.id) ? "Nova mensagem" : p.atual ?? STATUS[p.sinal].texto}
+                </span>
               </span>
+              {!!naoLidas.get(p.membro.id) && (
+                <span className="flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">{naoLidas.get(p.membro.id)}</span>
+              )}
               <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[10px]", p.sinal === "esperando" ? "bg-amber-400/20 text-amber-700 dark:text-amber-300" : "text-muted-foreground")}>
                 {p.sinal === "esperando" ? "precisa de você" : p.membro.eh_ia ? "IA" : ""}
               </span>

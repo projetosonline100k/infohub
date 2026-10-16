@@ -148,7 +148,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Tarefa do Roy que já virou carrossel aparece só pelo card do carrossel (revisão com as páginas),
   // não como "Aprovar entrega" (esse caminho é o do Ítalo, que entrega documento).
   const tarefasComCarrossel = useMemo(() => new Set(carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter(Boolean)), [carrosseis]);
-  const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)), hoje),
+  // Edição de vídeo (Danilo) também: aparece em "Revisar edição", que abre o editor.
+  const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id) && !(t.tipo === "edicao" && t.situacao === "aguardando_aprovacao")), hoje),
     [contaId, videos, membros, tarefas, hoje, tarefasComCarrossel]);
   const executando = useMemo(() => tarefasEmExecucao(contaId, membros, tarefas), [contaId, membros, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);

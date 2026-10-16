@@ -1,4 +1,5 @@
-import { Bell, LogOut, Search } from "lucide-react";
+import { LogOut, Search } from "lucide-react";
+import { AvisosEquipe } from "./AvisosEquipe";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -44,12 +45,8 @@ export function AppTopbar({ onAbrirBusca }: AppTopbarProps) {
 
       <div className="ml-auto flex shrink-0 items-center gap-1.5">
         <DownloadDesktopAppButton />
-        {/* Sino de notificações — visual (item 4); ainda não existe um
-            sistema de notificações no app, fica como placeholder inerte
-            até isso virar uma entrega funcional. */}
-        <Button variant="ghost" size="icon" className="relative" aria-label="Notificações" title="Notificações">
-          <Bell className="h-4 w-4" />
-        </Button>
+        {/* Sininho: avisos da equipe (respostas, entregas, versões…). */}
+        <AvisosEquipe />
         <ThemeToggle />
 
         <DropdownMenu>
