@@ -56,9 +56,13 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
     if (!tarefaId) return;
     setCarregando(true);
     void (async () => {
-      const { data: r } = await db.from("reels")
-        .select("id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para, yt_publicar, yt_titulo, yt_status, yt_url")
+      // Os campos do YouTube só existem depois da migração dalila_youtube_shorts: sem ela,
+      // busca só o reel (antes a busca inteira falhava e aparecia "Não achei o reel").
+      const BASE = "id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para";
+      // eslint-disable-next-line prefer-const
+      let { data: r, error } = await db.from("reels").select(`${BASE}, yt_publicar, yt_titulo, yt_status, yt_url`)
         .eq("tarefa_data_id", tarefaId).maybeSingle();
+      if (error) ({ data: r } = await db.from("reels").select(BASE).eq("tarefa_data_id", tarefaId).maybeSingle());
       const lista = r ? await carregarAgenda(r.cliente_id, r.id) : [];
       setAgenda(lista);
       setInstagram(r ? await instagramDoProjeto(r.cliente_id) : null);
@@ -96,7 +100,8 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
     const youtube = noYoutube && !!canal && !shortJaSaiu;
     const { error } = await db.rpc("programar_reel", {
       p_reel: reel.id, p_quando: quando.toISOString(), p_legenda: legenda,
-      p_youtube: youtube, p_yt_titulo: youtube ? tituloYt.trim() : null,
+      // Só manda os campos do YouTube com o canal ligado: antes da migração do YouTube a função não os aceita.
+      ...(youtube ? { p_youtube: true, p_yt_titulo: tituloYt.trim() } : {}),
     });
     setSalvando(false);
     if (error) { toast.error(error.message); return; }
