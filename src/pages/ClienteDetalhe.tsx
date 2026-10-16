@@ -45,7 +45,7 @@ interface Produto {
 
 const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm", "cronograma"];
 // 16/10: o Creator (Vertical, Youtube, Brainstorm, Cronograma) virou guias dentro do Escritório.
-const GUIAS_ESCRITORIO = ["visao-geral", ...GUIAS_CREATOR];
+const GUIAS_ESCRITORIO = ["visao-geral", ...GUIAS_CREATOR, "conhecimento", "quiz"];
 const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
   if (!id) return {};
   try { return JSON.parse(localStorage.getItem(`projeto-aba:${id}`) || "{}"); } catch { return {}; }
@@ -233,6 +233,7 @@ export default function ClienteDetalhe() {
         { id: "visao-geral", label: "Escritório" }, { id: "informacoes", label: "Informações gerais" },
         { id: "vertical", label: "Vertical" }, { id: "youtube", label: "Youtube" },
         { id: "brainstorm", label: "Brainstorm" }, { id: "cronograma", label: "Cronograma" },
+        { id: "conhecimento", label: "Fonte de conhecimento" }, { id: "quiz", label: "Quiz" },
       ].map((g) => g.id === "informacoes"
         ? { ...g, ativa: abaAtiva === "informacoes", ir: () => setAbaAtiva("informacoes") }
         : { ...g, ativa: abaAtiva === "conteudo" && subAbaConteudo === g.id, ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo(g.id); } })
@@ -330,7 +331,7 @@ export default function ClienteDetalhe() {
                     setSubAbaConteudo(item.id);
                   }}
                   className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "visao-geral" && GUIAS_CREATOR.includes(subAbaConteudo))))
+                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "visao-geral" && GUIAS_ESCRITORIO.includes(subAbaConteudo))))
                       || (item.id === "visao-geral" && abaAtiva === "informacoes")
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
@@ -354,25 +355,6 @@ export default function ClienteDetalhe() {
                 </button>
               ))}
 
-              {/* Fonte de conhecimento e Quiz, depois de Atividades e Documentos. */}
-              {pode("conteudo") && abasConteudo.filter((item) => item.id !== "visao-geral").map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setAbaAtiva("conteudo");
-                    setSubAbaConteudo(item.id);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "visao-geral" && GUIAS_CREATOR.includes(subAbaConteudo))))
-                      || (item.id === "visao-geral" && abaAtiva === "informacoes")
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
 
             </div>
           </>
