@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buscarAvisos, type Aviso } from "@/lib/empresa/notificacoes";
+import { buscarAvisos, conversaLidaEm, type Aviso } from "@/lib/empresa/notificacoes";
 
 // "Sempre que alguém da equipe aprontar algo que eu tenha que revisar, quero
 // que chegue uma notificação, pode vir até pelo Atlas" (Davi, 16/10/2026).
 // A orbe olha a cada 30 s o que ficou esperando o Davi (entrega pra aprovar,
 // versão do Danilo, carrossel do Roy, reel pra escolher data, briefing ou
 // pendência do Pedro) e mostra um de cada vez, com "Revisar agora".
+// Também as respostas da equipe no chat ("quando retornar a mensagem no chat,
+// também me avisar pelo Atlas") — menos a da conversa que o Davi já está lendo.
 const CHAVE_DESDE = "atlas-revisar-desde";
 const INTERVALO = 30_000;
 
@@ -25,7 +27,9 @@ export function useParaRevisar(meuId: string | undefined, ativo: boolean) {
       if (!novos.length) return;
       desde.current = novos[novos.length - 1].quando;
       gravar(desde.current);
-      const revisar = novos.filter((a) => a.revisar);
+      // A janela principal marca a conversa como lida quando ela está na tela (mesmo localStorage).
+      const lida = (a: Aviso) => !!a.briefingId && conversaLidaEm(a.briefingId) >= a.quando;
+      const revisar = novos.filter((a) => a.revisar || (a.tipo === "resposta" && !lida(a)));
       if (revisar.length) {
         setFila((xs) => {
           const ja = new Set(xs.map((x) => x.id));

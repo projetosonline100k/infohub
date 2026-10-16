@@ -1296,11 +1296,11 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     />
   ) : paraRevisar.atual ? (
     <JarvisNotificationCard
-      titulo={`📬 ${paraRevisar.atual.titulo}`}
+      titulo={`${paraRevisar.atual.tipo === "resposta" ? "💬" : "📬"} ${paraRevisar.atual.titulo}`}
       tone="success"
       acoes={[
         {
-          label: "Revisar agora",
+          label: paraRevisar.atual.tipo === "resposta" ? "Abrir conversa" : "Revisar agora",
           onClick: () => {
             const a = paraRevisar.atual;
             paraRevisar.dispensar();
