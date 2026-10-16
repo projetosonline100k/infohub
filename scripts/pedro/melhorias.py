@@ -1,8 +1,10 @@
 """Kanban de melhorias do Infopro (Pedro, IA de melhorias — pedido do Davi, 15/10/2026).
 Ideias → Pode fazer (o Davi arrasta) → Fazendo (o Pedro implementa sozinho) → Feito.
+"Não é prioridade agora" (adiada) guarda ideia sem descartar. Rodada (16/10): das 8h às
+22h, a cada 30 min, o ouvinte chama o Pedro pra buscar até 5 ideias novas (selo NOVO).
 
   python3 scripts/pedro/melhorias.py listar                       → o quadro todo
-  python3 scripts/pedro/melhorias.py propor <<'FIM'               → novas ideias (lista JSON; pula título repetido)
+  python3 scripts/pedro/melhorias.py propor [--rodada] <<'FIM'    → novas ideias (lista JSON; pula título repetido; --rodada: no máx. 5)
   [{"titulo": "...", "problema": "...", "porque": "...", "sugestao": "...", "impacto": 1-3, "esforco": 1-3}]
   FIM
   python3 scripts/pedro/melhorias.py contexto <id>                → a ideia que está implementando
@@ -15,9 +17,10 @@ Ideias → Pode fazer (o Davi arrasta) → Fazendo (o Pedro implementa sozinho) 
   FIM
   python3 scripts/pedro/melhorias.py retomar <id>                   → (na conversa) o Davi resolveu: volta pra fila
   python3 scripts/pedro/melhorias.py erro <id> "<por que não deu>"
-  (o ouvinte usa: pegar, situacao, feito)"""
+  (o ouvinte usa: pegar, situacao, feito, rodada_devida, marcar_rodada, prompt_rodada, contar_novas)"""
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[2]
@@ -25,6 +28,8 @@ sys.path.insert(0, str(RAIZ / 'scripts'))
 from migration_db import connect  # noqa: E402
 
 CLIENTE = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f'   # projeto Davi Queiroz (onde o Pedro é IA)
+# Rodada automática (combinado com o Davi em 16/10): das 8h às 22h, de 30 em 30 min, até 5 ideias boas.
+HORA_INICIO, HORA_FIM, INTERVALO_MIN, MAX_RODADA = 8, 22, 30, 5
 
 
 def _q(sql, args=(), um=False, commit=False):
@@ -42,23 +47,26 @@ def _q(sql, args=(), um=False, commit=False):
 
 def listar():
     for st, titulo, imp, esf, mid in _q("""SELECT status, titulo, impacto, esforco, id FROM melhorias_sistema WHERE cliente_id = %s
-                                             ORDER BY array_position(ARRAY['fazendo','pode_fazer','ideia','erro','feito','descartada'], status), ordem, criado_em""", (CLIENTE,)):
+                                             ORDER BY array_position(ARRAY['fazendo','pode_fazer','pendente','ideia','adiada','erro','feito','descartada'], status), ordem, criado_em""", (CLIENTE,)):
         print(f'[{st}] {titulo} (impacto {imp or "-"}, esforço {esf or "-"}) · {mid}')
 
 
-def propor(bruto):
+def propor(bruto, rodada=False):
     try:
         ideias = json.loads(bruto)
     except json.JSONDecodeError as e:
         raise SystemExit(f'JSON inválido: {e}')
     if isinstance(ideias, dict):
         ideias = [ideias]
-    existentes = {t.strip().lower() for (t,) in _q("SELECT titulo FROM melhorias_sistema WHERE cliente_id = %s AND status <> 'descartada'", (CLIENTE,))}
+    # Sem repetir nada que já passou pelo quadro (inclusive descartada e "não é prioridade agora").
+    existentes = {t.strip().lower() for (t,) in _q("SELECT titulo FROM melhorias_sistema WHERE cliente_id = %s", (CLIENTE,))}
     novas = 0
     c = connect()
     try:
         q = c.cursor()
         for i in ideias:
+            if rodada and novas >= MAX_RODADA:
+                break
             t = str(i.get('titulo', '')).strip()
             if not t or t.lower() in existentes:
                 continue
@@ -152,6 +160,57 @@ def reenfileirar():
     return len(r or [])
 
 
+# ---------------------------------------------------------------- rodada automática
+# O horário e o intervalo ficam aqui (o ouvinte recarrega este módulo: mudar não pede reinício).
+# A última rodada fica em servicos_sinal ('pedro_rodada'): o kanban mostra "última busca às HH:MM".
+
+def rodada_devida(agora=None):
+    agora = agora or datetime.now()
+    if not (HORA_INICIO <= agora.hour < HORA_FIM):
+        return False
+    r = _q("""SELECT extract(epoch FROM now() - s.ultimo_sinal) FROM servicos_sinal s JOIN clientes c ON c.user_id = s.user_id
+               WHERE c.id = %s AND s.servico = 'pedro_rodada'""", (CLIENTE,), um=True)
+    return r is None or r[0] >= INTERVALO_MIN * 60 - 30
+
+
+def marcar_rodada():
+    """Grava o começo da rodada (antes de chamar o Claude: se ela falhar, não repete em seguida)."""
+    _q("""INSERT INTO servicos_sinal (user_id, servico, ultimo_sinal, iniciado_em)
+           SELECT c.user_id, 'pedro_rodada', now(), now() FROM clientes c WHERE c.id = %s
+           ON CONFLICT (user_id, servico) DO UPDATE SET ultimo_sinal = now(), iniciado_em = now()""", (CLIENTE,), commit=True)
+
+
+def contar_novas():
+    """Quantas ideias o Pedro trouxe desde o começo da última rodada (pro log do ouvinte)."""
+    return _q("""SELECT count(*) FROM melhorias_sistema m WHERE m.cliente_id = %s AND m.origem = 'pedro'
+                  AND m.criado_em >= (SELECT s.iniciado_em FROM servicos_sinal s JOIN clientes c ON c.user_id = s.user_id
+                                       WHERE c.id = %s AND s.servico = 'pedro_rodada')""", (CLIENTE, CLIENTE), um=True)[0]
+
+
+# Cada rodada começa por um lugar diferente, pra não achar sempre as mesmas coisas.
+FOCOS = [
+    "os LOGS: ~/.infopro-hub/ouvinte/ouvinte.log, ~/.infopro-hub/danilo/servico.log e ~/.infopro-hub/roy/servico.log (leia só o fim, com tail -n 400): erros que se repetem, coisas que travam, demoras",
+    "os DADOS (python3 scripts/consulta.py, somente leitura): tarefas paradas ou atrasadas, entregas reprovadas ou devolvidas, erros gravados, filas que não andam, recursos que ninguém usa",
+    "as TELAS (src/pages e src/components): o que é lento, confuso, repetitivo ou tem passos demais para o Davi e a equipe",
+]
+
+
+def prompt_rodada(agora=None):
+    agora = agora or datetime.now()
+    foco = FOCOS[(agora.hour * 2 + agora.minute // 30) % len(FOCOS)]
+    return f"""Você é o Pedro, IA de melhorias do Infopro Hub. Rodada automática de ideias (o Davi pediu: "sempre fique trazendo ideias do que melhorar e atualizando no kanban"). Ele não vê este terminal. Hoje é {agora:%d/%m/%Y %H:%M}.
+
+1. Leia docs/agentes/pedro-melhorias.md (seção "Onde procurar melhorias"), o CLAUDE.md e os aprendizados: python3 scripts/inteligencia/ler.py --cliente {CLIENTE} --agente "pedro" --saida "$(mktemp -d)" (siga o "SIGA SEMPRE").
+2. Veja o quadro inteiro, para NÃO repetir nada (nem ideia parecida com outro título, nem o que já foi feito, descartado ou está em "não é prioridade agora"): python3 scripts/pedro/melhorias.py listar
+3. Investigue. Nesta rodada comece por {foco}. Depois, se sobrar tempo, olhe os outros lugares (logs, dados, telas).
+4. Escolha até {MAX_RODADA} ideias BOAS. Cada uma precisa de evidência concreta que você viu agora (linha do log, número da consulta, arquivo:linha da tela). Se só achar 2 boas, traga 2; se não achar nenhuma, não traga nada. Nada de ideia genérica ("melhorar UX") nem para completar número.
+5. Grave no kanban (o Davi vê com o selo NOVO):
+   python3 scripts/pedro/melhorias.py propor --rodada <<'FIM'
+   [{{"titulo": "curto, no idioma do Davi", "problema": "o que acontece hoje + a evidência", "porque": "o resultado para a equipe ou o negócio", "sugestao": "o que fazer, em 2 a 4 frases", "impacto": 1-3, "esforco": 1-3}}]
+   FIM
+Regras: SOMENTE LEITURA. Não edite nenhum arquivo, não escreva no banco (fora o propor), sem git, não reinicie nada, não envie nada a ninguém. Seja rápido (no máximo uns 15 minutos). No fim, responda só com os títulos que gravou (ou "nenhuma ideia nova")."""
+
+
 def situacao(mid):
     r = _q("SELECT status, resultado, agora FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
     return r
@@ -163,7 +222,7 @@ if __name__ == '__main__':
     if cmd == 'listar':
         listar()
     elif cmd == 'propor':
-        propor(sys.stdin.read())
+        propor(sys.stdin.read(), rodada='--rodada' in a)
     elif cmd == 'contexto' and len(a) > 1:
         contexto(a[1])
     elif cmd == 'progresso' and len(a) > 3:

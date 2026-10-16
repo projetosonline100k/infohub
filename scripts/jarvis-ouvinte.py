@@ -14,6 +14,9 @@ pasta do projeto. Substitui as sessões do Claude que precisavam ficar
   - Execução: tarefa confirmada na fila de um funcionário IA que trabalha
     sozinho (execucao.EXECUTORES, hoje o Ítalo) → o Claude faz e entrega um
     documento para o Davi aprovar (scripts/empresa/execucao.py).
+  - Melhorias: o que o Davi libera no kanban do Pedro, ele implementa; e, das
+    8h às 22h, a cada 30 min, o Pedro busca até 5 ideias novas sozinho
+    (rodada, scripts/pedro/melhorias.py).
 
 Usa o login do Claude Code feito com `claude auth login` (o plano do Davi,
 sem API paga). Log em ~/.infopro-hub/ouvinte/ouvinte.log.
@@ -64,16 +67,17 @@ def claude_bin():
     return max(achados, key=versao)
 
 
-def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60):
+def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None):
     """Roda o Claude em segundo plano e devolve (ok, texto do resultado).
     `sessao`: continua essa sessão (--resume). `info` (dict) recebe o
-    session_id da execução, pra próxima continuar dela."""
+    session_id da execução, pra próxima continuar dela. `ferramentas`: troca
+    a lista liberada (ex.: só leitura)."""
     binario = claude_bin()
     if not binario:
         return False, "Claude Code não encontrado neste Mac (abra o app do Claude uma vez)."
     cmd = [binario, "-p", prompt, "--output-format", "json", "--max-turns", str(turnos),
            # Sem ninguém pra aprovar: libera só o que esses pedidos usam.
-           "--allowedTools", "Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"]
+           "--allowedTools", *(ferramentas or ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"])]
     if sessao:
         cmd += ["--resume", sessao]
     if chrome:
@@ -653,6 +657,20 @@ def atender_melhorias():
         _git("branch", "-D", ramo)
 
 
+# Rodada de ideias (pedido do Davi, 16/10/2026: "sempre fique trazendo ideias do
+# que melhorar"): das 8h às 22h, a cada 30 min, o Pedro olha logs, dados e telas
+# e grava até 5 ideias novas no kanban (selo NOVO). Horário, intervalo e prompt
+# ficam em melhorias.py (recarregado sozinho). Só leitura: sem Edit/Write.
+def rodada_melhorias():
+    if not melhorias.rodada_devida():
+        return
+    melhorias.marcar_rodada()
+    log("rodada de ideias: começando")
+    ok, texto = rodar_claude(melhorias.prompt_rodada(), minutos=25, turnos=80,
+                             ferramentas=["Bash", "Read", "Grep", "Glob"])
+    log("rodada de ideias:", f"{melhorias.contar_novas()} nova(s)" if ok else "falhou —", (texto or "")[:200])
+
+
 # ---------------------------------------------------------------- laço
 
 # Os módulos dos fluxos (briefing, execução, melhorias) são recarregados a cada
@@ -726,4 +744,5 @@ if __name__ == "__main__":
     threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
+    threading.Thread(target=laco, args=("rodada", rodada_melhorias, 60), daemon=True).start()
     laco("conversa", atender_conversa, 3)

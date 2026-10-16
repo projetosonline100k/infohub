@@ -58,6 +58,27 @@ INSERT INTO public.membros(id, cliente_id, nome, eh_ia) VALUES ('10000000-0000-0
 INSERT INTO public.briefings(cliente_id, membro_id, melhoria_id, status) VALUES
  ('10000000-0000-0000-0000-000000000793', '10000000-0000-0000-0000-000000000796', '10000000-0000-0000-0000-000000000794', 'revisando');
 
+-- Selo NOVO e "Não é prioridade agora" (16/10): ideia do Pedro nasce sem visto_em;
+-- ideia do Davi já nasce vista; abrir o cartão não mexe em atualizado_em (não vira aviso);
+-- o app arrasta pra 'adiada' e de volta.
+RESET ROLE;
+INSERT INTO public.melhorias_sistema(id, cliente_id, user_id, titulo, origem) VALUES
+ ('10000000-0000-0000-0000-000000000797', '10000000-0000-0000-0000-000000000793', '10000000-0000-0000-0000-000000000791', 'Ideia do Pedro', 'pedro');
+UPDATE public.melhorias_sistema SET atualizado_em = '2026-01-01' WHERE id = '10000000-0000-0000-0000-000000000797';
+SET LOCAL ROLE authenticated;
+DO $$
+BEGIN
+  IF (SELECT visto_em FROM public.melhorias_sistema WHERE id = '10000000-0000-0000-0000-000000000797') IS NOT NULL THEN RAISE EXCEPTION 'ideia do Pedro nasceu vista'; END IF;
+  IF (SELECT visto_em FROM public.melhorias_sistema WHERE id = '10000000-0000-0000-0000-000000000794') IS NULL THEN RAISE EXCEPTION 'ideia do Davi nasceu nova'; END IF;
+END $$;
+UPDATE public.melhorias_sistema SET visto_em = now() WHERE id = '10000000-0000-0000-0000-000000000797';
+DO $$
+BEGIN
+  IF (SELECT atualizado_em FROM public.melhorias_sistema WHERE id = '10000000-0000-0000-0000-000000000797') <> '2026-01-01' THEN RAISE EXCEPTION 'abrir o cartão mudou atualizado_em'; END IF;
+END $$;
+UPDATE public.melhorias_sistema SET status = 'adiada' WHERE id = '10000000-0000-0000-0000-000000000797';
+UPDATE public.melhorias_sistema SET status = 'ideia' WHERE id = '10000000-0000-0000-0000-000000000797';
+
 SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000792',true);
 DO $$
 BEGIN
