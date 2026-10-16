@@ -172,7 +172,8 @@ const janelaDoPainel = (conteudo: Tamanho): Tamanho => ({
 // 560 de altura: cabe a cobrança inteligente inteira (AssistantCobrancaCard,
 // até 360px) + gap + orbe (140) + padding (48). A folga transparente não atrapalha cliques
 // (useJarvisClicaAtravessa).
-const NOTIFICATION_TAMANHO: Tamanho = { width: 380, height: 560 };
+// 16/10: 410 de largura — com o recuo de 38px (luas em volta da orbe) o card de até 340px continua cabendo.
+const NOTIFICATION_TAMANHO: Tamanho = { width: 410, height: 560 };
 
 const TAMANHOS: Record<Exclude<JarvisWindowMode, "panel">, Tamanho> = {
   orb: ORB_TAMANHO,

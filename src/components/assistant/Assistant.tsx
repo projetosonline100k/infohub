@@ -1479,7 +1479,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const [luasVistas, setLuasVistas] = useState<string[]>([]);
   const recente = (quando: string) => Date.now() - new Date(quando).getTime() < 20 * 60_000;
   const luas: Lua[] = ([
-    ...shirley.novas.map((w): Lua => ({
+    // As que acabaram de chegar + a que está sendo cobrada agora no balão (16/10: "tem que ter a órbita ao redor").
+    ...[...shirley.novas, ...(shirley.atual && !shirley.novas.some((n) => n.chatId === shirley.atual!.chatId) ? [shirley.atual] : [])].map((w): Lua => ({
       id: `w-${w.chatId}-${w.ultimaEm}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
       dica: `Shirley · WhatsApp: ${w.nome}`,
       titulo: w.motivo === "insatisfeito" ? `🚨 ${w.nome} pode estar insatisfeito` : `📱 ${w.nome} mandou mensagem`,
@@ -1500,7 +1501,10 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     })),
   ] as Lua[]).filter((l) => !luasVistas.includes(l.id)).map((l) => ({ ...l, onClick: () => setLuaAberta(l) }));
 
-  const alinhamentoWrapper = variant !== "window" ? "" : janelaModo === "orb" ? "items-center justify-center" : "items-end justify-end gap-2 p-6";
+  // Com balão: padding de 38px (o mesmo recuo da orbe sozinha, centrada em 140×140), para as luas
+  // caberem em volta dela sem sair da janela; com o painel continua p-6 (TAMANHO do painel conta com ele).
+  const alinhamentoWrapper = variant !== "window" ? "" : janelaModo === "orb" ? "items-center justify-center"
+    : janelaModo === "notification" ? "items-end justify-end gap-2 p-[38px]" : "items-end justify-end gap-2 p-6";
 
   return (
     <>
@@ -1544,8 +1548,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 voz={estadoVoz}
                 onPointerDown={handleOrbPointerDown}
               />
-              {/* Só com a orbe sozinha: no balão/painel ela fica no canto e as luas sairiam da janela. */}
-              {janelaModo === "orb" && <OrbitaAtlas luas={luas} />}
+              {/* Com a orbe sozinha e com balão; com o painel aberto, não (fica no canto, colada nele). */}
+              {janelaModo !== "panel" && <OrbitaAtlas luas={luas} />}
             </div>
           </>
         ) : (
