@@ -145,3 +145,14 @@ test('equipe de IAs offline: mais de 3 min sem sinal do ouvinte', async () => {
   assert.equal(equipeOfflineDesde('2026-10-16T02:28:00Z', agora), null);
   assert.equal(equipeOfflineDesde('2026-10-16T02:20:00Z', agora)?.toISOString(), '2026-10-16T02:20:00.000Z');
 });
+
+test('Roy/Danilo parados: aviso por funcionário, só com o ouvinte no ar', async () => {
+  const { iasParadas } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const agora = Date.parse('2026-10-16T13:30:00Z');
+  const ok = '2026-10-16T13:29:30Z', velho = '2026-10-16T13:10:00Z';
+  assert.deepEqual(iasParadas([{ servico: 'ouvinte', ultimo_sinal: ok }, { servico: 'roy', ultimo_sinal: ok }], agora), []);
+  const parados = iasParadas([{ servico: 'ouvinte', ultimo_sinal: ok }, { servico: 'roy', ultimo_sinal: ok }, { servico: 'danilo', ultimo_sinal: velho }], agora);
+  assert.deepEqual(parados.map((p) => [p.nome, p.desde.toISOString()]), [['Danilo', '2026-10-16T13:10:00.000Z']]);
+  // ouvinte fora: o aviso da equipe inteira já cobre
+  assert.deepEqual(iasParadas([{ servico: 'ouvinte', ultimo_sinal: velho }, { servico: 'danilo', ultimo_sinal: velho }], agora), []);
+});

@@ -80,6 +80,19 @@ export function equipeOfflineDesde(ultimoSinal: string | null | undefined, agora
   return agora - desde.getTime() > MINUTOS_SEM_SINAL * 60_000 ? desde : null;
 }
 
+// Roy e Danilo rodam em serviços próprios e também gravam sinal ('roy',
+// 'danilo'). Devolve quem parou e desde quando. Com o ouvinte fora, o aviso
+// da equipe inteira já cobre (o Mac todo caiu): não repete por funcionário.
+export const SERVICOS_IAS = [{ servico: "roy", nome: "Roy" }, { servico: "danilo", nome: "Danilo" }] as const;
+export function iasParadas(sinais: { servico: string; ultimo_sinal: string }[], agora = Date.now()): { nome: string; desde: Date }[] {
+  const sinal = (s: string) => sinais.find((l) => l.servico === s)?.ultimo_sinal ?? null;
+  if (equipeOfflineDesde(sinal("ouvinte"), agora)) return [];
+  return SERVICOS_IAS.flatMap(({ servico, nome }) => {
+    const desde = equipeOfflineDesde(sinal(servico), agora);
+    return desde ? [{ nome, desde }] : [];
+  });
+}
+
 // "~12 min", "~1h20", "menos de 1 min".
 export function textoRestante(min: number): string {
   if (min <= 1) return "menos de 1 min";

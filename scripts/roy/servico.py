@@ -22,9 +22,10 @@ import importlib.util
 import json
 import re
 import sys
+import threading
 import time
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 AQUI = Path(__file__).resolve().parent
@@ -218,12 +219,31 @@ def atender_tarefa():
     return True
 
 
+# Último sinal (16/10): a cada minuto, numa thread própria (o laço principal fica
+# preso enquanto o Claude trabalha). A Visão geral mostra "Roy parado desde
+# HH:MM" quando passa de 3 min sem sinal.
+_iniciado_em = datetime.now(timezone.utc)
+
+
+def gravar_sinal():
+    while True:
+        try:
+            roy.db("""INSERT INTO public.servicos_sinal (user_id, servico, ultimo_sinal, iniciado_em)
+                       SELECT user_id, 'roy', now(), %s FROM public.clientes WHERE id = %s
+                       ON CONFLICT (user_id, servico) DO UPDATE
+                       SET ultimo_sinal = now(), iniciado_em = EXCLUDED.iniciado_em""", (_iniciado_em, roy.CLIENTE))
+        except Exception as e:  # rede caiu etc.: tenta de novo na próxima volta
+            log("sinal: erro —", repr(e)[:200])
+        time.sleep(60)
+
+
 if __name__ == "__main__":
     if "--uma-vez" in sys.argv:
         while atender() or atender_tarefa():
             pass
         sys.exit(0)
     log("serviço do Roy iniciado")
+    threading.Thread(target=gravar_sinal, daemon=True).start()
     ultima_drive = 0.0
     while True:
         try:
