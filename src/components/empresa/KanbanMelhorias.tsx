@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -36,8 +38,6 @@ const NIVEL = ["", "baixo", "médio", "alto"];
 export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   const [itens, setItens] = useState<Melhoria[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [arrastando, setArrastando] = useState<string | null>(null);
-  const [alvo, setAlvo] = useState<Status | null>(null);
   const [aberta, setAberta] = useState<string | null>(null);
   const [nova, setNova] = useState("");
   const [verDescartadas, setVerDescartadas] = useState(false);
@@ -65,11 +65,9 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
     if (error) { toast.error("Não consegui mover"); void carregar(); return; }
     if (status === "pode_fazer") toast.success("Liberado: o Pedro começa a implementar (uma de cada vez)");
   };
-  const soltar = (status: Status) => {
-    const id = arrastando;
-    setArrastando(null); setAlvo(null);
-    if (id) void mover(id, status);
-  };
+  // Arrastar com @hello-pangea/dnd (o mesmo do kanban de Atividades): o arrastar
+  // nativo do navegador não funciona dentro da janela do app no Mac (15/10).
+  const soltar = (r: DropResult) => { if (r.destination) void mover(r.draggableId, r.destination.droppableId as Status); };
   const criar = async () => {
     const titulo = nova.trim();
     if (!titulo) return;
@@ -82,10 +80,34 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   const erros = itens.filter((m) => m.status === "erro");
   const descartadas = itens.filter((m) => m.status === "descartada");
 
-  const cartao = (m: Melhoria) => (
-    <CartaoMelhoria key={m.id} m={m} aberto={aberta === m.id} onAbrir={() => setAberta(aberta === m.id ? null : m.id)}
-      arrastando={arrastando === m.id} onArrastar={(sim) => { setArrastando(sim ? m.id : null); if (!sim) setAlvo(null); }}
-      onDescartar={() => void mover(m.id, "descartada")} onMudou={() => void carregar()} />
+  const cartao = (m: Melhoria, i: number) => {
+    const movel = m.status === "ideia" || m.status === "pode_fazer" || m.status === "erro" || m.status === "descartada";
+    return (
+      <Draggable key={m.id} draggableId={m.id} index={i} isDragDisabled={!movel || aberta === m.id}>
+        {(dp, snap) => {
+          const no = (
+            <div ref={dp.innerRef} {...dp.draggableProps} {...dp.dragHandleProps} style={dp.draggableProps.style}>
+              <CartaoMelhoria m={m} aberto={aberta === m.id} onAbrir={() => setAberta(aberta === m.id ? null : m.id)} arrastando={snap.isDragging}
+                onMover={(st) => void mover(m.id, st)} onMudou={() => void carregar()} />
+            </div>
+          );
+          // Arrastando: desenha direto no body (a janela por cima desloca o cartão).
+          return snap.isDragging ? createPortal(no, document.body) : no;
+        }}
+      </Draggable>
+    );
+  };
+  const lista = (status: Status, itensDaLista: Melhoria[], podeSoltar: boolean, classe: string, vazio?: React.ReactNode, topo?: React.ReactNode) => (
+    <Droppable droppableId={status} isDropDisabled={!podeSoltar}>
+      {(p, snap) => (
+        <div ref={p.innerRef} {...p.droppableProps} className={cn(classe, snap.isDraggingOver && "border-primary bg-primary/10")}>
+          {topo}
+          {itensDaLista.map(cartao)}
+          {p.placeholder}
+          {itensDaLista.length === 0 && vazio}
+        </div>
+      )}
+    </Droppable>
   );
 
   return (
@@ -98,20 +120,16 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
         <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : (
         <>
+          <DragDropContext onDragEnd={soltar}>
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
             {COLUNAS.map((c) => {
-              const lista = itens.filter((m) => m.status === c.status);
+              const daColuna = itens.filter((m) => m.status === c.status);
               const Icone = c.icone;
               return (
-                <div key={c.status}
-                  onDragOver={(e) => { if (c.podeSoltar) { e.preventDefault(); setAlvo(c.status); } }}
-                  onDragLeave={() => setAlvo((a) => (a === c.status ? null : a))}
-                  onDrop={(e) => { e.preventDefault(); if (c.podeSoltar) soltar(c.status); }}
-                  className={cn("flex min-h-[180px] flex-col gap-1.5 rounded-xl border bg-muted/30 p-2 transition-colors",
-                    alvo === c.status && "border-primary bg-primary/10", c.status === "pode_fazer" && "border-amber-500/40")}>
+                <div key={c.status} className={cn("flex min-h-[180px] flex-col gap-1.5 rounded-xl border bg-muted/30 p-2", c.status === "pode_fazer" && "border-amber-500/40")}>
                   <p className="flex items-center gap-1 text-xs font-semibold">
-                    <Icone className={cn("h-3.5 w-3.5", c.status === "fazendo" && lista.length > 0 && "animate-spin text-sky-500")} />{c.titulo}
-                    <span className="font-normal text-muted-foreground">{lista.length}</span>
+                    <Icone className={cn("h-3.5 w-3.5", c.status === "fazendo" && daColuna.length > 0 && "animate-spin text-sky-500")} />{c.titulo}
+                    <span className="font-normal text-muted-foreground">{daColuna.length}</span>
                   </p>
                   <p className="-mt-1 text-[10px] text-muted-foreground">{c.ajuda}</p>
                   {c.status === "ideia" && (
@@ -120,16 +138,16 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
                       <Button type="submit" size="icon" variant="ghost" className="h-7 w-7 shrink-0" disabled={!nova.trim()}><Plus className="h-3.5 w-3.5" /></Button>
                     </form>
                   )}
-                  {lista.map(cartao)}
-                  {lista.length === 0 && c.status !== "ideia" && <p className="py-3 text-center text-[11px] text-muted-foreground">—</p>}
+                  {lista(c.status, daColuna, c.podeSoltar, "flex min-h-[90px] flex-1 flex-col gap-1.5 rounded-lg border border-transparent transition-colors",
+                    c.status !== "ideia" ? <p className="py-3 text-center text-[11px] text-muted-foreground">{c.podeSoltar ? "solte aqui" : "—"}</p> : null)}
                 </div>
               );
             })}
           </div>
           {erros.length > 0 && (
             <div className="space-y-1.5 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
-              <p className="flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400"><AlertTriangle className="h-3.5 w-3.5" />Não deu ({erros.length}) · abra para ver o motivo; arraste de volta para Pode fazer para tentar de novo</p>
-              <div className="grid gap-1.5 sm:grid-cols-2">{erros.map(cartao)}</div>
+              <p className="flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400"><AlertTriangle className="h-3.5 w-3.5" />Não deu ({erros.length}) · abra para ver o motivo; arraste para Pode fazer para tentar de novo</p>
+              {lista("erro", erros, false, "grid gap-1.5 rounded-lg border border-transparent sm:grid-cols-2")}
             </div>
           )}
           {descartadas.length > 0 && (
@@ -137,9 +155,10 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
               <button type="button" onClick={() => setVerDescartadas(!verDescartadas)} className="text-[11px] text-muted-foreground hover:text-foreground">
                 {verDescartadas ? "Esconder" : "Ver"} descartadas ({descartadas.length})
               </button>
-              {verDescartadas && <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">{descartadas.map(cartao)}</div>}
+              {verDescartadas && lista("descartada", descartadas, true, "mt-1.5 grid gap-1.5 rounded-lg border border-transparent sm:grid-cols-2")}
             </div>
           )}
+          </DragDropContext>
         </>
       )}
     </section>
@@ -148,9 +167,8 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
 
 // Cartão do kanban. Fora do componente do quadro: assim o que o Davi está
 // escrevendo nos detalhes não some quando o quadro atualiza sozinho.
-function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onArrastar, onDescartar, onMudou }: {
-  m: Melhoria; aberto: boolean; onAbrir: () => void; arrastando: boolean; onArrastar: (sim: boolean) => void;
-  onDescartar: () => void; onMudou: () => void;
+function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou }: {
+  m: Melhoria; aberto: boolean; onAbrir: () => void; arrastando: boolean; onMover: (status: Status) => void; onMudou: () => void;
 }) {
   const movel = m.status === "ideia" || m.status === "pode_fazer" || m.status === "erro" || m.status === "descartada";
   const editavel = m.status !== "fazendo" && m.status !== "feito";
@@ -172,8 +190,8 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onArrastar, onDescarta
     void salvar(novo);
   });
   return (
-    <div draggable={movel && !aberto} onDragStart={(e) => { onArrastar(true); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => onArrastar(false)}
-      className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", movel && !aberto && "cursor-grab active:cursor-grabbing", arrastando && "opacity-40",
+    <div
+      className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", movel && !aberto && "cursor-grab active:cursor-grabbing", arrastando && "rotate-1 shadow-xl ring-2 ring-primary",
         m.status === "erro" && "border-rose-500/40", aberto && "ring-1 ring-primary/40")}>
       <button type="button" onClick={onAbrir} className="flex w-full items-start gap-1 text-left">
         <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug">{m.titulo}</span>
@@ -216,8 +234,18 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onArrastar, onDescarta
           ) : m.notas ? <p className="whitespace-pre-line"><b>Seus detalhes:</b> {m.notas}</p> : null}
           {m.resultado && <p className={m.status === "erro" ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}><b>{m.status === "erro" ? "Não deu:" : "O que mudou:"}</b> {m.resultado}</p>}
           {m.concluido_em && <p className="text-muted-foreground">{format(new Date(m.concluido_em), "d MMM, HH:mm", { locale: ptBR })}{m.commit_sha ? ` · ${m.commit_sha}` : ""}</p>}
-          {movel && m.status !== "descartada" && (
-            <button type="button" onClick={onDescartar} className="flex items-center gap-1 text-muted-foreground hover:text-rose-600"><Trash2 className="h-3 w-3" />Descartar</button>
+          {movel && (
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              {m.status !== "pode_fazer" && (
+                <Button type="button" size="sm" className="h-7 gap-1 px-2 text-[11px]" onClick={() => onMover("pode_fazer")}><Rocket className="h-3 w-3" />Liberar para o Pedro</Button>
+              )}
+              {m.status === "pode_fazer" && (
+                <button type="button" onClick={() => onMover("ideia")} className="text-muted-foreground hover:text-foreground">Voltar para ideias</button>
+              )}
+              {m.status !== "descartada" && (
+                <button type="button" onClick={() => onMover("descartada")} className="flex items-center gap-1 text-muted-foreground hover:text-rose-600"><Trash2 className="h-3 w-3" />Descartar</button>
+              )}
+            </div>
           )}
         </div>
       )}
