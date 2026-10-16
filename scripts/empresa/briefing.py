@@ -176,6 +176,7 @@ def contexto(bid, como=None):
                   ' Pedido de mudança CLARO (trocar título, imagem, ordem, texto de uma página, legenda): mande para o serviço do Roy refazer, com o pedido completo e preciso:'
                   ' python3 scripts/roy/roy.py pedir-ajuste <id> <<\'FIM\'\n<o que mudar, página por página>\nFIM'
                   ' — a nova versão aparece sozinha na tela em alguns minutos; diga isso na resposta. Se houver mais de um carrossel e não ficar claro qual, pergunte.'
+                  ' Ideia SUA de outro título (o Davi não pediu a troca): não troque; peça no pedir-ajuste para pôr como opção ("opcoes" daquela página), que ele escolhe com um clique na tela.'
                   ' Elogio: agradeça e anote nos aprendizados (aprender.py, agente "roy"). NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão).')
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
