@@ -7,11 +7,13 @@
 // Seguidores vêm com instagram_business_basic. Alcance e visualizações pedem
 // instagram_business_manage_insights; sem ela, a linha guarda o erro e o
 // painel pede para reconectar a conta.
+// Também guarda os posts recentes com os números de cada um (instagram_posts).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const GRAPH = "https://graph.instagram.com/v23.0";
 const RENOVAR_ANTES_MS = 20 * 24 * 60 * 60 * 1000;
 const FUSO = "-03:00"; // Brasília, sem horário de verão
+const POSTS_DIAS = 35; // os números de um post ainda mudam nas primeiras semanas
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -92,7 +94,55 @@ async function coletar(admin: Admin, conexao: Conexao, dia: string) {
   linha.erro = erros.length ? erros.join(" · ").slice(0, 500) : null;
   const { error } = await admin.from("instagram_metricas_diarias").upsert(linha, { onConflict: "ig_user_id,dia" });
   if (error) throw new Error(error.message);
-  return { conta: linha.username, dia, erro: linha.erro };
+  let posts: number | string = 0;
+  try {
+    posts = await coletarPosts(admin, conexao, token);
+  } catch (e) {
+    posts = `erro: ${(e as Error).message}`;
+  }
+  return { conta: linha.username, dia, erro: linha.erro, posts };
+}
+
+// Posts dos últimos POSTS_DIAS dias com os números de cada um (migração
+// 20261016140000_instagram_posts). Os triggers ligam o post ao carrossel ou ao
+// card do cronograma, que vira 'postado'.
+async function coletarPosts(admin: Admin, conexao: Conexao, token: string) {
+  const corte = Date.now() - POSTS_DIAS * 24 * 60 * 60 * 1000;
+  const lista = await meta(`${conexao.ig_user_id}/media`, token, {
+    fields: "id,caption,media_type,media_product_type,permalink,timestamp,like_count,comments_count",
+    limit: "50",
+  });
+  // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const midias = (lista?.data ?? []).filter((m: any) => Date.parse(m.timestamp) >= corte);
+  // deno-lint-ignore no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const linhas = await Promise.all(midias.map(async (m: any) => {
+    const post: Record<string, unknown> = {
+      ig_media_id: m.id, ig_user_id: conexao.ig_user_id, username: conexao.username,
+      tipo: m.media_product_type ?? null, formato: m.media_type ?? null, legenda: m.caption ?? null,
+      permalink: m.permalink ?? null, publicado_em: m.timestamp,
+      curtidas: m.like_count ?? null, comentarios: m.comments_count ?? null, erro: null,
+    };
+    try {
+      const insights = await meta(`${m.id}/insights`, token, { metric: "views,reach,saved,shares" });
+      for (const item of insights?.data ?? []) {
+        const valor = Number(item?.values?.[0]?.value ?? item?.total_value?.value);
+        if (!Number.isFinite(valor)) continue;
+        if (item.name === "views") post.visualizacoes = valor;
+        if (item.name === "reach") post.alcance = valor;
+        if (item.name === "saved") post.salvamentos = valor;
+        if (item.name === "shares") post.compartilhamentos = valor;
+      }
+    } catch (e) {
+      post.erro = `insights: ${(e as Error).message}`.slice(0, 500);
+    }
+    return post;
+  }));
+  if (!linhas.length) return 0;
+  const { error } = await admin.from("instagram_posts").upsert(linhas, { onConflict: "ig_media_id" });
+  if (error) throw new Error(error.message);
+  return linhas.length;
 }
 
 Deno.serve(async (req) => {

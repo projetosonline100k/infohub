@@ -41,6 +41,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { VideoDetailPanel } from "./VideoDetailPanel";
 import { InstagramInsightsPanel } from "./InstagramInsightsPanel";
+import { NumerosDoPost, TopPostsPanel } from "./TopPostsPanel";
+import type { PostInstagram } from "@/lib/instagramMetricas";
 
 interface CronogramaViewProps {
   clienteId: string;
@@ -132,6 +134,7 @@ const quandoDoCarrossel = (c: CarrosselNoCronograma) => c.publicado_em ?? c.prog
 export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const [videos, setVideos] = useState<ScheduledVideo[]>([]);
   const [carrosseis, setCarrosseis] = useState<CarrosselNoCronograma[]>([]);
+  const [posts, setPosts] = useState<PostInstagram[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("mes");
   const [referenceDate, setReferenceDate] = useState(new Date());
@@ -145,7 +148,17 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
 
   useEffect(() => {
     fetchVideos();
+    fetchPosts();
   }, [clienteId]);
+
+  // Posts do Instagram com os números (edge instagram-metricas, todo dia).
+  const fetchPosts = async () => {
+    const desde = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await supabase.from("instagram_posts")
+      .select("ig_media_id, tipo, legenda, permalink, publicado_em, visualizacoes, alcance, curtidas, comentarios, salvamentos, compartilhamentos, video_vertical_id, carrossel_id")
+      .eq("cliente_id", clienteId).gte("publicado_em", desde);
+    setPosts(data ?? []);
+  };
 
   const fetchVideos = async () => {
     setLoading(true);
@@ -225,6 +238,20 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
 
   const postedCount = videos.filter((video) => video.status === "postado").length;
 
+  const postDoVideo = useMemo(
+    () => new Map(posts.filter((p) => p.video_vertical_id).map((p) => [p.video_vertical_id!, p])),
+    [posts]
+  );
+  const postDoCarrossel = useMemo(
+    () => new Map(posts.filter((p) => p.carrossel_id).map((p) => [p.carrossel_id!, p])),
+    [posts]
+  );
+  const tituloDoCard = (post: PostInstagram) => {
+    if (post.video_vertical_id) return videos.find((v) => v.platform === "vertical" && v.id === post.video_vertical_id)?.titulo ?? null;
+    const c = post.carrossel_id ? carrosseis.find((item) => item.id === post.carrossel_id) : null;
+    return c ? `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}` : null;
+  };
+
   const getCarrosseisForDay = (day: Date) =>
     carrosseis.filter((c) => isSameDay(new Date(quandoDoCarrossel(c)!), day))
       .sort((a, b) => quandoDoCarrossel(a)!.localeCompare(quandoDoCarrossel(b)!));
@@ -244,6 +271,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
           <span className={cn("block", publicado ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
             {publicado ? `Publicado ${format(quando, "HH:mm")}` : c.status === "publicando" ? "Publicando…" : `Programado ${format(quando, "HH:mm")}`}
           </span>
+          {postDoCarrossel.get(c.id) && <NumerosDoPost post={postDoCarrossel.get(c.id)!} className="text-[10px]" />}
         </span>
       </button>
     );
@@ -419,6 +447,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const renderVideoCard = (video: ScheduledVideo, index: number, compact = false) => {
     const platformStyle = PLATFORM_STYLES[video.platform];
     const statusStyle = STATUS_STYLES[video.status] || STATUS_STYLES.pronto;
+    const post = video.platform === "vertical" ? postDoVideo.get(video.id) : undefined;
 
     return (
       <Draggable key={getDraggableId(video)} draggableId={getDraggableId(video)} index={index}>
@@ -469,6 +498,12 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
                 )}>
                   {video.titulo}
                 </p>
+                {post && (
+                  <a href={post.permalink ?? undefined} target="_blank" rel="noreferrer" title="Abrir o post no Instagram"
+                    onClick={(event) => event.stopPropagation()} className="mt-1 block hover:underline">
+                    <NumerosDoPost post={post} className={compact ? "text-[10px]" : "text-xs"} />
+                  </a>
+                )}
                 {!compact && (
                   <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     <Badge
@@ -694,7 +729,8 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
           </main>
 
           <aside className="space-y-3">
-            <InstagramInsightsPanel clienteId={clienteId} />
+            <InstagramInsightsPanel clienteId={clienteId} onAtualizado={() => void fetchPosts()} />
+            <TopPostsPanel posts={posts} tituloDoCard={tituloDoCard} />
 
             <div className="rounded-lg border bg-card p-4">
               <h4 className="mb-4 font-semibold">Resumo do Mês</h4>

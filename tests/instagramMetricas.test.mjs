@@ -37,3 +37,26 @@ test('um dia só: sem ganho ainda; erro de insights pede reconexão', () => {
   assert.equal(r.semana.alcance, null);
   assert.equal(r.semInsights, true);
 });
+
+const { topPosts, numeroCurto, tituloDoPost } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const post = (id, dia, visualizacoes, salvamentos = 0) => ({
+  ig_media_id: id, tipo: 'REELS', legenda: `\nLinha de ${id}\nresto`, permalink: null, publicado_em: `${dia}T12:00:00Z`,
+  visualizacoes, alcance: null, curtidas: null, comentarios: null, salvamentos, compartilhamentos: null,
+  video_vertical_id: null, carrossel_id: null,
+});
+
+test('top posts: só o período, sem número fora, do mais visto pro menos', () => {
+  const agora = Date.parse('2026-10-16T12:00:00Z');
+  const lista = [post('a', '2026-10-10', 100), post('b', '2026-10-12', 900), post('velho', '2026-08-01', 5000),
+    post('sem', '2026-10-13', null), post('c', '2026-10-14', 100, 7)];
+  assert.deepEqual(topPosts(lista, 30, 5, agora).map((p) => p.ig_media_id), ['b', 'c', 'a']);
+  assert.deepEqual(topPosts(lista, 30, 1, agora).map((p) => p.ig_media_id), ['b']);
+});
+
+test('número curto e título do post', () => {
+  assert.equal(numeroCurto(null), '–');
+  assert.equal(numeroCurto(950), '950');
+  assert.equal(numeroCurto(3537), '3,5 mil');
+  assert.equal(numeroCurto(2_500_000), '2,5 mi');
+  assert.equal(tituloDoPost(post('x', '2026-10-10', 1)), 'Linha de x');
+});

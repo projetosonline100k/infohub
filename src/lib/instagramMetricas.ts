@@ -67,3 +67,42 @@ export function resumoInstagram(linhas: MetricaDiaria[]): ResumoInstagram {
     semInsights: Boolean(maisRecente?.erro?.includes("insights")),
   };
 }
+
+// Posts com os números de cada um (instagram_posts; mesma edge, todo dia).
+export type PostInstagram = {
+  ig_media_id: string;
+  tipo: string | null; // FEED, REELS
+  legenda: string | null;
+  permalink: string | null;
+  publicado_em: string;
+  visualizacoes: number | null;
+  alcance: number | null;
+  curtidas: number | null;
+  comentarios: number | null;
+  salvamentos: number | null;
+  compartilhamentos: number | null;
+  video_vertical_id: string | null;
+  carrossel_id: string | null;
+};
+
+// Os mais vistos dos últimos `dias` (desempate: salvamentos).
+export function topPosts(posts: PostInstagram[], dias = 30, quantos = 5, agora = Date.now()): PostInstagram[] {
+  const corte = agora - dias * 24 * 60 * 60 * 1000;
+  return posts
+    .filter((p) => Date.parse(p.publicado_em) >= corte && p.visualizacoes != null)
+    .sort((a, b) => (b.visualizacoes ?? 0) - (a.visualizacoes ?? 0) || (b.salvamentos ?? 0) - (a.salvamentos ?? 0))
+    .slice(0, quantos);
+}
+
+// 1234 → "1,2 mil"; 2500000 → "2,5 mi".
+export function numeroCurto(valor: number | null): string {
+  if (valor == null) return "–";
+  const fmt = (n: number) => n.toLocaleString("pt-BR", { maximumFractionDigits: 1 });
+  if (Math.abs(valor) >= 1_000_000) return `${fmt(valor / 1_000_000)} mi`;
+  if (Math.abs(valor) >= 1_000) return `${fmt(valor / 1_000)} mil`;
+  return String(valor);
+}
+
+// Primeira linha da legenda, para servir de título quando o post não tem card.
+export const tituloDoPost = (p: PostInstagram) =>
+  (p.legenda ?? "").split("\n").find((l) => l.trim())?.trim() || "(sem legenda)";
