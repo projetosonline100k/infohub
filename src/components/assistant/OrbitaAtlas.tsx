@@ -21,30 +21,26 @@ const ANEL: Record<CorLua, string> = {
   resposta: "ring-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)]",
 };
 const RAIO = 52;
-const VOLTA_S = 40;   // uma volta a cada 40 s: movimento calmo, não distrai
 
-export function OrbitaAtlas({ luas }: { luas: Lua[] }) {
+export function OrbitaAtlas({ luas, falandoId }: { luas: Lua[]; falandoId?: string | null }) {
   if (!luas.length) return null;
-  const visiveis = luas.slice(0, 6);
+  // Paradas (16/10: "o rosto nem precisa ficar girando, só aparecer na órbita"): a primeira no topo
+  // (de onde sai o balão dela), as outras seguindo para a esquerda, 40° uma da outra.
+  const visiveis = [...luas].sort((a, b) => (a.id === falandoId ? -1 : b.id === falandoId ? 1 : 0)).slice(0, 6);
   return (
     <div className="pointer-events-none absolute left-1/2 top-1/2 h-0 w-0" aria-label="Quem precisa de você">
-      {/* Trilha da órbita */}
       <div className="absolute rounded-full border border-dashed border-cyan-300/25" style={{ width: RAIO * 2, height: RAIO * 2, left: -RAIO, top: -RAIO }} />
-      <div className="absolute left-0 top-0 h-0 w-0" style={{ animation: `spin ${VOLTA_S}s linear infinite` }}>
-        {visiveis.map((l, i) => {
-          const ang = (i / visiveis.length) * 2 * Math.PI - Math.PI / 2;
-          return (
-            <div key={l.id} className="absolute" style={{ left: Math.cos(ang) * RAIO - 11, top: Math.sin(ang) * RAIO - 11 }}>
-              {/* Gira ao contrário: o rosto fica sempre em pé. */}
-              <button type="button" title={l.dica} aria-label={l.dica} onClick={l.onClick}
-                className={cn("pointer-events-auto h-[22px] w-[22px] overflow-hidden rounded-full bg-slate-900 ring-2 transition-transform hover:scale-125", ANEL[l.cor])}
-                style={{ animation: `spin ${VOLTA_S}s linear infinite reverse` }}>
-                <CabecaBoneco nome={l.nome} ehIa={l.ehIa} className="h-full w-full" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      {visiveis.map((l, i) => {
+        const ang = ((-90 - 40 * i) * Math.PI) / 180;
+        return (
+          <button key={l.id} type="button" title={l.dica} aria-label={l.dica} onClick={l.onClick}
+            className={cn("pointer-events-auto absolute h-[22px] w-[22px] overflow-hidden rounded-full bg-slate-900 ring-2 transition-transform animate-in fade-in-0 zoom-in-50 duration-300 hover:scale-125",
+              ANEL[l.cor], l.id === falandoId && "scale-125")}
+            style={{ left: Math.cos(ang) * RAIO - 11, top: Math.sin(ang) * RAIO - 11 }}>
+            <CabecaBoneco nome={l.nome} ehIa={l.ehIa} className="h-full w-full" />
+          </button>
+        );
+      })}
     </div>
   );
 }

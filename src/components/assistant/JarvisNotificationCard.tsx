@@ -13,6 +13,8 @@ interface JarvisNotificationCardProps {
   children?: ReactNode;
   acoes?: JarvisNotificationAction[];
   tone?: "info" | "success";
+  /** Balão de diálogo saindo da lua da pessoa (no topo da órbita, logo abaixo do card) — 16/10. */
+  fala?: boolean;
 }
 
 // Componente único para TODAS as notificações espontâneas do Atlas (rodada
@@ -31,8 +33,8 @@ interface JarvisNotificationCardProps {
 // altura de propósito pra caber o card EM CIMA da orbe, ainda visível
 // abaixo dele — ver Assistant.tsx). `box-border` pra padding não somar por
 // cima dos limites.
-export function JarvisNotificationCard({ titulo, children, acoes, tone = "info" }: JarvisNotificationCardProps) {
-  return (
+export function JarvisNotificationCard({ titulo, children, acoes, tone = "info", fala }: JarvisNotificationCardProps) {
+  const card = (
     <div
       role="status"
       className={cn(
@@ -61,6 +63,16 @@ export function JarvisNotificationCard({ titulo, children, acoes, tone = "info" 
           ))}
         </div>
       )}
+    </div>
+  );
+  if (!fala) return card;
+  // Rabinho do balão apontando para a lua que está "falando" (no topo da órbita, sobre o centro da orbe:
+  // 32px da borda direita do card, que fica alinhado à orbe).
+  return (
+    <div className="relative">
+      {card}
+      <span aria-hidden="true" className={cn("absolute -bottom-1.5 right-[26px] h-3 w-3 rotate-45 border-b border-r bg-popover",
+        tone === "success" ? "border-emerald-400/40" : "border-border")} />
     </div>
   );
 }

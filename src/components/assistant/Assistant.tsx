@@ -1312,6 +1312,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     />
   ) : luaAberta ? (
     <JarvisNotificationCard
+      fala
       titulo={luaAberta.titulo}
       tone={luaAberta.cor === "revisar" ? "success" : "info"}
       acoes={[
@@ -1327,6 +1328,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     </JarvisNotificationCard>
   ) : shirley.atual ? (
     <JarvisNotificationCard
+      fala
       titulo={shirley.atual.motivo === "insatisfeito"
         ? "🚨 Davi!! Olha o WhatsApp!!"
         : shirley.atual.vezes > 0 ? `📱 Davi… ${shirley.atual.nome} AINDA está esperando` : `📱 Davi, ${shirley.atual.nome} está esperando`}
@@ -1346,6 +1348,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     </JarvisNotificationCard>
   ) : paraRevisar.atual ? (
     <JarvisNotificationCard
+      fala
       titulo={`${paraRevisar.atual.tipo === "resposta" ? "💬" : "📬"} ${paraRevisar.atual.titulo}`}
       tone="success"
       acoes={[
@@ -1503,8 +1506,13 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
 
   // Com balão: padding de 38px (o mesmo recuo da orbe sozinha, centrada em 140×140), para as luas
   // caberem em volta dela sem sair da janela; com o painel continua p-6 (TAMANHO do painel conta com ele).
+  // Quem está "falando" no balão: a lua dela fica no topo da órbita, logo abaixo do rabinho do balão.
+  const falandoId = luaAberta ? luaAberta.id
+    : shirley.atual ? `w-${shirley.atual.chatId}-${shirley.atual.ultimaEm}`
+    : paraRevisar.atual ? `r-${paraRevisar.atual.id}` : null;
+  const temLuaEmCima = luas.length > 0 && janelaModo === "notification";
   const alinhamentoWrapper = variant !== "window" ? "" : janelaModo === "orb" ? "items-center justify-center"
-    : janelaModo === "notification" ? "items-end justify-end gap-2 p-[38px]" : "items-end justify-end gap-2 p-6";
+    : janelaModo === "notification" ? cn("items-end justify-end p-[38px]", temLuaEmCima ? "gap-9" : "gap-2") : "items-end justify-end gap-2 p-6";
 
   return (
     <>
@@ -1549,7 +1557,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 onPointerDown={handleOrbPointerDown}
               />
               {/* Com a orbe sozinha e com balão; com o painel aberto, não (fica no canto, colada nele). */}
-              {janelaModo !== "panel" && <OrbitaAtlas luas={luas} />}
+              {janelaModo !== "panel" && <OrbitaAtlas luas={luas} falandoId={falandoId} />}
             </div>
           </>
         ) : (
