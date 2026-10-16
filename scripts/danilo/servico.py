@@ -170,7 +170,9 @@ def atender_drive():
             salvar_estado(e)
     brutos = danilo.novos()
     if not brutos:
-        if e.get("piloto") or e.get("atividade"):
+        # Só fecha o lote quando todos foram editados de verdade (bruto com erro
+        # ou ainda subindo não conta: a tarefa continua em andamento).
+        if (e.get("piloto") or e.get("atividade")) and e.get("feitos", 0) >= e.get("total", 0):
             progresso(e.get("atividade"), 100, "Lote editado: todos os vídeos estão em Precisa de você › Revisar edição.",
                       "aguardando_aprovacao")
             salvar_estado({})
