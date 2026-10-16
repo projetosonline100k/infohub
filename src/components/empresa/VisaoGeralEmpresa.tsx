@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Crown,
+  AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Clapperboard, Crown,
   FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Rocket, Scissors, Users, Video, WifiOff, Youtube,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -64,6 +64,7 @@ const categoriaDoMembro = (nome: string): Categoria =>
 
 const hojeIso = () => format(new Date(), "yyyy-MM-dd");
 interface CarrosselProgramado { id: string; numero: number | null; tema: string; status: string; programado_para: string | null; paginas: string[] | null }
+interface ReelProgramado { id: string; titulo: string; status: string; programado_para: string | null; video_url: string | null }
 // "hoje às 12:00", "amanhã às 10:00", "sex, 17 out às 10:00".
 const quandoPublica = (iso: string) => {
   const d = new Date(iso), hoje = new Date(), amanha = new Date();
@@ -134,6 +135,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
+  const [reelsProgramados, setReelsProgramados] = useState<ReelProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
   const [filtroPrecisa, setFiltroPrecisa] = useState<Categoria | "todos">("todos");
   const [loteAberto, setLoteAberto] = useState(false);
@@ -177,6 +179,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .select("id, numero, tema, status, programado_para, paginas")
       .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
     setCarrosseisProgramados((prog || []) as unknown as CarrosselProgramado[]);
+    // Reels com data marcada (16/10): mesma coisa, aparecem junto dos carrosséis.
+    const { data: reelsProg } = await (supabase as unknown as SupabaseClient).from("reels")
+      .select("id, titulo, status, programado_para, video_url")
+      .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
+    setReelsProgramados((reelsProg || []) as ReelProgramado[]);
     setSetores((s.data || []) as SetorResumo[]);
     registrarVisuais((m.data || []) as { nome: string; visual: Visual | null }[]);   // aparência escolhida no cadastro
     setMembros((m.data || []) as MembroResumo[]);
@@ -206,6 +213,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const executando = useMemo(() => tarefasEmExecucao(contaId, membros, tarefas), [contaId, membros, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);
   const programados = useMemo(() => videosProgramados(videos, hoje), [videos, hoje]);
+  // Carrosséis e reels da Dalila, na ordem em que vão sair.
+  const postsDalila = useMemo(() => [
+    ...carrosseisProgramados.map((item) => ({ tipo: "carrossel" as const, item })),
+    ...reelsProgramados.map((item) => ({ tipo: "reel" as const, item })),
+  ].sort((a, b) => (a.item.programado_para ?? "").localeCompare(b.item.programado_para ?? "")), [carrosseisProgramados, reelsProgramados]);
   const trabalhoIa = useMemo(() => trabalhoDasIas(membros, carrosseis, edicoes, melhorias), [membros, carrosseis, edicoes, melhorias]);
 
   if (carregando) {
@@ -520,21 +532,37 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             Ver cronograma completo <ChevronRight className="h-3.5 w-3.5" />
           </button>
         </div>
-        {programados.length === 0 && carrosseisProgramados.length === 0 ? (
+        {programados.length === 0 && postsDalila.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">Nada com data de postagem daqui pra frente. Marque a data no Cronograma.</p>
         ) : (
           <div className="flex w-0 min-w-full snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2">
-            {carrosseisProgramados.map((c) => (
-              <div key={c.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2">
+            {postsDalila.map(({ tipo, item }) => tipo === "carrossel" ? (
+              <div key={item.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2">
                 <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
-                  {c.paginas?.[0] && <img src={c.paginas[0]} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                  {item.paginas?.[0] && <img src={item.paginas[0]} alt="" className="h-full w-full object-cover" loading="lazy" />}
                   <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white"><Instagram className="h-3 w-3" /></span>
                 </div>
                 <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-medium leading-snug">Carrossel {String(c.numero ?? "").padStart(3, "0")} · {c.tema}</p>
+                  <p className="line-clamp-2 text-sm font-medium leading-snug">Carrossel {String(item.numero ?? "").padStart(3, "0")} · {item.tema}</p>
                   <p className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                     <CalendarDays className="h-3 w-3" />
-                    {c.status === "publicando" ? "Publicando agora…" : c.programado_para ? `Programado · ${quandoPublica(c.programado_para)}` : "Programado"}
+                    {item.status === "publicando" ? "Publicando agora…" : item.programado_para ? `Programado · ${quandoPublica(item.programado_para)}` : "Programado"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">A Dalila publica sozinha</p>
+                </div>
+              </div>
+            ) : (
+              <div key={item.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2">
+                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-primary/30 to-fuchsia-600/30">
+                  {/* Capa = primeiro quadro do vídeo preparado pela Dalila. */}
+                  {item.video_url && <video src={`${item.video_url}#t=0.5`} muted playsInline preload="metadata" className="h-full w-full object-cover" />}
+                  <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white"><Clapperboard className="h-3 w-3" /></span>
+                </div>
+                <div className="min-w-0">
+                  <p className="line-clamp-2 text-sm font-medium leading-snug">Reel · {item.titulo}</p>
+                  <p className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    <CalendarDays className="h-3 w-3" />
+                    {item.status === "publicando" ? "Publicando agora…" : item.programado_para ? `Programado · ${quandoPublica(item.programado_para)}` : "Programado"}
                   </p>
                   <p className="text-[11px] text-muted-foreground">A Dalila publica sozinha</p>
                 </div>

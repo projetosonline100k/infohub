@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/programacao.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { sugerirData, instante, problemaNoHorario } =
+const { sugerirData, instante, problemaNoHorario, horaDoReel } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 test('sugere hoje antes das 10h, amanhã depois, e pula dias com post', () => {
@@ -23,4 +23,13 @@ test('instante e validação do horário', () => {
   assert.equal(problemaNoHorario(null, agora), 'Escolha o dia e a hora.');
   assert.match(problemaNoHorario(new Date(2026, 9, 14, 13, 42), agora), /5 minutos/);
   assert.equal(problemaNoHorario(new Date(2026, 9, 16, 10, 0), agora), null);
+});
+
+test('reel: 18h no primeiro dia sem reel (carrossel não ocupa), 12h se o dia já tem reel', () => {
+  // 16/10 às 13h: o reel ainda cabe hoje às 18h, mesmo com carrossel hoje.
+  assert.equal(sugerirData(new Date(2026, 9, 16, 13, 0), [], '18:00'), '2026-10-16');
+  assert.equal(sugerirData(new Date(2026, 9, 16, 17, 55), [], '18:00'), '2026-10-17');
+  assert.equal(sugerirData(new Date(2026, 9, 16, 13, 0), ['2026-10-16'], '18:00'), '2026-10-17');
+  assert.equal(horaDoReel('2026-10-17', []), '18:00');
+  assert.equal(horaDoReel('2026-10-16', ['2026-10-16']), '12:00');
 });

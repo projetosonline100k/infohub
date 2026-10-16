@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
-import { HORA_PADRAO, diaLocal, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
+import { HORA_REEL, diaLocal, horaDoReel, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
 import { LIMITE_DURACAO_SHORT, LIMITE_TITULO_SHORT, problemaNoTitulo, tituloDoShort } from "@/lib/empresa/youtube";
 import { CalendarioPosts, SemInstagram, carregarAgenda, instagramDoProjeto, ocupaDia, type ItemAgenda } from "./ProgramarCarrossel";
 import { conectarYoutube, youtubeDoProjeto } from "./CanalYoutube";
@@ -48,7 +48,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
   const [tituloYt, setTituloYt] = useState("");
   const [legenda, setLegenda] = useState("");
   const [data, setData] = useState("");
-  const [hora, setHora] = useState(HORA_PADRAO);
+  const [hora, setHora] = useState(HORA_REEL);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
@@ -78,14 +78,17 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
         setData(diaLocal(d));
         setHora(format(d, "HH:mm"));
       } else {
-        setData(sugerirData(new Date(), lista.filter(ocupaDia).map((a) => a.dia)));
-        setHora(HORA_PADRAO);
+        setData(sugerirData(new Date(), lista.filter(ocupaDia("reel")).map((a) => a.dia), HORA_REEL));
+        setHora(HORA_REEL);
       }
       setCarregando(false);
     })();
   }, [tarefaId]);
 
-  const ocupados = useMemo(() => agenda.filter(ocupaDia).map((a) => a.dia), [agenda]);
+  // Só reel ocupa o dia do reel: carrossel às 10h e reel às 18h convivem.
+  const ocupados = useMemo(() => agenda.filter(ocupaDia("reel")).map((a) => a.dia), [agenda]);
+  // Escolheu o dia: 18h, ou 12h se o dia já tem reel.
+  const escolherDia = (dia: string) => { setData(dia); if (dia) setHora(horaDoReel(dia, ocupados)); };
   const quando = useMemo(() => instante(data, hora), [data, hora]);
   const problema = problemaNoHorario(quando, new Date())
     ?? (!legenda.trim() ? "Escreva a legenda." : legenda.length > LIMITE_LEGENDA ? `A legenda passa de ${LIMITE_LEGENDA} caracteres.` : null);
@@ -139,21 +142,21 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
               </label>
             </div>
             {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
-            <CalendarioPosts agenda={agenda} selecionado={data} onEscolher={setData} />
+            <CalendarioPosts agenda={agenda} tipo="reel" selecionado={data} onEscolher={escolherDia} />
             <div className="grid grid-cols-2 gap-3">
               <label className="space-y-1 text-sm">
                 <span className="flex items-center justify-between text-muted-foreground">Dia
-                  <button type="button" onClick={() => { setData(sugerirData(new Date(), ocupados)); setHora(HORA_PADRAO); }}
+                  <button type="button" onClick={() => { setData(sugerirData(new Date(), ocupados, HORA_REEL)); setHora(HORA_REEL); }}
                     className="text-xs font-medium text-primary hover:underline">A Dalila escolhe</button>
                 </span>
-                <Input type="date" value={data} min={diaLocal(new Date())} onChange={(e) => setData(e.target.value)} />
+                <Input type="date" value={data} min={diaLocal(new Date())} onChange={(e) => escolherDia(e.target.value)} />
               </label>
               <label className="space-y-1 text-sm">
                 <span className="text-muted-foreground">Hora (Brasília)</span>
                 <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
               </label>
             </div>
-            {data && ocupados.includes(data) && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem um post programado neste dia (o padrão é 1 por dia, carrossel e reel juntos).</p>}
+            {data && ocupados.includes(data) && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem reel neste dia: sugeri 12h para este (o ritmo por enquanto é 1 reel por dia).</p>}
             {problema && data && <p className="text-xs text-rose-600 dark:text-rose-400">{problema}</p>}
             <div className="space-y-2 rounded-md border p-3 text-sm">
               {shortJaSaiu ? (
