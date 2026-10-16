@@ -46,9 +46,12 @@ def _q(sql, args=(), um=False, commit=False):
 
 
 def listar():
-    for st, titulo, imp, esf, mid in _q("""SELECT status, titulo, impacto, esforco, id FROM melhorias_sistema WHERE cliente_id = %s
-                                             ORDER BY array_position(ARRAY['fazendo','pode_fazer','pendente','ideia','adiada','erro','feito','descartada'], status), ordem, criado_em""", (CLIENTE,)):
-        print(f'[{st}] {titulo} (impacto {imp or "-"}, esforço {esf or "-"}) · {mid}')
+    for st, titulo, imp, esf, mid, falta in _q("""SELECT m.status, m.titulo, m.impacto, m.esforco, m.id,
+                                                    (SELECT string_agg(s.servico, ', ') FROM servicos_sinal s WHERE s.user_id = m.user_id
+                                                      AND s.servico = ANY(m.reiniciar) AND s.iniciado_em < m.concluido_em)
+                                               FROM melhorias_sistema m WHERE m.cliente_id = %s
+                                             ORDER BY array_position(ARRAY['fazendo','pode_fazer','pendente','ideia','adiada','erro','feito','descartada'], m.status), m.ordem, m.criado_em""", (CLIENTE,)):
+        print(f'[{st}{f" · falta reiniciar: {falta}" if falta else ""}] {titulo} (impacto {imp or "-"}, esforço {esf or "-"}) · {mid}')
 
 
 def propor(bruto, rodada=False):
@@ -149,9 +152,30 @@ def erro(mid, motivo):
     print('ERRO REGISTRADO')
 
 
+# Arquivos que só valem depois de reiniciar o serviço (16/10: a cobrança foi pra
+# Feito, mas mexia no jarvis-ouvinte.py e o ouvinte no ar seguiu com o código
+# antigo). Os módulos que o ouvinte recarrega sozinho (briefing, execucao,
+# melhorias, cobranca_rodada) não entram. O Danilo e o Roy leem o
+# jarvis-ouvinte.py de novo a cada chamada; o código deles mesmos, não.
+REINICIAR = {
+    'ouvinte': ('scripts/jarvis-ouvinte.py', 'scripts/migration_db.py'),
+    'danilo': ('scripts/danilo/',),
+    'roy': ('scripts/roy/',),
+}
+
+
+def servicos_a_reiniciar(arquivos):
+    return sorted(s for s, prefixos in REINICIAR.items()
+                  if any(a.endswith('.py') and a.startswith(prefixos) for a in arquivos))
+
+
 def feito(mid, sha):
-    _q("UPDATE melhorias_sistema SET status = 'feito', progresso = 100, agora = NULL, commit_sha = %s WHERE id = %s",
-       (sha, mid), commit=True)
+    """Chamado pelo ouvinte logo depois do merge (ORIG_HEAD = o main de antes)."""
+    import subprocess
+    r = subprocess.run(['git', 'diff', '--name-only', 'ORIG_HEAD', 'HEAD'], cwd=RAIZ, capture_output=True, text=True)
+    servicos = servicos_a_reiniciar(r.stdout.split()) if r.returncode == 0 else []
+    _q("UPDATE melhorias_sistema SET status = 'feito', progresso = 100, agora = NULL, commit_sha = %s, reiniciar = %s::text[] WHERE id = %s",
+       (sha, servicos or None, mid), commit=True)
 
 
 def reenfileirar():
