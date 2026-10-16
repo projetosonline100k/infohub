@@ -202,7 +202,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
                       <Button type="submit" size="icon" variant="ghost" className="h-7 w-7 shrink-0" disabled={!nova.trim()}><Plus className="h-3.5 w-3.5" /></Button>
                     </form>
                   )}
-                  {lista(c.status, daColuna, c.podeSoltar, "flex min-h-[90px] flex-1 flex-col gap-1.5 rounded-lg border border-transparent transition-colors",
+                  {lista(c.status, daColuna, c.podeSoltar, "flex min-h-[90px] max-h-[440px] flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain rounded-lg border border-transparent pr-0.5 transition-colors",
                     c.status !== "ideia" ? <p className="py-3 text-center text-[11px] text-muted-foreground">{c.podeSoltar ? "solte aqui" : "—"}</p> : null)}
                 </div>
               );
@@ -211,7 +211,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
           {erros.length > 0 && (
             <div className="space-y-1.5 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
               <p className="flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400"><AlertTriangle className="h-3.5 w-3.5" />Não deu ({erros.length}) · abra para ver o motivo; arraste para Pode fazer para tentar de novo</p>
-              {lista("erro", erros, false, "grid gap-1.5 rounded-lg border border-transparent sm:grid-cols-2")}
+              {lista("erro", erros, false, "grid max-h-[260px] gap-1.5 overflow-y-auto rounded-lg border border-transparent sm:grid-cols-2")}
             </div>
           )}
           {descartadas.length > 0 && (
@@ -219,7 +219,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
               <button type="button" onClick={() => setVerDescartadas(!verDescartadas)} className="text-[11px] text-muted-foreground hover:text-foreground">
                 {verDescartadas ? "Esconder" : "Ver"} descartadas ({descartadas.length})
               </button>
-              {verDescartadas && lista("descartada", descartadas, true, "mt-1.5 grid gap-1.5 rounded-lg border border-transparent sm:grid-cols-2")}
+              {verDescartadas && lista("descartada", descartadas, true, "mt-1.5 grid max-h-[260px] gap-1.5 overflow-y-auto rounded-lg border border-transparent sm:grid-cols-2")}
             </div>
           )}
           </DragDropContext>

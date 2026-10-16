@@ -203,8 +203,12 @@ def entregar(aid, titulo, resumo, conteudo):
         obs = f'Entregue no documento "{titulo.strip()[:150]}". {resumo.strip()[:400]}'
         q.execute("SELECT a.tipo, lower(m.nome) FROM atividades a LEFT JOIN membros m ON m.id = a.responsavel_id WHERE a.id = %s", (aid,))
         tipo, quem = q.fetchone()
-        # Estudo (Gabriel) e melhorias/métricas (Pedro: as ideias vão pro kanban dele) concluem direto.
-        if tipo == 'estudo' or quem in ('gabriel', 'pedro'):
+        # Estudo (Gabriel) conclui direto. O Pedro, desde 16/10, vai para a revisão do Davi como todo
+        # mundo ("a pesquisa que o Pedro fez nem passou para eu revisar"); só o mapeamento de ideias
+        # (que já vira cartões no kanban dele) continua concluindo sozinho.
+        q.execute("SELECT titulo FROM atividades WHERE id = %s", (aid,))
+        titulo_tarefa = (q.fetchone() or [''])[0] or ''
+        if tipo == 'estudo' or quem == 'gabriel' or (quem == 'pedro' and titulo_tarefa.lower().startswith('mapear')):
             # Estudo não precisa de aprovação: vai direto pra Fonte de conhecimento e a tarefa conclui.
             q.execute("SELECT status_key FROM colunas_atividade WHERE cliente_id = %s AND eh_conclusao ORDER BY ordem LIMIT 1", (cliente_id,))
             col = q.fetchone()
