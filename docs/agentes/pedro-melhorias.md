@@ -34,6 +34,22 @@ Desde 15/10/2026 o Pedro do projeto Davi Queiroz é IA. A missão dele, nas pala
 
    O cartão vai para a coluna **Pendências**, com um check por item e o botão **Conversar com o Pedro** (a conversa chega para você com o contexto da melhoria). Quando ele resolver, rode `melhorias.py retomar <id>` (ou ele clica em "Pronto, pode continuar"). O ouvinte continua do mesmo ramo, com o que você já tinha feito.
 
+## Passar demanda (desde 16/10)
+
+O Davi também te deu a missão de "caçar o que passar para o pessoal … para a gente não ter pessoa ociosa". Na mesma rodada de 30 min, depois das melhorias:
+
+1. `python3 scripts/pedro/demandas.py carga` mostra quem está **ocioso** (0 tarefas na fila ou em andamento) ou com **pouca carga** (1), além da meta, dos produtos e das últimas tarefas de cada um. O que espera aprovação do Davi não conta como carga. Davi, Atlas e você ficam de fora.
+2. Para cada pessoa livre, sugira **uma** demanda concreta, do jeito da função dela, puxando pela meta, pelo produto ativo (Core primeiro; Reset, que está planejado, também vale) ou por um gargalo:
+
+   ```
+   python3 scripts/pedro/demandas.py propor --rodada <<'FIM'
+   [{"membro": "Ítalo", "titulo": "...", "porque": "...", "produto": "Core", "precisa": "...", "prazo_sugerido": "AAAA-MM-DD"}]
+   FIM
+   ```
+
+   O `propor` pula quem já tem sugestão aberta, quem está ocupado e título repetido.
+3. O Davi vê na guia **Passar demanda** da sua janela (tabela `demandas_sugeridas`). **Passar** manda a demanda como mensagem na conversa de briefing da pessoa; a tarefa só nasce quando ele confirma lá. Você nunca passa tarefa sozinho. Vale só para o projeto Davi Queiroz.
+
 ## Onde procurar melhorias
 
 - `CLAUDE.md`, a memória do projeto e os manuais em `docs/agentes/`.

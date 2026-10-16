@@ -1,7 +1,8 @@
 """Kanban de melhorias do Infopro (Pedro, IA de melhorias — pedido do Davi, 15/10/2026).
 Ideias → Pode fazer (o Davi arrasta) → Fazendo (o Pedro implementa sozinho) → Feito.
 "Não é prioridade agora" (adiada) guarda ideia sem descartar. Rodada (16/10): das 8h às
-22h, a cada 30 min, o ouvinte chama o Pedro pra buscar até 5 ideias novas (selo NOVO).
+22h, a cada 30 min, o ouvinte chama o Pedro pra buscar até 5 ideias novas (selo NOVO)
+e, na mesma rodada, sugerir o que passar pra quem está ocioso (guia "Passar demanda", demandas.py).
 
   python3 scripts/pedro/melhorias.py listar                       → o quadro todo
   python3 scripts/pedro/melhorias.py propor [--rodada] <<'FIM'    → novas ideias (lista JSON; pula título repetido; --rodada: no máx. 5)
@@ -227,12 +228,19 @@ def prompt_rodada(agora=None):
 1. Leia docs/agentes/pedro-melhorias.md (seção "Onde procurar melhorias"), o CLAUDE.md e os aprendizados: python3 scripts/inteligencia/ler.py --cliente {CLIENTE} --agente "pedro" --saida "$(mktemp -d)" (siga o "SIGA SEMPRE").
 2. Veja o quadro inteiro, para NÃO repetir nada (nem ideia parecida com outro título, nem o que já foi feito, descartado ou está em "não é prioridade agora"): python3 scripts/pedro/melhorias.py listar
 3. Investigue. Nesta rodada comece por {foco}. Depois, se sobrar tempo, olhe os outros lugares (logs, dados, telas).
-4. Escolha até {MAX_RODADA} ideias BOAS. Cada uma precisa de evidência concreta que você viu agora (linha do log, número da consulta, arquivo:linha da tela). Se só achar 2 boas, traga 2; se não achar nenhuma, não traga nada. Nada de ideia genérica ("melhorar UX") nem para completar número.
+4. Escolha até {MAX_RODADA} ideias BOAS de melhoria. Cada uma precisa de evidência concreta que você viu agora (linha do log, número da consulta, arquivo:linha da tela). Se só achar 2 boas, traga 2; se não achar nenhuma, não traga nada. Nada de ideia genérica ("melhorar UX") nem para completar número.
 5. Grave no kanban (o Davi vê com o selo NOVO):
    python3 scripts/pedro/melhorias.py propor --rodada <<'FIM'
    [{{"titulo": "curto, no idioma do Davi", "problema": "o que acontece hoje + a evidência", "porque": "o resultado para a equipe ou o negócio", "sugestao": "o que fazer, em 2 a 4 frases", "impacto": 1-3, "esforco": 1-3}}]
    FIM
-Regras: SOMENTE LEITURA. Não edite nenhum arquivo, não escreva no banco (fora o propor), sem git, não reinicie nada, não envie nada a ninguém. Seja rápido (no máximo uns 15 minutos). No fim, responda só com os títulos que gravou (ou "nenhuma ideia nova")."""
+6. PASSAR DEMANDA (16/10, Davi: "caçar o que passar para o pessoal … para a gente não ter pessoa ociosa"). Veja quem está ocioso ou com pouca carga, a meta e os produtos:
+   python3 scripts/pedro/demandas.py carga   (e python3 scripts/pedro/demandas.py listar, pra não repetir)
+   Para cada pessoa OCIOSA ou com pouca carga que ainda não tem sugestão aberta, pense em UMA demanda útil e concreta, do jeito da função dela (leia o manual em docs/agentes/ se tiver), puxando pela meta, pelo produto ativo (Core em primeiro; Reset, que está planejado, também vale) ou por um gargalo que você viu. Nada genérico ("criar conteúdo"): diga o que entregar. Grave:
+   python3 scripts/pedro/demandas.py propor --rodada <<'FIM'
+   [{{"membro": "nome exato", "titulo": "o que passar, curto", "porque": "meta/produto/gargalo, com o dado que você viu", "produto": "Core", "precisa": "o que a pessoa vai precisar do Davi (ou 'nada')", "prazo_sugerido": "AAAA-MM-DD"}}]
+   FIM
+   Você só SUGERE: quem passa é o Davi, no app.
+Regras: SOMENTE LEITURA. Não edite nenhum arquivo, não escreva no banco (fora os dois propor), sem git, não reinicie nada, não envie nada a ninguém. Seja rápido (no máximo uns 15 minutos). No fim, responda só com os títulos que gravou (ou "nenhuma ideia nova")."""
 
 
 def situacao(mid):

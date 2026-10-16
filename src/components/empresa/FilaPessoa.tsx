@@ -17,7 +17,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 import { RevisaoEntrega } from "./RevisaoEntrega";
-import { KanbanMelhorias } from "./KanbanMelhorias";
+import { QuadroPedro } from "./PassarDemanda";
 import { AssistantWhatsappTab } from "@/components/assistant/tabs/AssistantWhatsappTab";
 
 type TarefaFila = TarefaResumo & {
@@ -315,8 +315,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
               </div>
             )}
 
-            {/* Pedro (IA de melhorias): o kanban das ideias dele vem primeiro. */}
-            {ehPedro && <KanbanMelhorias clienteId={clienteId} />}
+            {/* Pedro (IA de melhorias): o kanban dele vem primeiro, com as guias Melhorias e Passar demanda. */}
+            {ehPedro && <QuadroPedro clienteId={clienteId} />}
             {ehCs && (
               <section className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WhatsApp dos clientes</p>
