@@ -137,6 +137,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
   const [reelsProgramados, setReelsProgramados] = useState<ReelProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
+  const [publicadosDalila, setPublicadosDalila] = useState(0);
   // O Roy fez uma versão nova enquanto o Davi revisa (conversa ao lado): troca pelo carrossel novo.
   // Só quando muda a versão ou o status, para não apagar o que ele está editando na tela.
   useEffect(() => {
@@ -193,6 +194,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .select("id, titulo, status, programado_para, video_url")
       .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
     setReelsProgramados((reelsProg || []) as ReelProgramado[]);
+    // Publicados pela Dalila (carrossel e reel) contam em "Postados" (16/10).
+    const db = supabase as unknown as SupabaseClient;
+    const [{ count: carPub }, { count: reelPub }] = await Promise.all([
+      db.from("carrosseis").select("id", { count: "exact", head: true }).eq("cliente_id", clienteId).eq("status", "publicado"),
+      db.from("reels").select("id", { count: "exact", head: true }).eq("cliente_id", clienteId).eq("status", "publicado"),
+    ]);
+    setPublicadosDalila((carPub ?? 0) + (reelPub ?? 0));
     setSetores((s.data || []) as SetorResumo[]);
     registrarVisuais((m.data || []) as { nome: string; visual: Visual | null }[]);   // aparência escolhida no cadastro
     setMembros((m.data || []) as MembroResumo[]);
@@ -212,7 +220,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
   const hoje = hojeIso();
   const contaId = user?.id ?? "";
-  const indicadores = useMemo(() => contarIndicadores(videos), [videos]);
+  // Carrosséis e reels programados/publicados pela Dalila entram em Agendados/Postados (16/10: "os carrosséis entram como agendado também").
+  const indicadores = useMemo(() => {
+    const n = contarIndicadores(videos);
+    return { ...n, agendados: n.agendados + carrosseisProgramados.length + reelsProgramados.length, postados: n.postados + publicadosDalila };
+  }, [videos, carrosseisProgramados, reelsProgramados, publicadosDalila]);
   // Tarefa do Roy que já virou carrossel aparece só pelo card do carrossel (revisão com as páginas),
   // não como "Aprovar entrega" (esse caminho é o do Ítalo, que entrega documento).
   const tarefasComCarrossel = useMemo(() => new Set(carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter(Boolean)), [carrosseis]);
