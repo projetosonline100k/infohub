@@ -51,6 +51,18 @@ export default function QuizPublico() {
 
   const voltarAoTopo = useCallback(() => { rolagem.current?.scrollTo({ top: 0 }); }, []);
 
+  // Métricas (sem dado pessoal): uma sessão por aba; a visita, cada tela, o fim e o clique na oferta.
+  const sessao = useRef<string>("");
+  if (!sessao.current) {
+    const chave = `quiz-sessao:${slug}`;
+    try { sessao.current = sessionStorage.getItem(chave) || crypto.randomUUID(); sessionStorage.setItem(chave, sessao.current); }
+    catch { sessao.current = crypto.randomUUID(); }
+  }
+  const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number) => {
+    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1 } as never);
+  }, [slug]);
+  useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
+
   return (
     <div ref={rolagem}
       className={escuro ? "fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
@@ -61,12 +73,13 @@ export default function QuizPublico() {
         ) : !quiz ? (
           <p className="my-auto text-center opacity-70">Este quiz não está disponível.</p>
         ) : (
-          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} titulo={quiz.titulo} estrutura={quiz.estrutura} onFim={async ({ escolhas, perfil, contato }) => {
+          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={quiz.estrutura} onFim={async ({ escolhas, perfil, contato }) => {
             const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: q.opcoes[escolhas[q.id]]?.texto ?? null }));
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,
               p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null,
             } as never);
+            registrar("fim");
           }} />
         )}
       </div>

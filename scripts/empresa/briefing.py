@@ -158,7 +158,9 @@ def contexto(bid, como=None):
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'
-                     else f'O Davi está testando o QUIZ criado. Veja: python3 scripts/quiz/quiz.py ver {atividade_id} · ajuste: python3 scripts/quiz/quiz.py salvar {atividade_id} (JSON inteiro). Não use o entregar.'))
+                     else (f'O quiz já está PUBLICADO (status {quiz[0]}): o que você salvar muda o link que o público está usando NA HORA. Mudança pequena e clara: faça. Mudança grande (trocar perguntas, perfis, oferta): confirme com o Davi antes. Veja: python3 scripts/quiz/quiz.py ver {atividade_id} · ajuste: python3 scripts/quiz/quiz.py salvar {atividade_id} (JSON inteiro). Não use o entregar.'
+                           if quiz[0] in ('publicado', 'pausado') else
+                           f'O Davi está testando o QUIZ criado. Veja: python3 scripts/quiz/quiz.py ver {atividade_id} · ajuste: python3 scripts/quiz/quiz.py salvar {atividade_id} (JSON inteiro). Não use o entregar.')))
     if proposta:
         print('Proposta já gravada: ' + json.dumps(proposta, ensure_ascii=False))
     if participantes:

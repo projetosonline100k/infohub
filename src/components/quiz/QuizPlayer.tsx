@@ -26,6 +26,7 @@ interface Ctx {
   editar: boolean; mostrarFaltas: boolean; cor: string; escuro: boolean;
   mudarTexto: (caminho: string, valor: string) => void;
   mudarImagem: (caminho: string, arquivo: File | null) => void;
+  aoClicarOferta?: () => void;   // métrica: clique no link da oferta
 }
 const QuizCtx = createContext<Ctx>({ editar: false, mostrarFaltas: false, cor: "#0ea5e9", escuro: false, mudarTexto: () => {}, mudarImagem: () => {} });
 
@@ -106,20 +107,22 @@ function Depoimentos({ caminho, lista, nota }: { caminho: string; lista?: Depoim
 }
 
 function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
-  const { cor, editar } = useContext(QuizCtx);
+  const { cor, editar, aoClicarOferta } = useContext(QuizCtx);
   const cls = "h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]";
   const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}` };
   if (editar) return <div className={cn(cls, "flex items-center justify-center px-4 py-3")} style={estilo}>{children}</div>;
-  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={href} target="_blank" rel="noreferrer">{children}</a></Button>;
+  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={href} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()}>{children}</a></Button>;
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
-export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela }: {
+export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento }: {
   titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; teste?: boolean;
   editar?: boolean; onMudar?: (e: EstruturaQuiz) => void; onImagem?: (arquivo: File) => Promise<string>;
   // Link público no celular (15/10): ocupa a tela toda, barra de progresso fixa no
   // topo e o conteúdo centralizado; a cada tela nova o pai volta a rolagem pro início.
   telaCheia?: boolean; onTrocarTela?: () => void;
+  // Métricas do link público (15/10): cada tela alcançada e o clique na oferta.
+  onEvento?: (tipo: "passo" | "cta", passo?: number) => void;
 }) {
   const e = estrutura;
   const cor = corDoQuiz(e);
@@ -147,10 +150,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
   const trocou = useRef(onTrocarTela);
   trocou.current = onTrocarTela;
-  useEffect(() => { trocou.current?.(); }, [pos]);
+  const evento = useRef(onEvento);
+  evento.current = onEvento;
+  useEffect(() => { trocou.current?.(); if (pos > 0) evento.current?.("passo", pos); }, [pos]);
 
   const ctx: Ctx = {
     editar, mostrarFaltas: !!teste, cor, escuro,
+    aoClicarOferta: () => evento.current?.("cta"),
     mudarTexto: (c, v) => onMudar?.(comValor(e, c, v)),
     mudarImagem: (c, arq) => {
       if (!arq) { onMudar?.(comValor(e, c, "")); return; }

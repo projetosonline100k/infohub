@@ -60,6 +60,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const tarefa = tarefas[Math.min(indice, tarefas.length - 1)];
   const tarefaId = tarefa?.id;
   const recarregarDoc = useCallback(() => setVersao((v) => v + 1), []);
+  // Quiz já no ar (Conteúdo → Quiz → Editar): só conversa e edição, sem aprovar de novo.
+  const noAr = quiz?.status === "publicado" || quiz?.status === "pausado";
 
   useEffect(() => { if (aberto) setIndice(0); }, [aberto]);
   useEffect(() => {
@@ -219,19 +221,21 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             <div className="flex flex-wrap items-center justify-end gap-2">
               <p className="mr-auto text-xs text-muted-foreground">
                 {escrevendo ? `${info?.responsavel ?? "Ele"} está trabalhando: o documento muda aqui na hora.`
+                  : noAr ? "Quiz publicado: o que você ou o Roy mudarem aqui vale direto no link."
                   : quiz?.status === "esboco" ? "Aprovar o esboço: o Roy começa a criar o quiz no Infopro."
                   : quiz?.status === "revisar" ? "Teste o quiz. Aprovar publica e libera o link."
                   : "Converse com ele: elogio, ajuste ou refazer, ele entende pela conversa."}
               </p>
-              {esbocoParaRoy && (
+              {noAr && <Button variant="outline" onClick={onFechar}>Fechar</Button>}
+              {esbocoParaRoy && !noAr && (
                 <Button variant="outline" className="gap-1.5" disabled={salvando || escrevendo} onClick={() => void passarParaRoy()}
                   title="Aprova o esboço e o Roy cria o quiz no Infopro (aba Quiz)">
                   <CheckCircle2 className="h-4 w-4" />Aprovar e passar pro Roy criar o quiz
                 </Button>
               )}
-              <Button className="gap-1.5" disabled={salvando || escrevendo} title={escrevendo ? "Espere ele terminar a resposta" : undefined} onClick={() => void aprovar()}>
+              {!noAr && <Button className="gap-1.5" disabled={salvando || escrevendo} title={escrevendo ? "Espere ele terminar a resposta" : undefined} onClick={() => void aprovar()}>
                 {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{quiz?.status === "esboco" ? "Aprovar esboço" : quiz?.status === "revisar" ? "Aprovar e publicar" : "Aprovar"}
-              </Button>
+              </Button>}
             </div>
           </>
         )}

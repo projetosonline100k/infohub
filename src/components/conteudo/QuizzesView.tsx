@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CheckCircle2, ClipboardList, Copy, ExternalLink, Eye, Loader2, Pause, Play, Send, Users, X } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardList, Copy, ExternalLink, Eye, Loader2, Pause, Pencil, Play, Send, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cancelarTarefa } from "@/lib/empresa/cancelar";
 import { ROTULO_STATUS, linkDoQuiz, type QuizResumo, type StatusQuiz } from "@/lib/quiz/quiz";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
+import { QuizMetricas } from "@/components/quiz/QuizMetricas";
 import { RevisaoEntrega } from "@/components/empresa/RevisaoEntrega";
 import { criarTarefaParaMembro } from "@/components/empresa/FilaPessoa";
 
@@ -45,6 +46,7 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
   const [revisando, setRevisando] = useState<{ id: string; titulo: string } | null>(null);
   const [testando, setTestando] = useState<QuizResumo | null>(null);
   const [vendoRespostas, setVendoRespostas] = useState<QuizResumo | null>(null);
+  const [vendoMetricas, setVendoMetricas] = useState<QuizResumo | null>(null);
 
   const carregar = useCallback(async () => {
     const [{ data: ms }, { data: qs }, { data: rs }] = await Promise.all([
@@ -168,10 +170,15 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
                     {q.estrutura && !esperandoVoce && (
                       <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setTestando(q)}><Eye className="h-4 w-4" />Testar</Button>
                     )}
+                    {(q.status === "publicado" || q.status === "pausado") && q.atividade_id && !esperandoVoce && (
+                      <Button size="sm" variant="outline" className="h-8 gap-1.5" title="Abrir o quiz para editar e conversar com o Roy"
+                        onClick={() => setRevisando({ id: q.atividade_id!, titulo: q.titulo })}><Pencil className="h-4 w-4" />Editar</Button>
+                    )}
                     {q.status === "publicado" && (
                       <>
                         <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => copiar(q)}><Copy className="h-4 w-4" />Link</Button>
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Abrir o quiz" onClick={() => void abrirLinkExterno(linkDoQuiz(q.slug))}><ExternalLink className="h-4 w-4" /></Button>
+                        <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setVendoMetricas(q)}><BarChart3 className="h-4 w-4" />Métricas</Button>
                         {n > 0 && <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setVendoRespostas(q)}><Users className="h-4 w-4" />Respostas</Button>}
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Pausar (o link para de funcionar)" onClick={() => void mudarStatus(q, "pausado")}><Pause className="h-4 w-4" /></Button>
                       </>
@@ -207,6 +214,8 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
           {testando?.estrutura && <QuizPlayer titulo={testando.titulo} estrutura={testando.estrutura} teste />}
         </DialogContent>
       </Dialog>
+
+      <QuizMetricas quiz={vendoMetricas} respostas={vendoMetricas ? porQuiz.get(vendoMetricas.id) ?? [] : []} onFechar={() => setVendoMetricas(null)} />
 
       <Dialog open={!!vendoRespostas} onOpenChange={(a) => { if (!a) setVendoRespostas(null); }}>
         <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
