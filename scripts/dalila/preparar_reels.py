@@ -130,6 +130,17 @@ def enviar(url, chave, caminho, arquivo):
 
 
 def fala_do_video(edicao_id):
+    # O texto final (sem as retomadas do bruto) está nas legendas do projeto do
+    # Danilo; a transcrição do bruto fica de reserva.
+    projeto = TRANSCRICOES / edicao_id / "projeto.json"
+    if projeto.exists():
+        try:
+            legendas = json.loads(projeto.read_text()).get("legendas") or []
+            texto = " ".join(l.get("texto", "") for l in legendas if l.get("tipo") in ("head", "leg")).strip()
+            if texto:
+                return texto
+        except ValueError:
+            pass
     arq = TRANSCRICOES / edicao_id / "transcricao.json"
     if arq.exists():
         try:

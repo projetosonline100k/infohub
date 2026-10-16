@@ -108,7 +108,7 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 2. **O Mac prepara** (`scripts/dalila/preparar_reels.py`, serviço LaunchAgent `com.infoprohub.dalila`, log em `~/.infopro-hub/dalila/servico.log`):
    - comprime o final do Drive para HEVC (VideoToolbox), 1080×1920, 30 fps, AAC 128k, `+faststart`, com até 46 MB. O plano gratuito do Supabase aceita **no máximo 50 MB por arquivo** e esse limite não sobe. No piloto: 281 MB viraram 41 MB em cerca de 80 s, sem diferença visível;
    - sobe no bucket público `reels` com o `token_envio` do reel (a policy só aceita enquanto `preparando`);
-   - sugere a legenda com o Claude em segundo plano, a partir da transcrição do Danilo (`~/.infopro-hub/danilo/edicoes/<edicao>/transcricao.json`) e de legendas reais do perfil;
+   - sugere a legenda com o Claude em segundo plano, a partir do texto final do vídeo (legendas `head`/`leg` do `projeto.json` do Danilo, sem as retomadas; a `transcricao.json` do bruto fica de reserva) e de legendas reais do perfil;
    - marca `pronto`, e o gatilho cria a tarefa do Davi "Escolher data do reel: …" (tipo `agendar_reel`, prioridade alta);
    - até 5 tentativas; depois, status `erro` com o motivo em `mensagem`.
 3. **O Davi** clica na tarefa em "Precisa de você". Abre `ProgramarReel.tsx`, com o vídeo, a legenda editável (até 2.200 caracteres), o calendário, o dia e a hora.
