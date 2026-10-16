@@ -204,9 +204,33 @@ def copiar_do_drive(origem, destino, minutos=60, log=print):
                 time.sleep(15)
 
 
+class pesado:
+    """Um trabalho pesado por vez no Mac de 8 GB: whisper (~2 GB) e montagem
+    do ffmpeg (~3 GB) juntos estouram a memória. Trava num arquivo comum aos
+    processos do Danilo e, antes, espera a montagem do servidor (prévia/Full HD)
+    terminar."""
+    def __enter__(self):
+        import fcntl
+        import time
+        BASE.mkdir(parents=True, exist_ok=True)
+        self.f = open(BASE / "pesado.lock", "w")
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        while subprocess.run(["pgrep", "-f", r"ffmpeg.*(previa|final)\.tmp\.mp4"], capture_output=True).returncode == 0:
+            time.sleep(10)
+        return self
+
+    def __exit__(self, *_):
+        import fcntl
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
 def transcrever(p):
-    import criar_projeto
-    return criar_projeto.transcrever(p)
+    """Em outro processo: o modelo do whisper (~2 GB) sai da memória quando
+    termina (dentro do serviço ele ficava preso, que roda o dia todo)."""
+    with pesado():
+        subprocess.run([sys.executable, str(AQUI / "criar_projeto.py"), str(p), "transcrever"], check=True)
+    return json.loads((Path(p) / "transcricao.json").read_text())
 
 
 def preparar(arquivo, log=print):
@@ -299,6 +323,11 @@ def texto(id_):
 
 
 def _whisper(wav, offset=0.0, palavras=True):
+    with pesado():
+        return _whisper_livre(wav, offset, palavras)
+
+
+def _whisper_livre(wav, offset=0.0, palavras=True):
     sys.path.insert(0, CREATOR)
     os.environ["PATH"] = os.path.dirname(FF) + os.pathsep + os.environ["PATH"]
     import mlx_whisper
@@ -432,7 +461,12 @@ def conferir(id_, so_olhar=False):
         import criar_projeto
         dur = criar_projeto.duracao(previa)
     else:
-        previa, dur = motor.renderizar(p, previa=True)
+        if not (p / "proxy.mp4").exists():      # sem o proxy, a prévia sairia do 4K (lento e pesado)
+            from servidor import fazer_proxy
+            with pesado():
+                fazer_proxy(p)
+        with pesado():
+            previa, dur = motor.renderizar(p, previa=True)
     wav = p / "_previa.wav"
     subprocess.run([FF, "-v", "error", "-y", "-i", str(previa), "-vn", "-ac", "1", "-ar", "16000", str(wav)], check=True)
     r = _whisper(wav, palavras=False)
