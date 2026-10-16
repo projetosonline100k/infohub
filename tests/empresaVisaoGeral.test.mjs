@@ -130,3 +130,10 @@ test('tempo restante: previsão do funcionário; sem ela, o ritmo até aqui (a p
   assert.equal(textoRestante(80), '~1h20');
   assert.equal(textoRestante(120), '~2h');
 });
+
+test('Pedro implementando melhoria do kanban conta como trabalhando (erro no kanban não deixa vermelho)', async () => {
+  const { trabalhoDasIas } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const ms = [{ id: 'm-pedro', nome: 'Pedro', funcao: null, setor_id: 's', conta_id: null, eh_ia: true }];
+  const t = trabalhoDasIas(ms, [], [], [{ status: 'fazendo', titulo: 'Métricas do Instagram' }, { status: 'erro', titulo: 'x' }]);
+  assert.deepEqual(t.get('m-pedro'), { trabalhando: 1, esperando: 0, problema: 0, atual: 'Implementando: Métricas do Instagram' });
+});

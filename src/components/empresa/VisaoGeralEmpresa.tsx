@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Crown,
-  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Scissors, Users, Video, Youtube,
+  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Rocket, Scissors, Users, Video, Youtube,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -88,6 +88,18 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Edições do Danilo (editor IA): prontas pra revisar entram em "Precisa de você".
   const [edicoes, setEdicoes] = useState<EdicaoResumo[]>([]);
+  // O que o Pedro está implementando do kanban dele (pra ele aparecer trabalhando sem abrir a janela).
+  const [melhorias, setMelhorias] = useState<{ id: string; titulo: string; status: string; progresso: number | null; agora: string | null }[]>([]);
+  const carregarMelhorias = useCallback(async () => {
+    const { data } = await (supabase as unknown as SupabaseClient).from("melhorias_sistema").select("id, titulo, status, progresso, agora")
+      .eq("cliente_id", clienteId).eq("status", "fazendo");
+    setMelhorias((data || []) as typeof melhorias);
+  }, [clienteId]);
+  useEffect(() => {
+    void carregarMelhorias();
+    const t = window.setInterval(() => void carregarMelhorias(), 15_000);
+    return () => window.clearInterval(t);
+  }, [carregarMelhorias]);
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
   // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
@@ -163,7 +175,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const executando = useMemo(() => tarefasEmExecucao(contaId, membros, tarefas), [contaId, membros, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);
   const programados = useMemo(() => videosProgramados(videos, hoje), [videos, hoje]);
-  const trabalhoIa = useMemo(() => trabalhoDasIas(membros, carrosseis, edicoes), [membros, carrosseis, edicoes]);
+  const trabalhoIa = useMemo(() => trabalhoDasIas(membros, carrosseis, edicoes, melhorias), [membros, carrosseis, edicoes, melhorias]);
 
   if (carregando) {
     return <div className="flex h-64 items-center justify-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>;
@@ -309,10 +321,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <Bot className="h-5 w-5 text-emerald-500" />
             <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Tarefas sendo executadas</h2>
             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-              {executando.filter((l) => l.agora).length + carrosseis.filter(emProducao).length + edicoesRodando.length} agora · {executando.filter((l) => !l.agora).length} na fila
+              {executando.filter((l) => l.agora).length + carrosseis.filter(emProducao).length + edicoesRodando.length + melhorias.length} agora · {executando.filter((l) => !l.agora).length} na fila
             </span>
           </div>
-          {executando.length === 0 && !carrosseis.some(emProducao) && edicoesRodando.length === 0 ? (
+          {executando.length === 0 && !carrosseis.some(emProducao) && edicoesRodando.length === 0 && melhorias.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">A equipe não está tocando nada agora. Passe tarefas pela conversa com cada um.</p>
           ) : (
             <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
@@ -321,6 +333,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                   titulo={`Roy criando ${carrosseis.filter(emProducao).length} ${carrosseis.filter(emProducao).length === 1 ? "carrossel" : "carrosséis"}`}
                   detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")} />
               )}
+              {melhorias.map((x) => (
+                <LinhaAcao key={x.id} icone={Rocket} onClick={() => { const p = membros.find((m) => /^pedro$/i.test(m.nome)); if (p) setMembroAberto(p); }}
+                  titulo={`Pedro implementando: ${x.titulo}`} detalhe={`${x.progresso ?? 5}%${x.agora ? ` · ${x.agora}` : ""}`} />
+              ))}
               {edicoesRodando.map((e) => (
                 <LinhaAcao key={e.id} icone={Scissors} onClick={() => { const d = membros.find((m) => /^danilo$/i.test(m.nome)); if (d) setMembroAberto(d); }}
                   titulo={`Danilo editando: ${e.titulo}`} detalhe={e.mensagem ?? e.status} />
@@ -393,6 +409,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                     : ia?.problema ? "Parou com problema"
                     : ia?.esperando ? `${ia.esperando} esperando sua revisão`
                     : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
+                    : ia?.trabalhando && ia.atual ? ia.atual
                     : atual?.titulo ?? ia?.atual ?? null;
                   return {
                     id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,

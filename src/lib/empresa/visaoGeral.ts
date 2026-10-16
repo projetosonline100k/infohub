@@ -213,6 +213,7 @@ export function trabalhoDasIas(
   membros: MembroResumo[],
   carrosseis: { status: string; tema: string }[],
   edicoes: { status: string; titulo: string }[],
+  melhorias: { status: string; titulo: string }[] = [],   // kanban do Pedro (15/10): implementando = trabalhando
 ): Map<string, TrabalhoIa> {
   const mapa = new Map<string, TrabalhoIa>();
   const contar = (nome: string, itens: { status: string; nome: string }[], fazendo: string[], verbo: string) => {
@@ -228,6 +229,8 @@ export function trabalhoDasIas(
   };
   contar("roy", carrosseis.map((c) => ({ status: c.status, nome: c.tema })), ["produzindo", "ajuste"], "Criando carrossel");
   contar("danilo", edicoes.map((e) => ({ status: e.status, nome: e.titulo })), ["na_fila", "editando", "renderizando", "aprovando"], "Editando");
+  // Só "fazendo" conta (o "erro" do kanban não deixa o Pedro vermelho pra sempre).
+  contar("pedro", melhorias.filter((x) => x.status === "fazendo").map((x) => ({ status: x.status, nome: x.titulo })), ["fazendo"], "Implementando");
   return mapa;
 }
 

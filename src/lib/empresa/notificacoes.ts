@@ -31,7 +31,7 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
     db.from("carrosseis").select("id, cliente_id, tema, status, atualizado_em")
       .gt("atualizado_em", desde).in("status", ["revisar", "erro"]).limit(50),
     db.from("melhorias_sistema").select("id, cliente_id, titulo, status, resultado, atualizado_em")
-      .gt("atualizado_em", desde).in("status", ["feito", "erro"]).limit(50),
+      .gt("atualizado_em", desde).in("status", ["fazendo", "feito", "erro"]).limit(50),
     db.from("clientes").select("id, nome_especialista"),
   ]);
   const projeto = new Map(((clientes.data || []) as { id: string; nome_especialista: string }[]).map((c) => [c.id, c.nome_especialista]));
@@ -74,8 +74,8 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
       titulo: x.status === "erro" ? "Roy teve um problema no carrossel" : "Roy terminou um carrossel (revisar)", detalhe: curto(x.tema), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
   }
   for (const x of (mels.data || []) as { id: string; cliente_id: string; titulo: string; status: string; resultado: string | null; atualizado_em: string }[]) {
-    avisos.push({ id: `p-${x.id}-${x.status}`, tipo: x.status === "erro" ? "erro" : "melhoria", quando: x.atualizado_em,
-      titulo: x.status === "erro" ? "Pedro não conseguiu implementar" : "Pedro implementou uma melhoria", detalhe: curto(x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
+    avisos.push({ id: `p-${x.id}-${x.status}`, tipo: x.status === "erro" ? "erro" : x.status === "fazendo" ? "comecou" : "melhoria", quando: x.atualizado_em,
+      titulo: x.status === "erro" ? "Pedro não conseguiu implementar" : x.status === "fazendo" ? "Pedro começou a implementar" : "Pedro implementou uma melhoria", detalhe: curto(x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
   }
   return avisos.sort((a, b) => a.quando.localeCompare(b.quando));
 }
