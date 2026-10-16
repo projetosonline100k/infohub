@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { addHours, addDays, format } from "date-fns";
-import { AlertTriangle, BellRing, ExternalLink, ListTodo, Loader2, Trash2 } from "lucide-react";
+import { AlertTriangle, BellRing, Check, ExternalLink, ListTodo, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  alarmeDoEvento, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendar, GoogleCalendarEvent, GoogleEventInput, propriedadesInfopro,
+  alarmeDoEvento, COR_FEITO, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendar, GoogleCalendarEvent, GoogleEventInput, propriedadesInfopro,
   minhaRespostaConvite, type RespostaConvite,
 } from "@/lib/googleCalendar";
 import { OPCOES_ALARME } from "@/lib/agendaAlarmes";
@@ -47,12 +47,14 @@ interface EventoDialogProps {
   onResponder?: (event: GoogleCalendarEvent, resposta: RespostaConvite) => Promise<void>;
   atividade?: AtividadeDoEvento | null;
   onAbrirAtividade?: () => void;
+  // "Feito"/"Reabrir" num clique: salva só a cor e fecha (o aviso tem desfazer).
+  onFeito?: () => Promise<void>;
 }
 
 const localDateTime = (date: Date) => format(date, "yyyy-MM-dd'T'HH:mm");
 
 export function EventoDialog({
-  open, onOpenChange, initialDate, initialEnd, event, calendars, onSave, onDelete, onResponder, atividade, onAbrirAtividade,
+  open, onOpenChange, initialDate, initialEnd, event, calendars, onSave, onDelete, onResponder, atividade, onAbrirAtividade, onFeito,
 }: EventoDialogProps) {
   const [respondendo, setRespondendo] = useState<RespostaConvite | null>(null);
   const minhaResposta = event ? minhaRespostaConvite(event) : null;
@@ -131,6 +133,19 @@ export function EventoDialog({
     }
   };
 
+  const [marcando, setMarcando] = useState(false);
+  const feito = event?.colorId === COR_FEITO;
+  const alternarFeito = async () => {
+    if (!onFeito) return;
+    setMarcando(true);
+    try {
+      await onFeito();
+      onOpenChange(false);
+    } finally {
+      setMarcando(false);
+    }
+  };
+
   const remove = async () => {
     if (!event || !(await confirmar(`Excluir “${event.summary || "Sem titulo"}”?`))) return;
     setSaving(true);
@@ -146,7 +161,17 @@ export function EventoDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{event ? "Editar evento" : "Novo evento"}</DialogTitle>
+          <div className="flex items-center justify-between gap-3 pr-6">
+            <DialogTitle>{event ? "Editar evento" : "Novo evento"}</DialogTitle>
+            {event && onFeito && (
+              <Button type="button" size="sm" variant={feito ? "outline" : "default"} disabled={marcando || saving} onClick={() => void alternarFeito()}
+                className={feito ? undefined : "bg-[#0b8043] text-white hover:bg-[#0b8043]/90"}
+                title={feito ? "Volta para a cor do calendário" : "Pinta o evento de verde (concluído)"}>
+                {marcando ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : feito ? <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> : <Check className="mr-1.5 h-3.5 w-3.5" />}
+                {feito ? "Reabrir" : "Feito"}
+              </Button>
+            )}
+          </div>
           <DialogDescription>As alteracoes sao sincronizadas diretamente com o Google Calendar.</DialogDescription>
         </DialogHeader>
         {event && minhaResposta && (
@@ -240,7 +265,7 @@ export function EventoDialog({
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={() => setColorId(null)} aria-label="Usar cor do calendário" title="Cor do calendário" className={`h-7 w-7 rounded-full border-2 bg-primary transition-transform hover:scale-110 ${colorId === null ? "border-foreground ring-2 ring-primary/30" : "border-transparent"}`} />
               {Object.entries(GOOGLE_EVENT_COLORS).map(([id, color]) => (
-                <button key={id} type="button" onClick={() => setColorId(id)} aria-label={`Selecionar cor ${id}`} className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${colorId === id ? "border-foreground ring-2 ring-primary/30" : "border-transparent"}`} style={{ backgroundColor: color }} />
+                <button key={id} type="button" onClick={() => setColorId(id)} aria-label={id === COR_FEITO ? "Verde: feito" : `Selecionar cor ${id}`} title={id === COR_FEITO ? "Verde: feito" : undefined} className={`h-7 w-7 rounded-full border-2 transition-transform hover:scale-110 ${colorId === id ? "border-foreground ring-2 ring-primary/30" : "border-transparent"}`} style={{ backgroundColor: color }} />
               ))}
             </div>
             <p className="text-xs text-muted-foreground">Escolha uma cor ou mantenha a cor do calendário.</p>

@@ -122,6 +122,10 @@ export const GOOGLE_EVENT_COLORS: Record<string, string> = {
   "9": "#3f51b5", "10": "#0b8043", "11": "#d50000",
 };
 
+// Verde (Manjericão) = bloco concluído. É assim que o Davi marca o que fez e
+// é o que o Atlas usa para saber o que ainda está pendente.
+export const COR_FEITO = "10";
+
 // Texto escuro em fundos claros (ex.: Banana, cores pastel de calendário), branco nos demais.
 export function corDoTexto(fundo: string): string {
   const hex = fundo.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];

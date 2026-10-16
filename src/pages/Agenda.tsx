@@ -5,10 +5,10 @@ import {
   subDays, subMonths, subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertTriangle, CalendarDays, ChevronLeft, ListTodo, ChevronRight, Loader2, LogOut, MailQuestion, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarDays, Check, ChevronLeft, ListTodo, ChevronRight, Loader2, LogOut, MailQuestion, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { atividadeDoEvento, corDoTexto, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendarEvent, propriedadesInfopro, statusConvite, type StatusConvite } from "@/lib/googleCalendar";
+import { atividadeDoEvento, COR_FEITO, corDoTexto, entradaDoEvento, GOOGLE_EVENT_COLORS, GoogleCalendarEvent, propriedadesInfopro, statusConvite, type StatusConvite } from "@/lib/googleCalendar";
 import { estaAtrasada, useAtividadesDaAgenda, type AtividadeVinculada } from "@/hooks/useAtividadesDaAgenda";
 import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
 import { supabase } from "@/integrations/supabase/client";
@@ -79,6 +79,31 @@ export default function Agenda() {
       toast.error(error instanceof Error ? error.message : "Nao foi possivel alterar o horario do evento");
     }
   };
+
+  // "Feito" num clique: pinta de verde (ou "Reabrir": volta para a cor do
+  // calendário). Salva só a cor e oferece desfazer no aviso.
+  const podeEditar = (event: GoogleCalendarEvent) => ["writer", "owner"].includes(calendarById.get(event.calendarId)?.accessRole || "");
+  const alternarFeito = async (event: GoogleCalendarEvent) => {
+    const anterior = event.colorId || null;
+    const feito = anterior === COR_FEITO;
+    const titulo = event.summary || "Sem titulo";
+    try {
+      await calendar.saveEvent(event.calendarId, entradaDoEvento(event, { colorId: feito ? null : COR_FEITO }), event);
+      toast.success(feito ? `"${titulo}" reaberto` : `"${titulo}" feito`, {
+        action: {
+          label: "Desfazer",
+          onClick: () => {
+            void calendar.saveEvent(event.calendarId, entradaDoEvento(event, { colorId: anterior }), event)
+              .catch((error) => toast.error(error instanceof Error ? error.message : "Nao foi possivel desfazer"));
+          },
+        },
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Nao foi possivel mudar a cor do evento");
+    }
+  };
+  // Sem permissão de escrita no calendário, o botão nem aparece.
+  const acaoFeito: AcaoFeito = (event) => (podeEditar(event) ? () => alternarFeito(event) : undefined);
 
   // Atividade solta na agenda vira evento no calendário principal: na grade
   // de horários usa o tempo estimado (ou 1h); no mês/faixa "dia todo" vira
@@ -220,9 +245,9 @@ export default function Agenda() {
             </div>
           </div>
           {view === "month" ? (
-            <MonthView anchor={anchor} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} atividades={vinculadas.porId} previa={previaDrop} />
+            <MonthView anchor={anchor} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} acaoFeito={acaoFeito} atividades={vinculadas.porId} previa={previaDrop} />
           ) : (
-            <TimeGrid anchor={anchor} view={view} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} onReschedule={rescheduleEvent} atividades={vinculadas.porId} previa={previaDrop} />
+            <TimeGrid anchor={anchor} view={view} events={calendar.events} colorFor={colorFor} onNew={openNew} onEvent={openEvent} acaoFeito={acaoFeito} onReschedule={rescheduleEvent} atividades={vinculadas.porId} previa={previaDrop} />
           )}
         </section>
 
@@ -230,6 +255,7 @@ export default function Agenda() {
       </div>
 
       <EventoDialog open={dialogOpen} onOpenChange={setDialogOpen} initialDate={dialogDate} initialEnd={dialogEnd} event={selectedEvent} calendars={calendar.calendars} onSave={calendar.saveEvent} onDelete={calendar.deleteEvent} onResponder={calendar.responderConvite}
+        onFeito={selectedEvent ? acaoFeito(selectedEvent) : undefined}
         atividade={resumoAtividade} onAbrirAtividade={atividadeSelecionada ? () => { setCardAtividadeId(atividadeSelecionada.id); setDialogOpen(false); } : undefined} />
 
       {/* Card completo da atividade (o mesmo painel da tela de Atividades). */}
@@ -246,6 +272,7 @@ export default function Agenda() {
 }
 
 type AtividadesPorId = Record<string, AtividadeVinculada>;
+type AcaoFeito = (event: GoogleCalendarEvent) => (() => Promise<void>) | undefined;
 type PreviaDrop = { titulo: string; inicio: Date; fim: Date; diaInteiro: boolean };
 
 // "45min", "2h", "2h 30min".
@@ -265,9 +292,9 @@ function marcaAtividade(event: GoogleCalendarEvent, atividades: AtividadesPorId)
   return { atrasada: !!atividade && estaAtrasada(atividade.data_vencimento, atividade.concluida) };
 }
 
-function MonthView({ anchor, events, colorFor, onNew, onEvent, atividades, previa }: {
+function MonthView({ anchor, events, colorFor, onNew, onEvent, acaoFeito, atividades, previa }: {
   anchor: Date; events: GoogleCalendarEvent[]; colorFor: (event: GoogleCalendarEvent) => string;
-  onNew: (date: Date) => void; onEvent: (event: GoogleCalendarEvent) => void; atividades: AtividadesPorId;
+  onNew: (date: Date) => void; onEvent: (event: GoogleCalendarEvent) => void; acaoFeito: AcaoFeito; atividades: AtividadesPorId;
   previa: PreviaDrop | null;
 }) {
   const days = eachDayOfInterval({
@@ -290,7 +317,7 @@ function MonthView({ anchor, events, colorFor, onNew, onEvent, atividades, previ
             <div key={day.toISOString()} data-agenda-drop="allday" data-agenda-date={format(day, "yyyy-MM-dd")} onDoubleClick={() => onNew(day)} className={cn("min-h-24 border-b border-r p-1.5", !isSameMonth(day, anchor) && "bg-muted/20 text-muted-foreground", previa && isSameDay(previa.inicio, day) && "bg-primary/15 ring-2 ring-inset ring-primary")}>
               <button onClick={() => onNew(day)} className={cn("mb-1 flex h-6 w-6 items-center justify-center rounded-full text-xs", isToday(day) && "bg-primary font-semibold text-primary-foreground")}>{format(day, "d")}</button>
               <div className="space-y-1">
-                {dayEvents.slice(0, 4).map((event) => <EventChip key={`${event.calendarId}-${event.id}`} event={event} color={colorFor(event)} marca={marcaAtividade(event, atividades)} onClick={() => onEvent(event)} />)}
+                {dayEvents.slice(0, 4).map((event) => <EventChip key={`${event.calendarId}-${event.id}`} event={event} color={colorFor(event)} marca={marcaAtividade(event, atividades)} onClick={() => onEvent(event)} onFeito={acaoFeito(event)} />)}
                 {dayEvents.length > 4 && <p className="px-1 text-xs text-muted-foreground">+{dayEvents.length - 4} eventos</p>}
               </div>
             </div>
@@ -304,9 +331,9 @@ function MonthView({ anchor, events, colorFor, onNew, onEvent, atividades, previ
 const eventKey = (event: GoogleCalendarEvent) => `${event.calendarId}-${event.id}`;
 const minutesOfDay = (date: Date, day: Date) => (date.getTime() - startOfDay(day).getTime()) / 60_000;
 
-function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onReschedule, atividades, previa }: {
+function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, acaoFeito, onReschedule, atividades, previa }: {
   anchor: Date; view: "week" | "day"; events: GoogleCalendarEvent[]; colorFor: (event: GoogleCalendarEvent) => string;
-  onNew: (date: Date, end?: Date) => void; onEvent: (event: GoogleCalendarEvent) => void;
+  onNew: (date: Date, end?: Date) => void; onEvent: (event: GoogleCalendarEvent) => void; acaoFeito: AcaoFeito;
   onReschedule: (event: GoogleCalendarEvent, start: Date, end: Date) => Promise<void>;
   atividades: AtividadesPorId;
   previa: PreviaDrop | null;
@@ -346,7 +373,7 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onReschedule
       <div className="sticky top-0 z-[60] grid border-b bg-card" style={{ gridTemplateColumns: `4rem repeat(${days.length}, minmax(110px, 1fr))` }}>
         <div />
         {days.map((day) => <div key={day.toISOString()} className="border-l p-2 text-center"><p className="text-xs uppercase text-muted-foreground">{format(day, "EEE", { locale: ptBR })}</p><p className={cn("mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold", isToday(day) && "bg-primary text-primary-foreground")}>{format(day, "d")}</p></div>)}
-        {allDay.length > 0 && <><div className="border-t p-1 text-right text-[10px] text-muted-foreground">dia todo</div>{days.map((day) => <div key={`all-${day.toISOString()}`} data-agenda-drop="allday" data-agenda-date={format(day, "yyyy-MM-dd")} className="min-h-7 border-l border-t p-1">{allDay.filter((event) => isSameDay(eventStart(event), day)).map((event) => <EventChip key={event.id} event={event} color={colorFor(event)} marca={marcaAtividade(event, atividades)} onClick={() => onEvent(event)} />)}</div>)}</>}
+        {allDay.length > 0 && <><div className="border-t p-1 text-right text-[10px] text-muted-foreground">dia todo</div>{days.map((day) => <div key={`all-${day.toISOString()}`} data-agenda-drop="allday" data-agenda-date={format(day, "yyyy-MM-dd")} className="min-h-7 border-l border-t p-1">{allDay.filter((event) => isSameDay(eventStart(event), day)).map((event) => <EventChip key={event.id} event={event} color={colorFor(event)} marca={marcaAtividade(event, atividades)} onClick={() => onEvent(event)} onFeito={acaoFeito(event)} />)}</div>)}</>}
       </div>
       <div className="relative grid" style={{ gridTemplateColumns: `4rem repeat(${days.length}, minmax(110px, 1fr))` }}>
         <div>{HOURS.map((hour) => <div key={hour} className="h-16 border-b pr-2 text-right text-[10px] text-muted-foreground">{String(hour).padStart(2, "0")}:00</div>)}</div>
@@ -354,7 +381,7 @@ function TimeGrid({ anchor, view, events, colorFor, onNew, onEvent, onReschedule
           const dayEvents = events.filter((event) => !event.start.date && isSameDay(eventStart(event), day));
           const layout = distribuirSobrepostos(dayEvents.map((event) => ({ key: eventKey(event), inicio: minutesOfDay(eventStart(event), day), fim: minutesOfDay(eventEnd(event), day) })));
           return <GridDay key={day.toISOString()} day={day} onNew={onNew} previa={previa && !previa.diaInteiro && isSameDay(previa.inicio, day) ? previa : null}>
-            {dayEvents.map((event) => <TimedEvent key={eventKey(event)} event={event} color={colorFor(event)} position={layout.get(eventKey(event)) || { left: 0, width: 100, z: 1 }} dayIndex={dayIndex} dayCount={days.length} marca={marcaAtividade(event, atividades)} onOpen={onEvent} onReschedule={onReschedule} />)}
+            {dayEvents.map((event) => <TimedEvent key={eventKey(event)} event={event} color={colorFor(event)} position={layout.get(eventKey(event)) || { left: 0, width: 100, z: 1 }} dayIndex={dayIndex} dayCount={days.length} marca={marcaAtividade(event, atividades)} onOpen={onEvent} onFeito={acaoFeito(event)} onReschedule={onReschedule} />)}
           </GridDay>;
         })}
         {todayIndex >= 0 && <div className="pointer-events-none absolute z-[45] border-t-2 border-red-500" style={{ top: nowTop, left: `calc(4rem + ${todayIndex} * (100% - 4rem) / ${days.length})`, width: `calc((100% - 4rem) / ${days.length})` }}><span className="absolute -left-2 -top-1.5 h-3 w-3 rounded-full bg-red-500" /></div>}
@@ -437,10 +464,11 @@ function estiloConvite(color: string, status: StatusConvite | null): { style: Re
 }
 const ROTULO_CONVITE: Record<StatusConvite, string> = { pendente: "Convite: falta responder", talvez: "Convite: você respondeu talvez", recusado: "Convite recusado" };
 
-function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen, onReschedule }: {
+function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen, onFeito, onReschedule }: {
   event: GoogleCalendarEvent; color: string; position: PosicaoEvento; dayIndex: number; dayCount: number;
   marca: { atrasada: boolean } | null;
   onOpen: (event: GoogleCalendarEvent) => void;
+  onFeito?: () => Promise<void>;
   onReschedule: (event: GoogleCalendarEvent, start: Date, end: Date) => Promise<void>;
 }) {
   // dayShift/columnWidth só existem enquanto o evento é arrastado pra outro dia.
@@ -544,7 +572,7 @@ function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen,
   const visual = estiloConvite(color, convite);
 
   return <div role="button" tabIndex={0} title={`${title}\n${horario} · ${duracao}${convite ? `\n${ROTULO_CONVITE[convite]}` : ""}`} onPointerDown={beginMove} onClick={() => { if (!ignoreClick.current) onOpen(event); }} onKeyDown={(key) => { if (key.key === "Enter" || key.key === " ") onOpen(event); }}
-    className={cn("absolute overflow-hidden rounded-md border border-card px-1.5 text-left text-xs leading-tight focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1", minutes < 50 ? "py-0.5" : "py-1", dragging ? "cursor-grabbing opacity-90 shadow-lg" : "cursor-grab", saving && "opacity-80", visual.className)}
+    className={cn("group absolute overflow-hidden rounded-md border border-card px-1.5 text-left text-xs leading-tight focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1", minutes < 50 ? "py-0.5" : "py-1", dragging ? "cursor-grabbing opacity-90 shadow-lg" : "cursor-grab", saving && "opacity-80", visual.className)}
     style={{ top, height: Math.max(20, height - 1), ...horizontal, zIndex: dragging ? 50 : Math.min(position.z, 40), ...visual.style, transform: draft?.dayShift ? `translateX(${draft.dayShift * draft.columnWidth}px)` : undefined }}>
     <div onPointerDown={(pointer) => beginResize("start", pointer)} className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize" aria-label="Arraste para alterar o início" />
     {/* A duração vem primeiro e em negrito: em coluna estreita, o que corta
@@ -560,12 +588,27 @@ function TimedEvent({ event, color, position, dayIndex, dayCount, marca, onOpen,
         {!saving && <p className="whitespace-nowrap text-[11px] tabular-nums opacity-80">{horario}</p>}
       </>}
     {marca?.atrasada && minutes >= 50 && <span className="absolute right-1 top-1 flex items-center gap-0.5 rounded bg-red-600 px-1 text-[10px] font-semibold text-white" title="Atividade atrasada"><AlertTriangle className="h-2.5 w-2.5" />{minutes >= 50 && "Atrasada"}</span>}
+    {onFeito && !dragging && !saving && <BotaoFeito feito={event.colorId === COR_FEITO} onFeito={onFeito} />}
     <div onPointerDown={(pointer) => beginResize("end", pointer)} className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize" aria-label="Arraste para alterar o fim" />
   </div>;
 }
 
-function EventChip({ event, color, marca, onClick }: { event: GoogleCalendarEvent; color: string; marca?: { atrasada: boolean } | null; onClick: () => void }) {
+// Check que aparece ao passar o mouse no evento: "Feito" (pinta de verde) ou,
+// se já está verde, "Reabrir". Não deixa o clique abrir nem arrastar o evento.
+function BotaoFeito({ feito, onFeito }: { feito: boolean; onFeito: () => Promise<void> }) {
+  const [salvando, setSalvando] = useState(false);
+  const rotulo = feito ? "Reabrir (volta para a cor do calendário)" : "Feito (pinta de verde)";
+  return <button type="button" title={rotulo} aria-label={rotulo} disabled={salvando}
+    onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}
+    onClick={(e) => { e.stopPropagation(); setSalvando(true); void onFeito().finally(() => setSalvando(false)); }}
+    className={cn("absolute right-1 top-1/2 z-[1] flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full border border-white/70 shadow transition-opacity focus:opacity-100 group-hover:opacity-100",
+      salvando ? "opacity-100" : "opacity-0", feito ? "bg-white text-[#0b8043]" : "bg-[#0b8043] text-white")}>
+    {salvando ? <Loader2 className="h-3 w-3 animate-spin" /> : feito ? <RotateCcw className="h-3 w-3" /> : <Check className="h-3 w-3" />}
+  </button>;
+}
+
+function EventChip({ event, color, marca, onClick, onFeito }: { event: GoogleCalendarEvent; color: string; marca?: { atrasada: boolean } | null; onClick: () => void; onFeito?: () => Promise<void> }) {
   const convite = statusConvite(event);
   const visual = estiloConvite(color, convite);
-  return <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={convite ? ROTULO_CONVITE[convite] : undefined} className={cn("flex w-full items-center gap-1.5 overflow-hidden rounded px-1.5 py-1 text-left text-[11px] font-medium", visual.className)} style={visual.style}>{convite === "pendente" && <MailQuestion className="h-3 w-3 shrink-0" aria-label="Convite pendente" />}{marca && <ListTodo className="h-3 w-3 shrink-0" />}<span className="truncate">{event.start.dateTime && `${format(eventStart(event), "HH:mm")} `}{event.summary || "Sem titulo"}</span>{marca?.atrasada && <AlertTriangle className="ml-auto h-3 w-3 shrink-0 text-red-200" aria-label="Atrasada" />}</button>;
+  return <div className="group relative"><button onClick={(e) => { e.stopPropagation(); onClick(); }} title={convite ? ROTULO_CONVITE[convite] : undefined} className={cn("flex w-full items-center gap-1.5 overflow-hidden rounded px-1.5 py-1 text-left text-[11px] font-medium", visual.className)} style={visual.style}>{convite === "pendente" && <MailQuestion className="h-3 w-3 shrink-0" aria-label="Convite pendente" />}{marca && <ListTodo className="h-3 w-3 shrink-0" />}<span className="truncate">{event.start.dateTime && `${format(eventStart(event), "HH:mm")} `}{event.summary || "Sem titulo"}</span>{marca?.atrasada && <AlertTriangle className="ml-auto h-3 w-3 shrink-0 text-red-200" aria-label="Atrasada" />}</button>{onFeito && <BotaoFeito feito={event.colorId === COR_FEITO} onFeito={onFeito} />}</div>;
 }
