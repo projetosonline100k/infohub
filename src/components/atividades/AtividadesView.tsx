@@ -62,6 +62,7 @@ import { detectarDiaSemana } from "@/lib/diasSemana";
 import { parseResponsaveis } from "@/lib/responsaveis";
 import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
 import { criarAtividade as criarAtividadeService } from "@/lib/atividades/criarAtividade";
+import { prazoPadrao, responsavelMaisComum } from "@/lib/atividades/padroesNovaTarefa";
 import { onActivityCreated } from "@/lib/desktop/events";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
@@ -222,6 +223,9 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   const [timerFinalizadoId, setTimerFinalizadoId] = useState<string | null>(null);
   // Filtro de responsáveis: conjunto vazio = mostra de todo mundo.
   const [pessoasDisponiveis, setPessoasDisponiveis] = useState<string[]>([]);
+  // Quem mais aparece como responsável nas tarefas do projeto: tarefa nova
+  // já nasce com essa pessoa (ver src/lib/atividades/padroesNovaTarefa.ts).
+  const [responsavelSugerido, setResponsavelSugerido] = useState<string | null>(null);
   const [pessoasSelecionadas, setPessoasSelecionadas] = useState<Set<string>>(new Set());
   const [dataReferencia, setDataReferencia] = useState(new Date());
   const [pastas, setPastas] = useState<Pasta[]>([]);
@@ -518,11 +522,31 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
     setPessoasDisponiveis(Array.from(new Set((data || []).map((m) => m.nome_pessoa))).sort());
   };
 
+  // Só em projeto: na área pessoal a tarefa é de quem criou.
+  const carregarResponsavelSugerido = async () => {
+    setResponsavelSugerido(null);
+    if (!clienteId) return;
+    const { data, error } = await supabase
+      .from("atividades")
+      .select("responsavel_nome")
+      .eq("cliente_id", clienteId)
+      .is("deleted_at", null)
+      .not("responsavel_nome", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(200);
+    if (error) {
+      console.error("Erro ao carregar responsável sugerido:", error);
+      return;
+    }
+    setResponsavelSugerido(responsavelMaisComum(data || []));
+  };
+
   useEffect(() => {
     carregarPastas();
     carregarLixeiraCount();
     carregarColunas();
     carregarPessoas();
+    carregarResponsavelSugerido();
   }, [clienteId]);
 
   const gerarStatusKey = (nome: string) => {
@@ -896,6 +920,19 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   // (nunca cai no catch), então uma tarefa podia falhar em silêncio total:
   // sem toast de sucesso, sem toast de erro, input só voltava vazio. Agora
   // TUDO roda dentro do try, e o toast de erro mostra a mensagem real.
+  // Toda tarefa criada aqui já nasce com prazo e, em projeto, com o
+  // responsável mais comum — o toast mostra o que foi sugerido.
+  const comPadroes = (dataAtividade: string, diaEscolhido: boolean) => ({
+    dataVencimento: prazoPadrao(dataAtividade, diaEscolhido),
+    responsavelNome: responsavelSugerido,
+  });
+  const avisoAdicionada = (padroes: { dataVencimento: string; responsavelNome: string | null }) => {
+    const prazo = format(parseISO(padroes.dataVencimento), "dd/MM");
+    toast.success("Atividade adicionada", {
+      description: `Prazo ${prazo}${padroes.responsavelNome ? ` · ${padroes.responsavelNome}` : ""} (dá pra mudar no cartão)`,
+    });
+  };
+
   const adicionarAtividade = async (dataOverride?: Date) => {
     if (!novaAtividade.trim()) return;
 
@@ -905,6 +942,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
         ? format(dataOverride, "yyyy-MM-dd")
         : format(new Date(), "yyyy-MM-dd");
 
+      const padroes = comPadroes(dataAtividade, !!dataOverride);
       await criarAtividadeService({
         titulo,
         tempoEstimado: tempo,
@@ -914,11 +952,12 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
         statusKey: "backlog",
         concluida: false,
         ordem: atividades.length + 1,
+        ...padroes,
       });
 
       setNovaAtividade("");
       carregarAtividades();
-      toast.success("Atividade adicionada");
+      avisoAdicionada(padroes);
     } catch (error) {
       console.error("Erro ao adicionar atividade:", error);
       toast.error(`Erro ao adicionar atividade: ${error instanceof Error ? error.message : String(error)}`);
@@ -939,6 +978,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
           ? format(addDays(semanaReferenciaKanban.inicio, diaSemana), "yyyy-MM-dd")
           : format(new Date(), "yyyy-MM-dd");
 
+      const padroes = comPadroes(dataAtividade, diaSemana !== null);
       await criarAtividadeService({
         titulo,
         tempoEstimado: tempo,
@@ -948,10 +988,11 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
         ordem: atividades.length + 1,
         statusKey: status,
         concluida: !!coluna?.eh_conclusao,
+        ...padroes,
       });
 
       carregarAtividades();
-      toast.success("Atividade adicionada");
+      avisoAdicionada(padroes);
     } catch (error) {
       console.error("Erro ao adicionar atividade:", error);
       toast.error(`Erro ao adicionar atividade: ${error instanceof Error ? error.message : String(error)}`);
@@ -963,17 +1004,20 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
     if (!titulo?.trim()) return;
 
     try {
+      const dataAtividade = format(date, "yyyy-MM-dd");
+      const padroes = comPadroes(dataAtividade, true);
       await criarAtividadeService({
         titulo,
-        dataAtividade: format(date, "yyyy-MM-dd"),
+        dataAtividade,
         clienteId: clienteId || null,
         pastaId: pastaAtivaId === VISAO_GERAL ? null : pastaAtivaId,
         statusKey: "backlog",
         concluida: false,
         ordem: atividades.length + 1,
+        ...padroes,
       });
       carregarAtividades();
-      toast.success("Atividade adicionada");
+      avisoAdicionada(padroes);
     } catch (error) {
       console.error("Erro ao adicionar atividade:", error);
       toast.error(`Erro ao adicionar atividade: ${error instanceof Error ? error.message : String(error)}`);

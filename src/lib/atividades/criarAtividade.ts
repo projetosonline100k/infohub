@@ -14,6 +14,8 @@ export interface CriarAtividadeInput {
   tempoEstimado?: number | null;
   prioridade?: string;
   tempoDescanso?: number | null;
+  dataVencimento?: string | null;
+  responsavelNome?: string | null;
 }
 
 // Única função de criação de atividade do app inteiro — usada pelo Kanban
@@ -64,6 +66,8 @@ export async function criarAtividade(input: CriarAtividadeInput): Promise<Tables
       tempo_estimado: input.tempoEstimado ?? null,
       prioridade: input.prioridade ?? "media",
       tempo_descanso: input.tempoDescanso ?? null,
+      data_vencimento: input.dataVencimento ?? null,
+      responsavel_nome: input.responsavelNome ?? null,
     })
     .select("*")
     .single();

@@ -8,6 +8,7 @@ import { ResponsavelAvatares } from "./ResponsavelAvatares";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
+import { rotuloFaltando } from "@/lib/atividades/padroesNovaTarefa";
 import { IndicadorAlarme } from "./IndicadorAlarme";
 
 interface ChecklistResumo {
@@ -144,6 +145,13 @@ export const AtividadeItem = ({
             {checklist.concluidas}/{checklist.total}
           </span>
         </div>
+      )}
+
+      {/* Tarefa sem dono/prazo não é cobrada pelo Atlas nem vira "atrasada" */}
+      {!concluida && rotuloFaltando(responsavelNome, dataVencimento) && (
+        <span className="flex-shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+          {rotuloFaltando(responsavelNome, dataVencimento)}
+        </span>
       )}
 
       {/* Responsible */}
