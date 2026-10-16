@@ -85,6 +85,19 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
   - Não tem problema: o gatilho do banco cria a tarefa dela.
   - Vale tirar o `!eh_ia` / `NOT eh_ia` numa sessão do Roy.
 
+## Regra: nunca no perfil errado (pedido do Davi, 15/10/2026)
+
+- **Uma regra só**, a função `dalila_conexao_do_projeto(cliente)` (migração `20261015220000_dalila_instagram_regra_unica`):
+  - vale o Instagram do **próprio projeto**;
+  - a conexão geral da conta (sem projeto, o @eu.davioficial) vale **só para o projeto Davi Queiroz**;
+  - projeto sem Instagram próprio devolve NULL e não cai em perfil nenhum.
+- Quem usa a regra:
+  - o gatilho `carrossel_confere_instagram` (chat geral, `20261015210000`), que barra a programação;
+  - a edge `dalila-publicar` (`conexaoDo`), que não publica, segurança em dobro;
+  - a tela, pela RPC `instagram_do_projeto`, que mostra o @ certo ou o aviso "Este projeto não tem Instagram conectado" e trava o botão, em `ProgramarCarrossel` e `ProgramarLote`.
+- Em 15/10, só o Davi Queiroz (@eu.davioficial) e o Yuri têm Instagram. Matheus Souto, Instalivros, Maria Souto e CORE não têm.
+- Teste: `supabase/tests/dalila_instagram_regra_unica.sql`. Script: `scripts/apply-dalila-instagram-regra-unica-migration.py`. Deploy da edge feito em 15/10.
+
 ## Pendências
 
 - Botão para desmarcar ou remarcar um carrossel já programado (a RPC `desprogramar_carrossel` existe).

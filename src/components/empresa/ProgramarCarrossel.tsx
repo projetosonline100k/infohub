@@ -38,6 +38,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
   const [salvando, setSalvando] = useState(false);
   const [carregando, setCarregando] = useState(false);
   const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
+  const [instagram, setInstagram] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tarefaId) return;
@@ -47,6 +48,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
         .select("id, cliente_id, numero, tema, status, mensagem, legenda, paginas, programado_para")
         .eq("tarefa_data_id", tarefaId).maybeSingle();
       const agenda = c ? await carregarAgenda(c.cliente_id, c.id) : [];
+      setInstagram(c ? await instagramDoProjeto(c.cliente_id) : null);
       setAgenda(agenda);
       const dias = agenda.filter((a) => a.tipo === "carrossel").map((a) => a.dia);
       setOcupados(dias);
@@ -69,7 +71,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
   const naoPublicou = carrossel?.mensagem?.startsWith("Não publicou") ? carrossel.mensagem : null;
 
   const programar = async () => {
-    if (!carrossel || !quando || problema) return;
+    if (!carrossel || !quando || problema || !instagram) return;
     setSalvando(true);
     const { error } = await db.rpc("programar_carrossel", { p_carrossel: carrossel.id, p_quando: quando.toISOString() });
     setSalvando(false);
@@ -116,12 +118,14 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
             </div>
             {diaOcupado && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem um post programado neste dia (o padrão é 1 por dia).</p>}
             {problema && data && <p className="text-xs text-rose-600 dark:text-rose-400">{problema}</p>}
-            <p className="text-xs text-muted-foreground">
-              A Dalila publica sozinha no @eu.davioficial neste dia e hora, mesmo com o Mac desligado. Escolher a data é o seu ok.
-            </p>
+            {instagram ? (
+              <p className="text-xs text-muted-foreground">
+                A Dalila publica sozinha no @{instagram} neste dia e hora, mesmo com o Mac desligado. Escolher a data é o seu ok.
+              </p>
+            ) : <SemInstagram />}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onFechar}>Agora não</Button>
-              <Button onClick={() => void programar()} disabled={!!problema || salvando}>
+              <Button onClick={() => void programar()} disabled={!!problema || salvando || !instagram}>
                 {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {quando && !problema ? `Programar para ${format(quando, "EEE, d MMM 'às' HH:mm", { locale: ptBR })}` : "Programar"}
               </Button>
@@ -130,6 +134,22 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Em qual Instagram a Dalila publica este projeto (regra única do banco,
+// dalila_conexao_do_projeto): o @, ou null se o projeto não tem Instagram
+// próprio. A conta geral só vale para o projeto Davi Queiroz.
+export async function instagramDoProjeto(clienteId: string): Promise<string | null> {
+  const { data } = await db.rpc("instagram_do_projeto", { p_cliente: clienteId });
+  return (data as string | null) ?? null;
+}
+
+export function SemInstagram() {
+  return (
+    <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">
+      Este projeto não tem Instagram conectado. A Dalila só publica no perfil do próprio projeto: conecte o Instagram dele em Automações e volte aqui.
+    </p>
   );
 }
 

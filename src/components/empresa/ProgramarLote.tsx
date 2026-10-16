@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { HORA_PADRAO, instante, sugerirData } from "@/lib/empresa/programacao";
-import { CalendarioPosts, carregarAgenda, type ItemAgenda } from "./ProgramarCarrossel";
+import { CalendarioPosts, SemInstagram, carregarAgenda, instagramDoProjeto, type ItemAgenda } from "./ProgramarCarrossel";
 
 // "Dalila preenche os próximos dias": com vários carrosséis esperando data, a
 // Dalila propõe um por dia, às 10h, nos dias livres; o Davi vê a lista no
@@ -25,6 +25,7 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
   const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(0);
+  const [instagram, setInstagram] = useState<string | null>(null);
 
   const chave = tarefaIds.join(",");   // a lista nova a cada render do pai não refaz a proposta
   useEffect(() => {
@@ -35,6 +36,7 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
       const { data } = await db.from("carrosseis").select("id, numero, tema, paginas, tarefa_data_id")
         .in("tarefa_data_id", ids).order("numero");
       const atual = await carregarAgenda(clienteId);
+      setInstagram(await instagramDoProjeto(clienteId));
       const ocupados = atual.filter((a) => a.tipo === "carrossel").map((a) => a.dia);
       const lista: Proposta[] = [];
       for (const c of (data || []) as { id: string; numero: number | null; tema: string; paginas: string[] | null }[]) {
@@ -85,10 +87,12 @@ export function ProgramarLote({ clienteId, tarefaIds, aberto, onFechar }: {
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">Quer outro dia para algum? Feche e escolha a data dele sozinho em “Escolher data”.</p>
+            {instagram
+              ? <p className="text-xs text-muted-foreground">Vão para o @{instagram}. Quer outro dia para algum? Feche e escolha a data dele sozinho em “Escolher data”.</p>
+              : <SemInstagram />}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onFechar}>Agora não</Button>
-              <Button onClick={() => void confirmar()} disabled={!propostas.length || salvando > 0}>
+              <Button onClick={() => void confirmar()} disabled={!propostas.length || salvando > 0 || !instagram}>
                 {salvando > 0 && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {salvando > 0 ? `Programando ${salvando}/${propostas.length}…` : `Programar ${propostas.length} ${propostas.length === 1 ? "carrossel" : "carrosséis"}`}
               </Button>

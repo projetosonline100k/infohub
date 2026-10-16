@@ -94,13 +94,16 @@ async function converterPaginas(admin: Admin, c: Carrossel) {
 }
 
 // ---------- 2. Publicação ----------
+// Regra única do banco (dalila_conexao_do_projeto, a mesma do gatilho
+// carrossel_confere_instagram): o Instagram do próprio projeto; a conta geral
+// só para o projeto Davi Queiroz. Projeto sem Instagram nunca cai em outro perfil.
 async function conexaoDo(admin: Admin, c: Carrossel): Promise<Conexao | null> {
-  const campos = "ig_user_id, username, access_token, token_expira_em";
-  const { data: doCliente } = await admin.from("instagram_conexoes").select(campos).eq("cliente_id", c.cliente_id).maybeSingle();
-  if (doCliente) return doCliente;
-  const { data: doDono } = await admin.from("instagram_conexoes").select(campos)
-    .eq("user_id", c.user_id).is("cliente_id", null).maybeSingle();
-  return doDono ?? null;
+  const { data: igUserId, error } = await admin.rpc("dalila_conexao_do_projeto", { p_cliente: c.cliente_id });
+  if (error) throw new Error(`não deu para conferir o Instagram do projeto: ${error.message}`);
+  if (!igUserId) return null;
+  const { data } = await admin.from("instagram_conexoes")
+    .select("ig_user_id, username, access_token, token_expira_em").eq("ig_user_id", igUserId).maybeSingle();
+  return data ?? null;
 }
 
 async function tokenAtual(admin: Admin, conexao: Conexao) {
