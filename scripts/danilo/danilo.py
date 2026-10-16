@@ -246,8 +246,28 @@ def transcrever(p):
     """Em outro processo: o modelo do whisper (~2 GB) sai da memória quando
     termina (dentro do serviço ele ficava preso, que roda o dia todo)."""
     with pesado():
-        subprocess.run([sys.executable, str(AQUI / "criar_projeto.py"), str(p), "transcrever"], check=True)
+        r = subprocess.run([sys.executable, str(AQUI / "criar_projeto.py"), str(p), "transcrever"],
+                           stderr=subprocess.PIPE, text=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"falhou ao transcrever: {motivo_do_erro(r.stderr, r.returncode)}")
     return json.loads((Path(p) / "transcricao.json").read_text())
+
+
+def motivo_do_erro(saida, codigo=None):
+    """Da saída de erro de um processo, o que diz o motivo: as linhas que vieram
+    antes do traceback (ex.: o erro do ffmpeg) e a última linha dele (a exceção)."""
+    linhas = [l.strip() for l in (saida or "").splitlines() if l.strip()]
+    if codigo is not None and codigo < 0:
+        # Morto por sinal: no Mac de 8 GB quase sempre é o sistema tirando por falta de memória.
+        linhas.append(f"o processo foi encerrado pelo sistema (sinal {-codigo}; provável falta de memória)")
+    if not linhas:
+        return "o processo parou sem dizer o motivo" + (f" (código {codigo})" if codigo is not None else "")
+    if "Traceback (most recent call last):" in linhas:
+        i = linhas.index("Traceback (most recent call last):")
+        partes = linhas[max(0, i - 2):i] + [linhas[-1]]
+    else:
+        partes = linhas[-3:]
+    return " | ".join(partes)[-400:]
 
 
 def preparar(arquivo, log=print):
@@ -296,9 +316,9 @@ def preparar(arquivo, log=print):
         if musica.exists():
             shutil.copyfile(musica, p / "imagens" / "musica.ogg")
         return id_
-    except Exception:
+    except Exception as erro:
         db("UPDATE public.edicoes_video SET status = 'erro', mensagem = %s WHERE id = %s",
-           ("Danilo não conseguiu preparar o bruto (veja o log do serviço).", id_))
+           (f"Danilo não conseguiu preparar o bruto: {str(erro)[:400]}", id_))
         raise
 
 
