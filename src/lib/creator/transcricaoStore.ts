@@ -52,7 +52,8 @@ async function salvarCapa(userId: string, capa: Resultado["capa"]): Promise<stri
 
 // Headline de um vídeo pela transcrição: a primeira frase (o gancho), curta.
 export function headlineDaTranscricao(texto: string): string {
-  const primeira = texto.trim().split(/(?<=[.!?…])\s+/)[0] ?? texto;
+  // Quebra de linha também fecha a frase: texto da tela vem um quadro por linha.
+  const primeira = texto.trim().split(/(?<=[.!?…])\s+|\n+/)[0] ?? texto;
   return primeira.length > 140 ? `${primeira.slice(0, 137).trimEnd()}…` : primeira;
 }
 
