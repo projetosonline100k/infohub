@@ -31,7 +31,7 @@ import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarReelPelaTarefa, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, ehCoordenador, equipeOfflineDesde, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, ehCoordenador, equipeOfflineDesde, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -106,17 +106,20 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     return () => window.clearInterval(t);
   }, [carregarMelhorias]);
   // Último sinal do ouvinte (equipe de IAs): sem sinal há 3+ min = aviso "sem conexão".
+  // Roy e Danilo têm sinal próprio ('roy', 'danilo'): aviso "parado desde" por funcionário.
   // Na mesma leitura, a última rodada da cobrança do Atlas ("cobranca": quando e o resultado).
   const [ultimoSinal, setUltimoSinal] = useState<string | null>(null);
+  const [sinais, setSinais] = useState<{ servico: string; ultimo_sinal: string }[]>([]);
   const [cobranca, setCobranca] = useState<{ iniciado_em: string | null; detalhe: string | null } | null>(null);
   const [agoraSinal, setAgoraSinal] = useState(() => Date.now());
   useEffect(() => {
     const ler = async () => {
       const { data, error } = await (supabase as unknown as SupabaseClient).from("servicos_sinal")
-        .select("servico, ultimo_sinal, iniciado_em, detalhe").in("servico", ["ouvinte", "cobranca"]);
+        .select("servico, ultimo_sinal, iniciado_em, detalhe").in("servico", ["ouvinte", "cobranca", "roy", "danilo"]);
       if (!error) {
         const linhas = (data || []) as { servico: string; ultimo_sinal: string; iniciado_em: string | null; detalhe: string | null }[];
         setUltimoSinal(linhas.find((l) => l.servico === "ouvinte")?.ultimo_sinal ?? null);
+        setSinais(linhas);
         setCobranca(linhas.find((l) => l.servico === "cobranca") ?? null);
       }
       setAgoraSinal(Date.now());
@@ -126,6 +129,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     return () => window.clearInterval(t);
   }, []);
   const offlineDesde = equipeOfflineDesde(ultimoSinal, agoraSinal);
+  const paradas = iasParadas(sinais, agoraSinal);
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
   // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
@@ -300,6 +304,18 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           </div>
         </div>
       )}
+
+      {paradas.map(({ nome, desde }) => (
+        <div key={nome} className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-semibold text-amber-700 dark:text-amber-300">
+              {nome} parado desde {format(desde, desde.toDateString() === new Date().toDateString() ? "HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
+            </p>
+            <p className="text-muted-foreground">O serviço do {nome} não dá sinal há mais de 3 min: as tarefas dele ficam paradas. Normalmente ele volta sozinho; se o aviso continuar, peça para reiniciar o serviço do {nome}.</p>
+          </div>
+        </div>
+      ))}
 
       {cobranca?.iniciado_em && (
         <p className="-mt-2 flex items-center gap-1.5 truncate text-xs text-muted-foreground" title={cobranca.detalhe ?? undefined}>
