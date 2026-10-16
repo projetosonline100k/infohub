@@ -277,6 +277,18 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
     return { membro: estado.membro, sinal, atual: cs ? textoClientesEsperando(clientesEsperando) : estado.atual?.titulo ?? ia?.atual ?? null };
   });
+  // Arrastou um escritório pela placa (16/10): a fileira ganha a nova ordem; as outras ficam onde estão.
+  const reordenarEscritorios = async (ids: string[]) => {
+    const posicao = new Map(setores.map((s, i) => [s.id, i]));
+    // A fileira arrastada ocupa as mesmas "vagas" de antes na lista geral, só que na ordem nova.
+    const vagas = setores.map((s, i) => (ids.includes(s.id) ? i : -1)).filter((i) => i >= 0);
+    const nova = [...setores];
+    vagas.forEach((vaga, k) => { nova[vaga] = setores[posicao.get(ids[k])!]; });
+    setSetores(nova);
+    const results = await Promise.all(nova.map((s, i) => supabase.from("setores").update({ ordem: i + 1 }).eq("id", s.id)));
+    if (results.some((r) => r.error)) { toast.error("Não consegui salvar a nova ordem dos escritórios"); void carregar(); return; }
+    toast.success("Escritório mudou de lugar");
+  };
   // Cancelar uma entrega: pergunta antes e recarrega.
   const cancelar = async (oQue: string, acao: () => Promise<void>) => {
     if (!(await confirmar(`Cancelar ${oQue}? Sai da lista e não segue; a tarefa vai pra Lixeira (dá pra recuperar).`, { botao: "Cancelar entrega", destrutivo: true }))) return;
@@ -397,6 +409,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         ) : (
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
           <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
+            onReordenar={(ids) => void reordenarEscritorios(ids)}
             tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
             setores={setores.map((setor) => {
               const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);

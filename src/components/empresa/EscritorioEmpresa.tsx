@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Sinal } from "@/lib/empresa/visaoGeral";
 import { BonecoMesa, ESTILO, cabeloDe, cabeloTras, visualDe, type Visual } from "./BonecoMesa";
@@ -217,10 +217,14 @@ function MolduraTv({ x, y, w, h, chaoY }: { x: number; y: number; w: number; h: 
 // reunião e o café; os outros setores embaixo, na frente, lado a lado
 // (divisórias de vidro) com a copa no canto. Quem está livre anda até o
 // descanso da própria fileira e volta.
-export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite, tv }: {
+export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite, tv, onReordenar }: {
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean;
   tv?: React.ReactNode;   // o que passa na TV (TelaTv)
+  // Arrastar um escritório pela placa (16/10, "igual The Sims"): nova ordem dos ids daquela fileira.
+  onReordenar?: (idsDaFileira: string[]) => void;
 }) {
+  const caixa = useRef<HTMLDivElement>(null);
+  const [arraste, setArraste] = useState<{ id: string; r: number; x: number; y: number; destino: number } | null>(null);
   const [noiteAgora, setNoite] = useState(ehNoite);
   const noite = forcarNoite ?? noiteAgora;
   useEffect(() => { const t = window.setInterval(() => setNoite(ehNoite()), 60_000); return () => window.clearInterval(t); }, []);
@@ -270,12 +274,59 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     if (escolha === "copa" && fileiras.length > 1) return { x: xDescanso - 46 + (k % 3) * 16, y: chao(1) };
     return { x: xDescanso - 26 + (k % 3) * 14, y: chao(0) };
   };
+  // Arrastar a placa: acompanha o mouse e mostra onde o escritório vai entrar na fileira.
+  const xNoDesenho = (clientX: number) => {
+    const r = caixa.current?.getBoundingClientRect();
+    return r ? ((clientX - r.left) / r.width) * LARGURA : 0;
+  };
+  const destinoNaFileira = (r: number, x: number) => {
+    const daFileira = zonas.filter((z) => z.r === r);
+    const i = daFileira.findIndex((z) => x < z.x0 + z.largura / 2);
+    return i === -1 ? daFileira.length : i;
+  };
+  const comecarArraste = (e: React.PointerEvent, id: string, r: number) => {
+    if (!onReordenar || e.button !== 0) return;
+    e.preventDefault();
+    const caixaR = caixa.current?.getBoundingClientRect();
+    if (!caixaR) return;
+    const inicio = { x: e.clientX, y: e.clientY };
+    let ativo = false;
+    const mover = (ev: PointerEvent) => {
+      if (!ativo && Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y) < 6) return;   // clique, não arraste
+      ativo = true;
+      setArraste({ id, r, x: ev.clientX - caixaR.left, y: ev.clientY - caixaR.top, destino: destinoNaFileira(r, xNoDesenho(ev.clientX)) });
+    };
+    const soltar = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      setArraste(null);
+      if (!ativo) return;
+      const ids = zonas.filter((z) => z.r === r).map((z) => z.setor.id);
+      const de = ids.indexOf(id);
+      let para = destinoNaFileira(r, xNoDesenho(ev.clientX));
+      if (para > de) para -= 1;
+      if (para === de) return;
+      ids.splice(de, 1);
+      ids.splice(para, 0, id);
+      onReordenar(ids);
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  };
+  // Linha onde o escritório arrastado vai entrar.
+  const linhaDestino = arraste ? (() => {
+    const daFileira = zonas.filter((z) => z.r === arraste.r);
+    const z = daFileira[arraste.destino];
+    const ult = daFileira[daFileira.length - 1];
+    return { x: z ? z.x0 - FOLGA_SETOR / 2 : ult.x0 + ult.largura + FOLGA_SETOR / 2, y: daFileira[0].yMesa };
+  })() : null;
+
   const pctX = (x: number) => `${(x / LARGURA) * 100}%`;
   const pctY = (y: number) => `${(y / ALTURA_TOTAL) * 100}%`;
 
   return (
     <div className="w-full overflow-x-auto overscroll-x-contain rounded-xl">
-      <div className="esc relative min-w-[820px] overflow-hidden rounded-xl border border-black/5" style={{ aspectRatio: `${LARGURA} / ${ALTURA_TOTAL}` }}>
+      <div ref={caixa} className={cn("esc relative min-w-[820px] overflow-hidden rounded-xl border border-black/5", arraste && "cursor-grabbing select-none")} style={{ aspectRatio: `${LARGURA} / ${ALTURA_TOTAL}` }}>
         <svg viewBox={`0 0 ${LARGURA} ${ALTURA_TOTAL}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
           <style>{ESTILO + ESTILO_SALA}</style>
           <defs>
@@ -357,15 +408,37 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
           <div className="absolute" style={{ left: pctX(tvGeo.x - tvGeo.w / 2), top: pctY(tvGeo.y), width: pctX(tvGeo.w), height: pctY(tvGeo.h) }}>{tv}</div>
         )}
 
-        {/* Placas dos setores */}
+        {/* Onde o escritório arrastado vai entrar */}
+        {linhaDestino && (
+          <div className="pointer-events-none absolute z-20 w-1.5 -translate-x-1/2 rounded-full bg-primary shadow-[0_0_12px_hsl(var(--primary))]"
+            style={{ left: pctX(linhaDestino.x), top: pctY(linhaDestino.y - 50), height: pctY(170) }} />
+        )}
+        {/* Placas dos setores: segurar e arrastar muda a ordem dos escritórios na fileira */}
         {zonas.map(({ setor, x0, yMesa, r }) => (
-          <div key={setor.id} className="pointer-events-none absolute flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm"
+          <div key={setor.id} onPointerDown={(e) => comecarArraste(e, setor.id, r)}
+            title={onReordenar ? "Segure e arraste para mudar o escritório de lugar" : undefined}
+            className={cn("absolute flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm",
+              onReordenar ? "cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-primary/40" : "pointer-events-none",
+              arraste?.id === setor.id && "opacity-40")}
             style={{ left: pctX(x0 + 8), top: r === 0 ? "4%" : pctY(yMesa + 104) }}>
             <span className="h-2.5 w-2.5 rounded-sm" style={{ background: setor.corPlaca }} />
             <span className="text-[11px] font-bold text-slate-800">{setor.nome}</span>
             <span className="text-[10px] text-slate-500">{setor.tarefas} {setor.tarefas === 1 ? "tarefa" : "tarefas"}{setor.atrasadas > 0 && <b className="text-rose-500"> · {setor.atrasadas} atrasada{setor.atrasadas > 1 ? "s" : ""}</b>}</span>
           </div>
         ))}
+
+        {/* A placa "na mão" enquanto arrasta */}
+        {arraste && (() => {
+          const s = setores.find((x) => x.id === arraste.id);
+          return s ? (
+            <div className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-1/2 rotate-2 items-center gap-1.5 rounded-md bg-white px-2.5 py-1.5 shadow-xl ring-2 ring-primary"
+              style={{ left: arraste.x, top: arraste.y }}>
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.corPlaca }} />
+              <span className="text-[12px] font-bold text-slate-800">{s.nome}</span>
+              <span className="text-[10px] text-slate-500">{s.pessoas.length} {s.pessoas.length === 1 ? "pessoa" : "pessoas"}</span>
+            </div>
+          ) : null;
+        })()}
 
         {/* Balões, nomes e o clique de cada mesa */}
         {mesas.map(({ p, x, yMesa }) => (
