@@ -15,6 +15,7 @@ import { FilaPessoa } from "./FilaPessoa";
 import { EscritorioEmpresa } from "./EscritorioEmpresa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
+import { alertasDoWhatsapp, type AlertaShirley, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
@@ -75,6 +76,12 @@ const quandoPublica = (iso: string) => {
   return `${format(d, "EEE, d MMM", { locale: ptBR })} às ${hora}`;
 };
 const dataCurta = (iso: string) => format(new Date(`${iso.slice(0, 10)}T12:00:00`), "EEE, d MMM", { locale: ptBR });
+
+// CS: a Shirley (ou quem tiver "sucesso do cliente"/"CS" na função).
+const ehCs = (m: { nome: string; funcao?: string | null; eh_ia?: boolean }) =>
+  m.nome.trim().toLowerCase() === "shirley" || /sucesso do cliente|\bcs\b/i.test(m.funcao ?? "");
+const textoClientesEsperando = (xs: AlertaShirley[]) =>
+  `${xs.length} cliente${xs.length > 1 ? "s" : ""} esperando resposta: ${xs.slice(0, 3).map((x) => x.nome.split(" ")[0]).join(", ")}${xs.length > 3 ? "…" : ""}`;
 
 export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   clienteId: string;
@@ -138,6 +145,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [reelsProgramados, setReelsProgramados] = useState<ReelProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
   const [publicadosDalila, setPublicadosDalila] = useState(0);
+  // CS (Shirley): só fica relaxada quando não há cliente esperando resposta no WhatsApp (16/10:
+  // "a obrigação dela é me fazer ter uma boa conexão com o cliente").
+  const [clientesEsperando, setClientesEsperando] = useState<AlertaShirley[]>([]);
   // O Roy fez uma versão nova enquanto o Davi revisa (conversa ao lado): troca pelo carrossel novo.
   // Só quando muda a versão ou o status, para não apagar o que ele está editando na tela.
   useEffect(() => {
@@ -201,6 +211,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       db.from("reels").select("id", { count: "exact", head: true }).eq("cliente_id", clienteId).eq("status", "publicado"),
     ]);
     setPublicadosDalila((carPub ?? 0) + (reelPub ?? 0));
+    const { data: convs } = await supabase.rpc("whatsapp_conversas");
+    setClientesEsperando(convs ? alertasDoWhatsapp(convs as unknown as ConversaResumo[], new Date()) : []);
     setSetores((s.data || []) as SetorResumo[]);
     registrarVisuais((m.data || []) as { nome: string; visual: Visual | null }[]);   // aparência escolhida no cadastro
     setMembros((m.data || []) as MembroResumo[]);
@@ -261,8 +273,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const pessoasChat = estados.map((estado) => {
     const ia = trabalhoIa.get(estado.membro.id);
     const coordenador = ehCoordenador(estado.membro);
-    const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
-    return { membro: estado.membro, sinal, atual: estado.atual?.titulo ?? ia?.atual ?? null };
+    const cs = ehCs(estado.membro) && clientesEsperando.length > 0;
+    const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+    return { membro: estado.membro, sinal, atual: cs ? textoClientesEsperando(clientesEsperando) : estado.atual?.titulo ?? ia?.atual ?? null };
   });
   // Cancelar uma entrega: pergunta antes e recarrega.
   const cancelar = async (oQue: string, acao: () => Promise<void>) => {
@@ -511,8 +524,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                   const ia = trabalhoIa.get(membro.id);
                   // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
                   const coordenador = ehCoordenador(membro);
-                  const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
+                  const cs = ehCs(membro) && clientesEsperando.length > 0;
+                  const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
                   const balao = coordenador ? "Coordenando a operação"
+                    : cs ? textoClientesEsperando(clientesEsperando)
                     : ia?.problema ? "Parou com problema"
                     : ia?.esperando ? `${ia.esperando} esperando sua revisão`
                     : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
@@ -520,7 +535,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                     : atual?.titulo ?? ia?.atual ?? null;
                   return {
                     id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
-                    balao, tarefas: n, atrasadas: atr, clicavel: !coordenador,
+                    balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
                   };
                 }),
               };
