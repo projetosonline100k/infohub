@@ -41,6 +41,14 @@ export function segundosEsperando(mensagens: MensagemBriefing[], agora = Date.no
   return Math.max(0, Math.round((agora - new Date(mensagens[mensagens.length - 1].criada_em).getTime()) / 1000));
 }
 
+// Há quanto tempo está nisso, curto para o chat: "menos de 1 min", "6 min", "1 h 05 min".
+export function duracaoCurta(segundos: number): string {
+  const min = Math.floor(segundos / 60);
+  if (min < 1) return "menos de 1 min";
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, "0")} min`;
+}
+
 // A descrição da tarefa leva o combinado e a conversa inteira, para quem for
 // fazer (IA ou pessoa) não depender de memória.
 export function descricaoDaTarefa(p: Proposta, mensagens: MensagemBriefing[], nomeFuncionario: string): string {

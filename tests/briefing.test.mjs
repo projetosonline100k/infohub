@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/briefing.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { esperandoResposta, segundosEsperando, descricaoDaTarefa, prazoValido } =
+const { esperandoResposta, segundosEsperando, duracaoCurta, descricaoDaTarefa, prazoValido } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const msg = (papel, texto, status = null, criada_em = '2026-10-14T15:00:00Z') => ({ id: texto, papel, texto, status, criada_em });
@@ -17,6 +17,14 @@ test('esperando o funcionário só quando a última é do Davi sem resposta', ()
   assert.equal(esperandoResposta([msg('davi', 'oi', 'respondida'), msg('funcionario', 'entendi')]), false);
   assert.equal(segundosEsperando([msg('davi', 'oi', 'enviada')], Date.parse('2026-10-14T15:02:00Z')), 120);
   assert.equal(segundosEsperando([msg('funcionario', 'x')], Date.parse('2026-10-14T15:02:00Z')), 0);
+});
+
+test('há quanto tempo a IA está respondendo, curto', () => {
+  assert.equal(duracaoCurta(0), 'menos de 1 min');
+  assert.equal(duracaoCurta(59), 'menos de 1 min');
+  assert.equal(duracaoCurta(6 * 60 + 30), '6 min');
+  assert.equal(duracaoCurta(34 * 60), '34 min');
+  assert.equal(duracaoCurta(65 * 60), '1 h 05 min');
 });
 
 test('descrição leva o combinado e a conversa', () => {

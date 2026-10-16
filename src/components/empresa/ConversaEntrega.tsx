@@ -7,7 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { esperandoResposta, segundosEsperando, type MensagemBriefing } from "@/lib/empresa/briefing";
+import { duracaoCurta, esperandoResposta, segundosEsperando, type MensagemBriefing } from "@/lib/empresa/briefing";
 import { cn } from "@/lib/utils";
 import { TextoMensagem } from "./BriefingTarefa";
 import { CabecaBoneco } from "./BonecoMesa";
@@ -141,6 +141,8 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   };
 
   const esperou = segundosEsperando(mensagens, agora);
+  // 'lida' = o ouvinte já pegou a mensagem: está trabalhando, não é ouvinte desligado.
+  const pegou = mensagens[mensagens.length - 1]?.status === "lida";
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-lg border bg-card">
@@ -192,9 +194,9 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
         {esperando && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {fazendo ? `${nome}: ${fazendo}…`
-              : esperou > 180 && !emGrupo ? "Ninguém respondeu ainda. O ouvinte do Atlas está ligado neste Mac?"
-              : emGrupo ? `${[...participantes.map((p) => nomeDe(p)), nome].join(", ")} lendo e respondendo, um de cada vez…` : `${nome} está lendo…`}
+            {fazendo ? `${nome}: ${fazendo} · ${duracaoCurta(esperou)}`
+              : esperou > 180 && !emGrupo && !pegou ? "Ninguém respondeu ainda. O ouvinte do Atlas está ligado neste Mac?"
+              : `${emGrupo ? `${[...participantes.map((p) => nomeDe(p)), nome].join(", ")} lendo e respondendo, um de cada vez…` : `${nome} está lendo…`}${esperou >= 60 ? ` · ${duracaoCurta(esperou)}` : ""}`}
           </p>
         )}
         <div ref={fimRef} />
