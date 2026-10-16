@@ -320,23 +320,8 @@ export default function ClienteDetalhe() {
             </div>
 
             <div className="space-y-1">
-              {abasPrincipais.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setAbaAtiva(item.id)}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    abaAtiva === item.id || (item.id === "documentos" && abaAtiva === "pesquisa")
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-
-              {/* 16/10: sem o grupo "Conteúdo" (que abria e fechava): Escritório, Creator, Cronograma… ficam direto no menu. */}
-              {pode("conteudo") && abasConteudo.map((item) => (
+              {/* 16/10: Escritório em primeiro, acima de Atividades (sem o antigo grupo "Conteúdo"). */}
+              {pode("conteudo") && abasConteudo.filter((item) => item.id === "visao-geral").map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -354,6 +339,41 @@ export default function ClienteDetalhe() {
                   {item.label}
                 </button>
               ))}
+              {abasPrincipais.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setAbaAtiva(item.id)}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    abaAtiva === item.id || (item.id === "documentos" && abaAtiva === "pesquisa")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+
+              {/* Fonte de conhecimento e Quiz, depois de Atividades e Documentos. */}
+              {pode("conteudo") && abasConteudo.filter((item) => item.id !== "visao-geral").map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setAbaAtiva("conteudo");
+                    setSubAbaConteudo(item.id);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "visao-geral" && GUIAS_CREATOR.includes(subAbaConteudo))))
+                      || (item.id === "visao-geral" && abaAtiva === "informacoes")
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+
             </div>
           </>
         )}
