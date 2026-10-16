@@ -5,10 +5,14 @@ import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 // gira em volta da orbe, com o rosto da pessoa da equipe e a cor do motivo —
 // amarelo = WhatsApp esperando (Shirley), vermelho pulsando = urgente (cliente
 // insatisfeito, erro), verde = entrega para revisar, azul = respondeu no chat.
-// Clicar numa lua faz a ação dela (abrir o WhatsApp, a entrega, a conversa).
+// Clicar numa lua mostra o que é e por quê (balão), com o botão da ação.
 // Cabe na janela da orbe (140×140): raio 52px em volta da face de 64px.
 export type CorLua = "whatsapp" | "urgente" | "revisar" | "resposta";
-export interface Lua { id: string; nome: string; ehIa: boolean; cor: CorLua; dica: string; onClick: () => void }
+// Clicar na lua mostra o que é e por que ela apareceu (16/10), com o botão da ação.
+export interface Lua {
+  id: string; nome: string; ehIa: boolean; cor: CorLua; dica: string; onClick: () => void;
+  titulo: string; porque: string; trecho?: string; acaoRotulo: string; acao: () => void;
+}
 
 const ANEL: Record<CorLua, string> = {
   whatsapp: "ring-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.85)]",

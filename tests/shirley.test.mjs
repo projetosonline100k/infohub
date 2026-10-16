@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/whatsapp/shirley.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo } =
+const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo, ehSoConfirmacao } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const agora = new Date(2026, 9, 16, 15, 0);
@@ -57,4 +57,10 @@ test('grupo de cliente da Core conta (com o nome do cliente); outros grupos não
   assert.deepEqual(r.map((x) => [x.chatId, x.nome]), [['g1', 'Isabel']]);
   assert.equal(clienteDoGrupo('Royal Defense | Core Audience'), 'Royal Defense');
   assert.equal(clienteDoGrupo('Dra Helia - core Experience '), 'Dra Helia');
+});
+
+test('"Agendado", "ok", "obrigado", 👍 não cobram resposta', () => {
+  for (const t of ['Agendado', 'ok!', 'Obrigada Davi', '👍', 'valeu', 'tá bom']) assert.ok(ehSoConfirmacao(t), t);
+  for (const t of ['ok, mas e a aula 3?', 'agendado para quando?', 'oi']) assert.ok(!ehSoConfirmacao(t), t);
+  assert.equal(alertasDoWhatsapp([conv({ id: 'x', ultima_texto: 'Agendado', ultima_em: antes(300) })], agora).length, 0);
 });

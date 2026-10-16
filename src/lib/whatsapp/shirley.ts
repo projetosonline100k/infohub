@@ -37,6 +37,14 @@ export function clienteDoGrupo(nome: string): string {
 const conta = (c: ConversaResumo) => !c.ultima_de_mim && (!c.eh_grupo || ehGrupoDeCliente(c.chat_nome));
 const nomeDe = (c: ConversaResumo) => (c.eh_grupo && c.chat_nome ? clienteDoGrupo(c.chat_nome) : c.chat_nome || c.ultima_autor || "Cliente");
 
+/** Só um "ok/agendado/obrigado/👍": a conversa acabou, não precisa responder (16/10: Ana Paula "Agendado"). */
+export function ehSoConfirmacao(texto: string | null | undefined): boolean {
+  const t = (texto ?? "").trim().toLowerCase().replace(/[!.,;:\s]+$/u, "");
+  if (!t) return false;
+  if (/^[\p{Extended_Pictographic}\u200d\ufe0f\s]+$/u.test(t)) return true;
+  return /^(ok(ay)?|ok obrigad[oa]|blz|beleza|show( de bola)?|top|perfeito|agendado|combinado|fechado|certo|certinho|obrigad[oa]( davi)?|muito obrigad[oa]|valeu|vlw|massa|am[eé]m|kk+|ha(ha)+|entendi|t[aá] bom|tudo certo|maravilha|[oó]timo|boa)$/.test(t);
+}
+
 export function pareceInsatisfeito(texto: string | null | undefined): boolean {
   return !!texto && INSATISFEITO.test(texto);
 }
@@ -62,7 +70,7 @@ export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, espe
     const trecho = (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
     const nome = nomeDe(c);
     if (pareceInsatisfeito(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "insatisfeito", minutos, trecho, ultimaEm: c.ultima_em });
-    else if (minutos >= esperaMin) lista.push({ chatId: c.chat_id, nome, motivo: "esperando", minutos, trecho, ultimaEm: c.ultima_em });
+    else if (minutos >= esperaMin && !ehSoConfirmacao(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "esperando", minutos, trecho, ultimaEm: c.ultima_em });
   }
   return lista.sort((a, b) => (a.motivo === b.motivo ? b.minutos - a.minutos : a.motivo === "insatisfeito" ? -1 : 1));
 }

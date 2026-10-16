@@ -54,6 +54,7 @@ import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
 import { OrbitaAtlas, type Lua } from "./OrbitaAtlas";
+import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
 import { tempoEsperando } from "@/lib/whatsapp/shirley";
 
@@ -723,6 +724,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const paraRevisar = useParaRevisar(user?.id, variant === "window");
   // Shirley (CS): "Davi!! olha o WhatsApp!!" — cliente insatisfeito ou esperando, e cobra de novo (16/10).
   const shirley = useShirley(user?.id, variant === "window");
+  // Lua clicada: mostra o que é e por que apareceu (16/10: "ao clicar nela, me mostre o que é").
+  const [luaAberta, setLuaAberta] = useState<Lua | null>(null);
   // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
   const estadoVoz = useAssistantVoz(variant === "window" ? user?.id : undefined);
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
@@ -1112,7 +1115,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || !!luaAberta || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1307,6 +1310,21 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       onFalar={() => void handleCobrancaFalar()}
       onOutraCoisa={() => void handleCobrancaOutraCoisa()}
     />
+  ) : luaAberta ? (
+    <JarvisNotificationCard
+      titulo={luaAberta.titulo}
+      tone={luaAberta.cor === "revisar" ? "success" : "info"}
+      acoes={[
+        { label: luaAberta.acaoRotulo, onClick: () => { const l = luaAberta; setLuaAberta(null); setLuasVistas((v) => [...v, l.id]); l.acao(); }, variant: "default" },
+        { label: "Fechar", onClick: () => setLuaAberta(null), variant: "outline" },
+      ]}
+    >
+      <span className="flex items-center gap-2">
+        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-slate-900"><CabecaBoneco nome={luaAberta.nome} ehIa={luaAberta.ehIa} className="h-full w-full" /></span>
+        <span className="text-[11px] font-semibold text-foreground">{luaAberta.porque}</span>
+      </span>
+      {luaAberta.trecho && <span className="mt-1 line-clamp-3 block">“{luaAberta.trecho}”</span>}
+    </JarvisNotificationCard>
   ) : shirley.atual ? (
     <JarvisNotificationCard
       titulo={shirley.atual.motivo === "insatisfeito"
@@ -1321,7 +1339,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
         { label: shirley.atual.outros ? `Daqui a 30 min (+${shirley.atual.outros})` : "Daqui a 30 min", onClick: () => shirley.adiar(), variant: "outline" },
       ]}
     >
-      <span className="block text-[11px] font-semibold text-foreground">Shirley (CS) · {shirley.atual.motivo === "insatisfeito" ? `${shirley.atual.nome} pode estar insatisfeito` : `há ${tempoEsperando(shirley.atual.minutos)} sem resposta`}</span>
+      <span className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
+        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-slate-900"><CabecaBoneco nome="Shirley" ehIa className="h-full w-full" /></span>
+        Shirley (CS) · {shirley.atual.motivo === "insatisfeito" ? `${shirley.atual.nome} pode estar insatisfeito` : `há ${tempoEsperando(shirley.atual.minutos)} sem resposta`}</span>
       {shirley.atual.trecho && <span className="line-clamp-2">“{shirley.atual.trecho}”</span>}
     </JarvisNotificationCard>
   ) : paraRevisar.atual ? (
@@ -1460,17 +1480,25 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const recente = (quando: string) => Date.now() - new Date(quando).getTime() < 20 * 60_000;
   const luas: Lua[] = ([
     ...shirley.novas.map((w): Lua => ({
-      id: `w-${w.chatId}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
-      dica: `Shirley · WhatsApp: ${w.nome} ${w.motivo === "insatisfeito" ? "pode estar insatisfeito" : `há ${tempoEsperando(w.minutos)} sem resposta`}`,
-      onClick: () => { setLuasVistas((v) => [...v, `w-${w.chatId}-${w.ultimaEm}`]); setAba("whatsapp"); void abrirPainel(); },
-    })).map((l, i) => ({ ...l, id: `${l.id}-${shirley.novas[i].ultimaEm}` })),
+      id: `w-${w.chatId}-${w.ultimaEm}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
+      dica: `Shirley · WhatsApp: ${w.nome}`,
+      titulo: w.motivo === "insatisfeito" ? `🚨 ${w.nome} pode estar insatisfeito` : `📱 ${w.nome} mandou mensagem`,
+      porque: `Shirley (CS) · WhatsApp, há ${tempoEsperando(Math.max(1, w.minutos))}`,
+      trecho: w.trecho, acaoRotulo: "Abrir WhatsApp",
+      acao: () => { setAba("whatsapp"); void abrirPainel(); },
+      onClick: () => {},
+    })),
     ...[...paraRevisar.adiados, ...(paraRevisar.atual ? [paraRevisar.atual] : [])].filter((a) => recente(a.quando)).map((a): Lua => ({
       id: `r-${a.id}`, nome: quemDoAviso(a), ehIa: true,
       cor: a.tipo === "erro" ? "urgente" : a.tipo === "resposta" ? "resposta" : "revisar",
       dica: `${a.titulo}${a.detalhe ? ` · ${a.detalhe}` : ""}`,
-      onClick: () => { setLuasVistas((v) => [...v, `r-${a.id}`]); abrirAviso(a); },
+      titulo: `${a.tipo === "resposta" ? "💬" : a.tipo === "erro" ? "⚠️" : "📬"} ${a.titulo}`,
+      porque: [quemDoAviso(a), a.projeto].filter(Boolean).join(" · "),
+      trecho: a.detalhe, acaoRotulo: a.tipo === "resposta" ? "Abrir conversa" : "Revisar agora",
+      acao: () => abrirAviso(a),
+      onClick: () => {},
     })),
-  ] as Lua[]).filter((l) => !luasVistas.includes(l.id));
+  ] as Lua[]).filter((l) => !luasVistas.includes(l.id)).map((l) => ({ ...l, onClick: () => setLuaAberta(l) }));
 
   const alinhamentoWrapper = variant !== "window" ? "" : janelaModo === "orb" ? "items-center justify-center" : "items-end justify-end gap-2 p-6";
 
