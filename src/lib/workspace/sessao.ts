@@ -3,13 +3,13 @@ import type { WorkspaceTab } from "@/components/workspace/WorkspaceTabs";
 
 // Reabrir o app do jeito que estava (pedido do Davi): as guias de cima, a
 // ativa, a tela dividida e em que página cada guia estava. Só a janela
-// principal do app do Mac guarda e restaura — guias destacadas e o Jarvis
+// principal do app do Mac guarda e restaura — guias destacadas e o Atlas
 // têm a própria árvore e não podem sobrescrever a sessão dela.
 export interface SessaoWorkspace { tabs: WorkspaceTab[]; activeId: string; divisao: string[] | null; larguras: number[] }
 const CHAVE = "workspace:sessao";
 
 // Rótulo da janela no Tauri; sem ele, decide pelo caminho com que a janela nasceu
-// (a principal nasce em "/", as destacadas na rota da guia, o Jarvis em /jarvis).
+// (a principal nasce em "/", as destacadas na rota da guia, o Atlas em /jarvis).
 const caminhoDeNascimento = typeof window !== "undefined" ? window.location.pathname : "";
 export function ehJanelaPrincipal(): boolean {
   if (!isDesktop()) return false;

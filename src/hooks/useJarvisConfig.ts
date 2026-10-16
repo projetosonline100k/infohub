@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 
-// Preferências do Jarvis — som (item 7) + privacidade do monitoramento de
+// Preferências do Atlas — som (item 7) + privacidade do monitoramento de
 // foco (item 3, rodada 3) — uma linha por usuário em jarvis_configuracoes,
 // com Realtime pra refletir entre janelas (main/jarvis no desktop) sem F5.
 // As 3 flags de privacidade nascem desligadas por padrão (opt-in, recurso
-// sensível) — ver Administração → Jarvis → Privacidade.
+// sensível) — ver Administração → Atlas → Privacidade.
 export function useJarvisConfig() {
   const { user } = useAuth();
   const [somAtivado, setSomAtivadoState] = useState(true);

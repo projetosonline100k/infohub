@@ -5,7 +5,7 @@ const PREFIXO = "infopro:historico:";
 
 // O localStorage tem ~5 MB pro app inteiro. Um mapa mental com 15 passos de
 // desfazer chegou a ocupar 4 MB e lotou tudo: aí nada mais salvava (voz do
-// Jarvis, alfinete, tamanho do painel…). Limites: por documento e no total
+// Atlas, alfinete, tamanho do painel…). Limites: por documento e no total
 // dos históricos; o que passa é descartado do mais antigo pro mais novo.
 const MAX_POR_HISTORICO = 400_000;
 const MAX_TOTAL_HISTORICOS = 1_500_000;

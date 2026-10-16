@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { isDesktop } from "@/lib/platform";
 
-// A janela nativa do Jarvis é um retângulo transparente maior que o que se vê
+// A janela nativa do Atlas é um retângulo transparente maior que o que se vê
 // (folga em volta da orbe, espaço ao lado da orbe embaixo do painel, área do
 // balão). Sem isto, essa parte invisível "segura" os cliques e não dá pra
 // clicar no que está atrás dela.

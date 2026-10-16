@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { Sinal } from "@/lib/empresa/visaoGeral";
+import { ehNomeCoordenador } from "@/lib/empresa/visaoGeral";
 
 // Mapa da operação: cada pessoa sentada na mesa dela, no estilo do escritório
 // do briefing do Davi. O boneco reage ao sinal:
@@ -7,7 +8,7 @@ import type { Sinal } from "@/lib/empresa/visaoGeral";
 //   parado      → dormindo (cabeça caída, olhos fechados, respirando, "Z z z")
 //   esperando   → acenando com "!" pulando (precisa do Davi)
 //   problema    → mão na cabeça, tremendo, "!" vermelho
-// O Jarvis é um robô (olhos ciano da orbe) flutuando enquanto coordena.
+// O Atlas é um robô (olhos ciano da orbe) flutuando enquanto coordena.
 // Tudo em SVG + CSS: leve, sem imagem externa, e para em "reduzir movimento".
 
 type Cabelo = "curto" | "cacheado" | "longo" | "raspado";
@@ -247,7 +248,7 @@ export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, classNam
   // Dentro de outro SVG (cena do escritório): posição e tamanho do quadro.
   x?: number; y?: number; width?: number; height?: number;
 }) {
-  const robo = ehIa && nome.trim().toLowerCase() === "jarvis";
+  const robo = ehIa && ehNomeCoordenador(nome);
   if (vazio) return <svg viewBox="8 6 104 92" x={x} y={y} width={width} height={height} className={className}><MesaVazia /></svg>;
   return (
     <svg viewBox="8 6 104 92" x={x} y={y} width={width} height={height} className={`bnc ${className ?? ""}`} role="img" aria-label={`${nome}: ${ROTULO[sinal]}`}>
@@ -262,7 +263,7 @@ const ROTULO: Record<Sinal, string> = { trabalhando: "trabalhando", parado: "par
 
 // Só a cabeça do boneco (lista da equipe / chat).
 export function CabecaBoneco({ nome, ehIa, className }: { nome: string; ehIa: boolean; className?: string }) {
-  if (ehIa && nome.trim().toLowerCase() === "jarvis") {
+  if (ehIa && ehNomeCoordenador(nome)) {
     return (
       <svg viewBox="40 16 40 34" className={className} aria-hidden="true">
         <rect x="44" y="20" width="32" height="26" rx="12" fill="#0f172a" stroke="#22d3ee" strokeWidth="1.4" />

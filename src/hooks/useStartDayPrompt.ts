@@ -10,7 +10,7 @@ const CHAVE_STORAGE = (dataStr: string) => `jarvis-comecar-dia:${dataStr}`;
 // useDailyPlan e passado aqui — evita uma segunda consulta em paralelo);
 // enquanto não existe, um dismiss manual (localStorage, com data) evita
 // reaparecer repetidamente na mesma sessão. Reconfere ao ganhar foco —
-// necessário no desktop, onde o painel do Jarvis nunca desmonta e por isso
+// necessário no desktop, onde o painel do Atlas nunca desmonta e por isso
 // precisa "acordar" sozinho pra um novo dia sem precisar de F5.
 export function useStartDayPrompt(planoJaExiste: boolean | null) {
   const [dispensadoHoje, setDispensadoHoje] = useState(false);

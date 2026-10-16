@@ -1,4 +1,4 @@
-// Lógica pura da guia "WhatsApp" do Jarvis — o painel de respostas aos
+// Lógica pura da guia "WhatsApp" do Atlas — o painel de respostas aos
 // mentorados que a rotina do Claude monta lendo o WhatsApp
 // (.claude/painel/build.py + historico.json, publicados por
 // scripts/publicar-painel-whatsapp.py). Port de .claude/painel/metricas.html.

@@ -30,7 +30,7 @@ export interface AtividadeDoPlano {
 
 export interface ProgressoDoPlano {
   plano: PlanoDiario;
-  // Sempre busca por ID (nunca reaproveita a lista viva do Jarvis, que
+  // Sempre busca por ID (nunca reaproveita a lista viva do Atlas, que
   // remove uma tarefa assim que ela é concluída) — inclui concluídas, na
   // ordem escolhida no ritual matinal.
   atividades: AtividadeDoPlano[];

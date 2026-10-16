@@ -12,7 +12,7 @@ export function AdminJarvisSons() {
   return (
     <div className="space-y-3">
       <div>
-        <h2 className="text-lg font-semibold text-foreground">Sons do Jarvis</h2>
+        <h2 className="text-lg font-semibold text-foreground">Sons do Atlas</h2>
         <p className="text-sm text-muted-foreground">Som curto e discreto ao concluir uma atividade.</p>
       </div>
       <Card className="flex items-center justify-between gap-4 p-4">

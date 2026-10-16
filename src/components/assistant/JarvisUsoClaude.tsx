@@ -31,7 +31,7 @@ function Barra({ rotulo, pct, renova }: { rotulo: string; pct: number | null; re
   );
 }
 
-// Rodapé do Jarvis: quanto do plano do Claude já foi usado (limite de 5h e
+// Rodapé do Atlas: quanto do plano do Claude já foi usado (limite de 5h e
 // semanal). Publicado pela tarefa de cobrança a cada 30 min
 // (scripts/uso-claude.py); aqui só lê, em tempo real.
 export function JarvisUsoClaude() {

@@ -68,7 +68,7 @@ const ORDEM_CATEGORIA: Record<AssistantCategoria, number> = { atrasada: 0, hoje:
 // Critério pedido originalmente era atrasada > vence hoje > maior prioridade
 // > prazo mais próximo > ordem manual. Virou atrasada > vence hoje > ORDEM
 // MANUAL > prioridade > prazo — senão arrastar uma tarefa pra reordenar
-// (Home do Jarvis) nunca "grudava": prioridade/prazo sempre reclassificavam
+// (Home do Atlas) nunca "grudava": prioridade/prazo sempre reclassificavam
 // tudo de volta antes da posição arrastada valer pra alguma coisa.
 // Prioridade/prazo continuam como desempate pra tarefas que nunca foram
 // arrastadas (mesma `ordem`, ex.: ambas 0 na criação).
@@ -358,7 +358,7 @@ export function useAssistantAtividades() {
   // (ela só traz não-concluídas).
   const concluir = useCallback(async (id: string) => {
     const tarefa = tarefasBrutas.find((t) => t.id === id);
-    // Fora da lista atual (ex.: filtro de projeto no Jarvis, mas está no
+    // Fora da lista atual (ex.: filtro de projeto no Atlas, mas está no
     // "Foco de hoje"): busca o projeto, pra concluir na coluna certa dele.
     let clienteId = tarefa?.cliente_id ?? null;
     if (!tarefa) {
@@ -396,7 +396,7 @@ export function useAssistantAtividades() {
   }, [tarefasBrutas, emitirAtualizacao, carregar, registrarSessaoFoco]);
 
   // Edição genérica (título/estimativa/descanso/prioridade/data/projeto/
-  // pasta/status) — usada pelo formulário de editar atividade do Jarvis.
+  // pasta/status) — usada pelo formulário de editar atividade do Atlas.
   const atualizarAtividade = useCallback(async (id: string, patch: Partial<Pick<AssistantTarefa,
     "titulo" | "tempo_estimado" | "tempo_descanso" | "prioridade" | "data_atividade" | "cliente_id" | "pasta_id" | "status" | "concluida"
   >>) => {
@@ -440,7 +440,7 @@ export function useAssistantAtividades() {
   }, [tarefasBrutas, emitirAtualizacao, emitirRemocao, carregar]);
 
   // Reordena dentro da MESMA coluna (arrastar pra cima/baixo sem mudar de
-  // status) — o Kanban compacto do Jarvis só sabia mover entre colunas
+  // status) — o Kanban compacto do Atlas só sabia mover entre colunas
   // (moverParaStatus, sempre pro fim da lista de destino); soltar um card
   // no meio da própria coluna não fazia nada, e a única forma de mudar a
   // posição de uma tarefa era editando o número de "ordem" diretamente.
@@ -473,7 +473,7 @@ export function useAssistantAtividades() {
 
   // Versão genérica: recebe a sequência final de ids já pronta (calculada
   // por quem chama) e grava `ordem = posição` pra cada um. Usada pela Home
-  // do Jarvis pra reordenar tarefas dentro de uma categoria (Hoje/Atrasadas)
+  // do Atlas pra reordenar tarefas dentro de uma categoria (Hoje/Atrasadas)
   // e pra mover um grupo de projeto inteiro pra cima/baixo (recalcula a
   // categoria toda de uma vez, na nova sequência de grupos).
   const reordenarPorIds = useCallback(async (ids: string[]) => {
@@ -495,7 +495,7 @@ export function useAssistantAtividades() {
   // Cria a atividade pela MESMA função que o Kanban usa (ver
   // src/lib/atividades/criarAtividade.ts — adicionarAtividadeNoStatus em
   // AtividadesView.tsx chama exatamente a mesma), então aparece lá porque É
-  // a mesma linha, não uma cópia. O Jarvis não tem seletor de pasta próprio
+  // a mesma linha, não uma cópia. O Atlas não tem seletor de pasta próprio
   // — lerPastaAtivaSalva lê a mesma pasta que o Kanban já lembra ter
   // deixado ativa pra esse cliente (senão a atividade nasce em "Sem pasta"
   // e some do quadro enquanto uma pasta específica estiver selecionada).

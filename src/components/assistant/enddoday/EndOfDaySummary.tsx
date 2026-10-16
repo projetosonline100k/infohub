@@ -64,7 +64,7 @@ export function EndOfDaySummary({ relatorio, onFechar, onVerRelatorioCompleto }:
           Ver relatório completo
         </Button>
         <Button type="button" onClick={onFechar}>
-          Voltar ao Jarvis
+          Voltar ao Atlas
         </Button>
       </div>
 

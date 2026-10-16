@@ -15,7 +15,7 @@ interface JarvisNotificationCardProps {
   tone?: "info" | "success";
 }
 
-// Componente único para TODAS as notificações espontâneas do Jarvis (rodada
+// Componente único para TODAS as notificações espontâneas do Atlas (rodada
 // 8, item 1C) — mensagem motivacional, nova hora, overtime, possível
 // distração, lembrete, pausa, retorno ao foco.
 //

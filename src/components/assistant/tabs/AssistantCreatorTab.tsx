@@ -37,7 +37,7 @@ type Ferramenta = "transcrever" | "ideias";
 const CHAVE_FERRAMENTA = "jarvis:creator-ferramenta";
 const CHAVE_MODO = "jarvis:creator-modo";
 
-// Modo Creator do Jarvis (⌘ + J + C). Primeira ferramenta: "Transcrever" —
+// Modo Creator do Atlas (⌘ + J + C). Primeira ferramenta: "Transcrever" —
 // cola o link do vídeo (Instagram, TikTok, YouTube) e recebe o texto falado.
 // Roda no próprio Mac, grátis (src-tauri/src/creator.rs); o histórico fica em
 // creator_transcricoes. A transcrição roda fora da tela (transcricaoStore):
@@ -81,7 +81,7 @@ export function AssistantCreatorTab({ foco }: { foco: number }) {
       .insert({ cliente_id: clienteId || null, nicho_livre: nichoLivre.trim() || null, transcricao_ids: [...selecionadas] })
       .select("id").single();
     if (error || !data) { setPedindo(false); toast.error("Não consegui pedir a análise"); return; }
-    // Avisa a Inteligência do Infopro pela Conversa (ela já ouve o Jarvis).
+    // Avisa a Inteligência do Infopro pela Conversa (ela já ouve o Atlas).
     await supabase.from("jarvis_conversa").insert({ papel: "davi", texto: `/analisar ${data.id}`, status: "enviada" });
     setPedindo(false);
     setSelecionadas(new Set());
@@ -146,7 +146,7 @@ export function AssistantCreatorTab({ foco }: { foco: number }) {
       <p className="text-[12px] text-muted-foreground">Cole o link de um vídeo e receba o texto falado.</p>
 
       {!disponivel ? (
-        <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">A transcrição roda no app do Mac (de graça, no próprio computador). Abra o Jarvis pelo app desktop.</p>
+        <p className="rounded-lg bg-muted p-3 text-xs text-muted-foreground">A transcrição roda no app do Mac (de graça, no próprio computador). Abra o Atlas pelo app desktop.</p>
       ) : (
         <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void transcrever(modo); }}>
           <input

@@ -8,7 +8,7 @@ import { falar, pararFala } from "@/lib/desktop/voz";
 // fala, solta. O áudio é transcrito no Mac (Whisper, voz_transcrever) e vira
 // mensagem da Conversa com 🎙️ na frente — o ouvinte (scripts/jarvis-ouvinte.py)
 // atende como sessão de trabalho contínua. Quando a resposta chega, a orbe fala
-// o primeiro parágrafo (o resumo) com a voz configurada no Jarvis.
+// o primeiro parágrafo (o resumo) com a voz configurada no Atlas.
 export type EstadoVoz = "ouvindo" | "entendendo" | "pensando" | null;
 export const PREFIXO_VOZ = "🎙️ ";
 
@@ -79,7 +79,7 @@ export function useAssistantVoz(userId: string | undefined): EstadoVoz {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       apertado.current = false;
-      toast.error("O Jarvis não tem acesso ao microfone.");
+      toast.error("O Atlas não tem acesso ao microfone.");
       return;
     }
     if (!apertado.current) { stream.getTracks().forEach((t) => t.stop()); return; }   // já soltou
@@ -108,7 +108,7 @@ export function useAssistantVoz(userId: string | undefined): EstadoVoz {
     if (rec && rec.state !== "inactive") rec.stop();
   }, []);
 
-  // Atalho global (só chega na janela do Jarvis).
+  // Atalho global (só chega na janela do Atlas).
   useEffect(() => {
     if (!isDesktop()) return;
     let desligar = () => {};

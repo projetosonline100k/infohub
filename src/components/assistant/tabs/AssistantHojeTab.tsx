@@ -116,7 +116,7 @@ const SEM_PROJETO_VALOR = "__sem_projeto__";
 
 // Item 2 do pedido: criar uma atividade pra hoje sem sair da Home nem abrir
 // o Kanban. Usa a MESMA função de criação que o Kanban e o formulário
-// completo do Jarvis (useAssistantAtividades.criarAtividade ->
+// completo do Atlas (useAssistantAtividades.criarAtividade ->
 // src/lib/atividades/criarAtividade.ts) — não existe uma segunda fonte de
 // dados, só uma UI de atalho em cima da que já existe.
 function AdicionarAtividadeHoje({

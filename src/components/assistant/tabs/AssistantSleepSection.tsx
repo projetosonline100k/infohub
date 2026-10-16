@@ -7,7 +7,7 @@ interface AssistantSleepSectionProps {
   onRegistrar: () => void;
 }
 
-// "SONO" no Jarvis (item 14) — pequeno, não ocupa muito espaço.
+// "SONO" no Atlas (item 14) — pequeno, não ocupa muito espaço.
 export function AssistantSleepSection({ onRegistrar }: AssistantSleepSectionProps) {
   const { log, loading } = useSleepToday();
   if (loading) return null;

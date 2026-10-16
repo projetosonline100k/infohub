@@ -1,4 +1,4 @@
-"""Ouvinte permanente do Jarvis: roda sozinho no Mac (LaunchAgent
+"""Ouvinte permanente do Atlas: roda sozinho no Mac (LaunchAgent
 com.infoprohub.jarvis-ouvinte, ver scripts/instalar-jarvis-ouvinte.sh) e,
 quando chega pedido, chama o Claude Code em segundo plano (`claude -p`) na
 pasta do projeto. Substitui as sessões do Claude que precisavam ficar
@@ -142,7 +142,7 @@ def ainda_sem_resposta(ids):
         c.close()
 
 
-PROMPT_CONVERSA = """Você é a "Inteligência do Infopro" respondendo o Davi pela aba Conversa do Jarvis (app Infopro Hub). Ele não está vendo este terminal: só vê o que você gravar com o script abaixo.
+PROMPT_CONVERSA = """Você é a "Inteligência do Infopro" respondendo o Davi pela aba Conversa do Atlas (app Infopro Hub). Ele não está vendo este terminal: só vê o que você gravar com o script abaixo.
 
 Conversa recente (contexto, já respondida):
 {historico}
@@ -168,7 +168,7 @@ PREFIXO_VOZ = "🎙️"
 SESSAO_VOZ = PASTA / "sessao-voz.json"
 SESSAO_VOZ_HORAS = 4   # depois disso sem falar, a próxima ordem começa uma sessão nova
 
-PROMPT_VOZ = """O Davi está FALANDO com você pela orbe do Jarvis (segura ⌥+Espaço, fala, solta; o Mac transcreve). É o jeito dele de trabalhar com você no dia a dia, como numa sessão do Claude Code: ele dá ordens ("implementa…", "ajusta…", "vê se…", "como está…") e você executa de verdade neste projeto (Infopro Hub, siga o CLAUDE.md e a memória do projeto), testa e conta o resultado. A transcrição pode ter erros de palavra: interprete pelo sentido.
+PROMPT_VOZ = """O Davi está FALANDO com você pela orbe do Atlas (segura ⌥+Espaço, fala, solta; o Mac transcreve). É o jeito dele de trabalhar com você no dia a dia, como numa sessão do Claude Code: ele dá ordens ("implementa…", "ajusta…", "vê se…", "como está…") e você executa de verdade neste projeto (Infopro Hub, siga o CLAUDE.md e a memória do projeto), testa e conta o resultado. A transcrição pode ter erros de palavra: interprete pelo sentido.
 
 Fala(s) nova(s) do Davi, para atender agora:
 {novas}
@@ -176,7 +176,7 @@ Fala(s) nova(s) do Davi, para atender agora:
 Como trabalhar:
 - Execute o pedido: leia o código, implemente, rode os testes / `npx tsc` / lint que fizerem sentido e confira o resultado. Se for pergunta sobre o negócio, consulte os dados reais com scripts/consulta.py (somente leitura).
 - Se a ordem for ambígua ou arriscada (apagar coisa, mexer em dado real, mandar mensagem pra alguém), NÃO faça: responda perguntando o que ele quer.
-- Não reinstale nem feche o app Infopro Hub sem ele pedir (o Jarvis é o próprio app). Nunca envie WhatsApp nem e-mail. Não escreva no banco sem pedido explícito. Sem git push.
+- Não reinstale nem feche o app Infopro Hub sem ele pedir (o Atlas é o próprio app). Nunca envie WhatsApp nem e-mail. Não escreva no banco sem pedido explícito. Sem git push.
 - Grave a resposta (uma por fala) com:
   python3 scripts/jarvis-conversa.py responder <id> <<'FIM'
   <texto>
@@ -266,7 +266,7 @@ def status_whatsapp():
         c.close()
 
 
-PROMPT_WHATSAPP = """O Davi clicou em "Atualizar" na guia WhatsApp do Jarvis. Atualize o painel de respostas aos mentorados, exatamente como descrito na memória do projeto (painel-mentorados-whatsapp, whatsapp-ler-todas-conversas, respostas-mentorados-sanduiche-disc):
+PROMPT_WHATSAPP = """O Davi clicou em "Atualizar" na guia WhatsApp do Atlas. Atualize o painel de respostas aos mentorados, exatamente como descrito na memória do projeto (painel-mentorados-whatsapp, whatsapp-ler-todas-conversas, respostas-mentorados-sanduiche-disc):
 1. Leia as conversas DO BANCO: `python3 /Users/davi/Infopro-hub/scripts/whatsapp-ler.py` (todas as conversas com atividade desde a última atualização, privados e grupos, com os áudios já transcritos; use `--chat "nome"` pra ver mais de uma conversa). As mensagens chegam pelo WAHA no Mac, então não precisa abrir o WhatsApp Web.
    Só se a primeira linha disser que o WAHA não está WORKING: aí leia pelo WhatsApp Web no Claude in Chrome, como antes.
 2. Atualize /Users/davi/Infopro-hub/.claude/painel/build.py e historico.json, rode `python3 build.py` nessa pasta.

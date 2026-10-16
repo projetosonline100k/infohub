@@ -1,6 +1,6 @@
 // Briefing de tarefa: o Davi conversa com o funcionário antes da tarefa
 // existir; ela só nasce quando ele confirma o que o funcionário entendeu.
-// Quem responde é o ouvinte do Jarvis (scripts/empresa/briefing.py).
+// Quem responde é o ouvinte do Atlas (scripts/empresa/briefing.py).
 
 export type Consigo = "sim" | "em_parte" | "nao";
 

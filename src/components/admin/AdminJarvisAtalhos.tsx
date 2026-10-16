@@ -10,13 +10,13 @@ interface AtalhoInfo {
 }
 
 const ATALHOS: AtalhoInfo[] = [
-  { acao: "Abrir Jarvis", combinacao: "⌘ Shift J", disponivel: false },
+  { acao: "Abrir Atlas", combinacao: "⌘ Shift J", disponivel: false },
   { acao: "Nova tarefa", combinacao: "⌘ Shift T", disponivel: false },
   { acao: "Nova nota", combinacao: "⌘ Shift N", disponivel: false },
   { acao: "Encerrar o dia", combinacao: "⌘ Shift E", disponivel: true },
 ];
 
-// Administração → Jarvis → Atalhos (item 14). Só "Encerrar o dia" funciona
+// Administração → Atlas → Atalhos (item 14). Só "Encerrar o dia" funciona
 // nesta etapa — os outros 3 aparecem como "Em breve" (item 14 do pedido:
 // "se os outros atalhos ainda não existirem, podem aparecer como 'Em
 // breve'"). Estrutura já pronta pra ganhar edição de atalho no futuro

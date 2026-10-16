@@ -20,7 +20,7 @@ interface CobrancaSnapshot {
   // atividades de hoje + atrasadas ainda não concluídas (a lista de origem
   // já só tem não concluídas) — usado pelo lembrete periódico.
   pendentesHojeCount: number;
-  // Mensagens cadastradas em Administração → Jarvis (item 2) — ativas de
+  // Mensagens cadastradas em Administração → Atlas (item 2) — ativas de
   // cada tipo entram no sorteio abaixo; sem nenhuma configurada, os textos
   // fixos de sempre continuam valendo (sem regressão pra quem não configurou nada).
   mensagens: JarvisMensagem[];
@@ -75,7 +75,7 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
     esconderRef.current = setTimeout(() => setMensagem(null), DURACAO_BOLHA_MS);
   };
 
-  // Sorteia entre as mensagens ATIVAS de um tipo (Administração → Jarvis),
+  // Sorteia entre as mensagens ATIVAS de um tipo (Administração → Atlas),
   // preferindo as que já passaram do próprio intervalo mínimo — se todas
   // estiverem em cooldown, mostra uma mesmo assim (o cooldown é uma
   // preferência de rotação, não um bloqueio duro; quem bloqueia de verdade
@@ -84,7 +84,7 @@ export function useAssistantCobranca(snapshot: CobrancaSnapshot) {
   // Bug corrigido: sem NENHUMA mensagem cadastrada pro tipo, cai no texto
   // fixo de sempre (sem regressão pra quem nunca configurou nada) — mas se
   // o usuário JÁ cadastrou mensagens desse tipo e desativou todas elas
-  // (Switch em Administração → Jarvis → Mensagens), isso é um "desligar" de
+  // (Switch em Administração → Atlas → Mensagens), isso é um "desligar" de
   // verdade: retorna null e quem chamar não deve mostrar bolha nenhuma, em
   // vez de cair no mesmo texto fixo como se nada tivesse sido configurado.
   const escolherTexto = useCallback((tipo: JarvisMensagemTipo, fallback: string): string | null => {

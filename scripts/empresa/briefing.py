@@ -1,6 +1,6 @@
 """Conversa de briefing entre o Davi e um funcionário da empresa (antes da
 tarefa existir). Quem responde é o Claude em segundo plano, pelo ouvinte do
-Jarvis (scripts/jarvis-ouvinte.py), fazendo o papel do funcionário.
+Atlas (scripts/jarvis-ouvinte.py), fazendo o papel do funcionário.
 
   python3 scripts/empresa/briefing.py contexto <briefing_id>      → projeto, funcionário, manual e conversa
   python3 scripts/empresa/briefing.py responder <briefing_id> <<'FIM'

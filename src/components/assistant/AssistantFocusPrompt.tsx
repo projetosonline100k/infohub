@@ -10,7 +10,7 @@ interface AssistantFocusPromptProps {
 }
 
 // "Possível desvio" (item 3, rodada 3) — mesmo componente compartilhado de
-// todas as notificações do Jarvis (rodada 7, item 1). Nunca assume sozinho
+// todas as notificações do Atlas (rodada 7, item 1). Nunca assume sozinho
 // que um app é procrastinação — só pergunta depois de tempo sustentado num
 // contexto ainda não classificado (ver useFocusActivityMonitor.ts).
 export function AssistantFocusPrompt({ appName, minutos, tarefaTitulo, onFazParte, onMeDistraiu, onPausar }: AssistantFocusPromptProps) {

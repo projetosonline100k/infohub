@@ -54,7 +54,7 @@ export function useStartDayFlow() {
   const dataStr = format(new Date(), "yyyy-MM-dd");
 
   // Chamado toda vez que o fluxo abre, não só na primeira montagem — o
-  // painel do Jarvis existe o tempo todo (mesmo critério de EndOfDayFlow).
+  // painel do Atlas existe o tempo todo (mesmo critério de EndOfDayFlow).
   const abrir = useCallback(async () => {
     setEstado("carregando");
     setIndiceQuestao(0);

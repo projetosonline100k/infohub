@@ -1,6 +1,6 @@
 # Infopro Hub
 
-Sistema interno de gestão de "Projetos Milionários" (especialistas/infoprodutores): clientes, produtos, conteúdo, atividades da equipe, documentos e produtividade pessoal. Web (Vercel: https://infopro-hub.vercel.app) + desktop (Tauri, com a orbe flutuante "Jarvis"). Idioma do código, do banco e da UI: português.
+Sistema interno de gestão de "Projetos Milionários" (especialistas/infoprodutores): clientes, produtos, conteúdo, atividades da equipe, documentos e produtividade pessoal. Web (Vercel: https://infopro-hub.vercel.app) + desktop (Tauri, com a orbe flutuante "Atlas", que até 15/10/2026 se chamava Jarvis; os nomes técnicos `jarvis_*`, `/jarvis` e `jarvis-ouvinte` continuam). Idioma do código, do banco e da UI: português.
 
 ## Stack
 
@@ -19,7 +19,7 @@ Sistema interno de gestão de "Projetos Milionários" (especialistas/infoproduto
 
 ## Mapa do app
 
-Rotas públicas (`src/App.tsx`): `/login`, `/redefinir-senha`, `/formulario/:slug` (pesquisa pública), `/compartilhado/:token` (documento compartilhado), `/jarvis` (janela desktop da orbe).
+Rotas públicas (`src/App.tsx`): `/login`, `/redefinir-senha`, `/formulario/:slug` (pesquisa pública), `/compartilhado/:token` (documento compartilhado), `/jarvis` (janela desktop da orbe Atlas).
 Rotas internas (sidebar, `src/components/layout/AppSidebar.tsx`):
 
 | Menu | Rota | Página | O que é |
@@ -65,7 +65,7 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 - `focus_activity_events` (app/janela ativa monitorada pelo desktop, `classification`), `focus_learned_rules`, `focus_sessions`.
 - `performance_pillars` → `performance_habits` → `performance_habit_logs`; `performance_goals`.
 - `sleep_logs`, `sleep_goals`.
-- `jarvis_configuracoes`, `jarvis_mensagens` (mensagens/nudges da orbe).
+- `jarvis_configuracoes`, `jarvis_mensagens` (mensagens/nudges da orbe Atlas).
 
 **Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`; `instagram_conexoes` (token, sem acesso pelo app), `instagram_automacoes`, `instagram_automacao_disparos`.
 

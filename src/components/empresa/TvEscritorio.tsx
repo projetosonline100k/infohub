@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { carregarSemana, moverParaDia, type Semana, type TarefaSemana } from "@/lib/empresa/semana";
 import { criarTarefaParaMembro } from "./FilaPessoa";
+import { ehCoordenador } from "@/lib/empresa/visaoGeral";
 
 // A TV grande do escritório (pedido do Davi, 15/10): "lá eu posso clicar nela
 // e programar as atividades da semana… de 15 em 15 segundos troca para nosso
@@ -111,7 +112,7 @@ export function ProgramarSemana({ clienteId, aberto, semana, membros, onFechar, 
   const [novo, setNovo] = useState<{ dia: string; titulo: string; membro: string } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const hoje = hojeIso();
-  const equipe = membros.filter((m) => !(m.eh_ia && m.nome === "Jarvis"));
+  const equipe = membros.filter((m) => !ehCoordenador(m));
 
   const soltar = async (dia: string | null) => {
     const id = arrastando;

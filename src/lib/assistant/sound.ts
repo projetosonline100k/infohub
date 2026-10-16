@@ -34,7 +34,7 @@ function tocarNota(ctx: AudioContext, frequenciaHz: number, inicioSegundos: numb
 }
 
 // Discreto de propósito: duas notas curtas (A5 → E6), ~0.3s no total,
-// volume baixo. Chamado só se "Sons do Jarvis" estiver ligado (ver
+// volume baixo. Chamado só se "Sons do Atlas" estiver ligado (ver
 // useJarvisConfig.ts).
 export function playConclusaoSound(): void {
   const ctx = obterAudioContext();

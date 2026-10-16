@@ -5,7 +5,7 @@ import {
 
 type Tamanho = { width: number; height: number };
 
-// Tamanho do painel do Jarvis, ajustável arrastando o canto superior
+// Tamanho do painel do Atlas, ajustável arrastando o canto superior
 // esquerdo (o oposto da orbe, que fica parada). O tamanho escolhido fica
 // salvo e vale pras próximas aberturas. No desktop a janela nativa
 // acompanha (redimensionarPainelJarvis); na web só a caixa muda.

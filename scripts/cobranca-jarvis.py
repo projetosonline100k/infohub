@@ -1,11 +1,11 @@
-# Cobrança inteligente do Jarvis (ver supabase/migrations/20261008190000).
+# Cobrança inteligente do Atlas (ver supabase/migrations/20261008190000).
 # Usado pela tarefa agendada "cobranca-jarvis" do Claude, a cada 30 min.
 #
 #   python3 scripts/cobranca-jarvis.py contexto
 #       Imprime um JSON com o retrato do momento: atividades atrasadas/de
 #       hoje/da semana, plano do dia, foco da última hora (apps e títulos de
 #       janela), WhatsApp pendente, promessas atrasadas, conversa recente com
-#       o Jarvis e as últimas cobranças com as respostas do Davi.
+#       o Atlas e as últimas cobranças com as respostas do Davi.
 #   python3 scripts/cobranca-jarvis.py publicar < cobranca.json
 #       {"titulo": "<= 60 chars", "etiqueta": "Cliente esperando",
 #        "fatos": ["<= 70 chars", ... até 3], "primeiro_passo": "...",

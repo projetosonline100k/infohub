@@ -20,7 +20,7 @@ export async function startWindowDrag(): Promise<void> {
     // tela. Sem isto, a âncora "de casa" (ver ancoraCache mais abaixo)
     // ficava travada na posição de ANTES do arraste — daí a próxima vez
     // que o painel/orbe abria, "pulava" de volta pro lugar antigo em vez
-    // de nascer perto de onde o Jarvis estava de verdade.
+    // de nascer perto de onde o Atlas estava de verdade.
     const scale = await win.scaleFactor();
     const pos = (await win.outerPosition()).toLogical(scale);
     const size = (await win.outerSize()).toLogical(scale);
@@ -30,7 +30,7 @@ export async function startWindowDrag(): Promise<void> {
   }
 }
 
-// Helper central (item 1 da rodada 3): qualquer ação do Jarvis que precise
+// Helper central (item 1 da rodada 3): qualquer ação do Atlas que precise
 // mostrar o Infopro Hub "de verdade" (Ver todas, Notas completas, Expandir,
 // abrir projeto/documento) passa por aqui — nunca por navigate() local
 // dentro da janela jarvis (isso só rendeeria o app inteiro espremido nela).
@@ -150,7 +150,7 @@ export function salvarTamanhoPainel(t: Tamanho): void {
   try { localStorage.setItem(CHAVE_TAMANHO_PAINEL, JSON.stringify(limitarTamanhoPainel(t))); } catch { /* sem storage */ }
 }
 
-// Item novo (pedido do usuário): "quando abro o Jarvis, ele some de onde
+// Item novo (pedido do usuário): "quando abro o Atlas, ele some de onde
 // está" — antes, o painel preenchia a janela inteira e cobria a orbe por
 // trás. Agora a orbe continua visível, empilhada embaixo do painel — mesmo
 // tratamento visual (gap + padding pro anel de progresso) já usado no modo
@@ -202,7 +202,7 @@ async function posicaoDentroDoMonitor(x: number, y: number, width: number, heigh
   }
 }
 
-// Item novo (pedido do usuário): "arrasto o Jarvis pra um canto bom, quero
+// Item novo (pedido do usuário): "arrasto o Atlas pra um canto bom, quero
 // que continue ali depois de fechar e abrir de novo" — inclusive depois de
 // FECHAR E REABRIR O APP, não só dentro da mesma sessão. Mesma chave de
 // armazenamento (localStorage, compartilhado entre as janelas do mesmo
@@ -263,7 +263,7 @@ async function obterAncora(win: InstanceType<typeof import("@tauri-apps/api/wind
 // ÚNICA função que redimensiona/reposiciona a janela nativa `jarvis` (item
 // 4/9 do pedido — "não deixar vários componentes controlando tamanho da
 // janela"). Sempre mantém o canto inferior direito ancorado no mesmo ponto
-// ao trocar de modo (item 5 — o Jarvis não "pula" de lugar a cada troca),
+// ao trocar de modo (item 5 — o Atlas não "pula" de lugar a cada troca),
 // depois reclampa a posição resultante pro monitor atual (item 5),
 // garantindo que painel e notificação nunca fiquem cortados perto de uma
 // borda. A janela `jarvis` nunca fica redimensionável pelo usuário (resize
@@ -302,7 +302,7 @@ export async function setJarvisWindowMode(mode: JarvisWindowMode): Promise<void>
     // pra dentro em vez de já nascer no lugar certo.
     definirAncora({ x: x + target.width, y: y + target.height });
   } catch {
-    /* ignora — Jarvis ainda funciona, só não redimensiona a janela */
+    /* ignora — Atlas ainda funciona, só não redimensiona a janela */
   }
 }
 

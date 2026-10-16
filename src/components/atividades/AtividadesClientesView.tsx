@@ -230,7 +230,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
   }, [clientes]);
 
   // Volta pra esta tela (troca de aba / volta pro app) ou abre o Mapa: busca
-  // de novo, pra aparecer o que foi criado dentro de um projeto, pelo Jarvis
+  // de novo, pra aparecer o que foi criado dentro de um projeto, pelo Atlas
   // ou em outra aba — sem depender só do realtime.
   const raizRef = useRef<HTMLDivElement>(null);
   useRecarregarAoVoltar(raizRef, () => void carregarDados());

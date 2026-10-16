@@ -137,7 +137,7 @@ export function ProdutividadeGeral() {
 
       {distracaoHojeSegundos === null && (
         <p className="text-xs text-muted-foreground">
-          Distração/apps não aparecem porque o monitoramento de app ativo está desligado (Administração → Jarvis → Privacidade).
+          Distração/apps não aparecem porque o monitoramento de app ativo está desligado (Administração → Atlas → Privacidade).
         </p>
       )}
     </div>

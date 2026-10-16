@@ -12,7 +12,7 @@ interface AssistantHourAlertProps {
 }
 
 // Alerta de troca de bloco de horário (item 5) — mesmo componente
-// compartilhado de todas as notificações do Jarvis (rodada 7, item 1/6).
+// compartilhado de todas as notificações do Atlas (rodada 7, item 1/6).
 export function AssistantHourAlert({
   hora,
   tarefaAtualTitulo,

@@ -22,13 +22,16 @@ export interface MembroResumo {
 }
 
 // IA "operária" (ex.: Danilo/Roy = ChatGPT): tem fila, mas quem leva o
-// trabalho até ela é o Davi. O Jarvis só coordena; a Dalila publica sozinha
+// trabalho até ela é o Davi. O Atlas só coordena; a Dalila publica sozinha
 // na nuvem (edge dalila-publicar), então a fila dela não depende do Davi.
-// IAs que pegam as tarefas da fila sozinhas (ouvinte do Jarvis, serviços do
+// IAs que pegam as tarefas da fila sozinhas (ouvinte do Atlas, serviços do
 // Roy/Danilo): a tarefa delas não é do Davi (15/10: "tem coisa que não sou eu
 // que faço, a própria pessoa já está fazendo"). As outras IAs (via ChatGPT)
 // ainda dependem do Davi levar a tarefa.
-const IAS_AUTONOMAS = new Set(["jarvis", "dalila", "ítalo", "italo", "gabriel", "roy", "danilo"]);
+// O coordenador da empresa (robô): Atlas desde 15/10 (antes "Jarvis").
+export const ehNomeCoordenador = (nome: string) => /^(atlas|jarvis)$/i.test(nome.trim());
+export const ehCoordenador = (m: { eh_ia: boolean; nome: string }) => m.eh_ia && ehNomeCoordenador(m.nome);
+const IAS_AUTONOMAS = new Set(["atlas", "jarvis", "dalila", "ítalo", "italo", "gabriel", "roy", "danilo"]);
 export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && !IAS_AUTONOMAS.has(m.nome.toLowerCase());
 
 export interface SetorResumo {
@@ -143,9 +146,9 @@ const ROTULO_TIPO: Record<string, [string, string]> = {
 
 export interface LinhaCuidando { rotulo: string; quantidade: number; setor_id: string | null }
 
-// "Jarvis está cuidando": o que a operação está tocando sem o dono da conta
+// "Atlas está cuidando": o que a operação está tocando sem o dono da conta
 // (tarefas abertas de outras pessoas + vídeos em edição), agrupado por tipo.
-// "Tarefas sendo executadas" (15/10, no lugar de "Jarvis está cuidando"): o que
+// "Tarefas sendo executadas" (15/10, no lugar de "Atlas está cuidando"): o que
 // a equipe está tocando sem o Davi — fazendo agora primeiro (mais adiantadas
 // antes), depois a fila. Fica de fora o que é do próprio Davi e o que espera a
 // aprovação dele (isso está em "Precisa de você").

@@ -161,7 +161,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // abaixo do Popover).
   const orbRef = useRef<HTMLButtonElement>(null);
 
-  // "Clicar fora encolhe o Jarvis" — na janela nativa (variant="window")
+  // "Clicar fora encolhe o Atlas" — na janela nativa (variant="window")
   // não existe Popover/clique-fora de DOM (a janela inteira é o conteúdo),
   // então o equivalente é a janela perder o foco pro SO. Na versão
   // embutida (Popover normal) isso já acontece sozinho, sem precisar disto.
@@ -216,7 +216,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     };
   }, [variant]);
 
-  // ⌘+J: abre o Jarvis direto na aba "Conversa" (chat com a Inteligência
+  // ⌘+J: abre o Atlas direto na aba "Conversa" (chat com a Inteligência
   // do Infopro). `focoConversa` muda a cada atalho pra a aba focar o campo.
   const [focoConversa, setFocoConversa] = useState(0);
   const [rascunhoConversa, setRascunhoConversa] = useState("");
@@ -224,7 +224,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // ⌘C continua sendo "copiar".
   const [focoCreator, setFocoCreator] = useState(0);
   // Atalho ⌘+J / ⌘+J+C — age ao SOLTAR (pedido do Davi):
-  // - apertou ⌘J: o Rust só foca o Jarvis (pra ouvir o C) — nada abre ainda;
+  // - apertou ⌘J: o Rust só foca o Atlas (pra ouvir o C) — nada abre ainda;
   // - C com ⌘ pressionado no meio do atalho → modo Creator;
   // - soltou o J: espera um instante (dá tempo do C de quem tecla ⌘, J, C)
   //   e abre a Conversa, ou o Creator se o C veio.
@@ -319,7 +319,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     setFluxoComecarDiaAberto(true);
   }, []);
   // Estado visual temporário de "dia encerrado" (item 8) — volta sozinho ao
-  // normal depois de um tempo, ou na hora se a pessoa abrir o Jarvis de novo
+  // normal depois de um tempo, ou na hora se a pessoa abrir o Atlas de novo
   // (interagir de novo já É "voltar ao normal").
   const [diaEncerrado, setDiaEncerrado] = useState(false);
   useEffect(() => {
@@ -373,12 +373,12 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const { projetos, loadingProjetos, projetoId, projetoAtual, setProjetoId, filtroDia, setFiltroDia } = useAssistantProjeto();
   const dailyPlan = useDailyPlan();
 
-  // O Jarvis tem seu próprio "projeto selecionado" (localStorage,
+  // O Atlas tem seu próprio "projeto selecionado" (localStorage,
   // independente da página) — sem isso, um card criado no quadro de um
-  // cliente (/clientes/:id) só aparece na aba Kanban do Jarvis se o projeto
+  // cliente (/clientes/:id) só aparece na aba Kanban do Atlas se o projeto
   // dele por acaso já estiver no mesmo cliente. Ao entrar/trocar de página
-  // de cliente, sincroniza o Jarvis pra esse mesmo projeto uma vez; depois
-  // disso o usuário pode trocar livremente dentro do Jarvis sem ser
+  // de cliente, sincroniza o Atlas pra esse mesmo projeto uma vez; depois
+  // disso o usuário pode trocar livremente dentro do Atlas sem ser
   // sobrescrito (o efeito só reage a clienteRotaId mudar de novo). Cobre o
   // caso web (Assistant na mesma árvore/rota da página).
   useEffect(() => {
@@ -508,7 +508,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     // "Hoje" + "atrasada" = tudo que ainda está pendente (a lista já só tem
     // não concluídas) — usado pelo lembrete periódico (item 6).
     pendentesHojeCount: tarefas.filter((t) => categoriaTarefa(t) !== "proxima").length,
-    // Mensagens cadastradas em Administração → Jarvis (item 2).
+    // Mensagens cadastradas em Administração → Atlas (item 2).
     mensagens: jarvisMensagens.mensagens,
     // "Começar o dia": sugestão moderada quando o foco atual não é a
     // prioridade #1 e ela ainda está pendente.
@@ -606,8 +606,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   }, [tarefas, projetos, projetoAtual]);
 
   // Item 7: sorteia entre as mensagens tipo "conclusao" cadastradas em
-  // Administração → Jarvis (cai no texto fixo se nada configurado) — halo
-  // verde + confete + som (só se "Sons do Jarvis" estiver ligado), ~2s,
+  // Administração → Atlas (cai no texto fixo se nada configurado) — halo
+  // verde + confete + som (só se "Sons do Atlas" estiver ligado), ~2s,
   // depois volta ao normal.
   const dispararCelebracao = useCallback(() => {
     setCelebracao(escolherTexto("conclusao", "Boa. Uma a menos. ✨"));
@@ -690,9 +690,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Cobrança inteligente (tarefa agendada do Claude a cada 30 min).
   const cobrancaIA = useCobrancaInteligente(user?.id);
   // Links mandados do iPhone (Atalho "Jarvis") são transcritos aqui, em
-  // segundo plano — só no Jarvis do Mac, onde roda a transcrição.
+  // segundo plano — só no Atlas do Mac, onde roda a transcrição.
   useFilaCreator(user?.id, variant === "window" && isDesktop() && /Mac/i.test(navigator.platform || navigator.userAgent));
-  // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Jarvis).
+  // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
   const estadoVoz = useAssistantVoz(variant === "window" ? user?.id : undefined);
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
   // cobrança é de uma atividade, já inicia o foco nela.
@@ -702,7 +702,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     if (id) await handleComecarPrioridadeUm(id);
   }, [cobrancaIA, handleComecarPrioridadeUm]);
   // Voz: fala cada cobrança NOVA uma vez (e quando volta perguntando se fez).
-  // Só na janela do Jarvis no desktop, pra não falar em dobro.
+  // Só na janela do Atlas no desktop, pra não falar em dobro.
   const ultimaFalaCobranca = useRef<string | null>(null);
   useEffect(() => {
     const c = cobrancaIA.cobranca;
@@ -715,13 +715,13 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   }, [cobrancaIA.cobranca, variant]);
 
   const handleCobrancaDescartar = useCallback(async () => {
-    const motivo = await pedirTexto("Por que isso não é prioridade agora? (o Jarvis leva isso em conta nas próximas cobranças)");
+    const motivo = await pedirTexto("Por que isso não é prioridade agora? (o Atlas leva isso em conta nas próximas cobranças)");
     if (motivo === null) return;
     await cobrancaIA.descartar(motivo.trim() || null);
   }, [cobrancaIA]);
   // "Outra coisa agora": pergunta o quê e tira a cobrança por 1h.
   const handleCobrancaOutraCoisa = useCallback(async () => {
-    const oQue = await pedirTexto("O que você precisa fazer agora? (o Jarvis leva isso em conta e volta nisso depois)");
+    const oQue = await pedirTexto("O que você precisa fazer agora? (o Atlas leva isso em conta e volta nisso depois)");
     if (oQue === null) return;
     await cobrancaIA.outraCoisa(oQue.trim() || "não disse");
   }, [cobrancaIA]);
@@ -749,7 +749,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // lembrete_ativo num hábito), mas já fica pronto.
   const performanceReminder = usePerformanceReminder(open);
 
-  // Registro rápido de sono direto do Jarvis (item 14) + lembrete matinal
+  // Registro rápido de sono direto do Atlas (item 14) + lembrete matinal
   // (item 15) — mesmo padrão de useStartDayPrompt.ts, dispensa por
   // localStorage/dia, sem cobrança repetida.
   const sono = useSleepToday();
@@ -844,7 +844,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Infopro Hub "de verdade" passa por aqui. Na janela nativa (variant
   // "window"), abre/maximiza/foca a janela `main` de verdade (nunca navega
   // localmente — isso só renderizaria o app inteiro espremido dentro da
-  // janelinha do Jarvis); na web/embutido, não existe uma janela separada,
+  // janelinha do Atlas); na web/embutido, não existe uma janela separada,
   // então só navega a própria página.
   const abrirNoAppPrincipal = useCallback((route: string) => {
     // Fixado: continua aberto ao lado do app principal.
@@ -881,7 +881,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       const doc = await criarDocumento("Documento sem título");
       // O documento é criado normalmente nos dois casos — só o jeito de
       // ABRIR muda: na janela nativa não dá pra abrir o editor full-screen
-      // dentro da janelinha do Jarvis (mesmo bug do "Ver todas"), então leva
+      // dentro da janelinha do Atlas (mesmo bug do "Ver todas"), então leva
       // pro contexto certo na main em vez disso (abrir o documento exato lá
       // é uma melhoria futura, sem rota pra isso hoje).
       if (variant === "window") {
@@ -919,7 +919,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   }, [atualizarAtividade]);
 
   // Item 3: "Expandir" mostra/maximiza/foca a janela main completa (não
-  // recria o app dentro do Jarvis) e leva o projeto atual junto — só existe
+  // recria o app dentro do Atlas) e leva o projeto atual junto — só existe
   // na janela nativa (na web não há uma "janela main" separada).
   const handleExpandir = useCallback(() => {
     abrirNoAppPrincipal(projetoId ? `/clientes/${projetoId}` : "/atividades");
@@ -991,7 +991,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     setDragging(true);
   }, [pos]);
 
-  // Dentro da janela nativa Jarvis (variant="window") quem se move é a
+  // Dentro da janela nativa Atlas (variant="window") quem se move é a
   // própria janela do SO — o mesmo limiar de distância decide clique vs.
   // arraste, mas ao cruzar o limiar a gente entrega o gesto pro
   // startDragging() nativo em vez de recalcular uma posição CSS.
@@ -1134,8 +1134,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const alcaRedimensionar = (
     <div
       role="separator"
-      aria-label="Redimensionar o Jarvis"
-      title="Arraste para aumentar ou diminuir o Jarvis"
+      aria-label="Redimensionar o Atlas"
+      title="Arraste para aumentar ou diminuir o Atlas"
       onPointerDown={(e) => void tamanhoPainel.iniciarRedimensionamento(e)}
       className="group/alca absolute left-0 top-0 z-30 flex h-6 w-6 cursor-nwse-resize items-start justify-start p-1"
     >
@@ -1359,7 +1359,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Rodada 12, item "não quero que ele suma": no modo notificação, empilha
   // o card ACIMA da orbe (não centraliza mais igual ao modo orbe sozinha)
   // — as duas ficam visíveis ao mesmo tempo, no canto inferior direito da
-  // janela, dando a impressão de "o Jarvis está falando" em vez do card
+  // janela, dando a impressão de "o Atlas está falando" em vez do card
   // sozinho cobrindo a orbe.
   // Pedido do usuário: o mesmo empilhamento agora vale pro painel aberto —
   // antes ele preenchia a janela inteira e cobria a orbe por trás ("some de

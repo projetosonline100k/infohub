@@ -26,7 +26,7 @@ import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, ehCoordenador, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -174,7 +174,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Gaveta da equipe (Messenger): status e o que cada um está fazendo.
   const pessoasChat = estados.map((estado) => {
     const ia = trabalhoIa.get(estado.membro.id);
-    const coordenador = estado.membro.eh_ia && estado.membro.nome === "Jarvis";
+    const coordenador = ehCoordenador(estado.membro);
     const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
     return { membro: estado.membro, sinal, atual: estado.atual?.titulo ?? ia?.atual ?? null };
   });
@@ -370,8 +370,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                 pessoas: pessoas.map((estado) => {
                   const { membro, abertas: n, atrasadas: atr, atual } = estado;
                   const ia = trabalhoIa.get(membro.id);
-                  // O Jarvis coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
-                  const coordenador = membro.eh_ia && membro.nome === "Jarvis";
+                  // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
+                  const coordenador = ehCoordenador(membro);
                   const sinal: Sinal = coordenador ? "trabalhando" : sinalDoMembro(estado, tarefas, ia);
                   const balao = coordenador ? "Coordenando a operação"
                     : ia?.problema ? "Parou com problema"

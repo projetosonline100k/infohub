@@ -94,7 +94,7 @@ function formatarDestaque(meta: Meta, progresso: ProgressoMeta): string {
 
 // "Você está em 382/600 páginas este mês. Faltam 218." (item 20) — só a
 // meta ativa mais relevante (a que está mais perto de bater, mas ainda não
-// bateu), nunca todas de uma vez (evita virar spam no Jarvis).
+// bateu), nunca todas de uma vez (evita virar spam no Atlas).
 export async function buscarDestaqueDeMeta(userId: string): Promise<DestaqueMeta | null> {
   const metas = (await buscarMetas(userId)).filter((m) => m.ativo && (m.automatic_source || m.linked_habit_id));
   if (metas.length === 0) return null;

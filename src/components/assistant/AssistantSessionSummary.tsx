@@ -10,7 +10,7 @@ interface AssistantSessionSummaryProps {
 // Resumo da sessão ao concluir (item 3, rodada 3) — só fatos, sem score
 // (conforme pedido). Só aparece quando o monitoramento de foco estava
 // ligado e realmente registrou algo nessa sessão. Mesmo componente
-// compartilhado de todas as notificações do Jarvis (rodada 7, item 1).
+// compartilhado de todas as notificações do Atlas (rodada 7, item 1).
 export function AssistantSessionSummary({ focoMinutos, distracaoMinutos, apps, onFechar }: AssistantSessionSummaryProps) {
   const acoes: JarvisNotificationAction[] = [{ label: "Fechar", onClick: onFechar, variant: "ghost" }];
 

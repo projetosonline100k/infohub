@@ -18,12 +18,12 @@ export interface CriarAtividadeInput {
 
 // Única função de criação de atividade do app inteiro — usada pelo Kanban
 // (AtividadesView.tsx: adicionarAtividade/adicionarAtividadeNoStatus/
-// adicionarAtividadeRapida) E pelo Jarvis (useAssistantAtividades.ts).
+// adicionarAtividadeRapida) E pelo Atlas (useAssistantAtividades.ts).
 // Mesma tabela, mesmo payload, sem lógica paralela: quem quiser mudar como
 // uma atividade é criada muda só aqui.
 // A tela de Atividades só mostra tarefas que estão em alguma pasta — tarefa
 // sem pasta ficava invisível dentro do projeto (ex.: criada pela Visão geral
-// ou movida de projeto pelo Jarvis). Devolve a primeira pasta do projeto,
+// ou movida de projeto pelo Atlas). Devolve a primeira pasta do projeto,
 // criando "Geral" se ele ainda não tiver nenhuma.
 export async function garantirPastaPadrao(clienteId: string | null): Promise<string | null> {
   let consulta = supabase.from("pastas_atividade").select("id").is("deleted_at", null).order("ordem", { ascending: true }).limit(1);
@@ -40,7 +40,7 @@ export async function garantirPastaPadrao(clienteId: string | null): Promise<str
 
 // A pasta precisa ser do MESMO projeto (e não estar na lixeira). Pasta de
 // outro projeto deixava a tarefa invisível — aconteceu ao trocar o projeto
-// de uma tarefa no Jarvis, que mantinha a pasta do projeto antigo.
+// de uma tarefa no Atlas, que mantinha a pasta do projeto antigo.
 export async function pastaValidaOuPadrao(clienteId: string | null, pastaId: string | null | undefined): Promise<string | null> {
   if (pastaId) {
     const { data } = await supabase.from("pastas_atividade").select("cliente_id, deleted_at").eq("id", pastaId).maybeSingle();
@@ -79,7 +79,7 @@ export async function criarAtividade(input: CriarAtividadeInput): Promise<Tables
 
 // O quadro Kanban (AtividadesView.tsx) lembra, por cliente, qual pasta
 // estava ativa (localStorage `atividades-view:<clienteId>` — ver o efeito
-// que salva isso naquele arquivo). O Jarvis não tem seletor de pasta
+// que salva isso naquele arquivo). O Atlas não tem seletor de pasta
 // próprio (evita reimplementar essa navegação), mas roda na MESMA origem
 // (web: mesma aba; desktop: mesma origem Tauri, storage compartilhado
 // entre as janelas main/jarvis) — então lê essa mesma chave pra criar a

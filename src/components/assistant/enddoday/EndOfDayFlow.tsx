@@ -17,7 +17,7 @@ interface EndOfDayFlowProps {
 
 // Item 19 do pedido: orquestrador — cada tela (intro/já existe/pergunta/
 // resumo) é seu próprio bloco simples aqui dentro, a lógica de verdade mora
-// em useEndOfDayFlow. Cabe nos 460x620 fixos da janela do Jarvis (não tem
+// em useEndOfDayFlow. Cabe nos 460x620 fixos da janela do Atlas (não tem
 // modo "tela cheia" — ver AssistantPanel.tsx), por isso nada aqui pressupõe
 // mais espaço do que isso.
 export function EndOfDayFlow({ onClose, onDiaEncerrado, onVerRelatorioCompleto }: EndOfDayFlowProps) {

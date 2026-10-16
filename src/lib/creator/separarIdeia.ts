@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ehPortugues, traduzirParaPortugues } from "@/lib/conteudo/traducao";
 import { headlineDaTranscricao } from "./transcricaoStore";
 
-// "Separar ideias" do modo Creator, rodando no próprio Jarvis: headline = a
+// "Separar ideias" do modo Creator, rodando no próprio Atlas: headline = a
 // primeira frase falada (o gancho), tradução pelo Google quando o reel é de
 // outra língua, e a ideia vai pro fim do doc "Ideias de headline — <nome>"
 // na pasta do mentorado. Antes isso dependia da sessão "Inteligência do
@@ -92,7 +92,7 @@ export async function separarIdeia(ideiaId: string): Promise<void> {
   } else {
     const { data: novo, error } = await supabase.from("documentos").insert({
       titulo, user_id: ideia.user_id, cliente_id: pasta.cliente_id, pasta_id: ideia.pasta_id,
-      conteudo: paragrafo(`Ideias separadas pelo Jarvis (modo Creator) para ${pasta.nome}.`) + bloco,
+      conteudo: paragrafo(`Ideias separadas pelo Atlas (modo Creator) para ${pasta.nome}.`) + bloco,
     }).select("id").single();
     if (error || !novo) { await marcarErro("Não consegui criar o documento"); return; }
     documentoId = novo.id;

@@ -1,4 +1,4 @@
-// Estado dos atalhos globais (Administração → Jarvis → Atalhos, item 14/15).
+// Estado dos atalhos globais (Administração → Atlas → Atalhos, item 14/15).
 // O registro em si acontece só no Rust (ver global_shortcut.rs) — aqui só
 // se pergunta se deu certo, pra avisar sem quebrar o app se ⌘+Shift+E já
 // estiver em uso por outro programa.

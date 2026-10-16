@@ -5,6 +5,7 @@ import type { MembroResumo, Sinal } from "@/lib/empresa/visaoGeral";
 import { CabecaBoneco } from "./BonecoMesa";
 import { BriefingTarefa } from "./BriefingTarefa";
 import { criarTarefaParaMembro } from "./FilaPessoa";
+import { ehCoordenador } from "@/lib/empresa/visaoGeral";
 
 // Gaveta da equipe na lateral direita, no jeito do Messenger (pedido do
 // Davi): fechada é uma aba com as carinhas; aberta lista todo mundo com o
@@ -24,8 +25,8 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
 }) {
   const [aberta, setAberta] = useState(false);
   const [conversa, setConversa] = useState<PessoaChat | null>(null);
-  // O Jarvis conversa pela orbe (⌘J); aqui fica o resto da equipe.
-  const lista = pessoas.filter((p) => !(p.membro.eh_ia && p.membro.nome === "Jarvis"));
+  // O Atlas conversa pela orbe (⌘J); aqui fica o resto da equipe.
+  const lista = pessoas.filter((p) => !ehCoordenador(p.membro));
   const precisam = lista.filter((p) => p.sinal === "esperando").length;
   const atualDaConversa = conversa ? lista.find((p) => p.membro.id === conversa.membro.id) ?? conversa : null;
 
@@ -90,7 +91,7 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
               </span>
             </button>
           ))}
-          <p className="px-2 pt-2 text-[11px] text-muted-foreground">Converse com alguém: ele diz o que entendeu e, quando você confirma, vira tarefa. Com o Jarvis, use a orbe (⌘J).</p>
+          <p className="px-2 pt-2 text-[11px] text-muted-foreground">Converse com alguém: ele diz o que entendeu e, quando você confirma, vira tarefa. Com o Atlas, use a orbe (⌘J).</p>
         </div>
       )}
     </div>

@@ -113,7 +113,7 @@ export function CreatorAnalises({ userId, titulos, clientes }: {
                   {a.status === "erro" && <p className="text-[11.5px] text-red-500">{a.erro}</p>}
                   {(a.status === "pedida" || a.status === "rodando") && (
                     <p className="text-[11.5px] text-muted-foreground">
-                      A Inteligência do Infopro está analisando (uns 1–3 min). Se ficar parado, abra o chat dela no Claude e peça “fica ouvindo o Jarvis”.
+                      A Inteligência do Infopro está analisando (uns 1–3 min). Se ficar parado, abra o chat dela no Claude e peça “fica ouvindo o Atlas”.
                     </p>
                   )}
                   {a.resultado?.resumo_geral && <p className="text-[12px] text-muted-foreground">{a.resultado.resumo_geral}</p>}

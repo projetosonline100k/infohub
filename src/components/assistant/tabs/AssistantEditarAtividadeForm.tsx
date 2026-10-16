@@ -29,7 +29,7 @@ interface AssistantEditarAtividadeFormProps {
   onCancelar: () => void;
 }
 
-// Item 4: edição completa da atividade a partir do Jarvis — mesmos campos
+// Item 4: edição completa da atividade a partir do Atlas — mesmos campos
 // pedidos (título, estimativa, descanso, prioridade, data, projeto/pasta/
 // coluna), salvando via atualizarAtividade (useAssistantAtividades.ts).
 export function AssistantEditarAtividadeForm({ atividade, projetos, colunasDoProjeto, onSalvar, onCancelar }: AssistantEditarAtividadeFormProps) {

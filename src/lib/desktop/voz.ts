@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { isDesktop } from "@/lib/platform";
 import { liberarEspacoHistoricos } from "@/hooks/usePersistentHistory";
 
-// Voz do Jarvis (opção grátis): no Mac usa as vozes do sistema pelo comando
+// Voz do Atlas (opção grátis): no Mac usa as vozes do sistema pelo comando
 // `say` (src-tauri/src/voz.rs); fora do app desktop, a voz do navegador
 // (speechSynthesis). Configuração por aparelho (localStorage), compartilhada
-// entre a janela principal e a do Jarvis.
+// entre a janela principal e a do Atlas.
 export interface ConfigVoz { ligada: boolean; voz: string; velocidade: number }
 
 const CHAVE = "jarvis:voz";

@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
-// Guia WhatsApp → "Conversas": o WhatsApp ao vivo dentro do Jarvis. As
+// Guia WhatsApp → "Conversas": o WhatsApp ao vivo dentro do Atlas. As
 // mensagens chegam pelo WAHA no Mac (scripts/whatsapp-receptor.py) na tabela
 // whatsapp_mensagens; áudios já vêm transcritos. Enviar só acontece quando o
 // Davi clica em Enviar (comando whatsapp_enviar, só no app do Mac).
@@ -23,7 +23,7 @@ interface Mensagem {
 }
 
 // Fotos/vídeos/áudios ficam no Mac e o receptor do WhatsApp entrega pro
-// Jarvis (só no app do Mac). Endereço + chave vêm do comando whatsapp_midia_base.
+// Atlas (só no app do Mac). Endereço + chave vêm do comando whatsapp_midia_base.
 let midiaBase: Promise<{ base: string; chave: string } | null> | null = null;
 function useMidiaUrl() {
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
@@ -78,7 +78,7 @@ export function WhatsappConversas({ pedido }: { pedido?: { nome: string; when: s
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-  // A conversa aberta continua aberta ao sair e voltar (fechar o Jarvis,
+  // A conversa aberta continua aberta ao sair e voltar (fechar o Atlas,
   // trocar de guia ou de "Painel"/"Conversas").
   const [aberta, setAbertaEstado] = useState<Conversa | null>(() => {
     try { return JSON.parse(localStorage.getItem(CHAVE_ABERTA) || "null"); } catch { return null; }
@@ -186,8 +186,8 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
 }) {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [carregando, setCarregando] = useState(true);
-  // Rascunho por conversa (sobrevive a fechar o Jarvis) e erro visível aqui
-  // mesmo (o aviso flutuante nem sempre aparece na janela do Jarvis).
+  // Rascunho por conversa (sobrevive a fechar o Atlas) e erro visível aqui
+  // mesmo (o aviso flutuante nem sempre aparece na janela do Atlas).
   const chaveRascunho = `jarvis:whatsapp-rascunho:${conversa.chat_id}`;
   const [texto, setTextoEstado] = useState(() => { try { return localStorage.getItem(chaveRascunho) ?? ""; } catch { return ""; } });
   const setTexto = (valor: string) => {

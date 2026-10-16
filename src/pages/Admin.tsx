@@ -216,7 +216,7 @@ const Admin = () => {
 
       <div className="space-y-6 border-t border-border pt-6">
         <div>
-          <h1 className="mb-1 text-2xl font-bold text-foreground">Jarvis</h1>
+          <h1 className="mb-1 text-2xl font-bold text-foreground">Atlas</h1>
           <p className="text-sm text-muted-foreground">Mensagens espontâneas e preferências do assistente flutuante.</p>
         </div>
         <AdminJarvisMensagens />

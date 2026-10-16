@@ -38,7 +38,7 @@ import { pedirTexto } from "@/components/DialogosGlobais";
 
 interface NotaEditorPaneProps {
   nota: AssistantDocumento;
-  // Só no Jarvis compacto (lista <-> editor empilhados) — a página /notas
+  // Só no Atlas compacto (lista <-> editor empilhados) — a página /notas
   // não precisa, os painéis já ficam visíveis ao mesmo tempo.
   onVoltar?: () => void;
   onFixar: (id: string, fixado: boolean) => void;
@@ -144,7 +144,7 @@ function FormatacaoCompacta({ editor }: { editor: Editor }) {
 }
 
 // Editor completo da nota (item 2) — mesmo Tiptap/useNotaEditor.ts
-// (compartilhado com a página /notas). O modo compact (Jarvis) tem chrome
+// (compartilhado com a página /notas). O modo compact (Atlas) tem chrome
 // próprio — cabeçalho "← Notas / Aa / 📌 / •••" e formatação escondida por
 // padrão — bem diferente do modo desktop (DocumentToolbar sempre visível),
 // então os dois viraram blocos praticamente separados aqui dentro, embora
@@ -228,7 +228,7 @@ export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar,
         </p>
 
         {/* pl-7: espaço pras setas dos títulos recolhíveis (ficam à esquerda
-            do texto) — sem isso eram cortadas e não dava pra abrir no Jarvis. */}
+            do texto) — sem isso eram cortadas e não dava pra abrir no Atlas. */}
         <div className="min-h-0 flex-1 overflow-y-auto pl-7">
           <EditorContent editor={editor} className="prose prose-sm max-w-none document-editor dark:prose-invert" />
         </div>

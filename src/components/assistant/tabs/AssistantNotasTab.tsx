@@ -21,7 +21,7 @@ interface AssistantNotasTabProps {
 }
 
 // Estilo app de notas mobile: lista (100% da largura) OU editor (100% da
-// largura), nunca os dois lado a lado — o painel do Jarvis é estreito
+// largura), nunca os dois lado a lado — o painel do Atlas é estreito
 // demais pra 2 colunas ficarem legíveis. A lista fica escondida via CSS
 // (não desmontada) enquanto o editor está aberto, pra "voltar" preservar a
 // posição de rolagem em vez de resetar a lista do zero. O projeto é

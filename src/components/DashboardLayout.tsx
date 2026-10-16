@@ -45,14 +45,14 @@ export const DashboardLayout = () => {
 
   // Avisa a janela `jarvis` (desktop) qual cliente está aberto aqui na
   // `main` — cada janela tem sua própria árvore React Router, então o
-  // Assistant renderizado dentro do Jarvis não enxerga essa rota sozinho
+  // Assistant renderizado dentro do Atlas não enxerga essa rota sozinho
   // (ver src/lib/desktop/events.ts). No-op na web/sem cliente selecionado.
   useEffect(() => {
     if (clienteRotaId) void emitClienteAtualMudou(clienteRotaId);
   }, [clienteRotaId]);
 
   // Item 1 (rodada 3): a janela main já foi mostrada/maximizada/focada por
-  // openMainWindow() (chamado de dentro do Jarvis) — aqui só navegamos pra
+  // openMainWindow() (chamado de dentro do Atlas) — aqui só navegamos pra
   // rota que ele pediu (Ver todas, Notas, Expandir, etc). No-op na web
   // (onMainNavigate não faz nada fora do desktop).
   useEffect(() => {

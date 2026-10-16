@@ -34,7 +34,7 @@ export default function QuizPublico() {
   useEffect(() => {
     const html = document.documentElement, body = document.body;
     const antes = [html.style.background, body.style.background, html.style.overscrollBehavior, body.style.overscrollBehavior, body.style.overflow];
-    // "important": o index.css deixa html/body transparentes (janela do Jarvis no desktop).
+    // "important": o index.css deixa html/body transparentes (janela do Atlas no desktop).
     for (const el of [html, body]) { el.style.setProperty("background", fundo, "important"); el.style.overscrollBehavior = "none"; }
     body.style.overflow = "hidden";
     let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');

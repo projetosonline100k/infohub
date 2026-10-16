@@ -17,7 +17,7 @@ interface MacSleepConfirmDialogProps {
 }
 
 // "Repousar Mac" (item 7) — só chama o comando nativo depois de confirmado
-// aqui. Depois do comando, não faz mais nada (nem fecha o Jarvis, nem
+// aqui. Depois do comando, não faz mais nada (nem fecha o Atlas, nem
 // navega) — o próprio Mac dormindo já é a ação; qualquer coisa a mais
 // seria o app tentando "reagir" a algo que já não controla mais.
 export function MacSleepConfirmDialog({ open, onOpenChange }: MacSleepConfirmDialogProps) {

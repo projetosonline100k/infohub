@@ -4,7 +4,7 @@ import confetti from "canvas-confetti";
 // da posição da orbe. `origem` em frações da viewport (0..1, mesma
 // convenção do canvas-confetti); sem isso, dispara do canto inferior
 // direito (onde a orbe normalmente fica, tanto no card embutido quanto na
-// janela nativa do Jarvis — dentro dela o "viewport" é a própria janela
+// janela nativa do Atlas — dentro dela o "viewport" é a própria janela
 // pequena, então o burst fica naturalmente contido nela).
 export function dispararConfete(origem?: { x: number; y: number }): void {
   try {

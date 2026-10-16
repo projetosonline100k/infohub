@@ -267,7 +267,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               {esperou > AVISO_SEM_OUVINTE
-                ? "Ninguém respondeu ainda. O ouvinte do Jarvis está ligado neste Mac?"
+                ? "Ninguém respondeu ainda. O ouvinte do Atlas está ligado neste Mac?"
                 : `${membro.nome} está lendo…`}
             </p>
           )}

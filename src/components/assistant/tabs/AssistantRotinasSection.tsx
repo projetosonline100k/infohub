@@ -7,10 +7,10 @@ interface AssistantRotinasSectionProps {
   onVerPerformance: () => void;
 }
 
-// "ROTINAS" no Jarvis (item 16) — até 4 hábitos (por ordem) pra não lotar o
+// "ROTINAS" no Atlas (item 16) — até 4 hábitos (por ordem) pra não lotar o
 // painel 460x620. Boolean clicável direto; numérico só leitura (clique leva
 // pra Performance completa, sem apertar um popover numérico no espaço
-// pequeno do Jarvis).
+// pequeno do Atlas).
 export function AssistantRotinasSection({ onVerPerformance }: AssistantRotinasSectionProps) {
   const { linhasProgramadas, loading, registrarBooleano } = usePerformanceToday();
 

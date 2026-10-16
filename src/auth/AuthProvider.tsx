@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (mounted) setSession(nextSession);
     });
 
-    // Duas janelas do app desktop (principal + Jarvis, ver
+    // Duas janelas do app desktop (principal + Atlas, ver
     // src/pages/JarvisWindow.tsx) são dois runtimes JS separados que só
     // compartilham a mesma origem/localStorage — o evento nativo "storage"
     // dispara nas OUTRAS janelas quando uma delas loga/desloga, então a

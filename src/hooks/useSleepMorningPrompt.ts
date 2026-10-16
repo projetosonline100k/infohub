@@ -7,7 +7,7 @@ const CHAVE_STORAGE = (dataStr: string) => `jarvis-sono-lembrete:${dataStr}`;
 // "Bom dia. Antes de começar, quer registrar como foi sua noite?" (item 15)
 // — mesmo desenho de useStartDayPrompt.ts: dispensa por localStorage/dia
 // (nunca cobra de novo no mesmo dia), reconfere ao ganhar foco (relevante
-// no desktop, onde o painel do Jarvis nunca desmonta). `jaTemRegistro` vem
+// no desktop, onde o painel do Atlas nunca desmonta). `jaTemRegistro` vem
 // de fora (useSleepToday) — null enquanto ainda está carregando.
 export function useSleepMorningPrompt(jaTemRegistro: boolean | null) {
   const [dispensadoHoje, setDispensadoHoje] = useState(false);

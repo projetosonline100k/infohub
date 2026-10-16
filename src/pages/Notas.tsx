@@ -9,7 +9,7 @@ import { NotaEditorPane } from "@/components/notas/NotaEditorPane";
 
 // Página nova (redesenho "imitar o Notes"): sidebar única (projeto + filtros
 // + pastas, tudo em NotasFoldersPane) / lista de notas / editor — mesmos
-// dados e componentes do Jarvis compacto (useAssistantProjeto,
+// dados e componentes do Atlas compacto (useAssistantProjeto,
 // useAssistantDocumentos, useNotasPastas, NotasListPane, NotaEditorPane),
 // nenhuma lógica duplicada, só um layout maior e mais parecido com o
 // Notes nativo do Mac/iPhone. Altura calculada a partir do shell novo:

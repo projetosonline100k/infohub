@@ -27,7 +27,7 @@ interface StartDayFlowProps {
 }
 
 // Orquestrador — irmão de EndOfDayFlow.tsx (mesma máquina de estado, mesmo
-// respeito aos 460x620 fixos da janela do Jarvis), mas com um passo a mais
+// respeito aos 460x620 fixos da janela do Atlas), mas com um passo a mais
 // ("ontem") e duas telas dedicadas (80/20, prioridade #1) em vez de um
 // único componente genérico de pergunta.
 export function StartDayFlow({

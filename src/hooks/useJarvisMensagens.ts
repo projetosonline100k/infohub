@@ -14,7 +14,7 @@ export interface JarvisMensagemInput {
   contexto: string | null;
 }
 
-// CRUD completo (usado por Administração → Jarvis) + Realtime — o Jarvis
+// CRUD completo (usado por Administração → Atlas) + Realtime — o Atlas
 // (useAssistantCobranca, via Assistant.tsx) lê a mesma lista já carregada
 // aqui, sem outra assinatura de canal pra mesma tabela.
 export function useJarvisMensagens() {
@@ -93,7 +93,7 @@ export function useJarvisMensagens() {
   return { mensagens, loading, criar, atualizar, alternarAtivo, excluir, refetch: carregar };
 }
 
-// Seletor puro (sem estado) — usado pelo Jarvis pra sortear entre as
+// Seletor puro (sem estado) — usado pelo Atlas pra sortear entre as
 // mensagens ativas de um tipo, sobre a mesma lista já carregada acima.
 export function mensagensAtivasPorTipo(mensagens: JarvisMensagem[], tipo: JarvisMensagemTipo): JarvisMensagem[] {
   return mensagens.filter((m) => m.ativo && m.tipo === tipo);

@@ -16,7 +16,7 @@ import {
   type Pilar,
 } from "@/lib/performance/PerformanceHabitService";
 
-// Pilares + hábitos do usuário, com Realtime (registrar um hábito no Jarvis
+// Pilares + hábitos do usuário, com Realtime (registrar um hábito no Atlas
 // precisa refletir na página Performance sem F5, e vice-versa).
 export function usePerformanceHabits() {
   const { user } = useAuth();

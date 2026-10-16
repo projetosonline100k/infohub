@@ -28,7 +28,7 @@ export async function onActivityCreated(handler: (id: string) => void): Promise<
   }
 }
 
-// Navegação da janela `main` pedida pelo Jarvis (item 1 da rodada 3: Ver
+// Navegação da janela `main` pedida pelo Atlas (item 1 da rodada 3: Ver
 // todas, Notas completas, Expandir, abrir projeto) — a `main` já foi
 // mostrada/maximizada/focada por openMainWindow() (ver desktop/window.ts);
 // este evento só carrega PRA ONDE ela deve navegar. Substitui o antigo
@@ -52,7 +52,7 @@ export async function onMainNavigate(handler: (route: string) => void): Promise<
     const { listen } = await import("@tauri-apps/api/event");
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     // Abas destacadas viram janelas próprias com este mesmo layout; só a
-    // `main` obedece ao Jarvis, senão todas navegariam juntas.
+    // `main` obedece ao Atlas, senão todas navegariam juntas.
     if (getCurrentWindow().label !== "main") return () => {};
     const unlisten = await listen<{ route: string }>(EVENTO_MAIN_NAVIGATE, (event) => handler(event.payload.route));
     return unlisten;
@@ -62,7 +62,7 @@ export async function onMainNavigate(handler: (route: string) => void): Promise<
 }
 
 // Janela `main` avisando qual cliente está aberta em /clientes/:id (item:
-// Jarvis seguir o projeto da página atual). As janelas main/jarvis têm cada
+// Atlas seguir o projeto da página atual). As janelas main/jarvis têm cada
 // uma sua própria instância de React Router — useParams() dentro do
 // Assistant não enxerga a rota da OUTRA janela, então isso precisa de um
 // evento nativo cruzando pra janela `jarvis` (mesmo padrão de
@@ -76,7 +76,7 @@ export async function emitClienteAtualMudou(clienteId: string): Promise<void> {
     const { emit } = await import("@tauri-apps/api/event");
     await emit(EVENTO_CLIENTE_ATUAL, { clienteId });
   } catch {
-    /* ignora — quem quiser pode trocar o projeto manualmente no Jarvis */
+    /* ignora — quem quiser pode trocar o projeto manualmente no Atlas */
   }
 }
 
@@ -110,7 +110,7 @@ export async function onAbrirEncerrarDia(handler: () => void): Promise<() => voi
 }
 
 // ⌘+J (atalho global, src-tauri/src/global_shortcut.rs): o Rust avisa
-// quando aperta (o Jarvis ganha foco pra ouvir o C de ⌘+J+C) e quando solta
+// quando aperta (o Atlas ganha foco pra ouvir o C de ⌘+J+C) e quando solta
 // (aí abre a Conversa ou o modo Creator).
 export async function onAtalhoJ(aoApertar: () => void, aoSoltar: () => void): Promise<() => void> {
   if (!isDesktop()) return () => {};

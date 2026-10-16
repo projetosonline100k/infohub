@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { completarCapas, processarFila } from "@/lib/creator/transcricaoStore";
 import { separarIdeiasPendentes } from "@/lib/creator/separarIdeia";
 
-// Liga a fila do iPhone (ver processarFila): ao abrir o Jarvis, quando um
+// Liga a fila do iPhone (ver processarFila): ao abrir o Atlas, quando um
 // link novo chega (tempo real) e a cada minuto, por garantia.
 // Também completa as capas das referências antigas (completarCapas).
 export function useFilaCreator(userId: string | null | undefined, ativo: boolean) {

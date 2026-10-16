@@ -32,7 +32,7 @@ export function lerResposta(dados: unknown): { texto: string; idioma: string | n
 export const ehPortugues = (idioma: string | null | undefined) => !!idioma && /^pt/i.test(idioma);
 
 // No app do Mac a tradução passa pelo Python do modo Creator (a janela do
-// Jarvis não consegue chamar o Google direto); na web, fetch normal.
+// Atlas não consegue chamar o Google direto); na web, fetch normal.
 async function traduzirPedaco(parte: string): Promise<{ texto: string; idioma: string | null }> {
   if ("__TAURI_INTERNALS__" in window) {
     const { invoke } = await import("@tauri-apps/api/core");

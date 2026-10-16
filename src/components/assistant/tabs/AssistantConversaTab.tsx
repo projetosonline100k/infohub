@@ -22,7 +22,7 @@ interface Mensagem {
 // que a tarefa agendada faz a cada 30 min).
 export const COMANDO_COBRAR = "/cobrar";
 
-// Rascunho do campo de mensagem: sobrevive a fechar/abrir o Jarvis.
+// Rascunho do campo de mensagem: sobrevive a fechar/abrir o Atlas.
 const CHAVE_RASCUNHO = "jarvis:conversa-rascunho";
 const lerRascunho = () => { try { return localStorage.getItem(CHAVE_RASCUNHO) || ""; } catch { return ""; } };
 const gravarRascunho = (texto: string) => {
@@ -72,7 +72,7 @@ const rotuloDia = (iso: string) => {
   return format(d, "EEE, dd 'de' MMM", { locale: ptBR });
 };
 
-// Aba "Conversa" do Jarvis: chat com a sessão "Inteligência do Infopro" do
+// Aba "Conversa" do Atlas: chat com a sessão "Inteligência do Infopro" do
 // Claude. A mensagem vai pro banco (jarvis_conversa); a sessão do Claude que
 // está ouvindo (scripts/jarvis-conversa.py) responde e a resposta chega
 // aqui em tempo real. ⌘+J abre direto aqui.
@@ -166,7 +166,7 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
   const enviarRef = useRef(enviar);
   enviarRef.current = enviar;
   const pedirCobranca = useCallback(() => { void enviarRef.current(COMANDO_COBRAR); }, []);
-  // ⌘1 com o Jarvis em foco (⌘J abre aqui, então ⌘J → ⌘1).
+  // ⌘1 com o Atlas em foco (⌘J abre aqui, então ⌘J → ⌘1).
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "1") { e.preventDefault(); e.stopPropagation(); pedirCobranca(); }
@@ -243,7 +243,7 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
         )}
         {semResposta && (
           <div className="rounded-lg bg-amber-100 px-3 py-2 text-[11px] text-amber-800 dark:bg-yellow-950/50 dark:text-yellow-300">
-            O chat “Inteligência do Infopro” não está ouvindo. Abra ele no Claude e peça: “fica ouvindo o Jarvis”. A mensagem será respondida assim que ele começar.
+            O chat “Inteligência do Infopro” não está ouvindo. Abra ele no Claude e peça: “fica ouvindo o Atlas”. A mensagem será respondida assim que ele começar.
           </div>
         )}
         <div ref={fimRef} />

@@ -13,7 +13,7 @@ import {
 
 interface Fechamento { main_win: string | null; main_blocker: string | null; tomorrow_main_priority: string | null }
 
-// Guia "Relatório" do Jarvis: diário rápido do dia. A pessoa escreve o que
+// Guia "Relatório" do Atlas: diário rápido do dia. A pessoa escreve o que
 // fez ("fechei a call com o Matheus") e a linha do tempo junta isso com as
 // atividades concluídas e as sessões de foco, pra mapear o que foi feito em
 // cada dia (setas pra ver os anteriores).

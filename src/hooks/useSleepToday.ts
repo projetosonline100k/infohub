@@ -13,7 +13,7 @@ import {
   type SleepLog,
 } from "@/lib/sleep/SleepService";
 
-// Log de hoje + meta, com Realtime em sleep_logs (Jarvis registrando
+// Log de hoje + meta, com Realtime em sleep_logs (Atlas registrando
 // precisa refletir na Visão geral sem F5, e vice-versa — item de teste 9).
 export function useSleepToday() {
   const { user } = useAuth();

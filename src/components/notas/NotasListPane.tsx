@@ -12,7 +12,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 
 interface NotasListPaneProps {
   notas: AssistantDocumento[];
-  // Só precisa quando filtro.tipo === "lixeira" — no Jarvis compacto (sem
+  // Só precisa quando filtro.tipo === "lixeira" — no Atlas compacto (sem
   // pastas/filtro) nunca é usado.
   notasLixeira?: AssistantDocumento[];
   pastas?: NotaPasta[];
@@ -23,7 +23,7 @@ interface NotasListPaneProps {
   onCriar: () => void;
   onRestaurar?: (id: string) => void;
   onExcluirPermanente?: (id: string) => void;
-  // Densidade — o Jarvis compacto usa menos respiro que a página /notas.
+  // Densidade — o Atlas compacto usa menos respiro que a página /notas.
   compact?: boolean;
   // Botão extra no começo da barra (página /notas: mostrar/ocultar pastas).
   acaoEsquerda?: React.ReactNode;
@@ -70,7 +70,7 @@ function agruparPorSecao(notas: AssistantDocumento[]): { titulo: string; itens: 
 
 // Lista de notas (item 2/9): busca real (título + conteúdo) + filtro vindo
 // da Coluna 1 (pasta/fixadas/hoje/7 dias/lixeira) + fixadas primeiro +
-// alternância lista/galeria. Usada tanto no Jarvis compacto (sem `filtro`/
+// alternância lista/galeria. Usada tanto no Atlas compacto (sem `filtro`/
 // `pastas`, só a lista simples de sempre) quanto na página /notas.
 export function NotasListPane({
   notas,
@@ -87,7 +87,7 @@ export function NotasListPane({
   acaoEsquerda,
 }: NotasListPaneProps) {
   const [busca, setBusca] = useState("");
-  // Página /notas abre em galeria (como o Notes); o Jarvis compacto, em lista.
+  // Página /notas abre em galeria (como o Notes); o Atlas compacto, em lista.
   const [visualizacao, setVisualizacao] = useState<"lista" | "grade">(compact ? "lista" : "grade");
 
   const naLixeira = filtro?.tipo === "lixeira";

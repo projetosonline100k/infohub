@@ -22,7 +22,7 @@ const TIPO_LABEL: Record<JarvisMensagemTipo, string> = {
 
 const TIPOS: JarvisMensagemTipo[] = ["motivacao", "alerta", "retorno_foco", "pausa", "conclusao"];
 
-// Item 2 do refinamento: CRUD de mensagens espontâneas — o Jarvis sorteia
+// Item 2 do refinamento: CRUD de mensagens espontâneas — o Atlas sorteia
 // entre as ativas de cada tipo (ver useAssistantCobranca.ts), respeitando o
 // intervalo mínimo de cada uma. Mesmo padrão visual (Card-list + Dialog) do
 // resto de Admin.tsx.
@@ -97,9 +97,9 @@ export function AdminJarvisMensagens() {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-foreground">Mensagens do Jarvis</h2>
+          <h2 className="text-lg font-semibold text-foreground">Mensagens do Atlas</h2>
           <p className="text-sm text-muted-foreground">
-            O Jarvis sorteia entre as mensagens ativas de cada tipo, nos momentos certos — sem incomodar (cada
+            O Atlas sorteia entre as mensagens ativas de cada tipo, nos momentos certos — sem incomodar (cada
             mensagem tem seu próprio intervalo mínimo entre repetições).
           </p>
         </div>

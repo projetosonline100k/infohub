@@ -1,4 +1,4 @@
-// Linha do tempo do dia na guia "Relatório" do Jarvis: junta o que a pessoa
+// Linha do tempo do dia na guia "Relatório" do Atlas: junta o que a pessoa
 // escreveu (diário) com o que o sistema já sabe (atividades concluídas e
 // sessões de foco). Função pura, testável.
 

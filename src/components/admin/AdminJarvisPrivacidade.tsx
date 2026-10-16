@@ -5,7 +5,7 @@ import { useJarvisConfig } from "@/hooks/useJarvisConfig";
 
 // Item 3 (rodada 3): privacidade do monitoramento de foco nativo — 3
 // switches, todos desligados por padrão (opt-in). Reaproveita
-// jarvis_configuracoes (mesma tabela de "Sons do Jarvis").
+// jarvis_configuracoes (mesma tabela de "Sons do Atlas").
 export function AdminJarvisPrivacidade() {
   const { monitorarAppAtivo, setMonitorarAppAtivo, analisarTituloJanela, setAnalisarTituloJanela, detectarDistracoes, setDetectarDistracoes, loading } =
     useJarvisConfig();
@@ -15,7 +15,7 @@ export function AdminJarvisPrivacidade() {
       <div>
         <h2 className="text-lg font-semibold text-foreground">Privacidade</h2>
         <p className="text-sm text-muted-foreground">
-          Monitoramento de foco nativo — o Jarvis só olha qual aplicativo/janela está ativo durante uma sessão de
+          Monitoramento de foco nativo — o Atlas só olha qual aplicativo/janela está ativo durante uma sessão de
           foco, pra identificar possível desvio. Nunca coleta teclado, senhas, screenshots, mensagens, câmera,
           microfone, conteúdo de formulários ou texto da tela.
         </p>
@@ -35,7 +35,7 @@ export function AdminJarvisPrivacidade() {
             <Label htmlFor="jarvis-titulo" className="!mt-0">Analisar título da janela</Label>
             <p className="text-xs text-muted-foreground">
               Ex.: qual aba do Chrome está aberta. Precisa da permissão de Accessibility do macOS — sem ela, o
-              Jarvis segue usando só o nome do app.
+              Atlas segue usando só o nome do app.
             </p>
           </div>
           <Switch id="jarvis-titulo" checked={analisarTituloJanela} disabled={loading} onCheckedChange={setAnalisarTituloJanela} />
@@ -45,7 +45,7 @@ export function AdminJarvisPrivacidade() {
           <div>
             <Label htmlFor="jarvis-distracoes" className="!mt-0">Detectar possíveis distrações</Label>
             <p className="text-xs text-muted-foreground">
-              Depois de um tempo num app ainda não classificado, o Jarvis pergunta se aquilo faz parte da tarefa.
+              Depois de um tempo num app ainda não classificado, o Atlas pergunta se aquilo faz parte da tarefa.
             </p>
           </div>
           <Switch id="jarvis-distracoes" checked={detectarDistracoes} disabled={loading} onCheckedChange={setDetectarDistracoes} />

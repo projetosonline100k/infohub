@@ -32,9 +32,9 @@ const MINUTOS_COMPROMISSO_PADRAO = 25;
 export const PREFIXO_OUTRA_COISA = "outra coisa: ";
 const MINUTOS_OUTRA_COISA = 60;
 
-// Cobrança inteligente do Jarvis: a tarefa agendada do Claude publica a
+// Cobrança inteligente do Atlas: a tarefa agendada do Claude publica a
 // coisa mais importante do momento em `jarvis_cobrancas`
-// (scripts/cobranca-jarvis.py) e ela fica no Jarvis até o Davi responder.
+// (scripts/cobranca-jarvis.py) e ela fica no Atlas até o Davi responder.
 // Adiada volta sozinha quando o prazo passa.
 export function useCobrancaInteligente(userId: string | null | undefined) {
   const [cobranca, setCobranca] = useState<CobrancaInteligente | null>(null);

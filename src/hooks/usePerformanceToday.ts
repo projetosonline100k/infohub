@@ -8,7 +8,7 @@ import { habitoProgramadoNoDia, montarLinhaDoHabito, type LinhaHabito } from "@/
 
 // Hábitos programados hoje já mesclados com log/automático (item 6 do
 // pedido) — consumido pela aba "Visão geral" da Performance E pela seção
-// "ROTINAS" do Jarvis.
+// "ROTINAS" do Atlas.
 export function usePerformanceToday() {
   const { user } = useAuth();
   const { habitosAtivos, loading: loadingHabitos } = usePerformanceHabits();

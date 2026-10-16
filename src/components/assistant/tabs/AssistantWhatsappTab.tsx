@@ -83,7 +83,7 @@ function BotaoCopiar({ texto }: { texto: string }) {
   );
 }
 
-// Guia "WhatsApp" do Jarvis: o mesmo painel que a rotina "Ideias de resposta
+// Guia "WhatsApp" do Atlas: o mesmo painel que a rotina "Ideias de resposta
 // WhatsApp" montava em HTML (cards com DISC e sugestões em sanduíche, saúde
 // dos mentorados, desempenho e compromissos), agora lido do banco
 // (whatsapp_painel). A rotina publica com scripts/publicar-painel-whatsapp.py;
@@ -288,7 +288,7 @@ function PainelWhatsapp({ onAbrirConversa }: { onAbrirConversa?: (c: CardWhatsap
       )}
       {painel.pedidoStatus === "pedida" && semResposta && (
         <div className={cn("mb-2 rounded-md px-2.5 py-1.5 text-[11px]", TOM.alta)}>
-          O ouvinte do Jarvis não pegou o pedido. Confira se o Mac está ligado e com internet — ele atende sozinho assim que voltar.
+          O ouvinte do Atlas não pegou o pedido. Confira se o Mac está ligado e com internet — ele atende sozinho assim que voltar.
         </div>
       )}
       {painel.pedidoStatus === "rodando" && (

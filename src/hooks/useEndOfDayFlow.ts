@@ -86,7 +86,7 @@ export function useEndOfDayFlow() {
   const dataStr = format(new Date(), "yyyy-MM-dd");
 
   // Chamado toda vez que o fluxo abre (não só na primeira montagem — o
-  // painel do Jarvis existe o tempo todo, então "montar uma vez" não basta
+  // painel do Atlas existe o tempo todo, então "montar uma vez" não basta
   // pra "verificar de novo cada vez que a pessoa aperta ⌘+Shift+E").
   const abrir = useCallback(async () => {
     setEstado("carregando");

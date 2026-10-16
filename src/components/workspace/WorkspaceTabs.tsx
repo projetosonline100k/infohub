@@ -268,7 +268,7 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
   const podeDestacar = tabs.length > 1;
 
   // ⌘1…⌘8 vão para a aba daquela posição e ⌘9 para a última, como no
-  // navegador (pedido do Davi, 15/10). Com a conversa do Jarvis aberta, o ⌘1
+  // navegador (pedido do Davi, 15/10). Com a conversa do Atlas aberta, o ⌘1
   // é dela (AssistantConversaTab pega antes, na captura).
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {

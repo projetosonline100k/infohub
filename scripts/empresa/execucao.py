@@ -1,7 +1,7 @@
 """Execução automática das tarefas confirmadas por briefing (pedido do Davi,
 14/10/2026: "toda vez que eu confirmar uma tarefa, ele começa sozinho").
 
-O ouvinte do Jarvis (scripts/jarvis-ouvinte.py, linha "execucao") pega a
+O ouvinte do Atlas (scripts/jarvis-ouvinte.py, linha "execucao") pega a
 tarefa na fila de um funcionário IA que trabalha sozinho (EXECUTORES), põe em
 andamento e chama o Claude no papel dele. Ele entrega um documento no projeto
 e a tarefa vai para "aguardando aprovação" do Davi.

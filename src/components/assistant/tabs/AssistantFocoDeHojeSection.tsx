@@ -15,7 +15,7 @@ interface AssistantFocoDeHojeSectionProps {
 // "FOCO DE HOJE" — as até-3 atividades do 80/20 definidas em "Começar o
 // dia", com a prioridade #1 em destaque (🔥) e progresso "N de M
 // concluídas". Busca própria (via useDailyPlan, repassado por quem chama),
-// não a lista viva do Jarvis — que remove uma tarefa assim que ela é
+// não a lista viva do Atlas — que remove uma tarefa assim que ela é
 // concluída, o que faria essa seção "perder" a concluída na hora (correção
 // #1 do plano). Clicar numa já concluída não abre a tela de foco de novo
 // (seria um no-op silencioso, ela já nem está mais em `tarefas`).

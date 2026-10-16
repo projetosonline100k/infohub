@@ -28,7 +28,7 @@ import type { FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 
 // Item 5 do pedido: o painel usava as cores do tema da página (verde no
 // claro, ouro no botão padrão — ver --accent/--primary em index.css), que
-// não é a identidade do Jarvis (o aro do ícone no cabeçalho já é ciano/azul
+// não é a identidade do Atlas (o aro do ícone no cabeçalho já é ciano/azul
 // fixo, ver AssistantEyes logo abaixo). Sobrescrever as variáveis de cor
 // aqui, no contêiner raiz, faz TUDO que usa bg-primary/bg-accent/ring por
 // baixo (botões, aba ativa, focos) virar esse mesmo azul, em qualquer tema
@@ -36,9 +36,9 @@ import type { FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 //
 // Fundo fixo (pedido novo): o painel usava --popover/--background/--card do
 // TEMA DA PÁGINA — ficava claro se a página estivesse no tema claro. O
-// pedido foi fixar o Jarvis nesse azul-marinho escuro específico sempre,
+// pedido foi fixar o Atlas nesse azul-marinho escuro específico sempre,
 // então essas variáveis foram copiadas direto do bloco `.dark` de
-// index.css (mesmos valores, não uma cor nova) — o Jarvis passa a nascer
+// index.css (mesmos valores, não uma cor nova) — o Atlas passa a nascer
 // sempre "escuro" independente do tema ativo na página.
 const CORES_JARVIS = {
   "--primary": "188 86% 42%",
@@ -225,7 +225,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
       // usado lá dentro (ex.: `dark:prose-invert` no editor de notas)
       // procurar essa classe num ancestral — só as variáveis CSS não
       // ativam esses utilitários, e sem isso o texto de uma nota ficaria
-      // escuro (tema claro da página) sobre o fundo escuro fixo do Jarvis.
+      // escuro (tema claro da página) sobre o fundo escuro fixo do Atlas.
       className="dark flex h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-popover text-popover-foreground shadow-lg"
       style={CORES_JARVIS}
     >
@@ -248,7 +248,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
           {/* Rodada 10, item 1: orbe em miniatura no lugar do ícone fixo —
               antes, ao abrir o painel (que agora preenche a janela
               inteira), a orbe "sumia" de vez (coberta por trás) sem
-              nenhum resquício visual do Jarvis. Reaproveita AssistantEyes
+              nenhum resquício visual do Atlas. Reaproveita AssistantEyes
               (mesmos frames/piscar), só menor e sem anel/glow. */}
           <span className="relative h-5 w-5 shrink-0 overflow-hidden rounded-full bg-background ring-1 ring-cyan-400/60">
             <AssistantEyes className="relative h-full w-full" pausado={estado === "pausado"} />
@@ -282,8 +282,8 @@ export function AssistantPanel(props: AssistantPanelProps) {
             type="button"
             onClick={onAlternarFixado}
             aria-pressed={fixado}
-            aria-label={fixado ? "Desafixar o Jarvis" : "Fixar o Jarvis"}
-            title={fixado ? "Fixado: clicar fora não fecha. Clique para desafixar" : "Fixar: clicar fora não fecha o Jarvis"}
+            aria-label={fixado ? "Desafixar o Atlas" : "Fixar o Atlas"}
+            title={fixado ? "Fixado: clicar fora não fecha. Clique para desafixar" : "Fixar: clicar fora não fecha o Atlas"}
             className={cn(
               "rounded-md p-1 transition-colors hover:bg-accent hover:text-accent-foreground",
               fixado ? "bg-accent text-foreground" : "text-muted-foreground",

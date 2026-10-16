@@ -18,7 +18,7 @@ interface SleepRegisterFormProps {
 }
 
 // Formulário único de registro — reaproveitado na aba Sono, no diálogo
-// rápido do Jarvis e no passo de sono do Começar o dia.
+// rápido do Atlas e no passo de sono do Começar o dia.
 export function SleepRegisterForm({ logExistente, onSalvar, onSalvo, onCancelar, compacto }: SleepRegisterFormProps) {
   const [bedTime, setBedTime] = useState(logExistente?.bed_time?.slice(0, 5) ?? "23:00");
   const [wakeTime, setWakeTime] = useState(logExistente?.wake_time?.slice(0, 5) ?? "07:00");

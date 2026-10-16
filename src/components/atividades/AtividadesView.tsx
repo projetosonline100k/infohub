@@ -622,7 +622,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   // período selecionado na lista (a visão geral é sempre do total).
   const SEM_PASTA = "__sem_pasta__";
   const carregarVisaoGeral = async () => {
-    // Tarefas sem pasta (ex.: vindas de fora, como o Jarvis) aparecem num
+    // Tarefas sem pasta (ex.: vindas de fora, como o Atlas) aparecem num
     // bloco "Sem pasta" — sem ele ficavam invisíveis dentro do projeto.
     let query = supabase
       .from("atividades")
@@ -766,7 +766,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   };
 
   // Volta pra esta tela (troca de aba / volta pro app): busca de novo, pra
-  // aparecer o que foi criado ou movido por fora (Jarvis, outra aba).
+  // aparecer o que foi criado ou movido por fora (Atlas, outra aba).
   const raizRef = useRef<HTMLDivElement>(null);
   useRecarregarAoVoltar(raizRef, () => {
     void carregarAtividades();

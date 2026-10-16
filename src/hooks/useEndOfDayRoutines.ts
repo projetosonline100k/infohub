@@ -11,7 +11,7 @@ export interface RespostaRotina {
 }
 
 // Hábitos MANUAIS programados hoje e ainda sem log (item 18 do pedido) —
-// automáticos ficam de fora por completo (já visíveis em Jarvis/
+// automáticos ficam de fora por completo (já visíveis em Atlas/
 // Performance; perguntar de novo, mesmo que só como leitura, poluiria o
 // ritual). Busca dispara ao montar — o mesmo momento em que EndOfDayFlow.tsx
 // chama flow.abrir(), então por ora que a pessoa responde as 8 perguntas

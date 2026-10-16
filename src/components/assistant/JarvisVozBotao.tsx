@@ -9,7 +9,7 @@ import { falar, listarVozes, nomeDaVoz, pararFala, useConfigVoz } from "@/lib/de
 
 const FRASE_TESTE = "Davi, a prioridade de hoje ainda não começou. Bora fazer acontecer.";
 
-// Alto-falante no topo do Jarvis: um clique liga/desliga a voz (e confirma
+// Alto-falante no topo do Atlas: um clique liga/desliga a voz (e confirma
 // falando); a setinha ao lado abre as configurações (voz, velocidade, teste).
 export function JarvisVozBotao() {
   const [config, salvar] = useConfigVoz();
@@ -34,7 +34,7 @@ export function JarvisVozBotao() {
           type="button"
           onClick={alternar}
           aria-pressed={config.ligada}
-          aria-label={config.ligada ? "Desligar a voz do Jarvis" : "Ligar a voz do Jarvis"}
+          aria-label={config.ligada ? "Desligar a voz do Atlas" : "Ligar a voz do Atlas"}
           title={config.ligada ? "Voz ligada (clique para desligar)" : "Voz desligada (clique para ligar)"}
           className={cn(
             "rounded-md p-1 transition-colors hover:bg-accent hover:text-accent-foreground",
@@ -51,7 +51,7 @@ export function JarvisVozBotao() {
       </div>
       <PopoverContent align="end" className="w-64 space-y-3 p-3 text-sm">
         <label className="flex items-center justify-between gap-2 font-medium">
-          Voz do Jarvis
+          Voz do Atlas
           <Switch
             checked={config.ligada}
             onCheckedChange={(ligada) => { salvar({ ...config, ligada }); if (!ligada) void pararFala(); }}

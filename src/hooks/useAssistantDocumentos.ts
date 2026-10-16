@@ -123,7 +123,7 @@ export function useAssistantDocumentos(clienteId: string | null) {
   // Corrige a nota já em memória sem ir ao banco — usado pelo autosave do
   // editor (useNotaEditor), que grava direto no Supabase por fora deste
   // hook. Sem isto, o array `notas` ficava com o conteúdo antigo depois de
-  // qualquer edição: reabrir a nota (o editor é remontado do zero no Jarvis,
+  // qualquer edição: reabrir a nota (o editor é remontado do zero no Atlas,
   // e reselecionada troca o `nota.id` na página /notas) recarregava o texto
   // ANTIGO a partir daqui, dando a impressão de que nada tinha sido salvo —
   // quando na real só este cache local é que nunca era atualizado.

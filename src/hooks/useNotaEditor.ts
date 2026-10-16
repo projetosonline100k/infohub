@@ -20,7 +20,7 @@ const DEBOUNCE_MS = 800;
 // DocumentEditor.tsx/NotasPessoais.tsx (StarterKit, ItalicSemAsterisco,
 // Underline, TextAlign, Placeholder, Link, Highlight) + TaskList/TaskItem
 // (checklist, já usadas em NotasPessoais.tsx, nada novo pra instalar).
-// Compartilhado entre o Jarvis compacto e a página /notas — autosave
+// Compartilhado entre o Atlas compacto e a página /notas — autosave
 // debounced 800ms salva título + `editor.getHTML()`.
 //
 // `onSalvo` é opcional e existe só pra corrigir um bug: este hook grava

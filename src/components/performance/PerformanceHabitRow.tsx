@@ -12,7 +12,7 @@ interface PerformanceHabitRowProps {
   linha: LinhaHabito;
   onRegistrarBooleano?: (habitId: string, completed: boolean) => void;
   onRegistrarNumero?: (habitId: string, value: number) => void;
-  // Variante do Jarvis (painel 460x620): numérico vira só leitura, clicar
+  // Variante do Atlas (painel 460x620): numérico vira só leitura, clicar
   // leva pra Performance completa em vez de abrir um popover apertado ali.
   compact?: boolean;
   onClickCompactNumero?: () => void;
@@ -33,7 +33,7 @@ function iconeDoHabito(nome: string): LucideIcon {
 }
 
 // Linha atômica de um hábito — reaproveitada por PerformanceToday.tsx (aba
-// Visão geral, versão rica) e pela seção compacta do Jarvis
+// Visão geral, versão rica) e pela seção compacta do Atlas
 // (AssistantRotinasSection, `compact` — visual minimalista inalterado ali).
 export function PerformanceHabitRow({ linha, onRegistrarBooleano, onRegistrarNumero, compact, onClickCompactNumero }: PerformanceHabitRowProps) {
   const { habito, completed } = linha;

@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { Sinal } from "@/lib/empresa/visaoGeral";
 import { BonecoMesa, ESTILO, cabeloDe, cabeloTras, visualDe, type Visual } from "./BonecoMesa";
+import { ehNomeCoordenador } from "@/lib/empresa/visaoGeral";
 
 // Mapa da operação: cada setor é uma sala de escritório (pedido do Davi, no
 // estilo da imagem do briefing). Cada pessoa tem a mesa dela:
@@ -53,7 +54,7 @@ const ESTILO_SALA = `
 `;
 function passoPar(p: number) { return Math.round(p / 2.5) % 2 === 0; }
 
-const ehRobo = (p: PessoaNaSala) => p.ehIa && p.nome.trim().toLowerCase() === "jarvis";
+const ehRobo = (p: PessoaNaSala) => p.ehIa && ehNomeCoordenador(p.nome);
 // Sem nada pra fazer e de dia: fica descansando na mesa e, de vez em quando,
 // levanta pro café/TV (pedido do Davi, 15/10: "estão andando demais"). Cada
 // um tem a sua vez: uma janela de JANELA_MS a cada VOLTAS janelas, em revezamento.

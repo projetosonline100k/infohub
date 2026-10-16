@@ -2,7 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 // As abas do app ficam montadas em segundo plano (não recarregam ao trocar
-// de aba). Telas que mostram dados que mudam por fora (Jarvis, outra aba,
+// de aba). Telas que mostram dados que mudam por fora (Atlas, outra aba,
 // outra pessoa) chamam isto pra buscar de novo quando a pessoa VOLTA pra
 // elas: ao ativar a aba onde estão ou ao voltar pra janela do app.
 // O realtime continua valendo; isto cobre quando ele não chega.

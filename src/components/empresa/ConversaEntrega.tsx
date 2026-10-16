@@ -11,6 +11,7 @@ import { esperandoResposta, segundosEsperando, type MensagemBriefing } from "@/l
 import { cn } from "@/lib/utils";
 import { TextoMensagem } from "./BriefingTarefa";
 import { CabecaBoneco } from "./BonecoMesa";
+import { ehCoordenador } from "@/lib/empresa/visaoGeral";
 
 const db = supabase as unknown as SupabaseClient;   // participantes e membro_id ainda não estão nos tipos gerados
 type Mensagem = MensagemBriefing & { membro_id?: string | null };
@@ -18,7 +19,7 @@ interface Colega { id: string; nome: string; eh_ia: boolean }
 
 // Chat sobre a entrega (pedido do Davi, 15/10): na tela "Ver e aprovar" ele
 // conversa com quem entregou: elogia, reforça o que deve ficar, pergunta ou
-// pede mudança. É um briefing 'revisando' ligado à tarefa; o ouvinte do Jarvis
+// pede mudança. É um briefing 'revisando' ligado à tarefa; o ouvinte do Atlas
 // responde como o funcionário, anota o reforço nos aprendizados e, se for
 // mudança clara, atualiza o mesmo documento (onDocumentoMudou recarrega).
 // Conversa em grupo (15/10): "Chamar" põe outro funcionário IA na conversa;
@@ -73,7 +74,7 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
   }, [clienteId]);
   const nomeDe = (id?: string | null) => (id ? colegas.find((c) => c.id === id)?.nome : null) ?? nome;
   const emGrupo = participantes.length > 0;
-  const paraChamar = colegas.filter((c) => c.eh_ia && c.nome !== "Jarvis" && c.id !== membroId && !participantes.includes(c.id));
+  const paraChamar = colegas.filter((c) => c.eh_ia && !ehCoordenador(c) && c.id !== membroId && !participantes.includes(c.id));
 
   // Garante a conversa (briefing 'revisando' da tarefa) e devolve o id.
   const garantirConversa = async () => {
@@ -184,7 +185,7 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             {fazendo ? `${nome}: ${fazendo}…`
-              : esperou > 180 && !emGrupo ? "Ninguém respondeu ainda. O ouvinte do Jarvis está ligado neste Mac?"
+              : esperou > 180 && !emGrupo ? "Ninguém respondeu ainda. O ouvinte do Atlas está ligado neste Mac?"
               : emGrupo ? `${[...participantes.map((p) => nomeDe(p)), nome].join(", ")} lendo e respondendo, um de cada vez…` : `${nome} está lendo…`}
           </p>
         )}
