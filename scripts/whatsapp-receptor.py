@@ -173,6 +173,39 @@ EXTENSOES = {"audio/ogg": ".ogg", "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "im
              "image/webp": ".webp", "video/mp4": ".mp4", "application/pdf": ".pdf"}
 
 
+FOTOS = PASTA / "fotos"
+_trava_fotos = threading.Lock()
+
+
+def foto_do_chat(chat_id):
+    """Foto de perfil da pessoa/grupo (16/10: "não mostra as fotos do WhatsApp"). Guarda no Mac
+    por 3 dias; sem foto, lembra disso por 1 dia (arquivo .sem) pra não perguntar toda hora."""
+    nome = "".join(ch for ch in chat_id if ch.isalnum() or ch in "@._-")
+    arq, sem = FOTOS / f"{nome}.jpg", FOTOS / f"{nome}.sem"
+    agora = time.time()
+    if arq.is_file() and agora - arq.stat().st_mtime < 3 * 86400:
+        return arq
+    if sem.is_file() and agora - sem.stat().st_mtime < 86400:
+        return None
+    with _trava_fotos:
+        FOTOS.mkdir(parents=True, exist_ok=True)
+        try:
+            url = waha_get("/api/contacts/profile-picture?" + urllib.parse.urlencode({"contactId": chat_id, "session": "default"})).get("profilePictureURL")
+            if not url:
+                sem.touch()
+                return arq if arq.is_file() else None
+            # O Python do Mac não acha os certificados sozinho: usa o certifi do projeto.
+            import ssl
+            ctx = ssl.create_default_context(cafile=str(Path.home() / ".infopro-hub/py/certifi/cacert.pem"))
+            with urllib.request.urlopen(url, timeout=30, context=ctx) as r:
+                arq.write_bytes(r.read())
+            sem.unlink(missing_ok=True)
+            return arq
+        except Exception as e:
+            log("foto: erro", chat_id, repr(e)[:150])
+            return arq if arq.is_file() else None
+
+
 def nome_seguro(id_msg, mime):
     base = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_msg)[-120:]
     return base + EXTENSOES.get((mime or "").split(";")[0].strip(), ".bin")
@@ -294,8 +327,24 @@ class Webhook(BaseHTTPRequestHandler):
         player de vídeo/áudio do app pede pedaços)."""
         url = urllib.parse.urlparse(self.path)
         consulta = urllib.parse.parse_qs(url.query)
-        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith("/midia/"):
+        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/")):
             self.send_response(403); self.end_headers(); return
+        if url.path.startswith("/foto/"):
+            arq = foto_do_chat(urllib.parse.unquote(url.path[len("/foto/"):]))
+            if not arq:
+                self.send_response(404); self.send_header("Access-Control-Allow-Origin", "*"); self.end_headers(); return
+            dados = arq.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Content-Length", str(len(dados)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "private, max-age=86400")
+            self.end_headers()
+            try:
+                self.wfile.write(dados)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
         nome = Path(urllib.parse.unquote(url.path[len("/midia/"):])).name  # sem subir de pasta
         arq = MIDIA / nome
         if not nome or not arq.is_file():

@@ -35,6 +35,25 @@ function useMidiaUrl() {
   return useCallback((arquivo?: string | null) => (cfg && arquivo ? `${cfg.base}${encodeURIComponent(arquivo)}?k=${cfg.chave}` : null), [cfg]);
 }
 
+// Foto de perfil da pessoa ou do grupo (16/10), pelo receptor do WhatsApp (/foto/<chat_id>);
+// sem foto (ou fora do app do Mac), a bolinha com a inicial / o ícone de grupo de sempre.
+function FotoChat({ chatId, nome, grupo, tamanho = "h-9 w-9" }: { chatId: string; nome: string | null; grupo: boolean; tamanho?: string }) {
+  const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => {
+    if (!isDesktop()) return;
+    midiaBase ??= import("@tauri-apps/api/core").then(({ invoke }) => invoke<{ base: string; chave: string }>("whatsapp_midia_base")).catch(() => null);
+    void midiaBase.then(setCfg);
+  }, []);
+  const src = cfg && !falhou ? `${cfg.base.replace(/\/midia\/$/, "/foto/")}${encodeURIComponent(chatId)}?k=${cfg.chave}` : null;
+  return (
+    <span className={cn("relative flex shrink-0 items-center justify-center overflow-hidden rounded-full text-[12px] font-semibold text-white", tamanho, grupo ? "bg-teal-600" : "bg-emerald-500")}>
+      {grupo ? <Users className="h-4 w-4" /> : (nome ?? "?").slice(0, 1).toUpperCase()}
+      {src && <img src={src} alt="" loading="lazy" onError={() => setFalhou(true)} className="absolute inset-0 h-full w-full object-cover" />}
+    </span>
+  );
+}
+
 const paraBase64 = (blob: Blob) => new Promise<string>((ok, erro) => {
   const leitor = new FileReader();
   leitor.onload = () => ok(String(leitor.result).split(",")[1] ?? "");
@@ -158,10 +177,7 @@ export function WhatsappConversas({ pedido }: { pedido?: { nome: string; when: s
             return (
               <button key={c.chat_id} type="button" onClick={() => { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }}
                 className="flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2 text-left hover:bg-accent/60">
-                <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-white",
-                  c.eh_grupo ? "bg-teal-600" : "bg-emerald-500")}>
-                  {c.eh_grupo ? <Users className="h-4 w-4" /> : (c.chat_nome ?? "?").slice(0, 1).toUpperCase()}
-                </span>
+                <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
                     <span className={cn("min-w-0 flex-1 truncate text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
@@ -308,6 +324,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
         <button type="button" onClick={onVoltar} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Voltar às conversas">
           <ArrowLeft className="h-4 w-4" />
         </button>
+        <FotoChat chatId={conversa.chat_id} nome={conversa.chat_nome} grupo={conversa.eh_grupo} tamanho="h-8 w-8" />
         <div className="min-w-0">
           <p className="truncate text-[13px] font-semibold">{conversa.chat_nome ?? conversa.chat_id.split("@")[0]}</p>
           <p className="text-[10.5px] text-muted-foreground">{conversa.eh_grupo ? "Grupo" : `+${conversa.chat_id.split("@")[0]}`}</p>
