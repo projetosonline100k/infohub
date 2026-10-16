@@ -1,0 +1,148 @@
+import { useEffect, useMemo, useState } from "react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { Clapperboard, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { supabase } from "@/integrations/supabase/client";
+import { HORA_PADRAO, diaLocal, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
+import { CalendarioPosts, SemInstagram, carregarAgenda, instagramDoProjeto, ocupaDia, type ItemAgenda } from "./ProgramarCarrossel";
+
+// "Escolher data do reel" (tarefa do Davi, tipo 'agendar_reel'): o Danilo
+// editou, o Davi aprovou, a Dalila preparou o vídeo e sugeriu a legenda. Aqui
+// ele assiste, ajusta a legenda e escolhe dia/hora — isso é o ok dele; a
+// Dalila publica sozinha na nuvem (edge dalila-publicar), no Instagram do projeto.
+const db = supabase as unknown as SupabaseClient;
+const LIMITE_LEGENDA = 2200;
+
+interface ReelParaProgramar {
+  id: string;
+  cliente_id: string;
+  titulo: string;
+  status: string;
+  mensagem: string | null;
+  legenda: string | null;
+  video_url: string | null;
+  duracao: number | null;
+  programado_para: string | null;
+}
+
+export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null; onFechar: () => void }) {
+  const [reel, setReel] = useState<ReelParaProgramar | null>(null);
+  const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
+  const [instagram, setInstagram] = useState<string | null>(null);
+  const [legenda, setLegenda] = useState("");
+  const [data, setData] = useState("");
+  const [hora, setHora] = useState(HORA_PADRAO);
+  const [carregando, setCarregando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (!tarefaId) return;
+    setCarregando(true);
+    void (async () => {
+      const { data: r } = await db.from("reels")
+        .select("id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para")
+        .eq("tarefa_data_id", tarefaId).maybeSingle();
+      const lista = r ? await carregarAgenda(r.cliente_id, r.id) : [];
+      setAgenda(lista);
+      setInstagram(r ? await instagramDoProjeto(r.cliente_id) : null);
+      setReel((r as ReelParaProgramar) ?? null);
+      setLegenda(r?.legenda ?? "");
+      if (r?.programado_para) {
+        const d = new Date(r.programado_para);
+        setData(diaLocal(d));
+        setHora(format(d, "HH:mm"));
+      } else {
+        setData(sugerirData(new Date(), lista.filter(ocupaDia).map((a) => a.dia)));
+        setHora(HORA_PADRAO);
+      }
+      setCarregando(false);
+    })();
+  }, [tarefaId]);
+
+  const ocupados = useMemo(() => agenda.filter(ocupaDia).map((a) => a.dia), [agenda]);
+  const quando = useMemo(() => instante(data, hora), [data, hora]);
+  const problema = problemaNoHorario(quando, new Date())
+    ?? (!legenda.trim() ? "Escreva a legenda." : legenda.length > LIMITE_LEGENDA ? `A legenda passa de ${LIMITE_LEGENDA} caracteres.` : null);
+  const naoPublicou = reel?.mensagem?.startsWith("Não publicou") ? reel.mensagem : null;
+  const pronto = !!reel?.video_url;
+
+  const programar = async () => {
+    if (!reel || !quando || problema || !instagram || !pronto) return;
+    setSalvando(true);
+    const { error } = await db.rpc("programar_reel", { p_reel: reel.id, p_quando: quando.toISOString(), p_legenda: legenda });
+    setSalvando(false);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Programado: a Dalila publica o reel ${format(quando, "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}.`);
+    onFechar();
+  };
+
+  return (
+    <Dialog open={!!tarefaId} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
+      <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Clapperboard className="h-5 w-5" /> Quando publicar o reel?</DialogTitle>
+          <DialogDescription>{reel?.titulo ?? "Reel"}</DialogDescription>
+        </DialogHeader>
+        {carregando ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+        ) : !reel ? (
+          <p className="py-6 text-center text-sm text-muted-foreground">Não achei o reel desta tarefa.</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
+              {pronto ? (
+                <video src={reel.video_url!} controls playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg border bg-black" />
+              ) : (
+                <div className="flex aspect-[9/16] w-full items-center justify-center rounded-lg border bg-muted p-3 text-center text-xs text-muted-foreground">
+                  {reel.mensagem ?? "A Dalila está preparando o vídeo."}
+                </div>
+              )}
+              <label className="flex flex-col gap-1 text-sm">
+                <span className="flex items-center justify-between text-muted-foreground">
+                  Legenda (sugerida pela Dalila, pode editar)
+                  <span className={legenda.length > LIMITE_LEGENDA ? "text-rose-600" : ""}>{legenda.length}/{LIMITE_LEGENDA}</span>
+                </span>
+                <Textarea value={legenda} onChange={(e) => setLegenda(e.target.value)} className="min-h-[220px] flex-1 text-sm" />
+              </label>
+            </div>
+            {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
+            <CalendarioPosts agenda={agenda} selecionado={data} onEscolher={setData} />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="space-y-1 text-sm">
+                <span className="flex items-center justify-between text-muted-foreground">Dia
+                  <button type="button" onClick={() => { setData(sugerirData(new Date(), ocupados)); setHora(HORA_PADRAO); }}
+                    className="text-xs font-medium text-primary hover:underline">A Dalila escolhe</button>
+                </span>
+                <Input type="date" value={data} min={diaLocal(new Date())} onChange={(e) => setData(e.target.value)} />
+              </label>
+              <label className="space-y-1 text-sm">
+                <span className="text-muted-foreground">Hora (Brasília)</span>
+                <Input type="time" value={hora} onChange={(e) => setHora(e.target.value)} />
+              </label>
+            </div>
+            {data && ocupados.includes(data) && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem um post programado neste dia (o padrão é 1 por dia, carrossel e reel juntos).</p>}
+            {problema && data && <p className="text-xs text-rose-600 dark:text-rose-400">{problema}</p>}
+            {instagram ? (
+              <p className="text-xs text-muted-foreground">
+                A Dalila publica o reel sozinha no @{instagram} neste dia e hora, mesmo com o Mac desligado. Escolher a data é o seu ok.
+              </p>
+            ) : <SemInstagram />}
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={onFechar}>Agora não</Button>
+              <Button onClick={() => void programar()} disabled={!!problema || salvando || !instagram || !pronto}>
+                {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {quando && !problema ? `Programar para ${format(quando, "EEE, d MMM 'às' HH:mm", { locale: ptBR })}` : "Programar"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}

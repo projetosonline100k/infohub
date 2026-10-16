@@ -18,6 +18,7 @@ import { RevisaoCarrossel } from "./RevisaoCarrossel";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
+import { ProgramarReel } from "./ProgramarReel";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
 import { RevisaoEntrega } from "./RevisaoEntrega";
@@ -27,7 +28,7 @@ import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
-import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarTarefa } from "@/lib/empresa/cancelar";
+import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarReelPelaTarefa, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
   contarIndicadores, ehCoordenador, equipeOfflineDesde, estadoDosMembros, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
@@ -56,7 +57,7 @@ const ROTULO_CATEGORIA: Record<Categoria | "todos", string> = {
 };
 const categoriaDaTarefa = (tipo?: string | null): Categoria =>
   tipo === "edicao" ? "video" : tipo === "carrossel" ? "carrossel" : tipo === "copy" ? "copy"
-  : tipo === "agendar" || tipo === "programacao" ? "programar" : "outros";
+  : tipo === "agendar" || tipo === "agendar_reel" || tipo === "programacao" ? "programar" : "outros";
 const categoriaDoMembro = (nome: string): Categoria =>
   /danilo/i.test(nome) ? "video" : /roy/i.test(nome) ? "carrossel" : /[íi]talo/i.test(nome) ? "copy" : /dalila/i.test(nome) ? "programar" : "outros";
 
@@ -87,6 +88,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [membroAberto, setMembroAberto] = useState<MembroResumo | null>(null);
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
+  // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
+  const [agendarReelAberto, setAgendarReelAberto] = useState<string | null>(null);
   // Edições do Danilo (editor IA): prontas pra revisar entram em "Precisa de você".
   const [edicoes, setEdicoes] = useState<EdicaoResumo[]>([]);
   // O que o Pedro está implementando do kanban dele (pra ele aparecer trabalhando sem abrir a janela).
@@ -251,6 +254,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       if (item.tipo === "aprovar") {
         return { chave: "aprovar", categoria: categoriaDaTarefa(item.tarefas[0]?.tipo),
           no: <LinhaAcao icone={CheckCircle2} titulo={`Aprovar ${item.tarefas.length} ${item.tarefas.length === 1 ? "entrega" : "entregas"}`} detalhe={item.tarefas.slice(0, 2).map((t) => t.titulo).join(" · ")} onClick={() => setRevisaoAberta(true)} /> };
+      }
+      if (item.tarefa.tipo === "agendar_reel") {
+        return { chave: item.tarefa.id, categoria: "programar" as Categoria,
+          no: <LinhaAcao icone={CalendarClock} titulo={item.tarefa.titulo} detalhe="Confira a legenda e escolha o dia · a Dalila publica" onClick={() => setAgendarReelAberto(item.tarefa.id)}
+            onCancelar={() => void cancelar("este reel (não vai ser publicado)", () => cancelarReelPelaTarefa(item.tarefa.id))} /> };
       }
       if (item.tarefa.tipo === "agendar") {
         return { chave: item.tarefa.id, categoria: "programar" as Categoria,
@@ -462,6 +470,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <NovoFuncionario clienteId={clienteId} setores={setores} aberto={!!cadastro} editando={cadastro?.editando ?? null}
         onFechar={() => setCadastro(null)} onCriado={() => { setMembroAberto(null); void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
+      <ProgramarReel tarefaId={agendarReelAberto} onFechar={() => { setAgendarReelAberto(null); void carregar(); }} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
         onMudou={() => { void recarregarSemana(); void carregar(); }} />

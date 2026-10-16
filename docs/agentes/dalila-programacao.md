@@ -98,6 +98,30 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 - Em 15/10, só o Davi Queiroz (@eu.davioficial) e o Yuri têm Instagram. Matheus Souto, Instalivros, Maria Souto e CORE não têm.
 - Teste: `supabase/tests/dalila_instagram_regra_unica.sql`. Script: `scripts/apply-dalila-instagram-regra-unica-migration.py`. Deploy da edge feito em 15/10.
 
+## Reels (pedido do Davi, 16/10/2026: "vídeo é a mesma coisa do carrossel")
+
+"Editou, finalizou, passa para a Dalila programar e postar." Vale para todos os projetos, sempre no Instagram do próprio projeto (regra única).
+
+1. **Edição aprovada** (`edicoes_video.status = 'aprovado'`, pelo servidor do Danilo): o gatilho `edicao_aprovada_reel` cria a linha em `reels` (status `preparando`) e a tarefa da Dalila "Programar reel: <título>".
+   - Não foi preciso mexer no código do Danilo.
+   - O título vem da edição, sem "Piloto —" e sem "(IMG_…)". O do card só é usado quando o da edição é genérico ("Bruto IMG_…").
+2. **O Mac prepara** (`scripts/dalila/preparar_reels.py`, serviço LaunchAgent `com.infoprohub.dalila`, log em `~/.infopro-hub/dalila/servico.log`):
+   - comprime o final do Drive para HEVC (VideoToolbox), 1080×1920, 30 fps, AAC 128k, `+faststart`, com até 46 MB. O plano gratuito do Supabase aceita **no máximo 50 MB por arquivo** e esse limite não sobe. No piloto: 281 MB viraram 41 MB em cerca de 80 s, sem diferença visível;
+   - sobe no bucket público `reels` com o `token_envio` do reel (a policy só aceita enquanto `preparando`);
+   - sugere a legenda com o Claude em segundo plano, a partir da transcrição do Danilo (`~/.infopro-hub/danilo/edicoes/<edicao>/transcricao.json`) e de legendas reais do perfil;
+   - marca `pronto`, e o gatilho cria a tarefa do Davi "Escolher data do reel: …" (tipo `agendar_reel`, prioridade alta);
+   - até 5 tentativas; depois, status `erro` com o motivo em `mensagem`.
+3. **O Davi** clica na tarefa em "Precisa de você". Abre `ProgramarReel.tsx`, com o vídeo, a legenda editável (até 2.200 caracteres), o calendário, o dia e a hora.
+   - **Escolher a data e confirmar a legenda é o ok dele.**
+   - A sugestão é o primeiro dia livre às 10h, **contando carrossel e reel juntos** (`ocupaDia`).
+   - RPCs: `programar_reel`, `desprogramar_reel`, `cancelar_reel`.
+4. **A nuvem publica:** a mesma edge `dalila-publicar`, a cada minuto, trata um carrossel e um reel (`dalila_proximo_reel`, trava de 4 min).
+   - Passos: valida o perfil, confere duplicata (REELS com a mesma legenda), cria o container `media_type=REELS` com `video_url` e `share_to_feed=true`, espera FINISHED (vídeo pode levar alguns minutos; a próxima chamada continua), confere duplicata de novo, conta a tentativa, faz `media_publish` e grava o permalink.
+   - Depois de publicar, **a cópia comprimida sai do Storage** (cota de 1 GB do plano gratuito). O original fica no Drive.
+   - Falha: o reel volta para `pronto` e a tarefa do Davi reabre como "Escolher nova data do reel", com o motivo.
+- Migração `20261016050000_dalila_reels`, teste `supabase/tests/dalila_reels.sql`, script `scripts/apply-dalila-reels-migration.py`.
+- **Piloto (16/10):** "4 hábitos diários que vão mudar as suas manhãs" (edição 30d92e0f) está `pronto`, com vídeo e legenda. A legenda termina com "comenta INSTALIVROS" (a automação Instalivros está ativa no @eu.davioficial). Falta o Davi escolher a data.
+
 ## Pendências
 
 - Botão para desmarcar ou remarcar um carrossel já programado (a RPC `desprogramar_carrossel` existe).

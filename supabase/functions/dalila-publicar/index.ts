@@ -97,7 +97,7 @@ async function converterPaginas(admin: Admin, c: Carrossel) {
 // Regra única do banco (dalila_conexao_do_projeto, a mesma do gatilho
 // carrossel_confere_instagram): o Instagram do próprio projeto; a conta geral
 // só para o projeto Davi Queiroz. Projeto sem Instagram nunca cai em outro perfil.
-async function conexaoDo(admin: Admin, c: Carrossel): Promise<Conexao | null> {
+async function conexaoDo(admin: Admin, c: { cliente_id: string }): Promise<Conexao | null> {
   const { data: igUserId, error } = await admin.rpc("dalila_conexao_do_projeto", { p_cliente: c.cliente_id });
   if (error) throw new Error(`não deu para conferir o Instagram do projeto: ${error.message}`);
   if (!igUserId) return null;
@@ -246,24 +246,142 @@ async function publicar(admin: Admin, c: Carrossel) {
   }
 }
 
+// ---------- 3. Reels (migração 20261016050000_dalila_reels) ----------
+// O Mac (scripts/dalila/preparar_reels.py) já deixou o vídeo comprimido no
+// bucket `reels` e a legenda; o Davi escolheu a data (= o ok). Aqui: mesmo
+// cuidado do carrossel — perfil do projeto, duplicata antes e depois, container
+// guardado, tentativa contada antes do media_publish. Vídeo demora para a Meta
+// processar: se não terminou, a próxima chamada (1 min) continua.
+type Reel = {
+  id: string; cliente_id: string; titulo: string; status: string; legenda: string | null; video_url: string | null;
+  video_caminho: string | null; programado_para: string | null; atividade_id: string | null; tarefa_data_id: string | null;
+  ig_container_id: string | null; ig_container_em: string | null; publicacao_tentativas: number; criado_em: string;
+};
+
+async function soltarReel(admin: Admin, id: string, campos: Record<string, unknown> = {}) {
+  await admin.from("reels").update({ ...campos, publicacao_trava_ate: null, atualizado_em: new Date().toISOString() }).eq("id", id);
+}
+
+async function procurarReel(conexao: Conexao, token: string, r: Reel): Promise<string | null> {
+  const lista = await meta("GET", `${conexao.ig_user_id}/media`, token, { fields: "id,caption,media_type,media_product_type,timestamp", limit: "25" });
+  const legenda = normalizar(r.legenda);
+  const achado = (lista.data ?? []).find((m: { caption?: string; media_type?: string; media_product_type?: string; timestamp?: string }) =>
+    (m.media_product_type === "REELS" || m.media_type === "VIDEO") && normalizar(m.caption) === legenda
+    && Date.parse(m.timestamp ?? "") >= Date.parse(r.criado_em));
+  return achado?.id ?? null;
+}
+
+async function finalizarReel(admin: Admin, r: Reel, token: string, mediaId: string) {
+  const post = await meta("GET", mediaId, token, { fields: "id,permalink,timestamp" });
+  // O original fica no Drive; a cópia comprimida sai do Storage (cota do plano gratuito).
+  if (r.video_caminho) await admin.storage.from("reels").remove([r.video_caminho]);
+  await soltarReel(admin, r.id, {
+    status: "publicado", ig_media_id: mediaId, permalink: post.permalink ?? null, video_url: null,
+    publicado_em: post.timestamp ? new Date(post.timestamp).toISOString() : new Date().toISOString(),
+    mensagem: "Reel publicado",
+  });
+  if (r.atividade_id) await admin.from("atividades").update({ concluida: true, situacao: "concluida", observacao: post.permalink ?? null }).eq("id", r.atividade_id);
+  return { publicado: post.permalink };
+}
+
+async function devolverReel(admin: Admin, r: Reel, motivo: string) {
+  await soltarReel(admin, r.id, { status: "pronto", programado_para: null, ig_container_id: null, ig_container_em: null, mensagem: `Não publicou: ${motivo}` });
+  if (r.tarefa_data_id) {
+    await admin.from("atividades").update({
+      concluida: false, situacao: "fila", titulo: `Escolher nova data do reel: ${r.titulo}`, observacao: `A Dalila não conseguiu publicar: ${motivo}`,
+    }).eq("id", r.tarefa_data_id);
+  }
+  if (r.atividade_id) await admin.from("atividades").update({ concluida: false, situacao: "fila", data_vencimento: null }).eq("id", r.atividade_id);
+  return { devolvido: motivo };
+}
+
+async function publicarReel(admin: Admin, r: Reel) {
+  if (!r.video_url || !normalizar(r.legenda)) return devolverReel(admin, r, "faltam o vídeo ou a legenda");
+  if (r.status === "programado") await admin.from("reels").update({ status: "publicando", mensagem: "Dalila publicando agora" }).eq("id", r.id);
+  const conexao = await conexaoDo(admin, r);
+  if (!conexao) return devolverReel(admin, r, "nenhum Instagram conectado para este projeto");
+  const token = await tokenAtual(admin, conexao);
+  try {
+    const eu = await meta("GET", "me", token, { fields: "user_id,username" });
+    if (String(eu.user_id ?? eu.id) !== conexao.ig_user_id) return devolverReel(admin, r, "o token não é do perfil conectado");
+    const ja = await procurarReel(conexao, token, r);
+    if (ja) return finalizarReel(admin, r, token, ja);
+    if (r.publicacao_tentativas >= MAX_TENTATIVAS) return devolverReel(admin, r, `${MAX_TENTATIVAS} tentativas sem sucesso`);
+
+    let container = r.ig_container_id && r.ig_container_em && Date.now() - Date.parse(r.ig_container_em) < CONTAINER_VALIDO_MS
+      ? r.ig_container_id : null;
+    if (!container) {
+      const criado = await meta("POST", `${conexao.ig_user_id}/media`, token, {
+        media_type: "REELS", video_url: r.video_url, caption: r.legenda ?? "", share_to_feed: "true",
+      });
+      container = criado.id as string;
+      await admin.from("reels").update({ ig_container_id: container, ig_container_em: new Date().toISOString() }).eq("id", r.id);
+    }
+    const estado = await esperarContainer(token, container);
+    if (estado === "IN_PROGRESS") { await soltarReel(admin, r.id, { mensagem: "Meta processando o vídeo" }); return { esperando: "Meta processando o vídeo" }; }
+    if (estado !== "FINISHED") {
+      const detalhe = await meta("GET", container, token, { fields: "status" }).catch(() => ({}));
+      await soltarReel(admin, r.id, { ig_container_id: null, ig_container_em: null, publicacao_tentativas: r.publicacao_tentativas + 1,
+        mensagem: `Meta recusou o vídeo (${estado}${detalhe?.status ? `: ${detalhe.status}` : ""}); tento de novo` });
+      return { recusado: estado };
+    }
+    const jaDeNovo = await procurarReel(conexao, token, r);
+    if (jaDeNovo) return finalizarReel(admin, r, token, jaDeNovo);
+    await admin.from("reels").update({ publicacao_tentativas: r.publicacao_tentativas + 1 }).eq("id", r.id);
+    const { id: mediaId } = await meta("POST", `${conexao.ig_user_id}/media_publish`, token, { creation_id: container });
+    return finalizarReel(admin, r, token, mediaId);
+  } catch (e) {
+    const erro = e as ErroMeta;
+    if (erro.definitivo) {
+      return devolverReel(admin, r, /permission/i.test(erro.message)
+        ? "falta a permissão de publicar no Instagram (reconecte o Instagram em Automações)" : erro.message);
+    }
+    await soltarReel(admin, r.id, { mensagem: `Meta respondeu: ${erro.message}. Confiro antes de tentar de novo.` });
+    return { erro: erro.message };
+  }
+}
+
+async function trabalharCarrossel(admin: Admin) {
+  const { data: fila, error } = await admin.rpc("dalila_proximo_carrossel");
+  if (error) throw new Error(error.message);
+  const c = (fila ?? [])[0] as Carrossel | undefined;
+  if (!c) return null;
+  try {
+    if (c.paginas_jpg.length < c.paginas.length) return { carrossel: c.id, ...(await converterPaginas(admin, c)) };
+    if (!c.programado_para || Date.parse(c.programado_para) > Date.now()) { await soltar(admin, c.id); return { carrossel: c.id, cedo: true }; }
+    return { carrossel: c.id, ...(await publicar(admin, c)) };
+  } catch (e) {
+    console.error("dalila-publicar (carrossel):", (e as Error).message);
+    await soltar(admin, c.id, { mensagem: `Dalila: ${(e as Error).message}` });
+    return { carrossel: c.id, erro: (e as Error).message };
+  }
+}
+
+async function trabalharReel(admin: Admin) {
+  const { data: fila, error } = await admin.rpc("dalila_proximo_reel");
+  if (error) throw new Error(error.message);
+  const r = (fila ?? [])[0] as Reel | undefined;
+  if (!r) return null;
+  try {
+    return { reel: r.id, ...(await publicarReel(admin, r)) };
+  } catch (e) {
+    console.error("dalila-publicar (reel):", (e as Error).message);
+    await soltarReel(admin, r.id, { mensagem: `Dalila: ${(e as Error).message}` });
+    return { reel: r.id, erro: (e as Error).message };
+  }
+}
+
 Deno.serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
   const { data: ok } = await admin.rpc("dalila_chave_ok", { p_chave: req.headers.get("x-dalila-chave") ?? "" });
   if (!ok) return json({ erro: "não autorizado" }, 401);
-
-  const { data: fila, error } = await admin.rpc("dalila_proximo_carrossel");
-  if (error) return json({ erro: error.message }, 500);
-  const c = (fila ?? [])[0] as Carrossel | undefined;
-  if (!c) return json({ nada: true });
-
   try {
-    if (c.paginas_jpg.length < c.paginas.length) return json({ carrossel: c.id, ...(await converterPaginas(admin, c)) });
-    if (!c.programado_para || Date.parse(c.programado_para) > Date.now()) { await soltar(admin, c.id); return json({ cedo: true }); }
-    return json({ carrossel: c.id, ...(await publicar(admin, c)) });
+    const carrossel = await trabalharCarrossel(admin);
+    const reel = await trabalharReel(admin);
+    if (!carrossel && !reel) return json({ nada: true });
+    return json({ ...(carrossel ?? {}), ...(reel ?? {}) });
   } catch (e) {
-    console.error("dalila-publicar:", (e as Error).message);
-    await soltar(admin, c.id, { mensagem: `Dalila: ${(e as Error).message}` });
     return json({ erro: (e as Error).message }, 500);
   }
 });

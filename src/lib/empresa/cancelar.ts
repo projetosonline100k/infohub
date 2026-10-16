@@ -41,3 +41,11 @@ export async function cancelarPelaTarefaDeData(tarefaId: string) {
   if (c?.id) await cancelarCarrossel(c.id);
   else await cancelarTarefa(tarefaId);
 }
+
+// "Escolher data do reel" cancelada = o reel não vai ser publicado.
+export async function cancelarReelPelaTarefa(tarefaId: string) {
+  const { data: r } = await db.from("reels").select("id").eq("tarefa_data_id", tarefaId).maybeSingle();
+  if (!r?.id) { await cancelarTarefa(tarefaId); return; }
+  const { error } = await db.rpc("cancelar_reel", { p_reel: r.id });
+  if (error) throw error;
+}

@@ -50,7 +50,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
       const agenda = c ? await carregarAgenda(c.cliente_id, c.id) : [];
       setInstagram(c ? await instagramDoProjeto(c.cliente_id) : null);
       setAgenda(agenda);
-      const dias = agenda.filter((a) => a.tipo === "carrossel").map((a) => a.dia);
+      const dias = agenda.filter(ocupaDia).map((a) => a.dia);
       setOcupados(dias);
       setCarrossel((c as CarrosselParaProgramar) ?? null);
       if (c?.programado_para) {
@@ -155,13 +155,17 @@ export function SemInstagram() {
 
 // O que já está na agenda de publicação do projeto: carrosséis (programados,
 // publicando ou publicados) e vídeos com data de postagem.
-export interface ItemAgenda { dia: string; tipo: "carrossel" | "video"; titulo: string; capa: string | null; publicado: boolean; hora: string | null }
+export interface ItemAgenda { dia: string; tipo: "carrossel" | "reel" | "video"; titulo: string; capa: string | null; publicado: boolean; hora: string | null }
+// Post da Dalila (carrossel ou reel) ocupa o dia: o padrão é 1 por dia, os dois juntos.
+export const ocupaDia = (a: ItemAgenda) => a.tipo === "carrossel" || a.tipo === "reel";
 
 export async function carregarAgenda(clienteId: string, ignorar?: string): Promise<ItemAgenda[]> {
-  const [cars, vids] = await Promise.all([
+  const [cars, vids, reels] = await Promise.all([
     db.from("carrosseis").select("id, numero, tema, status, paginas, programado_para, publicado_em")
       .eq("cliente_id", clienteId).in("status", ["programado", "publicando", "publicado"]),
     db.from("videos_vertical").select("id, titulo, status, data_postagem").eq("cliente_id", clienteId).not("data_postagem", "is", null),
+    db.from("reels").select("id, titulo, status, programado_para, publicado_em")
+      .eq("cliente_id", clienteId).in("status", ["programado", "publicando", "publicado"]),
   ]);
   const itens: ItemAgenda[] = [];
   for (const c of (cars.data || []) as { id: string; numero: number | null; tema: string; status: string; paginas: string[] | null; programado_para: string | null; publicado_em: string | null }[]) {
@@ -170,6 +174,12 @@ export async function carregarAgenda(clienteId: string, ignorar?: string): Promi
     if (!quando) continue;
     const d = new Date(quando);
     itens.push({ dia: diaLocal(d), tipo: "carrossel", titulo: `${c.numero ? `${String(c.numero).padStart(3, "0")} · ` : ""}${c.tema}`, capa: c.paginas?.[0] ?? null, publicado: c.status === "publicado", hora: format(d, "HH:mm") });
+  }
+  for (const r of (reels.data || []) as { id: string; titulo: string; status: string; programado_para: string | null; publicado_em: string | null }[]) {
+    const quando = r.publicado_em ?? r.programado_para;
+    if (r.id === ignorar || !quando) continue;
+    const d = new Date(quando);
+    itens.push({ dia: diaLocal(d), tipo: "reel", titulo: r.titulo, capa: null, publicado: r.status === "publicado", hora: format(d, "HH:mm") });
   }
   for (const v of (vids.data || []) as { titulo: string; status: string; data_postagem: string }[]) {
     itens.push({ dia: v.data_postagem.slice(0, 10), tipo: "video", titulo: v.titulo, capa: null, publicado: v.status === "postado", hora: null });
@@ -193,10 +203,10 @@ export function CalendarioPosts({ agenda, selecionado, onEscolher }: { agenda: I
           const dia = diaLocal(d);
           const itens = agenda.filter((a) => a.dia === dia);
           const passado = dia < hoje;
-          const livre = !itens.some((a) => a.tipo === "carrossel");
+          const livre = !itens.some(ocupaDia);
           return (
             <button key={dia} type="button" disabled={passado || !onEscolher} onClick={() => onEscolher?.(dia)}
-              title={itens.map((a) => `${a.tipo === "carrossel" ? "Carrossel" : "Vídeo"} ${a.titulo}${a.hora ? ` · ${a.hora}` : ""}${a.publicado ? " (publicado)" : ""}`).join("\n") || (passado ? "" : "Livre")}
+              title={itens.map((a) => `${a.tipo === "carrossel" ? "Carrossel" : a.tipo === "reel" ? "Reel" : "Vídeo"} ${a.titulo}${a.hora ? ` · ${a.hora}` : ""}${a.publicado ? " (publicado)" : ""}`).join("\n") || (passado ? "" : "Livre")}
               className={cn("flex min-h-[58px] flex-col rounded-md border p-1 text-left transition-colors",
                 passado ? "opacity-40" : livre ? "border-emerald-500/30 hover:bg-emerald-500/10" : "hover:bg-muted",
                 selecionado === dia && "border-primary bg-primary/10 ring-2 ring-primary",
@@ -213,7 +223,7 @@ export function CalendarioPosts({ agenda, selecionado, onEscolher }: { agenda: I
           );
         })}
       </div>
-      <p className="mt-1 text-[10px] text-muted-foreground">Miniatura = carrossel (cinza = já publicado) · ▶ = vídeo com data · verde = dia livre</p>
+      <p className="mt-1 text-[10px] text-muted-foreground">Miniatura = carrossel (cinza = já publicado) · ▶ = reel ou vídeo com data · verde = dia livre</p>
     </div>
   );
 }
