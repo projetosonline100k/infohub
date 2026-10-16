@@ -11,6 +11,8 @@ INSERT INTO public.clientes(id, nome_especialista, idade, nicho, user_id) VALUES
 INSERT INTO public.melhorias_sistema(id, cliente_id, titulo, origem) VALUES
  ('10000000-0000-0000-0000-000000000794', '10000000-0000-0000-0000-000000000793', 'Ideia do Davi', 'davi');
 UPDATE public.melhorias_sistema SET status = 'pode_fazer' WHERE id = '10000000-0000-0000-0000-000000000794';
+-- O Davi acrescenta detalhes (texto ou áudio transcrito).
+UPDATE public.melhorias_sistema SET notas = 'quero no topo da tela' WHERE id = '10000000-0000-0000-0000-000000000794';
 
 DO $$
 BEGIN

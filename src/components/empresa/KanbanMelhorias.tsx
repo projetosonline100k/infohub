@@ -2,7 +2,10 @@ import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AlertTriangle, CheckCircle2, ChevronDown, Lightbulb, Loader2, Plus, Rocket, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Lightbulb, Loader2, Mic, Plus, Rocket, Square, Trash2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { isDesktop } from "@/lib/platform";
+import { useGravarAudio } from "@/hooks/useGravarAudio";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,7 +22,7 @@ type Status = "ideia" | "pode_fazer" | "fazendo" | "feito" | "descartada" | "err
 interface Melhoria {
   id: string; titulo: string; problema: string | null; porque: string | null; sugestao: string | null;
   impacto: number | null; esforco: number | null; status: Status; origem: "pedro" | "davi"; ordem: number;
-  agora: string | null; progresso: number | null; resultado: string | null; commit_sha: string | null;
+  agora: string | null; progresso: number | null; resultado: string | null; commit_sha: string | null; notas: string | null;
   criado_em: string; concluido_em: string | null;
 }
 const COLUNAS: { status: Status; titulo: string; icone: typeof Lightbulb; ajuda: string; podeSoltar: boolean }[] = [
@@ -79,43 +82,11 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   const erros = itens.filter((m) => m.status === "erro");
   const descartadas = itens.filter((m) => m.status === "descartada");
 
-  const Cartao = ({ m }: { m: Melhoria }) => {
-    const aberto = aberta === m.id;
-    const movel = m.status === "ideia" || m.status === "pode_fazer" || m.status === "erro" || m.status === "descartada";
-    return (
-      <div draggable={movel} onDragStart={(e) => { setArrastando(m.id); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => { setArrastando(null); setAlvo(null); }}
-        className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", movel && "cursor-grab active:cursor-grabbing", arrastando === m.id && "opacity-40",
-          m.status === "erro" && "border-rose-500/40")}>
-        <button type="button" onClick={() => setAberta(aberto ? null : m.id)} className="flex w-full items-start gap-1 text-left">
-          <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug">{m.titulo}</span>
-          <ChevronDown className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
-        </button>
-        <p className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
-          {m.origem === "davi" && <span className="rounded bg-primary/10 px-1 text-primary">sua ideia</span>}
-          {m.impacto && <span>impacto {NIVEL[m.impacto]}</span>}
-          {m.esforco && <span>· esforço {NIVEL[m.esforco]}</span>}
-        </p>
-        {m.status === "fazendo" && (
-          <div className="mt-1.5">
-            <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${m.progresso ?? 5}%` }} /></div>
-            <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground"><Loader2 className="h-2.5 w-2.5 animate-spin" />{m.agora ?? "trabalhando"} · {m.progresso ?? 5}%</p>
-          </div>
-        )}
-        {aberto && (
-          <div className="mt-1.5 space-y-1 border-t pt-1.5 text-[11px] leading-relaxed">
-            {m.problema && <p><b>Problema:</b> {m.problema}</p>}
-            {m.porque && <p><b>Por que importa:</b> {m.porque}</p>}
-            {m.sugestao && <p><b>Sugestão:</b> {m.sugestao}</p>}
-            {m.resultado && <p className={m.status === "erro" ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}><b>{m.status === "erro" ? "Não deu:" : "O que mudou:"}</b> {m.resultado}</p>}
-            {m.concluido_em && <p className="text-muted-foreground">{format(new Date(m.concluido_em), "d MMM, HH:mm", { locale: ptBR })}{m.commit_sha ? ` · ${m.commit_sha}` : ""}</p>}
-            {movel && m.status !== "descartada" && (
-              <button type="button" onClick={() => void mover(m.id, "descartada")} className="flex items-center gap-1 text-muted-foreground hover:text-rose-600"><Trash2 className="h-3 w-3" />Descartar</button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const cartao = (m: Melhoria) => (
+    <CartaoMelhoria key={m.id} m={m} aberto={aberta === m.id} onAbrir={() => setAberta(aberta === m.id ? null : m.id)}
+      arrastando={arrastando === m.id} onArrastar={(sim) => { setArrastando(sim ? m.id : null); if (!sim) setAlvo(null); }}
+      onDescartar={() => void mover(m.id, "descartada")} onMudou={() => void carregar()} />
+  );
 
   return (
     <section className="space-y-2">
@@ -149,7 +120,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
                       <Button type="submit" size="icon" variant="ghost" className="h-7 w-7 shrink-0" disabled={!nova.trim()}><Plus className="h-3.5 w-3.5" /></Button>
                     </form>
                   )}
-                  {lista.map((m) => <Cartao key={m.id} m={m} />)}
+                  {lista.map(cartao)}
                   {lista.length === 0 && c.status !== "ideia" && <p className="py-3 text-center text-[11px] text-muted-foreground">—</p>}
                 </div>
               );
@@ -158,7 +129,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
           {erros.length > 0 && (
             <div className="space-y-1.5 rounded-xl border border-rose-500/30 bg-rose-500/5 p-2">
               <p className="flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400"><AlertTriangle className="h-3.5 w-3.5" />Não deu ({erros.length}) · abra para ver o motivo; arraste de volta para Pode fazer para tentar de novo</p>
-              <div className="grid gap-1.5 sm:grid-cols-2">{erros.map((m) => <Cartao key={m.id} m={m} />)}</div>
+              <div className="grid gap-1.5 sm:grid-cols-2">{erros.map(cartao)}</div>
             </div>
           )}
           {descartadas.length > 0 && (
@@ -166,11 +137,90 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
               <button type="button" onClick={() => setVerDescartadas(!verDescartadas)} className="text-[11px] text-muted-foreground hover:text-foreground">
                 {verDescartadas ? "Esconder" : "Ver"} descartadas ({descartadas.length})
               </button>
-              {verDescartadas && <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">{descartadas.map((m) => <Cartao key={m.id} m={m} />)}</div>}
+              {verDescartadas && <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">{descartadas.map(cartao)}</div>}
             </div>
           )}
         </>
       )}
     </section>
+  );
+}
+
+// Cartão do kanban. Fora do componente do quadro: assim o que o Davi está
+// escrevendo nos detalhes não some quando o quadro atualiza sozinho.
+function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onArrastar, onDescartar, onMudou }: {
+  m: Melhoria; aberto: boolean; onAbrir: () => void; arrastando: boolean; onArrastar: (sim: boolean) => void;
+  onDescartar: () => void; onMudou: () => void;
+}) {
+  const movel = m.status === "ideia" || m.status === "pode_fazer" || m.status === "erro" || m.status === "descartada";
+  const editavel = m.status !== "fazendo" && m.status !== "feito";
+  const [notas, setNotas] = useState(m.notas ?? "");
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { setNotas(m.notas ?? ""); }, [m.notas]);
+  const salvar = async (valor: string) => {
+    setSalvando(true);
+    const { error } = await db.from("melhorias_sistema").update({ notas: valor.trim() || null }).eq("id", m.id);
+    setSalvando(false);
+    if (error) { toast.error("Não consegui salvar os detalhes"); return; }
+    toast.success("Detalhes salvos: o Pedro lê antes de implementar");
+    onMudou();
+  };
+  // Áudio: a fala transcrita entra nos detalhes e já salva.
+  const audio = useGravarAudio((texto) => {
+    const novo = [notas.trim(), `🎙️ ${texto}`].filter(Boolean).join("\n\n");
+    setNotas(novo);
+    void salvar(novo);
+  });
+  return (
+    <div draggable={movel && !aberto} onDragStart={(e) => { onArrastar(true); e.dataTransfer.effectAllowed = "move"; }} onDragEnd={() => onArrastar(false)}
+      className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", movel && !aberto && "cursor-grab active:cursor-grabbing", arrastando && "opacity-40",
+        m.status === "erro" && "border-rose-500/40", aberto && "ring-1 ring-primary/40")}>
+      <button type="button" onClick={onAbrir} className="flex w-full items-start gap-1 text-left">
+        <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug">{m.titulo}</span>
+        <ChevronDown className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
+      </button>
+      <p className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
+        {m.origem === "davi" && <span className="rounded bg-primary/10 px-1 text-primary">sua ideia</span>}
+        {m.notas && <span className="rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">com seus detalhes</span>}
+        {m.impacto && <span>impacto {NIVEL[m.impacto]}</span>}
+        {m.esforco && <span>· esforço {NIVEL[m.esforco]}</span>}
+      </p>
+      {m.status === "fazendo" && (
+        <div className="mt-1.5">
+          <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${m.progresso ?? 5}%` }} /></div>
+          <p className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground"><Loader2 className="h-2.5 w-2.5 animate-spin" />{m.agora ?? "trabalhando"} · {m.progresso ?? 5}%</p>
+        </div>
+      )}
+      {aberto && (
+        <div className="mt-1.5 space-y-1.5 border-t pt-1.5 text-[11px] leading-relaxed">
+          {m.problema && <p><b>Problema:</b> {m.problema}</p>}
+          {m.porque && <p><b>Por que importa:</b> {m.porque}</p>}
+          {m.sugestao && <p><b>Sugestão:</b> {m.sugestao}</p>}
+          {editavel ? (
+            <div className="space-y-1">
+              <p className="font-semibold">Seus detalhes <span className="font-normal text-muted-foreground">(o Pedro segue isso ao implementar)</span></p>
+              <Textarea value={notas} onChange={(e) => setNotas(e.target.value)} rows={3} className="min-h-0 text-[11px]"
+                placeholder="Como você quer, onde fica na tela, exemplos…" disabled={audio.gravando || audio.transcrevendo} />
+              <div className="flex items-center gap-1.5">
+                {isDesktop() && (
+                  <Button type="button" size="sm" variant={audio.gravando ? "destructive" : "outline"} className="h-7 gap-1 px-2 text-[11px]"
+                    disabled={audio.transcrevendo} onClick={() => void audio.alternar()} title={audio.gravando ? "Parar e transcrever" : "Gravar um áudio com os detalhes"}>
+                    {audio.transcrevendo ? <Loader2 className="h-3 w-3 animate-spin" /> : audio.gravando ? <><Square className="h-3 w-3 fill-current" />{audio.segundos}s</> : <><Mic className="h-3 w-3" />Áudio</>}
+                  </Button>
+                )}
+                <Button type="button" size="sm" className="h-7 px-2 text-[11px]" disabled={salvando || notas.trim() === (m.notas ?? "").trim()} onClick={() => void salvar(notas)}>
+                  {salvando ? <Loader2 className="h-3 w-3 animate-spin" /> : "Salvar detalhes"}
+                </Button>
+              </div>
+            </div>
+          ) : m.notas ? <p className="whitespace-pre-line"><b>Seus detalhes:</b> {m.notas}</p> : null}
+          {m.resultado && <p className={m.status === "erro" ? "text-rose-600 dark:text-rose-400" : "text-emerald-700 dark:text-emerald-400"}><b>{m.status === "erro" ? "Não deu:" : "O que mudou:"}</b> {m.resultado}</p>}
+          {m.concluido_em && <p className="text-muted-foreground">{format(new Date(m.concluido_em), "d MMM, HH:mm", { locale: ptBR })}{m.commit_sha ? ` · ${m.commit_sha}` : ""}</p>}
+          {movel && m.status !== "descartada" && (
+            <button type="button" onClick={onDescartar} className="flex items-center gap-1 text-muted-foreground hover:text-rose-600"><Trash2 className="h-3 w-3" />Descartar</button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

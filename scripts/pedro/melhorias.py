@@ -78,12 +78,14 @@ def pegar():
 
 
 def contexto(mid):
-    r = _q("SELECT titulo, problema, porque, sugestao, impacto, esforco, origem FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
+    r = _q("SELECT titulo, problema, porque, sugestao, impacto, esforco, origem, notas FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
     if not r:
         raise SystemExit('melhoria não encontrada')
-    t, p, pq, s, i, e, o = r
+    t, p, pq, s, i, e, o, notas = r
     print(f'Melhoria aprovada pelo Davi: {t}\nVeio de: {"ideia do Davi" if o == "davi" else "ideia sua (Pedro)"} · impacto {i or "-"} · esforço {e or "-"}')
     print(f'Problema: {p or "-"}\nPor que importa: {pq or "-"}\nSugestão: {s or "-"}')
+    if notas:
+        print(f'\nDETALHES DO DAVI (valem mais que a sugestão; siga):\n{notas}')
 
 
 def progresso(mid, pct, agora):
