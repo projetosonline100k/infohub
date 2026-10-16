@@ -56,6 +56,7 @@ import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
 import { OrbitaAtlas, type Lua } from "./OrbitaAtlas";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
+import { prepararConversaAberta, useMensagensWhatsapp } from "@/hooks/useMensagensWhatsapp";
 import { tempoEsperando } from "@/lib/whatsapp/shirley";
 
 const ORB_SIZE = 64;
@@ -724,6 +725,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const paraRevisar = useParaRevisar(user?.id, variant === "window");
   // Shirley (CS): "Davi!! olha o WhatsApp!!" — cliente insatisfeito ou esperando, e cobra de novo (16/10).
   const shirley = useShirley(user?.id, variant === "window");
+  // Mensagem nova no WhatsApp: avisa na hora (16/10: "hoje eu só sei se mandaram mensagem se abrir").
+  const mensagens = useMensagensWhatsapp(user?.id, variant === "window");
   // Lua clicada: mostra o que é e por que apareceu (16/10: "ao clicar nela, me mostre o que é").
   const [luaAberta, setLuaAberta] = useState<Lua | null>(null);
   // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
@@ -1115,7 +1118,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || !!luaAberta || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || !!luaAberta || !!mensagens.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1326,6 +1329,25 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       </span>
       {luaAberta.trecho && <span className="mt-1 line-clamp-3 block">“{luaAberta.trecho}”</span>}
     </JarvisNotificationCard>
+  ) : mensagens.atual ? (
+    <JarvisNotificationCard
+      fala
+      titulo={`💬 ${mensagens.atual.nome}${mensagens.atual.quantas > 1 ? ` mandou ${mensagens.atual.quantas} mensagens` : " mandou mensagem"}`}
+      acoes={[
+        {
+          label: "Responder",
+          onClick: () => { const m = mensagens.atual!; mensagens.dispensar(m.chatId); prepararConversaAberta(m); setAba("whatsapp"); void abrirPainel(); },
+          variant: "default",
+        },
+        { label: mensagens.restantes ? `Depois (+${mensagens.restantes})` : "Depois", onClick: () => mensagens.dispensar(), variant: "outline" },
+      ]}
+    >
+      <span className="flex items-center gap-2 text-[11px] font-semibold text-foreground">
+        <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-slate-900"><CabecaBoneco nome="Shirley" ehIa className="h-full w-full" /></span>
+        Shirley (CS) · WhatsApp{mensagens.atual.grupo ? " · grupo" : ""}
+      </span>
+      <span className="mt-1 line-clamp-3 block">{mensagens.atual.autor ? `${mensagens.atual.autor.split(" ")[0]}: ` : ""}“{mensagens.atual.texto}”</span>
+    </JarvisNotificationCard>
   ) : shirley.atual ? (
     <JarvisNotificationCard
       fala
@@ -1483,6 +1505,13 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const recente = (quando: string) => Date.now() - new Date(quando).getTime() < 20 * 60_000;
   const luas: Lua[] = ([
     // As que acabaram de chegar + a que está sendo cobrada agora no balão (16/10: "tem que ter a órbita ao redor").
+    ...mensagens.todas.map((m): Lua => ({
+      id: `w-${m.chatId}-${m.quando}`, nome: "Shirley", ehIa: true, cor: "whatsapp",
+      dica: `Shirley · WhatsApp: ${m.nome}`, titulo: `💬 ${m.nome} mandou mensagem`, porque: "Shirley (CS) · WhatsApp, agora",
+      trecho: m.texto, acaoRotulo: "Responder",
+      acao: () => { mensagens.dispensar(m.chatId); prepararConversaAberta(m); setAba("whatsapp"); void abrirPainel(); },
+      onClick: () => {},
+    })),
     ...[...shirley.novas, ...(shirley.atual && !shirley.novas.some((n) => n.chatId === shirley.atual!.chatId) ? [shirley.atual] : [])].map((w): Lua => ({
       id: `w-${w.chatId}-${w.ultimaEm}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
       dica: `Shirley · WhatsApp: ${w.nome}`,
@@ -1502,12 +1531,14 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       acao: () => abrirAviso(a),
       onClick: () => {},
     })),
-  ] as Lua[]).filter((l) => !luasVistas.includes(l.id)).map((l) => ({ ...l, onClick: () => setLuaAberta(l) }));
+  ] as Lua[]).filter((l, i, todas) => !luasVistas.includes(l.id) && todas.findIndex((x) => x.id === l.id) === i)
+    .map((l) => ({ ...l, onClick: () => setLuaAberta(l) }));
 
   // Com balão: padding de 38px (o mesmo recuo da orbe sozinha, centrada em 140×140), para as luas
   // caberem em volta dela sem sair da janela; com o painel continua p-6 (TAMANHO do painel conta com ele).
   // Quem está "falando" no balão: a lua dela fica no topo da órbita, logo abaixo do rabinho do balão.
   const falandoId = luaAberta ? luaAberta.id
+    : mensagens.atual ? `w-${mensagens.atual.chatId}-${mensagens.atual.quando}`
     : shirley.atual ? `w-${shirley.atual.chatId}-${shirley.atual.ultimaEm}`
     : paraRevisar.atual ? `r-${paraRevisar.atual.id}` : null;
   const temLuaEmCima = luas.length > 0 && janelaModo === "notification";
