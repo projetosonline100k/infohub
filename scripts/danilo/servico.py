@@ -152,6 +152,29 @@ def editar(arquivo, e):
     return id_
 
 
+LIVRE_MIN_GB = 20   # o Google Drive do Mac para de baixar com o disco quase cheio (DISK_FREE_SPACE_TOO_LOW)
+
+
+def espaco_ok(e, bruto):
+    """Sem espaço o Drive não entrega o bruto e a cópia fica esperando à toa.
+    Então nem pega o vídeo: avisa na tarefa do lote (uma vez) e tenta no próximo ciclo."""
+    import shutil
+    livre = shutil.disk_usage(Path.home()).free / 1e9
+    if livre >= LIVRE_MIN_GB:
+        if e.pop("sem_espaco", None):
+            salvar_estado(e)
+            log(f"espaço ok de novo ({livre:.0f} GB livres): seguindo")
+        return True
+    if not e.get("sem_espaco"):
+        e["sem_espaco"] = True
+        salvar_estado(e)
+        log(f"parado: só {livre:.1f} GB livres no Mac (preciso de {LIVRE_MIN_GB})")
+        progresso(e.get("atividade"), None if not e.get("total") else int(20 + 80 * e.get("feitos", 0) / e["total"]),
+                  f"⚠️ Parado: o Mac está com só {livre:.0f} GB livres e o Google Drive não baixa os brutos assim. "
+                  f"Libere uns {LIVRE_MIN_GB} GB que eu continuo sozinho ({bruto.name.replace(danilo.EM_EDICAO, '')} é o próximo).")
+    return False
+
+
 def atender_drive():
     """Um bruto por vez. Lote com vários: piloto primeiro."""
     e = estado()
@@ -169,6 +192,8 @@ def atender_drive():
             e.pop("aguardando_piloto")
             salvar_estado(e)
     brutos = danilo.novos()
+    if brutos and not espaco_ok(e, brutos[0]):
+        return False
     if not brutos:
         # Só fecha o lote quando todos foram editados de verdade (bruto com erro
         # ou ainda subindo não conta: a tarefa continua em andamento).
