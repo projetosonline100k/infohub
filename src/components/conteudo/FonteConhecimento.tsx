@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { htmlLimpo, resumoDoHtml } from "@/lib/conteudo/htmlLimpo";
+import { separarQuiz } from "@/lib/conteudo/quizEstudo";
+import { QuizEstudo } from "./QuizEstudo";
 import { criarTarefaParaMembro } from "@/components/empresa/FilaPessoa";
 
 // Conteúdo → Fonte de conhecimento (pedido do Davi, 15/10/2026): tudo que o
@@ -29,6 +31,7 @@ export function FonteConhecimento({ clienteId }: { clienteId: string }) {
   const [enviando, setEnviando] = useState(false);
   const [busca, setBusca] = useState("");
   const [aberto, setAberto] = useState<Estudo | null>(null);
+  const quizDoAberto = useMemo(() => separarQuiz(aberto?.conteudo ?? ""), [aberto]);
   const [lidos, setLidos] = useState<string[]>(lerLidos);
 
   const carregar = useCallback(async () => {
@@ -164,8 +167,10 @@ export function FonteConhecimento({ clienteId }: { clienteId: string }) {
                 <DialogTitle className="text-xl leading-snug">{aberto.titulo}</DialogTitle>
                 <DialogDescription>{gabriel?.nome ?? "Gabriel"} · {format(new Date(aberto.created_at), "d 'de' MMMM 'de' yyyy", { locale: ptBR })}</DialogDescription>
               </DialogHeader>
+              {/* As perguntas e o gabarito do estudo viram um quiz de clicar no fim (16/10). */}
               <article className="prose prose-sm max-w-none dark:prose-invert prose-headings:mt-5 prose-a:text-primary"
-                dangerouslySetInnerHTML={{ __html: htmlLimpo(aberto.conteudo) }} />
+                dangerouslySetInnerHTML={{ __html: htmlLimpo(quizDoAberto.html) }} />
+              {quizDoAberto.perguntas.length > 0 && <QuizEstudo key={aberto.id} estudoId={aberto.id} perguntas={quizDoAberto.perguntas} />}
             </>
           )}
         </DialogContent>
