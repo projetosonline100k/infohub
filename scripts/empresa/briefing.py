@@ -26,7 +26,7 @@ from migration_db import connect  # noqa: E402
 
 # Funcionários IA que fazem a tarefa sozinhos depois do briefing
 # (scripts/empresa/execucao.py). Roy, Danilo e Dalila têm o próprio fluxo.
-EXECUTORES = {'ítalo', 'gabriel', 'roy'}  # Roy: só página e quiz por aqui (carrossel é com o serviço dele)
+EXECUTORES = {'ítalo', 'gabriel', 'roy', 'pedro'}  # Roy: só página e quiz por aqui (carrossel é com o serviço dele)
 TIPOS = {'edicao', 'carrossel', 'programacao', 'copy', 'pagina', 'metricas', 'gravacao'}
 CONSIGO = {'sim', 'em_parte', 'nao'}
 

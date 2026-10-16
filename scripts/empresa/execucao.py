@@ -153,7 +153,8 @@ def entregar(aid, titulo, resumo, conteudo):
         obs = f'Entregue no documento "{titulo.strip()[:150]}". {resumo.strip()[:400]}'
         q.execute("SELECT a.tipo, lower(m.nome) FROM atividades a LEFT JOIN membros m ON m.id = a.responsavel_id WHERE a.id = %s", (aid,))
         tipo, quem = q.fetchone()
-        if tipo == 'estudo' or quem == 'gabriel':
+        # Estudo (Gabriel) e melhorias/métricas (Pedro: as ideias vão pro kanban dele) concluem direto.
+        if tipo == 'estudo' or quem in ('gabriel', 'pedro'):
             # Estudo não precisa de aprovação: vai direto pra Fonte de conhecimento e a tarefa conclui.
             q.execute("SELECT status_key FROM colunas_atividade WHERE cliente_id = %s AND eh_conclusao ORDER BY ordem LIMIT 1", (cliente_id,))
             col = q.fetchone()

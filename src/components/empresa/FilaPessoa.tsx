@@ -17,6 +17,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 import { RevisaoEntrega } from "./RevisaoEntrega";
+import { KanbanMelhorias } from "./KanbanMelhorias";
 
 type TarefaFila = TarefaResumo & {
   video_vertical_id?: string | null; video_youtube_id?: string | null;
@@ -151,6 +152,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
   const [trabalho, setTrabalho] = useState<TrabalhoAgora[]>([]);
   const [agora, setAgora] = useState(() => Date.now());
   const [revisando, setRevisando] = useState(false);
+  const ehPedro = !!membro?.eh_ia && membro.nome.trim().toLowerCase() === "pedro";
   useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
@@ -266,7 +268,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
 
   return (
     <Dialog open={!!membro} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className="max-h-[90vh] max-w-xl grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden">
+      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehPedro ? "max-w-6xl" : "max-w-xl")}>
         {membro && (
           <>
             <DialogHeader>
@@ -297,6 +299,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
                 <p className="text-xs text-muted-foreground">Em cada tarefa, <b>Copiar</b> leva o título e o roteiro. Ao mandar pro ChatGPT, mude a tarefa pra <b>Em andamento</b>.</p>
               </div>
             )}
+
+            {/* Pedro (IA de melhorias): o kanban das ideias dele vem primeiro. */}
+            {ehPedro && <KanbanMelhorias clienteId={clienteId} />}
 
             {/* 1. Em andamento (15/10: um bloco só — o "Agora" repetia a mesma lista) */}
             {carregando ? (

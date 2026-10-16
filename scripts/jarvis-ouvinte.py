@@ -64,14 +64,14 @@ def claude_bin():
     return max(achados, key=versao)
 
 
-def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None):
+def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60):
     """Roda o Claude em segundo plano e devolve (ok, texto do resultado).
     `sessao`: continua essa sessão (--resume). `info` (dict) recebe o
     session_id da execução, pra próxima continuar dela."""
     binario = claude_bin()
     if not binario:
         return False, "Claude Code não encontrado neste Mac (abra o app do Claude uma vez)."
-    cmd = [binario, "-p", prompt, "--output-format", "json", "--max-turns", "60",
+    cmd = [binario, "-p", prompt, "--output-format", "json", "--max-turns", str(turnos),
            # Sem ninguém pra aprovar: libera só o que esses pedidos usam.
            "--allowedTools", "Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"]
     if sessao:
@@ -80,7 +80,7 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None):
         # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele.
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
     try:
-        r = subprocess.run(cmd, cwd=RAIZ, capture_output=True, text=True, timeout=minutos * 60,
+        r = subprocess.run(cmd, cwd=cwd or RAIZ, capture_output=True, text=True, timeout=minutos * 60,
                            env={**os.environ, "PATH": f"{Path(PYTHON).parent}:/usr/bin:/bin:/usr/sbin:/sbin"})
     except subprocess.TimeoutExpired:
         return False, f"O Claude passou de {minutos} min e foi interrompido."
@@ -466,6 +466,82 @@ def atender_execucao():
         log("execução:", execucao.situacao(aid))
 
 
+# ---------------------------------------------------------------- Melhorias (Pedro)
+
+# O que o Davi arrasta pra "Pode fazer" no kanban do Pedro, ele implementa
+# sozinho (15/10/2026: "pode dar essa liberdade para ele"). Cada cartão vira um
+# worktree/ramo próprio; com o "pronto" do Pedro, o ouvinte junta no main.
+sys.path.insert(0, str(RAIZ / "scripts" / "pedro"))
+import melhorias  # noqa: E402
+
+OBRAS = Path.home() / ".infopro-hub" / "pedro" / "obras"
+
+PROMPT_MELHORIA = """Você é o Pedro, IA de melhorias do Infopro Hub. O Davi aprovou (arrastou para "Pode fazer") uma melhoria do sistema e você vai IMPLEMENTAR sozinho, agora. Ele não vê este terminal.
+
+Melhoria: {mid}
+Você está num worktree só desta melhoria: {obra} (ramo {ramo}). Trabalhe SÓ aqui (não mexa em {raiz}).
+
+1. `python3 scripts/pedro/melhorias.py contexto {mid}` e leia docs/agentes/pedro-melhorias.md (regras), o CLAUDE.md e a memória do projeto.
+2. Planeje a menor mudança que resolve. Avise o andamento a cada etapa:
+   python3 scripts/pedro/melhorias.py progresso {mid} <0-100> "<o que está fazendo, curto>"
+3. Implemente. Banco só por migração + teste em supabase/tests + script apply (rode --testar antes e depois aplique). Siga o jeito do código ao redor, em português.
+4. Confira: `npx tsc --noEmit -p tsconfig.app.json` (sem erros NOVOS em relação ao começo), `npx eslint` nos arquivos que mudou, `node --test tests/*.test.mjs`.
+5. Commit no ramo (git add só dos seus arquivos; mensagem em português começando com "feat:" ou "fix:" e terminando com a linha "Co-Authored-By: Pedro (IA do Infopro) <noreply@anthropic.com>").
+6. Por último: python3 scripts/pedro/melhorias.py pronto {mid} "<o que mudou, em 2-4 frases simples pro Davi, e onde ver no app>"
+   Se não der (precisa de decisão do Davi, é área de outro chat — Roy/Danilo/Dalila —, ou é grande demais): python3 scripts/pedro/melhorias.py erro {mid} "<por quê, simples>"
+Regras: sem git push, sem merge (o ouvinte junta), não reinstale o app, não reinicie o ouvinte, não envie WhatsApp/e-mail, não publique nada. Hoje é {hoje}."""
+
+
+def _git(*args, cwd=RAIZ):
+    return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+
+
+def atender_melhorias():
+    mid = melhorias.pegar()
+    if not mid:
+        return
+    curto = mid[:8]
+    ramo, obra = f"pedro/{curto}", OBRAS / curto
+    log("melhoria:", mid)
+    OBRAS.mkdir(parents=True, exist_ok=True)
+    if obra.exists():
+        _git("worktree", "remove", "--force", str(obra))
+    _git("branch", "-D", ramo)
+    r = _git("worktree", "add", "-b", ramo, str(obra), "main")
+    if r.returncode != 0:
+        melhorias.erro(mid, f"Não consegui preparar a cópia do código: {(r.stderr or r.stdout).strip()[:200]}")
+        return
+    # O worktree usa os mesmos pacotes e as mesmas chaves locais do projeto.
+    for nome in ("node_modules", ".env", ".env.local", ".env.migration.local"):
+        if (RAIZ / nome).exists() and not (obra / nome).exists():
+            (obra / nome).symlink_to(RAIZ / nome)
+    ok, texto = rodar_claude(PROMPT_MELHORIA.format(mid=mid, obra=obra, ramo=ramo, raiz=RAIZ, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"),
+                             minutos=90, cwd=obra, turnos=200)
+    st, resultado, _ = melhorias.situacao(mid) or (None, None, None)
+    if st != "fazendo":                        # o Pedro registrou erro
+        log("melhoria:", st, (resultado or "")[:150])
+    elif not resultado:                        # terminou sem "pronto"
+        melhorias.erro(mid, f"O Pedro parou sem terminar: {(texto or '')[:300]}")
+        log("melhoria: sem pronto —", (texto or "")[:200])
+    else:
+        novos = _git("rev-list", "--count", f"main..{ramo}").stdout.strip()
+        if novos in ("", "0"):
+            melhorias.erro(mid, "O Pedro disse que terminou, mas não fez commit de nada.")
+        else:
+            m = _git("merge", "--no-edit", ramo)
+            if m.returncode != 0:
+                _git("merge", "--abort")
+                melhorias.erro(mid, f"Ficou pronto no ramo {ramo}, mas não deu para juntar no sistema agora "
+                                    f"(conflito com trabalho em andamento de outro chat). Peça ao chat geral para juntar. {(m.stderr or m.stdout).strip()[:200]}")
+                log("melhoria: merge falhou —", (m.stderr or m.stdout)[:200])
+                return                          # mantém o ramo pra juntar depois
+            melhorias.feito(mid, _git("rev-parse", "--short", "HEAD").stdout.strip())
+            log("melhoria: feita", mid)
+    _git("worktree", "remove", "--force", str(obra))
+    if melhorias.situacao(mid)[0] == "feito":
+        _git("branch", "-D", ramo)
+
+
 # ---------------------------------------------------------------- laço
 
 def laco(nome, funcao, intervalo):
@@ -495,4 +571,5 @@ if __name__ == "__main__":
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
+    threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
     laco("conversa", atender_conversa, 3)
