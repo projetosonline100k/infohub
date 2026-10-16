@@ -272,7 +272,7 @@ def atender_drive():
                       (f"%{brutos[0].name}",))
         if r:
             danilo.db("UPDATE public.edicoes_video SET status = 'erro', mensagem = %s WHERE id = %s",
-                      (f"Danilo não conseguiu editar sozinho: {str(erro)[:250]}", r[0][0]))
+                      (f"Danilo não conseguiu editar sozinho: {str(erro)[:450]}", r[0][0]))
         return True
     e["feitos"] = e.get("feitos", 0) + 1
     e.setdefault("total", e["feitos"] + len(brutos) - 1)
