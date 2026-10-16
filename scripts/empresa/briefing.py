@@ -89,6 +89,7 @@ def contexto(bid, como=None):
         entrega = None
         quiz = None
         edicao = None
+        carrosseis = []
         if status == 'revisando' and atividade_id:
             q.execute("""SELECT a.titulo, a.situacao, d.id, d.titulo FROM atividades a
                            LEFT JOIN LATERAL (SELECT id, titulo FROM documentos WHERE atividade_id = a.id AND deleted_at IS NULL
@@ -99,6 +100,9 @@ def contexto(bid, como=None):
             q.execute("""SELECT id, titulo, status, versao FROM edicoes_video WHERE atividade_id = %s
                           ORDER BY atualizado_em DESC LIMIT 1""", (atividade_id,))
             edicao = q.fetchone()
+            q.execute("""SELECT id, numero, tema, status, versao, feedback FROM carrosseis WHERE atividade_roy_id = %s
+                          ORDER BY numero""", (atividade_id,))
+            carrosseis = q.fetchall()
         q.execute("""SELECT nome_produto, status FROM produtos_cliente WHERE cliente_id = %s ORDER BY status, nome_produto""", (cliente_id,))
         produtos = q.fetchall()
         q.execute("""SELECT bm.papel, bm.texto, bm.criada_em, mm.nome FROM briefing_mensagens bm
@@ -164,6 +168,15 @@ def contexto(bid, como=None):
                   f'Depois rode `danilo.py versao {e_id}` (o servidor gera a nova versão e o editor recarrega sozinho) e confira com '
                   f'`danilo.py conferir {e_id} --so-olhar`. NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão do editor). '
                   'O que o Davi corrigir ou elogiar e valer para os próximos vídeos, anote nos aprendizados (aprender.py, agente "danilo").')
+        if carrosseis:
+            print('São CARROSSÉIS do Roy. O Davi está na REVISÃO do carrossel (páginas e legenda na tela) conversando com você ao lado:')
+            for cid, num, tema, cst, cv, fb in carrosseis:
+                print(f'  - {str(num or "").zfill(3)} · {tema} (id {cid}, status {cst}, versão {cv})' + (f' · último pedido: {fb[:200]}' if fb else ''))
+            print('Veja as páginas e o texto em ~/.infopro-hub/roy/carrosseis/<id>/conteudo.json (e as imagens no Storage). Siga docs/agentes/roy-carrossel.md e as REGRAS DO DAVI (mude o MÍNIMO em relação ao reel).'
+                  ' Pedido de mudança CLARO (trocar título, imagem, ordem, texto de uma página, legenda): mande para o serviço do Roy refazer, com o pedido completo e preciso:'
+                  ' python3 scripts/roy/roy.py pedir-ajuste <id> <<\'FIM\'\n<o que mudar, página por página>\nFIM'
+                  ' — a nova versão aparece sozinha na tela em alguns minutos; diga isso na resposta. Se houver mais de um carrossel e não ficar claro qual, pergunte.'
+                  ' Elogio: agradeça e anote nos aprendizados (aprender.py, agente "roy"). NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão).')
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'

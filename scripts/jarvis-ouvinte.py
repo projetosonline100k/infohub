@@ -352,7 +352,7 @@ Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em po
      FIM
      Mude só o que ele pediu; o que ele elogiou fica. Refazer do zero: siga o seu manual e a conversa, pesquisando o que precisar. Na resposta, diga em poucas linhas o que mudou.
      Se NÃO está claro o que ele quer (ou a mudança é grande e há caminhos bem diferentes), pergunte antes (no máximo 2 perguntas) e não mexa.
-   - Se o contexto disser que é EDIÇÃO DE VÍDEO ou QUIZ, mude do jeito que ele indica (não com o entregar).
+   - Se o contexto disser que é EDIÇÃO DE VÍDEO, QUIZ ou CARROSSEL, mude do jeito que ele indica (não com o entregar).
    - Se o contexto disser que é CONVERSA SOBRE UMA MELHORIA (Pedro), não há documento: converse sobre as pendências e siga o que o contexto indica (melhorias.py retomar quando ele resolver).
    - Pergunta ou comentário: responda direto, citando o documento.
    Correção que vale para as próximas vezes: anote também (aprender.py).

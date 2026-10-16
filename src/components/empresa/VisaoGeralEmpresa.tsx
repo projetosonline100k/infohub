@@ -137,6 +137,15 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
   const [reelsProgramados, setReelsProgramados] = useState<ReelProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
+  // O Roy fez uma versão nova enquanto o Davi revisa (conversa ao lado): troca pelo carrossel novo.
+  // Só quando muda a versão ou o status, para não apagar o que ele está editando na tela.
+  useEffect(() => {
+    setCarrosselAberto((atual) => {
+      if (!atual) return atual;
+      const novo = carrosseis.find((x) => x.id === atual.id);
+      return novo && (novo.versao !== atual.versao || novo.status !== atual.status) ? novo : atual;
+    });
+  }, [carrosseis]);
   const [filtroPrecisa, setFiltroPrecisa] = useState<Categoria | "todos">("todos");
   const [loteAberto, setLoteAberto] = useState(false);
   const [revisaoAberta, setRevisaoAberta] = useState(false);
@@ -507,7 +516,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         )}
       </section>
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
-      <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }} />
+      <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }}
+        onRecarregar={() => void carregar()} />
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }}
         onEditar={membroAberto && !ehCoordenador(membroAberto) ? () => void abrirCadastro(membroAberto.id) : undefined} />

@@ -581,6 +581,19 @@ def ajustes(so_id=None):
             print(f"(textos da tela copiados para {arq})")
 
 
+def pedir_ajuste(id_, pedido):
+    """Pedido de ajuste vindo da CONVERSA da revisão (16/10): o mesmo que o botão "Pedir
+    ajuste" da tela — o carrossel volta para 'ajuste' e o serviço do Roy refaz e manda a
+    nova versão para revisar (a tela da revisão troca sozinha)."""
+    pedido = pedido.strip()
+    if not pedido:
+        raise SystemExit("Escreva o pedido (stdin).")
+    r = db("""UPDATE public.carrosseis SET status = 'ajuste', feedback = %s, aprovar_apos_ajuste = false, atualizado_em = now()
+               WHERE id = %s AND status IN ('revisar', 'erro') RETURNING numero""", (pedido[:2000], id_))
+    print(f"AJUSTE PEDIDO (carrossel {r[0][0]}): o serviço do Roy refaz em alguns minutos" if r
+          else "não deu: o carrossel não está em revisão (veja o status)")
+
+
 def estilos():
     for arq in sorted((AQUI / "estilos").glob("*.json")):
         e = json.loads(arq.read_text())
@@ -609,6 +622,8 @@ if __name__ == "__main__":
         print("\n".join(p) if p else "ok")
     elif a[0] == "ajustes":
         ajustes()
+    elif a[0] == "pedir-ajuste" and len(a) > 1:
+        pedir_ajuste(a[1], sys.stdin.read())
     elif a[0] == "estilos":
         estilos()
     else:

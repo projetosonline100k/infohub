@@ -15,14 +15,24 @@ import {
 } from "@/lib/empresa/carrossel";
 import { aprovarCarrosseis } from "@/lib/empresa/aprovarCarrossel";
 import { PreviaPagina } from "./PreviaPagina";
+import { ConversaEntrega } from "./ConversaEntrega";
 
 // Revisão de um carrossel do Roy: ver as páginas e a legenda, corrigir
 // texto, pedir ajuste ou aprovar. Aprovado, vira tarefa da Dalila programar.
-export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
+// Conversa com o Roy ao lado (16/10, Davi: "seria melhor mostrar o chat, igual quando é
+// a edição e o quiz"): fica na tarefa dele; ajuste claro ele pede sozinho (roy.py pedir-ajuste)
+// e a nova versão aparece aqui (onRecarregar).
+export function RevisaoCarrossel({ clienteId, carrossel, onFechar, onRecarregar }: {
   clienteId: string;
   carrossel: CarrosselResumo | null;
   onFechar: () => void;
+  onRecarregar?: () => void;
 }) {
+  const [royId, setRoyId] = useState<string | null>(null);
+  useEffect(() => {
+    void supabase.from("membros").select("id").eq("cliente_id", clienteId).eq("eh_ia", true).ilike("nome", "roy").limit(1)
+      .then(({ data }) => setRoyId(data?.[0]?.id ?? null));
+  }, [clienteId]);
   const [atual, setAtual] = useState(0);
   const [slides, setSlides] = useState<SlideCarrossel[]>([]);
   const [legenda, setLegenda] = useState("");
@@ -118,6 +128,7 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
 
   if (!carrossel) return null;
   const c = carrossel;
+  const conversa = c.atividade_roy_id && royId ? { tarefaId: c.atividade_roy_id, membroId: royId } : null;
   const editadas = paginasEditadas(c.slides, slides);
   const legendaMudou = (c.legenda ?? "").trim() !== legenda.trim();
   // "Com problema" (a revisão automática barrou a versão nova): as páginas que já existem
@@ -196,7 +207,8 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
 
   return (
     <Dialog open onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className="max-h-[94vh] max-w-6xl overflow-y-auto">
+      <DialogContent className={cn("max-h-[94vh]", conversa ? "flex max-w-[1400px] flex-col gap-4 overflow-y-auto lg:flex-row lg:overflow-hidden" : "max-w-6xl overflow-y-auto")}>
+        <div className={cn("grid min-w-0 flex-1 gap-4", conversa && "lg:overflow-y-auto lg:pr-1")}>
         <DialogHeader>
           <DialogTitle>{c.numero ? `${String(c.numero).padStart(3, "0")} · ` : ""}{c.tema}</DialogTitle>
           <DialogDescription>
@@ -336,6 +348,13 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar }: {
             )}
           </div>
         </div>
+        </div>
+        {conversa && (
+          <aside className="h-[460px] shrink-0 lg:h-auto lg:w-[340px]">
+            <ConversaEntrega key={conversa.tarefaId} clienteId={clienteId} tarefaId={conversa.tarefaId} membroId={conversa.membroId}
+              nome="Roy" onDocumentoMudou={() => onRecarregar?.()} />
+          </aside>
+        )}
       </DialogContent>
     </Dialog>
   );

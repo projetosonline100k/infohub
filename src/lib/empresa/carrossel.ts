@@ -24,6 +24,8 @@ export interface CarrosselResumo {
   fonte_permalink: string | null;
   pasta_drive: string | null;
   atividade_id: string | null;
+  /** Tarefa do Roy que gerou o carrossel: a conversa da revisão fica nela. */
+  atividade_roy_id?: string | null;
   atualizado_em: string;
 }
 
