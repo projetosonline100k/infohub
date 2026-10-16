@@ -18,6 +18,7 @@ import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 import { RevisaoEntrega } from "./RevisaoEntrega";
 import { KanbanMelhorias } from "./KanbanMelhorias";
+import { AssistantWhatsappTab } from "@/components/assistant/tabs/AssistantWhatsappTab";
 
 type TarefaFila = TarefaResumo & {
   video_vertical_id?: string | null; video_youtube_id?: string | null;
@@ -154,6 +155,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   const [agora, setAgora] = useState(() => Date.now());
   const [revisando, setRevisando] = useState(false);
   const ehPedro = !!membro?.eh_ia && membro.nome.trim().toLowerCase() === "pedro";
+  // CS (Shirley, Core, 16/10): "eu clico nela e aparece o WhatsApp" — o mesmo WhatsApp do Atlas.
+  const ehCs = !!membro?.eh_ia && (membro.nome.trim().toLowerCase() === "shirley" || /sucesso do cliente|\bcs\b/i.test(membro.funcao ?? ""));
   useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
@@ -278,7 +281,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
 
   return (
     <Dialog open={!!membro} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehPedro ? "max-w-6xl" : "max-w-xl")}>
+      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehPedro || ehCs ? "max-w-6xl" : "max-w-xl")}>
         {membro && (
           <>
             <DialogHeader>
@@ -314,6 +317,14 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
 
             {/* Pedro (IA de melhorias): o kanban das ideias dele vem primeiro. */}
             {ehPedro && <KanbanMelhorias clienteId={clienteId} />}
+            {ehCs && (
+              <section className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WhatsApp dos clientes</p>
+                <div className="h-[70vh] overflow-hidden rounded-xl border bg-card p-4">
+                  <div className="h-full overflow-y-auto"><AssistantWhatsappTab /></div>
+                </div>
+              </section>
+            )}
 
             {/* 1. Em andamento (15/10: um bloco só — o "Agora" repetia a mesma lista) */}
             {carregando ? (

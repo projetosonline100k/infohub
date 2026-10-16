@@ -6,10 +6,7 @@ DECLARE
   v_de uuid := 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f';
   v_para uuid := 'e354f4be-8a8d-4c34-8f47-f85e5981b8d3';
 BEGIN
-  IF (SELECT count(*) FROM public.setores WHERE cliente_id = v_para) <> (SELECT count(*) FROM public.setores WHERE cliente_id = v_de) THEN
-    RAISE EXCEPTION 'setores diferentes'; END IF;
-  IF EXISTS (SELECT nome FROM public.membros WHERE cliente_id = v_de EXCEPT SELECT nome FROM public.membros WHERE cliente_id = v_para) THEN
-    RAISE EXCEPTION 'faltou alguém da equipe'; END IF;
+  -- (16/10) Sem exigir cópia exata da equipe do Davi: depois da cópia, o Davi cria e apaga escritórios e pessoas.
   IF EXISTS (SELECT nome FROM public.membros WHERE cliente_id = v_para GROUP BY nome HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'equipe duplicada'; END IF;
   IF EXISTS (SELECT 1 FROM public.membros m LEFT JOIN public.setores s ON s.id = m.setor_id
