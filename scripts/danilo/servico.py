@@ -225,6 +225,16 @@ def atender_drive():
             e.pop("aguardando_piloto")
             salvar_estado(e)
     brutos = danilo.novos()
+    if not brutos and danilo._quebrados and e.get("atividade") and e.get("feitos", 0) < e.get("total", 0):
+        nomes = sorted(Path(q).name.replace(danilo.EM_EDICAO, "").replace(".MOV", "") for q in danilo._quebrados if Path(q).exists())
+        aviso = (f"{e['feitos']} de {e['total']} prontos. Faltam {', '.join(nomes)}: o arquivo está corrompido (não abre). "
+                 "Mande de novo do celular por AirDrop para a pasta Para o Danilo, na Mesa, que eu edito sozinho.")
+        if nomes and e.get("aviso_quebrados") != aviso:
+            e["aviso_quebrados"] = aviso
+            salvar_estado(e)
+            log("parado: brutos corrompidos", nomes)
+            progresso(e["atividade"], int(20 + 80 * e["feitos"] / e["total"]), aviso, "andamento")
+        return False
     # Processo do launchd não consegue fazer o Drive baixar (a leitura trava ou
     # dá timeout). A pasta Precisa de edição fica "disponível off-line": o
     # próprio Drive baixa, e o Danilo só pega o bruto que já está no Mac.
