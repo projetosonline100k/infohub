@@ -14,6 +14,9 @@ INSERT INTO public.membros(id, cliente_id, nome, conta_id) VALUES
 INSERT INTO public.membros(id, cliente_id, nome, funcao, eh_ia) VALUES
  ('10000000-0000-0000-0000-000000000165', '10000000-0000-0000-0000-000000000163', 'Dalila', 'Social media', true);
 RESET ROLE;
+-- O projeto tem o Instagram dele (regra de 15/10: sem isso a Dalila não programa).
+INSERT INTO public.instagram_conexoes(user_id, cliente_id, ig_user_id, username, access_token)
+VALUES ('10000000-0000-0000-0000-000000000161', '10000000-0000-0000-0000-000000000163', 'ig-teste', 'teste', 'x');
 INSERT INTO public.carrosseis(id, cliente_id, user_id, numero, tema, fonte_id, status, paginas, legenda)
  VALUES ('10000000-0000-0000-0000-000000000166', '10000000-0000-0000-0000-000000000163',
          '10000000-0000-0000-0000-000000000161', 12, 'Tema', 'reel-dalila', 'revisar', ARRAY['a.png','b.png'], 'Legenda');
