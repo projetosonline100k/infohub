@@ -42,8 +42,10 @@ def pegar(ignorar=()):
                  LEFT JOIN public.briefings b ON b.atividade_id = a2.id AND b.status = 'confirmado'
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
                   AND m.eh_ia AND m.ativo AND (lower(m.nome) = ANY(%s) OR m.autonomo)   -- autonomo: criado pelo app
-                  -- Briefing confirmado; o Gabriel (estudos) também pega pedido rápido, sem conversa.
-                  AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel'
+                  -- Briefing confirmado; o Gabriel (estudos) e quem está marcado como "trabalha sozinho"
+                  -- (autonomo, 16/10: "precisa ser meio que automático") pegam também a tarefa passada
+                  -- sem conversa (Passar tarefa, TV da semana, kanban de Atividades).
+                  AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel' OR m.autonomo
                        -- Quiz pedido pela aba Quiz vai direto pro Roy (o esboço é a primeira entrega).
                        OR (lower(m.nome) = 'roy' AND a2.tipo = 'quiz'))
                   -- Carrossel do Roy no projeto Davi Queiroz é com o serviço dele (scripts/roy/servico.py);
@@ -56,6 +58,29 @@ def pegar(ignorar=()):
         r = q.fetchone()
         c.commit()
         return str(r[0]) if r else None
+    finally:
+        c.close()
+
+
+def reenfileirar():
+    """Ao ligar o ouvinte: tarefa que ele estava fazendo quando caiu volta pra fila (senão
+    ficaria "em andamento" pra sempre). Só as do fluxo de execução — não mexe no carrossel do
+    serviço do Roy, na edição do Danilo nem no post programado da Dalila."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""UPDATE public.atividades a SET situacao = 'fila', progresso = NULL,
+                            observacao = 'Retomada: o ouvinte reiniciou no meio do trabalho.'
+                      FROM public.membros m
+                     WHERE m.id = a.responsavel_id AND a.situacao = 'andamento' AND NOT a.concluida AND a.deleted_at IS NULL
+                       AND m.eh_ia AND (lower(m.nome) = ANY(%s) OR m.autonomo)
+                       AND coalesce(a.tipo, '') NOT IN ('programacao', 'edicao')
+                       AND NOT (lower(m.nome) = 'roy' AND coalesce(a.tipo, '') NOT IN ('pagina', 'quiz')
+                                AND a.cliente_id = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f')
+                    RETURNING a.id""", (sorted(EXECUTORES),))
+        n = len(q.fetchall())
+        c.commit()
+        return n
     finally:
         c.close()
 

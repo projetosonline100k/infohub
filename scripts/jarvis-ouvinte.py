@@ -552,9 +552,29 @@ def atender_melhorias():
 
 # ---------------------------------------------------------------- laço
 
+# Os módulos dos fluxos (briefing, execução, melhorias) são recarregados a cada
+# 30 s: mudança no código deles vale sem reiniciar o ouvinte (16/10).
+_recarregado = [time.time()]
+_trava_recarga = threading.Lock()
+
+
+def recarregar_modulos():
+    import importlib
+    with _trava_recarga:
+        if time.time() - _recarregado[0] < 30:
+            return
+        _recarregado[0] = time.time()
+        for m in (briefing, execucao, melhorias):
+            try:
+                importlib.reload(m)
+            except Exception as e:  # código com erro: segue com a versão anterior
+                log("recarregar:", m.__name__, repr(e)[:200])
+
+
 def laco(nome, funcao, intervalo):
     while True:
         try:
+            recarregar_modulos()
             funcao()
         except Exception as e:  # rede caiu etc.: tenta de novo
             log(f"{nome}: erro —", repr(e)[:300])
@@ -568,12 +588,15 @@ if __name__ == "__main__":
         print(rodar_claude("Responda apenas: OK", minutos=2))
         sys.exit(0)
     log("ouvinte iniciado; claude =", claude_bin())
-    try:
-        n = briefing.reenfileirar()
-        if n:
-            log(f"briefing: {n} mensagem(ns) de atendimento interrompido de volta na fila")
-    except Exception as e:
-        log("briefing: não reenfileirei —", repr(e)[:200])
+    for nome_fluxo, fn, texto in (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
+                                  ("execucao", execucao.reenfileirar, "tarefa(s) interrompida(s)"),
+                                  ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)")):
+        try:
+            n = fn()
+            if n:
+                log(f"{nome_fluxo}: {n} {texto} de volta na fila")
+        except Exception as e:
+            log(f"{nome_fluxo}: não reenfileirei —", repr(e)[:200])
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()

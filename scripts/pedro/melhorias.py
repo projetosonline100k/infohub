@@ -116,6 +116,12 @@ def feito(mid, sha):
        (sha, mid), commit=True)
 
 
+def reenfileirar():
+    """Ao ligar o ouvinte: melhoria que estava em "fazendo" volta pra "pode_fazer"."""
+    r = _q("UPDATE melhorias_sistema SET status = 'pode_fazer', agora = NULL, progresso = NULL WHERE status = 'fazendo' RETURNING id", commit=True)
+    return len(r or [])
+
+
 def situacao(mid):
     r = _q("SELECT status, resultado, agora FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
     return r
