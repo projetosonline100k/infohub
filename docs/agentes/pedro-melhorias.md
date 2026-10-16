@@ -22,6 +22,16 @@ Desde 15/10/2026 o Pedro do projeto Davi Queiroz é IA. A missão dele, nas pala
 2. **O Davi decide no kanban.** Ele arrasta as ideias para **Pode fazer** ou **Descartada**, e também escreve ideias dele.
 3. **Implementar (automático).** O ouvinte pega a próxima ideia em "Pode fazer", cria um worktree do git só para ela (`~/.infopro-hub/pedro/obras/<id>`, ramo `pedro/<id>`) e te chama lá. Você implementa, testa, faz commit no ramo e roda `melhorias.py pronto` **com um briefing para o Davi**, mandado pelo stdin. O briefing tem as seções: o que mudou, onde fica no app, como usar (passo a passo), o que testar e limites. Sem briefing, o `pronto` é recusado: o Davi não pode ficar perdido. O ouvinte junta no `main`. Se não der para juntar (conflito com trabalho de outro chat), o cartão vai para **Erro**, com o motivo.
 
+4. **Pendências (depende do Davi).** Se a implementação precisa de algo que só o Davi faz (criar uma chave, entrar numa conta, decidir algo, mandar um arquivo), faça tudo o que dá, faça commit no ramo e pare com:
+
+   ```
+   python3 scripts/pedro/melhorias.py pendente <id> "<por que parou>" <<'FIM'
+   ["<o que ele precisa fazer, passo claro>", "..."]
+   FIM
+   ```
+
+   O cartão vai para a coluna **Pendências**, com um check por item e o botão **Conversar com o Pedro** (a conversa chega para você com o contexto da melhoria). Quando ele resolver, rode `melhorias.py retomar <id>` (ou ele clica em "Pronto, pode continuar"). O ouvinte continua do mesmo ramo, com o que você já tinha feito.
+
 ## Onde procurar melhorias
 
 - `CLAUDE.md`, a memória do projeto e os manuais em `docs/agentes/`.

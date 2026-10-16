@@ -26,10 +26,12 @@ interface Colega { id: string; nome: string; eh_ia: boolean }
 // mudança clara, atualiza o mesmo documento (onDocumentoMudou recarrega).
 // Conversa em grupo (15/10): "Chamar" põe outro funcionário IA na conversa;
 // cada um responde pela sua área e cada fala mostra quem disse.
-export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando }: {
-  clienteId: string; tarefaId: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
+// melhoriaId (16/10): a mesma conversa, sobre uma melhoria do kanban do Pedro (pendências).
+export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando }: {
+  clienteId: string; tarefaId?: string; melhoriaId?: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
   onEsperando?: (esperando: boolean) => void;
 }) {
+  const sobre = melhoriaId ? { campo: "melhoria_id", id: melhoriaId } : { campo: "atividade_id", id: tarefaId ?? "" };
   // O que ele está fazendo agora (briefing.py agora): "lendo o documento", "reescrevendo as chamadas"…
   const [fazendo, setFazendo] = useState<string | null>(null);
   const [conversaId, setConversaId] = useState<string | null>(null);
@@ -65,14 +67,14 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
   useEffect(() => {
     let vivo = true;
     setConversaId(null); setMensagens([]); respostas.current = 0;
-    void supabase.from("briefings").select("id").eq("atividade_id", tarefaId).eq("status", "revisando")
+    void db.from("briefings").select("id").eq(sobre.campo, sobre.id).eq("status", "revisando")
       .order("atualizado_em", { ascending: false }).limit(1).then(({ data }) => {
         if (!vivo || !data?.[0]) return;
         setConversaId(data[0].id);
         void carregar(data[0].id).then(() => { respostas.current = Math.max(respostas.current, 1); });
       });
     return () => { vivo = false; };
-  }, [tarefaId, carregar]);
+  }, [sobre.campo, sobre.id, carregar]);
 
   useEffect(() => {
     void supabase.from("membros").select("id, nome, eh_ia").eq("cliente_id", clienteId).eq("ativo", true).order("ordem")
@@ -86,7 +88,7 @@ export function ConversaEntrega({ clienteId, tarefaId, membroId, nome, textoInic
   const garantirConversa = async () => {
     if (conversaId) return conversaId;
     const id = crypto.randomUUID();
-    const { error } = await supabase.from("briefings").insert({ id, cliente_id: clienteId, membro_id: membroId, atividade_id: tarefaId, status: "revisando" });
+    const { error } = await db.from("briefings").insert({ id, cliente_id: clienteId, membro_id: membroId, [sobre.campo]: sobre.id, status: "revisando" });
     if (error) throw error;
     setConversaId(id);
     respostas.current = Math.max(respostas.current, 1);

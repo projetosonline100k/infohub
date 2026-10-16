@@ -10,6 +10,10 @@ Ideias → Pode fazer (o Davi arrasta) → Fazendo (o Pedro implementa sozinho) 
   python3 scripts/pedro/melhorias.py pronto <id> "<resumo de 1 linha>" <<'FIM'
   <briefing pro Davi: o que mudou · onde fica no app · como usar (passo a passo) · o que testar · limites>
   FIM
+  python3 scripts/pedro/melhorias.py pendente <id> "<por que parou>" <<'FIM'   → depende do Davi
+  ["criar a chave X em …", "decidir se …"]
+  FIM
+  python3 scripts/pedro/melhorias.py retomar <id>                   → (na conversa) o Davi resolveu: volta pra fila
   python3 scripts/pedro/melhorias.py erro <id> "<por que não deu>"
   (o ouvinte usa: pegar, situacao, feito)"""
 import json
@@ -80,14 +84,19 @@ def pegar():
 
 
 def contexto(mid):
-    r = _q("SELECT titulo, problema, porque, sugestao, impacto, esforco, origem, notas FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
+    r = _q("SELECT titulo, problema, porque, sugestao, impacto, esforco, origem, notas, pendencias, status, resultado FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
     if not r:
         raise SystemExit('melhoria não encontrada')
-    t, p, pq, s, i, e, o, notas = r
+    t, p, pq, s, i, e, o, notas, pend, st, res = r
     print(f'Melhoria aprovada pelo Davi: {t}\nVeio de: {"ideia do Davi" if o == "davi" else "ideia sua (Pedro)"} · impacto {i or "-"} · esforço {e or "-"}')
     print(f'Problema: {p or "-"}\nPor que importa: {pq or "-"}\nSugestão: {s or "-"}')
     if notas:
         print(f'\nDETALHES DO DAVI (valem mais que a sugestão; siga):\n{notas}')
+    if pend:
+        print(f'\nPENDÊNCIAS COM O DAVI (status {st}; motivo: {res or "-"}):')
+        for it in pend:
+            print(f'  [{"x" if it.get("feito") else " "}] {it.get("texto")}')
+        print('Se continuar de um ramo que já tem trabalho seu (git log), siga de onde parou.')
 
 
 def progresso(mid, pct, agora):
@@ -103,6 +112,27 @@ def pronto(mid, resumo, briefing=''):
     _q("UPDATE melhorias_sistema SET progresso = 95, agora = 'juntando no sistema', resultado = %s, briefing = %s WHERE id = %s AND status = 'fazendo'",
        (resumo.strip()[:2000], briefing.strip()[:12000], mid), commit=True)
     print('PRONTO (o ouvinte junta no sistema)')
+
+
+def pendente(mid, motivo, bruto):
+    """Depende do Davi (chave, decisão, login, arquivo…): para, guarda o que já fez no ramo e
+    mostra a lista do que ele precisa fazer (coluna Pendências). stdin: lista JSON de textos."""
+    try:
+        itens = json.loads(bruto) if bruto.strip() else []
+    except json.JSONDecodeError as e:
+        raise SystemExit(f'JSON inválido: {e}')
+    itens = [{'texto': str(t).strip()[:300], 'feito': False} for t in (itens if isinstance(itens, list) else [itens]) if str(t).strip()]
+    if not itens:
+        raise SystemExit('Mande a lista do que o Davi precisa fazer (JSON: ["...", "..."]).')
+    _q("""UPDATE melhorias_sistema SET status = 'pendente', agora = NULL, resultado = %s, pendencias = %s::jsonb
+           WHERE id = %s""", (motivo.strip()[:1000], json.dumps(itens, ensure_ascii=False), mid), commit=True)
+    print('PENDENTE (o ouvinte guarda o que você já fez no ramo)')
+
+
+def retomar(mid):
+    """O Davi resolveu as pendências: volta pra fila de implementação (continua do ramo)."""
+    r = _q("UPDATE melhorias_sistema SET status = 'pode_fazer' WHERE id = %s AND status = 'pendente' RETURNING id", (mid,), um=True, commit=True)
+    print('RETOMADA' if r else 'nada a fazer (não estava pendente)')
 
 
 def erro(mid, motivo):
@@ -140,6 +170,10 @@ if __name__ == '__main__':
         progresso(a[1], a[2], a[3])
     elif cmd == 'pronto' and len(a) > 2:
         pronto(a[1], a[2], sys.stdin.read() if not sys.stdin.isatty() else '')
+    elif cmd == 'pendente' and len(a) > 2:
+        pendente(a[1], a[2], sys.stdin.read())
+    elif cmd == 'retomar' and len(a) > 1:
+        retomar(a[1])
     elif cmd == 'erro' and len(a) > 2:
         erro(a[1], a[2])
     elif cmd == 'pegar':

@@ -340,6 +340,7 @@ Ao vivo: o Davi vê no chat o que você está fazendo. A cada passo, avise em po
      Mude só o que ele pediu; o que ele elogiou fica. Refazer do zero: siga o seu manual e a conversa, pesquisando o que precisar. Na resposta, diga em poucas linhas o que mudou.
      Se NÃO está claro o que ele quer (ou a mudança é grande e há caminhos bem diferentes), pergunte antes (no máximo 2 perguntas) e não mexa.
    - Se o contexto disser que é EDIÇÃO DE VÍDEO ou QUIZ, mude do jeito que ele indica (não com o entregar).
+   - Se o contexto disser que é CONVERSA SOBRE UMA MELHORIA (Pedro), não há documento: converse sobre as pendências e siga o que o contexto indica (melhorias.py retomar quando ele resolver).
    - Pergunta ou comentário: responda direto, citando o documento.
    Correção que vale para as próximas vezes: anote também (aprender.py).
    Precisa de um colega (ex.: copy/nomes com o Ítalo, visual com o Roy)? Chame-o para ESTA conversa, em vez de mandar o Davi abrir outra:
@@ -496,7 +497,11 @@ Você está num worktree só desta melhoria: {obra} (ramo {ramo}). Trabalhe SÓ 
    python3 scripts/pedro/melhorias.py pronto {mid} "<resumo de 1 linha>" <<'FIM'
    <o briefing, com as seções acima>
    FIM
-   Se não der (precisa de decisão do Davi, é área de outro chat — Roy/Danilo/Dalila —, ou é grande demais): python3 scripts/pedro/melhorias.py erro {mid} "<por quê, simples>"
+   Se DEPENDE DO DAVI (uma chave/senha que só ele cria, um login, uma decisão, um arquivo, uma conta): faça tudo o que dá antes, faça commit do que já fez no ramo e pare com a lista do que ele precisa fazer (vai pra coluna Pendências com um check pra cada item; ele conversa com você por lá):
+   python3 scripts/pedro/melhorias.py pendente {mid} "<por que parou, simples>" <<'FIM'
+   ["<o que ele precisa fazer, passo claro>", "..."]
+   FIM
+   Se não der por outro motivo (é área de outro chat — Roy/Danilo/Dalila —, ou é grande demais): python3 scripts/pedro/melhorias.py erro {mid} "<por quê, simples>"
 Regras: sem git push, sem merge (o ouvinte junta), não reinstale o app, não reinicie o ouvinte, não envie WhatsApp/e-mail, não publique nada. Hoje é {hoje}."""
 
 
@@ -514,8 +519,11 @@ def atender_melhorias():
     OBRAS.mkdir(parents=True, exist_ok=True)
     if obra.exists():
         _git("worktree", "remove", "--force", str(obra))
-    _git("branch", "-D", ramo)
-    r = _git("worktree", "add", "-b", ramo, str(obra), "main")
+    # Voltou de uma pendência: continua do ramo dele (o que já tinha feito fica).
+    if _git("rev-parse", "--verify", "--quiet", ramo).returncode == 0:
+        r = _git("worktree", "add", str(obra), ramo)
+    else:
+        r = _git("worktree", "add", "-b", ramo, str(obra), "main")
     if r.returncode != 0:
         melhorias.erro(mid, f"Não consegui preparar a cópia do código: {(r.stderr or r.stdout).strip()[:200]}")
         return
@@ -526,6 +534,12 @@ def atender_melhorias():
     ok, texto = rodar_claude(PROMPT_MELHORIA.format(mid=mid, obra=obra, ramo=ramo, raiz=RAIZ, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"),
                              minutos=90, cwd=obra, turnos=200)
     st, resultado, _ = melhorias.situacao(mid) or (None, None, None)
+    if st == "pendente":                       # depende do Davi: guarda o ramo pra continuar depois
+        log("melhoria: pendente —", (resultado or "")[:150])
+        _git("-C", str(obra), "add", "-A")
+        _git("-C", str(obra), "commit", "-q", "-m", "wip: Pedro parou numa pendência (continua depois)")
+        _git("worktree", "remove", "--force", str(obra))
+        return
     if st != "fazendo":                        # o Pedro registrou erro
         log("melhoria:", st, (resultado or "")[:150])
     elif not resultado:                        # terminou sem "pronto"

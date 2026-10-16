@@ -4,7 +4,8 @@ import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-p
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AlertTriangle, CheckCircle2, ChevronDown, ClipboardList, Lightbulb, Loader2, Mic, Plus, Rocket, Square, Trash2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ClipboardList, Hand, Lightbulb, Loader2, MessageCircle, Mic, Plus, Rocket, Square, Trash2, X } from "lucide-react";
+import { ConversaEntrega } from "./ConversaEntrega";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
@@ -19,20 +20,24 @@ import { cn } from "@/lib/utils";
 // 15/10/2026): as ideias que ele traz; o que o Davi arrasta pra "Pode fazer"
 // o Pedro implementa sozinho (ouvinte, linha "melhorias"). O app só move entre
 // Ideias / Pode fazer / Descartada; Fazendo, Feito e Erro são do Pedro.
+// Pendências (16/10): quando depende do Davi, o Pedro para e lista o que falta
+// (um check por item) e os dois conversam ali; "Pode continuar" volta pra fila.
 const db = supabase as unknown as SupabaseClient;   // melhorias_sistema ainda não está nos tipos gerados
 
-type Status = "ideia" | "pode_fazer" | "fazendo" | "feito" | "descartada" | "erro";
+type Status = "ideia" | "pode_fazer" | "fazendo" | "pendente" | "feito" | "descartada" | "erro";
+interface Pendencia { texto: string; feito: boolean }
 interface Melhoria {
   id: string; titulo: string; problema: string | null; porque: string | null; sugestao: string | null;
   impacto: number | null; esforco: number | null; status: Status; origem: "pedro" | "davi"; ordem: number;
   agora: string | null; progresso: number | null; resultado: string | null; commit_sha: string | null; notas: string | null;
-  briefing: string | null;
+  briefing: string | null; pendencias: Pendencia[] | null;
   criado_em: string; concluido_em: string | null;
 }
 const COLUNAS: { status: Status; titulo: string; icone: typeof Lightbulb; ajuda: string; podeSoltar: boolean }[] = [
   { status: "ideia", titulo: "Ideias", icone: Lightbulb, ajuda: "o que o Pedro (ou você) sugeriu", podeSoltar: true },
   { status: "pode_fazer", titulo: "Pode fazer", icone: Rocket, ajuda: "arraste pra cá: ele implementa sozinho", podeSoltar: true },
   { status: "fazendo", titulo: "Fazendo", icone: Loader2, ajuda: "o Pedro está implementando", podeSoltar: false },
+  { status: "pendente", titulo: "Pendências", icone: Hand, ajuda: "depende de você: marque e converse com ele", podeSoltar: false },
   { status: "feito", titulo: "Feito", icone: CheckCircle2, ajuda: "já está no sistema", podeSoltar: false },
 ];
 const NIVEL = ["", "baixo", "médio", "alto"];
@@ -44,6 +49,12 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   const [nova, setNova] = useState("");
   const [verDescartadas, setVerDescartadas] = useState(false);
   const [lendo, setLendo] = useState<Melhoria | null>(null);
+  const [conversa, setConversa] = useState<Melhoria | null>(null);
+  const [pedroId, setPedroId] = useState<string | null>(null);
+  useEffect(() => {
+    void db.from("membros").select("id").eq("cliente_id", clienteId).eq("eh_ia", true).ilike("nome", "pedro").limit(1)
+      .then(({ data }) => setPedroId(data?.[0]?.id ?? null));
+  }, [clienteId]);
   const [lidos, setLidos] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem("melhorias-briefing-lidos") || "[]"); } catch { return []; } });
   const abrirBriefing = (m: Melhoria) => {
     setLendo(m);
@@ -61,7 +72,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
   }, [clienteId]);
   useEffect(() => { void carregar(); }, [carregar]);
   // Com algo em andamento (ou na fila), acompanha o Pedro.
-  const ativo = itens.some((m) => m.status === "fazendo" || m.status === "pode_fazer");
+  const ativo = itens.some((m) => m.status === "fazendo" || m.status === "pode_fazer" || m.status === "pendente");
   useEffect(() => {
     if (!ativo) return;
     const t = window.setInterval(() => void carregar(), 8000);
@@ -75,7 +86,19 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
     setItens((xs) => xs.map((x) => (x.id === id ? { ...x, status } : x)));
     const { error } = await db.from("melhorias_sistema").update({ status }).eq("id", id);
     if (error) { toast.error("Não consegui mover"); void carregar(); return; }
-    if (status === "pode_fazer") toast.success("Liberado: o Pedro começa a implementar (uma de cada vez)");
+    if (status === "pode_fazer") toast.success(m.status === "pendente" ? "Pronto: o Pedro continua de onde parou" : "Liberado: o Pedro começa a implementar (uma de cada vez)");
+  };
+  // × no cartão: ideia vai pra descartadas; descartada sai de vez.
+  const apagar = async (m: Melhoria) => {
+    if (m.status === "descartada") {
+      if (!window.confirm(`Apagar de vez "${m.titulo}"?`)) return;
+      setItens((xs) => xs.filter((x) => x.id !== m.id));
+      const { error } = await db.from("melhorias_sistema").delete().eq("id", m.id);
+      if (error) { toast.error("Não consegui apagar"); void carregar(); }
+      return;
+    }
+    await mover(m.id, "descartada");
+    toast("Ideia descartada", { action: { label: "Desfazer", onClick: () => void mover(m.id, m.status) } });
   };
   // Arrastar com @hello-pangea/dnd (o mesmo do kanban de Atividades): o arrastar
   // nativo do navegador não funciona dentro da janela do app no Mac (15/10).
@@ -101,7 +124,8 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
             <div ref={dp.innerRef} {...dp.draggableProps} {...dp.dragHandleProps} style={dp.draggableProps.style}>
               <CartaoMelhoria m={m} aberto={aberta === m.id} onAbrir={() => setAberta(aberta === m.id ? null : m.id)} arrastando={snap.isDragging}
                 onMover={(st) => void mover(m.id, st)} onMudou={() => void carregar()}
-                briefingNovo={!!m.briefing && !lidos.includes(m.id)} onBriefing={() => abrirBriefing(m)} />
+                briefingNovo={!!m.briefing && !lidos.includes(m.id)} onBriefing={() => abrirBriefing(m)}
+                onApagar={() => void apagar(m)} onConversar={() => setConversa(m)} />
             </div>
           );
           // Arrastando: desenha direto no body (a janela por cima desloca o cartão).
@@ -134,12 +158,13 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
       ) : (
         <>
           <DragDropContext onDragEnd={soltar}>
-          <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
             {COLUNAS.map((c) => {
               const daColuna = itens.filter((m) => m.status === c.status);
               const Icone = c.icone;
               return (
-                <div key={c.status} className={cn("flex min-h-[180px] flex-col gap-1.5 rounded-xl border bg-muted/30 p-2", c.status === "pode_fazer" && "border-amber-500/40")}>
+                <div key={c.status} className={cn("flex min-h-[180px] flex-col gap-1.5 rounded-xl border bg-muted/30 p-2", c.status === "pode_fazer" && "border-amber-500/40",
+                  c.status === "pendente" && daColuna.length > 0 && "border-orange-500/50 bg-orange-500/5")}>
                   <p className="flex items-center gap-1 text-xs font-semibold">
                     <Icone className={cn("h-3.5 w-3.5", c.status === "fazendo" && daColuna.length > 0 && "animate-spin text-sky-500")} />{c.titulo}
                     <span className="font-normal text-muted-foreground">{daColuna.length}</span>
@@ -172,6 +197,20 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
             </div>
           )}
           </DragDropContext>
+          <Dialog open={!!conversa} onOpenChange={(a) => { if (!a) setConversa(null); }}>
+            <DialogContent className="flex max-h-[88vh] max-w-xl flex-col">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-primary" />Pedro · {conversa?.titulo}</DialogTitle>
+                <DialogDescription>Tire dúvidas sobre as pendências. Quando resolver, diga a ele (ou clique em "Pronto, pode continuar").</DialogDescription>
+              </DialogHeader>
+              {conversa && pedroId ? (
+                <div className="min-h-[360px] flex-1 overflow-hidden">
+                  <ConversaEntrega clienteId={clienteId} melhoriaId={conversa.id} membroId={pedroId} nome="Pedro"
+                    textoInicial={conversa.status === "pendente" ? "Sobre as pendências: " : ""} onDocumentoMudou={() => void carregar()} />
+                </div>
+              ) : <p className="text-sm text-muted-foreground">Não achei o Pedro neste projeto.</p>}
+            </DialogContent>
+          </Dialog>
           <Dialog open={!!lendo} onOpenChange={(a) => { if (!a) setLendo(null); }}>
             <DialogContent className="max-h-[88vh] max-w-2xl overflow-y-auto">
               <DialogHeader>
@@ -189,10 +228,17 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
 
 // Cartão do kanban. Fora do componente do quadro: assim o que o Davi está
 // escrevendo nos detalhes não some quando o quadro atualiza sozinho.
-function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, briefingNovo, onBriefing }: {
+function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, briefingNovo, onBriefing, onApagar, onConversar }: {
   m: Melhoria; aberto: boolean; onAbrir: () => void; arrastando: boolean; onMover: (status: Status) => void; onMudou: () => void;
-  briefingNovo: boolean; onBriefing: () => void;
+  briefingNovo: boolean; onBriefing: () => void; onApagar: () => void; onConversar: () => void;
 }) {
+  const pendencias = m.pendencias ?? [];
+  const marcar = async (i: number) => {
+    const nova = pendencias.map((p, j) => (j === i ? { ...p, feito: !p.feito } : p));
+    const { error } = await db.from("melhorias_sistema").update({ pendencias: nova }).eq("id", m.id);
+    if (error) { toast.error("Não consegui marcar"); return; }
+    onMudou();
+  };
   const movel = m.status === "ideia" || m.status === "pode_fazer" || m.status === "erro" || m.status === "descartada";
   const editavel = m.status !== "fazendo" && m.status !== "feito";
   const [notas, setNotas] = useState(m.notas ?? "");
@@ -214,8 +260,14 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, brie
   });
   return (
     <div
-      className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", movel && !aberto && "cursor-grab active:cursor-grabbing", arrastando && "rotate-1 shadow-xl ring-2 ring-primary",
+      className={cn("group relative rounded-lg border bg-card p-2 text-xs shadow-sm", m.status === "pendente" && "border-orange-500/50", movel && !aberto && "cursor-grab active:cursor-grabbing", arrastando && "rotate-1 shadow-xl ring-2 ring-primary",
         m.status === "erro" && "border-rose-500/40", aberto && "ring-1 ring-primary/40")}>
+      {(m.status === "ideia" || m.status === "descartada") && !aberto && (
+        <button type="button" onClick={(e) => { e.stopPropagation(); onApagar(); }} title={m.status === "descartada" ? "Apagar de vez" : "Descartar"}
+          className="absolute -right-1.5 -top-1.5 z-10 hidden h-5 w-5 items-center justify-center rounded-full border bg-background text-muted-foreground shadow-sm hover:bg-rose-500 hover:text-white group-hover:flex">
+          <X className="h-3 w-3" />
+        </button>
+      )}
       <button type="button" onClick={onAbrir} className="flex w-full items-start gap-1 text-left">
         <span className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug">{m.titulo}</span>
         <ChevronDown className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", aberto && "rotate-180")} />
@@ -232,6 +284,24 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, brie
           <ClipboardList className="h-3 w-3" />Ver o briefing
           {briefingNovo && <span className="rounded-full bg-emerald-600 px-1.5 text-[9px] font-bold text-white">novo</span>}
         </button>
+      )}
+      {m.status === "pendente" && (
+        <div className="mt-1.5 space-y-1">
+          {m.resultado && <p className="text-[11px] text-orange-700 dark:text-orange-300">{m.resultado}</p>}
+          {pendencias.map((p, i) => (
+            <label key={i} className="flex cursor-pointer items-start gap-1.5 text-[11px] leading-snug" onMouseDown={(e) => e.stopPropagation()}>
+              <input type="checkbox" checked={p.feito} onChange={() => void marcar(i)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-emerald-600" />
+              <span className={cn(p.feito && "text-muted-foreground line-through")}>{p.texto}</span>
+            </label>
+          ))}
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            <Button type="button" size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" onClick={onConversar}><MessageCircle className="h-3 w-3" />Conversar com o Pedro</Button>
+            <Button type="button" size="sm" className="h-7 gap-1 px-2 text-[11px]" onClick={() => onMover("pode_fazer")}
+              disabled={pendencias.length > 0 && !pendencias.every((p) => p.feito)} title="Marque tudo o que fez para liberar">
+              <Rocket className="h-3 w-3" />Pronto, pode continuar
+            </Button>
+          </div>
+        </div>
       )}
       {m.status === "fazendo" && (
         <div className="mt-1.5">

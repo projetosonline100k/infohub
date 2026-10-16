@@ -78,14 +78,14 @@ def contexto(bid, como=None):
         q = c.cursor()
         q.execute('SET TRANSACTION READ ONLY')
         q.execute("""SELECT b.status, b.proposta, b.cliente_id, cl.nome_especialista, cl.nicho,
-                            m.nome, m.funcao, m.responsabilidades, m.eh_ia, s.nome, b.atividade_id, m.manual, m.autonomo
+                            m.nome, m.funcao, m.responsabilidades, m.eh_ia, s.nome, b.atividade_id, m.manual, m.autonomo, b.melhoria_id
                        FROM briefings b JOIN clientes cl ON cl.id = b.cliente_id
                        JOIN membros m ON m.id = b.membro_id LEFT JOIN setores s ON s.id = m.setor_id
                       WHERE b.id = %s""", (bid,))
         r = q.fetchone()
         if not r:
             raise SystemExit('briefing não encontrado')
-        status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id, manual_cadastro, autonomo = r
+        status, proposta, cliente_id, especialista, nicho, nome, funcao, resp, eh_ia, setor, atividade_id, manual_cadastro, autonomo, melhoria_id = r
         entrega = None
         quiz = None
         edicao = None
@@ -143,6 +143,13 @@ def contexto(bid, como=None):
     if eh_ia and (nome.lower() in EXECUTORES or autonomo):
         print('Depois que o Davi confirmar: você começa SOZINHO e entrega um documento para ele aprovar. Diga isso a ele.')
     print(f'Status do briefing: {status}')
+    if melhoria_id:
+        print(f'CONVERSA SOBRE UMA MELHORIA DO INFOPRO (kanban do Pedro), id {melhoria_id}. Veja tudo dela (inclusive as pendências com o Davi):'
+              f' python3 scripts/pedro/melhorias.py contexto {melhoria_id}.')
+        print('Aqui você CONVERSA (não implementa nesta conversa): explique o que o Davi precisa fazer, em passos simples, tire dúvidas.'
+              f' Se ele disser que resolveu (ou marcou tudo), retome a implementação: python3 scripts/pedro/melhorias.py retomar {melhoria_id}'
+              ' (ela volta pra fila e você continua do ramo, com o que ele disse anotado). Para mudar a lista de pendências: melhorias.py pendente.'
+              ' NÃO use o entregar.')
     if entrega:
         t_tit, t_sit, d_id, d_tit = entrega
         print(f'CONVERSA SOBRE A ENTREGA da tarefa "{t_tit}" (id {atividade_id}, situação {t_sit}).')

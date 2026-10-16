@@ -47,6 +47,17 @@ BEGIN
 EXCEPTION WHEN raise_exception THEN IF SQLERRM <> 'esse passo é do Pedro' THEN RAISE; END IF;
 END $$;
 
+-- Pendência (16/10): o Pedro marca 'pendente' com a lista; o Davi marca os itens e devolve pra "Pode fazer".
+RESET ROLE;
+UPDATE public.melhorias_sistema SET status = 'pendente', pendencias = '[{"texto":"criar a chave","feito":false}]' WHERE id = '10000000-0000-0000-0000-000000000794';
+SET LOCAL ROLE authenticated;
+UPDATE public.melhorias_sistema SET pendencias = '[{"texto":"criar a chave","feito":true}]' WHERE id = '10000000-0000-0000-0000-000000000794';
+UPDATE public.melhorias_sistema SET status = 'pode_fazer' WHERE id = '10000000-0000-0000-0000-000000000794';
+-- Conversa sobre a melhoria (sem tarefa).
+INSERT INTO public.membros(id, cliente_id, nome, eh_ia) VALUES ('10000000-0000-0000-0000-000000000796', '10000000-0000-0000-0000-000000000793', 'Pedro', true);
+INSERT INTO public.briefings(cliente_id, membro_id, melhoria_id, status) VALUES
+ ('10000000-0000-0000-0000-000000000793', '10000000-0000-0000-0000-000000000796', '10000000-0000-0000-0000-000000000794', 'revisando');
+
 SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000792',true);
 DO $$
 BEGIN
