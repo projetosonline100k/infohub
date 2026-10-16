@@ -25,6 +25,18 @@ const INSATISFEITO = new RegExp(
   "i",
 );
 
+/** Grupo de cliente da Core ("Isabel · Core Audience 2.0", "Dra Helia - core Experience"): conta como cliente. */
+export function ehGrupoDeCliente(nome: string | null | undefined): boolean {
+  return !!nome && /\bcore\b/i.test(nome);
+}
+/** Nome do cliente no grupo: o pedaço antes de " · ", " | " ou " - " ("Isabel · Core Audience 2.0" → "Isabel"). */
+export function clienteDoGrupo(nome: string): string {
+  const p = nome.split(/\s+[·|]\s+|\s+-\s*/)[0].trim();
+  return p && !/\bcore\b/i.test(p) ? p : nome;
+}
+const conta = (c: ConversaResumo) => !c.ultima_de_mim && (!c.eh_grupo || ehGrupoDeCliente(c.chat_nome));
+const nomeDe = (c: ConversaResumo) => (c.eh_grupo && c.chat_nome ? clienteDoGrupo(c.chat_nome) : c.chat_nome || c.ultima_autor || "Cliente");
+
 export function pareceInsatisfeito(texto: string | null | undefined): boolean {
   return !!texto && INSATISFEITO.test(texto);
 }
@@ -36,7 +48,7 @@ export function horarioDeCobrar(agora: Date): boolean {
 }
 
 /**
- * O que merece alerta agora: conversa individual (grupo não) em que a última
+ * O que merece alerta agora: conversa individual ou grupo de cliente da Core em que a última
  * mensagem é do cliente e (a) parece insatisfeito, ou (b) está esperando há
  * mais de `esperaMin` minutos. Mais urgente primeiro (insatisfeito, depois quem espera há mais tempo).
  * Conversa parada há mais de 3 dias fica de fora (já virou "sem resposta" antiga, é do painel).
@@ -44,11 +56,11 @@ export function horarioDeCobrar(agora: Date): boolean {
 export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, esperaMin = 60): AlertaShirley[] {
   const lista: AlertaShirley[] = [];
   for (const c of conversas) {
-    if (c.eh_grupo || c.ultima_de_mim) continue;
+    if (!conta(c)) continue;
     const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
     if (minutos < 0 || minutos > 3 * 24 * 60) continue;
     const trecho = (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
-    const nome = c.chat_nome || c.ultima_autor || "Cliente";
+    const nome = nomeDe(c);
     if (pareceInsatisfeito(c.ultima_texto)) lista.push({ chatId: c.chat_id, nome, motivo: "insatisfeito", minutos, trecho, ultimaEm: c.ultima_em });
     else if (minutos >= esperaMin) lista.push({ chatId: c.chat_id, nome, motivo: "esperando", minutos, trecho, ultimaEm: c.ultima_em });
   }
@@ -58,10 +70,10 @@ export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, espe
 /** Mensagens de clientes que acabaram de chegar (conversa individual, última é do cliente, há menos de `janelaMin`). */
 export function chegaramAgora(conversas: ConversaResumo[], agora: Date, janelaMin = 20): AlertaShirley[] {
   return conversas.flatMap((c) => {
-    if (c.eh_grupo || c.ultima_de_mim) return [];
+    if (!conta(c)) return [];
     const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
     if (minutos < 0 || minutos >= janelaMin) return [];
-    return [{ chatId: c.chat_id, nome: c.chat_nome || c.ultima_autor || "Cliente", motivo: pareceInsatisfeito(c.ultima_texto) ? "insatisfeito" as const : "esperando" as const,
+    return [{ chatId: c.chat_id, nome: nomeDe(c), motivo: pareceInsatisfeito(c.ultima_texto) ? "insatisfeito" as const : "esperando" as const,
       minutos, trecho: (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140), ultimaEm: c.ultima_em }];
   });
 }

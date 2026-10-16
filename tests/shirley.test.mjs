@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/whatsapp/shirley.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora } =
+const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const agora = new Date(2026, 9, 16, 15, 0);
@@ -47,4 +47,14 @@ test('lua só para o que acabou de chegar (20 min), de cliente, fora de grupo', 
     conv({ id: 'e', ultima_em: antes(5), ultima_texto: 'quero reembolso' }),
   ], agora);
   assert.deepEqual(r.map((x) => [x.chatId, x.motivo]), [['a', 'esperando'], ['e', 'insatisfeito']]);
+});
+
+test('grupo de cliente da Core conta (com o nome do cliente); outros grupos não', () => {
+  const r = alertasDoWhatsapp([
+    conv({ id: 'g1', nome: 'Isabel · Core Audience 2.0', eh_grupo: true, ultima_em: antes(90) }),
+    conv({ id: 'g2', nome: 'Família', eh_grupo: true, ultima_em: antes(90) }),
+  ], agora);
+  assert.deepEqual(r.map((x) => [x.chatId, x.nome]), [['g1', 'Isabel']]);
+  assert.equal(clienteDoGrupo('Royal Defense | Core Audience'), 'Royal Defense');
+  assert.equal(clienteDoGrupo('Dra Helia - core Experience '), 'Dra Helia');
 });
