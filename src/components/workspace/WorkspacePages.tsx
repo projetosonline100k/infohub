@@ -12,6 +12,7 @@ import Admin from "@/pages/Admin";
 import Automacoes from "@/pages/Automacoes";
 import NotFound from "@/pages/NotFound";
 import { useWorkspaceTabs } from "./WorkspaceTabs";
+import { AbaAtivaContext } from "@/lib/workspace/abaAtiva";
 
 const isClienteDetalhePath = (path: string) => /^\/clientes\/[^/?]+/.test(path);
 
@@ -64,6 +65,7 @@ export function WorkspacePages() {
             lado && tab.id === activeId && "after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:ring-2 after:ring-inset after:ring-primary/40",
           )}
         >
+          <AbaAtivaContext.Provider value={visivel}>
           <div className="h-full overflow-auto">
           {/* A página ocupa a área toda, mas nunca menos que 720px (420px numa
               metade dividida) nem menos que o conteúdo precisa. Se não couber,
@@ -83,6 +85,7 @@ export function WorkspacePages() {
             </Routes>
           </div>
           </div>
+          </AbaAtivaContext.Provider>
         </div>;
       })}
       {/* Uma divisória entre cada par de painéis vizinhos. */}

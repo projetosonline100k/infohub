@@ -10,6 +10,7 @@ import { isDesktop } from "@/lib/platform";
 import { EVENTO_DESFAZER, EVENTO_REFAZER } from "@/lib/desktop/desfazer";
 import { confirmar } from "@/components/DialogosGlobais";
 import { ConversaEntrega } from "./ConversaEntrega";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { cn } from "@/lib/utils";
 import {
   COR_NEUTRA, PRESETS_COR, apagarIntervalo, blocosZoom, clipes, dividirLegenda, dividirMidia, dividirZoom, duracaoFinal, fecharLacuna, lacunaEm,
@@ -102,6 +103,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const [pps, setPps] = useState(40);            // pixels por segundo na linha do tempo
   const [tFonte, setTFonte] = useState(0);       // tempo atual no BRUTO
   const [tocando, setTocando] = useState(false);
+  const abaAtiva = useAbaAtiva();   // aba do projeto na frente? (atalhos e play só valem nela)
   const [verVersao, setVerVersao] = useState(false);
   const [larguraTela, setLarguraTela] = useState(300);
   const [onda, setOnda] = useState<Onda | null>(null);
@@ -257,12 +259,12 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     setMudou(true);
   }, []);
   useEffect(() => {
-    if (!edicao || verVersao) return;
+    if (!edicao || verVersao || !abaAtiva) return;
     const d = () => desfazer(), r = () => refazer();
     window.addEventListener(EVENTO_DESFAZER, d);
     window.addEventListener(EVENTO_REFAZER, r);
     return () => { window.removeEventListener(EVENTO_DESFAZER, d); window.removeEventListener(EVENTO_REFAZER, r); };
-  }, [edicao, verVersao, desfazer, refazer]);
+  }, [edicao, verVersao, desfazer, refazer, abaAtiva]);
 
   // Montagem: prévia corrida só com os trechos mantidos (servidor.py, montagem).
   // Com ela pronta o player toca direto, sem pular dentro do vídeo — não trava.
@@ -374,6 +376,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     preparadoRef.current = null;
     setTFonte(t);
   }, [segs, durFinal]);
+  // Trocou de aba com o editor aberto: o vídeo para (a janela fica escondida, sem perder nada).
+  useEffect(() => {
+    if (abaAtiva) return;
+    vidA.current?.pause(); vidB.current?.pause(); setTocando(false);
+  }, [abaAtiva]);
   const alternarPlay = useCallback(() => {
     const v = ativo();
     if (!v || !projeto) return;
@@ -447,7 +454,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   // Atalhos (como no Premiere): Espaço play · V seleção · C navalha · W corta tudo na agulha · E/Delete apaga
   // · ⌘R apaga e junta · Q/R apara até a agulha · M marcador · D/F zoom da linha do tempo · ←/→ quadro (⇧ = 1 s).
   useEffect(() => {
-    if (!edicao || verVersao) return;
+    if (!edicao || verVersao || !abaAtiva) return;
     const tecla = (e: KeyboardEvent) => {
       const alvo = e.target as HTMLElement;
       if (alvo.tagName === "TEXTAREA" || (alvo.tagName === "INPUT" && (alvo as HTMLInputElement).type !== "range") || alvo.tagName === "SELECT" || alvo.isContentEditable) return;
@@ -476,7 +483,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     };
     window.addEventListener("keydown", tecla, true);
     return () => window.removeEventListener("keydown", tecla, true);
-  }, [edicao, verVersao, desktop, alternarPlay, cortarEm, tFonte, apagarSelecao, aparar, marcar, desfazer, refazer, irParaFinal, tFinal]);
+  }, [edicao, verVersao, desktop, alternarPlay, cortarEm, tFonte, apagarSelecao, aparar, marcar, desfazer, refazer, irParaFinal, tFinal, abaAtiva]);
 
   const salvar = async (gerar: boolean, aviso = "Salvo") => {
     if (!projeto) return false;
