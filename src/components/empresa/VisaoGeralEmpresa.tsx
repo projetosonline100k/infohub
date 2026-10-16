@@ -371,6 +371,62 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </p>
       )}
 
+      {/* Mapa da operação primeiro (16/10: "coloque o escritório como primeira visualização"): cada setor é uma sala; cada pessoa, uma mesa. */}
+      <section className="rounded-xl border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Users className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Mapa da operação</h2>
+          <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
+          <button type="button" onClick={() => setEscritorio({ editando: null })}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
+          <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
+            title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+          <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
+              <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
+            ))}
+          </span>
+        </div>
+        {setores.length === 0 ? (
+          <div className="space-y-3 py-8 text-center">
+            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
+            <button type="button" onClick={() => setEscritorio({ editando: null })}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
+          </div>
+        ) : (
+          // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
+          <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
+            tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
+            setores={setores.map((setor) => {
+              const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
+              return {
+                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue,
+                tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
+                pessoas: pessoas.map((estado) => {
+                  const { membro, abertas: n, atrasadas: atr, atual } = estado;
+                  const ia = trabalhoIa.get(membro.id);
+                  // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
+                  const coordenador = ehCoordenador(membro);
+                  const cs = ehCs(membro) && clientesEsperando.length > 0;
+                  const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+                  const balao = coordenador ? "Coordenando a operação"
+                    : cs ? textoClientesEsperando(clientesEsperando)
+                    : ia?.problema ? "Parou com problema"
+                    : ia?.esperando ? `${ia.esperando} esperando sua revisão`
+                    : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
+                    : ia?.trabalhando && ia.atual ? ia.atual
+                    : atual?.titulo ?? ia?.atual ?? null;
+                  return {
+                    id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
+                    balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
+                  };
+                }),
+              };
+            })} />
+        )}
+      </section>
+
       {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {CARTOES.map(({ rotulo, valor, icone: Icone, cor, ir }) => (
@@ -487,61 +543,6 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </section>
       </div>
 
-      {/* 3. Mapa da operação: cada setor é uma sala; cada pessoa, uma mesa. */}
-      <section className="rounded-xl border bg-card p-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Users className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Mapa da operação</h2>
-          <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
-          <button type="button" onClick={() => setEscritorio({ editando: null })}
-            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
-          <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
-            title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
-            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
-          <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
-              <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
-            ))}
-          </span>
-        </div>
-        {setores.length === 0 ? (
-          <div className="space-y-3 py-8 text-center">
-            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
-            <button type="button" onClick={() => setEscritorio({ editando: null })}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
-          </div>
-        ) : (
-          // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-          <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
-            tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
-            setores={setores.map((setor) => {
-              const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
-              return {
-                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue,
-                tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
-                pessoas: pessoas.map((estado) => {
-                  const { membro, abertas: n, atrasadas: atr, atual } = estado;
-                  const ia = trabalhoIa.get(membro.id);
-                  // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
-                  const coordenador = ehCoordenador(membro);
-                  const cs = ehCs(membro) && clientesEsperando.length > 0;
-                  const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
-                  const balao = coordenador ? "Coordenando a operação"
-                    : cs ? textoClientesEsperando(clientesEsperando)
-                    : ia?.problema ? "Parou com problema"
-                    : ia?.esperando ? `${ia.esperando} esperando sua revisão`
-                    : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
-                    : ia?.trabalhando && ia.atual ? ia.atual
-                    : atual?.titulo ?? ia?.atual ?? null;
-                  return {
-                    id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
-                    balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
-                  };
-                }),
-              };
-            })} />
-        )}
-      </section>
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
       <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }}
         onRecarregar={() => void carregar()} />
