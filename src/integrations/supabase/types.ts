@@ -676,6 +676,8 @@ export type Database = {
           ordem: number
           pasta_id: string | null
           prioridade: string
+          repetir: string | null
+          repetir_dias: number[] | null
           responsavel_nome: string | null
           status: string
           tempo_descanso: number | null
@@ -710,6 +712,8 @@ export type Database = {
           ordem?: number
           pasta_id?: string | null
           prioridade?: string
+          repetir?: string | null
+          repetir_dias?: number[] | null
           responsavel_nome?: string | null
           status?: string
           tempo_descanso?: number | null
@@ -744,6 +748,8 @@ export type Database = {
           ordem?: number
           pasta_id?: string | null
           prioridade?: string
+          repetir?: string | null
+          repetir_dias?: number[] | null
           responsavel_nome?: string | null
           status?: string
           tempo_descanso?: number | null

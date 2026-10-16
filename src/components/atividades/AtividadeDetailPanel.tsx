@@ -42,6 +42,8 @@ import {
   FileText,
   Plus,
   User,
+  Copy,
+  Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseResponsaveis, formatResponsaveis } from "@/lib/responsaveis";
@@ -78,6 +80,18 @@ interface AtividadeDetailPanelProps {
   onDelete: (id: string) => void;
 }
 
+// Regra de repetição (coluna `repetir`): ao concluir, o banco cria a próxima
+// cópia sozinho (gatilho atividade_repete_ao_concluir).
+const OPCOES_REPETIR = [
+  { valor: "nao", rotulo: "Não repete" },
+  { valor: "diario", rotulo: "Todo dia" },
+  { valor: "dias_uteis", rotulo: "Dias úteis (seg a sex)" },
+  { valor: "semanal", rotulo: "Toda semana" },
+  { valor: "dias", rotulo: "Dias escolhidos" },
+];
+// Domingo = 0, como extract(dow) no banco.
+const DIAS_SEMANA = ["D", "S", "T", "Q", "Q", "S", "S"];
+
 const formatTempo = (minutos: number): string => {
   if (minutos >= 60) {
     const horas = Math.floor(minutos / 60);
@@ -109,6 +123,9 @@ export const AtividadeDetailPanel = ({
   const [sugestoesEquipe, setSugestoesEquipe] = useState<string[]>([]);
   const [checklistResumo, setChecklistResumo] = useState({ total: 0, concluidas: 0 });
   const [saving, setSaving] = useState(false);
+  const [repetir, setRepetir] = useState("nao");
+  const [repetirDias, setRepetirDias] = useState<number[]>([]);
+  const [duplicando, setDuplicando] = useState(false);
 
   useEffect(() => {
     if (atividade) {
@@ -129,6 +146,23 @@ export const AtividadeDetailPanel = ({
       setChecklistResumo({ total: 0, concluidas: 0 });
     }
   }, [atividade]);
+
+  // As telas que abrem o painel não carregam a regra de repetição; ela vem
+  // daqui, direto pelo id.
+  useEffect(() => {
+    setRepetir("nao");
+    setRepetirDias([]);
+    if (!atividade?.id) return;
+    void supabase
+      .from("atividades")
+      .select("repetir, repetir_dias")
+      .eq("id", atividade.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        setRepetir(data?.repetir || "nao");
+        setRepetirDias(data?.repetir_dias || []);
+      });
+  }, [atividade?.id]);
 
   // Sugere nomes da equipe do cliente e das pessoas da empresa do projeto
   // (setores/membros). Escolher um membro liga a tarefa a ele no banco
@@ -242,6 +276,95 @@ export const AtividadeDetailPanel = ({
     salvar({ responsaveis: novaLista });
   };
 
+  const salvarRepetir = async (valor: string, dias: number[]) => {
+    if (!atividade) return;
+    setRepetir(valor);
+    setRepetirDias(dias);
+    const { error } = await supabase
+      .from("atividades")
+      .update({
+        repetir: valor === "nao" ? null : valor,
+        repetir_dias: valor === "dias" ? dias : null,
+      })
+      .eq("id", atividade.id);
+    if (error) {
+      console.error("Erro ao salvar repetição:", error);
+      toast.error("Erro ao salvar repetição");
+      return;
+    }
+    toast.success(valor === "nao" ? "Tarefa não se repete mais" : "Ao concluir, a próxima já aparece no quadro");
+  };
+
+  const escolherRepetir = (valor: string) => {
+    // "Dias escolhidos" começa com o dia da semana da própria tarefa.
+    const dataBase = dataVencimento || dataInicio || parseISO(atividade?.data_atividade || format(new Date(), "yyyy-MM-dd"));
+    const dias = valor === "dias" ? (repetirDias.length > 0 ? repetirDias : [dataBase.getDay()]) : [];
+    salvarRepetir(valor, dias);
+  };
+
+  const alternarDiaRepetir = (dia: number) => {
+    const novos = repetirDias.includes(dia) ? repetirDias.filter((d) => d !== dia) : [...repetirDias, dia].sort();
+    if (novos.length === 0) return;
+    salvarRepetir("dias", novos);
+  };
+
+  // Cópia não concluída, com o checklist desmarcado, na mesma coluna.
+  const duplicar = async () => {
+    if (!atividade) return;
+    setDuplicando(true);
+    try {
+      const { data: original, error: erroOriginal } = await supabase
+        .from("atividades")
+        .select("*")
+        .eq("id", atividade.id)
+        .single();
+      if (erroOriginal) throw erroOriginal;
+      const colunaOriginal = colunas.find((c) => c.status_key === original.status);
+      const statusCopia = colunaOriginal?.eh_conclusao
+        ? colunas.find((c) => !c.eh_conclusao)?.status_key || original.status
+        : original.status;
+      const { data: copia, error } = await supabase
+        .from("atividades")
+        .insert({
+          cliente_id: original.cliente_id,
+          titulo: original.titulo,
+          descricao: original.descricao,
+          status: statusCopia,
+          prioridade: original.prioridade,
+          tempo_estimado: original.tempo_estimado,
+          destaque: original.destaque,
+          ordem: original.ordem,
+          pasta_id: original.pasta_id,
+          responsavel_nome: original.responsavel_nome,
+          data_atividade: original.data_atividade,
+          data_inicio: original.data_inicio,
+          data_vencimento: original.data_vencimento,
+          repetir: original.repetir,
+          repetir_dias: original.repetir_dias,
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      const { data: itens } = await supabase
+        .from("subtarefas_atividade")
+        .select("titulo, ordem")
+        .eq("atividade_id", atividade.id);
+      if (itens && itens.length > 0) {
+        const { error: erroItens } = await supabase
+          .from("subtarefas_atividade")
+          .insert(itens.map((i) => ({ atividade_id: copia.id, titulo: i.titulo, ordem: i.ordem, concluida: false })));
+        if (erroItens) throw erroItens;
+      }
+      toast.success("Tarefa duplicada");
+      onUpdate();
+    } catch (error) {
+      console.error("Erro ao duplicar:", error);
+      toast.error("Erro ao duplicar tarefa");
+    } finally {
+      setDuplicando(false);
+    }
+  };
+
   const handleDelete = () => {
     if (atividade) {
       onDelete(atividade.id);
@@ -265,6 +388,17 @@ export const AtividadeDetailPanel = ({
               </span>
             </div>
             <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={duplicar}
+                disabled={duplicando}
+                title="Criar uma cópia desta tarefa (com o checklist desmarcado)"
+                className="h-8 px-2 text-muted-foreground"
+              >
+                <Copy className="h-4 w-4 mr-1" />
+                Duplicar
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -496,6 +630,47 @@ export const AtividadeDetailPanel = ({
                 {destaque ? "Destacada" : "Destacar"}
               </Button>
             </div>
+          </div>
+
+          {/* Repetição */}
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Repeat className="h-3.5 w-3.5" />
+              Repetir
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={repetir} onValueChange={escolherRepetir}>
+                <SelectTrigger className="h-9 w-56">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {OPCOES_REPETIR.map((o) => (
+                    <SelectItem key={o.valor} value={o.valor}>{o.rotulo}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {repetir === "dias" && (
+                <div className="flex gap-1">
+                  {DIAS_SEMANA.map((letra, dia) => (
+                    <Button
+                      key={dia}
+                      type="button"
+                      size="sm"
+                      variant={repetirDias.includes(dia) ? "default" : "outline"}
+                      onClick={() => alternarDiaRepetir(dia)}
+                      className="h-8 w-8 p-0 text-xs"
+                    >
+                      {letra}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+            {repetir !== "nao" && (
+              <p className="text-xs text-muted-foreground">
+                Ao concluir, a próxima tarefa aparece sozinha no quadro, com o mesmo responsável e o checklist desmarcado.
+              </p>
+            )}
           </div>
 
           {/* Description */}
