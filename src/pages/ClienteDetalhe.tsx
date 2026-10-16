@@ -65,7 +65,6 @@ export default function ClienteDetalhe() {
   const [avisoPermissoes, setAvisoPermissoes] = useState("");
   const requisicaoAtual = useRef(0);
   const [abaAtiva, setAbaAtiva] = useState(() => lerAbaProjeto(id).aba ?? "atividades");
-  const [conteudoExpandido, setConteudoExpandido] = useState(false);
   const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
   const [subAbaConteudo, setSubAbaConteudo] = useState(() => lerAbaProjeto(id).sub ?? "visao-geral");
   // Lembra a seção aberta de cada projeto pra reabrir igual (fechar e abrir o app).
@@ -316,51 +315,24 @@ export default function ClienteDetalhe() {
                 </button>
               ))}
 
-              {pode("conteudo") && <div>
+              {/* 16/10: sem o grupo "Conteúdo" (que abria e fechava): Escritório, Creator, Cronograma… ficam direto no menu. */}
+              {pode("conteudo") && abasConteudo.map((item) => (
                 <button
+                  key={item.id}
                   type="button"
                   onClick={() => {
-                    setConteudoExpandido(!conteudoExpandido);
-                    if (!conteudoExpandido) {
-                      setAbaAtiva("conteudo");
-                    }
+                    setAbaAtiva("conteudo");
+                    setSubAbaConteudo(item.id === "creator" ? ultimaGuiaCreator() : item.id);
                   }}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors flex items-center justify-between ${
-                    abaAtiva === "conteudo"
+                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                    abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "creator" && GUIAS_CREATOR.includes(subAbaConteudo)))
                       ? "bg-primary text-primary-foreground"
                       : "hover:bg-muted"
                   }`}
                 >
-                  <span>Conteúdo</span>
-                  {conteudoExpandido ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
+                  {item.label}
                 </button>
-
-                {conteudoExpandido && (
-                  <div className="ml-3 mt-1 space-y-1 border-l border-border pl-2">
-                    {abasConteudo.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => {
-                          setAbaAtiva("conteudo");
-                          setSubAbaConteudo(item.id === "creator" ? ultimaGuiaCreator() : item.id);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                          abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "creator" && GUIAS_CREATOR.includes(subAbaConteudo)))
-                            ? "bg-primary/20 text-primary font-medium"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>}
+              ))}
             </div>
           </>
         )}
