@@ -694,7 +694,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
           </main>
 
           <aside className="space-y-3">
-            <InstagramInsightsPanel />
+            <InstagramInsightsPanel clienteId={clienteId} />
 
             <div className="rounded-lg border bg-card p-4">
               <h4 className="mb-4 font-semibold">Resumo do Mês</h4>

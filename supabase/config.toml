@@ -9,9 +9,6 @@ verify_jwt = false
 [functions.backblaze-upload-url]
 verify_jwt = true
 
-[functions.instagram-insights]
-verify_jwt = false
-
 [functions.admin-users]
 verify_jwt = true
 
@@ -26,4 +23,8 @@ verify_jwt = false
 
 [functions.dalila-publicar]
 # Chamada pelo pg_cron (sem JWT); a função confere a chave do Vault (x-dalila-chave).
+verify_jwt = false
+
+[functions.instagram-metricas]
+# Chamada pelo pg_cron (chave do Vault em x-metricas-chave) ou pelo app (a função confere o JWT).
 verify_jwt = false

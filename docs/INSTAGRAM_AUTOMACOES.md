@@ -29,6 +29,21 @@ automação ativa daquele gatilho e responde.
   "cria a palavra X"). `python3 scripts/instagram-automacoes.py -h`.
 - O token (60 dias) é renovado sozinho pela função quando faltam < 20 dias.
 
+## Métricas de crescimento
+
+A edge function `instagram-metricas` (migração `20261015230000`) usa a mesma
+conexão para gravar, por conta e por dia, seguidores, alcance e
+visualizações em `instagram_metricas_diarias`. O pg_cron chama todo dia às
+03:10 (dia anterior); o botão de atualizar do painel grava o dia de hoje.
+O painel fica em Projetos Milionários → projeto → Conteúdo → Cronograma
+(coluna da direita) e mostra o ganho de 7 e 30 dias. Substituiu a Windsor.
+
+- Alcance e visualizações precisam de `instagram_business_manage_insights`
+  (já no link de conexão): contas conectadas antes de 15/10/2026 precisam
+  reconectar uma vez. Sem ela, só seguidores entram.
+- Deploy: `npx supabase@latest functions deploy instagram-metricas --no-verify-jwt --project-ref ucjyobemrxqfcoopkcgb`
+  e também `instagram-automacoes` (para o link pedir a permissão nova).
+
 ## 1. App na Meta (uma vez)
 
 1. https://developers.facebook.com/apps → **Criar app** → caso de uso
