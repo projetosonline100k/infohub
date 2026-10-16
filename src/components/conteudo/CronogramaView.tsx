@@ -150,7 +150,6 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const [newIdeaPlatform, setNewIdeaPlatform] = useState<Platform>("vertical");
   const [actionVideo, setActionVideo] = useState<ScheduledVideo | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<ScheduledVideo | null>(null);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetchVideos();
@@ -313,10 +312,6 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
 
   const handleToday = () => {
     setReferenceDate(new Date());
-  };
-
-  const toggleGroup = (groupId: string) => {
-    setOpenGroups((current) => ({ ...current, [groupId]: !current[groupId] }));
   };
 
   const updateVideoSchedule = async (video: ScheduledVideo, date: string | null) => {
@@ -692,58 +687,9 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
           </div>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[240px_minmax(0,1fr)_230px]">
-          <aside className="rounded-lg border bg-card p-3">
-            <div className="max-h-[720px] space-y-5 overflow-y-auto pr-1">
-              {SIDEBAR_GROUPS.map((group) => {
-                const groupVideos = unscheduledVideosByStatus[group.status] || [];
-                const statusStyle = STATUS_STYLES[group.status] || STATUS_STYLES.pronto;
-                const isOpen = openGroups[group.status] === true;
-
-                return (
-                  <section key={group.status} className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group.status)}
-                      className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/50"
-                    >
-                      {isOpen ? (
-                        <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      )}
-                      <span className="min-w-0 flex-1 text-sm font-semibold">
-                        {group.title}
-                      </span>
-                      <span className={cn("text-sm font-bold", statusStyle.text)}>
-                        {groupVideos.length}
-                      </span>
-                    </button>
-
-                    {isOpen && (
-                      <Droppable droppableId={group.droppableId} isDropDisabled>
-                        {(provided) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.droppableProps}
-                            className="space-y-2"
-                          >
-                            {groupVideos.map((video, index) => renderVideoCard(video, index))}
-                            {provided.placeholder}
-                            {groupVideos.length === 0 && (
-                              <p className="rounded-md border border-dashed py-4 text-center text-xs text-muted-foreground">
-                                Nenhum card
-                              </p>
-                            )}
-                          </div>
-                        )}
-                      </Droppable>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          </aside>
+        {/* A coluna "Pronto para postar / Em edição / Em gravação" saiu (Davi, 16/10: ocupava espaço à toa);
+            quem programa agora é a Dalila, pelo "Escolher data". */}
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_230px]">
 
           <main className="min-w-0 overflow-hidden">
             {viewMode === "lista" ? renderList() : renderCalendar()}
