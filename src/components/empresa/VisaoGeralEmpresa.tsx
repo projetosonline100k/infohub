@@ -172,7 +172,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
-      supabase.from("setores").select("id, nome, descricao, cor, icone").eq("cliente_id", clienteId).order("ordem"),
+      (supabase as unknown as SupabaseClient).from("setores").select("id, nome, descricao, cor, icone, fileira").eq("cliente_id", clienteId).order("ordem"),
       (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia, visual").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
       // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
       (supabase as unknown as SupabaseClient).from("atividades").select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, andamento_desde, previsao_fim")
@@ -277,16 +277,17 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
     return { membro: estado.membro, sinal, atual: cs ? textoClientesEsperando(clientesEsperando) : estado.atual?.titulo ?? ia?.atual ?? null };
   });
-  // Arrastou um escritório pela placa (16/10): a fileira ganha a nova ordem; as outras ficam onde estão.
-  const reordenarEscritorios = async (ids: string[]) => {
-    const posicao = new Map(setores.map((s, i) => [s.id, i]));
-    // A fileira arrastada ocupa as mesmas "vagas" de antes na lista geral, só que na ordem nova.
-    const vagas = setores.map((s, i) => (ids.includes(s.id) ? i : -1)).filter((i) => i >= 0);
-    const nova = [...setores];
-    vagas.forEach((vaga, k) => { nova[vaga] = setores[posicao.get(ids[k])!]; });
+  // Arrastou um escritório pela placa (16/10): para o lado (mesma fileira) ou para o fundo/frente.
+  // A fileira de destino ganha a ordem nova; a outra fica como estava (sem o que saiu dela).
+  const reordenarEscritorios = async (ids: string[], fileira: 0 | 1) => {
+    const filDe = (s: SetorResumo): 0 | 1 => (s.fileira === 0 || s.fileira === 1 ? s.fileira : /diretoria/i.test(s.nome) ? 0 : 1);
+    const porId = new Map(setores.map((s) => [s.id, s]));
+    const destino = ids.map((id) => ({ ...porId.get(id)!, fileira }));
+    const outra = setores.filter((s) => !ids.includes(s.id) && filDe(s) !== fileira).map((s) => ({ ...s, fileira: filDe(s) }));
+    const nova = fileira === 0 ? [...destino, ...outra] : [...outra, ...destino];
     setSetores(nova);
-    const results = await Promise.all(nova.map((s, i) => supabase.from("setores").update({ ordem: i + 1 }).eq("id", s.id)));
-    if (results.some((r) => r.error)) { toast.error("Não consegui salvar a nova ordem dos escritórios"); void carregar(); return; }
+    const results = await Promise.all(nova.map((s, i) => (supabase as unknown as SupabaseClient).from("setores").update({ ordem: i + 1, fileira: s.fileira }).eq("id", s.id)));
+    if (results.some((r) => r.error)) { toast.error("Não consegui salvar o novo lugar dos escritórios"); void carregar(); return; }
     toast.success("Escritório mudou de lugar");
   };
   // Cancelar uma entrega: pergunta antes e recarrega.
@@ -409,12 +410,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         ) : (
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
           <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
-            onReordenar={(ids) => void reordenarEscritorios(ids)}
+            onReordenar={(ids, fileira) => void reordenarEscritorios(ids, fileira)}
             tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
             setores={setores.map((setor) => {
               const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
               return {
-                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue,
+                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue, fileira: setor.fileira,
                 tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
                 pessoas: pessoas.map((estado) => {
                   const { membro, abertas: n, atrasadas: atr, atual } = estado;

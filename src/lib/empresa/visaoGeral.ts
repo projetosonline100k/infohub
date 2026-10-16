@@ -37,6 +37,8 @@ export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && !IAS_AUTONOMAS.has(m
 export interface SetorResumo {
   id: string;
   nome: string;
+  /** 0 = fundo, 1 = frente (mapa do Escritório); sem valor: Diretoria no fundo, o resto na frente. */
+  fileira?: number | null;
   descricao: string | null;
   cor: string | null;
   icone: string | null;

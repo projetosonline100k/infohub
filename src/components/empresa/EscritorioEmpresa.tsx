@@ -107,6 +107,8 @@ function Planta({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
 
 export interface SetorNoEscritorio {
   id: string; nome: string; corPlaca: string; tarefas: number; atrasadas: number; pessoas: PessoaNaSala[];
+  /** 0 = fundo (fileira da Diretoria), 1 = frente; sem valor: Diretoria no fundo, o resto na frente. */
+  fileira?: number | null;
 }
 
 const MARGEM = 26;          // borda esquerda do escritório
@@ -221,18 +223,20 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean;
   tv?: React.ReactNode;   // o que passa na TV (TelaTv)
   // Arrastar um escritório pela placa (16/10, "igual The Sims"): nova ordem dos ids daquela fileira.
-  onReordenar?: (idsDaFileira: string[]) => void;
+  onReordenar?: (idsDaFileira: string[], fileira: 0 | 1) => void;
 }) {
   const caixa = useRef<HTMLDivElement>(null);
-  const [arraste, setArraste] = useState<{ id: string; r: number; x: number; y: number; destino: number } | null>(null);
+  const [arraste, setArraste] = useState<{ id: string; fil: 0 | 1; x: number; y: number; destino: number } | null>(null);
   const [noiteAgora, setNoite] = useState(ehNoite);
   const noite = forcarNoite ?? noiteAgora;
   useEffect(() => { const t = window.setInterval(() => setNoite(ehNoite()), 60_000); return () => window.clearInterval(t); }, []);
   const [ciclo, setCiclo] = useState(() => Math.floor(Date.now() / JANELA_MS));
   useEffect(() => { const t = window.setInterval(() => setCiclo(Math.floor(Date.now() / JANELA_MS)), 5_000); return () => window.clearInterval(t); }, []);
 
-  const cima = setores.filter(ehDiretoria);
-  const baixo = setores.filter((s) => !ehDiretoria(s));
+  // 16/10: cada escritório pode ir para o fundo ou para a frente (arrastando a placa).
+  const filDe = (s: SetorNoEscritorio): 0 | 1 => (s.fileira === 0 || s.fileira === 1 ? s.fileira : ehDiretoria(s) ? 0 : 1);
+  const cima = setores.filter((s) => filDe(s) === 0);
+  const baixo = setores.filter((s) => filDe(s) === 1);
   const fileiras = [cima, baixo].filter((f) => f.length);
   const larguraFileira = (f: SetorNoEscritorio[]) =>
     MARGEM + f.reduce((t, s) => t + Math.max(2, s.pessoas.length) * LARGURA_MESA + FOLGA_SETOR, 0) - FOLGA_SETOR;
@@ -244,7 +248,7 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     let cursor = MARGEM;
     return f.map((setor) => {
       const largura = Math.max(2, setor.pessoas.length) * LARGURA_MESA;
-      const z = { setor, r, x0: cursor, largura, yMesa: Y_MESA + r * ALTURA_FILEIRA };
+      const z = { setor, r, fil: filDe(setor), x0: cursor, largura, yMesa: Y_MESA + r * ALTURA_FILEIRA };
       cursor += largura + FOLGA_SETOR;
       return z;
     });
@@ -279,12 +283,18 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     const r = caixa.current?.getBoundingClientRect();
     return r ? ((clientX - r.left) / r.width) * LARGURA : 0;
   };
-  const destinoNaFileira = (r: number, x: number) => {
-    const daFileira = zonas.filter((z) => z.r === r);
+  const yNoDesenho = (clientY: number) => {
+    const r = caixa.current?.getBoundingClientRect();
+    return r ? ((clientY - r.top) / r.height) * ALTURA_TOTAL : 0;
+  };
+  // Fundo ou frente, pela altura do mouse (a fronteira é o corredor entre as fileiras).
+  const filPeloY = (y: number): 0 | 1 => (fileiras.length > 1 ? (y < Y_MESA + PE - 2 ? 0 : 1) : (y < Y_MESA - 20 ? 0 : 1));
+  const destinoNaFileira = (fil: 0 | 1, x: number) => {
+    const daFileira = zonas.filter((z) => z.fil === fil);
     const i = daFileira.findIndex((z) => x < z.x0 + z.largura / 2);
     return i === -1 ? daFileira.length : i;
   };
-  const comecarArraste = (e: React.PointerEvent, id: string, r: number) => {
+  const comecarArraste = (e: React.PointerEvent, id: string) => {
     if (!onReordenar || e.button !== 0) return;
     e.preventDefault();
     const caixaR = caixa.current?.getBoundingClientRect();
@@ -294,28 +304,33 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     const mover = (ev: PointerEvent) => {
       if (!ativo && Math.hypot(ev.clientX - inicio.x, ev.clientY - inicio.y) < 6) return;   // clique, não arraste
       ativo = true;
-      setArraste({ id, r, x: ev.clientX - caixaR.left, y: ev.clientY - caixaR.top, destino: destinoNaFileira(r, xNoDesenho(ev.clientX)) });
+      const fil = filPeloY(yNoDesenho(ev.clientY));
+      setArraste({ id, fil, x: ev.clientX - caixaR.left, y: ev.clientY - caixaR.top, destino: destinoNaFileira(fil, xNoDesenho(ev.clientX)) });
     };
     const soltar = (ev: PointerEvent) => {
       window.removeEventListener("pointermove", mover);
       window.removeEventListener("pointerup", soltar);
       setArraste(null);
       if (!ativo) return;
-      const ids = zonas.filter((z) => z.r === r).map((z) => z.setor.id);
-      const de = ids.indexOf(id);
-      let para = destinoNaFileira(r, xNoDesenho(ev.clientX));
-      if (para > de) para -= 1;
-      if (para === de) return;
-      ids.splice(de, 1);
+      const fil = filPeloY(yNoDesenho(ev.clientY));
+      const ids = zonas.filter((z) => z.fil === fil).map((z) => z.setor.id);
+      const de = ids.indexOf(id);   // -1: veio da outra fileira
+      let para = destinoNaFileira(fil, xNoDesenho(ev.clientX));
+      if (de >= 0) {
+        if (para > de) para -= 1;
+        if (para === de) return;
+        ids.splice(de, 1);
+      }
       ids.splice(para, 0, id);
-      onReordenar(ids);
+      onReordenar(ids, fil);
     };
     window.addEventListener("pointermove", mover);
     window.addEventListener("pointerup", soltar);
   };
   // Linha onde o escritório arrastado vai entrar.
   const linhaDestino = arraste ? (() => {
-    const daFileira = zonas.filter((z) => z.r === arraste.r);
+    const daFileira = zonas.filter((z) => z.fil === arraste.fil);
+    if (!daFileira.length) return { x: MARGEM, y: arraste.fil === 0 ? Y_MESA - 40 : Y_MESA + (fileiras.length - 1) * ALTURA_FILEIRA + 40 };
     const z = daFileira[arraste.destino];
     const ult = daFileira[daFileira.length - 1];
     return { x: z ? z.x0 - FOLGA_SETOR / 2 : ult.x0 + ult.largura + FOLGA_SETOR / 2, y: daFileira[0].yMesa };
@@ -415,7 +430,7 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
         )}
         {/* Placas dos setores: segurar e arrastar muda a ordem dos escritórios na fileira */}
         {zonas.map(({ setor, x0, yMesa, r }) => (
-          <div key={setor.id} onPointerDown={(e) => comecarArraste(e, setor.id, r)}
+          <div key={setor.id} onPointerDown={(e) => comecarArraste(e, setor.id)}
             title={onReordenar ? "Segure e arraste para mudar o escritório de lugar" : undefined}
             className={cn("absolute flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm",
               onReordenar ? "cursor-grab active:cursor-grabbing hover:ring-2 hover:ring-primary/40" : "pointer-events-none",
