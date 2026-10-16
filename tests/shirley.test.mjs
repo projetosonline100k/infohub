@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/whatsapp/shirley.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando } =
+const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const agora = new Date(2026, 9, 16, 15, 0);
@@ -36,4 +36,15 @@ test('horário e tempo', () => {
   assert.equal(tempoEsperando(45), '45 min');
   assert.equal(tempoEsperando(130), '2h10');
   assert.equal(tempoEsperando(60 * 30), '1 dia(s)');
+});
+
+test('lua só para o que acabou de chegar (20 min), de cliente, fora de grupo', () => {
+  const r = chegaramAgora([
+    conv({ id: 'a', ultima_em: antes(3) }),
+    conv({ id: 'b', ultima_em: antes(25) }),
+    conv({ id: 'c', ultima_em: antes(1), ultima_de_mim: true }),
+    conv({ id: 'd', ultima_em: antes(1), eh_grupo: true }),
+    conv({ id: 'e', ultima_em: antes(5), ultima_texto: 'quero reembolso' }),
+  ], agora);
+  assert.deepEqual(r.map((x) => [x.chatId, x.motivo]), [['a', 'esperando'], ['e', 'insatisfeito']]);
 });

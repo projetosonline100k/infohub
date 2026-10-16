@@ -1455,19 +1455,22 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     abrirNoAppPrincipal(!a.clienteId ? "/atividades"
       : a.tipo === "resposta" && a.membroId ? `/clientes/${a.clienteId}?conversa=${a.membroId}` : `/clientes/${a.clienteId}`);
   };
-  const luas: Lua[] = [
-    ...shirley.todos.map((w): Lua => ({
+  // Só o que acabou de chegar (20 min) e ainda não foi clicado: a lua aparece quando alguém manda algo e some depois.
+  const [luasVistas, setLuasVistas] = useState<string[]>([]);
+  const recente = (quando: string) => Date.now() - new Date(quando).getTime() < 20 * 60_000;
+  const luas: Lua[] = ([
+    ...shirley.novas.map((w): Lua => ({
       id: `w-${w.chatId}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
       dica: `Shirley · WhatsApp: ${w.nome} ${w.motivo === "insatisfeito" ? "pode estar insatisfeito" : `há ${tempoEsperando(w.minutos)} sem resposta`}`,
-      onClick: () => { setAba("whatsapp"); void abrirPainel(); },
-    })),
-    ...paraRevisar.adiados.map((a): Lua => ({
+      onClick: () => { setLuasVistas((v) => [...v, `w-${w.chatId}-${w.ultimaEm}`]); setAba("whatsapp"); void abrirPainel(); },
+    })).map((l, i) => ({ ...l, id: `${l.id}-${shirley.novas[i].ultimaEm}` })),
+    ...[...paraRevisar.adiados, ...(paraRevisar.atual ? [paraRevisar.atual] : [])].filter((a) => recente(a.quando)).map((a): Lua => ({
       id: `r-${a.id}`, nome: quemDoAviso(a), ehIa: true,
       cor: a.tipo === "erro" ? "urgente" : a.tipo === "resposta" ? "resposta" : "revisar",
       dica: `${a.titulo}${a.detalhe ? ` · ${a.detalhe}` : ""}`,
-      onClick: () => abrirAviso(a),
+      onClick: () => { setLuasVistas((v) => [...v, `r-${a.id}`]); abrirAviso(a); },
     })),
-  ];
+  ] as Lua[]).filter((l) => !luasVistas.includes(l.id));
 
   const alinhamentoWrapper = variant !== "window" ? "" : janelaModo === "orb" ? "items-center justify-center" : "items-end justify-end gap-2 p-6";
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { alertasDoWhatsapp, horarioDeCobrar, type AlertaShirley, type ConversaResumo } from "@/lib/whatsapp/shirley";
+import { alertasDoWhatsapp, chegaramAgora, horarioDeCobrar, type AlertaShirley, type ConversaResumo } from "@/lib/whatsapp/shirley";
 
 // Shirley (CS) na orbe do Atlas (16/10): a cada 2 min olha as conversas do
 // WhatsApp; cliente insatisfeito alerta na hora, quem espera há mais de 1h
@@ -8,7 +8,7 @@ import { alertasDoWhatsapp, horarioDeCobrar, type AlertaShirley, type ConversaRe
 // ("Davi… ele AINDA está esperando"). Quem já foi respondido sai sozinho
 // (a última mensagem passa a ser do Davi). Cliente insatisfeito também pede
 // a atualização do painel, para a sugestão de resposta já estar pronta.
-const INTERVALO = 120_000;
+const INTERVALO = 60_000;
 const COBRAR_DE_NOVO_MIN = 30;
 const CHAVE = "shirley-avisos";
 
@@ -20,16 +20,19 @@ export interface AlertaComCobranca extends AlertaShirley { vezes: number; outros
 
 export function useShirley(meuId: string | undefined, ativo: boolean) {
   const [alertas, setAlertas] = useState<AlertaShirley[]>([]);
+  // Órbita: só o que ACABOU de chegar (16/10: "não quero que apareça sempre, só quando mandarem mensagem").
+  const [novas, setNovas] = useState<AlertaShirley[]>([]);
   const avisos = useRef<Record<string, Aviso>>(ler());
   const [, forcar] = useState(0);
   const pediuPainelEm = useRef(0);
 
   const buscar = useCallback(async () => {
-    if (!meuId || !horarioDeCobrar(new Date())) { setAlertas([]); return; }
+    if (!meuId || !horarioDeCobrar(new Date())) { setAlertas([]); setNovas([]); return; }
     const { data, error } = await supabase.rpc("whatsapp_conversas");
     if (error || !data) return;
     const lista = alertasDoWhatsapp(data as unknown as ConversaResumo[], new Date());
     setAlertas(lista);
+    setNovas(chegaramAgora(data as unknown as ConversaResumo[], new Date()));
     // Cliente insatisfeito: pede o painel atualizado (no máximo 1 vez a cada 20 min).
     if (lista.some((a) => a.motivo === "insatisfeito") && Date.now() - pediuPainelEm.current > 20 * 60_000) {
       pediuPainelEm.current = Date.now();
@@ -69,5 +72,5 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     forcar((n) => n + 1);
   }, [atual, alertas]);
 
-  return { atual, adiar, todos: alertas };
+  return { atual, adiar, todos: alertas, novas };
 }

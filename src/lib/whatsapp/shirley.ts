@@ -55,6 +55,17 @@ export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, espe
   return lista.sort((a, b) => (a.motivo === b.motivo ? b.minutos - a.minutos : a.motivo === "insatisfeito" ? -1 : 1));
 }
 
+/** Mensagens de clientes que acabaram de chegar (conversa individual, última é do cliente, há menos de `janelaMin`). */
+export function chegaramAgora(conversas: ConversaResumo[], agora: Date, janelaMin = 20): AlertaShirley[] {
+  return conversas.flatMap((c) => {
+    if (c.eh_grupo || c.ultima_de_mim) return [];
+    const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
+    if (minutos < 0 || minutos >= janelaMin) return [];
+    return [{ chatId: c.chat_id, nome: c.chat_nome || c.ultima_autor || "Cliente", motivo: pareceInsatisfeito(c.ultima_texto) ? "insatisfeito" as const : "esperando" as const,
+      minutos, trecho: (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140), ultimaEm: c.ultima_em }];
+  });
+}
+
 export function tempoEsperando(min: number): string {
   if (min < 60) return `${min} min`;
   const h = Math.floor(min / 60);
