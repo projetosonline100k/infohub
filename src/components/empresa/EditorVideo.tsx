@@ -74,6 +74,19 @@ let baseDanilo: Promise<{ base: string; chave: string } | null> | null = null;
 const carregarBase = () => (baseDanilo ??= import("@tauri-apps/api/core")
   .then(({ invoke }) => invoke<{ base: string; chave: string }>("danilo_base")).catch(() => null));
 
+// Rascunho local do editor (localStorage), por edição.
+interface Rascunho { versao: number; salvo_em: number; projeto: ProjetoEdicao }
+const chaveRascunho = (id: string) => `editor-video-rascunho:${id}`;
+function lerRascunho(id: string): Rascunho | null {
+  try { const v = localStorage.getItem(chaveRascunho(id)); return v ? (JSON.parse(v) as Rascunho) : null; } catch { return null; }
+}
+function guardarRascunho(id: string, versao: number, projeto: ProjetoEdicao) {
+  try { localStorage.setItem(chaveRascunho(id), JSON.stringify({ versao, salvo_em: Date.now(), projeto } satisfies Rascunho)); } catch { /* sem espaço: segue sem rascunho */ }
+}
+function apagarRascunho(id: string) {
+  try { localStorage.removeItem(chaveRascunho(id)); } catch { /* nada */ }
+}
+
 export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null; onFechar: () => void }) {
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
   const [projeto, setProjeto] = useState<ProjetoEdicao | null>(null);
@@ -164,7 +177,16 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (!cfg || !edicao) return;
     void fetch(url(`projeto${recarga ? `?r=${recarga}` : ""}`)).then((r) => (r.ok ? r.json() : null)).then((p: ProjetoEdicao | null) => {
       // Zoom antigo (pontos) vira blocos na hora de abrir.
-      if (p) setProjeto({ ...p, zooms: blocosZoom(p) }); else toast.error("Não achei o projeto dessa edição no Mac");
+      if (!p) { toast.error("Não achei o projeto dessa edição no Mac"); return; }
+      // Rascunho que ficou sem salvar (app fechou no meio): volta, se o Danilo não gerou versão nova depois.
+      const r = recarga ? null : lerRascunho(edicao.id);
+      if (r && r.versao === edicao.versao) {
+        setProjeto(r.projeto); setMudou(true);
+        toast(`Rascunho recuperado (${new Date(r.salvo_em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}). Salve ou desfaça.`);
+        return;
+      }
+      if (r) apagarRascunho(edicao.id);
+      setProjeto({ ...p, zooms: blocosZoom(p) });
     });
     void fetch(url("ondas")).then((r) => (r.ok ? r.json() : null)).then((o) => { if (o) setOnda(o); }).catch(() => {});
   }, [cfg, edicao, url, recarga]);
@@ -456,15 +478,23 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     return () => window.removeEventListener("keydown", tecla, true);
   }, [edicao, verVersao, desktop, alternarPlay, cortarEm, tFonte, apagarSelecao, aparar, marcar, desfazer, refazer, irParaFinal, tFinal]);
 
-  const salvar = async (gerar: boolean) => {
+  const salvar = async (gerar: boolean, aviso = "Salvo") => {
     if (!projeto) return false;
-    const r = await fetch(url(`projeto${gerar ? "" : "?previa=0"}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(projeto) });
-    if (!r.ok) { toast.error("Não consegui salvar no Mac"); return false; }
+    const r = await fetch(url(`projeto${gerar ? "" : "?previa=0"}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(projeto) }).catch(() => null);
+    if (!r?.ok) { toast.error("Não consegui salvar no Mac (o rascunho fica guardado neste computador)"); return false; }
     setMudou(false);
+    if (edicao) apagarRascunho(edicao.id);
     if (gerar) setEstado((a) => (a ? { ...a, status: "renderizando", mensagem: "Gerando a versão (zoom, cor e legendas)…" } : a));
-    else toast.success("Salvo");
+    else toast.success(aviso);
     return true;
   };
+  // Rascunho (pedido do Davi, 15/10: "se eu saio, perco tudo"): toda mudança fica guardada
+  // neste computador em ~1 s; ao sair, salva sozinho na edição.
+  useEffect(() => {
+    if (!mudou || !projeto || !edicao) return;
+    const t = window.setTimeout(() => guardarRascunho(edicao.id, estado?.versao ?? edicao.versao, projeto), 800);
+    return () => window.clearTimeout(t);
+  }, [mudou, projeto, edicao, estado?.versao]);
   const aprovar = async () => {
     if (!(await confirmar("Aprovar? O Danilo gera o Full HD com tudo (zoom, cor, legendas), entrega no Drive e a tarefa segue.", { botao: "Aprovar" }))) return;
     if (mudou && !(await salvar(false))) return;
@@ -473,7 +503,10 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     setEstado((a) => (a ? { ...a, status: "aprovando", mensagem: "Gerando a versão final…" } : a));
   };
   const fechar = async () => {
-    if (mudou && !(await confirmar("Sair sem salvar as mudanças?", { botao: "Sair sem salvar", destrutivo: true }))) return;
+    if (mudou && projeto && edicao) {
+      guardarRascunho(edicao.id, estado?.versao ?? edicao.versao, projeto);
+      await salvar(false, "Rascunho salvo");
+    }
     onFechar();
   };
   const subir = async (f: File) => {
@@ -568,7 +601,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                     );
                   })}
                   {legAtivas.map((l) => (
-                    <div key={l.id} className="pointer-events-none absolute left-0 right-0 whitespace-pre-line px-[6%] text-center font-bold leading-tight text-white"
+                    <div key={l.id} className="pointer-events-none absolute left-0 right-0 whitespace-pre-line px-[6%] text-center font-bold leading-tight text-[#FFD60A]"
                       style={{
                         ...(l.tipo === "head" ? { bottom: (1920 - 1110) * escala } : { top: 1080 * escala, transform: "translateY(-50%)" }),
                         fontSize: (l.tipo === "head" ? 74 : 58) * escala * 0.92,

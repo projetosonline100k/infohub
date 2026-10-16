@@ -12,6 +12,10 @@ BEGIN
     RAISE EXCEPTION 'faltou alguém da equipe'; END IF;
   IF EXISTS (SELECT nome FROM public.membros WHERE cliente_id = v_para GROUP BY nome HAVING count(*) > 1) THEN
     RAISE EXCEPTION 'equipe duplicada'; END IF;
+  -- O próprio Yuri na Diretoria, ligado ao login dele (desde 15/10).
+  IF NOT EXISTS (SELECT 1 FROM public.membros m JOIN public.setores s ON s.id = m.setor_id
+                  WHERE m.cliente_id = v_para AND m.nome = 'Yuri' AND s.nome = 'Diretoria' AND NOT m.eh_ia AND m.conta_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'Yuri fora da Diretoria'; END IF;
   IF EXISTS (SELECT 1 FROM public.membros m LEFT JOIN public.setores s ON s.id = m.setor_id
               WHERE m.cliente_id = v_para AND m.setor_id IS NOT NULL AND s.cliente_id <> v_para) THEN
     RAISE EXCEPTION 'membro apontando para setor de outro projeto'; END IF;
