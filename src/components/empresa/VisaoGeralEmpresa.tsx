@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Crown,
-  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Scissors, Users, Video, Youtube,
+  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Scissors, Users, Video, Youtube,
 } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,6 +21,8 @@ import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
 import { RevisaoEntrega } from "./RevisaoEntrega";
+import { NovoFuncionario, type MembroParaEditar } from "./NovoFuncionario";
+import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
@@ -35,7 +37,7 @@ import {
 // Hierarquia (briefing de 12/10): 1) o que precisa de mim, 2) o que está
 // andando sem mim, 3) como está a empresa (mapa), 4) o que vai ser publicado.
 
-const COR_PLACA: Record<string, string> = { amber: "#f59e0b", violet: "#8b5cf6", blue: "#0ea5e9" };
+const COR_PLACA: Record<string, string> = { amber: "#f59e0b", violet: "#8b5cf6", blue: "#0ea5e9", emerald: "#10b981", rose: "#f43f5e" };
 
 // Bolinha de cada pessoa no mapa (pedido do Davi, 14/10).
 const SINAIS: Record<Sinal, { cor: string; rotulo: string }> = {
@@ -95,12 +97,18 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [loteAberto, setLoteAberto] = useState(false);
   const [revisaoAberta, setRevisaoAberta] = useState(false);
   const [tvAberta, setTvAberta] = useState(false);
+  // Criar/editar funcionário (15/10): null fechado; editando null = novo.
+  const [cadastro, setCadastro] = useState<{ editando: MembroParaEditar | null } | null>(null);
+  const abrirCadastro = async (id: string) => {
+    const { data } = await (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, eh_ia, setor_id, autonomo, manual, visual").eq("id", id).maybeSingle();
+    if (data) setCadastro({ editando: data as MembroParaEditar });
+  };
   const { semana, recarregar: recarregarSemana } = useSemanaEquipe(clienteId);
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
       supabase.from("setores").select("id, nome, descricao, cor, icone").eq("cliente_id", clienteId).order("ordem"),
-      supabase.from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
+      (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia, visual").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
       // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
       (supabase as unknown as SupabaseClient).from("atividades").select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, andamento_desde, previsao_fim")
         .eq("cliente_id", clienteId).is("deleted_at", null).eq("concluida", false),
@@ -127,6 +135,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
     setCarrosseisProgramados((prog || []) as unknown as CarrosselProgramado[]);
     setSetores((s.data || []) as SetorResumo[]);
+    registrarVisuais((m.data || []) as { nome: string; visual: Visual | null }[]);   // aparência escolhida no cadastro
     setMembros((m.data || []) as MembroResumo[]);
     setTarefas((t.data || []) as TarefaResumo[]);
     setVideos([
@@ -351,6 +360,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-semibold">Mapa da operação</h2>
           <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
+          <button type="button" onClick={() => setCadastro({ editando: null })}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Funcionário</button>
           <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
               <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
@@ -358,7 +369,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           </span>
         </div>
         {setores.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">A empresa deste projeto ainda não tem setores cadastrados.</p>
+          <div className="space-y-3 py-8 text-center">
+            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte a equipe: crie cada funcionário, diga o que ele faz e escolha o escritório.</p>
+            <button type="button" onClick={() => setCadastro({ editando: null })}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />Criar o primeiro funcionário</button>
+          </div>
         ) : (
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
           <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
@@ -391,7 +406,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
       <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }} />
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
-        onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }} />
+        onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }}
+        onEditar={membroAberto && !ehCoordenador(membroAberto) ? () => void abrirCadastro(membroAberto.id) : undefined} />
+      <NovoFuncionario clienteId={clienteId} setores={setores} aberto={!!cadastro} editando={cadastro?.editando ?? null}
+        onFechar={() => setCadastro(null)} onCriado={() => { setMembroAberto(null); void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}

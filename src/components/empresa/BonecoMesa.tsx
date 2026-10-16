@@ -11,7 +11,7 @@ import { ehNomeCoordenador } from "@/lib/empresa/visaoGeral";
 // O Atlas é um robô (olhos ciano da orbe) flutuando enquanto coordena.
 // Tudo em SVG + CSS: leve, sem imagem externa, e para em "reduzir movimento".
 
-type Cabelo = "curto" | "cacheado" | "longo" | "raspado";
+export type Cabelo = "curto" | "cacheado" | "longo" | "raspado";
 export interface Visual { pele: string; cabelo: Cabelo; corCabelo: string; barba?: boolean; oculos?: boolean; camisa: string }
 
 // Aparência de quem já existe (inspirada na imagem do briefing); quem for novo
@@ -28,12 +28,22 @@ const VISUAIS: Record<string, Visual> = {
   // Especialista do projeto Matheus Souto (Diretoria, desde 15/10).
   matheus: { pele: "#e8b98f", cabelo: "curto", corCabelo: "#4a3020", barba: true, camisa: "#7f1d1d" },
 };
-const PELES = ["#f1c9a5", "#e0ac7e", "#c68a5a", "#9c6a43", "#6e4a2f"];
-const CABELOS: Cabelo[] = ["curto", "cacheado", "longo", "raspado"];
-const CORES_CABELO = ["#1f1611", "#3b2a1e", "#6b4a2b", "#a0703f", "#2b2b2b"];
-const CAMISAS = ["#3b6fd8", "#16a34a", "#9333ea", "#ea580c", "#0d9488", "#475569", "#db2777"];
+export const PELES = ["#f1c9a5", "#e0ac7e", "#c68a5a", "#9c6a43", "#6e4a2f"];
+export const CABELOS: Cabelo[] = ["curto", "cacheado", "longo", "raspado"];
+export const CORES_CABELO = ["#1f1611", "#3b2a1e", "#6b4a2b", "#a0703f", "#2b2b2b"];
+export const CAMISAS = ["#3b6fd8", "#16a34a", "#9333ea", "#ea580c", "#0d9488", "#475569", "#db2777"];
+
+// Aparência escolhida no cadastro (membros.visual), registrada ao carregar a equipe.
+const VISUAIS_CADASTRO = new Map<string, Visual>();
+export function registrarVisuais(lista: { nome: string; visual?: Partial<Visual> | null }[]) {
+  for (const m of lista) {
+    if (m.visual && m.visual.pele && m.visual.cabelo && m.visual.camisa) VISUAIS_CADASTRO.set(m.nome.trim().toLowerCase(), m.visual as Visual);
+  }
+}
 
 export function visualDe(nome: string): Visual {
+  const cadastrado = VISUAIS_CADASTRO.get(nome.trim().toLowerCase());
+  if (cadastrado) return cadastrado;
   const chave = nome.trim().toLowerCase().split(/\s+/)[0];
   if (VISUAIS[chave]) return VISUAIS[chave];
   let h = 0;
@@ -242,8 +252,9 @@ function MesaVazia() {
   );
 }
 
-export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, className, vazio, descansando, x, y, width, height }: {
+export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, className, vazio, descansando, visual, x, y, width, height }: {
   nome: string; ehIa: boolean; sinal: Sinal; className?: string; vazio?: boolean;
+  visual?: Visual;          // aparência na hora (prévia do cadastro); sem isso, a do nome
   descansando?: boolean;   // livre de dia: acordado na mesa (sem isso, "parado" = dormindo)
   // Dentro de outro SVG (cena do escritório): posição e tamanho do quadro.
   x?: number; y?: number; width?: number; height?: number;
@@ -254,7 +265,7 @@ export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, classNam
     <svg viewBox="8 6 104 92" x={x} y={y} width={width} height={height} className={`bnc ${className ?? ""}`} role="img" aria-label={`${nome}: ${ROTULO[sinal]}`}>
       <style>{ESTILO}</style>
       <ellipse cx="60" cy="95" rx="44" ry="3" fill="#000" opacity=".12" />
-      {robo ? <Robo sinal={sinal} /> : <Pessoa v={visualDe(nome)} sinal={sinal} descansando={descansando && sinal === "parado"} />}
+      {robo ? <Robo sinal={sinal} /> : <Pessoa v={visual ?? visualDe(nome)} sinal={sinal} descansando={descansando && sinal === "parado"} />}
     </svg>
   );
 });

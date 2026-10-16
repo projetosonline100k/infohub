@@ -115,7 +115,8 @@ export async function criarTarefaParaMembro(clienteId: string, membroId: string,
   return nova.id;
 }
 
-export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: {
+export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, onEditar }: {
+  onEditar?: () => void;   // abrir o cadastro (nome, função, manual, aparência, escritório)
   clienteId: string;
   membro: MembroResumo | null;
   setorNome?: string;
@@ -272,7 +273,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou }: 
         {membro && (
           <>
             <DialogHeader>
-              <DialogTitle>{membro.nome}</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">{membro.nome}
+                {onEditar && <button type="button" onClick={onEditar} className="rounded-md border px-2 py-0.5 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground">Editar cadastro</button>}
+              </DialogTitle>
               <DialogDescription>{[membro.funcao, setorNome].filter(Boolean).join(" · ")}</DialogDescription>
             </DialogHeader>
 
