@@ -320,7 +320,8 @@ def atender_tarefa():
                          WHERE a.id = (SELECT a2.id FROM public.atividades a2
                                        WHERE a2.cliente_id = %s AND a2.responsavel_id = %s AND a2.deleted_at IS NULL
                                          AND NOT a2.concluida AND coalesce(a2.situacao, 'fila') = 'fila'
-                                         AND NOT (a2.id = ANY(%s::uuid[]))
+                                         -- "Começar agora" (▶️, botão da fila do Davi): tenta de novo mesmo se já falhou.
+                                         AND (NOT (a2.id = ANY(%s::uuid[])) OR coalesce(a2.observacao, '') LIKE '▶️%%')
                                          -- "Editar: <vídeo>" é do laço do Drive (danilo.ligar_tarefas).
                                          AND NOT (coalesce(a2.tipo, '') = 'edicao' AND a2.video_vertical_id IS NOT NULL)
                                        ORDER BY a2.created_at LIMIT 1 FOR UPDATE SKIP LOCKED)

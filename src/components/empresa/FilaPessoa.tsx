@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Bot, CalendarDays, Copy, ExternalLink, Eye, Loader2, Plus, X } from "lucide-react";
+import { Bot, CalendarDays, Copy, ExternalLink, Eye, Loader2, Play, Plus, X } from "lucide-react";
 import { confirmar } from "@/components/DialogosGlobais";
 import { cancelarTarefa } from "@/lib/empresa/cancelar";
 import { toast } from "sonner";
@@ -229,6 +229,15 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
     return id;
   };
 
+  // "Começar agora" (16/10: "tinha que ter uma forma de eu forçar ele iniciar"): ▶️ na observação faz
+  // o serviço (ouvinte, Roy ou Danilo) pegar esta tarefa no próximo ciclo, mesmo se ela já falhou antes.
+  const comecarAgora = async (t: TarefaFila) => {
+    const { error } = await supabase.from("atividades").update({ situacao: "fila", observacao: "▶️ Davi pediu para começar agora" }).eq("id", t.id);
+    if (error) { toast.error("Não consegui"); return; }
+    toast.success(`${membro?.nome ?? "Ele"} começa em até 1 minuto`);
+    await carregar(); onMudou();
+  };
+
   const cancelar = async (t: TarefaFila) => {
     if (!(await confirmar(`Cancelar "${t.titulo}"? Sai da fila de ${membro?.nome ?? "da pessoa"} e vai pra Lixeira (dá pra recuperar).`, { botao: "Cancelar tarefa", destrutivo: true }))) return;
     try { await cancelarTarefa(t.id); toast.success("Tarefa cancelada"); await carregar(); onMudou(); } catch { toast.error("Não consegui cancelar"); }
@@ -366,7 +375,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
                 </section>
 
                 {/* 2. As tarefas, por situação */}
-                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
+                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined}
+                  onComecar={ia ? (t) => void comecarAgora(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
                 {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />}
                 {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
               </div>
@@ -414,8 +424,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   );
 }
 
-function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar, onMudarPrazo }: {
+function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar, onMudarPrazo, onComecar }: {
   onRevisar?: (t: TarefaFila) => void;
+  onComecar?: (t: TarefaFila) => void;
   onMudarPrazo?: (t: TarefaFila, data: string | null) => void;
   titulo: string; vazio?: string; tarefas: TarefaFila[]; hoje: string; agora: number; onMudar: (t: TarefaResumo, situacao: string) => void;
   onCancelar?: (t: TarefaFila) => void;
@@ -449,6 +460,13 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, 
                   <button type="button" onClick={() => onRevisar(t)} title="Ler a entrega e aprovar ou pedir ajuste"
                     className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-primary px-2 text-xs font-medium text-primary-foreground hover:bg-primary/90">
                     <Eye className="h-3 w-3" />Ver e aprovar
+                  </button>
+                )}
+                {onComecar && !t.concluida && (
+                  <button type="button" onClick={() => onComecar(t)} title="Fazer começar agora (mesmo se já tentou e falhou)"
+                    disabled={(t.observacao ?? "").startsWith("▶️")}
+                    className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-emerald-600 px-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50">
+                    <Play className="h-3 w-3 fill-current" />{(t.observacao ?? "").startsWith("▶️") ? "Começando…" : "Começar agora"}
                   </button>
                 )}
                 {onCopiar && !t.concluida && (

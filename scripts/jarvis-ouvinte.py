@@ -38,6 +38,12 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "scripts"))
+# Os serviços do Roy e do Danilo carregam este arquivo dentro do processo deles, que
+# está de pé há horas: o migration_db que eles importaram pode ser velho (16/10: o Roy
+# parou com "cannot import name 'eh_falha_de_conexao'"). Recarrega antes de importar.
+if "migration_db" in sys.modules:
+    import importlib  # noqa: E402
+    importlib.reload(sys.modules["migration_db"])
 from migration_db import connect, eh_falha_de_conexao, reusar_nesta_thread  # noqa: E402
 sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
 import briefing  # noqa: E402

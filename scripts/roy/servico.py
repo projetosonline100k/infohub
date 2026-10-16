@@ -180,7 +180,8 @@ def atender_tarefa():
                       WHERE a.id = (SELECT a2.id FROM public.atividades a2
                                     WHERE a2.cliente_id = %s AND a2.responsavel_id = %s AND a2.deleted_at IS NULL
                                       AND NOT a2.concluida AND coalesce(a2.situacao, 'fila') = 'fila'
-                                      AND NOT (a2.id = ANY(%s::uuid[]))
+                                      -- "Começar agora" (▶️, botão da fila do Davi): tenta de novo mesmo se já falhou.
+                                      AND (NOT (a2.id = ANY(%s::uuid[])) OR coalesce(a2.observacao, '') LIKE '▶️%%')
                                       -- Página e quiz são feitos pela execução (scripts/empresa/execucao.py).
                                       AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz', 'estudo')
                                     ORDER BY a2.created_at LIMIT 1 FOR UPDATE SKIP LOCKED)

@@ -65,13 +65,15 @@ def pegar(ignorar=(), ocupados=(), com_membro=False, sistema=False):
     try:
         q = c.cursor()
         q.execute("""
-            UPDATE public.atividades a SET situacao = 'andamento', progresso = 5
+            UPDATE public.atividades a SET situacao = 'andamento', progresso = 5,
+                   observacao = CASE WHEN coalesce(a.observacao, '') LIKE '▶️%%' THEN NULL ELSE a.observacao END
              WHERE a.id = (
                SELECT a2.id FROM public.atividades a2
                  JOIN public.membros m ON m.id = a2.responsavel_id
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
                   AND """ + _quem_faz('a2') + ("" if sistema else " AND coalesce(a2.tipo, '') <> 'programacao'") + """
-                  AND NOT (a2.id = ANY(%s::uuid[]))
+                  -- "Começar agora" (▶️ na observação, botão da fila): tenta de novo mesmo se já falhou.
+                  AND (NOT (a2.id = ANY(%s::uuid[])) OR coalesce(a2.observacao, '') LIKE '▶️%%')
                   AND NOT (m.id = ANY(%s::uuid[]))
                 ORDER BY a2.created_at LIMIT 1 FOR UPDATE OF a2 SKIP LOCKED)
             RETURNING a.id, a.responsavel_id""", (list(ignorar), list(ocupados)))
