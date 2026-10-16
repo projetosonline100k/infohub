@@ -18,17 +18,18 @@ import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { DocumentEditor } from "./DocumentEditor";
-import { CadernoEditor, createEmptyCadernoContent, isCadernoContent } from "./CadernoEditor";
-import { MindMapEditor, createEmptyMindMapContent, isMindMapContent } from "./MindMapEditor";
+import { CadernoEditor, createEmptyCadernoContent } from "./CadernoEditor";
+import { MindMapEditor, createEmptyMindMapContent } from "./MindMapEditor";
 import { toast } from "sonner";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
-import { ehNota } from "@/hooks/useAssistantDocumentos";
 import { confirmar } from "@/components/DialogosGlobais";
 
 interface Documento {
   id: string;
   titulo: string;
-  conteudo: string | null;
+  // Calculado no banco pelo prefixo do conteúdo (nota, mapa, caderno ou documento):
+  // a lista não baixa o conteúdo, que só carrega quando o editor abre.
+  tipo: string;
   created_at: string;
   updated_at: string;
   atividade_id: string | null;
@@ -71,14 +72,15 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     
     const { data, error } = await supabase
       .from("documentos")
-      .select("id, titulo, conteudo, created_at, updated_at, atividade_id, pasta_id")
+      .select("id, titulo, tipo, created_at, updated_at, atividade_id, pasta_id")
       .eq("cliente_id", clienteId)
+      .neq("tipo", "nota")
       .order("updated_at", { ascending: false });
 
     if (!error && data) {
-      // Notas rápidas moram na mesma tabela, mas não são documentos: abrir
-      // uma aqui e salvar apagava a marca de nota e ela sumia das Notas.
-      setDocumentos(data.filter((d) => !ehNota(d.conteudo)));
+      // Notas rápidas moram na mesma tabela, mas não são documentos (o filtro
+      // de tipo acima tira): abrir uma aqui e salvar apagava a marca de nota.
+      setDocumentos(data);
 
       // Carregar atividades vinculadas
       const atividadeIds = data
@@ -331,8 +333,8 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     const doc = documentos.find((item) => item.id === docId);
     if (!doc) return;
     documentoDaUrlAberto.current = docId;
-    if (isMindMapContent(doc.conteudo)) abrirMapaMental(doc.id);
-    else if (isCadernoContent(doc.conteudo)) abrirCaderno(doc.id);
+    if (doc.tipo === "mapa") abrirMapaMental(doc.id);
+    else if (doc.tipo === "caderno") abrirCaderno(doc.id);
     else abrirDocumento(doc.id);
   }, [documentos, loading, location.search]);
 
@@ -367,7 +369,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     }
   };
 
-  const tipoDocumento = (doc: Documento) => isMindMapContent(doc.conteudo) ? "mapa" : isCadernoContent(doc.conteudo) ? "caderno" : "documento";
+  const tipoDocumento = (doc: Documento) => doc.tipo;
   const estaNaPasta = (doc: Documento, pastaId: string) =>
     doc.pasta_id === pastaId || (vinculosExtras[doc.id] || []).includes(pastaId);
   const documentosFiltrados = documentos.filter(doc =>

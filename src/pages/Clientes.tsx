@@ -12,7 +12,6 @@ import { confirmar } from "@/components/DialogosGlobais";
 import ClienteForm from "@/components/ClienteForm";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ProjetoRow } from "@/components/clientes/ProjetoRow";
-import { ehNota } from "@/hooks/useAssistantDocumentos";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 interface Cliente {
@@ -101,11 +100,12 @@ const Clientes = () => {
         supabase.from("clientes").select("id", { count: "exact", head: true }).eq("arquivado", false),
         supabase.from("clientes").select("id", { count: "exact", head: true }).eq("arquivado", true),
         supabase.from("atividades").select("cliente_id, concluida, created_at").is("deleted_at", null),
-        supabase.from("documentos").select("cliente_id, conteudo, deleted_at"),
+        // `tipo` vem calculado do banco: não precisa baixar o conteúdo das notas só para contá-las.
+        supabase.from("documentos").select("cliente_id").eq("tipo", "nota").is("deleted_at", null),
       ]);
 
       const atividades = atividadesRes.data || [];
-      const notas = (documentosRes.data || []).filter((d) => !d.deleted_at && ehNota(d.conteudo));
+      const notas = documentosRes.data || [];
 
       const emAndamentoSet = new Set(atividades.filter((a) => !a.concluida && a.cliente_id).map((a) => a.cliente_id as string));
 

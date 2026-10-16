@@ -1001,6 +1001,7 @@ export type Database = {
           fixado: boolean
           id: string
           pasta_id: string | null
+          tipo: string
           titulo: string
           updated_at: string
         }
