@@ -77,10 +77,12 @@ def novos(minutos_parado=3):
                                "AND bruto_drive IS NOT NULL AND status <> 'cancelado'", (CLIENTE,))}
     agora = datetime.now().timestamp()
     out = []
-    for f in sorted(ENTRADA.iterdir(), key=lambda f: f.name):
-        if f.suffix.lower() not in VIDEO or f.name.startswith("[") or f.name.startswith("."):
+    for f in sorted(ENTRADA.iterdir(), key=lambda f: f.name.replace(EM_EDICAO, "")):
+        # "[EM EDIÇÃO]" sem edição registrada = o serviço caiu no meio: pega de novo.
+        orfao = f.name.startswith(EM_EDICAO) and f.name[len(EM_EDICAO):] not in registrados
+        if f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not orfao):
             continue
-        if f.name in registrados or agora - f.stat().st_mtime < minutos_parado * 60:
+        if f.name.replace(EM_EDICAO, "") in registrados or agora - f.stat().st_mtime < minutos_parado * 60:
             continue
         out.append(f)
     return out
@@ -150,13 +152,15 @@ def transcrever(p):
 def preparar(arquivo, log=print):
     """Bruto do Drive → edição criada, transcrita e ligada ao card. Devolve o id."""
     arquivo = Path(arquivo)
-    nome = arquivo.name
+    nome = arquivo.name.replace(EM_EDICAO, "")
     marcado = arquivo.with_name(EM_EDICAO + nome)
-    arquivo.rename(marcado)                       # outra verificação não pega o mesmo bruto
     uid = db("SELECT user_id FROM public.clientes WHERE id = %s", (CLIENTE,))[0][0]
+    # Registra antes de renomear: se o serviço cair no meio, o bruto não fica órfão.
     id_ = str(db("""INSERT INTO public.edicoes_video (cliente_id, user_id, titulo, status, mensagem, bruto_drive)
                     VALUES (%s, %s, %s, 'editando', 'Danilo baixando o bruto do Drive…', %s) RETURNING id""",
                  (CLIENTE, uid, f"Bruto {Path(nome).stem}", str(marcado)))[0][0])
+    if arquivo != marcado:
+        arquivo.rename(marcado)                   # outra verificação não pega o mesmo bruto
     try:
         BRUTOS.mkdir(parents=True, exist_ok=True)
         local = BRUTOS / nome
