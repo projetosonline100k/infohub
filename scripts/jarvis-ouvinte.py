@@ -38,7 +38,7 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "scripts"))
-from migration_db import connect  # noqa: E402
+from migration_db import connect, eh_falha_de_conexao, reusar_nesta_thread  # noqa: E402
 sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
 import briefing  # noqa: E402
 import execucao  # noqa: E402
@@ -740,13 +740,40 @@ def gravar_sinal():
         c.close()
 
 
+# Banco fora (16/10): uma linha "sem banco desde HH:MM" e outra "voltou", em
+# vez de uma por laço a cada 15 s (eram 350 linhas numa queda de 30 min).
+_banco = {"fora_desde": None}
+_trava_banco = threading.Lock()
+
+
+def _banco_caiu(nome, e):
+    with _trava_banco:
+        if _banco["fora_desde"]:
+            return
+        _banco["fora_desde"] = datetime.now()
+    log(f"sem banco desde {datetime.now():%H:%M} ({nome}) —", repr(e)[:200])
+
+
+def _banco_ok():
+    with _trava_banco:
+        desde, _banco["fora_desde"] = _banco["fora_desde"], None
+    if desde:
+        minutos = round((datetime.now() - desde).total_seconds() / 60)
+        log(f"banco voltou às {datetime.now():%H:%M} (fora desde {desde:%H:%M}, ~{minutos} min)")
+
+
 def laco(nome, funcao, intervalo):
+    reusar_nesta_thread()   # uma conexão por laço, reaberta só quando cai (migration_db)
     while True:
         try:
             recarregar_modulos()
             funcao()
+            _banco_ok()
         except Exception as e:  # rede caiu etc.: tenta de novo
-            log(f"{nome}: erro —", repr(e)[:300])
+            if eh_falha_de_conexao(e):
+                _banco_caiu(nome, e)
+            else:
+                log(f"{nome}: erro —", repr(e)[:300])
             time.sleep(15)
         time.sleep(intervalo)
 
