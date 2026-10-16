@@ -152,7 +152,7 @@ def editar(arquivo, e):
     return id_
 
 
-LIVRE_MIN_GB = 20   # o Google Drive do Mac para de baixar com o disco quase cheio (DISK_FREE_SPACE_TOO_LOW)
+LIVRE_MIN_GB = 3    # folga pra prévias e o final; se o bruto ainda não está no Mac, soma 2× o tamanho dele
 
 
 def espaco_ok(e, bruto):
@@ -160,7 +160,8 @@ def espaco_ok(e, bruto):
     Então nem pega o vídeo: avisa na tarefa do lote (uma vez) e tenta no próximo ciclo."""
     import shutil
     livre = shutil.disk_usage(Path.home()).free / 1e9
-    if livre >= LIVRE_MIN_GB:
+    precisa = LIVRE_MIN_GB + (0 if danilo.no_mac(bruto) else 2 * bruto.stat().st_size / 1e9)
+    if livre >= precisa:
         if e.pop("sem_espaco", None):
             salvar_estado(e)
             log(f"espaço ok de novo ({livre:.0f} GB livres): seguindo")
@@ -168,10 +169,10 @@ def espaco_ok(e, bruto):
     if not e.get("sem_espaco"):
         e["sem_espaco"] = True
         salvar_estado(e)
-        log(f"parado: só {livre:.1f} GB livres no Mac (preciso de {LIVRE_MIN_GB})")
+        log(f"parado: só {livre:.1f} GB livres no Mac (preciso de {precisa:.0f})")
         progresso(e.get("atividade"), None if not e.get("total") else int(20 + 80 * e.get("feitos", 0) / e["total"]),
-                  f"⚠️ Parado: o Mac está com só {livre:.0f} GB livres e o Google Drive não baixa os brutos assim. "
-                  f"Libere uns {LIVRE_MIN_GB} GB que eu continuo sozinho ({bruto.name.replace(danilo.EM_EDICAO, '')} é o próximo).")
+                  f"⚠️ Parado: o Mac está com só {livre:.0f} GB livres e não cabe baixar e editar o próximo bruto. "
+                  f"Libere uns {precisa - livre + 2:.0f} GB que eu continuo sozinho ({bruto.name.replace(danilo.EM_EDICAO, '')} é o próximo).")
     return False
 
 

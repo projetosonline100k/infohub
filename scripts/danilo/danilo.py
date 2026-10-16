@@ -36,6 +36,21 @@ sys.path.insert(0, str(RAIZ / "scripts"))
 sys.path.insert(0, str(AQUI))
 from migration_db import connect  # noqa: E402
 
+
+def _liberar_download_do_drive():
+    """Processo do launchd (o serviço) nasce sem permissão de baixar arquivo
+    "dataless" do Drive (File Provider): toda leitura dá Errno 11. Liga a
+    política IOPOL_VFS_MATERIALIZE_DATALESS_FILES para este processo."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL("libc.dylib", use_errno=True)
+        libc.setiopolicy_np(3, 0, 2)   # TYPE_VFS_MATERIALIZE_DATALESS_FILES, SCOPE_PROCESS, ON
+    except Exception:
+        pass
+
+
+_liberar_download_do_drive()
+
 CLIENTE = "e4b24f93-0eda-43fc-b50e-3ebe24f8905f"   # projeto Davi Queiroz
 DRIVE = Path.home() / "Library/CloudStorage/GoogleDrive-metafocando@gmail.com/Meu Drive/Projeto 100k/Eu.davi"
 ENTRADA = DRIVE / "Precisa de edição"
@@ -114,6 +129,11 @@ def identificar_card(fala):
     return None, [(t, round(n, 2)) for n, _, t in notas[:3]]
 
 
+def no_mac(arquivo):
+    """O arquivo do Drive já está baixado (não é "dataless")?"""
+    return not (os.stat(arquivo).st_flags & 0x40000000)   # SF_DATALESS
+
+
 def copiar_do_drive(origem, destino, minutos=60, log=print):
     """Copia um arquivo do Google Drive do Mac (modo streaming). Recém-chegado,
     o arquivo fica "dataless": o fcopyfile falha (Errno 11) e a leitura dá
@@ -163,8 +183,13 @@ def preparar(arquivo, log=print):
         arquivo.rename(marcado)                   # outra verificação não pega o mesmo bruto
     try:
         BRUTOS.mkdir(parents=True, exist_ok=True)
-        local = BRUTOS / nome
-        copiar_do_drive(marcado, local, log=log)
+        # A pasta Precisa de edição fica "disponível off-line": o bruto já está no
+        # Mac e a edição lê direto dele (sem cópia de 1 GB num disco apertado).
+        if no_mac(marcado):
+            local = marcado
+        else:
+            local = BRUTOS / nome
+            copiar_do_drive(marcado, local, log=log)
         p = pasta(id_)
         (p / "imagens").mkdir(parents=True)
         os.symlink(local, p / f"bruto{local.suffix.lower()}")
