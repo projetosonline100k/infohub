@@ -86,6 +86,18 @@ def pasta(id_):
 
 
 # ---------------------------------------------------------------- brutos novos
+_quebrados = set()
+
+
+def abre(f):
+    """O vídeo abre? Arquivo truncado (ex.: o Drive cortou com o disco cheio) fica
+    sem o 'moov' e o ffmpeg não lê. Só olha arquivo já no Mac (não dispara download)."""
+    if not no_mac(f):
+        return True
+    r = subprocess.run([FF, "-hide_banner", "-i", str(f)], capture_output=True, text=True).stderr
+    return "Duration:" in r and "moov atom not found" not in r
+
+
 _tamanhos = {}   # arquivo local → (tamanho, quando viu): espera a cópia/AirDrop terminar
 
 
@@ -123,6 +135,11 @@ def novos(minutos_parado=3):
                 if not _local_parado(f):
                     continue
             elif agora - f.stat().st_mtime < minutos_parado * 60:
+                continue
+            if not abre(f):
+                if str(f) not in _quebrados:
+                    _quebrados.add(str(f))
+                    print(f"bruto quebrado (o vídeo não abre): {f}", flush=True)
                 continue
             out.append(f)
     return sorted(out, key=lambda f: (f.parent != LOCAL, f.name.replace(EM_EDICAO, "")))
