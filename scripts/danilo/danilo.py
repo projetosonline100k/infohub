@@ -144,7 +144,7 @@ def copiar_do_drive(origem, destino, minutos=60, log=print):
     import time
     limite = time.time() + minutos * 60
     feito, avisou = 0, False
-    with open(destino, "wb") as out:
+    with open(destino, "ab" if destino == os.devnull else "wb") as out:
         while True:
             try:
                 with open(origem, "rb") as f:
@@ -185,11 +185,9 @@ def preparar(arquivo, log=print):
         BRUTOS.mkdir(parents=True, exist_ok=True)
         # A pasta Precisa de edição fica "disponível off-line": o bruto já está no
         # Mac e a edição lê direto dele (sem cópia de 1 GB num disco apertado).
-        if no_mac(marcado):
-            local = marcado
-        else:
-            local = BRUTOS / nome
-            copiar_do_drive(marcado, local, log=log)
+        if not no_mac(marcado):
+            copiar_do_drive(marcado, os.devnull, log=log)   # ler inteiro faz o Drive baixar
+        local = marcado
         p = pasta(id_)
         (p / "imagens").mkdir(parents=True)
         os.symlink(local, p / f"bruto{local.suffix.lower()}")
