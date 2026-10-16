@@ -450,21 +450,43 @@ Progresso (o Davi acompanha numa barra): ao terminar cada etapa, informe quanto 
 Regras: não publique, não poste, não comente e não envie nada em nome do Davi; não escreva no banco fora desses comandos (o aprender.py é permitido); sem git. Hoje é {hoje}."""
 
 _tentadas = set()
+# Em paralelo (16/10, Davi: "subiu atividade, o funcionário não pode ficar parado
+# esperando"): cada funcionário faz uma tarefa por vez, mas ninguém espera o colega.
+MAX_EXECUCOES = 4
+_trabalhando = {}            # tarefa -> funcionário
+_trava_execucoes = threading.Lock()
+
+
+def _executar(aid):
+    try:
+        log("execução:", aid)
+        ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50)
+        if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
+            execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
+            log("execução: falhou —", aid, texto[:200])
+        else:
+            _tentadas.discard(aid)  # entregou: se o Davi pedir ajuste, a tarefa volta pra fila e pode ser refeita
+            log("execução:", aid, execucao.situacao(aid))
+    except Exception as e:  # rede caiu etc.
+        log("execução: erro —", aid, repr(e)[:300])
+    finally:
+        with _trava_execucoes:
+            _trabalhando.pop(aid, None)
 
 
 def atender_execucao():
-    aid = execucao.pegar(ignorar=_tentadas)
-    if not aid:
-        return
-    _tentadas.add(aid)  # uma tentativa por tarefa enquanto o ouvinte estiver de pé
-    log("execução:", aid)
-    ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50)
-    if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
-        execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
-        log("execução: falhou —", texto[:200])
-    else:
-        _tentadas.discard(aid)  # entregou: se o Davi pedir ajuste, a tarefa volta pra fila e pode ser refeita
-        log("execução:", execucao.situacao(aid))
+    while True:
+        with _trava_execucoes:
+            if len(_trabalhando) >= MAX_EXECUCOES:
+                return
+            ocupados = list(_trabalhando.values())
+        aid, membro = execucao.pegar(ignorar=_tentadas, ocupados=ocupados, com_membro=True)
+        if not aid:
+            return
+        _tentadas.add(aid)  # uma tentativa por tarefa enquanto o ouvinte estiver de pé
+        with _trava_execucoes:
+            _trabalhando[aid] = membro
+        threading.Thread(target=_executar, args=(aid,), daemon=True).start()
 
 
 # ---------------------------------------------------------------- Melhorias (Pedro)

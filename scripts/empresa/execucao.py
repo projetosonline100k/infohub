@@ -29,8 +29,10 @@ AJUSTE = '--- Ajuste pedido pelo Davi'   # mesmo texto de src/lib/empresa/entreg
 TAGS = {'h2', 'h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'br'}
 
 
-def pegar(ignorar=()):
-    """Põe em andamento a tarefa mais antiga confirmada por briefing e devolve o id."""
+def pegar(ignorar=(), ocupados=(), com_membro=False):
+    """Põe em andamento a tarefa mais antiga confirmada por briefing e devolve o id.
+    ocupados: funcionários já trabalhando (cada um faz uma por vez; os outros não esperam,
+    16/10: "o funcionário não pode ficar parado esperando"). com_membro: devolve (id, membro)."""
     c = connect()
     try:
         q = c.cursor()
@@ -53,10 +55,13 @@ def pegar(ignorar=()):
                   AND NOT (lower(m.nome) = 'roy' AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz')
                            AND a2.cliente_id = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f')
                   AND NOT (a2.id = ANY(%s::uuid[]))
+                  AND NOT (m.id = ANY(%s::uuid[]))
                 ORDER BY a2.created_at LIMIT 1 FOR UPDATE OF a2 SKIP LOCKED)
-            RETURNING a.id""", (sorted(EXECUTORES), list(ignorar)))
+            RETURNING a.id, a.responsavel_id""", (sorted(EXECUTORES), list(ignorar), list(ocupados)))
         r = q.fetchone()
         c.commit()
+        if com_membro:
+            return (str(r[0]), str(r[1])) if r else (None, None)
         return str(r[0]) if r else None
     finally:
         c.close()
