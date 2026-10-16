@@ -38,6 +38,10 @@ interface ResponsavelResumo {
 
 type FiltroEntrega = "atrasadas" | "esta_semana" | "proxima_semana";
 
+// Clicar numa tarefa abre o painel dela direto (?atividade=), como a busca ⌘K.
+const rotaTarefa = (a: AtividadeResumo) =>
+  a.cliente_id ? `/clientes/${a.cliente_id}?atividade=${a.id}` : `/atividades?atividade=${a.id}`;
+
 const DashGeral = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -45,6 +49,8 @@ const DashGeral = () => {
   const [nomesClientes, setNomesClientes] = useState<Record<string, string>>({});
   const [equipe, setEquipe] = useState<string[]>([]);
   const [filtroEntrega, setFiltroEntrega] = useState<FiltroEntrega>("esta_semana");
+  const [verTodasAtrasadas, setVerTodasAtrasadas] = useState(false);
+  const [verTodasEntregar, setVerTodasEntregar] = useState(false);
 
   useEffect(() => {
     carregarResumo();
@@ -61,7 +67,7 @@ const DashGeral = () => {
           .from("atividades")
           .select("id, titulo, cliente_id, concluida, data_atividade, data_vencimento, responsavel_nome")
           .is("deleted_at", null),
-        supabase.from("clientes").select("id, nome_especialista"),
+        supabase.from("clientes").select("id, nome_especialista, arquivado"),
         supabase.from("equipe_cliente").select("nome_pessoa"),
       ]);
 
@@ -69,7 +75,9 @@ const DashGeral = () => {
       if (erroClientes) throw erroClientes;
       if (erroEquipe) throw erroEquipe;
 
-      setAtividades(atividadesData || []);
+      // Tarefas de projetos arquivados não entram na conta do Dash.
+      const arquivados = new Set((clientesData || []).filter((c) => c.arquivado).map((c) => c.id));
+      setAtividades((atividadesData || []).filter((a) => !a.cliente_id || !arquivados.has(a.cliente_id)));
       setNomesClientes(
         Object.fromEntries((clientesData || []).map((c) => [c.id, c.nome_especialista]))
       );
@@ -233,16 +241,15 @@ const DashGeral = () => {
             <p className="text-sm text-muted-foreground py-4">Nenhuma tarefa atrasada. 🎉</p>
           ) : (
             <div className="space-y-1">
-              {atrasadas.slice(0, 8).map((a) => {
+              {(verTodasAtrasadas ? atrasadas : atrasadas.slice(0, 8)).map((a) => {
                 const dias = a.data_vencimento
                   ? differenceInCalendarDays(hoje, parseISO(a.data_vencimento))
                   : 0;
                 return (
                   <button
                     key={a.id}
-                    onClick={() => a.cliente_id && navigate(`/clientes/${a.cliente_id}`)}
-                    disabled={!a.cliente_id}
-                    className="w-full flex items-center gap-2 py-2 px-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors text-left disabled:cursor-default disabled:hover:bg-transparent"
+                    onClick={() => navigate(rotaTarefa(a))}
+                    className="w-full flex items-center gap-2 py-2 px-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors text-left"
                   >
                     <span className="flex-1 min-w-0 text-sm text-foreground truncate">{a.titulo}</span>
                     {a.cliente_id && nomesClientes[a.cliente_id] && (
@@ -253,14 +260,17 @@ const DashGeral = () => {
                     <span className="text-xs font-medium text-red-500 flex-shrink-0">
                       {dias === 0 ? "vence hoje" : `${dias}d atrasada`}
                     </span>
-                    {a.cliente_id && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                    <ArrowRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   </button>
                 );
               })}
               {atrasadas.length > 8 && (
-                <p className="text-xs text-muted-foreground pt-2">
-                  +{atrasadas.length - 8} outras tarefas atrasadas
-                </p>
+                <button
+                  onClick={() => setVerTodasAtrasadas((v) => !v)}
+                  className="text-xs text-muted-foreground hover:text-foreground pt-2 transition-colors"
+                >
+                  {verTodasAtrasadas ? "Mostrar menos" : `+${atrasadas.length - 8} outras tarefas atrasadas`}
+                </button>
               )}
             </div>
           )}
@@ -299,12 +309,11 @@ const DashGeral = () => {
           <p className="text-sm text-muted-foreground py-4">Nada por aqui neste período.</p>
         ) : (
           <div className="space-y-1">
-            {paraEntregar.slice(0, 10).map((a) => (
+            {(verTodasEntregar ? paraEntregar : paraEntregar.slice(0, 10)).map((a) => (
               <button
                 key={a.id}
-                onClick={() => a.cliente_id && navigate(`/clientes/${a.cliente_id}`)}
-                disabled={!a.cliente_id}
-                className="w-full flex items-center gap-2 py-2 px-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors text-left disabled:cursor-default disabled:hover:bg-transparent"
+                onClick={() => navigate(rotaTarefa(a))}
+                className="w-full flex items-center gap-2 py-2 px-2 -mx-2 rounded-md hover:bg-muted/50 transition-colors text-left"
               >
                 <span className="flex-1 min-w-0 text-sm text-foreground truncate">{a.titulo}</span>
                 {a.responsavel_nome && (
@@ -320,13 +329,16 @@ const DashGeral = () => {
                     {format(parseISO(a.data_vencimento), "dd/MM", { locale: ptBR })}
                   </span>
                 )}
-                {a.cliente_id && <ArrowRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                <ArrowRight className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
               </button>
             ))}
             {paraEntregar.length > 10 && (
-              <p className="text-xs text-muted-foreground pt-2">
-                +{paraEntregar.length - 10} outras tarefas neste período
-              </p>
+              <button
+                onClick={() => setVerTodasEntregar((v) => !v)}
+                className="text-xs text-muted-foreground hover:text-foreground pt-2 transition-colors"
+              >
+                {verTodasEntregar ? "Mostrar menos" : `+${paraEntregar.length - 10} outras tarefas neste período`}
+              </button>
             )}
           </div>
         )}
