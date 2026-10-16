@@ -231,7 +231,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // - soltou o J: espera um instante (dá tempo do C de quem tecla ⌘, J, C)
   //   e abre a Conversa, ou o Creator se o C veio.
   // Fora desse momento, ⌘C continua sendo "copiar".
-  const atalhoJ = useRef<{ ativo: boolean; creator: boolean; decisao: ReturnType<typeof setTimeout> | null }>({ ativo: false, creator: false, decisao: null });
+  // ⌘ + J + N (16/10): mesma ideia, abre as Notas (na nota em que ele estava — a aba guarda a última aberta).
+  type DestinoJ = "creator" | "notas" | null;
+  const atalhoJ = useRef<{ ativo: boolean; destino: DestinoJ; decisao: ReturnType<typeof setTimeout> | null }>({ ativo: false, destino: null, decisao: null });
   useEffect(() => {
     if (variant !== "window") return;
     const abrirCreator = () => {
@@ -244,12 +246,18 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       setAba("conversa");
       setFocoConversa((n) => n + 1);
     };
+    const abrirNotas = () => {
+      setOpen(true);
+      setAba("notas");
+    };
+    const abrirDestino = (d: DestinoJ) => (d === "creator" ? abrirCreator() : d === "notas" ? abrirNotas() : abrirConversa());
     const tecla = (e: KeyboardEvent) => {
       const a = atalhoJ.current;
-      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "c" || !(a.ativo || a.decisao)) return;
+      const k = e.key.toLowerCase();
+      if (!(e.metaKey || e.ctrlKey) || (k !== "c" && k !== "n") || !(a.ativo || a.decisao)) return;
       e.preventDefault();
-      a.creator = true;
-      if (a.decisao) { clearTimeout(a.decisao); a.decisao = null; abrirCreator(); }
+      a.destino = k === "c" ? "creator" : "notas";
+      if (a.decisao) { clearTimeout(a.decisao); a.decisao = null; abrirDestino(a.destino); }
     };
     window.addEventListener("keydown", tecla, true);
     let unlisten: (() => void) | undefined;
@@ -258,16 +266,16 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       () => {
         const a = atalhoJ.current;
         if (a.decisao) clearTimeout(a.decisao);
-        atalhoJ.current = { ativo: true, creator: false, decisao: null };
+        atalhoJ.current = { ativo: true, destino: null, decisao: null };
       },
       () => {
         const a = atalhoJ.current;
         if (!a.ativo) return;
         a.ativo = false;
-        if (a.creator) { abrirCreator(); return; }
+        if (a.destino) { abrirDestino(a.destino); return; }
         a.decisao = setTimeout(() => {
           a.decisao = null;
-          if (a.creator) abrirCreator(); else abrirConversa();
+          abrirDestino(a.destino);
         }, 350);
       },
     ).then((fn) => {

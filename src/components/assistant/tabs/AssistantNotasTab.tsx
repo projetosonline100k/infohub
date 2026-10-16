@@ -28,7 +28,14 @@ interface AssistantNotasTabProps {
 // escolhido bem aqui (ProjetoSelectorInline) — não existe mais uma aba
 // "Projeto" separada só pra isso.
 export function AssistantNotasTab({ projetoId, projetos, onSelecionarProjeto, notas, loading, onCriarNota, onFixarNota, onExcluirNota, onNotaAtualizada, onAbrirNotasCompleto }: AssistantNotasTabProps) {
-  const [notaAbertaId, setNotaAbertaId] = useState<string | null>(null);
+  // Volta na nota em que o Davi estava (⌘ + J + N, 16/10: "abre o Notas na parte em que eu estava").
+  const [notaAbertaId, setNotaAbertaIdBruto] = useState<string | null>(() => {
+    try { return localStorage.getItem("atlas-nota-aberta"); } catch { return null; }
+  });
+  const setNotaAbertaId = (id: string | null) => {
+    setNotaAbertaIdBruto(id);
+    try { if (id) localStorage.setItem("atlas-nota-aberta", id); else localStorage.removeItem("atlas-nota-aberta"); } catch { /* sem storage */ }
+  };
   const notaAberta = notas.find((n) => n.id === notaAbertaId) ?? null;
 
   const criarNota = async () => {
