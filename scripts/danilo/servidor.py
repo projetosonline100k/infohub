@@ -120,15 +120,17 @@ def aprovar(id_):
             final, dur = motor.renderizar(pasta, previa=False, progresso=andamento(id_, "Gerando o Full HD…"))
             entrega = json.loads((pasta / "entrega.json").read_text()) if (pasta / "entrega.json").exists() else {}
             destino_txt = None
-            if entrega.get("destino_dir") and Path(entrega["destino_dir"]).is_dir():
-                status(id_, "aprovando", "Enviando pro Drive…")
-                destino = Path(entrega["destino_dir"]) / f"{entrega.get('nome_final') or id_}.mp4"
-                shutil.copyfile(final, destino)
-                destino_txt = str(destino)
-                bruto = Path(entrega.get("bruto_drive") or "")
-                if bruto.exists() and not bruto.name.startswith("[EDITADO]"):
-                    nome = bruto.name.replace("[EM EDIÇÃO] ", "")
-                    bruto.rename(bruto.with_name(f"[EDITADO] {nome}"))
+            # Sem entrega no Drive não é "aprovado": o final é o original do post da Dalila.
+            if not (entrega.get("destino_dir") and Path(entrega["destino_dir"]).is_dir()):
+                raise RuntimeError(f"pasta de entrega do Drive não encontrada ({entrega.get('destino_dir') or 'sem entrega.json'})")
+            status(id_, "aprovando", "Enviando pro Drive…")
+            destino = Path(entrega["destino_dir"]) / f"{entrega.get('nome_final') or id_}.mp4"
+            shutil.copyfile(final, destino)
+            destino_txt = str(destino)
+            bruto = Path(entrega.get("bruto_drive") or "")
+            if bruto.exists() and not bruto.name.startswith("[EDITADO]"):
+                nome = bruto.name.replace("[EM EDIÇÃO] ", "")
+                bruto.rename(bruto.with_name(f"[EDITADO] {nome}"))
             # Avança o fluxo: tarefa do Danilo concluída, vídeo → "pronto"
             # (as automações por etapa passam pra quem programa).
             linha = db("SELECT atividade_id, video_vertical_id, cliente_id FROM public.edicoes_video WHERE id = %s", (id_,))[0]
