@@ -168,6 +168,26 @@ def _roy_id():
 
 _tentadas = set()  # falhou nesta execução: não tenta de novo em loop (reiniciar o serviço tenta)
 
+# Falha do código do Roy (ex.: ImportError porque o ouvinte mudou e um módulo
+# antigo ficou na memória), não do conteúdo: o serviço sai, o launchd religa
+# com tudo novo e a mesma tarefa é tentada mais uma vez. O arquivo lembra quem
+# já teve essa chance, para não reiniciar em loop.
+ERROS_DE_CODIGO = (ImportError, AttributeError, SyntaxError, NameError)
+REINICIADAS = render.BASE / "tarefas_reiniciadas.json"
+
+
+def _reiniciadas():
+    try:
+        return set(json.loads(REINICIADAS.read_text()))
+    except (OSError, ValueError):
+        return set()
+
+
+def _marcar_reiniciada(aid, sim=True):
+    ids = _reiniciadas()
+    ids = ids | {aid} if sim else ids - {aid}
+    REINICIADAS.write_text(json.dumps(sorted(ids)))
+
 
 def atender_tarefa():
     """Atividade na fila do Roy (o Davi passou pelo Infopro) → carrossel pronto
@@ -212,11 +232,25 @@ def atender_tarefa():
         roy.db("""UPDATE public.atividades SET situacao = 'aguardando_aprovacao', progresso = 100, observacao = %s WHERE id = %s""",
                (f"Pronto para sua revisão em Conteúdo → Visão geral → Precisa de você: {lista}. {resumo}"[:900], aid))
         log("tarefa pronta:", lista)
+        if aid in _reiniciadas():
+            _marcar_reiniciada(aid, False)
     except Exception as e:
-        _tentadas.add(aid)
         log("tarefa falhou:", titulo[:80], traceback.format_exc()[-500:])
+        if isinstance(e, ERROS_DE_CODIGO):
+            if aid not in _reiniciadas() and "--uma-vez" not in sys.argv:
+                _marcar_reiniciada(aid)
+                roy.db("""UPDATE public.atividades SET situacao = 'fila', progresso = NULL, observacao = %s
+                          WHERE id = %s AND situacao = 'andamento'""",
+                       ("Roy: deu um erro no meu código (não na tarefa). Estou reiniciando para tentar de novo…", aid))
+                log("erro de código: saindo para o launchd religar e tentar de novo")
+                sys.exit(1)
+            erro = ("⚠️ Erro no código do Roy (não é nada da tarefa); tentei de novo e não deu. "
+                    "Ficou no log para o Pedro corrigir; quando o Roy for reiniciado, eu tento de novo sozinho.")
+        else:
+            erro = f"⚠️ Não consegui fazer sozinho: {str(e).strip()[:400]}"
+        _tentadas.add(aid)
         roy.db("""UPDATE public.atividades SET situacao = 'fila', progresso = NULL, observacao = %s
-                  WHERE id = %s AND situacao = 'andamento'""", (f"⚠️ Não consegui fazer sozinho: {str(e).strip()[:400]}", aid))
+                  WHERE id = %s AND situacao = 'andamento'""", (erro, aid))
     return True
 
 
