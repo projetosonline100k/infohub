@@ -44,7 +44,7 @@ interface Produto {
 }
 
 // Guias do Creator (Vertical, Youtube, Brainstorm): o menu abre na última usada.
-const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm"];
+const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm", "cronograma"];
 const ultimaGuiaCreator = () => { try { return localStorage.getItem("creator-guia") || "vertical"; } catch { return "vertical"; } };
 const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
   if (!id) return {};
@@ -220,11 +220,10 @@ export default function ClienteDetalhe() {
     { id: "atividades", label: "Atividades" },
     { id: "documentos", label: "Documentos" },
   ].filter(item => item.id === "informacoes" || pode(item.id as AreaEquipe));
-  // 16/10: "Visão geral" virou "Escritório" e Brainstorm/Vertical/Youtube viraram guias do "Creator".
+  // 16/10: "Visão geral" virou "Escritório" e Vertical/Youtube/Brainstorm/Cronograma viraram guias do "Creator".
   const abasConteudo = [
     { id: "visao-geral", label: "Escritório" },
     { id: "creator", label: "Creator" },
-    { id: "cronograma", label: "Cronograma" },
     { id: "conhecimento", label: "Fonte de conhecimento" },
     { id: "quiz", label: "Quiz" },
   ];

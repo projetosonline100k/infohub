@@ -14,11 +14,12 @@ interface ConteudoSectionProps {
   onAbrirAtividades: () => void;
 }
 
-// Creator (16/10): Vertical, Youtube e Brainstorm juntos, cada um numa guia.
+// Creator (16/10): Vertical, Youtube, Brainstorm e Cronograma juntos, cada um numa guia.
 const GUIAS_CREATOR = [
   { id: "vertical", rotulo: "Vertical" },
   { id: "youtube", rotulo: "Youtube" },
   { id: "brainstorm", rotulo: "Brainstorm" },
+  { id: "cronograma", rotulo: "Cronograma" },
 ];
 
 export function ConteudoSection({ clienteId, subAba, onIrPara, onAbrirAtividades }: ConteudoSectionProps) {
