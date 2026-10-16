@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/whatsapp/shirley.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo, ehSoConfirmacao } =
+const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo, ehSoConfirmacao, humorDaShirley, falaDaShirley, ADIAR_MIN } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const agora = new Date(2026, 9, 16, 15, 0);
@@ -63,4 +63,17 @@ test('"Agendado", "ok", "obrigado", 👍 não cobram resposta', () => {
   for (const t of ['Agendado', 'ok!', 'Obrigada Davi', '👍', 'valeu', 'tá bom']) assert.ok(ehSoConfirmacao(t), t);
   for (const t of ['ok, mas e a aula 3?', 'agendado para quando?', 'oi']) assert.ok(!ehSoConfirmacao(t), t);
   assert.equal(alertasDoWhatsapp([conv({ id: 'x', ultima_texto: 'Agendado', ultima_em: antes(300) })], agora).length, 0);
+});
+
+test('Shirley perde a paciência: adiar e esperar muito deixam ela brava; furiosa não deixa adiar', () => {
+  assert.equal(humorDaShirley(0, 70, false), 0);
+  assert.equal(humorDaShirley(1, 70, false), 1);
+  assert.equal(humorDaShirley(0, 130, false), 1);
+  assert.equal(humorDaShirley(0, 5 * 60, false), 2);
+  assert.equal(humorDaShirley(2, 70, false), 2);
+  assert.equal(humorDaShirley(5, 70, false), 3);
+  assert.equal(humorDaShirley(0, 9 * 60, false), 3);
+  assert.equal(humorDaShirley(0, 5, true), 2);
+  assert.equal(ADIAR_MIN[3], 0);
+  assert.ok(falaDaShirley(3, 'Carol', '9h', false).startsWith('🤬 DAVI'));
 });

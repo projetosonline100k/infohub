@@ -57,7 +57,7 @@ import { OrbitaAtlas, type Lua } from "./OrbitaAtlas";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
 import { prepararConversaAberta, useMensagensWhatsapp } from "@/hooks/useMensagensWhatsapp";
-import { tempoEsperando } from "@/lib/whatsapp/shirley";
+import { ADIAR_MIN, falaDaShirley, tempoEsperando } from "@/lib/whatsapp/shirley";
 
 const ORB_SIZE = 64;
 const MARGEM_PADRAO = 24;
@@ -1351,16 +1351,19 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   ) : shirley.atual ? (
     <JarvisNotificationCard
       fala
-      titulo={shirley.atual.motivo === "insatisfeito"
-        ? "🚨 Davi!! Olha o WhatsApp!!"
-        : shirley.atual.vezes > 0 ? `📱 Davi… ${shirley.atual.nome} AINDA está esperando` : `📱 Davi, ${shirley.atual.nome} está esperando`}
+      titulo={falaDaShirley(shirley.atual.humor, shirley.atual.nome, tempoEsperando(shirley.atual.minutos), shirley.atual.motivo === "insatisfeito")}
+      bravo={shirley.atual.humor >= 2}
       acoes={[
         {
-          label: "Abrir WhatsApp",
-          onClick: () => { shirley.adiar(); setAba("whatsapp"); void abrirPainel(); },
+          label: shirley.atual.humor >= 3 ? "Responder agora" : "Abrir WhatsApp",
+          // Abriu e não respondeu? Ela volta (5 min furiosa).
+          onClick: () => { shirley.adiar(Math.min(ADIAR_MIN[shirley.atual!.humor] || 5, 10)); setAba("whatsapp"); void abrirPainel(); },
           variant: "default",
         },
-        { label: shirley.atual.outros ? `Daqui a 30 min (+${shirley.atual.outros})` : "Daqui a 30 min", onClick: () => shirley.adiar(), variant: "outline" },
+        // Furiosa não deixa adiar: só "já respondi por fora" (ligação, áudio no celular…).
+        shirley.atual.humor >= 3
+          ? { label: "Já respondi por fora", onClick: () => shirley.jaRespondi(), variant: "ghost" as const }
+          : { label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (+${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiar(), variant: "outline" as const },
       ]}
     >
       <span className="flex items-center gap-2 text-[11px] font-semibold text-foreground">

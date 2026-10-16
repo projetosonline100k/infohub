@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { alertasDoWhatsapp, chegaramAgora, horarioDeCobrar, type AlertaShirley, type ConversaResumo } from "@/lib/whatsapp/shirley";
+import { ADIAR_MIN, alertasDoWhatsapp, chegaramAgora, horarioDeCobrar, humorDaShirley, type AlertaShirley, type ConversaResumo, type Humor } from "@/lib/whatsapp/shirley";
 
 // Shirley (CS) na orbe do Atlas (16/10): a cada 2 min olha as conversas do
 // WhatsApp; cliente insatisfeito alerta na hora, quem espera há mais de 1h
@@ -16,7 +16,7 @@ interface Aviso { ultimaEm: string; ate: number; vezes: number }
 const ler = (): Record<string, Aviso> => { try { return JSON.parse(localStorage.getItem(CHAVE) || "{}"); } catch { return {}; } };
 const gravar = (v: Record<string, Aviso>) => { try { localStorage.setItem(CHAVE, JSON.stringify(v)); } catch { /* sem storage */ } };
 
-export interface AlertaComCobranca extends AlertaShirley { vezes: number; outros: number }
+export interface AlertaComCobranca extends AlertaShirley { vezes: number; outros: number; humor: Humor }
 
 export function useShirley(meuId: string | undefined, ativo: boolean) {
   const [alertas, setAlertas] = useState<AlertaShirley[]>([]);
@@ -58,12 +58,15 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     return !av || av.ultimaEm !== a.ultimaEm || agora >= av.ate;
   });
   const primeiro = devidos[0];
+  const vezes = primeiro && avisos.current[primeiro.chatId]?.ultimaEm === primeiro.ultimaEm ? avisos.current[primeiro.chatId].vezes : 0;
   const atual: AlertaComCobranca | null = primeiro
-    ? { ...primeiro, vezes: avisos.current[primeiro.chatId]?.ultimaEm === primeiro.ultimaEm ? avisos.current[primeiro.chatId].vezes : 0, outros: devidos.length - 1 }
+    ? { ...primeiro, vezes, outros: devidos.length - 1, humor: humorDaShirley(vezes, primeiro.minutos, primeiro.motivo === "insatisfeito") }
     : null;
 
-  const adiar = useCallback((minutos = COBRAR_DE_NOVO_MIN) => {
+  // Quanto mais brava, menos ela deixa adiar (furiosa: volta em 5 min mesmo se ele abrir e não responder).
+  const adiar = useCallback((minutos?: number) => {
     if (!atual) return;
+    minutos ??= ADIAR_MIN[atual.humor] || 5;
     const v = { ...avisos.current, [atual.chatId]: { ultimaEm: atual.ultimaEm, ate: Date.now() + minutos * 60_000, vezes: atual.vezes + 1 } };
     // Limpa conversas que já não estão na lista (foram respondidas).
     for (const id of Object.keys(v)) if (!alertas.some((a) => a.chatId === id)) delete v[id];
@@ -72,5 +75,12 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     forcar((n) => n + 1);
   }, [atual, alertas]);
 
-  return { atual, adiar, todos: alertas, novas };
+  // "Já respondi por fora" (ligação, áudio no celular…): para de cobrar até chegar mensagem nova dela.
+  const jaRespondi = useCallback(() => {
+    if (!atual) return;
+    const v = { ...avisos.current, [atual.chatId]: { ultimaEm: atual.ultimaEm, ate: Date.now() + 7 * 86400_000, vezes: 0 } };
+    avisos.current = v; gravar(v); forcar((n) => n + 1);
+  }, [atual]);
+
+  return { atual, adiar, jaRespondi, todos: alertas, novas };
 }

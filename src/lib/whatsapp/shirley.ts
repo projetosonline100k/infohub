@@ -92,3 +92,30 @@ export function tempoEsperando(min: number): string {
   const h = Math.floor(min / 60);
   return h < 24 ? `${h}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : `${Math.floor(h / 24)} dia(s)`;
 }
+
+/**
+ * Paciência da Shirley (16/10, Davi: "se eu ficar ignorando, a Shirley tem que ficar com raiva e me
+ * obrigar a responder"). Sobe com cada "depois" e com o tempo de espera do cliente:
+ * 0 calma · 1 impaciente · 2 brava · 3 furiosa (não deixa mais adiar).
+ */
+export type Humor = 0 | 1 | 2 | 3;
+export function humorDaShirley(vezesAdiado: number, minutosEsperando: number, insatisfeito: boolean): Humor {
+  let h = Math.min(3, vezesAdiado);
+  if (minutosEsperando >= 8 * 60) h = Math.max(h, 3);
+  else if (minutosEsperando >= 4 * 60) h = Math.max(h, 2);
+  else if (minutosEsperando >= 2 * 60) h = Math.max(h, 1);
+  if (insatisfeito) h = Math.max(h, 2);
+  return h as Humor;
+}
+/** Quanto ela deixa adiar, por humor (furiosa: nada). */
+export const ADIAR_MIN: Record<Humor, number> = { 0: 30, 1: 20, 2: 10, 3: 0 };
+
+export function falaDaShirley(h: Humor, nome: string, tempo: string, insatisfeito: boolean): string {
+  if (insatisfeito && h < 3) return h >= 2 ? `🚨 Davi!! ${nome} pode estar insatisfeito e você ainda não respondeu!` : "🚨 Davi!! Olha o WhatsApp!!";
+  return [
+    `📱 Davi, ${nome} está esperando`,
+    `😤 Davi… ${nome} AINDA está esperando (${tempo})`,
+    `😠 Davi, chega! ${nome} está há ${tempo} sem resposta`,
+    `🤬 DAVI. Responde ${nome} AGORA. Já são ${tempo}.`,
+  ][h];
+}

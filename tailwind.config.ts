@@ -99,6 +99,12 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        // Shirley brava (16/10): o balão chacoalha.
+        shake: {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%, 60%": { transform: "translateX(-4px)" },
+          "40%, 80%": { transform: "translateX(4px)" },
+        },
         "accordion-down": {
           from: {
             height: "0",
@@ -146,6 +152,7 @@ export default {
         },
       },
       animation: {
+        shake: "shake 0.5s ease-in-out 3",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "orb-glow-pulse": "orb-glow-pulse 4s ease-in-out infinite",

@@ -15,6 +15,8 @@ interface JarvisNotificationCardProps {
   tone?: "info" | "success";
   /** Balão de diálogo saindo da lua da pessoa (no topo da órbita, logo abaixo do card) — 16/10. */
   fala?: boolean;
+  /** Shirley brava (16/10): borda vermelha e o balão "chacoalha". */
+  bravo?: boolean;
 }
 
 // Componente único para TODAS as notificações espontâneas do Atlas (rodada
@@ -33,7 +35,7 @@ interface JarvisNotificationCardProps {
 // altura de propósito pra caber o card EM CIMA da orbe, ainda visível
 // abaixo dele — ver Assistant.tsx). `box-border` pra padding não somar por
 // cima dos limites.
-export function JarvisNotificationCard({ titulo, children, acoes, tone = "info", fala }: JarvisNotificationCardProps) {
+export function JarvisNotificationCard({ titulo, children, acoes, tone = "info", fala, bravo }: JarvisNotificationCardProps) {
   const card = (
     <div
       role="status"
@@ -41,6 +43,7 @@ export function JarvisNotificationCard({ titulo, children, acoes, tone = "info",
         "box-border flex max-h-[170px] w-fit min-w-[240px] max-w-[340px] flex-col overflow-hidden rounded-xl border shadow-lg",
         "animate-in fade-in-0 slide-in-from-bottom-1 zoom-in-95",
         tone === "success" ? "border-emerald-400/40 bg-popover text-popover-foreground" : "border-border bg-popover text-popover-foreground",
+        bravo && "border-2 border-rose-500 shadow-[0_0_18px_rgba(244,63,94,0.45)] animate-shake",
       )}
     >
       <div className="min-h-0 overflow-y-auto px-4 py-3">
