@@ -17,6 +17,8 @@ pasta do projeto. Substitui as sessões do Claude que precisavam ficar
   - Melhorias: o que o Davi libera no kanban do Pedro, ele implementa; e, das
     8h às 22h, a cada 30 min, o Pedro busca até 5 ideias novas sozinho
     (rodada, scripts/pedro/melhorias.py).
+  - Cobrança: das 8h às 22h, a cada 30 min, o Claude escolhe a cobrança do
+    Atlas (scripts/cobranca_rodada.py + scripts/cobranca-jarvis.py).
 
 Usa o login do Claude Code feito com `claude auth login` (o plano do Davi,
 sem API paga). Log em ~/.infopro-hub/ouvinte/ouvinte.log.
@@ -671,6 +673,30 @@ def rodada_melhorias():
     log("rodada de ideias:", f"{melhorias.contar_novas()} nova(s)" if ok else "falhou —", (texto or "")[:200])
 
 
+# Cobrança do Atlas (melhoria do Pedro, 16/10/2026): saiu da tarefa agendada do
+# app do Claude (só rodava com o app aberto e parou em 09/10). Horário,
+# intervalo e prompt ficam em cobranca_rodada.py (recarregado sozinho). Cada
+# rodada grava o resultado em servicos_sinal ('cobranca').
+import cobranca_rodada  # noqa: E402
+
+
+def rodada_cobranca():
+    if not cobranca_rodada.devida():
+        return
+    cobranca_rodada.marcar()
+    ok, texto = rodar_claude(cobranca_rodada.prompt(), minutos=10, turnos=30, ferramentas=["Bash", "Read"])
+    linha = (texto or "").strip().splitlines()[-1:] or [""]
+    titulo = cobranca_rodada.publicada_desde()
+    if titulo:
+        detalhe = f"publicou: {titulo}"
+    elif not ok:
+        detalhe = f"falhou: {(texto or '')[:200]}"
+    else:
+        detalhe = f"manteve: {linha[0][:200]}"
+    cobranca_rodada.registrar(detalhe)
+    log("cobrança:", detalhe)
+
+
 # ---------------------------------------------------------------- laço
 
 # Os módulos dos fluxos (briefing, execução, melhorias) são recarregados a cada
@@ -685,7 +711,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, melhorias):
+        for m in (briefing, execucao, melhorias, cobranca_rodada):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -745,4 +771,5 @@ if __name__ == "__main__":
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
     threading.Thread(target=laco, args=("rodada", rodada_melhorias, 60), daemon=True).start()
+    threading.Thread(target=laco, args=("cobranca", rodada_cobranca, 60), daemon=True).start()
     laco("conversa", atender_conversa, 3)

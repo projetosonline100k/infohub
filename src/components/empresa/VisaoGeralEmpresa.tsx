@@ -106,13 +106,19 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     return () => window.clearInterval(t);
   }, [carregarMelhorias]);
   // Último sinal do ouvinte (equipe de IAs): sem sinal há 3+ min = aviso "sem conexão".
+  // Na mesma leitura, a última rodada da cobrança do Atlas ("cobranca": quando e o resultado).
   const [ultimoSinal, setUltimoSinal] = useState<string | null>(null);
+  const [cobranca, setCobranca] = useState<{ iniciado_em: string | null; detalhe: string | null } | null>(null);
   const [agoraSinal, setAgoraSinal] = useState(() => Date.now());
   useEffect(() => {
     const ler = async () => {
-      const { data, error } = await (supabase as unknown as SupabaseClient).from("servicos_sinal").select("ultimo_sinal")
-        .eq("servico", "ouvinte").maybeSingle();
-      if (!error) setUltimoSinal((data as { ultimo_sinal: string } | null)?.ultimo_sinal ?? null);
+      const { data, error } = await (supabase as unknown as SupabaseClient).from("servicos_sinal")
+        .select("servico, ultimo_sinal, iniciado_em, detalhe").in("servico", ["ouvinte", "cobranca"]);
+      if (!error) {
+        const linhas = (data || []) as { servico: string; ultimo_sinal: string; iniciado_em: string | null; detalhe: string | null }[];
+        setUltimoSinal(linhas.find((l) => l.servico === "ouvinte")?.ultimo_sinal ?? null);
+        setCobranca(linhas.find((l) => l.servico === "cobranca") ?? null);
+      }
       setAgoraSinal(Date.now());
     };
     void ler();
@@ -293,6 +299,14 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <p className="text-muted-foreground">As tarefas das IAs ficam paradas até voltar. Confira se o Mac está ligado, acordado e com internet: quando a conexão volta, elas voltam sozinhas.</p>
           </div>
         </div>
+      )}
+
+      {cobranca?.iniciado_em && (
+        <p className="-mt-2 flex items-center gap-1.5 truncate text-xs text-muted-foreground" title={cobranca.detalhe ?? undefined}>
+          <Bot className="h-3.5 w-3.5 shrink-0" />
+          Cobrança do Atlas: última rodada {format(new Date(cobranca.iniciado_em), new Date(cobranca.iniciado_em).toDateString() === new Date().toDateString() ? "'às' HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
+          {cobranca.detalhe ? ` · ${cobranca.detalhe}` : ""}
+        </p>
       )}
 
       {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
