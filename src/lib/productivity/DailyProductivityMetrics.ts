@@ -150,8 +150,10 @@ export async function calcularMetricasDoDia(
 
   if (monitorarAppAtivo && eventosRes.data) {
     const porApp = new Map<string, number>();
+    let trabalhoSegundos = 0;
     eventosRes.data.forEach((e) => {
       const segundos = e.duration_seconds || 0;
+      if (e.classification === "work") trabalhoSegundos += segundos;
       if (e.classification === "possible_distraction") metricas.possibleDistractionSeconds += segundos;
       else if (e.classification === "confirmed_distraction") metricas.distractionSeconds += segundos;
       porApp.set(e.app_name, (porApp.get(e.app_name) ?? 0) + segundos);
@@ -160,6 +162,10 @@ export async function calcularMetricasDoDia(
       .map(([nome, segundos]) => ({ nome, segundos }))
       .sort((a, b) => b.segundos - a.segundos)
       .slice(0, 5);
+    // Quem não usa o timer do Atlas não tem focus_sessions, e o "Tempo
+    // focado" ficava zero mesmo com o desktop registrando horas de trabalho.
+    // Nesse caso, conta o tempo em apps classificados como trabalho.
+    if (metricas.focusSessionsCount === 0) metricas.focusedSeconds = Math.round(trabalhoSegundos);
   }
 
   return metricas;

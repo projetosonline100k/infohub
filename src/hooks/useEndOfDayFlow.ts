@@ -11,6 +11,8 @@ import {
 } from "@/lib/productivity/DailyReportService";
 import { buscarProgressoDoDia } from "@/lib/productivity/DailyPlanService";
 import { calcularMetricasDoDia, type MetricasAutomaticasDia } from "@/lib/productivity/DailyProductivityMetrics";
+import { montarRascunho, type DadosDoDiaParaRascunho } from "@/lib/productivity/RascunhoRelatorio";
+import { supabase } from "@/integrations/supabase/client";
 
 export type TipoQuestao = "escala" | "texto" | "escolha" | "simnao" | "hora";
 
@@ -62,7 +64,7 @@ const RESPOSTAS_VAZIAS: RespostasQuestionario = {
   plannedBedTime: "",
 };
 
-export type EstadoEndOfDay = "carregando" | "intro" | "ja_existe" | "questionario" | "rotinas" | "salvando" | "resumo";
+export type EstadoEndOfDay = "carregando" | "intro" | "rascunho" | "ja_existe" | "questionario" | "rotinas" | "salvando" | "resumo";
 
 // "Você definiu de manhã: #1 {título}" (integração com Começar o dia) —
 // título + status ATUAL (não o de quando o plano foi criado) da atividade
@@ -82,6 +84,7 @@ export function useEndOfDayFlow() {
   const [relatorioSalvo, setRelatorioSalvo] = useState<RelatorioDiario | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [prioridadeDoDiaInfo, setPrioridadeDoDiaInfo] = useState<PrioridadeDoDiaInfo | null>(null);
+  const [dadosDoDia, setDadosDoDia] = useState<DadosDoDiaParaRascunho | null>(null);
 
   const dataStr = format(new Date(), "yyyy-MM-dd");
 
@@ -95,28 +98,74 @@ export function useEndOfDayFlow() {
     setRelatorioSalvo(null);
     setErro(null);
     setPrioridadeDoDiaInfo(null);
+    setDadosDoDia(null);
     if (!user) return;
+    let existente: RelatorioDiario | null = null;
     try {
-      const existente = await buscarRelatorioDoDia(user.id, dataStr);
+      existente = await buscarRelatorioDoDia(user.id, dataStr);
       setRelatorioExistente(existente);
-      setEstado(existente ? "ja_existe" : "intro");
     } catch {
-      setEstado("intro");
+      existente = null;
     }
     // "Você definiu de manhã: #1 X" — busca à parte, sem travar a decisão
-    // intro/já-existe acima nela (se falhar, cai pro comportamento genérico
-    // de sempre: pergunta "concluiu a principal tarefa?" do zero).
+    // acima nela (se falhar, cai pro comportamento genérico de sempre:
+    // pergunta "concluiu a principal tarefa?" do zero).
+    let p1Info: PrioridadeDoDiaInfo | null = null;
+    let pendentesDoPlano: string[] = [];
     try {
       const progresso = await buscarProgressoDoDia(user.id, dataStr);
       const p1Id = progresso?.plano.main_priority_activity_id;
       const p1 = p1Id ? progresso?.atividades.find((a) => a.id === p1Id) : null;
-      setPrioridadeDoDiaInfo(p1 ? { titulo: p1.titulo, concluida: p1.concluida } : null);
+      p1Info = p1 ? { titulo: p1.titulo, concluida: p1.concluida } : null;
+      pendentesDoPlano = (progresso?.atividades ?? []).filter((a) => !a.concluida).map((a) => a.titulo);
     } catch {
-      setPrioridadeDoDiaInfo(null);
+      p1Info = null;
     }
-  }, [user, dataStr]);
+    setPrioridadeDoDiaInfo(p1Info);
+    if (existente) {
+      setEstado("ja_existe");
+      return;
+    }
+
+    // Relatório montado sozinho: junta foco e tarefas concluídas de hoje e
+    // propõe as respostas — a pessoa só confirma ou ajusta. Se algo falhar,
+    // volta pra tela de antes (questionário do zero).
+    try {
+      const inicio = startOfDay(new Date());
+      const fim = addDays(inicio, 1);
+      const [metricas, concluidasRes] = await Promise.all([
+        calcularMetricasDoDia(dataStr, inicio.toISOString(), fim.toISOString(), monitorarAppAtivo),
+        supabase
+          .from("atividades")
+          .select("titulo")
+          .is("deleted_at", null)
+          .gte("concluida_em", inicio.toISOString())
+          .lt("concluida_em", fim.toISOString())
+          .order("concluida_em", { ascending: true }),
+      ]);
+      const dados: DadosDoDiaParaRascunho = {
+        focoSegundos: metricas.focusedSeconds,
+        distracaoSegundos: metricas.distractionSeconds + metricas.possibleDistractionSeconds,
+        concluidasTitulos: (concluidasRes.data ?? []).map((a) => a.titulo),
+        prioridadeUm: p1Info,
+        pendentesDoPlano,
+      };
+      setDadosDoDia(dados);
+      setRespostas(montarRascunho(dados));
+      setEstado("rascunho");
+    } catch {
+      setEstado("intro");
+    }
+  }, [user, dataStr, monitorarAppAtivo]);
 
   const comecar = useCallback(() => setEstado("questionario"), []);
+
+  // "Ajustar" no rascunho — abre o questionário já com as respostas
+  // propostas (elas já estão em `respostas`).
+  const ajustarRascunho = useCallback(() => {
+    setIndiceQuestao(0);
+    setEstado("questionario");
+  }, []);
 
   // "Ver relatório" (quando já existe) — mostra a MESMA tela de resumo do
   // fluxo recém-concluído, sem passar de novo pelo questionário.
@@ -212,9 +261,9 @@ export function useEndOfDayFlow() {
       setEstado("resumo");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Não foi possível salvar o relatório.");
-      setEstado("questionario");
+      setEstado(dadosDoDia ? "rascunho" : "questionario");
     }
-  }, [user, dataStr, respostas, monitorarAppAtivo]);
+  }, [user, dataStr, respostas, monitorarAppAtivo, dadosDoDia]);
 
   // Chamado pelo botão da última pergunta (item 18, correção #9): quem
   // decide SE existe uma etapa "Rotinas de hoje" é useEndOfDayRoutines (via
@@ -244,8 +293,10 @@ export function useEndOfDayFlow() {
     relatorioSalvo,
     erro,
     prioridadeDoDiaInfo,
+    dadosDoDia,
     abrir,
     comecar,
+    ajustarRascunho,
     verExistente,
     atualizar,
     responder,

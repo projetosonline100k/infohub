@@ -54,6 +54,71 @@ export function EndOfDayFlow({ onClose, onDiaEncerrado, onVerRelatorioCompleto }
     );
   }
 
+  // Relatório montado sozinho com os dados do dia — "Está ok" salva direto
+  // (passando pelas rotinas pendentes, se houver), "Ajustar" abre o
+  // questionário já preenchido.
+  if (flow.estado === "rascunho" && flow.dadosDoDia) {
+    const dados = flow.dadosDoDia;
+    const r = flow.respostas;
+    const focoMin = Math.round(dados.focoSegundos / 60);
+    const focoTexto = focoMin >= 60 ? `${Math.floor(focoMin / 60)}h${String(focoMin % 60).padStart(2, "0")}` : `${focoMin} min`;
+    const linhas: { label: string; valor: string }[] = [
+      { label: "Nota do dia", valor: `${r.productivityScore}/10` },
+      { label: "Foco", valor: `${r.focusScore}/5` },
+      ...(r.mainWin ? [{ label: "Vitória", valor: r.mainWin }] : []),
+      ...(r.pendingForTomorrow ? [{ label: "Ficou pra amanhã", valor: r.pendingForTomorrow }] : []),
+      ...(r.tomorrowMainPriority ? [{ label: "Prioridade de amanhã", valor: r.tomorrowMainPriority }] : []),
+    ];
+    return (
+      <div className="flex h-full flex-col">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pb-3">
+          <div className="text-center">
+            <p className="text-3xl" aria-hidden="true">🌙</p>
+            <h2 className="text-lg font-semibold text-foreground">Montei seu relatório de hoje</h2>
+            <p className="text-sm text-muted-foreground">Confira e dê ok, ou ajuste o que quiser.</p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Tempo focado</p>
+              <p className="text-base font-medium text-foreground">{focoTexto}</p>
+            </div>
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2">
+              <p className="text-xs text-muted-foreground">Tarefas concluídas</p>
+              <p className="text-base font-medium text-foreground">{dados.concluidasTitulos.length}</p>
+            </div>
+          </div>
+          {dados.prioridadeUm && (
+            <p className={cn("text-sm", dados.prioridadeUm.concluida ? "text-emerald-500" : "text-muted-foreground")}>
+              {dados.prioridadeUm.concluida ? "✓" : "○"} Prioridade #1: {dados.prioridadeUm.titulo}
+            </p>
+          )}
+          <div className="space-y-1.5 rounded-lg border border-border/60 px-3 py-2.5">
+            {linhas.map((l) => (
+              <div key={l.label} className="flex gap-2 text-sm">
+                <span className="shrink-0 text-muted-foreground">{l.label}:</span>
+                <span className="min-w-0 break-words text-foreground">{l.valor}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        {flow.erro && <p className="pb-2 text-xs text-destructive">{flow.erro}</p>}
+        <div className="flex shrink-0 flex-col gap-2">
+          <Button
+            type="button"
+            onClick={async () => {
+              await routines.aguardarCarregamento();
+              flow.avancarOuFinalizar(routines.temPendencias);
+            }}
+          >
+            Está ok, salvar
+          </Button>
+          <Button type="button" variant="outline" onClick={flow.ajustarRascunho}>Ajustar</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>Agora não</Button>
+        </div>
+      </div>
+    );
+  }
+
   if (flow.estado === "ja_existe" && flow.relatorioExistente) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-2 text-center">

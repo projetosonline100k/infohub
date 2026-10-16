@@ -30,6 +30,7 @@ import { useJarvisConfig } from "@/hooks/useJarvisConfig";
 import { useFocusActivityMonitor, type ResumoSessao } from "@/hooks/useFocusActivityMonitor";
 import { useDailyPlan } from "@/hooks/useDailyPlan";
 import { useStartDayPrompt } from "@/hooks/useStartDayPrompt";
+import { useEndOfDayPrompt } from "@/hooks/useEndOfDayPrompt";
 import { usePriorityOneNudge } from "@/hooks/usePriorityOneNudge";
 import { usePerformanceReminder } from "@/hooks/usePerformanceReminder";
 import { useSleepToday } from "@/hooks/useSleepToday";
@@ -668,6 +669,20 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     setAba("hoje");
   }, [startDayPrompt, handleAbrirComecarDia, abrirPainel]);
 
+  // "Seu relatório do dia está pronto" (a partir das 18h, sem relatório de
+  // hoje) — "Revisar" abre o Encerrar o dia, que já vem montado sozinho.
+  const endOfDayPrompt = useEndOfDayPrompt();
+  const handleRevisarRelatorioDoAviso = useCallback(() => {
+    endOfDayPrompt.dispensar();
+    handleAbrirEncerrarDia();
+    void abrirPainel();
+  }, [endOfDayPrompt, handleAbrirEncerrarDia, abrirPainel]);
+  const dispensarAvisoEncerrar = endOfDayPrompt.dispensar;
+  const handleDiaEncerrado = useCallback(() => {
+    setDiaEncerrado(true);
+    dispensarAvisoEncerrar();
+  }, [dispensarAvisoEncerrar]);
+
   // "Foco de hoje": vai direto pro foco na prioridade #1, sem passar pela
   // tela "selecionada" no meio — mesmo padrão de handleComecarRecomendacao.
   // `abrirPainel()` (não `setOpen(true)` direto) — no desktop, redimensiona
@@ -1081,7 +1096,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || startDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1209,7 +1224,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       fluxoEncerrarDiaAberto={fluxoEncerrarDiaAberto}
       onAbrirEncerrarDia={handleAbrirEncerrarDia}
       onFecharEncerrarDia={() => setFluxoEncerrarDiaAberto(false)}
-      onDiaEncerrado={() => setDiaEncerrado(true)}
+      onDiaEncerrado={handleDiaEncerrado}
       onVerRelatorioCompleto={() => abrirNoAppPrincipal("/produtividade")}
       fluxoComecarDiaAberto={fluxoComecarDiaAberto}
       onAbrirComecarDia={handleAbrirComecarDia}
@@ -1315,6 +1330,16 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       ]}
     >
       Vamos definir o que realmente importa hoje?
+    </JarvisNotificationCard>
+  ) : endOfDayPrompt.mostrar ? (
+    <JarvisNotificationCard
+      titulo="🌙 Seu relatório do dia está pronto"
+      acoes={[
+        { label: "Revisar", onClick: handleRevisarRelatorioDoAviso, variant: "default" },
+        { label: "Agora não", onClick: endOfDayPrompt.dispensar, variant: "outline" },
+      ]}
+    >
+      Montei com seu foco e as tarefas de hoje. É só dar ok.
     </JarvisNotificationCard>
   ) : sleepMorningPrompt.mostrar ? (
     <JarvisNotificationCard
