@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
+import { confirmar } from "@/components/DialogosGlobais";
 import ClienteForm from "@/components/ClienteForm";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ProjetoRow } from "@/components/clientes/ProjetoRow";
@@ -136,6 +137,42 @@ const Clientes = () => {
     }
   };
 
+  // Projeto arquivado com tarefa aberta deixa pendência que ninguém vê
+  // (ainda conta no "atrasadas" e no Atlas). Ao arquivar, oferece fechar.
+  const oferecerFecharTarefas = async (cliente: Cliente) => {
+    const { count } = await supabase
+      .from("atividades")
+      .select("id", { count: "exact", head: true })
+      .eq("cliente_id", cliente.id)
+      .eq("concluida", false)
+      .is("deleted_at", null);
+    if (!count) return;
+    const fechar = await confirmar(
+      `${cliente.nome_especialista} tem ${count} tarefa${count > 1 ? "s" : ""} aberta${count > 1 ? "s" : ""}. Marcar como concluída${count > 1 ? "s" : ""} também?`,
+      { botao: "Concluir tarefas" },
+    );
+    if (!fechar) return;
+    try {
+      const { data: colunaConclusao } = await supabase
+        .from("colunas_atividade")
+        .select("status_key")
+        .eq("cliente_id", cliente.id)
+        .eq("eh_conclusao", true)
+        .limit(1)
+        .maybeSingle();
+      const { error } = await supabase
+        .from("atividades")
+        .update({ concluida: true, status: colunaConclusao?.status_key || "finalizado" })
+        .eq("cliente_id", cliente.id)
+        .eq("concluida", false)
+        .is("deleted_at", null);
+      if (error) throw error;
+      toast({ title: `${count} tarefa${count > 1 ? "s" : ""} concluída${count > 1 ? "s" : ""}` });
+    } catch {
+      toast({ title: "Erro", description: "Erro ao concluir as tarefas do projeto", variant: "destructive" });
+    }
+  };
+
   const alternarArquivo = async (cliente: Cliente) => {
     try {
       const { error } = await supabase
@@ -149,6 +186,7 @@ const Clientes = () => {
         title: cliente.arquivado ? "Cliente reativado" : "Cliente arquivado",
       });
       setClientes((prev) => prev.filter((c) => c.id !== cliente.id));
+      if (!cliente.arquivado) await oferecerFecharTarefas(cliente);
       carregarMetricasGlobais();
     } catch (error) {
       toast({
