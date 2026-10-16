@@ -13,6 +13,8 @@ export type TipoAviso = "resposta" | "comecou" | "entregou" | "concluiu" | "edic
 export interface Aviso {
   id: string; tipo: TipoAviso; quando: string; titulo: string; detalhe?: string;
   clienteId: string | null; projeto?: string | null; lido: boolean;
+  /** Precisa do Davi revisar/decidir (o Atlas avisa: pedido de 16/10). */
+  revisar?: boolean;
 }
 
 const curto = (t: string | null | undefined, n = 110) => {
@@ -21,7 +23,7 @@ const curto = (t: string | null | undefined, n = 110) => {
 };
 
 export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[]> {
-  const [hist, msgs, eds, cars, mels, clientes] = await Promise.all([
+  const [hist, msgs, eds, cars, mels, clientes, reels] = await Promise.all([
     db.from("historico_tarefas").select("id, atividade_id, cliente_id, para_membro_id, de_situacao, para_situacao, autor_id, criado_em")
       .eq("acao", "situacao").gt("criado_em", desde).in("para_situacao", ["andamento", "aguardando_aprovacao", "concluida"]).limit(100),
     db.from("briefing_mensagens").select("id, briefing_id, cliente_id, texto, membro_id, criada_em")
@@ -33,6 +35,7 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
     db.from("melhorias_sistema").select("id, cliente_id, titulo, status, resultado, atualizado_em")
       .gt("atualizado_em", desde).in("status", ["fazendo", "feito", "erro", "pendente"]).limit(50),
     db.from("clientes").select("id, nome_especialista"),
+    db.from("reels").select("id, cliente_id, titulo, status, atualizado_em").gt("atualizado_em", desde).eq("status", "pronto").limit(50),
   ]);
   const projeto = new Map(((clientes.data || []) as { id: string; nome_especialista: string }[]).map((c) => [c.id, c.nome_especialista]));
   const h = (hist.data || []) as { id: string; atividade_id: string; cliente_id: string | null; para_membro_id: string | null; para_situacao: string; autor_id: string | null; criado_em: string }[];
@@ -59,7 +62,8 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
     const t = curto(tituloDe.get(x.atividade_id), 90);
     const tipo: TipoAviso = x.para_situacao === "andamento" ? "comecou" : x.para_situacao === "aguardando_aprovacao" ? "entregou" : "concluiu";
     const verbo = tipo === "comecou" ? "começou" : tipo === "entregou" ? "entregou (esperando você)" : "concluiu";
-    avisos.push({ id: `h-${x.id}`, tipo, quando: x.criado_em, titulo: `${p.nome} ${verbo}`, detalhe: t, clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id ?? ""), lido: false });
+    avisos.push({ id: `h-${x.id}`, tipo, quando: x.criado_em, titulo: `${p.nome} ${verbo}`, detalhe: t, clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id ?? ""), lido: false,
+      revisar: tipo === "entregou" });
   }
   for (const x of m) {
     const p = membro.get(x.membro_id ?? donoDe.get(x.briefing_id) ?? "");
@@ -67,16 +71,23 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
   }
   for (const x of (eds.data || []) as { id: string; cliente_id: string; titulo: string; status: string; versao: number; mensagem: string | null; atualizado_em: string }[]) {
     avisos.push({ id: `e-${x.id}-${x.versao}-${x.status}`, tipo: x.status === "erro" ? "erro" : "edicao", quando: x.atualizado_em,
-      titulo: x.status === "erro" ? "Danilo teve um problema na edição" : `Danilo terminou a versão ${x.versao}`, detalhe: curto(x.status === "erro" ? x.mensagem : x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
+      titulo: x.status === "erro" ? "Danilo teve um problema na edição" : `Danilo terminou a versão ${x.versao}`, detalhe: curto(x.status === "erro" ? x.mensagem : x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false,
+      revisar: x.status === "revisar" });
   }
   for (const x of (cars.data || []) as { id: string; cliente_id: string; tema: string; status: string; atualizado_em: string }[]) {
     avisos.push({ id: `c-${x.id}-${x.status}-${x.atualizado_em}`, tipo: x.status === "erro" ? "erro" : "carrossel", quando: x.atualizado_em,
-      titulo: x.status === "erro" ? "Roy teve um problema no carrossel" : "Roy terminou um carrossel (revisar)", detalhe: curto(x.tema), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
+      titulo: x.status === "erro" ? "Roy teve um problema no carrossel" : "Roy terminou um carrossel (revisar)", detalhe: curto(x.tema), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false,
+      revisar: x.status === "revisar" });
   }
   for (const x of (mels.data || []) as { id: string; cliente_id: string; titulo: string; status: string; resultado: string | null; atualizado_em: string }[]) {
     avisos.push({ id: `p-${x.id}-${x.status}`, tipo: x.status === "erro" || x.status === "pendente" ? "erro" : x.status === "fazendo" ? "comecou" : "melhoria", quando: x.atualizado_em,
       titulo: x.status === "erro" ? "Pedro não conseguiu implementar" : x.status === "pendente" ? "Pedro precisa de você para continuar"
-        : x.status === "fazendo" ? "Pedro começou a implementar" : "Pedro implementou uma melhoria", detalhe: curto(x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
+        : x.status === "fazendo" ? "Pedro começou a implementar" : "Pedro implementou uma melhoria", detalhe: curto(x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false,
+      revisar: x.status === "feito" || x.status === "pendente" });
+  }
+  for (const x of (reels.data || []) as { id: string; cliente_id: string; titulo: string; atualizado_em: string }[]) {
+    avisos.push({ id: `r-${x.id}-pronto`, tipo: "edicao", quando: x.atualizado_em, titulo: "Reel pronto: escolha a data (Dalila)", detalhe: curto(x.titulo),
+      clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false, revisar: true });
   }
   return avisos.sort((a, b) => a.quando.localeCompare(b.quando));
 }

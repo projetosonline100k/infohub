@@ -52,6 +52,7 @@ import { dispararConfete } from "@/lib/assistant/confetti";
 import { playConclusaoSound } from "@/lib/assistant/sound";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
+import { useParaRevisar } from "@/hooks/useParaRevisar";
 
 const ORB_SIZE = 64;
 const MARGEM_PADRAO = 24;
@@ -707,6 +708,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Links mandados do iPhone (Atalho "Jarvis") são transcritos aqui, em
   // segundo plano — só no Atlas do Mac, onde roda a transcrição.
   useFilaCreator(user?.id, variant === "window" && isDesktop() && /Mac/i.test(navigator.platform || navigator.userAgent));
+  // A equipe aprontou algo para o Davi revisar: o Atlas avisa (16/10). Só na orbe do app (o sininho cobre a web).
+  const paraRevisar = useParaRevisar(user?.id, variant === "window");
   // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
   const estadoVoz = useAssistantVoz(variant === "window" ? user?.id : undefined);
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
@@ -1096,7 +1099,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || !!paraRevisar.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1291,6 +1294,25 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       onFalar={() => void handleCobrancaFalar()}
       onOutraCoisa={() => void handleCobrancaOutraCoisa()}
     />
+  ) : paraRevisar.atual ? (
+    <JarvisNotificationCard
+      titulo={`📬 ${paraRevisar.atual.titulo}`}
+      tone="success"
+      acoes={[
+        {
+          label: "Revisar agora",
+          onClick: () => {
+            const a = paraRevisar.atual;
+            paraRevisar.dispensar();
+            abrirNoAppPrincipal(a?.clienteId ? `/clientes/${a.clienteId}` : "/atividades");
+          },
+          variant: "default",
+        },
+        { label: paraRevisar.restantes ? `Depois (+${paraRevisar.restantes})` : "Depois", onClick: paraRevisar.dispensar, variant: "outline" },
+      ]}
+    >
+      {[paraRevisar.atual.detalhe, paraRevisar.atual.projeto].filter(Boolean).join(" · ")}
+    </JarvisNotificationCard>
   ) : priorityOneNudge.mostrar ? (
     <JarvisNotificationCard
       titulo="🔥 Sua prioridade #1 ainda não começou"
