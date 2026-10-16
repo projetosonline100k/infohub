@@ -185,8 +185,9 @@ def preparar(arquivo, log=print):
             contexto["palpites"] = card[1]
             log("card não identificado:", card[1])
         (p / "contexto.json").write_text(json.dumps(contexto, ensure_ascii=False, indent=1))
+        base = "-".join(_palavras((contexto.get("card") or {}).get("titulo") or "")[:8]) or Path(nome).stem
         (p / "entrega.json").write_text(json.dumps({"destino_dir": str(DESTINO), "bruto_drive": str(marcado),
-                                                    "nome_final": f"{Path(nome).stem}-editado-danilo"}, ensure_ascii=False))
+                                                    "nome_final": f"{base}-{Path(nome).stem}-editado-danilo"}, ensure_ascii=False))
         musica = ACERVO / "gymnopedie-1.ogg"
         if musica.exists():
             shutil.copyfile(musica, p / "imagens" / "musica.ogg")
