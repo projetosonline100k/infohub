@@ -135,6 +135,11 @@ Mesmo esquema do reel; setup e passo a passo em `docs/YOUTUBE.md`.
 - **Privado ou público:** a documentação do Google (conferida em 16/10/2026) diz que projeto não verificado não fica mais preso ao privado e que o limite é de 100 envios por dia. O padrão é público. Se o YouTube devolver privado, a tarefa avisa "deixe público no YouTube Studio". Segredo `YOUTUBE_PRIVACIDADE` muda isso.
 - Migração `20261016121500_dalila_youtube_shorts`, teste `supabase/tests/dalila_youtube_shorts.sql`, script `scripts/apply-dalila-youtube-shorts-migration.py`, testes JS `tests/youtubeShorts.test.mjs`.
 - **Ainda não tem:** botão para tentar o Short de novo depois de um `erro`, e vídeo longo.
+- **Estado em 16/10, por volta de 12h:** a migração `20261016121500` passou no `--testar` (todos os testes), mas **não foi aplicada**.
+  - Ela cria o cron `dalila-youtube`, que chamaria a edge `youtube`, e essa edge ainda não está no ar. A ordem para ligar é: credenciais do Google com o Davi → deploy da edge `youtube` → aplicar a migração.
+  - Até lá, `ProgramarReel` funciona sem as colunas `yt_*` (correção do chat geral).
+  - A `dalila-publicar` no ar (o código do main) também funciona sem elas: grava o link do Instagram na tarefa e ignora `reel_links_na_tarefa` quando a RPC não existe.
+  - O botão "Conectar canal do YouTube" falha até a edge existir.
 
 ## Pendências
 
