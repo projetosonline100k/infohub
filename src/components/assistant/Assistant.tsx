@@ -1304,7 +1304,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
           onClick: () => {
             const a = paraRevisar.atual;
             paraRevisar.dispensar();
-            abrirNoAppPrincipal(a?.clienteId ? `/clientes/${a.clienteId}` : "/atividades");
+            // Resposta no chat: abre direto a conversa com quem respondeu.
+            abrirNoAppPrincipal(!a?.clienteId ? "/atividades"
+              : a.tipo === "resposta" && a.membroId ? `/clientes/${a.clienteId}?conversa=${a.membroId}` : `/clientes/${a.clienteId}`);
           },
           variant: "default",
         },

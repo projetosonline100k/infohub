@@ -17,6 +17,8 @@ export interface Aviso {
   revisar?: boolean;
   /** Resposta no chat: de qual conversa (o Atlas não avisa se ela já está aberta e lida). */
   briefingId?: string;
+  /** Quem respondeu: o Atlas abre direto a conversa com ele (?conversa=<membro>). */
+  membroId?: string;
 }
 
 const curto = (t: string | null | undefined, n = 110) => {
@@ -70,7 +72,7 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
   for (const x of m) {
     const p = membro.get(x.membro_id ?? donoDe.get(x.briefing_id) ?? "");
     avisos.push({ id: `m-${x.id}`, tipo: "resposta", quando: x.criada_em, titulo: `${p?.nome ?? "A equipe"} respondeu`, detalhe: curto(x.texto), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false,
-      briefingId: x.briefing_id });
+      briefingId: x.briefing_id, membroId: p?.id });
   }
   for (const x of (eds.data || []) as { id: string; cliente_id: string; titulo: string; status: string; versao: number; mensagem: string | null; atualizado_em: string }[]) {
     avisos.push({ id: `e-${x.id}-${x.versao}-${x.status}`, tipo: x.status === "erro" ? "erro" : "edicao", quando: x.atualizado_em,

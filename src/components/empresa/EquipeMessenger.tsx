@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { naoLidasPorMembro } from "@/lib/empresa/notificacoes";
 import { ArrowLeft, ListTodo, MessageCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,17 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
   // O Atlas conversa pela orbe (⌘J); aqui fica o resto da equipe.
   const lista = pessoas.filter((p) => !ehCoordenador(p.membro));
   const precisam = lista.filter((p) => p.sinal === "esperando").length;
+  // ?conversa=<membro>: o Atlas avisou que ele respondeu — abre direto a conversa (16/10).
+  const [params, setParams] = useSearchParams();
+  const pedida = params.get("conversa");
+  useEffect(() => {
+    if (!pedida) return;
+    const p = lista.find((x) => x.membro.id === pedida);
+    if (!p) return;                       // a equipe ainda está carregando
+    setAberta(true);
+    setConversa(p);
+    setParams((sp) => { const n = new URLSearchParams(sp); n.delete("conversa"); return n; }, { replace: true });
+  }, [pedida, lista, setParams]);
   const atualDaConversa = conversa ? lista.find((p) => p.membro.id === conversa.membro.id) ?? conversa : null;
 
   if (!aberta) {

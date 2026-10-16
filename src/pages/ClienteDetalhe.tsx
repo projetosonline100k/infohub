@@ -80,6 +80,8 @@ export default function ClienteDetalhe() {
 
   useEffect(() => {
     if (searchParams.get("documento")) setAbaAtiva("documentos");
+    // ?conversa=<membro> (o Atlas avisou de uma resposta): Conteúdo → Visão geral, onde fica a gaveta da Equipe.
+    if (searchParams.get("conversa")) { setAbaAtiva("conteudo"); setSubAbaConteudo("visao-geral"); }
   }, [searchParams]);
 
   useEffect(() => {
@@ -104,8 +106,10 @@ export default function ClienteDetalhe() {
     // Documentos: senão este reset passava por cima e a guia abria em Atividades.
     // Senão, volta pra seção em que o Davi estava neste projeto (se houver).
     const salva = lerAbaProjeto(id);
-    setAbaAtiva(searchParams.get("documento") ? "documentos" : salva.aba ?? "atividades");
-    if (salva.sub) setSubAbaConteudo(salva.sub);
+    const conversa = !!searchParams.get("conversa");
+    setAbaAtiva(searchParams.get("documento") ? "documentos" : conversa ? "conteudo" : salva.aba ?? "atividades");
+    if (conversa) setSubAbaConteudo("visao-geral");
+    else if (salva.sub) setSubAbaConteudo(salva.sub);
 
     try {
       const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
