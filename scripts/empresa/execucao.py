@@ -2,7 +2,7 @@
 14/10/2026: "toda vez que eu confirmar uma tarefa, ele começa sozinho").
 
 O ouvinte do Atlas (scripts/jarvis-ouvinte.py, linha "execucao") pega a
-tarefa na fila de um funcionário IA que trabalha sozinho (EXECUTORES), põe em
+tarefa na fila de qualquer funcionário IA (16/10: ninguém fica parado), põe em
 andamento e chama o Claude no papel dele. Ele entrega um documento no projeto
 e a tarefa vai para "aguardando aprovação" do Davi.
 
@@ -29,10 +29,38 @@ AJUSTE = '--- Ajuste pedido pelo Davi'   # mesmo texto de src/lib/empresa/entreg
 TAGS = {'h2', 'h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'br'}
 
 
-def pegar(ignorar=(), ocupados=(), com_membro=False):
+DAVI = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f'
+
+
+def _quem_faz(a):
+    """Filtro SQL (alias da tarefa = a): tarefas que o ouvinte executa.
+    16/10, Davi: "independente das atividades, cada funcionário que tenha algo para fazer
+    esteja fazendo algo" — vale para TODO funcionário IA (Dalila, Danilo… também), não só
+    os executores. Ficam de fora só as que têm dono próprio ou esperam o Davi."""
+    return f"""m.eh_ia AND m.ativo AND lower(m.nome) NOT IN ('atlas', 'jarvis')
+        -- Danilo do projeto Davi: o serviço dele (scripts/danilo/servico.py) pega tudo dele;
+        -- edição de vídeo nos outros projetos ainda não tem editor.
+        AND NOT (lower(m.nome) = 'danilo' AND ({a}.cliente_id = '{DAVI}' OR coalesce({a}.tipo, '') = 'edicao'))
+        AND NOT EXISTS (SELECT 1 FROM public.edicoes_video x WHERE x.atividade_id = {a}.id)
+        -- Programar/publicar post: espera o Davi escolher a data (a nuvem da Dalila publica).
+        AND NOT EXISTS (SELECT 1 FROM public.carrosseis x WHERE x.atividade_id = {a}.id OR x.tarefa_data_id = {a}.id)
+        AND NOT EXISTS (SELECT 1 FROM public.reels x WHERE x.atividade_id = {a}.id OR x.tarefa_data_id = {a}.id)
+        AND NOT ({a}.titulo ILIKE 'Programar carrossel:%%' OR {a}.titulo ILIKE 'Programar reel:%%')
+        -- Carrossel do Roy no projeto Davi Queiroz é com o serviço dele (scripts/roy/servico.py).
+        AND NOT (lower(m.nome) = 'roy' AND coalesce({a}.tipo, '') NOT IN ('pagina', 'quiz', 'programacao')
+                 AND {a}.cliente_id = '{DAVI}')"""
+
+
+def eh_sistema(aid):
+    """Tarefa que muda o Infopro (tipo programacao fora de post): é feita num worktree, como o Pedro."""
+    return situacao(aid, campo='tipo') == 'programacao'
+
+
+def pegar(ignorar=(), ocupados=(), com_membro=False, sistema=False):
     """Põe em andamento a tarefa mais antiga confirmada por briefing e devolve o id.
     ocupados: funcionários já trabalhando (cada um faz uma por vez; os outros não esperam,
-    16/10: "o funcionário não pode ficar parado esperando"). com_membro: devolve (id, membro)."""
+    16/10: "o funcionário não pode ficar parado esperando"). com_membro: devolve (id, membro).
+    sistema: quem chama sabe fazer tarefa que muda o sistema num worktree (ouvinte novo)."""
     c = connect()
     try:
         q = c.cursor()
@@ -41,23 +69,12 @@ def pegar(ignorar=(), ocupados=(), com_membro=False):
              WHERE a.id = (
                SELECT a2.id FROM public.atividades a2
                  JOIN public.membros m ON m.id = a2.responsavel_id
-                 LEFT JOIN public.briefings b ON b.atividade_id = a2.id AND b.status = 'confirmado'
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
-                  AND m.eh_ia AND m.ativo AND (lower(m.nome) = ANY(%s) OR m.autonomo)   -- autonomo: criado pelo app
-                  -- Briefing confirmado; o Gabriel (estudos) e quem está marcado como "trabalha sozinho"
-                  -- (autonomo, 16/10: "precisa ser meio que automático") pegam também a tarefa passada
-                  -- sem conversa (Passar tarefa, TV da semana, kanban de Atividades).
-                  AND (b.id IS NOT NULL OR lower(m.nome) = 'gabriel' OR m.autonomo
-                       -- Quiz pedido pela aba Quiz vai direto pro Roy (o esboço é a primeira entrega).
-                       OR (lower(m.nome) = 'roy' AND a2.tipo = 'quiz'))
-                  -- Carrossel do Roy no projeto Davi Queiroz é com o serviço dele (scripts/roy/servico.py);
-                  -- nos outros projetos (o serviço ainda é só do Davi, 15/10) tudo do Roy vem por aqui.
-                  AND NOT (lower(m.nome) = 'roy' AND coalesce(a2.tipo, '') NOT IN ('pagina', 'quiz')
-                           AND a2.cliente_id = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f')
+                  AND """ + _quem_faz('a2') + ("" if sistema else " AND coalesce(a2.tipo, '') <> 'programacao'") + """
                   AND NOT (a2.id = ANY(%s::uuid[]))
                   AND NOT (m.id = ANY(%s::uuid[]))
                 ORDER BY a2.created_at LIMIT 1 FOR UPDATE OF a2 SKIP LOCKED)
-            RETURNING a.id, a.responsavel_id""", (sorted(EXECUTORES), list(ignorar), list(ocupados)))
+            RETURNING a.id, a.responsavel_id""", (list(ignorar), list(ocupados)))
         r = q.fetchone()
         c.commit()
         if com_membro:
@@ -78,11 +95,8 @@ def reenfileirar():
                             observacao = 'Retomada: o ouvinte reiniciou no meio do trabalho.'
                       FROM public.membros m
                      WHERE m.id = a.responsavel_id AND a.situacao = 'andamento' AND NOT a.concluida AND a.deleted_at IS NULL
-                       AND m.eh_ia AND (lower(m.nome) = ANY(%s) OR m.autonomo)
-                       AND coalesce(a.tipo, '') NOT IN ('programacao', 'edicao')
-                       AND NOT (lower(m.nome) = 'roy' AND coalesce(a.tipo, '') NOT IN ('pagina', 'quiz')
-                                AND a.cliente_id = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f')
-                    RETURNING a.id""", (sorted(EXECUTORES),))
+                       AND """ + _quem_faz('a') + """
+                    RETURNING a.id""")
         n = len(q.fetchall())
         c.commit()
         return n
@@ -238,11 +252,11 @@ def erro(aid, motivo):
     print('ERRO_REGISTRADO')
 
 
-def situacao(aid):
+def situacao(aid, campo='situacao'):
     c = connect()
     try:
         q = c.cursor()
-        q.execute("SELECT situacao FROM atividades WHERE id = %s", (aid,))
+        q.execute(f"SELECT {'tipo' if campo == 'tipo' else 'situacao'} FROM atividades WHERE id = %s", (aid,))
         r = q.fetchone()
         return r[0] if r else None
     finally:

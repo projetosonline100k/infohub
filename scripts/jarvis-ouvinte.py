@@ -459,9 +459,74 @@ _trabalhando = {}            # tarefa -> funcionário
 _trava_execucoes = threading.Lock()
 
 
+PROMPT_SISTEMA = """Você é um funcionário IA da empresa de um projeto no Infopro Hub. O Davi te passou uma tarefa que MUDA O PRÓPRIO SISTEMA (o Infopro Hub: telas, banco, scripts, a sua rotina). Você vai IMPLEMENTAR sozinho, agora, e entregar para ele aprovar. Ele não vê este terminal.
+
+Tarefa: {aid}
+Você está num worktree só desta tarefa: {obra} (ramo {ramo}). Trabalhe SÓ aqui (não mexa em {raiz}); o ouvinte junta no sistema quando você terminar.
+
+1. `python3 scripts/empresa/execucao.py contexto {aid}` (o combinado, quem você é, seu manual), o CLAUDE.md, a memória do projeto e o seu manual em docs/agentes/ (se tiver).
+   Progresso (o Davi acompanha numa barra), a cada etapa:
+   python3 scripts/empresa/execucao.py progresso {aid} <0-100> "<o que está fazendo, curto>" <minutos que ainda faltam>
+2. Planeje a menor mudança que resolve o combinado. Implemente seguindo o jeito do código ao redor, em português. Banco só por migração em supabase/migrations (confira o número em supabase_migrations.schema_migrations, vários chats migram em paralelo) + teste em supabase/tests + script apply (rode --testar antes e depois aplique). Edge function: pode publicar (npx supabase@latest functions deploy …) se o combinado pedir.
+3. Confira: `npx tsc --noEmit -p tsconfig.app.json` (sem erros NOVOS), `npx eslint` nos arquivos mudados, `node --test tests/*.test.mjs`.
+4. Commit no ramo (git add só dos seus arquivos; mensagem em português "feat:"/"fix:", terminando com "Co-Authored-By: <seu nome> (IA do Infopro) <noreply@anthropic.com>").
+5. Entregue um BRIEFING pro Davi (português simples, sem jargão), com as seções: O que mudou / Onde fica no app / Como usar / O que testar agora / Limites e próximos passos:
+   python3 scripts/empresa/execucao.py entregar {aid} "<título>" "<resumo de 1 linha>" <<'FIM'
+   <html: h2, h3, p, ul, ol, li, strong, em>
+   FIM
+   Se depender do Davi (chave, login, decisão) ou não for possível: faça o que dá, commit, e rode
+   python3 scripts/empresa/execucao.py erro {aid} "<o que falta, em 1 frase>"
+Regras: sem git push, não reinicie serviços nem reinstale o app (diga no briefing se precisar), não publique posts nem mande mensagens. Hoje é {hoje}."""
+
+OBRAS_TAREFAS = Path.home() / ".infopro-hub" / "obras"
+
+
+def _executar_sistema(aid):
+    """Tarefa que muda o sistema: worktree próprio, como as melhorias do Pedro; junta no main ao entregar."""
+    curto = aid[:8]
+    ramo, obra = f"tarefa/{curto}", OBRAS_TAREFAS / curto
+    OBRAS_TAREFAS.mkdir(parents=True, exist_ok=True)
+    if obra.exists():
+        _git("worktree", "remove", "--force", str(obra))
+    if _git("rev-parse", "--verify", "--quiet", ramo).returncode == 0:
+        r = _git("worktree", "add", str(obra), ramo)
+    else:
+        r = _git("worktree", "add", "-b", ramo, str(obra), "main")
+    if r.returncode != 0:
+        execucao.erro(aid, f"Não consegui preparar a cópia do código: {(r.stderr or r.stdout).strip()[:200]}")
+        return
+    for nome in ("node_modules", ".env", ".env.local", ".env.migration.local"):
+        if (RAIZ / nome).exists() and not (obra / nome).exists():
+            (obra / nome).symlink_to(RAIZ / nome)
+    ok, texto = rodar_claude(PROMPT_SISTEMA.format(aid=aid, obra=obra, ramo=ramo, raiz=RAIZ, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"),
+                             minutos=90, cwd=obra, turnos=200)
+    st = execucao.situacao(aid)
+    novos = _git("rev-list", "--count", f"main..{ramo}").stdout.strip()
+    if st == "andamento":
+        execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar.")
+    elif st == "aguardando_aprovacao" and novos not in ("", "0"):
+        m = _git("merge", "--no-edit", ramo)
+        if m.returncode != 0:
+            _git("merge", "--abort")
+            execucao.erro(aid, f"Ficou pronto no ramo {ramo}, mas não deu para juntar no sistema agora (conflito com outro chat). "
+                               f"Peça ao chat geral para juntar. {(m.stderr or m.stdout).strip()[:150]}")
+            _git("worktree", "remove", "--force", str(obra))
+            return                                  # mantém o ramo
+        log("execução: juntei no main", ramo)
+    _git("worktree", "remove", "--force", str(obra))
+    if execucao.situacao(aid) == "aguardando_aprovacao":
+        _git("branch", "-D", ramo)
+
+
 def _executar(aid):
     try:
         log("execução:", aid)
+        if execucao.eh_sistema(aid):
+            _executar_sistema(aid)
+            if execucao.situacao(aid) not in ("andamento", "fila"):   # erro volta pra fila: não tenta de novo sozinho
+                _tentadas.discard(aid)
+            log("execução:", aid, execucao.situacao(aid))
+            return
         ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50)
         if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
             execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
@@ -482,7 +547,7 @@ def atender_execucao():
             if len(_trabalhando) >= MAX_EXECUCOES:
                 return
             ocupados = list(_trabalhando.values())
-        aid, membro = execucao.pegar(ignorar=_tentadas, ocupados=ocupados, com_membro=True)
+        aid, membro = execucao.pegar(ignorar=_tentadas, ocupados=ocupados, com_membro=True, sistema=True)
         if not aid:
             return
         _tentadas.add(aid)  # uma tentativa por tarefa enquanto o ouvinte estiver de pé
