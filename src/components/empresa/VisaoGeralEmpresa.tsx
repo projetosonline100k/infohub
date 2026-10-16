@@ -333,7 +333,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     <div className="space-y-5 p-4 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Visão geral</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Escritório</h1>
           <p className="text-sm text-muted-foreground">Toda a operação de conteúdo do projeto em um só lugar.</p>
         </div>
         <CanalYoutube clienteId={clienteId} />

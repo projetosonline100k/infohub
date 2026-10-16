@@ -43,6 +43,9 @@ interface Produto {
   ideias?: string;
 }
 
+// Guias do Creator (Vertical, Youtube, Brainstorm): o menu abre na última usada.
+const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm"];
+const ultimaGuiaCreator = () => { try { return localStorage.getItem("creator-guia") || "vertical"; } catch { return "vertical"; } };
 const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
   if (!id) return {};
   try { return JSON.parse(localStorage.getItem(`projeto-aba:${id}`) || "{}"); } catch { return {}; }
@@ -218,11 +221,10 @@ export default function ClienteDetalhe() {
     { id: "atividades", label: "Atividades" },
     { id: "documentos", label: "Documentos" },
   ].filter(item => item.id === "informacoes" || pode(item.id as AreaEquipe));
+  // 16/10: "Visão geral" virou "Escritório" e Brainstorm/Vertical/Youtube viraram guias do "Creator".
   const abasConteudo = [
-    { id: "visao-geral", label: "Visão geral" },
-    { id: "brainstorm", label: "Brainstorm" },
-    { id: "vertical", label: "Vertical" },
-    { id: "youtube", label: "Youtube" },
+    { id: "visao-geral", label: "Escritório" },
+    { id: "creator", label: "Creator" },
     { id: "cronograma", label: "Cronograma" },
     { id: "conhecimento", label: "Fonte de conhecimento" },
     { id: "quiz", label: "Quiz" },
@@ -345,10 +347,10 @@ export default function ClienteDetalhe() {
                         type="button"
                         onClick={() => {
                           setAbaAtiva("conteudo");
-                          setSubAbaConteudo(item.id);
+                          setSubAbaConteudo(item.id === "creator" ? ultimaGuiaCreator() : item.id);
                         }}
                         className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-                          abaAtiva === "conteudo" && subAbaConteudo === item.id
+                          abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "creator" && GUIAS_CREATOR.includes(subAbaConteudo)))
                             ? "bg-primary/20 text-primary font-medium"
                             : "text-muted-foreground hover:bg-muted hover:text-foreground"
                         }`}
