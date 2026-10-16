@@ -252,6 +252,17 @@ def erro(aid, motivo):
     print('ERRO_REGISTRADO')
 
 
+def nota(aid, texto):
+    """Aviso na tarefa sem mudar a situação (ex.: entregue, mas não deu para juntar no sistema)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE atividades SET observacao = %s WHERE id = %s", (texto[:600], aid))
+        c.commit()
+    finally:
+        c.close()
+
+
 def situacao(aid, campo='situacao'):
     c = connect()
     try:

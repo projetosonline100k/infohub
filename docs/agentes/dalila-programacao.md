@@ -37,7 +37,7 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 
 ## Regras da programação (do manual do Roy, itens 1, 6, 7 e 9)
 
-- **Ritmo:** um post por dia, às **10h de Brasília**.
+- **Ritmo (Davi, 16/10/2026):** 1 carrossel por dia às **10h** e 1 reel por dia às **18h** (Brasília). Cada tipo conta à parte: o reel não toma o dia do carrossel. Segundo reel no mesmo dia: **12h** (por enquanto o Davi quer 1 reel por dia). Lógica em `src/lib/empresa/programacao.ts` (`HORA_REEL`, `horaDoReel`) e `ocupaDia(tipo)`.
 - **Antes de publicar, conferir:**
   - todas as imagens estão no Drive e no Storage;
   - a quantidade de páginas enviada à Meta é igual à revisada;
@@ -113,7 +113,7 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
    - até 5 tentativas; depois, status `erro` com o motivo em `mensagem`.
 3. **O Davi** clica na tarefa em "Precisa de você". Abre `ProgramarReel.tsx`, com o vídeo, a legenda editável (até 2.200 caracteres), o calendário, o dia e a hora.
    - **Escolher a data e confirmar a legenda é o ok dele.**
-   - A sugestão é o primeiro dia livre às 10h, **contando carrossel e reel juntos** (`ocupaDia`).
+   - A sugestão é o primeiro dia sem reel às 18h (desde 16/10 carrossel e reel contam separados, `ocupaDia("reel")`); escolher um dia que já tem reel muda a hora para 12h.
    - RPCs: `programar_reel`, `desprogramar_reel`, `cancelar_reel`.
 4. **A nuvem publica:** a mesma edge `dalila-publicar`, a cada minuto, trata um carrossel e um reel (`dalila_proximo_reel`, trava de 4 min).
    - Passos: valida o perfil, confere duplicata (REELS com a mesma legenda), cria o container `media_type=REELS` com `video_url` e `share_to_feed=true`, espera FINISHED (vídeo pode levar alguns minutos; a próxima chamada continua), confere duplicata de novo, conta a tentativa, faz `media_publish` e grava o permalink.
@@ -139,7 +139,7 @@ Mesmo esquema do reel; setup e passo a passo em `docs/YOUTUBE.md`.
 ## Pendências
 
 - Botão para desmarcar ou remarcar um carrossel já programado (a RPC `desprogramar_carrossel` existe).
-- Lista dos carrosséis programados na Visão geral.
+- ~~Lista dos carrosséis programados na Visão geral~~ feita; desde 16/10 os reels programados também aparecem em "Programados" (Visão geral) e no Cronograma, com capa (primeiro quadro do vídeo), dia e hora.
 
 ## Onde está o código (14/10/2026)
 

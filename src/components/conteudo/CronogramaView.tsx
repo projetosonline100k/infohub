@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Clapperboard,
   Clock,
   FileText,
   GripVertical,
@@ -31,6 +32,7 @@ import {
   Youtube,
 } from "lucide-react";
 import { toast } from "sonner";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -123,17 +125,21 @@ const parseDraggableId = (draggableId: string) => {
   return { platform, id };
 };
 
-// Carrosséis do Roy com data (a Dalila publica na nuvem): aparecem no dia,
-// sem arrastar — mudar a data é pela tarefa "Escolher data" (é o ok do Davi).
-interface CarrosselNoCronograma {
-  id: string; numero: number | null; tema: string; status: string;
-  programado_para: string | null; publicado_em: string | null; permalink: string | null; paginas: string[] | null;
+// Carrosséis do Roy e reels do Danilo com data (a Dalila publica na nuvem):
+// aparecem no dia, sem arrastar — mudar a data é pela tarefa "Escolher data" (é o ok do Davi).
+interface PostDalila {
+  id: string; tipo: "carrossel" | "reel"; titulo: string; status: string;
+  quando: string; permalink: string | null; capa: string | null; video: string | null;
 }
-const quandoDoCarrossel = (c: CarrosselNoCronograma) => c.publicado_em ?? c.programado_para;
+interface PostDalilaBanco {
+  id: string; status: string; programado_para: string | null; publicado_em: string | null; permalink: string | null;
+  numero?: number | null; tema?: string; paginas?: string[] | null; titulo?: string; video_url?: string | null;
+}
+const STATUS_COM_DATA = ["programado", "publicando", "publicado"];
 
 export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const [videos, setVideos] = useState<ScheduledVideo[]>([]);
-  const [carrosseis, setCarrosseis] = useState<CarrosselNoCronograma[]>([]);
+  const [carrosseis, setCarrosseis] = useState<PostDalila[]>([]);
   const [posts, setPosts] = useState<PostInstagram[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("mes");
@@ -194,10 +200,25 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
     }));
 
     setVideos([...verticalVideos, ...youtubeVideos]);
-    const { data: cars } = await supabase.from("carrosseis")
-      .select("id, numero, tema, status, programado_para, publicado_em, permalink, paginas")
-      .eq("cliente_id", clienteId).in("status", ["programado", "publicando", "publicado"]);
-    setCarrosseis(((cars || []) as unknown as CarrosselNoCronograma[]).filter((c) => quandoDoCarrossel(c)));
+    const [{ data: cars }, { data: reels }] = await Promise.all([
+      supabase.from("carrosseis")
+        .select("id, numero, tema, status, programado_para, publicado_em, permalink, paginas")
+        .eq("cliente_id", clienteId).in("status", STATUS_COM_DATA),
+      // `reels` ainda não está nos tipos gerados.
+      (supabase as unknown as SupabaseClient).from("reels")
+        .select("id, titulo, status, programado_para, publicado_em, permalink, video_url")
+        .eq("cliente_id", clienteId).in("status", STATUS_COM_DATA),
+    ]);
+    const posts: PostDalila[] = [];
+    for (const c of (cars || []) as unknown as PostDalilaBanco[]) {
+      const quando = c.publicado_em ?? c.programado_para;
+      if (quando) posts.push({ id: c.id, tipo: "carrossel", titulo: `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}`, status: c.status, quando, permalink: c.permalink, capa: c.paginas?.[0] ?? null, video: null });
+    }
+    for (const r of (reels || []) as PostDalilaBanco[]) {
+      const quando = r.publicado_em ?? r.programado_para;
+      if (quando) posts.push({ id: r.id, tipo: "reel", titulo: `Reel · ${r.titulo}`, status: r.status, quando, permalink: r.permalink, capa: null, video: r.video_url ?? null });
+    }
+    setCarrosseis(posts.sort((a, b) => a.quando.localeCompare(b.quando)));
     setLoading(false);
   };
 
@@ -248,26 +269,26 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   );
   const tituloDoCard = (post: PostInstagram) => {
     if (post.video_vertical_id) return videos.find((v) => v.platform === "vertical" && v.id === post.video_vertical_id)?.titulo ?? null;
-    const c = post.carrossel_id ? carrosseis.find((item) => item.id === post.carrossel_id) : null;
-    return c ? `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}` : null;
+    return post.carrossel_id ? carrosseis.find((item) => item.id === post.carrossel_id)?.titulo ?? null : null;
   };
 
-  const getCarrosseisForDay = (day: Date) =>
-    carrosseis.filter((c) => isSameDay(new Date(quandoDoCarrossel(c)!), day))
-      .sort((a, b) => quandoDoCarrossel(a)!.localeCompare(quandoDoCarrossel(b)!));
+  const getCarrosseisForDay = (day: Date) => carrosseis.filter((c) => isSameDay(new Date(c.quando), day));
 
-  const renderCarrossel = (c: CarrosselNoCronograma) => {
+  const renderCarrossel = (c: PostDalila) => {
     const publicado = c.status === "publicado";
-    const quando = new Date(quandoDoCarrossel(c)!);
+    const quando = new Date(c.quando);
     return (
       <button key={c.id} type="button" disabled={!c.permalink}
         onClick={() => c.permalink && window.open(c.permalink, "_blank")}
         title={publicado ? "Abrir o post" : "A Dalila publica sozinha neste horário"}
         className={cn("flex w-full items-center gap-1.5 rounded-md border p-1 text-left text-[11px] leading-tight",
           publicado ? "border-emerald-600/40 bg-emerald-600/10 hover:bg-emerald-600/20" : "border-amber-500/50 bg-amber-500/10")}>
-        {c.paginas?.[0] && <img src={c.paginas[0]} alt="" className="h-9 w-7 shrink-0 rounded-sm object-cover" loading="lazy" />}
+        {c.capa && <img src={c.capa} alt="" className="h-9 w-7 shrink-0 rounded-sm object-cover" loading="lazy" />}
+        {c.tipo === "reel" && (c.video
+          ? <video src={`${c.video}#t=0.5`} muted playsInline preload="metadata" className="h-9 w-7 shrink-0 rounded-sm bg-black object-cover" />
+          : <span className="flex h-9 w-7 shrink-0 items-center justify-center rounded-sm bg-violet-500/20"><Clapperboard className="h-3.5 w-3.5 text-violet-700 dark:text-violet-300" /></span>)}
         <span className="min-w-0">
-          <span className="line-clamp-2 font-medium">Carrossel {String(c.numero ?? "").padStart(3, "0")} · {c.tema}</span>
+          <span className="line-clamp-2 font-medium">{c.titulo}</span>
           <span className={cn("block", publicado ? "text-emerald-700 dark:text-emerald-400" : "text-amber-700 dark:text-amber-400")}>
             {publicado ? `Publicado ${format(quando, "HH:mm")}` : c.status === "publicando" ? "Publicando…" : `Programado ${format(quando, "HH:mm")}`}
           </span>
@@ -590,11 +611,11 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
       <Droppable droppableId="scheduled-list" isDropDisabled>
         {(provided) => (
           <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3">
-            {[...carrosseis].sort((a, b) => quandoDoCarrossel(a)!.localeCompare(quandoDoCarrossel(b)!)).map((c) => (
+            {carrosseis.map((c) => (
               <div key={c.id} className="rounded-lg border bg-card p-3">
                 <div className="mb-2 flex items-center gap-2 text-sm text-muted-foreground">
                   <Calendar className="h-4 w-4" />
-                  {format(new Date(quandoDoCarrossel(c)!), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                  {format(new Date(c.quando), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
                 </div>
                 {renderCarrossel(c)}
               </div>
