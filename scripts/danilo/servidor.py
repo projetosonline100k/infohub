@@ -76,11 +76,34 @@ def pasta_de(id_):
 
 
 # ---------------------------------------------------------------- tarefas longas
+def andamento(id_, texto):
+    """progresso(fração) do motor → mensagem "texto 45% · falta ~1 min" (o
+    editor mostra ao vivo), no máximo a cada 3 s."""
+    import time
+    inicio, ultimo = time.time(), [0.0]
+
+    def cb(f):
+        agora = time.time()
+        if agora - ultimo[0] < 3 or f <= 0:
+            return
+        ultimo[0] = agora
+        falta = (agora - inicio) * (1 - f) / f
+        resto = f"{int(falta)} s" if falta < 90 else f"{round(falta / 60)} min"
+        db("UPDATE public.edicoes_video SET mensagem = %s, atualizado_em = now() WHERE id = %s",
+           (f"{texto} {int(f * 100)}% · falta ~{resto}", id_))
+    return cb
+
+
 def gerar_previa(id_):
     with _fila:
         try:
+            if not (pasta_de(id_) / "proxy.mp4").exists():
+                status(id_, "renderizando", "Preparando a cópia leve do vídeo…")
+                while pasta_de(id_) in _gerando_proxy:     # o player já está gerando: espera
+                    __import__("time").sleep(2)
+                fazer_proxy(pasta_de(id_))
             status(id_, "renderizando", "Gerando a nova versão…")
-            _, dur = motor.renderizar(pasta_de(id_), previa=True)
+            _, dur = motor.renderizar(pasta_de(id_), previa=True, progresso=andamento(id_, "Gerando a nova versão…"))
             db("UPDATE public.edicoes_video SET status = 'revisar', mensagem = null, duracao = %s, versao = versao + 1, "
                "atualizado_em = now() WHERE id = %s", (round(dur, 1), id_))
             log("prévia ok", id_)
@@ -94,7 +117,7 @@ def aprovar(id_):
         try:
             pasta = pasta_de(id_)
             status(id_, "aprovando", "Gerando a versão final em Full HD…")
-            final, dur = motor.renderizar(pasta, previa=False)
+            final, dur = motor.renderizar(pasta, previa=False, progresso=andamento(id_, "Gerando o Full HD…"))
             entrega = json.loads((pasta / "entrega.json").read_text()) if (pasta / "entrega.json").exists() else {}
             destino_txt = None
             if entrega.get("destino_dir") and Path(entrega["destino_dir"]).is_dir():
@@ -126,6 +149,25 @@ def aprovar(id_):
 _gerando_proxy = set()
 
 
+def fazer_proxy(pasta):
+    """Gera o proxy.mp4 (540×960, quadro-chave a cada 1/3 s). Também é a fonte
+    da prévia montada pelo motor. Decodifica o bruto no hardware (VideoToolbox)."""
+    import subprocess
+    destino = pasta / "proxy.mp4"
+    if destino.exists():
+        return destino
+    projeto = json.loads((pasta / "projeto.json").read_text())
+    tmp = pasta / "proxy.mp4.tmp"
+    subprocess.run([motor.FF, "-hide_banner", "-loglevel", "error", "-y", "-hwaccel", "videotoolbox", "-i", projeto["fonte"],
+                    "-map", "0:v:0", "-map", "0:a:0?",
+                    "-vf", "scale=540:960:force_original_aspect_ratio=increase,crop=540:960,format=yuv420p",
+                    "-r", "30", "-fps_mode", "cfr",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "10", "-bf", "0",
+                    "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-movflags", "+faststart", "-f", "mp4", str(tmp)], check=True)
+    tmp.replace(destino)
+    return destino
+
+
 def proxy(pasta):
     """Cópia leve do bruto só pro mini editor tocar liso (como o proxy do
     Premiere): 540×960 H.264 com quadro-chave a cada 1/3 s, então pular os
@@ -137,19 +179,10 @@ def proxy(pasta):
         return {"pronto": True, "arquivo": "proxy.mp4"}
     if pasta not in _gerando_proxy:
         _gerando_proxy.add(pasta)
-        projeto = json.loads((pasta / "projeto.json").read_text())
 
         def gerar():
-            import subprocess
-            tmp = pasta / "proxy.mp4.tmp"
             try:
-                subprocess.run([motor.FF, "-hide_banner", "-loglevel", "error", "-y", "-i", projeto["fonte"],
-                                "-map", "0:v:0", "-map", "0:a:0?",
-                                "-vf", "scale=540:960:force_original_aspect_ratio=increase,crop=540:960,format=yuv420p",
-                                "-r", "30", "-fps_mode", "cfr",
-                                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "10", "-bf", "0",
-                                "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-movflags", "+faststart", "-f", "mp4", str(tmp)], check=True)
-                tmp.replace(destino)
+                fazer_proxy(pasta)
             except Exception:
                 traceback.print_exc()
             finally:

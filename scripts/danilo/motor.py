@@ -208,8 +208,11 @@ def mascara(w, h, destino, raio=34):
 
 
 # ---------------------------------------------------------------- montagem
-def renderizar(pasta, previa=False):
-    """previa=True: monta tudo em 540×960 (≈4× mais rápido) pro mini editor."""
+def renderizar(pasta, previa=False, progresso=None):
+    """previa=True: monta tudo em 540×960 a partir do proxy.mp4 (540p, o mesmo do
+    player) — decodificar o bruto 4K HEVC era o que deixava a prévia lenta.
+    O final lê o bruto com decodificação de hardware (VideoToolbox).
+    progresso(fração 0–1) é chamado durante a montagem."""
     pasta = Path(pasta)
     k = 0.5 if previa else 1.0
     LW, LH = int(LARG * k), int(ALT * k)
@@ -219,7 +222,11 @@ def renderizar(pasta, previa=False):
     dur = mapa.duracao
     gerar_ass(projeto, mapa, pasta / "_tmp_legendas.ass")
 
-    args = [FF, "-hide_banner", "-loglevel", "error", "-y", "-i", projeto["fonte"]]
+    proxy = pasta / "proxy.mp4"
+    if previa and proxy.exists():
+        args = [FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(proxy)]
+    else:
+        args = [FF, "-hide_banner", "-loglevel", "error", "-y", "-hwaccel", "videotoolbox", "-i", projeto["fonte"]]
     fc = []
     for i, (a, b) in enumerate(segs):
         d = b - a
@@ -244,8 +251,9 @@ def renderizar(pasta, previa=False):
         w, h, x, y = (int(m[c] * k) for c in ("w", "h", "x", "y"))
         if m["tipo"] == "imagem":
             png, msk, (iw, ih) = moldura_imagem(m["arquivo"], w, h, pasta, raio=int(34 * k))
-            args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.2f}", "-i", png,
-                     "-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.2f}", "-i", msk]
+            fim = f"{min(dur, b + 0.5):.2f}"   # a imagem só existe até sair da tela
+            args += ["-loop", "1", "-framerate", str(FPS), "-t", fim, "-i", png,
+                     "-loop", "1", "-framerate", str(FPS), "-t", fim, "-i", msk]
             zexp = f"(1+0.10*min(max((t-{a:.2f})/{b - a:.2f},0),1))"   # zoom lento dentro da moldura
             fc.append(f"[{entrada}:v]format=rgb24,scale=w='{iw}*{zexp}':h='{ih}*{zexp}':eval=frame,"
                       f"crop={w}:{h}:(iw-{w})/2:(ih-{h})/2,format=rgba[img{n}]")
@@ -278,8 +286,18 @@ def renderizar(pasta, previa=False):
     qualidade = ["-preset", "ultrafast", "-crf", "28"] if previa else ["-preset", "medium", "-crf", "21"]
     args += ["-filter_complex_script", str(pasta / "_tmp_filtro.txt"), "-map", "[vout]", "-map", "[aout]",
              "-c:v", "libx264", *qualidade, "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS),
-             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{dur:.2f}", str(temp)]
-    subprocess.run(args, check=True)
+             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{dur:.2f}",
+             "-progress", "pipe:1", "-nostats", str(temp)]
+    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    for linha in proc.stdout:
+        if progresso and linha.startswith("out_time_us=") and linha[12:].strip().isdigit():
+            try:
+                progresso(min(1.0, int(linha[12:]) / 1e6 / max(dur, 0.1)))
+            except Exception:
+                pass
+    erro = proc.stderr.read()
+    if proc.wait() != 0:
+        raise RuntimeError(f"ffmpeg falhou: {erro.strip()[-300:]}")
     temp.replace(saida)   # troca só no fim: o player nunca pega arquivo pela metade
     return saida, dur
 
