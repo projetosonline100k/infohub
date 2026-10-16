@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Loader2, Mic, Plus, Square, User } from "lucide-react";
+import { Bot, Loader2, Mic, Square, User } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -19,11 +19,6 @@ import { BonecoMesa, CABELOS, CAMISAS, CORES_CABELO, PELES, registrarVisuais, vi
 // (conversa → confirma → ela faz e entrega), com o manual escrito aqui.
 const db = supabase as unknown as SupabaseClient;   // autonomo/manual/visual ainda fora dos tipos gerados
 
-const CORES_SETOR: { valor: string; cor: string; nome: string }[] = [
-  { valor: "amber", cor: "#f59e0b", nome: "Âmbar" }, { valor: "violet", cor: "#8b5cf6", nome: "Roxo" },
-  { valor: "blue", cor: "#0ea5e9", nome: "Azul" }, { valor: "emerald", cor: "#10b981", nome: "Verde" },
-  { valor: "rose", cor: "#f43f5e", nome: "Rosa" },
-];
 const ROTULO_CABELO: Record<Cabelo, string> = { curto: "Curto", cacheado: "Cacheado", longo: "Longo", raspado: "Raspado" };
 
 export interface MembroParaEditar {
@@ -41,17 +36,21 @@ export function NovoFuncionario({ clienteId, setores, aberto, editando, onFechar
   const [funcao, setFuncao] = useState("");
   const [manual, setManual] = useState("");
   const [setorId, setSetorId] = useState<string>("");
-  const [novoSetor, setNovoSetor] = useState("");
-  const [corSetor, setCorSetor] = useState("emerald");
   const [visual, setVisual] = useState<Visual>(visualDe("novo"));
   const [salvando, setSalvando] = useState(false);
 
+  // Preenche só ao ABRIR (ou ao trocar quem está sendo editado). Antes, a Visão geral
+  // recarregava a cada minuto, a lista de escritórios mudava e apagava o que o Davi digitava (15/10).
+  const preenchidoPara = useRef<string | null>(null);
   useEffect(() => {
-    if (!aberto) return;
+    if (!aberto) { preenchidoPara.current = null; return; }
+    const chave = editando?.id ?? "novo";
+    if (preenchidoPara.current === chave) return;
+    preenchidoPara.current = chave;
     const e = editando;
     setNome(e?.nome ?? ""); setIa(e?.eh_ia ?? true); setAutonomo(e?.autonomo ?? true);
     setFuncao(e?.funcao ?? ""); setManual(e?.manual ?? "");
-    setSetorId(e?.setor_id ?? setores[0]?.id ?? "novo"); setNovoSetor(""); setCorSetor("emerald");
+    setSetorId(e?.setor_id ?? setores[0]?.id ?? "");
     setVisual(e?.visual ?? (e ? visualDe(e.nome) : { pele: PELES[1], cabelo: "curto", corCabelo: CORES_CABELO[0], camisa: CAMISAS[0] }));
   }, [aberto, editando, setores]);
 
@@ -59,15 +58,10 @@ export function NovoFuncionario({ clienteId, setores, aberto, editando, onFechar
   const mudarVisual = (p: Partial<Visual>) => setVisual((v) => ({ ...v, ...p }));
 
   const salvar = async () => {
-    if (!nome.trim() || (setorId === "novo" && !novoSetor.trim())) return;
+    if (!nome.trim() || !setorId) return;
     setSalvando(true);
     try {
-      let setor = setorId;
-      if (setorId === "novo") {
-        setor = crypto.randomUUID();
-        const { error } = await db.from("setores").insert({ id: setor, cliente_id: clienteId, nome: novoSetor.trim(), cor: corSetor, ordem: setores.length + 1 });
-        if (error) throw error;
-      }
+      const setor = setorId;
       const dados = {
         nome: nome.trim(), funcao: funcao.trim() ? `${funcao.trim()}${ia && !/\(IA\)/.test(funcao) ? " (IA)" : ""}` : (ia ? "Funcionário (IA)" : null),
         eh_ia: ia, autonomo: ia && autonomo, manual: manual.trim() || null, visual, setor_id: setor,
@@ -105,7 +99,7 @@ export function NovoFuncionario({ clienteId, setores, aberto, editando, onFechar
       <DialogContent className="max-h-[92vh] max-w-3xl grid-cols-[minmax(0,1fr)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{editando ? `Editar ${editando.nome}` : "Novo funcionário"}</DialogTitle>
-          <DialogDescription>Crie o personagem, diga o que ele faz e em que escritório trabalha. Sendo IA que trabalha sozinha, ele já começa a pegar tarefas.</DialogDescription>
+          <DialogDescription>Crie o personagem, diga o que ele faz e escolha o escritório dele. Sendo IA que trabalha sozinha, ele já começa a pegar tarefas.</DialogDescription>
         </DialogHeader>
         <div className="grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
           {/* Prévia do boneco */}
@@ -164,19 +158,14 @@ export function NovoFuncionario({ clienteId, setores, aberto, editando, onFechar
               <span className="font-medium">Escritório (setor)</span>
               <div className="flex flex-wrap gap-1.5">
                 {setores.map((s) => <Escolha key={s.id} ativo={setorId === s.id} onClick={() => setSetorId(s.id)}>{s.nome}</Escolha>)}
-                <Escolha ativo={setorId === "novo"} onClick={() => setSetorId("novo")}><span className="flex items-center gap-1"><Plus className="h-3 w-3" />Novo escritório</span></Escolha>
               </div>
-              {setorId === "novo" && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border p-2">
-                  <Input value={novoSetor} onChange={(e) => setNovoSetor(e.target.value)} placeholder="Nome (ex.: Vendas, Diretoria)" className="h-8 max-w-xs text-sm" />
-                  <div className="flex gap-1.5">{CORES_SETOR.map((c) => <Cor key={c.valor} cor={c.cor} ativo={corSetor === c.valor} onClick={() => setCorSetor(c.valor)} />)}</div>
-                  <p className="w-full text-[11px] text-muted-foreground">Um escritório chamado "Diretoria" fica na fileira de cima do mapa; os outros, embaixo.</p>
-                </div>
+              {setores.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">Crie um escritório primeiro (botão "+ Escritório" no Mapa da operação).</p>
               )}
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={onFechar}>Cancelar</Button>
-              <Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || (setorId === "novo" && !novoSetor.trim())}>
+              <Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || !setorId}>
                 {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{editando ? "Salvar" : "Criar funcionário"}
               </Button>
             </div>

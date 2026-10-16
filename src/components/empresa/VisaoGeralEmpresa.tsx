@@ -22,6 +22,7 @@ import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
 import { RevisaoEntrega } from "./RevisaoEntrega";
 import { NovoFuncionario, type MembroParaEditar } from "./NovoFuncionario";
+import { NovoEscritorio } from "./NovoEscritorio";
 import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
@@ -111,6 +112,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [tvAberta, setTvAberta] = useState(false);
   // Criar/editar funcionário (15/10): null fechado; editando null = novo.
   const [cadastro, setCadastro] = useState<{ editando: MembroParaEditar | null } | null>(null);
+  const [escritorio, setEscritorio] = useState<{ editando: SetorResumo | null } | null>(null);
   const abrirCadastro = async (id: string) => {
     const { data } = await (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, eh_ia, setor_id, autonomo, manual, visual").eq("id", id).maybeSingle();
     if (data) setCadastro({ editando: data as MembroParaEditar });
@@ -376,8 +378,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           <Users className="h-5 w-5 text-primary" />
           <h2 className="font-semibold">Mapa da operação</h2>
           <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
-          <button type="button" onClick={() => setCadastro({ editando: null })}
-            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+          <button type="button" onClick={() => setEscritorio({ editando: null })}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
+          <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
+            title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
           <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
               <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
@@ -386,9 +391,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </div>
         {setores.length === 0 ? (
           <div className="space-y-3 py-8 text-center">
-            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte a equipe: crie cada funcionário, diga o que ele faz e escolha o escritório.</p>
-            <button type="button" onClick={() => setCadastro({ editando: null })}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />Criar o primeiro funcionário</button>
+            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
+            <button type="button" onClick={() => setEscritorio({ editando: null })}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
           </div>
         ) : (
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
@@ -425,6 +430,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}
         onFechar={() => setMembroAberto(null)} onMudou={() => { void carregar(); }}
         onEditar={membroAberto && !ehCoordenador(membroAberto) ? () => void abrirCadastro(membroAberto.id) : undefined} />
+      <NovoEscritorio clienteId={clienteId} setores={setores} aberto={!!escritorio} editando={escritorio?.editando ?? null}
+        onFechar={() => setEscritorio(null)} onCriado={() => void carregar()} />
       <NovoFuncionario clienteId={clienteId} setores={setores} aberto={!!cadastro} editando={cadastro?.editando ?? null}
         onFechar={() => setCadastro(null)} onCriado={() => { setMembroAberto(null); void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
