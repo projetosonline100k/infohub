@@ -19,6 +19,7 @@ import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
 import { ProgramarCarrossel } from "./ProgramarCarrossel";
 import { ProgramarReel } from "./ProgramarReel";
+import { CanalYoutube } from "./CanalYoutube";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
 import { RevisaoEntrega } from "./RevisaoEntrega";
@@ -274,9 +275,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
   return (
     <div className="space-y-5 p-4 sm:p-6">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">Visão geral</h1>
-        <p className="text-sm text-muted-foreground">Toda a operação de conteúdo do projeto em um só lugar.</p>
+      <header className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Visão geral</h1>
+          <p className="text-sm text-muted-foreground">Toda a operação de conteúdo do projeto em um só lugar.</p>
+        </div>
+        <CanalYoutube clienteId={clienteId} />
       </header>
 
       {offlineDesde && (

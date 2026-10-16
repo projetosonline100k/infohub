@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Clapperboard, Loader2 } from "lucide-react";
+import { Clapperboard, Loader2, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,12 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { HORA_PADRAO, diaLocal, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
+import { LIMITE_DURACAO_SHORT, LIMITE_TITULO_SHORT, problemaNoTitulo, tituloDoShort } from "@/lib/empresa/youtube";
 import { CalendarioPosts, SemInstagram, carregarAgenda, instagramDoProjeto, ocupaDia, type ItemAgenda } from "./ProgramarCarrossel";
+import { conectarYoutube, youtubeDoProjeto } from "./CanalYoutube";
 
 // "Escolher data do reel" (tarefa do Davi, tipo 'agendar_reel'): o Danilo
 // editou, o Davi aprovou, a Dalila preparou o vídeo e sugeriu a legenda. Aqui
 // ele assiste, ajusta a legenda e escolhe dia/hora — isso é o ok dele; a
 // Dalila publica sozinha na nuvem (edge dalila-publicar), no Instagram do projeto.
+// Com o canal do YouTube do projeto conectado, ele marca "Também no YouTube" e
+// o mesmo vídeo sai como Short na mesma hora (edge youtube).
 const db = supabase as unknown as SupabaseClient;
 const LIMITE_LEGENDA = 2200;
 
@@ -29,12 +33,19 @@ interface ReelParaProgramar {
   video_url: string | null;
   duracao: number | null;
   programado_para: string | null;
+  yt_publicar: boolean;
+  yt_titulo: string | null;
+  yt_status: string | null;
+  yt_url: string | null;
 }
 
 export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null; onFechar: () => void }) {
   const [reel, setReel] = useState<ReelParaProgramar | null>(null);
   const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
   const [instagram, setInstagram] = useState<string | null>(null);
+  const [canal, setCanal] = useState<string | null>(null);
+  const [noYoutube, setNoYoutube] = useState(false);
+  const [tituloYt, setTituloYt] = useState("");
   const [legenda, setLegenda] = useState("");
   const [data, setData] = useState("");
   const [hora, setHora] = useState(HORA_PADRAO);
@@ -46,11 +57,16 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
     setCarregando(true);
     void (async () => {
       const { data: r } = await db.from("reels")
-        .select("id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para")
+        .select("id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para, yt_publicar, yt_titulo, yt_status, yt_url")
         .eq("tarefa_data_id", tarefaId).maybeSingle();
       const lista = r ? await carregarAgenda(r.cliente_id, r.id) : [];
       setAgenda(lista);
       setInstagram(r ? await instagramDoProjeto(r.cliente_id) : null);
+      const c = r ? await youtubeDoProjeto(r.cliente_id) : null;
+      setCanal(c);
+      // Com canal ligado, o padrão é ir junto para o YouTube (o Davi desmarca se não quiser).
+      setNoYoutube(!!c && !r?.yt_url && (r?.yt_status ? r.yt_publicar : true));
+      setTituloYt(r?.yt_titulo ?? tituloDoShort(r?.titulo ?? ""));
       setReel((r as ReelParaProgramar) ?? null);
       setLegenda(r?.legenda ?? "");
       if (r?.programado_para) {
@@ -71,14 +87,20 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
     ?? (!legenda.trim() ? "Escreva a legenda." : legenda.length > LIMITE_LEGENDA ? `A legenda passa de ${LIMITE_LEGENDA} caracteres.` : null);
   const naoPublicou = reel?.mensagem?.startsWith("Não publicou") ? reel.mensagem : null;
   const pronto = !!reel?.video_url;
+  const shortJaSaiu = !!reel?.yt_url;
+  const problemaYt = noYoutube && canal && !shortJaSaiu ? problemaNoTitulo(tituloYt) : null;
 
   const programar = async () => {
-    if (!reel || !quando || problema || !instagram || !pronto) return;
+    if (!reel || !quando || problema || problemaYt || !instagram || !pronto) return;
     setSalvando(true);
-    const { error } = await db.rpc("programar_reel", { p_reel: reel.id, p_quando: quando.toISOString(), p_legenda: legenda });
+    const youtube = noYoutube && !!canal && !shortJaSaiu;
+    const { error } = await db.rpc("programar_reel", {
+      p_reel: reel.id, p_quando: quando.toISOString(), p_legenda: legenda,
+      p_youtube: youtube, p_yt_titulo: youtube ? tituloYt.trim() : null,
+    });
     setSalvando(false);
     if (error) { toast.error(error.message); return; }
-    toast.success(`Programado: a Dalila publica o reel ${format(quando, "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}.`);
+    toast.success(`Programado: a Dalila publica o reel${youtube ? " (e o Short no YouTube)" : ""} ${format(quando, "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}.`);
     onFechar();
   };
 
@@ -128,6 +150,38 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
             </div>
             {data && ocupados.includes(data) && <p className="text-xs text-amber-600 dark:text-amber-400">Já tem um post programado neste dia (o padrão é 1 por dia, carrossel e reel juntos).</p>}
             {problema && data && <p className="text-xs text-rose-600 dark:text-rose-400">{problema}</p>}
+            <div className="space-y-2 rounded-md border p-3 text-sm">
+              {shortJaSaiu ? (
+                <p className="flex items-center gap-2 text-muted-foreground"><Youtube className="h-4 w-4 text-red-600" />
+                  O Short já está no YouTube: <a href={reel.yt_url!} target="_blank" rel="noreferrer" className="text-primary hover:underline">{reel.yt_url}</a></p>
+              ) : canal ? (
+                <>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={noYoutube} onChange={(e) => setNoYoutube(e.target.checked)} className="h-4 w-4" />
+                    <Youtube className="h-4 w-4 text-red-600" /> Também como Short no YouTube ({canal}), na mesma hora
+                  </label>
+                  {noYoutube && (
+                    <label className="block space-y-1">
+                      <span className="flex items-center justify-between text-xs text-muted-foreground">
+                        Título do Short (a descrição é a legenda acima)
+                        <span className={tituloYt.trim().length > LIMITE_TITULO_SHORT ? "text-rose-600" : ""}>{tituloYt.trim().length}/{LIMITE_TITULO_SHORT}</span>
+                      </span>
+                      <Input value={tituloYt} onChange={(e) => setTituloYt(e.target.value)} />
+                      {problemaYt && <span className="block text-xs text-rose-600 dark:text-rose-400">{problemaYt}</span>}
+                      {(reel.duracao ?? 0) > LIMITE_DURACAO_SHORT && (
+                        <span className="block text-xs text-amber-600 dark:text-amber-400">O vídeo passa de 3 min: o YouTube vai tratar como vídeo comum, não como Short.</span>
+                      )}
+                    </label>
+                  )}
+                </>
+              ) : (
+                <p className="flex flex-wrap items-center gap-2 text-muted-foreground"><Youtube className="h-4 w-4 text-red-600" />
+                  Quer este vídeo também no YouTube?
+                  <button type="button" onClick={() => void conectarYoutube(reel.cliente_id).catch((e) => toast.error((e as Error).message))}
+                    className="font-medium text-primary hover:underline">Conectar o canal do projeto</button>
+                </p>
+              )}
+            </div>
             {instagram ? (
               <p className="text-xs text-muted-foreground">
                 A Dalila publica o reel sozinha no @{instagram} neste dia e hora, mesmo com o Mac desligado. Escolher a data é o seu ok.
@@ -135,7 +189,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
             ) : <SemInstagram />}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={onFechar}>Agora não</Button>
-              <Button onClick={() => void programar()} disabled={!!problema || salvando || !instagram || !pronto}>
+              <Button onClick={() => void programar()} disabled={!!problema || !!problemaYt || salvando || !instagram || !pronto}>
                 {salvando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {quando && !problema ? `Programar para ${format(quando, "EEE, d MMM 'às' HH:mm", { locale: ptBR })}` : "Programar"}
               </Button>

@@ -122,6 +122,20 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 - Migração `20261016050000_dalila_reels`, teste `supabase/tests/dalila_reels.sql`, script `scripts/apply-dalila-reels-migration.py`.
 - **Piloto (16/10):** "4 hábitos diários que vão mudar as suas manhãs" (edição 30d92e0f) está `pronto`, com vídeo e legenda. A legenda termina com "comenta INSTALIVROS" (a automação Instalivros está ativa no @eu.davioficial). Falta o Davi escolher a data.
 
+## Shorts no YouTube (pedido do Davi, 16/10/2026; código pronto, falta aplicar)
+
+"Quero postar no YouTube, no começo vai ser Shorts, depois faremos vídeos longos. Já tenho um canal."
+Mesmo esquema do reel; setup e passo a passo em `docs/YOUTUBE.md`.
+
+- **Canal do projeto:** botão "Conectar canal do YouTube" no topo da Visão geral (e em "Escolher data do reel"). Só o dono do projeto conecta. Tabela `youtube_conexoes` (um canal por projeto, tokens criptografados), RPC `youtube_do_projeto`. Projeto sem canal não manda Short: nunca cai no canal de outro.
+- **O ok do Davi:** em `ProgramarReel` ele marca "Também como Short no YouTube" (vem marcado quando há canal) e confere o título. Título = a headline do reel (até 100 caracteres, sem < >); descrição = a legenda do Instagram. Mesmo dia e hora do reel. (O Davi ainda não confirmou o título e a descrição: perguntar.)
+- **A nuvem publica:** edge `youtube`, rota `/publicar`, job `dalila-youtube` (a cada minuto, mesma chave do Vault). Envio retomável: a sessão fica em `reels.yt_sessao`; antes de mandar de novo, pergunta ao Google até onde chegou. Tentativa contada antes de abrir cada sessão (máx. 3). Estados em `reels.yt_status`: `programado → enviando → publicado` ou `erro` (com `yt_mensagem`).
+- **Link na tarefa:** `reel_links_na_tarefa` grava "Instagram: …" e "YouTube: …" na tarefa da Dalila, sem um apagar o outro.
+- **Storage:** a cópia comprimida só sai quando o Instagram já saiu e o Short não está pendente.
+- **Privado ou público:** a documentação do Google (conferida em 16/10/2026) diz que projeto não verificado não fica mais preso ao privado e que o limite é de 100 envios por dia. O padrão é público. Se o YouTube devolver privado, a tarefa avisa "deixe público no YouTube Studio". Segredo `YOUTUBE_PRIVACIDADE` muda isso.
+- Migração `20261016121500_dalila_youtube_shorts`, teste `supabase/tests/dalila_youtube_shorts.sql`, script `scripts/apply-dalila-youtube-shorts-migration.py`, testes JS `tests/youtubeShorts.test.mjs`.
+- **Ainda não tem:** botão para tentar o Short de novo depois de um `erro`, e vídeo longo.
+
 ## Pendências
 
 - Botão para desmarcar ou remarcar um carrossel já programado (a RPC `desprogramar_carrossel` existe).

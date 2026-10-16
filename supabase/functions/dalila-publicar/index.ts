@@ -273,14 +273,20 @@ async function procurarReel(conexao: Conexao, token: string, r: Reel): Promise<s
 
 async function finalizarReel(admin: Admin, r: Reel, token: string, mediaId: string) {
   const post = await meta("GET", mediaId, token, { fields: "id,permalink,timestamp" });
-  // O original fica no Drive; a cópia comprimida sai do Storage (cota do plano gratuito).
-  if (r.video_caminho) await admin.storage.from("reels").remove([r.video_caminho]);
+  // O original fica no Drive; a cópia comprimida sai do Storage (cota do plano
+  // gratuito), menos quando o Short do YouTube ainda vai subir com ela (edge youtube).
+  const { data: yt } = await admin.from("reels").select("yt_status").eq("id", r.id).maybeSingle();
+  const shortPendente = ["programado", "enviando"].includes(yt?.yt_status ?? "");
+  if (r.video_caminho && !shortPendente) await admin.storage.from("reels").remove([r.video_caminho]);
   await soltarReel(admin, r.id, {
-    status: "publicado", ig_media_id: mediaId, permalink: post.permalink ?? null, video_url: null,
+    status: "publicado", ig_media_id: mediaId, permalink: post.permalink ?? null,
+    ...(shortPendente ? {} : { video_url: null }),
     publicado_em: post.timestamp ? new Date(post.timestamp).toISOString() : new Date().toISOString(),
     mensagem: "Reel publicado",
   });
-  if (r.atividade_id) await admin.from("atividades").update({ concluida: true, situacao: "concluida", observacao: post.permalink ?? null }).eq("id", r.atividade_id);
+  if (r.atividade_id) await admin.from("atividades").update({ concluida: true, situacao: "concluida" }).eq("id", r.atividade_id);
+  // Link do Instagram (e do YouTube, se já saiu) na tarefa da Dalila.
+  await admin.rpc("reel_links_na_tarefa", { p_reel: r.id });
   return { publicado: post.permalink };
 }
 
