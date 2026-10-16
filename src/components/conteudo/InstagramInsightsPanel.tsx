@@ -32,7 +32,7 @@ function LinhaPeriodo({ titulo, periodo }: { titulo: string; periodo: Periodo })
   );
 }
 
-export function InstagramInsightsPanel({ clienteId }: { clienteId: string }) {
+export function InstagramInsightsPanel({ clienteId, onAtualizado }: { clienteId: string; onAtualizado?: () => void }) {
   const [linhas, setLinhas] = useState<MetricaDiaria[]>([]);
   const [loading, setLoading] = useState(true);
   const [atualizando, setAtualizando] = useState(false);
@@ -54,8 +54,9 @@ export function InstagramInsightsPanel({ clienteId }: { clienteId: string }) {
     const { error: requestError } = await supabase.functions.invoke("instagram-metricas");
     if (requestError) setError("Não foi possível falar com o Instagram agora.");
     await carregar();
+    onAtualizado?.();
     setAtualizando(false);
-  }, [carregar]);
+  }, [carregar, onAtualizado]);
 
   useEffect(() => { setLoading(true); void carregar(); }, [carregar]);
 

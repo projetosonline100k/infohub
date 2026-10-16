@@ -284,6 +284,75 @@ export type Database = {
         }
         Relationships: []
       }
+      instagram_posts: {
+        Row: {
+          ig_media_id: string
+          ig_user_id: string
+          user_id: string
+          cliente_id: string | null
+          username: string | null
+          tipo: string | null
+          formato: string | null
+          legenda: string | null
+          permalink: string | null
+          publicado_em: string
+          visualizacoes: number | null
+          alcance: number | null
+          curtidas: number | null
+          comentarios: number | null
+          salvamentos: number | null
+          compartilhamentos: number | null
+          erro: string | null
+          video_vertical_id: string | null
+          carrossel_id: string | null
+          atualizado_em: string
+        }
+        Insert: {
+          ig_media_id: string
+          ig_user_id: string
+          user_id?: string
+          cliente_id?: string | null
+          username?: string | null
+          tipo?: string | null
+          formato?: string | null
+          legenda?: string | null
+          permalink?: string | null
+          publicado_em: string
+          visualizacoes?: number | null
+          alcance?: number | null
+          curtidas?: number | null
+          comentarios?: number | null
+          salvamentos?: number | null
+          compartilhamentos?: number | null
+          erro?: string | null
+          video_vertical_id?: string | null
+          carrossel_id?: string | null
+          atualizado_em?: string
+        }
+        Update: {
+          ig_media_id?: string
+          ig_user_id?: string
+          user_id?: string
+          cliente_id?: string | null
+          username?: string | null
+          tipo?: string | null
+          formato?: string | null
+          legenda?: string | null
+          permalink?: string | null
+          publicado_em?: string
+          visualizacoes?: number | null
+          alcance?: number | null
+          curtidas?: number | null
+          comentarios?: number | null
+          salvamentos?: number | null
+          compartilhamentos?: number | null
+          erro?: string | null
+          video_vertical_id?: string | null
+          carrossel_id?: string | null
+          atualizado_em?: string
+        }
+        Relationships: []
+      }
       instagram_automacao_disparos: {
         Row: {
           id: string
