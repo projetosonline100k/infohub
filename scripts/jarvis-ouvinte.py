@@ -514,8 +514,11 @@ def _executar_sistema(aid):
         m = _git("merge", "--no-edit", ramo)
         if m.returncode != 0:
             _git("merge", "--abort")
-            execucao.erro(aid, f"Ficou pronto no ramo {ramo}, mas não deu para juntar no sistema agora (conflito com outro chat). "
+            # Já entregue (aguardando aprovação): o erro() não muda nada; avisa na tarefa e no log (16/10:
+            # o "Reels em Programados" da Dalila ficou parado no ramo sem ninguém saber).
+            execucao.nota(aid, f"⚠️ Pronto no ramo {ramo}, mas não deu para juntar no sistema (conflito com trabalho de outro chat). "
                                f"Peça ao chat geral para juntar. {(m.stderr or m.stdout).strip()[:150]}")
+            log("execução: merge falhou —", ramo, (m.stderr or m.stdout).strip()[:200])
             _git("worktree", "remove", "--force", str(obra))
             return                                  # mantém o ramo
         log("execução: juntei no main", ramo)
