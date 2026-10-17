@@ -35,6 +35,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   const [ideia, setIdeia] = useState("");
   const [abertaId, setAbertaId] = useState<string | null>(null);
   const [conversaTarefa, setConversaTarefa] = useState<string | null>(null);
+  // Clicou num cartão (ou no topo da coluna): o chat vira só com quem faz aquela etapa (17/10:
+  // "se eu clicar num bloco do Leo, a mensagem é para ele, em vez de falar com os três").
+  const [foco, setFoco] = useState<{ membroId: string; peca?: Peca } | null>(null);
+  const [conversaDe, setConversaDe] = useState<Record<string, string>>({});
 
   const carregar = useCallback(async () => {
     if (!setorId) return;
@@ -70,23 +74,34 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   }, [aberto, setorId, carregar]);
 
   // A conversa do trio fica numa tarefa-âncora do escritório (criada na 1ª vez, já concluída).
+  // Cada conversa (o grupo, ou só com um deles) fica numa tarefa-âncora do escritório (criada na 1ª vez, já concluída).
+  const ancora = useCallback(async (membroId: string | null) => {
+    if (!setorId || !setor?.esteira.length) return null;
+    const marca = membroId ? `ESTEIRA_CHAT:${setorId}:${membroId}` : `ESTEIRA_CHAT:${setorId}`;
+    const { data } = await supabase.from("atividades").select("id, descricao").eq("cliente_id", clienteId).like("descricao", `${marca}%`).is("deleted_at", null).limit(5);
+    const achada = (data || []).find((a) => (a.descricao ?? "").split(/\s/)[0] === marca);
+    if (achada) return achada.id;
+    const { conclusao } = await colunasDoProjeto(clienteId);
+    const nome = membroId ? setor.esteira.length && membros.find((m) => m.id === membroId)?.nome : null;
+    const nova = await criarAtividade({ titulo: `Chat da esteira · ${setor.nome}${nome ? ` · ${nome}` : ""}`, clienteId, pastaId: null, dataAtividade: format(new Date(), "yyyy-MM-dd"), statusKey: conclusao, concluida: true, ordem: 0 });
+    await supabase.from("atividades").update({
+      responsavel_id: membroId ?? setor.esteira[0].membro_id, setor_id: setorId, situacao: "concluida", tipo: "esteira",
+      descricao: `${marca}\nConversa do Davi com ${nome ? `o ${nome}` : "o time"} da esteira (instruções de como fazer).`,
+    }).eq("id", nova.id);
+    return nova.id;
+  }, [setorId, setor, clienteId, membros]);
   useEffect(() => {
-    if (!aberto || !setorId || !setor?.esteira.length) return;
+    if (!aberto || !setor?.esteira.length) return;
     let vivo = true;
-    void (async () => {
-      const marca = `ESTEIRA_CHAT:${setorId}`;
-      const { data } = await supabase.from("atividades").select("id").eq("cliente_id", clienteId).like("descricao", `${marca}%`).is("deleted_at", null).limit(1);
-      if (data?.[0]) { if (vivo) setConversaTarefa(data[0].id); return; }
-      const { conclusao } = await colunasDoProjeto(clienteId);
-      const nova = await criarAtividade({ titulo: `Chat da esteira · ${setor.nome}`, clienteId, pastaId: null, dataAtividade: format(new Date(), "yyyy-MM-dd"), statusKey: conclusao, concluida: true, ordem: 0 });
-      await supabase.from("atividades").update({
-        responsavel_id: setor.esteira[0].membro_id, setor_id: setorId, situacao: "concluida", tipo: "esteira",
-        descricao: `${marca}\nConversa do Davi com o time da esteira (instruções de como fazer).`,
-      }).eq("id", nova.id);
-      if (vivo) setConversaTarefa(nova.id);
-    })().catch(() => {});
+    void ancora(null).then((id) => { if (vivo && id) setConversaTarefa(id); }).catch(() => {});
     return () => { vivo = false; };
-  }, [aberto, setorId, clienteId, setor]);
+  }, [aberto, setor, ancora]);
+  useEffect(() => {
+    if (!foco || conversaDe[foco.membroId]) return;
+    let vivo = true;
+    void ancora(foco.membroId).then((id) => { if (vivo && id) setConversaDe((c) => ({ ...c, [foco.membroId]: id })); }).catch(() => {});
+    return () => { vivo = false; };
+  }, [foco, conversaDe, ancora]);
 
   const etapas = setor?.esteira ?? [];
   const nomeDe = (id: string) => membros.find((m) => m.id === id)?.nome ?? "?";
@@ -137,7 +152,8 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
               <div className="grid min-h-0 flex-1 gap-2" style={{ gridTemplateColumns: `repeat(${colunas.length}, minmax(0, 1fr))` }}>
                 {colunas.map((c) => (
                   <div key={c.chave} className={cn("flex min-h-0 flex-col gap-1.5 rounded-xl border bg-muted/30 p-2", c.membroId === null && "border-emerald-500/40 bg-emerald-500/5")}>
-                    <div className="flex items-center gap-1.5">
+                    <div className={cn("flex items-center gap-1.5 rounded-md", c.membroId && "cursor-pointer hover:bg-muted", foco?.membroId === c.membroId && c.membroId && "bg-primary/10")}
+                      onClick={() => c.membroId && setFoco({ membroId: c.membroId })} title={c.membroId ? `Falar só com o ${nomeDe(c.membroId)}` : undefined}>
                       {c.membroId ? (
                         <span className="h-6 w-6 shrink-0 overflow-hidden rounded-full bg-sky-100 dark:bg-slate-700"><CabecaBoneco nome={nomeDe(c.membroId)} ehIa className="h-full w-full" /></span>
                       ) : <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
@@ -149,7 +165,12 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                       {c.pecas.map((p) => (
                         <CartaoPeca key={p.id} p={p} etapas={etapas} nomeDe={nomeDe} aberta={abertaId === p.id}
                           progresso={p.atividade_id ? progresso.get(p.atividade_id) ?? 0 : null}
-                          onAbrir={() => setAbertaId(abertaId === p.id ? null : p.id)} onMover={(e, n) => void mover(p, e, n)} onDescartar={() => void descartar(p)} />
+                          onAbrir={() => {
+                            setAbertaId(abertaId === p.id ? null : p.id);
+                            // O chat passa a ser com quem faz a etapa desta peça (pronta: com quem revisou por último).
+                            const e = etapas[Math.min(p.etapa, etapas.length - 1)];
+                            if (e) setFoco({ membroId: e.membro_id, peca: p });
+                          }} onMover={(e, n) => void mover(p, e, n)} onDescartar={() => void descartar(p)} />
                       ))}
                     </div>
                   </div>
@@ -158,9 +179,17 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
             </div>
             {/* O chat do trio: o Davi instrui; o que valer para as próximas vira aprendizado de quem faz. */}
             <aside className="flex w-[340px] shrink-0 flex-col">
-              <p className="mb-1 text-xs font-semibold text-muted-foreground">Chat com {etapas.map((e) => nomeDe(e.membro_id)).join(", ")}</p>
+              {foco ? (
+                <p className="mb-1 flex items-center justify-between gap-2 text-xs font-semibold text-muted-foreground">
+                  <span className="truncate">Só com o {nomeDe(foco.membroId)}{foco.peca ? ` · ${foco.peca.titulo}` : ""}</span>
+                  <button type="button" onClick={() => setFoco(null)} className="shrink-0 rounded-md border px-1.5 py-0.5 text-[11px] font-medium hover:bg-muted">Falar com os três</button>
+                </p>
+              ) : <p className="mb-1 text-xs font-semibold text-muted-foreground">Chat com {etapas.map((e) => nomeDe(e.membro_id)).join(", ")} · clique num cartão para falar só com quem faz</p>}
               <div className="min-h-0 flex-1">
-                {conversaTarefa ? (
+                {foco ? (conversaDe[foco.membroId] ? (
+                  <ConversaEntrega key={`${conversaDe[foco.membroId]}-${foco.peca?.id ?? ""}`} clienteId={clienteId} tarefaId={conversaDe[foco.membroId]} membroId={foco.membroId}
+                    nome={nomeDe(foco.membroId)} textoInicial={foco.peca ? `Sobre "${foco.peca.titulo}": ` : undefined} onDocumentoMudou={() => void carregar()} />
+                ) : <div className="flex h-full items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>) : conversaTarefa ? (
                   <ConversaEntrega key={conversaTarefa} clienteId={clienteId} tarefaId={conversaTarefa} membroId={etapas[0].membro_id}
                     nome={nomeDe(etapas[0].membro_id)} participantesIniciais={etapas.slice(1).map((e) => e.membro_id)} onDocumentoMudou={() => void carregar()} />
                 ) : <div className="flex h-full items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}

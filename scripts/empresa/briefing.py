@@ -95,10 +95,10 @@ def contexto(bid, como=None):
             q.execute("SELECT descricao FROM atividades WHERE id = %s", (atividade_id,))
             d = (q.fetchone() or [''])[0] or ''
             if d.startswith('ESTEIRA_CHAT:'):
-                sid = d[len('ESTEIRA_CHAT:'):].split()[0]
+                sid = d[len('ESTEIRA_CHAT:'):].split()[0].split(':')[0]   # ESTEIRA_CHAT:<setor>[:<membro> = conversa só com ele]
                 q.execute("SELECT nome, esteira FROM setores WHERE id = %s", (sid,))
                 st = q.fetchone()
-                q.execute("""SELECT left(titulo, 90), etapa, situacao FROM esteira_itens WHERE setor_id = %s AND situacao <> 'descartado'
+                q.execute("""SELECT left(titulo, 90), etapa, situacao, id FROM esteira_itens WHERE setor_id = %s AND situacao <> 'descartado'
                               ORDER BY atualizado_em DESC LIMIT 12""", (sid,))
                 esteira_chat = (sid, st, q.fetchall())
             q.execute("""SELECT a.titulo, a.situacao, d.id, d.titulo FROM atividades a
@@ -204,7 +204,9 @@ def contexto(bid, como=None):
                   f' Se o Davi pedir peças novas (ex.: "Leo, traz 5 headlines sobre X"), crie: python3 scripts/empresa/esteira.py ideia {sid} "<o pedido>"'
                   ' (a esteira faz o resto sozinha). Para ver uma peça: esteira.py contexto <peça>. NÃO use o entregar.')
             if pecas:
-                print('Peças recentes: ' + '; '.join(f'{t} (etapa {e + 1}, {s})' for t, e, s in pecas))
+                print('Peças recentes (o Davi costuma começar com Sobre "<título>"): ' + '; '.join(f'{t} (etapa {e + 1}, {s}, id {i})' for t, e, s, i in pecas))
+                print('Para mexer numa peça a pedido do Davi: veja com esteira.py contexto <id>; se for a SUA etapa e ele pediu ajuste, faça e entregue de novo'
+                      ' (esteira.py entregar <id>), ou devolva/mova pela tela.')
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'
