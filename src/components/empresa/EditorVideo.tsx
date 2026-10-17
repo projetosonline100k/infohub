@@ -651,8 +651,9 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
         {conversa && chatAberto && (
           // "dark": o chat segue o tema escuro do editor.
           <aside className="dark w-[330px] shrink-0 border-l border-zinc-700 bg-[#1e1e1e] p-2 text-zinc-100">
-            <ConversaEntrega key={conversa.tarefaId} clienteId={conversa.clienteId} tarefaId={conversa.tarefaId} membroId={conversa.membroId}
-              nome="Danilo" onDocumentoMudou={danilomudou} />
+            {/* Lote: várias edições na mesma tarefa; a mensagem já começa dizendo de qual vídeo é. */}
+            <ConversaEntrega key={`${conversa.tarefaId}-${edicao?.id}`} clienteId={conversa.clienteId} tarefaId={conversa.tarefaId} membroId={conversa.membroId}
+              nome="Danilo" onDocumentoMudou={danilomudou} textoInicial={edicao?.titulo ? `Sobre "${edicao.titulo}": ` : undefined} />
           </aside>
         )}
         </div>
