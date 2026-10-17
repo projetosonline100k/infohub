@@ -4,6 +4,7 @@ import {
   Trash2, Undo2, ZoomIn,
 } from "lucide-react";
 import { toast } from "sonner";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
@@ -28,7 +29,11 @@ import {
 
 export interface EdicaoResumo {
   id: string; titulo: string; status: string; mensagem: string | null; versao: number; final_drive: string | null; duracao: number | null;
+  previa_url?: string | null; projeto_em?: string | null;   // editor pela web (chegam pelo realtime)
 }
+const db = supabase as unknown as SupabaseClient;   // edicoes_pedidos e colunas novas ainda fora dos tipos gerados
+const segsDaPrevia = (p: ProjetoEdicao) =>
+  trechosMantidos(p).map(([a, b]) => [Math.round(a * FPS) / FPS, Math.round(b * FPS) / FPS] as [number, number]).filter(([a, b]) => b > a);
 
 type Item =
   | { tipo: "clipe"; inicio: number; fim: number; lacuna?: string }
@@ -92,6 +97,13 @@ function apagarRascunho(id: string) {
 
 export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null; onFechar: () => void }) {
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
+  // Editor pela web (e no Mac sem o serviço local): projeto e prévia vêm da nuvem
+  // (edicoes_video.projeto / previa_url) e "Gerar versão"/"Aprovar" viram pedidos
+  // (edicoes_pedidos) que o Mac do Davi pega, renderiza e sobe de volta.
+  const [semServidor, setSemServidor] = useState(false);
+  const [projetoNuvem, setProjetoNuvem] = useState<ProjetoEdicao | null>(null);
+  const [ondasNuvem, setOndasNuvem] = useState<string | null>(null);
+  const [macVivo, setMacVivo] = useState(true);
   const [projeto, setProjeto] = useState<ProjetoEdicao | null>(null);
   const [historico, setHistorico] = useState<ProjetoEdicao[]>([]);
   const [futuro, setFuturo] = useState<ProjetoEdicao[]>([]);
@@ -118,6 +130,8 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const preparadoRef = useRef<number | null>(null);
   const colunaRef = useRef<HTMLDivElement>(null);
   const desktop = isDesktop();
+  const web = !desktop || semServidor;
+  const previaWeb = estado?.previa_url ?? null;
   const escala = larguraTela / 1080;
   const ativo = () => (ativoRef.current === 0 ? vidA.current : vidB.current);
   const reserva = () => (ativoRef.current === 0 ? vidB.current : vidA.current);
@@ -127,12 +141,30 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (r) { r.style.zIndex = "-1"; r.muted = true; r.playbackRate = 1; }
   };
 
-  useEffect(() => { setEstado(edicao); setMudou(false); setHistorico([]); setFuturo([]); setSelecao([]); setVerVersao(false); setOnda(null); setOndaMusica(null); setProxyPronto(false); }, [edicao]);
-  useEffect(() => { if (desktop && edicao) void carregarBase().then(setCfg); }, [desktop, edicao]);
-  const url = useCallback((c: string) => (cfg && edicao ? `${cfg.base}/edicoes/${edicao.id}/${c}${c.includes("?") ? "&" : "?"}k=${cfg.chave}` : ""), [cfg, edicao]);
+  useEffect(() => { setEstado(edicao); setMudou(false); setHistorico([]); setFuturo([]); setSelecao([]); setVerVersao(false); setOnda(null); setOndaMusica(null); setProxyPronto(false); setProjetoNuvem(null); setOndasNuvem(null); }, [edicao]);
+  useEffect(() => {
+    if (!desktop || !edicao) return;
+    void carregarBase().then((c) => { setCfg(c); if (!c) setSemServidor(true); });
+  }, [desktop, edicao]);
+  const url = useCallback((c: string) => (cfg && edicao && !web ? `${cfg.base}/edicoes/${edicao.id}/${c}${c.includes("?") ? "&" : "?"}k=${cfg.chave}` : ""), [cfg, edicao, web]);
+  // Prévia e projeto da nuvem (servico.py → sincronizar_nuvem). Começa com o que já veio na lista.
+  useEffect(() => {
+    if (!web || !edicao) return;
+    void db.from("edicoes_video").select("previa_url, projeto_em").eq("id", edicao.id).maybeSingle()
+      .then(({ data }) => { if (data) setEstado((a) => (a ? { ...a, ...(data as Partial<EdicaoResumo>) } : a)); });
+  }, [web, edicao]);
+  // O Mac está ligado? (sinal do serviço do Danilo a cada minuto em servicos_sinal)
+  useEffect(() => {
+    if (!web) return;
+    const ver = () => void db.from("servicos_sinal").select("ultimo_sinal").eq("servico", "danilo").order("ultimo_sinal", { ascending: false }).limit(1)
+      .then(({ data }) => { const t = data?.[0]?.ultimo_sinal; setMacVivo(!!t && Date.now() - new Date(t).getTime() < 3 * 60_000); });
+    ver();
+    const i = window.setInterval(ver, 30_000);
+    return () => window.clearInterval(i);
+  }, [web]);
   // O player usa a cópia leve (proxy) quando ela existir; na primeira vez o Danilo gera em ~20 s.
   useEffect(() => {
-    if (!cfg || !edicao || proxyPronto) return;
+    if (!cfg || web || !edicao || proxyPronto) return;
     let vivo = true;
     const ver = () => void fetch(url("proxy")).then((r) => (r.ok ? r.json() : null)).then((d) => {
       if (!vivo) return;
@@ -141,7 +173,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     let timer = 0;
     ver();
     return () => { vivo = false; window.clearTimeout(timer); };
-  }, [cfg, edicao, url, proxyPronto]);
+  }, [cfg, web, edicao, url, proxyPronto]);
 
   // Chat com o Danilo dentro do editor (pedido do Davi, 15/10: "é importante para ele aprender
   // o que eu quero, principalmente no começo"). É a conversa da tarefa ligada à edição
@@ -176,12 +208,29 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (v != null && versaoVista.current != null && v > versaoVista.current) danilomudou();
     versaoVista.current = v;
   }, [estado?.versao, danilomudou]);
+  // Na web o projeto da versão nova chega na nuvem uns segundos depois da versão: recarrega quando chegar.
+  const projetoVisto = useRef<string | null>(null);
+  useEffect(() => {
+    const t = estado?.projeto_em ?? null;
+    if (web && t && projetoVisto.current && t !== projetoVisto.current) danilomudou();
+    if (t) projetoVisto.current = t;
+  }, [web, estado?.projeto_em, danilomudou]);
 
   useEffect(() => {
-    if (!cfg || !edicao) return;
-    void fetch(url(`projeto${recarga ? `?r=${recarga}` : ""}`)).then((r) => (r.ok ? r.json() : null)).then((p: ProjetoEdicao | null) => {
+    if (!edicao || (!web && !cfg)) return;
+    const pedir: Promise<ProjetoEdicao | null | undefined> = web
+      ? Promise.resolve(db.from("edicoes_video").select("projeto, ondas_url").eq("id", edicao.id).maybeSingle()).then(({ data }) => {
+          setOndasNuvem((data?.ondas_url as string | null) ?? null);
+          const p = (data?.projeto as ProjetoEdicao | null) ?? null;
+          setProjetoNuvem(p);
+          return p;
+        })
+      : fetch(url(`projeto${recarga ? `?r=${recarga}` : ""}`)).then((r) => (r.ok ? r.json() : null))
+          .catch(() => { setSemServidor(true); return undefined; });   // serviço do Mac fora do ar: abre pela nuvem
+    void pedir.then((p: ProjetoEdicao | null | undefined) => {
+      if (p === undefined) return;
       // Zoom antigo (pontos) vira blocos na hora de abrir.
-      if (!p) { toast.error("Não achei o projeto dessa edição no Mac"); return; }
+      if (!p) { toast.error(web ? "Esta edição ainda não está na nuvem: o Mac sobe na próxima versão." : "Não achei o projeto dessa edição no Mac"); return; }
       // Rascunho que ficou sem salvar (app fechou no meio): volta, se o Danilo não gerou versão nova depois.
       const r = recarga ? null : lerRascunho(edicao.id);
       if (r && r.versao === edicao.versao) {
@@ -192,13 +241,17 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       if (r) apagarRascunho(edicao.id);
       setProjeto({ ...p, zooms: blocosZoom(p) });
     });
-    void fetch(url("ondas")).then((r) => (r.ok ? r.json() : null)).then((o) => { if (o) setOnda(o); }).catch(() => {});
-  }, [cfg, edicao, url, recarga]);
+    if (!web) void fetch(url("ondas")).then((r) => (r.ok ? r.json() : null)).then((o) => { if (o) setOnda(o); }).catch(() => {});
+  }, [cfg, edicao, url, recarga, web]);
+  useEffect(() => {
+    if (!web || !ondasNuvem) return;
+    void fetch(ondasNuvem).then((r) => (r.ok ? r.json() : null)).then((o) => { if (o) setOnda(o); }).catch(() => {});
+  }, [web, ondasNuvem]);
   const arquivoMusica = projeto?.musica?.arquivo;
   useEffect(() => {
-    if (!cfg || !edicao || !arquivoMusica) { setOndaMusica(null); return; }
+    if (!cfg || web || !edicao || !arquivoMusica) { setOndaMusica(null); return; }
     void fetch(url("ondas?musica=1")).then((r) => (r.ok ? r.json() : null)).then((o) => setOndaMusica(o)).catch(() => {});
-  }, [cfg, edicao, url, arquivoMusica]);
+  }, [cfg, web, edicao, url, arquivoMusica]);
   useEffect(() => {
     if (!edicao) return;
     const canal = supabase.channel(`edicao-${edicao.id}`)
@@ -275,7 +328,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const chaveSegs = useMemo(() => JSON.stringify(segsQ), [segsQ]);
   const [montagem, setMontagem] = useState<{ chave: string; arquivo: string } | null>(null);
   useEffect(() => {
-    if (!cfg || !edicao || !proxyPronto || !segsQ.length) return;
+    if (!cfg || web || !edicao || !proxyPronto || !segsQ.length) return;
     let vivo = true, timer = 0;
     const pedir = () => void fetch(url("montagem"), { method: "POST", body: JSON.stringify({ segs: segsQ }) })
       .then((r) => (r.ok ? r.json() : null)).then((d) => {
@@ -285,7 +338,12 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       }).catch(() => { if (vivo) timer = window.setTimeout(pedir, 3000); });
     timer = window.setTimeout(pedir, 400);
     return () => { vivo = false; window.clearTimeout(timer); };
-  }, [cfg, edicao, proxyPronto, url, segsQ, chaveSegs]);
+  }, [cfg, web, edicao, proxyPronto, url, segsQ, chaveSegs]);
+  // Na web a "montagem" é a prévia gerada (mesma linha do tempo do projeto que veio da nuvem).
+  const chaveNuvem = useMemo(() => (projetoNuvem ? JSON.stringify(segsDaPrevia(projetoNuvem)) : null), [projetoNuvem]);
+  useEffect(() => {
+    if (web && previaWeb && chaveNuvem) setMontagem({ chave: chaveNuvem, arquivo: previaWeb });
+  }, [web, previaWeb, chaveNuvem]);
   const modoMontagem = !!montagem && montagem.chave === chaveSegs;
   const modoRef = useRef(modoMontagem); modoRef.current = modoMontagem;
   const segsQRef = useRef(segsQ); segsQRef.current = segsQ;
@@ -390,7 +448,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const musRef = useRef<HTMLAudioElement>(null);
   const nomeMusica = projeto?.musica?.arquivo.split("/").pop() ?? "";
   const relMusica = projeto?.musica ? relativo(projeto.musica.arquivo) : null;
-  const srcMusica = !projeto?.musica ? "" : relMusica ? url(`arquivo/${relMusica}`) : url(`acervo/${encodeURIComponent(nomeMusica)}`);
+  const srcMusica = !projeto?.musica || web ? "" : relMusica ? url(`arquivo/${relMusica}`) : url(`acervo/${encodeURIComponent(nomeMusica)}`);
   const volMusica = projeto?.musica?.volume ?? 0;
   // Abaixa sozinha quando o Davi fala (mesma curva do motor): ganho a cada 0,1 s do vídeo final.
   const vozFinal = useMemo(() => (onda ? nivelVoz(onda.picos, onda.por_segundo, segs) : []), [onda, segs]);
@@ -408,13 +466,14 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const alternarPlay = useCallback(() => {
     const v = ativo();
     if (!v || !projeto) return;
+    if (web && !modoRef.current) { toast("Você mudou a edição: clique em Gerar versão para ver (o Mac leva uns 2 min)."); return; }
     if (v.paused) {
       if (modoRef.current) { if (v.ended || v.currentTime >= v.duration - 0.05) v.currentTime = 0; }
       else if (!segs.some(([a, b]) => v.currentTime >= a - 0.08 && v.currentTime < b - 0.03)) irParaFinal(tFinal >= durFinal - 0.05 ? 0 : tFinal);
       void v.play(); setTocando(true);
     } else { vidA.current?.pause(); vidB.current?.pause(); setTocando(false); }
      
-  }, [projeto, segs, irParaFinal, tFinal, durFinal]);
+  }, [projeto, segs, irParaFinal, tFinal, durFinal, web]);
 
   // Navalha num instante do bruto: corta o vídeo e, se `tudo`, legendas, imagens e zooms que passam ali.
   const cortarEm = useCallback((t: number, alvo: Item | "tudo") => {
@@ -511,6 +570,20 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
 
   const salvar = async (gerar: boolean, aviso = "Salvo") => {
     if (!projeto) return false;
+    if (web) {
+      if (!edicao) return false;
+      if (!gerar) {   // na web só existe "gerar": o rascunho fica neste navegador até lá
+        guardarRascunho(edicao.id, estado?.versao ?? edicao.versao, projeto);
+        if (aviso === "Salvo") toast("Guardado neste navegador. Clique em Gerar versão para o Mac montar.");
+        return true;
+      }
+      const { error } = await db.from("edicoes_pedidos").insert({ edicao_id: edicao.id, tipo: "versao", projeto });
+      if (error) { toast.error("Não consegui mandar o pedido (o rascunho fica neste navegador)"); return false; }
+      setMudou(false);
+      apagarRascunho(edicao.id);
+      setEstado((a) => (a ? { ...a, status: "renderizando", mensagem: macVivo ? "Pedido enviado: o Mac vai gerar a versão…" : "Na fila: esperando o Mac ligar" } : a));
+      return true;
+    }
     const r = await fetch(url(`projeto${gerar ? "" : "?previa=0"}`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(projeto) }).catch(() => null);
     if (!r?.ok) { toast.error("Não consegui salvar no Mac (o rascunho fica guardado neste computador)"); return false; }
     setMudou(false);
@@ -528,6 +601,13 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   }, [mudou, projeto, edicao, estado?.versao]);
   const aprovar = async () => {
     if (!(await confirmar("Aprovar? O Danilo gera o Full HD com tudo (zoom, cor, legendas), entrega no Drive e a tarefa segue.", { botao: "Aprovar" }))) return;
+    if (web) {   // as mudanças viram versão antes; o Mac faz os dois pedidos em ordem
+      if (mudou && !(await salvar(true))) return;
+      const { error } = await db.from("edicoes_pedidos").insert({ edicao_id: edicao!.id, tipo: "aprovar" });
+      if (error) { toast.error("Não consegui aprovar"); return; }
+      setEstado((a) => (a ? { ...a, status: "aprovando", mensagem: macVivo ? "Aprovado: o Mac vai gerar o Full HD…" : "Aprovado: esperando o Mac ligar para gerar o Full HD" } : a));
+      return;
+    }
     if (mudou && !(await salvar(false))) return;
     const r = await fetch(url("aprovar"), { method: "POST" });
     if (!r.ok) { toast.error("Não consegui aprovar"); return; }
@@ -541,18 +621,19 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     onFechar();
   };
   const subir = async (f: File) => {
+    if (web) { toast.error("Por enquanto, imagem e vídeo novos só sobem pelo app do Mac."); throw new Error("web"); }
     const r = await fetch(url(`midia?nome=${encodeURIComponent(f.name)}`), { method: "POST", body: f });
     if (!r.ok) throw new Error("upload");
     return (await r.json()).arquivo as string;
   };
 
   // Elementos ativos no instante atual (pra desenhar por cima do player).
-  const legAtivas = projeto?.legendas.filter((l) => tFonte >= l.inicio && tFonte < l.fim) ?? [];
-  const midAtivas = projeto?.midias.filter((m) => tFonte >= m.inicio && tFonte < m.fim) ?? [];
-  const noBuraco = projeto ? !!lacunaEm(projeto, tFonte) : false;
+  const legAtivas = web ? [] : projeto?.legendas.filter((l) => tFonte >= l.inicio && tFonte < l.fim) ?? [];
+  const midAtivas = web ? [] : projeto?.midias.filter((m) => tFonte >= m.inicio && tFonte < m.fim) ?? [];
+  const noBuraco = projeto && !web ? !!lacunaEm(projeto, tFonte) : false;
   const nivelZoom = zoomNoFinal(zoomsFinais, tFinal);
   const cor = previaCor(projeto?.cor ?? "cinema", projeto?.ajuste_cor);
-  const estiloVideo: React.CSSProperties = { filter: cor.filtro || undefined, transform: `scale(${nivelZoom})`, transformOrigin: "50% 32%" };
+  const estiloVideo: React.CSSProperties = web ? {} : { filter: cor.filtro || undefined, transform: `scale(${nivelZoom})`, transformOrigin: "50% 32%" };
   const unico = selecao.length === 1 ? selecao[0] : null;
   const legSel = unico?.tipo === "legenda" ? projeto?.legendas.find((l) => l.id === unico.id) : undefined;
   const midSel = unico?.tipo === "midia" ? projeto?.midias.find((m) => m.id === unico.id) : undefined;
@@ -577,12 +658,13 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
             {ocupado ? <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />{estado?.mensagem}</span>
               : estado?.status === "erro" ? estado.mensagem : estado?.status === "aprovado" ? "Aprovado e entregue" : `Versão ${estado?.versao}${mudou ? " · não salvo" : ""}`}
           </span>
+          {web && !macVivo && <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-300">Mac do Davi desligado: os pedidos esperam ele ligar</span>}
           <div className="ml-auto flex items-center gap-1.5">
             {conversa && <BotaoBarra onClick={() => setChatAberto(!chatAberto)} ativo={chatAberto}><MessageCircle className="h-3.5 w-3.5" />Danilo</BotaoBarra>}
             <BotaoBarra onClick={() => setVerVersao((v) => !v)} ativo={verVersao}>{verVersao ? "Voltar à montagem" : "Ver versão gerada"}</BotaoBarra>
-            <BotaoBarra onClick={() => void salvar(false)} disabled={!mudou}><Save className="h-3.5 w-3.5" />Salvar</BotaoBarra>
+            <BotaoBarra onClick={() => void salvar(false)} disabled={!mudou || web}><Save className="h-3.5 w-3.5" />Salvar</BotaoBarra>
             <BotaoBarra onClick={() => void salvar(true)} disabled={ocupado}>Gerar versão</BotaoBarra>
-            <a href={url(`arquivo/${estado?.status === "aprovado" ? "final.mp4" : "previa.mp4"}`)} download className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-zinc-700"><Download className="h-3.5 w-3.5" />Baixar</a>
+            <a href={web ? previaWeb ?? undefined : url(`arquivo/${estado?.status === "aprovado" ? "final.mp4" : "previa.mp4"}`)} download className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-zinc-700"><Download className="h-3.5 w-3.5" />Baixar</a>
             <button type="button" onClick={() => void aprovar()} disabled={ocupado || estado?.status === "aprovado"}
               className="inline-flex items-center gap-1 rounded bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-40">
               <CheckCircle2 className="h-3.5 w-3.5" />Aprovar e enviar
@@ -599,12 +681,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
             const foco = document.activeElement as HTMLElement | null;
             if (campo(foco) && !campo((e.target as HTMLElement).closest("textarea, input, select, [contenteditable]"))) foco!.blur();
           }}>
-        {!desktop ? <Aviso>O editor funciona no app do Mac (o vídeo e a montagem ficam nele).</Aviso>
-          : !cfg ? <Aviso>O serviço do Danilo não está ligado neste Mac.</Aviso>
+        {!web && !cfg ? <Aviso>O serviço do Danilo não está ligado neste Mac.</Aviso>
           : !projeto ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
           : verVersao ? (
             <div className="flex min-h-0 flex-1 items-center justify-center bg-black p-4">
-              <video key={estado?.versao} src={url(`arquivo/previa.mp4?v=${estado?.versao}`)} controls className="h-full max-h-full rounded" />
+              <video key={estado?.versao} src={web ? previaWeb ?? undefined : url(`arquivo/previa.mp4?v=${estado?.versao}`)} controls className="h-full max-h-full rounded" />
             </div>
           ) : (
             <div className="flex min-h-0 flex-1">
@@ -612,7 +693,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
               <div ref={colunaRef} className="flex shrink-0 flex-col items-center border-r border-zinc-700 bg-[#151515] p-3" style={{ width: larguraTela + 24 }}>
                 <div className="relative isolate shrink-0 overflow-hidden rounded bg-black" style={{ width: larguraTela, height: (larguraTela * 16) / 9 }} onClick={alternarPlay}>
                   {[vidA, vidB].map((ref, i) => (
-                    <video key={i} ref={ref} src={url(`arquivo/${i === 0 && modoMontagem ? montagem!.arquivo : arquivoPlayer}`)} className="absolute inset-0 h-full w-full object-cover" preload="auto" muted={i === 1}
+                    <video key={i} ref={ref} src={web ? (i === 0 ? previaWeb ?? undefined : undefined) : url(`arquivo/${i === 0 && modoMontagem ? montagem!.arquivo : arquivoPlayer}`)} className="absolute inset-0 h-full w-full object-cover" preload="auto" muted={i === 1}
                       style={{ ...estiloVideo, zIndex: i === ativoRef.current ? 0 : -1 }}
                       onLoadedMetadata={(e) => {
                         const v = e.currentTarget;
@@ -623,11 +704,17 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                       onEnded={() => { if (i === ativoRef.current) setTocando(false); }} />
                   ))}
                   {srcMusica && <audio ref={musRef} src={srcMusica} loop preload="auto" />}
-                  {cor.quente !== 0 && (
+                  {!web && cor.quente !== 0 && (
                     <div className="pointer-events-none absolute inset-0"
                       style={{ background: cor.quente > 0 ? `rgba(255,150,40,${(cor.quente * 0.35).toFixed(3)})` : `rgba(40,140,255,${(-cor.quente * 0.35).toFixed(3)})`, mixBlendMode: "soft-light" }} />
                   )}
                   {noBuraco && <div className="absolute inset-0 bg-black" />}
+                  {web && (!previaWeb || !modoMontagem) && (
+                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4 text-center text-xs text-zinc-200">
+                      {!previaWeb ? "A prévia desta edição ainda não está na nuvem: o Mac sobe na próxima versão."
+                        : "Você mudou a edição. Clique em Gerar versão para ver (o Mac do Davi monta em uns 2 min)."}
+                    </div>
+                  )}
                   {midAtivas.map((m) => {
                     const rel = relativo(m.arquivo);
                     return m.tipo === "imagem" && rel ? (
@@ -727,6 +814,7 @@ function Propriedades({ altura, projeto, selecao, legSel, midSel, zoomSel, alter
   const [ouvindo, setOuvindo] = useState<string | null>(null);
   const ouvirRef = useRef<HTMLAudioElement | null>(null);
   useEffect(() => {
+    if (!url("musicas")) return;   // web: o acervo fica no Mac
     void fetch(url("musicas")).then((r) => (r.ok ? r.json() : [])).then((m) => setAcervo(Array.isArray(m) ? m : [])).catch(() => {});
   }, [url]);
   const ouvirMusica = (nome: string) => {
