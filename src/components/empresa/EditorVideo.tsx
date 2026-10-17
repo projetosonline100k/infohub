@@ -599,8 +599,13 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     const t = window.setTimeout(() => guardarRascunho(edicao.id, estado?.versao ?? edicao.versao, projeto), 800);
     return () => window.clearTimeout(t);
   }, [mudou, projeto, edicao, estado?.versao]);
+  // Um aprovar por vez (17/10: dois cliques mandaram dois /aprovar e o 2º gravou 'erro' por cima).
+  const aprovandoRef = useRef(false);
   const aprovar = async () => {
+    if (aprovandoRef.current) return;
     if (!(await confirmar("Aprovar? O Danilo gera o Full HD com tudo (zoom, cor, legendas), entrega no Drive e a tarefa segue.", { botao: "Aprovar" }))) return;
+    aprovandoRef.current = true;
+    try {
     if (web) {   // as mudanças viram versão antes; o Mac faz os dois pedidos em ordem
       if (mudou && !(await salvar(true))) return;
       const { error } = await db.from("edicoes_pedidos").insert({ edicao_id: edicao!.id, tipo: "aprovar" });
@@ -615,6 +620,9 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (!r.ok) { toast.error("Não consegui aprovar"); return; }
     toast.success("Aprovado: o Danilo gera o Full HD e a Dalila prepara o post");
     onFechar();
+    } finally {
+      aprovandoRef.current = false;
+    }
   };
   const fechar = async () => {
     if (mudou && projeto && edicao) {
