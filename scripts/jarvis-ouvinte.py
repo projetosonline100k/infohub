@@ -579,6 +579,7 @@ def atender_execucao():
 sys.path.insert(0, str(RAIZ / "scripts" / "pedro"))
 import melhorias  # noqa: E402
 import esteira  # noqa: E402  (esteira de produção por escritório, 17/10)
+import vigia  # noqa: E402  (trabalho travado: recomeça sozinho; se não der, avisa o Davi — 17/10)
 
 OBRAS = Path.home() / ".infopro-hub" / "pedro" / "obras"
 
@@ -721,7 +722,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, melhorias, cobranca_rodada, esteira):
+        for m in (briefing, execucao, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -809,6 +810,10 @@ if __name__ == "__main__":
     threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
     # Esteira (17/10): peça na fila de uma etapa vira tarefa de quem é a vez; a execução pega.
     threading.Thread(target=laco, args=("esteira", lambda: esteira.andar(), 60), daemon=True).start()
+    def _vigiar():
+        for linha in vigia.rodar():
+            log("vigia:", linha)
+    threading.Thread(target=laco, args=("vigia", _vigiar, 300), daemon=True).start()
     threading.Thread(target=laco, args=("rodada", rodada_melhorias, 60), daemon=True).start()
     threading.Thread(target=laco, args=("cobranca", rodada_cobranca, 60), daemon=True).start()
     laco("conversa", atender_conversa, 3)

@@ -30,7 +30,7 @@ const curto = (t: string | null | undefined, n = 110) => {
 };
 
 export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[]> {
-  const [hist, msgs, eds, cars, mels, clientes, reels, progCars, progReels] = await Promise.all([
+  const [hist, msgs, eds, cars, mels, clientes, reels, progCars, progReels, travados] = await Promise.all([
     db.from("historico_tarefas").select("id, atividade_id, cliente_id, para_membro_id, de_situacao, para_situacao, autor_id, criado_em")
       .eq("acao", "situacao").gt("criado_em", desde).in("para_situacao", ["andamento", "aguardando_aprovacao", "concluida"]).limit(100),
     db.from("briefing_mensagens").select("id, briefing_id, cliente_id, texto, membro_id, criada_em")
@@ -48,6 +48,8 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
       .gt("programado_pela_dalila_em", desde).eq("status", "programado").limit(50),
     db.from("reels").select("id, cliente_id, titulo, programado_para, programado_pela_dalila_em")
       .gt("programado_pela_dalila_em", desde).eq("status", "programado").limit(50),
+    // Vigia (17/10): algo travou e precisa do Davi.
+    db.from("atividades").select("id, cliente_id, titulo, descricao, created_at").eq("tipo", "travado").gt("created_at", desde).limit(20),
   ]);
   const projeto = new Map(((clientes.data || []) as { id: string; nome_especialista: string }[]).map((c) => [c.id, c.nome_especialista]));
   const h = (hist.data || []) as { id: string; atividade_id: string; cliente_id: string | null; para_membro_id: string | null; para_situacao: string; autor_id: string | null; criado_em: string }[];
@@ -112,6 +114,10 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
     avisos.push({ id: `dp-${x.id}-${x.programado_pela_dalila_em}`, tipo: "concluiu", quando: x.programado_pela_dalila_em,
       titulo: `Dalila programou o ${x.tipo} para ${format(new Date(x.programado_para), "EEE, d MMM 'às' HH:mm", { locale: ptBR })}`,
       detalhe: `${curto(x.titulo, 70)} · para mudar, clique nele em Programados`, clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
+  }
+  for (const x of (travados.data || []) as { id: string; cliente_id: string; titulo: string; descricao: string | null; created_at: string }[]) {
+    avisos.push({ id: `t-${x.id}`, tipo: "erro", quando: x.created_at, titulo: x.titulo, detalhe: curto(x.descricao), clienteId: x.cliente_id,
+      projeto: projeto.get(x.cliente_id), lido: false, revisar: true });
   }
   return avisos.sort((a, b) => a.quando.localeCompare(b.quando));
 }
