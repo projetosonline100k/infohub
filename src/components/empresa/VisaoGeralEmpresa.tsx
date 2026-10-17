@@ -148,6 +148,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // CS (Shirley): só fica relaxada quando não há cliente esperando resposta no WhatsApp (16/10:
   // "a obrigação dela é me fazer ter uma boa conexão com o cliente").
   const [clientesEsperando, setClientesEsperando] = useState<AlertaShirley[]>([]);
+  // Conversando com o Davi (17/10: "quando eu mandar mensagem para o pessoal, já conta como trabalho,
+  // eles têm que ficar ativos e voltar para as cadeiras para me responder"): membro → texto do balão.
+  const [conversando, setConversando] = useState<Map<string, string>>(new Map());
   // O Roy fez uma versão nova enquanto o Davi revisa (conversa ao lado): troca pelo carrossel novo.
   // Só quando muda a versão ou o status, para não apagar o que ele está editando na tela.
   useEffect(() => {
@@ -219,6 +222,23 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       db.from("reels").select("id", { count: "exact", head: true }).eq("cliente_id", clienteId).eq("status", "publicado"),
     ]);
     setPublicadosDalila({ carrossel: carPub ?? 0, reel: reelPub ?? 0 });
+    // Quem está numa conversa com o Davi agora: mensagem dele sem resposta (respondendo) ou conversa
+    // da última meia hora (conversando).
+    const desde = new Date(Date.now() - 30 * 60_000).toISOString();
+    const { data: brs } = await (supabase as unknown as SupabaseClient).from("briefings")
+      .select("id, membro_id, participantes, atualizado_em").eq("cliente_id", clienteId).gt("atualizado_em", desde);
+    const ids = ((brs || []) as { id: string }[]).map((b) => b.id);
+    const { data: ms } = ids.length
+      ? await (supabase as unknown as SupabaseClient).from("briefing_mensagens").select("briefing_id, papel, criada_em").in("briefing_id", ids).order("criada_em", { ascending: false })
+      : { data: [] };
+    const ultima = new Map<string, string>();
+    for (const m of (ms || []) as { briefing_id: string; papel: string }[]) if (!ultima.has(m.briefing_id)) ultima.set(m.briefing_id, m.papel);
+    const conv = new Map<string, string>();
+    for (const b of (brs || []) as { id: string; membro_id: string; participantes: string[] | null }[]) {
+      const texto = ultima.get(b.id) === "davi" ? "Respondendo você…" : "Conversando com você";
+      for (const id of [b.membro_id, ...(b.participantes ?? [])]) if (!conv.has(id) || texto.startsWith("Respondendo")) conv.set(id, texto);
+    }
+    setConversando(conv);
     const { data: convs } = await supabase.rpc("whatsapp_conversas");
     setClientesEsperando(convs ? alertasDoWhatsapp(convs as unknown as ConversaResumo[], new Date()) : []);
     setSetores((s.data || []) as SetorResumo[]);
@@ -297,7 +317,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const ia = trabalhoIa.get(estado.membro.id);
     const coordenador = ehCoordenador(estado.membro);
     const cs = ehCs(estado.membro) && clientesEsperando.length > 0;
-    const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+    const base: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+    const sinal: Sinal = base === "parado" && conversando.has(estado.membro.id) ? "trabalhando" : base;
     return { membro: estado.membro, sinal, atual: cs ? textoClientesEsperando(clientesEsperando) : estado.atual?.titulo ?? ia?.atual ?? null };
   });
   // Arrastou um escritório pela placa (16/10): para o lado (mesma fileira) ou para o fundo/frente.
@@ -452,8 +473,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                   // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
                   const coordenador = ehCoordenador(membro);
                   const cs = ehCs(membro) && clientesEsperando.length > 0;
-                  const sinal: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+                  const base: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+                  // Conversando com o Davi: volta para a mesa e fica ativo (não sai para o café).
+                  const papo = conversando.get(membro.id);
+                  const sinal: Sinal = base === "parado" && papo ? "trabalhando" : base;
                   const balao = coordenador ? "Coordenando a operação"
+                    : base === "parado" && papo ? papo
                     : cs ? textoClientesEsperando(clientesEsperando)
                     : ia?.problema ? "Parou com problema"
                     : ia?.esperando ? `${ia.esperando} esperando sua revisão`
