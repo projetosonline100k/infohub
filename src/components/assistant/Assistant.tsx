@@ -1356,10 +1356,10 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
           prepararConversaAberta({ chatId: a.chatId, chatNome: a.chatNome ?? null, nome: a.nome, grupo: !!a.grupo, autor: null, texto: a.trecho, quando: a.ultimaEm, quantas: 1 });
           setAba("whatsapp"); void abrirPainel();
         } },
-        // Furiosa não deixa adiar: só "já respondi" (por ligação, áudio no celular…).
-        shirley.atual.humor >= 3
-          ? { label: "Já respondi", onClick: () => shirley.jaRespondi() }
-          : { label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (+${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiar() },
+        // Furiosa: "Depois" só por 10 min (17/10: "quero ter a opção de Depois também") e "Já respondi".
+        ...(shirley.atual.humor >= 3
+          ? [{ label: "Depois", onClick: () => shirley.adiar(10) }, { label: "Já respondi", onClick: () => shirley.jaRespondi() }]
+          : [{ label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (+${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiar() }]),
       ]}
     />
   ) : paraRevisar.atual ? (

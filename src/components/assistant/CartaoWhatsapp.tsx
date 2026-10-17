@@ -68,7 +68,7 @@ export function CartaoWhatsapp({ chatId, chatNome, nome, grupo, faixa, tomFaixa 
         <div className="flex gap-2 px-2.5 pb-2.5">
           {botoes.map((b) => (
             <button key={b.label} type="button" onClick={b.onClick}
-              className={cn("h-9 flex-1 rounded-full text-[13px] font-medium transition-colors",
+              className={cn("h-9 flex-1 rounded-full font-medium transition-colors", botoes.length > 2 ? "px-1 text-[12px]" : "text-[13px]",
                 b.principal ? "bg-[#128c7e] text-white hover:bg-[#0e7469]" : "border border-[#128c7e] bg-transparent text-[#128c7e] hover:bg-[#128c7e]/10")}>
               {b.label}
             </button>
