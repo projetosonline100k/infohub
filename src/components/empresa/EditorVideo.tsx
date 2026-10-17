@@ -615,11 +615,17 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       onFechar();
       return;
     }
-    if (mudou && !(await salvar(false))) return;
+    // Salvar a mudança espera o Mac terminar o que está renderizando (um vídeo por vez): avisa,
+    // senão parecia que o botão não fazia nada (17/10).
+    const aguarde = toast.loading(mudou ? "Salvando sua mudança e aprovando… (se o Mac estiver gerando outro vídeo, espera ele terminar)" : "Aprovando…");
+    if (mudou && !(await salvar(false))) { toast.dismiss(aguarde); return; }
     const r = await fetch(url("aprovar"), { method: "POST" });
+    toast.dismiss(aguarde);
     if (!r.ok) { toast.error("Não consegui aprovar"); return; }
     toast.success("Aprovado: o Danilo gera o Full HD e a Dalila prepara o post");
     onFechar();
+    } catch (e) {
+      toast.error(`Não consegui aprovar: o serviço do Danilo não respondeu (${e instanceof Error ? e.message : "erro"}). Tente de novo em 1 minuto.`);
     } finally {
       aprovandoRef.current = false;
     }
