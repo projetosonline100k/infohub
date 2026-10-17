@@ -3,7 +3,7 @@
 Roy); este script faz a parte mecânica e não publica nada no Instagram.
 
   python3 roy.py candidatos [n]        reels elegíveis (mais novo primeiro), sem os já usados
-  python3 roy.py iniciar <media_id>    marca EM PRODUÇÃO, baixa e transcreve → pasta de trabalho
+  python3 roy.py iniciar <media_id> [--tarefa <atividade>]  marca EM PRODUÇÃO (ligado à tarefa), baixa e transcreve
   python3 roy.py renderizar <id|pasta> [--estilo x] [--sem-drive]
                                        páginas + revisão automática + Drive + envia pra revisão no Infopro
   python3 roy.py revisar <id|pasta>    só a revisão automática
@@ -113,7 +113,10 @@ def proximo_numero():
     return max(nums or [0]) + 1
 
 
-def iniciar(media_id):
+def iniciar(media_id, tarefa=None):
+    """`tarefa`: atividade do Roy que pediu este carrossel. O carrossel já nasce
+    ligado a ela (atividade_roy_id), então um lote que cai no meio é retomado
+    sem duplicar (scripts/roy/servico.py)."""
     reel = next((r for r in instagram.reels() if r["id"] == media_id), None)
     if not reel:
         raise SystemExit(f"Reel {media_id} não encontrado no perfil.")
@@ -127,6 +130,8 @@ def iniciar(media_id):
         raise SystemExit(f"A fonte {media_id} já virou carrossel (ou está em produção).")
     else:
         id_ = _registrar(reel)
+    if tarefa:
+        db("UPDATE public.carrosseis SET atividade_roy_id = %s WHERE id = %s", (tarefa, id_))
     pasta = TRABALHO / str(id_)
     pasta.mkdir(parents=True, exist_ok=True)
     (pasta / "fonte.json").write_text(json.dumps({k: v for k, v in reel.items() if k not in ("media_url", "thumbnail_url")},
@@ -614,7 +619,7 @@ if __name__ == "__main__":
         for r in candidatos(int(a[1]) if len(a) > 1 else 10):
             print(r["timestamp"][:10], r["id"], (r.get("caption") or "").split("\n")[0][:80])
     elif a[0] == "iniciar":
-        iniciar(a[1])
+        iniciar(a[1], a[a.index("--tarefa") + 1] if "--tarefa" in a else None)
     elif a[0] == "renderizar":
         sys.exit(0 if renderizar(a[1], estilo, drive="--sem-drive" not in a) else 1)
     elif a[0] == "revisar":
