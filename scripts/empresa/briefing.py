@@ -207,8 +207,11 @@ def contexto(bid, como=None):
                   ' O que sai da 1ª etapa espera o Davi arrastar para a próxima; as outras andam sozinhas. Para ver uma peça: esteira.py contexto <peça>. NÃO use o entregar.')
             if pecas:
                 print('Peças recentes (o Davi costuma começar com Sobre "<título>"): ' + '; '.join(f'{t} (etapa {e + 1}, {s}, id {i})' for t, e, s, i in pecas))
-                print('Para mexer numa peça a pedido do Davi: veja com esteira.py contexto <id>; se for a SUA etapa e ele pediu ajuste, faça e entregue de novo'
-                      ' (esteira.py entregar <id>), ou devolva/mova pela tela.')
+                print('Para mexer numa peça a pedido do Davi: veja com esteira.py contexto <id> (traz o documento e os CRITÉRIOS da etapa).'
+                      ' Se for a SUA etapa e ele pediu ajuste, reescreva o documento AGORA, sem passar de etapa:'
+                      ' python3 scripts/empresa/esteira.py reescrever <id> <<\'FIM\'\n<o texto inteiro, já ajustado>\nFIM'
+                      ' — ele vê o documento mudando na tela. Quem passa a peça adiante é o Davi (arrastando).'
+                      ' Se ele disser como quer o trabalho (critério), anote também nos aprendizados (aprender.py) para valer nas próximas.')
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'

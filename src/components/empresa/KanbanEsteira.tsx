@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
@@ -14,6 +15,7 @@ import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { colunasDoProjeto } from "@/lib/empresa/colunas";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ConversaEntrega } from "./ConversaEntrega";
+import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
 
 // Esteira de um escritório (pedido do Davi, 17/10/2026): "o Leo cria as headlines,
 // passa para o Junior, que escreve os roteiros, que passa para o Elias revisar; nesse
@@ -22,10 +24,11 @@ import { ConversaEntrega } from "./ConversaEntrega";
 // O Davi escreve ideias, lê, devolve ou descarta; o chat do trio fica ao lado.
 const db = supabase as unknown as SupabaseClient;
 
-interface Etapa { nome: string; membro_id: string }
+// criterios: como o Davi quer o trabalho desta etapa (17/10); davi_aprova: a etapa para e espera ele passar adiante.
+interface Etapa { nome: string; membro_id: string; criterios?: string; davi_aprova?: boolean }
 interface Peca {
   id: string; titulo: string; textos: Record<string, string>; etapa: number; situacao: "fila" | "fazendo" | "feito" | "descartado";
-  nota: string | null; atividade_id: string | null; atualizado_em: string;
+  nota: string | null; atividade_id: string | null; atualizado_em: string; documento_id: string | null;
 }
 interface Membro { id: string; nome: string; eh_ia: boolean }
 
@@ -41,12 +44,16 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   // "se eu clicar num bloco do Leo, a mensagem é para ele, em vez de falar com os três").
   const [foco, setFoco] = useState<{ membroId: string; peca?: Peca } | null>(null);
   const [conversaDe, setConversaDe] = useState<Record<string, string>>({});
+  // Documento da peça aberto no lugar do quadro, com o chat de quem faz ao lado (17/10: "quando o Junior
+  // for escrever, eu queria conseguir ver, conversar com ele mesmo").
+  const [docAberto, setDocAberto] = useState<Peca | null>(null);
+  const [criteriosDe, setCriteriosDe] = useState<number | null>(null);
 
   const carregar = useCallback(async () => {
     if (!setorId) return;
     const [{ data: s }, { data: ps }] = await Promise.all([
       db.from("setores").select("nome, esteira").eq("id", setorId).maybeSingle(),
-      db.from("esteira_itens").select("id, titulo, textos, etapa, situacao, nota, atividade_id, atualizado_em")
+      db.from("esteira_itens").select("id, titulo, textos, etapa, situacao, nota, atividade_id, atualizado_em, documento_id")
         .eq("setor_id", setorId).neq("situacao", "descartado").order("ordem").order("criado_em"),
     ]);
     const st = s as { nome: string; esteira: Etapa[] | null } | null;
@@ -145,6 +152,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
           <p className="text-sm text-muted-foreground">Este escritório ainda não tem esteira.</p>
         ) : (
           <div className="flex min-h-0 flex-1 gap-3">
+            {docAberto ? (
+              <DocumentoDaPeca clienteId={clienteId} peca={docAberto} etapas={etapas} nomeDe={nomeDe}
+                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }} />
+            ) : (
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void novaIdeia(); }}>
                 <Input value={ideia} onChange={(e) => setIdeia(e.target.value)} className="h-9"
@@ -168,6 +179,13 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                       <p className="min-w-0 flex-1 truncate text-xs font-semibold">{c.membroId ? `${nomeDe(c.membroId)} · ${c.titulo}` : c.titulo}</p>
                       <span className="text-[11px] text-muted-foreground">{c.pecas.length}</span>
                     </div>
+                    {c.membroId && (
+                      <button type="button" onClick={() => setCriteriosDe(c.chave)}
+                        className={cn("-mt-0.5 rounded-md px-1.5 py-0.5 text-left text-[10.5px]",
+                          etapas[c.chave]?.criterios?.trim() ? "text-muted-foreground hover:bg-muted" : "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300")}>
+                        {etapas[c.chave]?.criterios?.trim() ? "Critérios definidos ✎" : "⚠ Definir critérios desta etapa"}
+                      </button>
+                    )}
                     <Droppable droppableId={String(c.chave)}>
                     {(dp, snap) => (
                     <div ref={dp.innerRef} {...dp.droppableProps}
@@ -180,6 +198,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                         <div ref={dg.innerRef} {...dg.draggableProps} {...dg.dragHandleProps} style={dg.draggableProps.style}>
                         <CartaoPeca p={p} etapas={etapas} nomeDe={nomeDe} aberta={abertaId === p.id}
                           progresso={p.atividade_id ? progresso.get(p.atividade_id) ?? 0 : null}
+                          onDocumento={p.documento_id ? () => { setDocAberto(p); const e = etapas[Math.min(p.etapa, etapas.length - 1)]; if (e) setFoco({ membroId: e.membro_id, peca: p }); } : undefined}
                           onAbrir={() => {
                             setAbertaId(abertaId === p.id ? null : p.id);
                             // O chat passa a ser com quem faz a etapa desta peça (pronta: com quem revisou por último).
@@ -202,6 +221,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
               </div>
               </DragDropContext>
             </div>
+            )}
             {/* O chat do trio: o Davi instrui; o que valer para as próximas vira aprendizado de quem faz. */}
             <aside className="flex w-[340px] shrink-0 flex-col">
               {foco ? (
@@ -222,14 +242,95 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
             </aside>
           </div>
         )}
+        {criteriosDe !== null && etapas[criteriosDe] && (
+          <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} onFechar={() => setCriteriosDe(null)}
+            onSalvar={async (texto, daviAprova) => {
+              const nova = etapas.map((e, i) => (i === criteriosDe ? { ...e, criterios: texto, davi_aprova: daviAprova } : e));
+              const { error } = await db.from("setores").update({ esteira: nova }).eq("id", setorId);
+              if (error) { toast.error("Não consegui salvar os critérios"); return; }
+              toast.success(`Critérios do ${nomeDe(etapas[criteriosDe].membro_id)} salvos: ele segue isso nas próximas peças`);
+              setCriteriosDe(null);
+              void carregar();
+            }} />
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function CartaoPeca({ p, etapas, nomeDe, aberta, progresso, onAbrir, onMover, onDescartar }: {
+// Critérios de uma etapa (17/10: "tem que ter critérios para o Elias revisar e o Junior escrever").
+function CriteriosEtapa({ etapa, quem, onFechar, onSalvar }: { etapa: Etapa; quem: string; onFechar: () => void; onSalvar: (t: string, daviAprova: boolean) => Promise<void> }) {
+  const [texto, setTexto] = useState(etapa.criterios ?? "");
+  const [daviAprova, setDaviAprova] = useState(etapa.davi_aprova ?? true);
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
+      <div className="w-full max-w-lg space-y-3 rounded-xl border bg-card p-4 shadow-xl">
+        <p className="text-sm font-semibold">Critérios do {quem} · {etapa.nome}</p>
+        <p className="text-xs text-muted-foreground">Como você quer esse trabalho: tamanho, tom, estrutura, o que nunca fazer, exemplos bons. Ele lê isso antes de cada peça.</p>
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={9} autoFocus
+          className="w-full rounded-md border bg-background p-2 text-sm"
+          placeholder={etapa.nome.toLowerCase().includes("revis") ? "Ex.: aprovar só se o gancho prende nos 3 primeiros segundos; cortar palavras difíceis; máx. 45 s de fala…" : "Ex.: roteiro de 40 a 60 s; começa com uma pergunta; 3 pontos com dado ou exemplo; fecha com chamada para comentar…"} />
+        <label className="flex items-center gap-2 text-xs">
+          <input type="checkbox" checked={daviAprova} onChange={(e) => setDaviAprova(e.target.checked)} />
+          Parar e esperar eu passar adiante quando terminar
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onFechar}>Cancelar</Button>
+          <Button size="sm" onClick={() => void onSalvar(texto.trim(), daviAprova)}>Salvar critérios</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// O documento da peça com o botão de passar adiante; o chat com quem faz fica ao lado (o do quadro).
+function DocumentoDaPeca({ clienteId, peca, etapas, nomeDe, onVoltar, onPassar }: {
+  clienteId: string; peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; onVoltar: () => void; onPassar: (etapa: number) => void;
+}) {
+  const navigate = useNavigate();
+  const [doc, setDoc] = useState<{ titulo: string; conteudo: string } | null>(null);
+  const [mudou, setMudou] = useState(false);
+  useEffect(() => {
+    if (!peca.documento_id) return;
+    let vivo = true;
+    let ultimo = "";
+    const ler = async () => {
+      const { data } = await supabase.from("documentos").select("titulo, conteudo").eq("id", peca.documento_id!).maybeSingle();
+      if (!vivo || !data) return;
+      const c = typeof data.conteudo === "string" ? data.conteudo : "";
+      if (ultimo && c !== ultimo) { setMudou(true); window.setTimeout(() => setMudou(false), 2500); }
+      ultimo = c;
+      setDoc({ titulo: data.titulo, conteudo: c });
+    };
+    void ler();
+    const t = window.setInterval(() => void ler(), 4000);   // ele reescrevendo: a tela acompanha
+    return () => { vivo = false; window.clearInterval(t); };
+  }, [peca.documento_id]);
+  const prox = peca.etapa + 1 < etapas.length ? peca.etapa + 1 : null;
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onVoltar} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">← Voltar ao quadro</button>
+        <button type="button" onClick={() => navigate(`/clientes/${clienteId}?documento=${peca.documento_id}`)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Abrir em Documentos (editar)</button>
+        {mudou && <span className="text-xs font-medium text-emerald-600">✎ atualizado agora</span>}
+        <span className="ml-auto" />
+        {prox !== null && (
+          <Button size="sm" className="h-8 gap-1" onClick={() => onPassar(prox)}><Send className="h-3.5 w-3.5" />Passar para o {nomeDe(etapas[prox].membro_id)} ({etapas[prox].nome})</Button>
+        )}
+      </div>
+      <div className={cn("min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5 transition-shadow", mudou && "ring-2 ring-emerald-400/60")}>
+        {doc ? (
+          <article className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: htmlLimpo(doc.conteudo) }} />
+        ) : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+      </div>
+      <p className="text-[11px] text-muted-foreground">Converse ao lado com o {nomeDe(etapas[Math.min(peca.etapa, etapas.length - 1)].membro_id)}: o que você pedir, ele ajusta aqui no documento.</p>
+    </div>
+  );
+}
+
+function CartaoPeca({ p, etapas, nomeDe, aberta, progresso, onAbrir, onMover, onDescartar, onDocumento }: {
   p: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; aberta: boolean; progresso: number | null;
-  onAbrir: () => void; onMover: (etapa: number, nota?: string) => void; onDescartar: () => void;
+  onAbrir: () => void; onMover: (etapa: number, nota?: string) => void; onDescartar: () => void; onDocumento?: () => void;
 }) {
   const [nota, setNota] = useState("");
   const pronto = p.etapa >= etapas.length;
@@ -238,7 +339,8 @@ function CartaoPeca({ p, etapas, nomeDe, aberta, progresso, onAbrir, onMover, on
   const ultimo = textos.length ? textos[textos.length - 1][1] : "";
   return (
     <div className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", aberta && "ring-1 ring-primary/40", p.nota && !pronto && "border-amber-400/60")}>
-      <button type="button" onClick={onAbrir} className="flex w-full items-start gap-1 text-left">
+      {/* Com documento (do Roteiro em diante): clicar abre o documento com o chat ao lado. */}
+      <button type="button" onClick={onDocumento ?? onAbrir} className="flex w-full items-start gap-1 text-left">
         <span className="min-w-0 flex-1 break-words text-[12.5px] font-medium leading-snug">{p.titulo}</span>
         <ChevronDown className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", aberta && "rotate-180")} />
       </button>

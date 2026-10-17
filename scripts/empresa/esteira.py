@@ -43,11 +43,56 @@ def _q(sql, args=(), um=False, commit=False):
 
 def _peca(pid):
     r = _q("""SELECT p.id, p.cliente_id, p.setor_id, p.titulo, p.textos, p.etapa, p.situacao, p.nota, p.atividade_id,
-                     s.nome, s.esteira
+                     s.nome, s.esteira, p.documento_id
                 FROM esteira_itens p JOIN setores s ON s.id = p.setor_id WHERE p.id = %s""", (pid,), um=True)
     if not r:
         raise SystemExit('peça não encontrada')
-    return dict(zip(['id', 'cliente_id', 'setor_id', 'titulo', 'textos', 'etapa', 'situacao', 'nota', 'atividade_id', 'setor', 'esteira'], r))
+    return dict(zip(['id', 'cliente_id', 'setor_id', 'titulo', 'textos', 'etapa', 'situacao', 'nota', 'atividade_id', 'setor', 'esteira', 'documento_id'], r))
+
+
+def _para_davi(e):
+    """A etapa para e espera o Davi passar adiante? (setores.esteira[i].davi_aprova; padrão: todas, menos a última)."""
+    return e.get('davi_aprova', True)
+
+
+def _html(texto):
+    """Texto simples → HTML de documento (parágrafos e listas)."""
+    import html as _h
+    partes = []
+    for bloco in re.split(r'\n\s*\n', texto.strip()):
+        linhas = [l for l in bloco.split('\n') if l.strip()]
+        if linhas and all(re.match(r'^\s*([-•*]|\d+[.)])\s+', l) for l in linhas):
+            itens = ''.join(f"<li>{_h.escape(re.sub(r'^\s*([-•*]|\d+[.)])\s+', '', l))}</li>" for l in linhas)
+            partes.append(f"<{'ol' if re.match(r'^\s*\d', linhas[0]) else 'ul'}>{itens}</{'ol' if re.match(r'^\s*\d', linhas[0]) else 'ul'}>")
+        elif linhas:
+            partes.append('<p>' + '<br>'.join(_h.escape(l.strip()) for l in linhas) + '</p>')
+    return ''.join(partes)
+
+
+def _documento(p, conteudo_html=None):
+    """O documento da peça (17/10: "quando passar para o Junior, quero clicar e abrir um docs normal").
+    Cria na primeira vez; com conteudo_html, troca o conteúdo."""
+    import html as _h
+    if p.get('documento_id'):
+        if conteudo_html is not None:
+            _q("UPDATE documentos SET titulo = %s, conteudo = %s, updated_at = now() WHERE id = %s",
+               (p['titulo'][:150], conteudo_html, p['documento_id']), commit=True)
+        return p['documento_id']
+    dono = _q("SELECT user_id FROM clientes WHERE id = %s", (p['cliente_id'],), um=True)
+    pasta = _q("""SELECT pasta_id FROM documentos WHERE cliente_id = %s AND deleted_at IS NULL AND pasta_id IS NOT NULL
+                   ORDER BY updated_at DESC LIMIT 1""", (p['cliente_id'],), um=True)
+    corpo = conteudo_html if conteudo_html is not None else (
+        f"<h2>{_h.escape(p['titulo'])}</h2><h3>Roteiro</h3><p><em>Ainda sendo escrito.</em></p>")
+    r = _q("""INSERT INTO documentos (cliente_id, titulo, conteudo, user_id, pasta_id) VALUES (%s, %s, %s, %s, %s) RETURNING id""",
+           (p['cliente_id'], p['titulo'][:150], corpo, dono[0] if dono else None, pasta[0] if pasta else None), um=True, commit=True)
+    _q("UPDATE esteira_itens SET documento_id = %s WHERE id = %s", (r[0], p['id']), commit=True)
+    p['documento_id'] = r[0]
+    return r[0]
+
+
+def _conteudo_doc(did):
+    r = _q("SELECT conteudo FROM documentos WHERE id = %s AND deleted_at IS NULL", (did,), um=True)
+    return (r[0] if r else '') or ''
 
 
 def _concluir_tarefa(aid, obs):
@@ -79,6 +124,8 @@ def andar():
                   VALUES (%s, %s, %s, current_date, %s, false, 0, 'media', %s, %s, 'fila', 'copy', %s) RETURNING id""",
                (f"{e['nome']}: {titulo}"[:300], cid, dono, col[0] if col else 'backlog', m[0], m[1], desc), um=True, commit=True)
         _q("UPDATE esteira_itens SET situacao = 'fazendo', atividade_id = %s WHERE id = %s AND situacao = 'fila'", (r[0], pid), commit=True)
+        if etapa >= 1:
+            _documento(_peca(pid))   # a partir do Roteiro a peça tem documento (o Davi abre e acompanha)
         n += 1
     return n
 
@@ -92,8 +139,16 @@ def contexto(pid):
     print(f"Agora: etapa {p['etapa'] + 1} ({etapas[p['etapa']]['nome'] if p['etapa'] < len(etapas) else 'pronto'}), {p['situacao']}")
     if p['nota']:
         print(f"NOTA (ajuste pedido na revisão ou pelo Davi): {p['nota']}")
+    if p['etapa'] < len(etapas):
+        crit = (etapas[p['etapa']].get('criterios') or '').strip()
+        print(f"\nCRITÉRIOS DO DAVI PARA ESTA ETAPA ({etapas[p['etapa']]['nome']}): " + (crit if crit else
+              '(ainda não definidos: siga o seu manual e os aprendizados, e na conversa proponha ao Davi os critérios que você usou)'))
     for nome, texto in (p['textos'] or {}).items():
         print(f"\n--- {nome} ---\n{texto}")
+    if p.get('documento_id'):
+        print(f"\n--- DOCUMENTO DA PEÇA (o que vale: o Davi pode ter editado; id {p['documento_id']}) ---\n"
+              + re.sub(r'<[^>]+>', ' ', _conteudo_doc(p['documento_id'])).strip())
+        print(f"Para reescrever o documento sem passar de etapa (ajuste pedido na conversa): esteira.py reescrever {p['id']} (texto pelo stdin)")
     print("\nComo entregar: python3 scripts/empresa/esteira.py entregar <peça> (texto pelo stdin). "
           "Na 1ª etapa, várias headlines de uma ideia: esteira.py novas <peça> (JSON). Na revisão, para voltar: esteira.py devolver <peça> \"<o que ajustar>\".")
 
@@ -132,12 +187,39 @@ def entregar(pid, texto):
         _concluir_tarefa(p['atividade_id'], 'Headline pronta: esperando o Davi passar adiante.')
         print('ENTREGUE → esperando o Davi passar para a próxima etapa')
         return
+    # No documento: a 2ª etapa (Roteiro) escreve o corpo; as seguintes (Revisão) entram no fim.
+    import html as _h
+    if p['etapa'] == 1:
+        _documento(p, f"<h2>{_h.escape(titulo)}</h2>" + _html(texto))
+    else:
+        atual = _conteudo_doc(_documento(p))
+        _documento(p, atual + f"<h3>{_h.escape(nome)} · {_q('SELECT nome FROM membros WHERE id = %s', (etapas[p['etapa']]['membro_id'],), um=True)[0]}</h3>" + _html(texto))
+    if _para_davi(etapas[p['etapa']]) and p['etapa'] + 1 < len(etapas):
+        # Para e espera o Davi ler/conversar e passar adiante (17/10: "eu queria conseguir ver, conversar com ele").
+        _q("""UPDATE esteira_itens SET textos = %s::jsonb, titulo = %s, nota = NULL, situacao = 'feito', atividade_id = NULL WHERE id = %s""",
+           (json.dumps(textos, ensure_ascii=False), titulo, pid), commit=True)
+        _concluir_tarefa(p['atividade_id'], f'{nome} pronto: esperando o Davi passar adiante.')
+        print(f'ENTREGUE → esperando o Davi passar para {etapas[p["etapa"] + 1]["nome"]}')
+        return
     prox = p['etapa'] + 1
     _q("""UPDATE esteira_itens SET textos = %s::jsonb, titulo = %s, etapa = %s, nota = NULL,
                  situacao = %s, atividade_id = NULL WHERE id = %s""",
        (json.dumps(textos, ensure_ascii=False), titulo, prox, 'feito' if prox >= len(etapas) else 'fila', pid), commit=True)
     _concluir_tarefa(p['atividade_id'], f"Passou para {'o Davi (pronto)' if prox >= len(etapas) else etapas[prox]['nome']} na esteira.")
     print('ENTREGUE →', 'pronto para o Davi' if prox >= len(etapas) else etapas[prox]['nome'])
+
+
+def reescrever(pid, texto):
+    """Ajuste pedido na conversa: reescreve o documento (e o texto da etapa) sem passar de etapa."""
+    import html as _h
+    p = _peca(pid)
+    etapas = p['esteira'] or []
+    nome = etapas[min(p['etapa'], len(etapas) - 1)]['nome']
+    textos = dict(p['textos'] or {})
+    textos[nome] = texto.strip()
+    _q("UPDATE esteira_itens SET textos = %s::jsonb WHERE id = %s", (json.dumps(textos, ensure_ascii=False), pid), commit=True)
+    _documento(p, f"<h2>{_h.escape(p['titulo'])}</h2>" + _html(texto))
+    print('DOCUMENTO REESCRITO')
 
 
 def novas(pid, bruto):
@@ -206,6 +288,8 @@ if __name__ == '__main__':
         entregar(a[1], sys.stdin.read())
     elif a[0] == 'novas' and len(a) > 1:
         novas(a[1], sys.stdin.read())
+    elif a[0] == 'reescrever' and len(a) > 1:
+        reescrever(a[1], sys.stdin.read())
     elif a[0] == 'ideia' and len(a) > 2:
         ideia(a[1], a[2])
     elif a[0] == 'devolver' and len(a) > 2:
