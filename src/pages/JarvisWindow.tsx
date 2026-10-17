@@ -21,7 +21,11 @@ document.documentElement.classList.add("jarvis-window");
 export default function JarvisWindow() {
   const { session, loading } = useAuth();
 
+  // Também no mount (16/10): com o recarregamento ao vivo do código (HMR), o React desmonta e
+  // monta de novo este componente; o cleanup tirava a classe e nada recolocava — a janela da
+  // orbe ficava com um quadrado branco atrás.
   useEffect(() => {
+    document.documentElement.classList.add("jarvis-window");
     return () => {
       document.documentElement.classList.remove("jarvis-window");
     };
