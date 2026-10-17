@@ -189,7 +189,15 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const { data: eds } = await supabase.from("edicoes_video")
       .select("id, titulo, status, mensagem, versao, final_drive, duracao").eq("cliente_id", clienteId)
       .neq("status", "aprovado").order("criado_em", { ascending: false });
-    setEdicoes((eds || []) as EdicaoResumo[]);
+    // Aprovada no editor mas ainda na fila do Mac (17/10: "mesmo que ele não vá fazer no momento,
+    // já sai da minha tarefa e vai para o lado"): conta como "aprovando", em Tarefas sendo executadas.
+    const idsEd = (eds || []).map((e) => e.id);
+    const { data: pedidos } = idsEd.length
+      ? await (supabase as unknown as SupabaseClient).from("edicoes_pedidos").select("edicao_id").eq("tipo", "aprovar").in("status", ["na_fila", "fazendo"]).in("edicao_id", idsEd)
+      : { data: [] };
+    const naFilaAprovar = new Set(((pedidos || []) as { edicao_id: string }[]).map((p) => p.edicao_id));
+    setEdicoes(((eds || []) as EdicaoResumo[]).map((e) => (naFilaAprovar.has(e.id) && e.status === "revisar"
+      ? { ...e, status: "aprovando", mensagem: "Aprovado: na fila do Mac para gerar o Full HD" } : e)));
     const { data: cars } = await supabase.from("carrosseis")
       .select("id, numero, tema, status, mensagem, feedback, slides, legenda, paginas, modelos, versao, fonte_permalink, pasta_drive, atividade_id, atividade_roy_id, atualizado_em")
       .eq("cliente_id", clienteId).in("status", ["produzindo", "revisar", "ajuste", "erro"]).order("numero");

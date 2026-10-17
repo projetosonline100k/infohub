@@ -605,27 +605,19 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (aprovandoRef.current) return;
     if (!(await confirmar("Aprovar? O Danilo gera o Full HD com tudo (zoom, cor, legendas), entrega no Drive e a tarefa segue.", { botao: "Aprovar" }))) return;
     aprovandoRef.current = true;
+    // 17/10: aprovar vira pedido na fila do Mac (a mudança da tela antes, como versão) e o editor
+    // fecha na hora — "mesmo que ele não vá fazer no momento, já sai da minha tarefa e vai para o lado".
+    // O Mac faz um vídeo por vez, na ordem; a edição aparece em "Tarefas sendo executadas".
     try {
-    if (web) {   // as mudanças viram versão antes; o Mac faz os dois pedidos em ordem
-      if (mudou && !(await salvar(true))) return;
+      if (mudou && projeto) {
+        const { error } = await db.from("edicoes_pedidos").insert({ edicao_id: edicao!.id, tipo: "versao", projeto });
+        if (error) { toast.error("Não consegui mandar sua mudança (ela fica salva neste computador)"); guardarRascunho(edicao!.id, estado?.versao ?? edicao!.versao, projeto); return; }
+        apagarRascunho(edicao!.id);
+      }
       const { error } = await db.from("edicoes_pedidos").insert({ edicao_id: edicao!.id, tipo: "aprovar" });
       if (error) { toast.error("Não consegui aprovar"); return; }
-      // 17/10: "quando eu clico em aprovar, já deveria fechar o editor e começar o trabalho".
-      toast.success(macVivo ? "Aprovado: o Danilo gera o Full HD e a Dalila prepara o post" : "Aprovado: o Mac gera o Full HD assim que ligar");
+      toast.success(macVivo ? "Aprovado: o Danilo gera o Full HD (um vídeo por vez) e a Dalila prepara o post" : "Aprovado: o Mac gera o Full HD assim que ligar");
       onFechar();
-      return;
-    }
-    // Salvar a mudança espera o Mac terminar o que está renderizando (um vídeo por vez): avisa,
-    // senão parecia que o botão não fazia nada (17/10).
-    const aguarde = toast.loading(mudou ? "Salvando sua mudança e aprovando… (se o Mac estiver gerando outro vídeo, espera ele terminar)" : "Aprovando…");
-    if (mudou && !(await salvar(false))) { toast.dismiss(aguarde); return; }
-    const r = await fetch(url("aprovar"), { method: "POST" });
-    toast.dismiss(aguarde);
-    if (!r.ok) { toast.error("Não consegui aprovar"); return; }
-    toast.success("Aprovado: o Danilo gera o Full HD e a Dalila prepara o post");
-    onFechar();
-    } catch (e) {
-      toast.error(`Não consegui aprovar: o serviço do Danilo não respondeu (${e instanceof Error ? e.message : "erro"}). Tente de novo em 1 minuto.`);
     } finally {
       aprovandoRef.current = false;
     }
