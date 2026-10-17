@@ -605,13 +605,16 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       if (mudou && !(await salvar(true))) return;
       const { error } = await db.from("edicoes_pedidos").insert({ edicao_id: edicao!.id, tipo: "aprovar" });
       if (error) { toast.error("Não consegui aprovar"); return; }
-      setEstado((a) => (a ? { ...a, status: "aprovando", mensagem: macVivo ? "Aprovado: o Mac vai gerar o Full HD…" : "Aprovado: esperando o Mac ligar para gerar o Full HD" } : a));
+      // 17/10: "quando eu clico em aprovar, já deveria fechar o editor e começar o trabalho".
+      toast.success(macVivo ? "Aprovado: o Danilo gera o Full HD e a Dalila prepara o post" : "Aprovado: o Mac gera o Full HD assim que ligar");
+      onFechar();
       return;
     }
     if (mudou && !(await salvar(false))) return;
     const r = await fetch(url("aprovar"), { method: "POST" });
     if (!r.ok) { toast.error("Não consegui aprovar"); return; }
-    setEstado((a) => (a ? { ...a, status: "aprovando", mensagem: "Gerando a versão final…" } : a));
+    toast.success("Aprovado: o Danilo gera o Full HD e a Dalila prepara o post");
+    onFechar();
   };
   const fechar = async () => {
     if (mudou && projeto && edicao) {
