@@ -164,6 +164,10 @@ def guardar(p):
     # O WAHA apaga o arquivo da mídia depois de alguns minutos: baixa já e
     # guarda no Mac (o Jarvis mostra/toca pelo endereço /midia deste receptor).
     if nova and media.get("url") and tipo in TIPOS_COM_ARQUIVO:
+        # Vídeo no grupo do Danilo vai inteiro para a pasta "Para o Danilo" (o limite de 64 MB é só da conversa).
+        if de_mim and eh_grupo and grupo_do_danilo(nome_do_chat(chat_id)) and (media.get("mimetype") or "").startswith("video/"):
+            threading.Thread(target=mandar_pro_danilo, args=(p["id"], media, tipo, ts), daemon=True).start()
+            return
         baixar_midia(p["id"], media, tipo)
 
 
@@ -209,6 +213,48 @@ def foto_do_chat(chat_id):
 def nome_seguro(id_msg, mime):
     base = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_msg)[-120:]
     return base + EXTENSOES.get((mime or "").split(";")[0].strip(), ".bin")
+
+
+# Vídeos mandados no grupo do Davi caem direto para o Danilo editar (pedido do Davi, 17/10/2026:
+# "jogar os meus vídeos no WhatsApp, em um grupo específico, e já cair para o Danilo editar").
+# O grupo: config.json "grupo_danilo" (padrão "Davi- projeto 100k"). Só os vídeos que o próprio Davi manda.
+PARA_O_DANILO = Path.home() / "Desktop" / "Para o Danilo"
+
+
+def grupo_do_danilo(nome):
+    alvo = (CONFIG.get("grupo_danilo") or "Davi- projeto 100k").lower().replace(" ", "")
+    return bool(nome) and nome.lower().replace(" ", "") == alvo
+
+
+def mandar_pro_danilo(id_msg, media, tipo, ts):
+    """Baixa o vídeo inteiro (sem guardar na memória) para "Para o Danilo". Enviado como Documento
+    vem o original; como vídeo, o WhatsApp comprime (avisa no nome do arquivo)."""
+    try:
+        PARA_O_DANILO.mkdir(parents=True, exist_ok=True)
+        original = (media.get("filename") or "").strip()
+        ext = Path(original).suffix or EXTENSOES.get(media.get("mimetype"), ".mp4")
+        quando = datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H%M%S")
+        base = Path(original).stem if original else f"WhatsApp {quando}"
+        if tipo == "video":
+            base += " (comprimido pelo WhatsApp)"
+        destino = PARA_O_DANILO / f"{base}{ext}"
+        k = 2
+        while destino.exists():
+            destino = PARA_O_DANILO / f"{base} {k}{ext}"
+            k += 1
+        parcial = destino.with_suffix(destino.suffix + ".baixando")   # o Danilo não pega enquanto baixa
+        url = media["url"]
+        req = urllib.request.Request(url if url.startswith("http") else WAHA + url, headers={"X-Api-Key": CONFIG["waha_api_key"]})
+        with urllib.request.urlopen(req, timeout=600) as r, open(parcial, "wb") as f:
+            while True:
+                bloco = r.read(8 * 1024 * 1024)
+                if not bloco:
+                    break
+                f.write(bloco)
+        parcial.rename(destino)
+        log("danilo: vídeo do WhatsApp na pasta", destino.name, f"{destino.stat().st_size // (1024 * 1024)} MB")
+    except Exception as e:
+        log("danilo: não consegui baixar o vídeo do grupo", id_msg, repr(e)[:200])
 
 
 def baixar_midia(id_msg, media, tipo):
