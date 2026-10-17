@@ -97,9 +97,10 @@ def contexto(bid, como=None):
             entrega = q.fetchone()
             q.execute("SELECT status FROM quizzes WHERE atividade_id = %s ORDER BY criado_em DESC LIMIT 1", (atividade_id,))
             quiz = q.fetchone()
-            q.execute("""SELECT id, titulo, status, versao FROM edicoes_video WHERE atividade_id = %s
-                          ORDER BY atualizado_em DESC LIMIT 1""", (atividade_id,))
-            edicao = q.fetchone()
+            q.execute("""SELECT id, titulo, status, versao FROM edicoes_video WHERE atividade_id = %s AND status <> 'cancelado'
+                          ORDER BY atualizado_em DESC""", (atividade_id,))
+            edicoes_da_tarefa = q.fetchall()   # lote do Danilo: vários vídeos na mesma tarefa
+            edicao = edicoes_da_tarefa[0] if edicoes_da_tarefa else None
             q.execute("""SELECT id, numero, tema, status, versao, feedback FROM carrosseis WHERE atividade_roy_id = %s
                           ORDER BY numero""", (atividade_id,))
             carrosseis = q.fetchall()
@@ -168,6 +169,10 @@ def contexto(bid, como=None):
                   f'Depois rode `danilo.py versao {e_id}` (o servidor gera a nova versão e o editor recarrega sozinho) e confira com '
                   f'`danilo.py conferir {e_id} --so-olhar`. NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão do editor). '
                   'O que o Davi corrigir ou elogiar e valer para os próximos vídeos, anote nos aprendizados (aprender.py, agente "danilo").')
+            if len(edicoes_da_tarefa) > 1:
+                print('ATENÇÃO: esta tarefa é um LOTE com vários vídeos. Descubra pela mensagem do Davi de qual vídeo ele fala '
+                      '(do editor ela começa com Sobre "<título>"); a de cima é só a mexida por último (troque o id nos comandos e na pasta pelo do vídeo certo). Se não der para saber, pergunte. '
+                      'Edições da tarefa: ' + '; '.join(f'"{t}" (edição {i}, status {st}, versão {v})' for i, t, st, v in edicoes_da_tarefa))
         if carrosseis:
             print('São CARROSSÉIS do Roy. O Davi está na REVISÃO do carrossel (páginas e legenda na tela) conversando com você ao lado:')
             for cid, num, tema, cst, cv, fb in carrosseis:

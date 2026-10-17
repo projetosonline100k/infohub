@@ -134,7 +134,13 @@ def aprovar(id_):
             # Avança o fluxo: tarefa do Danilo concluída, vídeo → "pronto"
             # (as automações por etapa passam pra quem programa).
             linha = db("SELECT atividade_id, video_vertical_id, cliente_id FROM public.edicoes_video WHERE id = %s", (id_,))[0]
-            if linha[0]:
+            # Tarefa de lote (vários vídeos): só conclui quando o lote acabou (o serviço
+            # zera o estado) e não sobra edição do lote sem aprovar.
+            lote_ativo = linha[0] and str(linha[0]) == (json.loads((BASE / "servico.json").read_text()).get("atividade")
+                                                         if (BASE / "servico.json").exists() else None)
+            pendentes = linha[0] and db("""SELECT count(*) FROM public.edicoes_video WHERE atividade_id = %s AND id <> %s
+                                             AND status NOT IN ('aprovado', 'cancelado')""", (linha[0], id_))[0][0]
+            if linha[0] and not lote_ativo and not pendentes:
                 db("""UPDATE public.atividades a SET situacao = 'concluida', concluida = true,
                         status = coalesce((SELECT status_key FROM public.colunas_atividade c
                                            WHERE c.cliente_id = a.cliente_id AND c.eh_conclusao ORDER BY ordem LIMIT 1), a.status)

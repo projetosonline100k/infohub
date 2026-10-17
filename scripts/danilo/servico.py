@@ -119,7 +119,9 @@ def no_lote(e, id_, nome, titulo):
                        observacao = 'Juntada à tarefa do lote (o andamento aparece lá).'
                      WHERE video_vertical_id = %s AND tipo = 'edicao' AND NOT concluida AND deleted_at IS NULL AND id <> %s""",
                   (vid, e["atividade"]))
-    danilo.db("UPDATE public.edicoes_video SET atividade_id = NULL WHERE id = %s", (id_,))
+    # Ligada à tarefa do lote: o chat do Danilo no editor vem dela (o servidor só
+    # conclui a tarefa do lote quando o lote terminou e todas foram aprovadas).
+    danilo.db("UPDATE public.edicoes_video SET atividade_id = %s WHERE id = %s", (e["atividade"], id_))
     n, total = e.get("feitos", 0) + 1, e.get("total", 0)
     progresso(e["atividade"], int(20 + 80 * (n - 1) / max(total, 1)),
               f"Agora: editando {Path(nome).stem} ({n} de {total}) · {titulo}", "andamento",
@@ -295,6 +297,10 @@ def atender_drive():
             progresso(e.get("atividade"), 100, "Lote editado: todos os vídeos estão em Precisa de você › Revisar edição.",
                       "aguardando_aprovacao")
             salvar_estado({})
+            # Todos já aprovados? Conclui aqui (senão, o último "Aprovar" conclui no servidor).
+            if e.get("atividade") and not danilo.db("""SELECT 1 FROM public.edicoes_video WHERE atividade_id = %s
+                                                         AND status NOT IN ('aprovado', 'cancelado') LIMIT 1""", (e["atividade"],)):
+                danilo.db("UPDATE public.atividades SET situacao = 'concluida', concluida = true WHERE id = %s", (e["atividade"],))
         return False
     piloto = len(brutos) > 1 and not e.get("piloto")
     try:
