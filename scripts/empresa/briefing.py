@@ -90,7 +90,17 @@ def contexto(bid, como=None):
         quiz = None
         edicao = None
         carrosseis = []
+        esteira_chat = None
         if status == 'revisando' and atividade_id:
+            q.execute("SELECT descricao FROM atividades WHERE id = %s", (atividade_id,))
+            d = (q.fetchone() or [''])[0] or ''
+            if d.startswith('ESTEIRA_CHAT:'):
+                sid = d[len('ESTEIRA_CHAT:'):].split()[0]
+                q.execute("SELECT nome, esteira FROM setores WHERE id = %s", (sid,))
+                st = q.fetchone()
+                q.execute("""SELECT left(titulo, 90), etapa, situacao FROM esteira_itens WHERE setor_id = %s AND situacao <> 'descartado'
+                              ORDER BY atualizado_em DESC LIMIT 12""", (sid,))
+                esteira_chat = (sid, st, q.fetchall())
             q.execute("""SELECT a.titulo, a.situacao, d.id, d.titulo FROM atividades a
                            LEFT JOIN LATERAL (SELECT id, titulo FROM documentos WHERE atividade_id = a.id AND deleted_at IS NULL
                                                ORDER BY updated_at DESC LIMIT 1) d ON true WHERE a.id = %s""", (atividade_id,))
@@ -183,6 +193,18 @@ def contexto(bid, como=None):
                   ' — a nova versão aparece sozinha na tela em alguns minutos; diga isso na resposta. Se houver mais de um carrossel e não ficar claro qual, pergunte.'
                   ' Ideia SUA de outro título (o Davi não pediu a troca): não troque; peça no pedir-ajuste para pôr como opção ("opcoes" daquela página), que ele escolhe com um clique na tela.'
                   ' Elogio: agradeça e anote nos aprendizados (aprender.py, agente "roy"). NÃO use o entregar e NÃO aprove (quem aprova é o Davi, no botão).')
+        if esteira_chat:
+            sid, st, pecas = esteira_chat
+            etapas = (st[1] if st else None) or []
+            print(f'É o CHAT DA ESTEIRA do escritório {st[0] if st else ""} (setor {sid}): '
+                  + ' → '.join(f'{e["nome"]}' for e in etapas) + ' → pronto para o Davi. Aqui o Davi INSTRUI o time de como quer o trabalho.')
+            print('Responda como você, pela sua etapa (os colegas da conversa respondem pelas deles). Toda instrução que valha para as próximas peças'
+                  ' (tom, formato, tamanho, referências, o que evitar) ANOTE nos aprendizados de quem faz aquela etapa — é isso que eles seguem:'
+                  ' python3 scripts/inteligencia/aprender.py anotar --cliente <cliente_id> --agente "<nome de quem faz>" "<a regra>".'
+                  f' Se o Davi pedir peças novas (ex.: "Leo, traz 5 headlines sobre X"), crie: python3 scripts/empresa/esteira.py ideia {sid} "<o pedido>"'
+                  ' (a esteira faz o resto sozinha). Para ver uma peça: esteira.py contexto <peça>. NÃO use o entregar.')
+            if pecas:
+                print('Peças recentes: ' + '; '.join(f'{t} (etapa {e + 1}, {s})' for t, e, s in pecas))
         if quiz:
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'

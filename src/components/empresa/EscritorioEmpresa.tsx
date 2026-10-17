@@ -109,6 +109,8 @@ export interface SetorNoEscritorio {
   id: string; nome: string; corPlaca: string; tarefas: number; atrasadas: number; pessoas: PessoaNaSala[];
   /** 0 = fundo (fileira da Diretoria), 1 = frente; sem valor: Diretoria no fundo, o resto na frente. */
   fileira?: number | null;
+  /** Tem esteira (kanban do time): clicar na placa abre. */
+  temEsteira?: boolean;
 }
 
 const MARGEM = 26;          // borda esquerda do escritório
@@ -219,11 +221,12 @@ function MolduraTv({ x, y, w, h, chaoY }: { x: number; y: number; w: number; h: 
 // reunião e o café; os outros setores embaixo, na frente, lado a lado
 // (divisórias de vidro) com a copa no canto. Quem está livre anda até o
 // descanso da própria fileira e volta.
-export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite, tv, onReordenar }: {
+export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAbrir, forcarNoite, tv, onReordenar, onAbrirSetor }: {
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean;
   tv?: React.ReactNode;   // o que passa na TV (TelaTv)
   // Arrastar um escritório pela placa (16/10, "igual The Sims"): nova ordem dos ids daquela fileira.
   onReordenar?: (idsDaFileira: string[], fileira: 0 | 1) => void;
+  onAbrirSetor?: (id: string) => void;   // clique (sem arrastar) na placa de um escritório com esteira
 }) {
   const caixa = useRef<HTMLDivElement>(null);
   const [arraste, setArraste] = useState<{ id: string; fil: 0 | 1; x: number; y: number; destino: number } | null>(null);
@@ -295,7 +298,8 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
     return i === -1 ? daFileira.length : i;
   };
   const comecarArraste = (e: React.PointerEvent, id: string) => {
-    if (!onReordenar || e.button !== 0) return;
+    if (e.button !== 0) return;
+    if (!onReordenar) { if (setores.find((s) => s.id === id)?.temEsteira) onAbrirSetor?.(id); return; }
     e.preventDefault();
     const caixaR = caixa.current?.getBoundingClientRect();
     if (!caixaR) return;
@@ -311,7 +315,10 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
       window.removeEventListener("pointermove", mover);
       window.removeEventListener("pointerup", soltar);
       setArraste(null);
-      if (!ativo) return;
+      if (!ativo) {   // foi um clique: abre a esteira do escritório (se tiver)
+        if (setores.find((s) => s.id === id)?.temEsteira) onAbrirSetor?.(id);
+        return;
+      }
       const fil = filPeloY(yNoDesenho(ev.clientY));
       const ids = zonas.filter((z) => z.fil === fil).map((z) => z.setor.id);
       const de = ids.indexOf(id);   // -1: veio da outra fileira
@@ -438,6 +445,7 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
             style={{ left: pctX(x0 + 8), top: r === 0 ? "4%" : pctY(yMesa + 104) }}>
             <span className="h-2.5 w-2.5 rounded-sm" style={{ background: setor.corPlaca }} />
             <span className="text-[11px] font-bold text-slate-800">{setor.nome}</span>
+            {setor.temEsteira && <span className="rounded bg-primary/15 px-1 text-[9.5px] font-semibold text-primary" title="Clique para abrir a esteira (kanban do time)">esteira ▸</span>}
             <span className="text-[10px] text-slate-500">{setor.tarefas} {setor.tarefas === 1 ? "tarefa" : "tarefas"}{setor.atrasadas > 0 && <b className="text-rose-500"> · {setor.atrasadas} atrasada{setor.atrasadas > 1 ? "s" : ""}</b>}</span>
           </div>
         ))}

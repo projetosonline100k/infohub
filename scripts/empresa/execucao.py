@@ -153,6 +153,17 @@ def contexto(aid):
             print('ETAPA 1 de 2: ESBOÇO. Entregue um DOCUMENTO com o esboço (nome do quiz e promessa, as partes, TODAS as perguntas'
                   ' com as opções, os perfis de resultado e a ponte para a oferta) com o entregar abaixo. Depois que o Davi aprovar o esboço,'
                   ' a tarefa volta pra você na etapa 2 (criar o quiz no Infopro).')
+    if (descricao or '').startswith('ESTEIRA:'):
+        pid = descricao[len('ESTEIRA:'):].split(':')[0]
+        print('\nÉ uma PEÇA DA ESTEIRA do seu escritório (cada um faz a sua etapa e passa adiante sozinho).'
+              ' NÃO use o entregar nem crie documento. Veja a peça, o que as etapas anteriores fizeram e as notas:\n'
+              f'  python3 scripts/empresa/esteira.py contexto {pid}\n'
+              'Siga o SEU manual (acima) e a inteligência (os "SIGA SEMPRE" do ler.py: são as instruções do Davi no chat da esteira).'
+              f" Faça a sua parte e passe adiante:\n  python3 scripts/empresa/esteira.py entregar {pid} <<'FIM'\n  <o seu texto>\n  FIM\n"
+              f"Se for a 1ª etapa e a peça for uma IDEIA/pedido (não uma headline pronta), gere as headlines e mande todas:\n"
+              f"  python3 scripts/empresa/esteira.py novas {pid} <<'FIM'\n  [\"headline 1\", \"headline 2\"]\n  FIM\n"
+              f'Se você é a REVISÃO e o texto não está bom, devolva com o que ajustar: python3 scripts/empresa/esteira.py devolver {pid} "<o que ajustar>"'
+              ' (no máximo 2 devoluções; depois disso, ajuste você mesmo e entregue).')
     if anterior and AJUSTE in (descricao or ''):
         print(f'\n⚠️ É um AJUSTE: o Davi leu a versão anterior e pediu mudanças (o último "{AJUSTE}" acima).'
               f'\nVersão anterior: "{anterior[1]}" ({anterior[0]}). Leia com scripts/consulta.py, faça só o que ele pediu'

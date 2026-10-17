@@ -15,6 +15,7 @@ import { FilaPessoa } from "./FilaPessoa";
 import { EscritorioEmpresa } from "./EscritorioEmpresa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
+import { KanbanEsteira } from "./KanbanEsteira";
 import { alertasDoWhatsapp, type AlertaShirley, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { AprovarTodosCarrosseis } from "./AprovarTodosCarrosseis";
 import { emProducao, linhaPrecisa, precisaRevisar, type CarrosselResumo } from "@/lib/empresa/carrossel";
@@ -146,6 +147,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [reelsProgramados, setReelsProgramados] = useState<ReelProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
   const [publicadosDalila, setPublicadosDalila] = useState({ carrossel: 0, reel: 0 });
+  const [esteiraAberta, setEsteiraAberta] = useState<string | null>(null);   // escritório com a esteira aberta
   // CS (Shirley): só fica relaxada quando não há cliente esperando resposta no WhatsApp (16/10:
   // "a obrigação dela é me fazer ter uma boa conexão com o cliente").
   const [clientesEsperando, setClientesEsperando] = useState<AlertaShirley[]>([]);
@@ -176,7 +178,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
   const carregar = useCallback(async () => {
     const [s, m, t, vv, vy] = await Promise.all([
-      (supabase as unknown as SupabaseClient).from("setores").select("id, nome, descricao, cor, icone, fileira").eq("cliente_id", clienteId).order("ordem"),
+      (supabase as unknown as SupabaseClient).from("setores").select("id, nome, descricao, cor, icone, fileira, esteira").eq("cliente_id", clienteId).order("ordem"),
       (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia, visual").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
       // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
       (supabase as unknown as SupabaseClient).from("atividades").select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, andamento_desde, previsao_fim")
@@ -462,11 +464,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
           <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
             onReordenar={(ids, fileira) => void reordenarEscritorios(ids, fileira)}
+            onAbrirSetor={setEsteiraAberta}
             tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
             setores={setores.map((setor) => {
               const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
               return {
                 id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue, fileira: setor.fileira,
+                temEsteira: ((setor as SetorResumo & { esteira?: unknown[] | null }).esteira ?? []).length > 0,
                 tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
                 pessoas: pessoas.map((estado) => {
                   const { membro, abertas: n, atrasadas: atr, atual } = estado;
@@ -612,6 +616,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </section>
       </div>
 
+      <KanbanEsteira clienteId={clienteId} setorId={esteiraAberta} aberto={!!esteiraAberta} onFechar={() => setEsteiraAberta(null)} />
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
       <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }}
         onRecarregar={() => void carregar()} />

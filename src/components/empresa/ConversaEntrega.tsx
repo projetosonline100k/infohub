@@ -27,9 +27,11 @@ interface Colega { id: string; nome: string; eh_ia: boolean }
 // Conversa em grupo (15/10): "Chamar" põe outro funcionário IA na conversa;
 // cada um responde pela sua área e cada fala mostra quem disse.
 // melhoriaId (16/10): a mesma conversa, sobre uma melhoria do kanban do Pedro (pendências).
-export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando }: {
+export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais }: {
   clienteId: string; tarefaId?: string; melhoriaId?: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
   onEsperando?: (esperando: boolean) => void;
+  /** Conversa em grupo desde o começo (ex.: chat da esteira com o trio, 17/10). */
+  participantesIniciais?: string[];
 }) {
   const sobre = melhoriaId ? { campo: "melhoria_id", id: melhoriaId } : { campo: "atividade_id", id: tarefaId ?? "" };
   // O que ele está fazendo agora (briefing.py agora): "lendo o documento", "reescrevendo as chamadas"…
@@ -90,6 +92,10 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
     const id = crypto.randomUUID();
     const { error } = await db.from("briefings").insert({ id, cliente_id: clienteId, membro_id: membroId, [sobre.campo]: sobre.id, status: "revisando" });
     if (error) throw error;
+    if (participantesIniciais?.length) {
+      await db.from("briefings").update({ participantes: participantesIniciais }).eq("id", id);
+      setParticipantes(participantesIniciais);
+    }
     setConversaId(id);
     respostas.current = Math.max(respostas.current, 1);
     return id;
