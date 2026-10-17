@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { filaAcabando } from "@/lib/empresa/visaoGeral";
 
 // Avisos da equipe (pedido do Davi, 15/10/2026): "quando estiver conversando
 // com a equipe… preciso que fique aparecendo uma notificação, porque se não eu
@@ -95,6 +96,37 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
       clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false, revisar: true });
   }
   return avisos.sort((a, b) => a.quando.localeCompare(b.quando));
+}
+
+// Fila da Dalila acabando (16/10): por projeto que já usa a Dalila, menos de 3 dias
+// de reels ou carrosséis programados vira aviso no Atlas (um por dia, ver useParaRevisar).
+export async function buscarFilasAcabando(agora = new Date()): Promise<Aviso[]> {
+  const [reels, cars, eds, clientes] = await Promise.all([
+    db.from("reels").select("cliente_id, status, programado_para").in("status", ["programado", "publicando", "publicado", "pronto"]).limit(500),
+    db.from("carrosseis").select("cliente_id, status, programado_para").in("status", ["programado", "publicando", "publicado", "revisar"]).limit(500),
+    db.from("edicoes_video").select("cliente_id").eq("status", "revisar").limit(200),
+    db.from("clientes").select("id, nome_especialista"),
+  ]);
+  type Post = { cliente_id: string; status: string; programado_para: string | null };
+  const projeto = new Map(((clientes.data || []) as { id: string; nome_especialista: string }[]).map((c) => [c.id, c.nome_especialista]));
+  const edicoes = (eds.data || []) as { cliente_id: string }[];
+  const dia = agora.toISOString().slice(0, 10);
+  const avisos: Aviso[] = [];
+  for (const [tipo, posts] of [["reel", (reels.data || []) as Post[]], ["carrossel", (cars.data || []) as Post[]]] as const) {
+    for (const clienteId of new Set(posts.map((p) => p.cliente_id))) {
+      const meus = posts.filter((p) => p.cliente_id === clienteId);
+      const fila = meus.filter((p) => p.status === "programado" || p.status === "publicando");
+      const prontos = tipo === "reel"
+        ? meus.filter((p) => p.status === "pronto").length + edicoes.filter((e) => e.cliente_id === clienteId).length
+        : meus.filter((p) => p.status === "revisar").length;
+      const aviso = filaAcabando(tipo, fila, prontos, agora);
+      if (!aviso) continue;
+      avisos.push({ id: `fila-${tipo}-${clienteId}-${dia}`, tipo: "erro", quando: agora.toISOString(), titulo: `${aviso.texto} (Dalila)`,
+        detalhe: prontos ? "Abra o Escritório e programe para o perfil não ficar sem post" : `Peça ${tipo === "reel" ? "uma edição ao Danilo" : "um carrossel ao Roy"}`,
+        clienteId, projeto: projeto.get(clienteId), lido: false, revisar: true });
+    }
+  }
+  return avisos;
 }
 
 // ---- Conversas lidas (bolinha de não lida na gaveta da equipe) ----

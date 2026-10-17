@@ -32,7 +32,7 @@ import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarReelPelaTarefa, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, ehCoordenador, equipeOfflineDesde, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, ehCoordenador, equipeOfflineDesde, filaAcabando, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -144,7 +144,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
   const [reelsProgramados, setReelsProgramados] = useState<ReelProgramado[]>([]);
   const [carrosselAberto, setCarrosselAberto] = useState<CarrosselResumo | null>(null);
-  const [publicadosDalila, setPublicadosDalila] = useState(0);
+  const [publicadosDalila, setPublicadosDalila] = useState({ carrossel: 0, reel: 0 });
   // CS (Shirley): só fica relaxada quando não há cliente esperando resposta no WhatsApp (16/10:
   // "a obrigação dela é me fazer ter uma boa conexão com o cliente").
   const [clientesEsperando, setClientesEsperando] = useState<AlertaShirley[]>([]);
@@ -210,7 +210,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       db.from("carrosseis").select("id", { count: "exact", head: true }).eq("cliente_id", clienteId).eq("status", "publicado"),
       db.from("reels").select("id", { count: "exact", head: true }).eq("cliente_id", clienteId).eq("status", "publicado"),
     ]);
-    setPublicadosDalila((carPub ?? 0) + (reelPub ?? 0));
+    setPublicadosDalila({ carrossel: carPub ?? 0, reel: reelPub ?? 0 });
     const { data: convs } = await supabase.rpc("whatsapp_conversas");
     setClientesEsperando(convs ? alertasDoWhatsapp(convs as unknown as ConversaResumo[], new Date()) : []);
     setSetores((s.data || []) as SetorResumo[]);
@@ -235,7 +235,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Carrosséis e reels programados/publicados pela Dalila entram em Agendados/Postados (16/10: "os carrosséis entram como agendado também").
   const indicadores = useMemo(() => {
     const n = contarIndicadores(videos);
-    return { ...n, agendados: n.agendados + carrosseisProgramados.length + reelsProgramados.length, postados: n.postados + publicadosDalila };
+    return { ...n, agendados: n.agendados + carrosseisProgramados.length + reelsProgramados.length, postados: n.postados + publicadosDalila.carrossel + publicadosDalila.reel };
   }, [videos, carrosseisProgramados, reelsProgramados, publicadosDalila]);
   // Tarefa do Roy que já virou carrossel aparece só pelo card do carrossel (revisão com as páginas),
   // não como "Aprovar entrega" (esse caminho é o do Ítalo, que entrega documento).
@@ -269,6 +269,21 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const edicoesRodando = edicoes.filter((e) => ["na_fila", "editando", "renderizando", "aprovando"].includes(e.status));
   const paraAprovar = precisa.flatMap((item) => (item.tipo === "aprovar" ? item.tarefas : []));
   const idsAgendar = precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar" ? [item.tarefa.id] : []));
+  // Fila da Dalila acabando (16/10): menos de 3 dias de reels/carrosséis programados.
+  // Só para quem já usa a Dalila (algo programado, publicado ou pronto); o clique abre o primeiro pronto.
+  const edicoesProntas = edicoes.filter((e) => e.status === "revisar");
+  const datasReel = precisa.flatMap((item) => (item.tipo === "tarefa" && item.tarefa.tipo === "agendar_reel" ? [item.tarefa.id] : []));
+  const carrosseisProntos = carrosseis.filter((c) => c.status === "revisar");
+  const avisosFila = [
+    { fila: reelsProgramados, publicados: publicadosDalila.reel, prontos: edicoesProntas.length + datasReel.length, tipo: "reel" as const,
+      abrir: () => (edicoesProntas[0] ? setEdicaoAberta(edicoesProntas[0]) : datasReel[0] ? setAgendarReelAberto(datasReel[0]) : onIrPara("cronograma")) },
+    { fila: carrosseisProgramados, publicados: publicadosDalila.carrossel, prontos: carrosseisProntos.length + idsAgendar.length, tipo: "carrossel" as const,
+      abrir: () => (carrosseisProntos[0] ? setCarrosselAberto(carrosseisProntos[0]) : idsAgendar[0] ? setAgendarAberto(idsAgendar[0]) : onIrPara("cronograma")) },
+  ].flatMap((f) => {
+    if (!f.fila.length && !f.publicados && !f.prontos) return [];
+    const aviso = filaAcabando(f.tipo, f.fila, f.prontos, new Date());
+    return aviso ? [{ ...aviso, abrir: f.abrir }] : [];
+  });
   // Gaveta da equipe (Messenger): status e o que cada um está fazendo.
   const pessoasChat = estados.map((estado) => {
     const ia = trabalhoIa.get(estado.membro.id);
@@ -297,6 +312,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   };
   // "Precisa de você" numa lista só, cada item com a categoria pro filtro.
   const linhasPrecisa: { chave: string; categoria: Categoria; no: React.ReactNode }[] = [
+    ...avisosFila.map((a) => ({
+      chave: `fila-${a.tipo}`, categoria: (a.tipo === "reel" ? "video" : "carrossel") as Categoria,
+      no: <LinhaAcao icone={CalendarClock} titulo={a.texto} atrasada
+        detalhe={a.prontos ? `Clique para abrir ${a.tipo === "reel" ? "a primeira" : "o primeiro"} e programar` : `Peça ${a.tipo === "reel" ? "uma edição ao Danilo" : "um carrossel ao Roy"} para o perfil não ficar sem post`}
+        onClick={a.abrir} />,
+    })),
     ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
       chave: `ed-${e.id}`, categoria: "video" as Categoria,
       no: <LinhaAcao icone={Video} titulo={`${e.status === "erro" ? "Edição com problema" : "Revisar edição"}: ${e.titulo}`}

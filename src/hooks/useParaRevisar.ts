@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { buscarAvisos, conversaLidaEm, type Aviso } from "@/lib/empresa/notificacoes";
+import { buscarAvisos, buscarFilasAcabando, conversaLidaEm, type Aviso } from "@/lib/empresa/notificacoes";
 
 // "Sempre que alguém da equipe aprontar algo que eu tenha que revisar, quero
 // que chegue uma notificação, pode vir até pelo Atlas" (Davi, 16/10/2026).
@@ -19,6 +19,11 @@ const gravarAdiados = (v: Aviso[]) => { try { localStorage.setItem(CHAVE_ADIADOS
 /** Quem da equipe é o aviso ("Ítalo entregou…" → Ítalo; "Reel pronto… (Dalila)" → Dalila). */
 export const quemDoAviso = (a: Aviso) => a.titulo.match(/\(([^)]+)\)\s*$/)?.[1] ?? a.titulo.replace(/^[^\p{L}]+/u, "").split(/\s+/)[0] ?? "Equipe";
 const INTERVALO = 30_000;
+// Fila de reels/carrosséis acabando (16/10): olha a cada 30 min e avisa cada fila uma vez por dia.
+const INTERVALO_FILA = 30 * 60_000;
+const CHAVE_FILA = "atlas-fila-avisada";
+const lerFilaAvisada = (): string[] => { try { return JSON.parse(localStorage.getItem(CHAVE_FILA) || "[]") as string[]; } catch { return []; } };
+const gravarFilaAvisada = (v: string[]) => { try { localStorage.setItem(CHAVE_FILA, JSON.stringify(v.slice(-40))); } catch { /* sem storage */ } };
 
 const ler = (): string => {
   try { return localStorage.getItem(CHAVE_DESDE) || new Date().toISOString(); } catch { return new Date().toISOString(); }
@@ -29,8 +34,20 @@ export function useParaRevisar(meuId: string | undefined, ativo: boolean) {
   const [fila, setFila] = useState<Aviso[]>([]);
   const desde = useRef<string>(ler());
 
+  const ultimaFila = useRef(0);
   const buscar = useCallback(async () => {
     if (!meuId) return;
+    if (Date.now() - ultimaFila.current >= INTERVALO_FILA) {
+      ultimaFila.current = Date.now();
+      try {
+        const avisadas = lerFilaAvisada();
+        const novas = (await buscarFilasAcabando()).filter((a) => !avisadas.includes(a.id));
+        if (novas.length) {
+          gravarFilaAvisada([...avisadas, ...novas.map((a) => a.id)]);
+          setFila((xs) => [...xs, ...novas.filter((a) => !xs.some((x) => x.id === a.id))].slice(-20));
+        }
+      } catch { /* sem rede: tenta na próxima */ }
+    }
     try {
       const novos = await buscarAvisos(desde.current, meuId);
       if (!novos.length) return;

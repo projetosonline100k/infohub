@@ -156,3 +156,14 @@ test('Roy/Danilo parados: aviso por funcionário, só com o ouvinte no ar', asyn
   // ouvinte fora: o aviso da equipe inteira já cobre
   assert.deepEqual(iasParadas([{ servico: 'ouvinte', ultimo_sinal: velho }, { servico: 'danilo', ultimo_sinal: velho }], agora), []);
 });
+
+test('fila acabando: avisa com menos de 3 dias de reels programados e conta os prontos', async () => {
+  const { filaAcabando } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const agora = new Date('2026-10-16T22:36:00');
+  const reels = [{ programado_para: '2026-10-17T18:00:00' }];
+  assert.equal(filaAcabando('reel', reels, 2, agora).texto, 'Reels só até 17/10: 2 edições prontas esperando você');
+  assert.equal(filaAcabando('reel', [], 0, agora).texto, 'Nenhum reel programado: nenhuma edição pronta na fila');
+  assert.equal(filaAcabando('carrossel', [{ programado_para: '2026-10-23T10:00:00' }], 0, agora), null);
+  // O que já passou não conta como fila.
+  assert.equal(filaAcabando('carrossel', [{ programado_para: '2026-10-10T10:00:00' }], 1, agora).texto, 'Nenhum carrossel programado: 1 carrossel pronto esperando você');
+});

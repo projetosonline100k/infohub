@@ -221,6 +221,31 @@ export function videosProgramados(videos: VideoResumo[], hoje: string, limite = 
     .slice(0, limite);
 }
 
+// Fila da Dalila acabando (melhoria do Pedro, 16/10): avisa quando faltam
+// menos de DIAS_FILA_MINIMA dias de reels (ou carrosséis) programados, para o
+// perfil não ficar dias sem post por esquecimento. Devolve null se a fila está
+// boa; senão, até quando vai (null = nada programado) e o texto do aviso.
+export const DIAS_FILA_MINIMA = 3;
+export interface FilaAcabando { tipo: "reel" | "carrossel"; ate: string | null; prontos: number; texto: string }
+export function filaAcabando(
+  tipo: "reel" | "carrossel",
+  programados: { programado_para: string | null }[],
+  prontos: number,
+  agora: Date,
+  dias = DIAS_FILA_MINIMA,
+): FilaAcabando | null {
+  const datas = programados.map((p) => p.programado_para).filter((d): d is string => !!d && new Date(d).getTime() >= agora.getTime());
+  const ultima = datas.length ? new Date(Math.max(...datas.map((d) => new Date(d).getTime()))) : null;
+  const limite = new Date(agora);
+  limite.setDate(limite.getDate() + dias);
+  if (ultima && ultima >= limite) return null;
+  const nome = tipo === "reel" ? "Reels" : "Carrosséis";
+  const ate = ultima ? `${String(ultima.getDate()).padStart(2, "0")}/${String(ultima.getMonth() + 1).padStart(2, "0")}` : null;
+  const rotuloPronto = tipo === "reel" ? ["edição pronta", "edições prontas"] : ["carrossel pronto", "carrosséis prontos"];
+  const espera = prontos ? `${prontos} ${rotuloPronto[prontos === 1 ? 0 : 1]} esperando você` : `nenhum${tipo === "reel" ? "a edição pronta" : " carrossel pronto"} na fila`;
+  return { tipo, ate, prontos, texto: `${ate ? `${nome} só até ${ate}` : `Nenhum ${tipo} programado`}: ${espera}` };
+}
+
 // Sinal de cada pessoa no mapa: verde = trabalhando, cinza = parada,
 // amarelo = esperando resposta/revisão do Davi, vermelho = algum problema
 // (trabalho com erro ou tarefa atrasada). Vale o mais grave.
