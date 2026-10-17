@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/edicaoVideo.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { trechosMantidos, paraFinal, paraBruto, cortarTrecho, restaurar, duracaoFinal } =
+const { trechosMantidos, paraFinal, paraBruto, cortarTrecho, restaurar, duracaoFinal, nivelVoz, curvaMusica } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 // Bruto de 20 s com pausa de gravação removida em 5–8 s.
@@ -89,4 +89,18 @@ test('zoom antigo (pontos) vira blocos e o nível segue a curva', async () => {
   assert.equal(m.zoomNoFinal(f, 0), 1);
   assert.equal(m.zoomNoFinal(f, 11), 1);
   assert.ok(m.zoomNoFinal(f, 0.6) > 1 && m.zoomNoFinal(f, 0.6) < 1.2);
+});
+
+test('música abaixa quando a voz fala e volta devagar', () => {
+  // 3 s de bruto, voz só entre 1 e 2 s (picos a 100/s).
+  const picos = Array.from({ length: 300 }, (_, i) => (i >= 100 && i < 200 ? 0.8 : 0.02));
+  const voz = nivelVoz(picos, 100, [[0, 3]]);
+  assert.equal(voz.length, 30);
+  const g = curvaMusica(voz, 0.35);
+  assert.equal(g[0], 1);
+  assert.equal(g[9], 0.35);          // 0,1 s antes da fala já abaixou
+  assert.equal(g[15], 0.35);
+  assert.equal(g[24], 0.35);         // segura 0,5 s depois
+  assert.ok(g[26] > 0.35 && g[26] < 1);   // volta subindo
+  assert.equal(g[29], 1);
 });

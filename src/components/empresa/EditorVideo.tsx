@@ -14,7 +14,7 @@ import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { cn } from "@/lib/utils";
 import {
   COR_NEUTRA, PRESETS_COR, apagarIntervalo, blocosZoom, clipes, dividirLegenda, dividirMidia, dividirZoom, duracaoFinal, fecharLacuna, lacunaEm,
-  paraBruto, paraFinal, previaCor, restaurarIntervalo, trechosMantidos, zoomNoFinal,
+  curvaMusica, nivelVoz, paraBruto, paraFinal, previaCor, restaurarIntervalo, trechosMantidos, zoomNoFinal,
   type AjusteCor, type BlocoZoom, type Clipe, type ProjetoEdicao,
 } from "@/lib/empresa/edicaoVideo";
 
@@ -46,6 +46,8 @@ const POSICOES = {
   dupla_esq: { x: 95, y: 1180, w: 425, h: 450, rotulo: "Embaixo, à esquerda" },
   dupla_dir: { x: 560, y: 1180, w: 425, h: 450, rotulo: "Embaixo, à direita" },
   centro: { x: 140, y: 700, w: 800, h: 560, rotulo: "No meio da tela" },
+  celular: { x: 380, y: 800, w: 440, h: 782, rotulo: "Celular em pé, mais pro meio" },
+  celular_dir: { x: 500, y: 830, w: 600, h: 1067, rotulo: "Celular em pé, à direita" },
 } as const;
 const TIPOS_ZOOM: Record<BlocoZoom["tipo"], string> = { suave: "Suave (entra e sai devagar)", seco: "Seco (punch)", lento: "Lento (vai aproximando)" };
 const FPS = 30;
@@ -303,9 +305,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (!tocando || !projeto) return;
     let raf = 0;
     const passo = () => {
+      // Player trocando de arquivo (montando ↔ liso) ainda está no 0: não lê o tempo dele,
+      // senão a agulha volta pro começo (pedido do Davi, 16/10).
       if (modoMontagem) {
         const m = vidA.current;
-        if (m) {
+        if (m && m.readyState >= 1) {
           const tb = paraBruto(segsQ, m.currentTime);
           m.muted = !!lacunaEm(projeto, tb);
           setTFonte(tb);
@@ -315,7 +319,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
         return;
       }
       const v = ativo();
-      if (v) {
+      if (v && v.readyState >= 1) {
         const t = v.currentTime;
         const i = segs.findIndex(([a, b]) => t >= a - 0.08 && t < b);
         if (i < 0) {
@@ -381,6 +385,26 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (abaAtiva) return;
     vidA.current?.pause(); vidB.current?.pause(); setTocando(false);
   }, [abaAtiva]);
+  // Música de fundo tocando junto no player (antes só saía na versão gerada). Mesma conta do
+  // motor: começa no 0 do vídeo final, em loop, no volume do projeto.
+  const musRef = useRef<HTMLAudioElement>(null);
+  const nomeMusica = projeto?.musica?.arquivo.split("/").pop() ?? "";
+  const relMusica = projeto?.musica ? relativo(projeto.musica.arquivo) : null;
+  const srcMusica = !projeto?.musica ? "" : relMusica ? url(`arquivo/${relMusica}`) : url(`acervo/${encodeURIComponent(nomeMusica)}`);
+  const volMusica = projeto?.musica?.volume ?? 0;
+  // Abaixa sozinha quando o Davi fala (mesma curva do motor): ganho a cada 0,1 s do vídeo final.
+  const vozFinal = useMemo(() => (onda ? nivelVoz(onda.picos, onda.por_segundo, segs) : []), [onda, segs]);
+  const ganhoMusica = useMemo(() => curvaMusica(vozFinal, projeto?.musica?.abaixar ?? 0.35), [vozFinal, projeto?.musica?.abaixar]);
+  const ganhoAgora = ganhoMusica[Math.floor(tFinal * 10)] ?? 1;
+  useEffect(() => { if (musRef.current) musRef.current.volume = Math.min(1, volMusica * ganhoAgora); }, [volMusica, ganhoAgora, srcMusica]);
+  useEffect(() => {
+    const a = musRef.current;
+    if (!a) return;
+    if (!tocando || !srcMusica) { a.pause(); return; }
+    const alvo = a.duration > 0 ? tFinal % a.duration : tFinal;
+    if (Math.abs(a.currentTime - alvo) > 0.3) a.currentTime = alvo;
+    if (a.paused) void a.play().catch(() => {});
+  }, [tocando, tFinal, srcMusica]);
   const alternarPlay = useCallback(() => {
     const v = ativo();
     if (!v || !projeto) return;
@@ -567,7 +591,14 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
         </div>
 
         <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Clicou no editor (linha do tempo, player…): o foco sai do chat, senão as teclas
+            (Espaço, C, E…) iam parar na caixa de mensagem (pedido do Davi, 16/10). */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col"
+          onPointerDownCapture={(e) => {
+            const campo = (el: Element | null) => !!el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.tagName === "SELECT" || (el as HTMLElement).isContentEditable);
+            const foco = document.activeElement as HTMLElement | null;
+            if (campo(foco) && !campo((e.target as HTMLElement).closest("textarea, input, select, [contenteditable]"))) foco!.blur();
+          }}>
         {!desktop ? <Aviso>O editor funciona no app do Mac (o vídeo e a montagem ficam nele).</Aviso>
           : !cfg ? <Aviso>O serviço do Danilo não está ligado neste Mac.</Aviso>
           : !projeto ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
@@ -591,6 +622,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                       }}
                       onEnded={() => { if (i === ativoRef.current) setTocando(false); }} />
                   ))}
+                  {srcMusica && <audio ref={musRef} src={srcMusica} loop preload="auto" />}
                   {cor.quente !== 0 && (
                     <div className="pointer-events-none absolute inset-0"
                       style={{ background: cor.quente > 0 ? `rgba(255,150,40,${(cor.quente * 0.35).toFixed(3)})` : `rgba(40,140,255,${(-cor.quente * 0.35).toFixed(3)})`, mixBlendMode: "soft-light" }} />
@@ -601,6 +633,12 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                     return m.tipo === "imagem" && rel ? (
                       <img key={m.id} src={url(`arquivo/${rel}`)} alt="" className="absolute object-cover"
                         style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: 34 * escala }} />
+                    ) : m.tipo === "video" && rel ? (
+                      // Fundo verde: toca a cópia com transparência que o motor gera (_alfa/<nome>.mov).
+                      <VideoSobreposto key={m.id} tocando={tocando} t={tFinal - (paraFinal(segs, m.inicio, "inicio") ?? 0)}
+                        src={url(`arquivo/${m.chroma ? rel.replace(/[^/]+$/, (n) => `_alfa/${n.replace(/\.[^.]+$/, "")}.mov`) : rel}`)}
+                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: m.chroma ? 0 : 34 * escala }}
+                        cobrir={!m.chroma} />
                     ) : (
                       <div key={m.id} className="absolute flex items-center justify-center bg-black/60 text-xs" style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: 34 * escala }}>
                         <Film className="h-5 w-5" />
@@ -608,10 +646,14 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                     );
                   })}
                   {legAtivas.map((l) => (
-                    <div key={l.id} className="pointer-events-none absolute left-0 right-0 whitespace-pre-line px-[6%] text-center font-bold leading-tight text-[#FFD60A]"
+                    <div key={l.id} className={cn("pointer-events-none absolute whitespace-pre-line text-center font-bold leading-tight text-[#FFD60A]", l.tipo !== "head" && "left-0 right-0 px-[6%]")}
                       style={{
-                        ...(l.tipo === "head" ? { bottom: (1920 - 1110) * escala } : { top: 1080 * escala, transform: "translateY(-50%)" }),
-                        fontSize: (l.tipo === "head" ? 74 : 58) * escala * 0.92,
+                        // Headline: caixa de `largura` px centrada; as linhas quebram nela (o motor quebra igual).
+                        ...(l.tipo === "head" ? { bottom: (1920 - 1110) * escala, left: ((1080 - (l.largura ?? 960)) / 2) * escala, width: (l.largura ?? 960) * escala }
+                          : { top: 1080 * escala, transform: "translateY(-50%)" }),
+                        fontSize: (l.tipo === "head" ? l.tamanho ?? 74 : 58) * escala * 0.92,
+                        // Mesma conta do motor: entre uma linha e outra da headline vão tamanho × 1,2 × entrelinhas.
+                        ...(l.tipo === "head" && { lineHeight: (1.2 * (l.entrelinhas ?? 1)) / 0.92 }),
                         textShadow: "0 0 3px #111, 0 0 3px #111, 1px 1px 2px #000, -1px -1px 2px #000",
                         fontFamily: "Arial, Helvetica, sans-serif",
                       }}>{l.texto}</div>
@@ -638,7 +680,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                 <div onPointerDown={arrastarDivisoria} title="Arraste pra aumentar a linha do tempo"
                   className="h-1.5 shrink-0 cursor-row-resize border-y border-zinc-700 bg-[#2d2d30] hover:bg-sky-600/60" />
                 <LinhaDoTempo
-                  projeto={projeto} segs={segs} clipes={listaClipes} durFinal={durFinal} tFinal={tFinal} pps={pps} setPps={setPps} onda={onda} ondaMusica={ondaMusica}
+                  projeto={projeto} segs={segs} clipes={listaClipes} durFinal={durFinal} tFinal={tFinal} pps={pps} setPps={setPps} onda={onda} ondaMusica={ondaMusica} ganhoMusica={ganhoMusica} vozFinal={vozFinal}
                   ferramenta={ferramenta} setFerramenta={setFerramenta} selecao={selecao} setSelecao={setSelecao}
                   irParaFinal={irParaFinal} cortarEm={cortarEm} alterar={alterar} desfazer={desfazer} refazer={refazer}
                   podeDesfazer={historico.length > 0} podeRefazer={futuro.length > 0} marcar={marcar} novoZoom={novoZoom}
@@ -681,6 +723,23 @@ function Propriedades({ altura, projeto, selecao, legSel, midSel, zoomSel, alter
   const fora = [...projeto.remocoes].sort((a, b) => a.inicio - b.inicio);
   const unico = selecao.length === 1 ? selecao[0] : null;
   const ajuste = projeto.ajuste_cor ?? COR_NEUTRA;
+  const [acervo, setAcervo] = useState<{ nome: string; arquivo: string; titulo: string }[]>([]);   // músicas livres do Danilo
+  const [ouvindo, setOuvindo] = useState<string | null>(null);
+  const ouvirRef = useRef<HTMLAudioElement | null>(null);
+  useEffect(() => {
+    void fetch(url("musicas")).then((r) => (r.ok ? r.json() : [])).then((m) => setAcervo(Array.isArray(m) ? m : [])).catch(() => {});
+  }, [url]);
+  const ouvirMusica = (nome: string) => {
+    ouvirRef.current?.pause();
+    if (ouvindo === nome) { setOuvindo(null); return; }
+    const a = new Audio(url(`acervo/${encodeURIComponent(nome)}`));
+    a.volume = 0.6;
+    a.onended = () => setOuvindo(null);
+    void a.play().catch(() => setOuvindo(null));
+    ouvirRef.current = a;
+    setOuvindo(nome);
+  };
+  useEffect(() => () => ouvirRef.current?.pause(), []);
   const mudarZoom = (n: Partial<BlocoZoom>) => alterar({ ...projeto, zooms: (projeto.zooms ?? []).map((z) => (z.id === zoomSel?.id ? { ...z, ...n } : z)) });
   return (
     <div className="flex shrink-0 bg-[#252526] text-xs" style={{ height: altura }}>
@@ -731,6 +790,22 @@ function Propriedades({ altura, projeto, selecao, legSel, midSel, zoomSel, alter
             <textarea value={legSel.texto} rows={legSel.tipo === "head" ? 3 : 2} autoFocus
               onChange={(e) => alterar({ ...projeto, legendas: projeto.legendas.map((l) => (l.id === legSel.id ? { ...l, texto: e.target.value } : l)) })}
               className="w-full max-w-xl rounded border border-zinc-600 bg-[#1e1e1e] p-2 text-sm text-zinc-100 focus:border-sky-500 focus:outline-none" />
+            {legSel.tipo === "head" && (
+              <div className="flex max-w-xl gap-4">
+                <label className="block flex-1">Tamanho ({Math.round(((legSel.tamanho ?? 74) / 74) * 100)}%)
+                  <input type="range" min={44} max={120} step={1} value={legSel.tamanho ?? 74} className="mt-1 w-full"
+                    onChange={(e) => alterar({ ...projeto, legendas: projeto.legendas.map((l) => (l.id === legSel.id ? { ...l, tamanho: Number(e.target.value) } : l)) })} />
+                </label>
+                <label className="block flex-1">Largura ({Math.round(((legSel.largura ?? 960) / 1080) * 100)}% da tela)
+                  <input type="range" min={300} max={1040} step={10} value={legSel.largura ?? 960} className="mt-1 w-full"
+                    onChange={(e) => alterar({ ...projeto, legendas: projeto.legendas.map((l) => (l.id === legSel.id ? { ...l, largura: Number(e.target.value) } : l)) })} />
+                </label>
+                <label className="block flex-1">Espaço entre linhas ({Math.round((legSel.entrelinhas ?? 1) * 100)}%)
+                  <input type="range" min={0.8} max={2} step={0.05} value={legSel.entrelinhas ?? 1} className="mt-1 w-full"
+                    onChange={(e) => alterar({ ...projeto, legendas: projeto.legendas.map((l) => (l.id === legSel.id ? { ...l, entrelinhas: Number(e.target.value) } : l)) })} />
+                </label>
+              </div>
+            )}
             <p className="text-zinc-500">Arraste as pontas da legenda pra ela entrar antes ou sair depois (trava na vizinha; continue puxando pra passar por cima).</p>
             <BotaoApagar onClick={apagar}>Apagar legenda</BotaoApagar>
           </>
@@ -741,12 +816,35 @@ function Propriedades({ altura, projeto, selecao, legSel, midSel, zoomSel, alter
               <p className="font-semibold text-violet-300">{midSel.tipo === "imagem" ? "Imagem" : "Vídeo"}</p>
               <p className="truncate text-zinc-400">{midSel.arquivo.split("/").pop()}</p>
               <label className="block">Posição
-                <select value={(Object.entries(POSICOES).find(([, p]) => p.x === midSel.x && p.y === midSel.y)?.[0]) ?? "embaixo"}
+                <select value={(Object.entries(POSICOES).find(([, p]) => p.x === midSel.x && p.y === midSel.y && p.w === midSel.w)?.[0]) ?? ""}
                   onChange={(e) => { const p = POSICOES[e.target.value as keyof typeof POSICOES]; alterar({ ...projeto, midias: projeto.midias.map((m) => (m.id === midSel.id ? { ...m, x: p.x, y: p.y, w: p.w, h: p.h } : m)) }); }}
                   className="mt-1 w-full max-w-xs rounded border border-zinc-600 bg-[#1e1e1e] p-1.5">
+                  <option value="" disabled>Personalizada</option>
                   {Object.entries(POSICOES).map(([id, p]) => <option key={id} value={id}>{p.rotulo}</option>)}
                 </select>
               </label>
+              <div className="flex max-w-xl gap-4">
+                <label className="block flex-1">Tamanho ({Math.round((midSel.w / 1080) * 100)}% da tela)
+                  <input type="range" min={150} max={1080} step={10} value={midSel.w} className="mt-1 w-full"
+                    onChange={(e) => { const w = Number(e.target.value), h = Math.round((midSel.h / midSel.w) * w);
+                      alterar({ ...projeto, midias: projeto.midias.map((m) => (m.id === midSel.id ? { ...m, w, h, x: Math.round(m.x + (m.w - w) / 2), y: Math.round(m.y + (m.h - h) / 2) } : m)) }); }} />
+                </label>
+                <label className="block flex-1">Esquerda ↔ direita
+                  <input type="range" min={0} max={1080} step={5} value={Math.round(midSel.x + midSel.w / 2)} className="mt-1 w-full"
+                    onChange={(e) => alterar({ ...projeto, midias: projeto.midias.map((m) => (m.id === midSel.id ? { ...m, x: Math.round(Number(e.target.value) - m.w / 2) } : m)) })} />
+                </label>
+                <label className="block flex-1">Cima ↕ baixo
+                  <input type="range" min={0} max={1920} step={5} value={Math.round(midSel.y + midSel.h / 2)} className="mt-1 w-full"
+                    onChange={(e) => alterar({ ...projeto, midias: projeto.midias.map((m) => (m.id === midSel.id ? { ...m, y: Math.round(Number(e.target.value) - m.h / 2) } : m)) })} />
+                </label>
+              </div>
+              {midSel.tipo === "video" && (
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={!!midSel.chroma}
+                    onChange={(e) => alterar({ ...projeto, midias: projeto.midias.map((m) => (m.id === midSel.id ? { ...m, chroma: e.target.checked } : m)) })} />
+                  Tirar o fundo verde
+                </label>
+              )}
               <BotaoApagar onClick={apagar}>Tirar do vídeo</BotaoApagar>
             </div>
           </div>
@@ -758,6 +856,27 @@ function Propriedades({ altura, projeto, selecao, legSel, midSel, zoomSel, alter
               <input type="range" min={0.01} max={0.3} step={0.01} value={projeto.musica.volume} className="mt-1 w-full"
                 onChange={(e) => alterar({ ...projeto, musica: { ...projeto.musica!, volume: Number(e.target.value) } })} />
             </label>
+            <label className="block max-w-xs">Quando você fala, a música fica em {Math.round((projeto.musica.abaixar ?? 0.35) * 100)}%
+              <input type="range" min={0.1} max={1} step={0.05} value={projeto.musica.abaixar ?? 0.35} className="mt-1 w-full"
+                onChange={(e) => alterar({ ...projeto, musica: { ...projeto.musica!, abaixar: Number(e.target.value) } })} />
+            </label>
+            {acervo.length > 0 && (
+              <div className="max-w-md space-y-1">
+                <p className="text-zinc-400">Trocar por uma do acervo (▶ ouve antes)</p>
+                {acervo.map((m) => {
+                  const atual = projeto.musica!.arquivo.split("/").pop() === m.nome || projeto.musica!.arquivo === m.arquivo;
+                  return (
+                    <div key={m.nome} className={cn("flex items-center gap-2 rounded px-1.5 py-1", atual ? "bg-emerald-900/50" : "hover:bg-zinc-700/60")}>
+                      <button type="button" onClick={() => ouvirMusica(m.nome)} className="rounded-full bg-zinc-200 p-1 text-zinc-900" title="Ouvir">
+                        {ouvindo === m.nome ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+                      </button>
+                      <button type="button" disabled={atual} onClick={() => alterar({ ...projeto, musica: { ...projeto.musica!, arquivo: m.arquivo } })}
+                        className="min-w-0 flex-1 truncate text-left disabled:cursor-default">{m.titulo}{atual && " · em uso"}</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             <BotaoApagar onClick={apagar}>Tirar música</BotaoApagar>
           </>
         ) : unico?.tipo === "clipe" ? (
@@ -809,11 +928,11 @@ const ALTURAS = { leg: 36, zoom: 26, v2: 36, v1: 48, a1: 64, a2: 44 };
 type Faixas = typeof ALTURAS;
 
 function LinhaDoTempo({
-  projeto, segs, clipes: lista, durFinal, tFinal, pps, setPps, onda, ondaMusica, ferramenta, setFerramenta, selecao, setSelecao, irParaFinal, cortarEm, alterar,
+  projeto, segs, clipes: lista, durFinal, tFinal, pps, setPps, onda, ondaMusica, ganhoMusica, vozFinal, ferramenta, setFerramenta, selecao, setSelecao, irParaFinal, cortarEm, alterar,
   desfazer, refazer, podeDesfazer, podeRefazer, marcar, novoZoom, juntar, setJuntar, ima, setIma, tFonte, subir,
 }: {
   projeto: ProjetoEdicao; segs: [number, number][]; clipes: Clipe[]; durFinal: number; tFinal: number; pps: number; setPps: (n: number) => void;
-  onda: Onda | null; ondaMusica: Onda | null;
+  onda: Onda | null; ondaMusica: Onda | null; ganhoMusica: number[]; vozFinal: number[];
   ferramenta: "selecao" | "lamina"; setFerramenta: (f: "selecao" | "lamina") => void; selecao: Item[]; setSelecao: (s: Item[]) => void;
   irParaFinal: (t: number) => void; cortarEm: (t: number, alvo: Item | "tudo") => void; alterar: (p: ProjetoEdicao) => void;
   desfazer: () => void; refazer: () => void; podeDesfazer: boolean; podeRefazer: boolean; marcar: () => void; novoZoom: () => void;
@@ -1019,7 +1138,11 @@ function LinhaDoTempo({
             const f = e.target.files?.[0]; if (!f) return;
             try {
               const arquivo = await subir(f);
-              alterar({ ...projeto, midias: [...projeto.midias, { id: `u${Date.now()}`, tipo: f.type.startsWith("video") ? "video" : "imagem", arquivo, inicio: tFonte, fim: tFonte + 5, ...POSICOES.embaixo }] });
+              const video = f.type.startsWith("video");
+              const emPe = video && (await proporcaoVideo(f)) < 0.8;
+              const { rotulo: _r, ...pos } = emPe ? POSICOES.celular : POSICOES.embaixo;
+              alterar({ ...projeto, midias: [...projeto.midias, { id: `u${Date.now()}`, tipo: video ? "video" : "imagem", arquivo, inicio: tFonte, fim: tFonte + 5, ...pos,
+                ...(video && /verde|green|chroma/i.test(f.name) && { chroma: true }) }] });
             } catch { toast.error("Não consegui enviar o arquivo"); }
             e.target.value = "";
           }} />
@@ -1165,7 +1288,7 @@ function LinhaDoTempo({
             <div onPointerDown={(e) => clicarItem(e, { tipo: "musica" })}
               className={cn("absolute bottom-1 top-1 overflow-hidden rounded-sm border border-teal-900 bg-teal-800/60", selecionado({ tipo: "musica" }) && "ring-2 ring-white")}
               style={bloco(0, durFinal)}>
-              <FormaDeOnda onda={ondaMusica} inicio={0} fim={durFinal} pps={pps} altura={alt.a2 - 10} repetir cor="rgba(153, 246, 228, 0.9)" />
+              <FormaDeOnda onda={ondaMusica} inicio={0} fim={durFinal} pps={pps} altura={alt.a2 - 10} repetir cor="rgba(153, 246, 228, 0.9)" ganho={ganhoMusica} voz={vozFinal} />
               <span className="pointer-events-none absolute left-1 top-0.5 text-[10px] text-white drop-shadow">{projeto.musica.arquivo.split("/").pop()}</span>
             </div>
           ))}
@@ -1184,8 +1307,10 @@ function LinhaDoTempo({
 }
 
 /** Forma de onda entre [inicio, fim] segundos do áudio (pra ver os silêncios). `repetir`: a música toca em loop. */
-function FormaDeOnda({ onda, inicio, fim, pps, altura, repetir, cor = "rgba(167, 243, 208, 0.95)" }: {
-  onda: Onda | null; inicio: number; fim: number; pps: number; altura: number; repetir?: boolean; cor?: string;
+/** Na música: `ganho` (0–1 a cada 0,1 s) abaixa a onda onde o Davi fala e vira a linha amarela do
+ * volume; `voz` (0–1 a cada 0,1 s) aparece clarinha por trás, pra comparar. */
+function FormaDeOnda({ onda, inicio, fim, pps, altura, repetir, cor = "rgba(167, 243, 208, 0.95)", ganho, voz }: {
+  onda: Onda | null; inicio: number; fim: number; pps: number; altura: number; repetir?: boolean; cor?: string; ganho?: number[]; voz?: number[];
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const w = Math.max(1, Math.round((fim - inicio) * pps));
@@ -1202,6 +1327,12 @@ function FormaDeOnda({ onda, inicio, fim, pps, altura, repetir, cor = "rgba(167,
     g.clearRect(0, 0, w, h);
     g.fillStyle = cor;
     const ps = onda.por_segundo, n = onda.picos.length, meio = h / 2;
+    const em = (lista: number[] | undefined, x: number, padrao: number) => lista?.[Math.floor((inicio + x / pps) * 10)] ?? padrao;
+    if (voz?.length) {
+      g.fillStyle = "rgba(255, 255, 255, 0.16)";
+      for (let x = 0; x < w; x++) { const a = em(voz, x, 0) * (h - 4); g.fillRect(x, meio - a / 2, 1, a); }
+      g.fillStyle = cor;
+    }
     for (let x = 0; x < w; x++) {
       const i0 = Math.floor((inicio + x / pps) * ps);
       const i1 = Math.max(i0 + 1, Math.floor((inicio + (x + 1) / pps) * ps));
@@ -1210,11 +1341,45 @@ function FormaDeOnda({ onda, inicio, fim, pps, altura, repetir, cor = "rgba(167,
         const j = repetir ? i % n : i;
         if (j < n && onda.picos[j] > m) m = onda.picos[j];
       }
-      const a = Math.max(1, m * (h - 4));
+      const a = Math.max(1, m * em(ganho, x, 1) * (h - 4));
       g.fillRect(x, meio - a / 2, 1, a);
     }
-  }, [onda, inicio, w, pps, h, repetir, cor]);
+    if (ganho?.length) {
+      g.strokeStyle = "rgba(253, 224, 71, 0.95)";
+      g.lineWidth = 1.2;
+      g.beginPath();
+      for (let x = 0; x < w; x++) { const y = 2 + (1 - em(ganho, x, 1)) * (h - 4); if (x) g.lineTo(x, y); else g.moveTo(x, y); }
+      g.stroke();
+    }
+  }, [onda, inicio, w, pps, h, repetir, cor, ganho, voz]);
   return <canvas ref={ref} className="pointer-events-none block" style={{ width: w, height: h, marginTop: 1 }} />;
+}
+
+/** Vídeo por cima do player (V2), no tempo `t` dele e tocando junto. `cobrir`: recorta na moldura. */
+function VideoSobreposto({ src, t, tocando, style, cobrir }: { src: string; t: number; tocando: boolean; style: React.CSSProperties; cobrir: boolean }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    // Tocando: só corrige deriva grande e nunca no meio de um pulo (pular a cada quadro não deixa o vídeo aparecer).
+    if (!v.seeking && Math.abs(v.currentTime - t) > (tocando ? 0.5 : 0.1)) v.currentTime = Math.max(0, t);
+    if (tocando && v.paused) void v.play().catch(() => {});
+    else if (!tocando && !v.paused) v.pause();
+  }, [t, tocando]);
+  return <video ref={ref} src={src} muted playsInline preload="auto" onLoadedMetadata={(e) => { e.currentTarget.currentTime = Math.max(0, t); }} className={cn("pointer-events-none absolute", cobrir ? "object-cover" : "object-contain")} style={style} />;
+}
+
+/** Largura ÷ altura de um vídeo (pra saber se ele é em pé). */
+function proporcaoVideo(f: File): Promise<number> {
+  return new Promise((ok) => {
+    const v = document.createElement("video");
+    const u = URL.createObjectURL(f);
+    const fim = (r: number) => { URL.revokeObjectURL(u); ok(r); };
+    v.preload = "metadata";
+    v.onloadedmetadata = () => fim(v.videoWidth / Math.max(1, v.videoHeight));
+    v.onerror = () => fim(1);
+    v.src = u;
+  });
 }
 
 /** Faixa da linha do tempo; arrastar a borda de baixo do nome muda a altura dela. */

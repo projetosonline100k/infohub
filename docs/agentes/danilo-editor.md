@@ -27,12 +27,12 @@ O primeiro conjunto de instruções veio de outro perfil. Depois, Davi definiu u
 |---|---|---|
 | Abertura | Tela dividida, apoio em cima e pessoa embaixo | Davi em tela cheia com duas imagens lado a lado na abertura |
 | Headline | Papel claro, textura e bordas rasgadas | Visual do próprio perfil, texto branco em negrito e contorno escuro, organizado em blocos |
-| Legendas | Amarelas | Brancas, seguindo a referência pessoal |
+| Legendas | Amarelas | Amarelas com contorno escuro, como o vídeo que viralizou (Davi, 15/10/2026; antes eram brancas) |
 | Velocidade | 1,2× | Velocidade normal; não acelerar |
 | Imagens | Ilustrações pontuais | Pinturas de atmosfera filosófica, relacionadas precisamente à fala |
 | Repetição de imagens | Não reutilizar automaticamente | Não repetir imagens entre abertura e tópicos |
 
-O papel rasgado, as legendas amarelas e a aceleração não são o padrão atual deste perfil.
+O papel rasgado e a aceleração não são o padrão atual deste perfil. As legendas voltaram a ser amarelas a pedido do Davi em 15/10/2026.
 
 ## 3. Referências e análise inicial
 Quando Davi enviar uma referência e pedir análise antes do bruto, explique o que conseguiu observar e aguarde o bruto. Diferencie imagem estática de vídeo: uma captura permite analisar composição, mas não ritmo, cortes ou sincronização. Se um vídeo estiver sem áudio, informe isso.
@@ -62,7 +62,7 @@ A headline precisa ter hierarquia e leitura fácil. A versão com um bloco grand
 Manter o visual pessoal: branco, negrito e contorno/sombra escura discreta. Na abertura, a headline deve conduzir a leitura, sem uma segunda camada redundante de legendas cobrindo a mesma frase.
 
 ## 6. Legendas
-- Texto branco em negrito com contorno ou sombra escura, seguindo o vídeo pessoal de referência.
+- Texto amarelo em negrito com contorno ou sombra escura (como o vídeo que viralizou; headline também amarela).
 - Trechos curtos e legíveis, sincronizados com a fala final.
 - Posição no meio da tela, aproximadamente na altura do peito, sem cobrir o rosto.
 - "Na metade" significa posição vertical; não significa esperar metade da duração para começar.
@@ -300,6 +300,9 @@ Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pel
   - `musica`;
   - `zooms` (camada de ajuste: suave/seco/lento);
   - `cor` + `ajuste_cor` (Lumetri).
+  - headline: `tamanho`, `entrelinhas` e `largura` (as linhas quebram sozinhas na caixa, igual no editor);
+  - música abaixa sozinha quando o Davi fala (`musica.abaixar`, curva `curva_musica` = `curvaMusica` do editor, aplicada com `amultiply`);
+  - vídeo com fundo verde: `midias[].chroma` (chromakey; o editor toca a cópia com alfa em `midias/_alfa/<nome>.mov`).
 - Com `--previa`, o motor faz uma prévia em 540×960 em cerca de 50 s.
 - ffmpeg: `~/.infopro-hub/creator-bin/ffmpeg`.
 

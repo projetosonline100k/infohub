@@ -10,6 +10,8 @@ edicoes_video (o Infopro mostra ao vivo).
   GET  /edicoes/<id>/projeto
   POST /edicoes/<id>/projeto          (JSON do projeto) → salva e gera prévia
   GET  /edicoes/<id>/arquivo/<nome>   (previa.mp4, final.mp4, midias/…) com Range
+  GET  /edicoes/<id>/musicas          músicas do acervo (pra trocar no mini editor)
+  GET  /edicoes/<id>/acervo/<nome>    ouvir uma música do acervo
   POST /edicoes/<id>/midia?nome=x     (bytes) → guarda imagem/vídeo/música
   POST /edicoes/<id>/aprovar          → versão final, entrega no Drive, avança a tarefa
 """
@@ -42,6 +44,7 @@ CFG = json.loads(CFG_ARQ.read_text())
 TIPOS = {".mp4": "video/mp4", ".mov": "video/quicktime", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
          ".png": "image/png", ".webp": "image/webp", ".ogg": "audio/ogg", ".mp3": "audio/mpeg", ".m4a": "audio/mp4",
          ".wav": "audio/wav", ".json": "application/json"}
+ACERVO = BASE / "acervo"   # músicas livres (domínio público/CC0); títulos em acervo/musicas.json
 _fila = threading.Lock()  # uma montagem por vez (o Mac tem 8 GB)
 
 
@@ -251,6 +254,13 @@ def montagem(pasta, segs):
     return {"pronto": False}
 
 
+def musicas():
+    """Músicas do acervo pro Davi escolher no mini editor (título e fonte em musicas.json)."""
+    info = json.loads((ACERVO / "musicas.json").read_text()) if (ACERVO / "musicas.json").exists() else {}
+    return [{"nome": a.name, "arquivo": str(a), "titulo": info.get(a.name, {}).get("titulo", a.stem)}
+            for a in sorted(ACERVO.iterdir()) if a.suffix.lower() in (".ogg", ".mp3", ".m4a", ".wav")]
+
+
 def ondas(pasta, por_segundo=100, musica=False):
     """Forma de onda pro mini editor: do bruto (faixa A1) ou da música (A2).
     Pico de volume a cada 10 ms, de 0 a 1 (escala com raiz, pra fala baixa
@@ -272,13 +282,7 @@ def ondas(pasta, por_segundo=100, musica=False):
     if not wav.exists():
         subprocess.run([motor.FF, "-hide_banner", "-loglevel", "error", "-y", "-i", projeto["fonte"], "-vn", "-ac", "1",
                         "-ar", "16000", str(wav)], check=True)
-    import array, wave
-    with wave.open(str(wav)) as w:
-        taxa, dados = w.getframerate(), array.array("h", w.readframes(w.getnframes()))
-    janela = max(1, taxa // por_segundo)
-    picos = [max((abs(x) for x in dados[i:i + janela]), default=0) for i in range(0, len(dados), janela)]
-    topo = max(picos) or 1
-    resultado = {"por_segundo": por_segundo, "picos": [round((p / topo) ** 0.5, 3) for p in picos]}
+    resultado = motor.picos_wav(wav, por_segundo)
     cache.write_text(json.dumps(resultado))
     return resultado
 
@@ -325,6 +329,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(200, ondas(pasta_de(partes[1]), musica="musica=1" in urllib.parse.urlparse(self.path).query))
             if len(partes) == 3 and partes[0] == "edicoes" and partes[2] == "projeto":
                 return self._json(200, json.loads((pasta_de(partes[1]) / "projeto.json").read_text()))
+            if len(partes) == 3 and partes[0] == "edicoes" and partes[2] == "musicas":
+                return self._json(200, musicas())
+            if len(partes) == 4 and partes[0] == "edicoes" and partes[2] == "acervo":
+                arq = ACERVO / Path(partes[3]).name
+                if not arq.is_file():
+                    return self._json(404, {"erro": "música não encontrada"})
+                return self._arquivo(arq)
             if len(partes) >= 4 and partes[0] == "edicoes" and partes[2] == "arquivo":
                 pasta = pasta_de(partes[1])
                 # Sem ".." (não sai da pasta); atalhos (ex.: bruto.mov → cópia) valem.

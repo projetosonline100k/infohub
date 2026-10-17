@@ -11,11 +11,14 @@ projeto.json:
                  (restaurar = apagar da lista)
   lacunas        [{id, inicio, fim}]: trechos que ficam no tempo, mas em preto e mudo
                  (apagado no mini editor com "Juntar ao apagar" desligado)
-  legendas       [{id, inicio, fim, texto, tipo: "head"|"leg"}]
+  legendas       [{id, inicio, fim, texto, tipo: "head"|"leg", tamanho?, entrelinhas?}]
+                 (tamanho, entrelinhas e largura só na headline: px em 1080 de largura, padrão 74;
+                 1 = junto; caixa de 960 px onde as linhas quebram sozinhas)
   destaques      [{texto, inicio, fim?}]: palavra fixa na tela (ex.: INSTALIVROS da 1ª menção
                  até o último quadro; sem fim = até o fim do vídeo)
-  midias         [{id, tipo: "imagem"|"video", arquivo, inicio, fim, x, y, w, h}]
-  musica         {arquivo, volume} | null
+  midias         [{id, tipo: "imagem"|"video", arquivo, inicio, fim, x, y, w, h, chroma?}]
+                 (chroma: vídeo com fundo verde, entra sem o verde e sem moldura)
+  musica         {arquivo, volume, abaixar?} | null  (abaixa sozinha quando o Davi fala: curva_musica)
   zooms          [{id, inicio, fim, z, tipo: "suave"|"seco"|"lento"}]: zoom como camada de ajuste
                  (projeto antigo: zoom [{t, z, d}] em pontos, convertido por blocos_zoom)
   cor            "cinema" | "natural" | "quente" | "frio" | "vibrante" | "pb"
@@ -79,6 +82,29 @@ class Mapa:
 
 
 # ---------------------------------------------------------------- legendas
+FONTE_HEAD = f"{FONTES}/Arial Bold.ttf"
+
+
+def quebrar_linhas(texto, tam, largura):
+    """Linhas da headline: as quebras do texto + quebra sozinha quando passa da largura
+    (mesma quebra do mini editor, que usa a caixa com fonte tam × 0,92)."""
+    from PIL import ImageFont
+    fonte = ImageFont.truetype(FONTE_HEAD, max(1, round(tam * 0.92)))
+    linhas = []
+    for par in texto.split("\n"):
+        atual = ""
+        for palavra in par.split():
+            teste = f"{atual} {palavra}".strip()
+            if atual and fonte.getlength(teste) > largura:
+                linhas.append(atual)
+                atual = palavra
+            else:
+                atual = teste
+        if atual:
+            linhas.append(atual)
+    return linhas
+
+
 def ts(t):
     t = max(0, t)
     return f"{int(t // 3600)}:{int(t % 3600 // 60):02d}:{t % 60:05.2f}"
@@ -93,9 +119,9 @@ WrapStyle: 2
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Head,Arial,74,&H00FFFFFF,&H00FFFFFF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,4.5,2,2,60,60,0,1
-Style: Leg,Arial,58,&H00FFFFFF,&H00FFFFFF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
-Style: Dest,Arial,84,&H00FFFFFF,&H00FFFFFF,&H00101010,&H64000000,-1,0,0,0,100,100,2,0,1,5,2.5,5,60,60,0,1
+Style: Head,Arial,74,&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,4.5,2,2,60,60,0,1
+Style: Leg,Arial,58,&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
+Style: Dest,Arial,88,&H00101010,&H00101010,&H000AD6FF,&H64000000,-1,0,0,0,100,100,3,0,3,18,0,5,60,60,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -106,15 +132,88 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             continue
         texto = l["texto"].replace("\n", "\\N")
         if l.get("tipo") == "head":
-            ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Head,,0,0,0,,{{\\an2\\pos(540,1110)\\fad(120,80)}}{texto}\n"
+            # Uma linha por vez (o ASS não tem entrelinha): a última fica em y=1110 e as
+            # outras sobem tamanho × 1,2 × entrelinhas. Mesma conta do mini editor.
+            tam = l.get("tamanho") or 74
+            passo = tam * 1.2 * (l.get("entrelinhas") or 1)
+            linhas = quebrar_linhas(l["texto"], tam, l.get("largura") or 960)
+            for i, lin in enumerate(linhas):
+                y = 1110 - (len(linhas) - 1 - i) * passo
+                ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Head,,0,0,0,,{{\\an2\\pos(540,{y:.0f})\\fs{tam:.0f}\\fad(120,80)}}{lin}\n"
         else:
             ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Leg,,0,0,0,,{{\\an5\\pos(540,1080)}}{texto}\n"
     for d in projeto.get("destaques", []):
         a = mapa.para_final(d["inicio"], "inicio")
         b = mapa.para_final(d["fim"], "fim") if d.get("fim") else mapa.duracao
         if a is not None and b is not None and b - a > 0.15 and d.get("texto", "").strip():
-            ass += f"Dialogue: 1,{ts(a)},{ts(b)},Dest,,0,0,0,,{{\\an5\\pos(540,1400)\\fad(150,0)}}{d['texto']}\n"
+            ass += f"Dialogue: 1,{ts(a)},{ts(b)},Dest,,0,0,0,,{{\\an5\\pos(540,1400)\\fad(150,0)\\fscx70\\fscy70\\t(0,180,\\fscx108\\fscy108)\\t(180,320,\\fscx100\\fscy100)}}{d['texto']}\n"
     Path(destino).write_text(ass, encoding="utf-8")
+
+
+# ---------------------------------------------------------------- música
+def picos_wav(wav, por_segundo=100):
+    """Pico de volume a cada 1/por_segundo s, de 0 a 1 (em raiz, pra fala baixa aparecer)."""
+    import array
+    import wave
+    with wave.open(str(wav)) as w:
+        taxa, dados = w.getframerate(), array.array("h", w.readframes(w.getnframes()))
+    janela = max(1, taxa // por_segundo)
+    picos = [max((abs(x) for x in dados[i:i + janela]), default=0) for i in range(0, len(dados), janela)]
+    topo = max(picos) or 1
+    return {"por_segundo": por_segundo, "picos": [round((p / topo) ** 0.5, 3) for p in picos]}
+
+
+def onda_voz(pasta, projeto):
+    """Onda do bruto (onda.json, a mesma da faixa A1 do mini editor)."""
+    cache, wav = Path(pasta) / "onda.json", Path(pasta) / "audio.wav"
+    if cache.exists():
+        return json.loads(cache.read_text())
+    if not wav.exists():
+        subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-i", projeto["fonte"], "-vn", "-ac", "1",
+                        "-ar", "16000", str(wav)], check=True)
+    onda = picos_wav(wav)
+    cache.write_text(json.dumps(onda))
+    return onda
+
+
+def nivel_voz(onda, mapa):
+    """Nível da voz no vídeo final a cada 0,1 s (igual a nivelVoz do mini editor)."""
+    picos, ps = onda["picos"], onda["por_segundo"]
+    out = []
+    for i in range(int(-(-mapa.duracao * 10 // 1))):
+        t0 = para_bruto(mapa.segs, i / 10)
+        out.append(max((picos[j] for j in range(int(t0 * ps), int((t0 + 0.1) * ps)) if j < len(picos)), default=0))
+    return out
+
+
+def para_bruto(segs, tf):
+    acc = 0.0
+    for a, b in segs:
+        if tf <= acc + (b - a):
+            return a + (tf - acc)
+        acc += b - a
+    return segs[-1][1] if segs else 0
+
+
+def curva_musica(voz, abaixar=0.35):
+    """Ganho da música a cada 0,1 s (igual a curvaMusica do mini editor): abaixa pra `abaixar`
+    quando o Davi fala (voz > 0,25), 0,1 s antes, segura 0,5 s depois e volta em ~0,4 s."""
+    alvo = [abaixar if v > 0.25 else 1.0 for v in voz]
+    g = [min(alvo[max(0, i - 5):i + 2]) for i in range(len(alvo))]
+    for i in range(1, len(g)):
+        g[i] = min(g[i], g[i - 1] + 0.15)
+    return g
+
+
+def gravar_ganho(g, destino, taxa=1000):
+    """Curva (10/s) → áudio float mono em `taxa` Hz, interpolado linear (vai no amultiply)."""
+    import array
+    passo = taxa // 10
+    out = array.array("f")
+    for i, v in enumerate(g):
+        prox = g[i + 1] if i + 1 < len(g) else v
+        out.extend(v + (prox - v) * k / passo for k in range(passo))
+    Path(destino).write_bytes(out.tobytes())
 
 
 # ---------------------------------------------------------------- zoom
@@ -201,6 +300,29 @@ def moldura_imagem(arquivo, w, h, pasta, raio=34):
     return f"{base}.png", f"{base}_mask.png", im.size
 
 
+def video_alfa(arquivo):
+    """Cópia do vídeo de fundo verde com transparência (HEVC com alfa, toca no WebKit) pro mini
+    editor mostrar sem o verde: <pasta>/_alfa/<nome>.mov. Feita uma vez.
+    O hevc_videotoolbox do ffmpeg gera um HEVC com alfa que o AVFoundation (e o WebKit) não
+    decodifica: o vídeo some no player. Por isso: ffmpeg → ProRes 4444 com alfa → avconvert
+    (encoder da Apple) → HEVC com alfa."""
+    arq = Path(arquivo)
+    destino = arq.parent / "_alfa" / f"{arq.stem}.mov"
+    if not destino.exists():
+        destino.parent.mkdir(exist_ok=True)
+        prores = destino.with_name(f"{arq.stem}.prores.mov")
+        try:
+            subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(arq), "-an", "-vf",
+                            "scale=540:-2,chromakey=0x00FF00:0.16:0.05,despill=type=green,format=yuva444p10le",
+                            "-c:v", "prores_ks", "-profile:v", "4444", "-alpha_bits", "16", str(prores)], check=True)
+            subprocess.run(["avconvert", "-s", str(prores), "-o", str(destino),
+                            "-p", "PresetHEVCHighestQualityWithAlpha", "--replace"],
+                           check=True, capture_output=True)
+        finally:
+            prores.unlink(missing_ok=True)
+    return destino
+
+
 def mascara(w, h, destino, raio=34):
     m = Image.new("L", (w, h), 0)
     ImageDraw.Draw(m).rounded_rectangle([0, 0, w - 1, h - 1], raio, fill=255)
@@ -257,6 +379,19 @@ def renderizar(pasta, previa=False, progresso=None):
             zexp = f"(1+0.10*min(max((t-{a:.2f})/{b - a:.2f},0),1))"   # zoom lento dentro da moldura
             fc.append(f"[{entrada}:v]format=rgb24,scale=w='{iw}*{zexp}':h='{ih}*{zexp}':eval=frame,"
                       f"crop={w}:{h}:(iw-{w})/2:(ih-{h})/2,format=rgba[img{n}]")
+        elif m.get("chroma"):   # vídeo com fundo verde: tira o verde, sem moldura, centrado na caixa
+            try:
+                video_alfa(m["arquivo"])
+            except Exception:
+                pass   # só a prévia do mini editor depende dela
+            args += ["-itsoffset", f"{a:.3f}", "-i", m["arquivo"]]
+            fc.append(f"[{entrada}:v]fps={FPS},scale={w}:{h}:force_original_aspect_ratio=decrease,"
+                      f"chromakey=0x00FF00:0.16:0.05,despill=type=green,format=rgba,"
+                      f"fade=t=in:st={a:.2f}:d=0.35:alpha=1,fade=t=out:st={max(a, b - 0.35):.2f}:d=0.35:alpha=1[im{n}]")
+            fc.append(f"[{ultimo}][im{n}]overlay=x={x}+({w}-w)/2:y={y}+({h}-h)/2:eof_action=pass:"
+                      f"enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
+            ultimo, entrada = f"ov{n}", entrada + 1
+            continue
         else:   # vídeo: entra no tempo dele, sem áudio, recortado na moldura
             msk = pasta / "_tmp" / f"mask_{n}.png"
             msk.parent.mkdir(exist_ok=True)
@@ -274,9 +409,16 @@ def renderizar(pasta, previa=False, progresso=None):
     fc.append("[ac]highpass=f=70,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000[voz]")
     mus = projeto.get("musica")
     if mus and Path(mus["arquivo"]).exists():
-        args += ["-stream_loop", "-1", "-i", mus["arquivo"]]
+        # Abaixa sozinha quando o Davi fala: a curva vira um áudio de ganho multiplicado na música.
+        gravar_ganho(curva_musica(nivel_voz(onda_voz(pasta, projeto), mapa), mus.get("abaixar", 0.35)),
+                     pasta / "_tmp_ganho.f32")
+        args += ["-stream_loop", "-1", "-i", mus["arquivo"], "-f", "f32le", "-ar", "1000", "-ac", "1", "-i",
+                 str(pasta / "_tmp_ganho.f32")]
         fc.append(f"[{entrada}:a]atrim=0:{dur:.2f},asetpts=PTS-STARTPTS,volume={mus.get('volume', 0.07)},"
-                  f"afade=t=in:d=1.5,afade=t=out:st={max(0, dur - 3):.2f}:d=3,aresample=48000[mus]")
+                  f"afade=t=in:d=1.5,afade=t=out:st={max(0, dur - 3):.2f}:d=3,aresample=48000,"
+                  f"aformat=sample_fmts=flt:channel_layouts=stereo[mus0]")
+        fc.append(f"[{entrada + 1}:a]aresample=48000,aformat=sample_fmts=flt:channel_layouts=stereo[ganho]")
+        fc.append("[mus0][ganho]amultiply[mus]")
         fc.append(f"[voz][mus]amix=inputs=2:normalize=0:duration=first,afade=t=out:st={max(0, dur - 0.4):.2f}:d=0.4[aout]")
     else:
         fc.append(f"[voz]afade=t=out:st={max(0, dur - 0.4):.2f}:d=0.4[aout]")

@@ -3,8 +3,11 @@
 // que o Davi está assistindo (final) e o do bruto, igual ao motor.
 
 export interface Remocao { id: string; inicio: number; fim: number; origem: "auto" | "davi"; motivo?: string }
-export interface Legenda { id: string; inicio: number; fim: number; texto: string; tipo: "head" | "leg" }
-export interface Midia { id: string; tipo: "imagem" | "video"; arquivo: string; inicio: number; fim: number; x: number; y: number; w: number; h: number }
+/** `tamanho` (px em 1080 de largura, padrão 74), `entrelinhas` (1 = junto) e `largura` (px da caixa,
+ * padrão 960; as linhas quebram sozinhas nela, além das quebras do texto) só valem na headline. */
+export interface Legenda { id: string; inicio: number; fim: number; texto: string; tipo: "head" | "leg"; tamanho?: number; entrelinhas?: number; largura?: number }
+/** `chroma`: vídeo com fundo verde (o motor tira o verde; o editor mostra a cópia com transparência). */
+export interface Midia { id: string; tipo: "imagem" | "video"; arquivo: string; inicio: number; fim: number; x: number; y: number; w: number; h: number; chroma?: boolean }
 /** Trecho que continua no tempo do vídeo, mas fica preto e mudo (apagado
  * com "Juntar ao apagar" desligado). */
 export interface Lacuna { id: string; inicio: number; fim: number }
@@ -19,7 +22,8 @@ export interface ProjetoEdicao {
   remocoes: Remocao[];
   legendas: Legenda[];
   midias: Midia[];
-  musica: { arquivo: string; volume: number } | null;
+  /** `abaixar`: quanto a música fica quando o Davi fala (0,35 = 35% do volume). */
+  musica: { arquivo: string; volume: number; abaixar?: number } | null;
   zoom: { t: number; z: number; d: number }[];
   cor: string;
   palavras?: { t: string; s: number; e: number }[];
@@ -254,4 +258,25 @@ export function previaCor(cor: string, a: AjusteCor = COR_NEUTRA): { filtro: str
     a.saturacao ? `saturate(${(1 + a.saturacao / 100).toFixed(3)})` : "",
   ].filter(Boolean).join(" ");
   return { filtro: [pre.css, extra].filter(Boolean).join(" "), quente: Math.max(-1, Math.min(1, pre.quente + a.temperatura / 100)) };
+}
+
+/** Nível da voz no vídeo final, a cada 0,1 s (pico da onda do bruto, 0 a 1 em raiz). */
+export function nivelVoz(picos: number[], porSegundo: number, segs: [number, number][]): number[] {
+  const n = Math.ceil(duracaoFinal(segs) * 10);
+  return Array.from({ length: n }, (_, i) => {
+    const t0 = paraBruto(segs, i / 10);
+    let m = 0;
+    for (let j = Math.floor(t0 * porSegundo); j < Math.floor((t0 + 0.1) * porSegundo); j++) if ((picos[j] ?? 0) > m) m = picos[j];
+    return m;
+  });
+}
+
+/** Música abaixa sozinha quando o Davi fala (mesma conta do motor.curva_musica): ganho de 0 a 1 a
+ * cada 0,1 s do vídeo final. Fala = voz acima de 0,25; abaixa 0,1 s antes, segura 0,5 s depois e
+ * volta subindo em ~0,4 s. */
+export function curvaMusica(voz: number[], abaixar = 0.35): number[] {
+  const alvo = voz.map((v) => (v > 0.25 ? abaixar : 1));
+  const g = alvo.map((_, i) => Math.min(...alvo.slice(Math.max(0, i - 5), i + 2)));
+  for (let i = 1; i < g.length; i++) g[i] = Math.min(g[i], g[i - 1] + 0.15);
+  return g;
 }
