@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import sys
 import unicodedata
+import urllib.error
 import urllib.request
 from datetime import date, datetime
 from pathlib import Path
@@ -318,8 +319,22 @@ def enviar_storage(id_, pngs, assets=()):
         req = urllib.request.Request(f"{url}/storage/v1/object/carrosseis/{caminho}", data=Path(arquivo).read_bytes(), method="POST",
                                      headers={"Authorization": f"Bearer {chave}", "apikey": chave,
                                               "Content-Type": TIPOS.get(Path(caminho).suffix.lower(), "image/png")})
-        with urllib.request.urlopen(req, context=instagram._ssl(), timeout=120):
-            pass
+        # O Storage às vezes responde 5xx/cai por instantes (520 em 17/10): tenta de novo com calma.
+        for tentativa in range(5):
+            try:
+                with urllib.request.urlopen(req, context=instagram._ssl(), timeout=120):
+                    pass
+                return
+            except urllib.error.HTTPError as e:
+                if tentativa and e.code in (400, 409) and b"exists" in (e.read() or b"").lower().replace(b"duplicate", b"exists"):
+                    return  # a tentativa anterior chegou (só a resposta se perdeu)
+                if e.code < 500 or tentativa == 4:
+                    raise
+            except urllib.error.URLError:
+                if tentativa == 4:
+                    raise
+            import time
+            time.sleep(5 * (tentativa + 1))
 
     urls = []
     for p in pngs:
