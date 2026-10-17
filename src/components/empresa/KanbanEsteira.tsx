@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { format } from "date-fns";
 import { CheckCircle2, ChevronDown, Copy, Loader2, Plus, RotateCcw, Send, Trash2 } from "lucide-react";
@@ -149,6 +151,12 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                   placeholder={`Ideia, tema ou pedido para o ${nomeDe(etapas[0].membro_id)} (ex.: "5 headlines sobre vício em celular")`} />
                 <Button type="submit" size="sm" className="h-9 gap-1" disabled={!ideia.trim()}><Plus className="h-4 w-4" />Mandar</Button>
               </form>
+              {/* Arrastar entre colunas (17/10: "eu que devo arrastar para o Junior começar"). */}
+              <DragDropContext onDragEnd={(r: DropResult) => {
+                if (!r.destination || r.destination.droppableId === r.source.droppableId) return;
+                const p = pecas.find((x) => x.id === r.draggableId);
+                if (p) void mover(p, Number(r.destination.droppableId));
+              }}>
               <div className="grid min-h-0 flex-1 gap-2" style={{ gridTemplateColumns: `repeat(${colunas.length}, minmax(0, 1fr))` }}>
                 {colunas.map((c) => (
                   <div key={c.chave} className={cn("flex min-h-0 flex-col gap-1.5 rounded-xl border bg-muted/30 p-2", c.membroId === null && "border-emerald-500/40 bg-emerald-500/5")}>
@@ -160,10 +168,17 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                       <p className="min-w-0 flex-1 truncate text-xs font-semibold">{c.membroId ? `${nomeDe(c.membroId)} · ${c.titulo}` : c.titulo}</p>
                       <span className="text-[11px] text-muted-foreground">{c.pecas.length}</span>
                     </div>
-                    <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-0.5">
-                      {c.pecas.length === 0 && <p className="py-4 text-center text-[11px] text-muted-foreground">—</p>}
-                      {c.pecas.map((p) => (
-                        <CartaoPeca key={p.id} p={p} etapas={etapas} nomeDe={nomeDe} aberta={abertaId === p.id}
+                    <Droppable droppableId={String(c.chave)}>
+                    {(dp, snap) => (
+                    <div ref={dp.innerRef} {...dp.droppableProps}
+                      className={cn("flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto rounded-lg pr-0.5 transition-colors", snap.isDraggingOver && "bg-primary/10")}>
+                      {c.pecas.length === 0 && <p className="py-4 text-center text-[11px] text-muted-foreground">{snap.isDraggingOver ? "solte aqui" : "—"}</p>}
+                      {c.pecas.map((p, i) => (
+                        <Draggable key={p.id} draggableId={p.id} index={i} isDragDisabled={abertaId === p.id}>
+                        {(dg, snapDg) => {
+                          const no = (
+                        <div ref={dg.innerRef} {...dg.draggableProps} {...dg.dragHandleProps} style={dg.draggableProps.style}>
+                        <CartaoPeca p={p} etapas={etapas} nomeDe={nomeDe} aberta={abertaId === p.id}
                           progresso={p.atividade_id ? progresso.get(p.atividade_id) ?? 0 : null}
                           onAbrir={() => {
                             setAbertaId(abertaId === p.id ? null : p.id);
@@ -171,11 +186,21 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                             const e = etapas[Math.min(p.etapa, etapas.length - 1)];
                             if (e) setFoco({ membroId: e.membro_id, peca: p });
                           }} onMover={(e, n) => void mover(p, e, n)} onDescartar={() => void descartar(p)} />
+                        </div>
+                          );
+                          // Arrastando dentro de uma janela: desenha no body (senão o cartão sai do lugar).
+                          return snapDg.isDragging ? createPortal(no, document.body) : no;
+                        }}
+                        </Draggable>
                       ))}
+                      {dp.placeholder}
                     </div>
+                    )}
+                    </Droppable>
                   </div>
                 ))}
               </div>
+              </DragDropContext>
             </div>
             {/* O chat do trio: o Davi instrui; o que valer para as próximas vira aprendizado de quem faz. */}
             <aside className="flex w-[340px] shrink-0 flex-col">
@@ -217,7 +242,17 @@ function CartaoPeca({ p, etapas, nomeDe, aberta, progresso, onAbrir, onMover, on
         <span className="min-w-0 flex-1 break-words text-[12.5px] font-medium leading-snug">{p.titulo}</span>
         <ChevronDown className={cn("mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform", aberta && "rotate-180")} />
       </button>
-      {!pronto && (
+      {!pronto && p.situacao === "feito" ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+          <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">✓ pronta · arraste para o {nomeDe(etapas[p.etapa + 1]?.membro_id ?? "")}</span>
+          {etapas[p.etapa + 1] && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onMover(p.etapa + 1); }}
+              className="flex items-center gap-1 rounded-md bg-primary px-1.5 py-0.5 text-[10.5px] font-medium text-primary-foreground hover:bg-primary/90">
+              <Send className="h-3 w-3" />Passar para o {nomeDe(etapas[p.etapa + 1].membro_id)}
+            </button>
+          )}
+        </div>
+      ) : !pronto && (
         p.situacao === "fazendo" ? (
           <div className="mt-1">
             <div className="h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${Math.max(5, progresso ?? 5)}%` }} /></div>
