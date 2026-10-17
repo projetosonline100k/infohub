@@ -12,7 +12,21 @@ Este arquivo é a fonte das instruções dela: editar aqui muda o comportamento.
 > como o Jarvis (`IAS_AUTONOMAS` em `src/lib/empresa/visaoGeral.ts`): a fila dela não vira
 > "levar para a IA" no "Precisa de você", porque ela publica sozinha na nuvem.
 
-## Como o trabalho chega até ela (Fase 2, no ar desde 14/10/2026)
+## Programa sozinha (pedido do Davi, 17/10/2026)
+
+"Sempre que eu aprovar os vídeos, quero que você nem me pergunte os dias: veja qual dia está em falta e você mesma programe. Caso eu queira um dia específico, eu mesmo vou lá e mudo." Vale para reel e carrossel. **Aprovar é o ok do Davi para publicar**, com a legenda da Dalila.
+
+- **Carrossel aprovado** (app ou `roy.aprovar`): `carrossel_criar_tarefas` cria a tarefa da Dalila e chama `dalila_programar_carrossel_sozinha` → **1º dia sem carrossel, às 10h**.
+- **Reel pronto** (o Mac preparou vídeo e legenda): `reel_pronto_tarefa` chama `dalila_programar_reel_sozinha` → **1º dia sem reel, às 18h**. Com o canal do YouTube do projeto ligado, o Short vai junto (mesmo dia e hora, título = headline do reel, até 100 caracteres, sem < >). Antes da migração do YouTube a parte do Short é pulada sozinha.
+- O dia livre vem de `dalila_proximo_horario(cliente, tipo)`: mesma conta de `sugerirData` (a partir de hoje, horário com 10 min de folga, cada tipo contado à parte; publicados também ocupam o dia). Trava por projeto e tipo (`pg_advisory_xact_lock`) para dois aprovados juntos não pegarem o mesmo dia.
+- A tarefa do Davi nasce **já concluída**, como registro: "A Dalila programou o reel/carrossel: …" (tipo `agendar`/`agendar_reel`, ligada em `tarefa_data_id`). A tarefa da Dalila também fica concluída, com "Programado: publica em DD/MM às HH:MM".
+- **Aviso:** o sino de avisos (e o Atlas) mostra "Dalila programou o reel para sáb, 18 out às 18:00" (`buscarAvisos`, pela coluna `programado_pela_dalila_em`).
+- **Mudar:** em Conteúdo → Visão geral → **Programados**, clicar no post abre a tela de dia/hora/legenda (`ProgramarCarrossel`/`ProgramarReel`). O cartão diz "A Dalila escolheu o dia · clique para mudar". A legenda do carrossel agora também é editável (`programar_carrossel` ganhou `p_legenda`, opcional).
+- **Se falhar a publicação:** a edge reabre a tarefa do Davi como "Escolher nova data …" (igual antes). A Dalila **não** reprograma sozinha um post que já programou uma vez (`programado_pela_dalila_em` preenchido).
+- **Caminho antigo** ("Escolher data", o Davi escolhe): só quando o projeto não tem Instagram, falta legenda ou não há dia livre no ano.
+- Migração `20261017010000_dalila_programa_sozinha`, teste `supabase/tests/dalila_programa_sozinha.sql`, script `scripts/apply-dalila-programa-sozinha-migration.py` (aplicada em 17/10/2026). Os testes do caminho antigo desligam a programação sozinha com `set_config('dalila.programar_sozinha', 'off', true)`.
+
+## Como o trabalho chega até ela (Fase 2, no ar desde 14/10/2026; desde 17/10 ver "Programa sozinha" acima)
 
 1. O Roy cria o carrossel. O Davi revisa no Infopro (Conteúdo → Visão geral → "Precisa de você") e aprova.
 2. Na aprovação (pelo app ou pelo `roy.aprovar`), o gatilho `carrossel_aprovado_tarefas` cria:
@@ -58,7 +72,7 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 - **Escopo de publicação:** `instagram_business_content_publish` entrou em `ESCOPOS` (`supabase/functions/instagram-automacoes/index.ts`) e a função foi publicada em 14/10.
   - **Na prática, o token antigo (de 13/10) já conseguiu publicar** o 011 em 14/10: a conta do Davi tem papel no app, e o acesso padrão bastou.
   - Se um dia vier "falta a permissão de publicar", é só reconectar em Automações.
-- **Publicar no Instagram é uma ação pública.** O ok do Davi é escolher a data de cada post. A Dalila nunca programa sozinha.
+- **Publicar no Instagram é uma ação pública.** Desde 17/10/2026 o ok do Davi é **aprovar** o reel ou o carrossel: a Dalila programa sozinha no primeiro dia livre (ver "Programa sozinha"). Ele muda o dia ou a legenda até a hora do post.
 - **Implementação:**
   - `supabase/functions/dalila-publicar/index.ts`: deploy com `npx supabase@latest functions deploy dalila-publicar --no-verify-jwt --project-ref ucjyobemrxqfcoopkcgb`;
   - migração `20261014100000_dalila_publicacao`, teste `supabase/tests/dalila_publicacao.sql`, script `scripts/apply-dalila-publicacao-migration.py` (`--testar` desfaz tudo).

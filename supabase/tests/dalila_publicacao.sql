@@ -2,6 +2,8 @@
 -- do Davi; só quem edita o carrossel programa; a fila da nuvem é só do
 -- service_role e pega um carrossel por vez.
 BEGIN;
+-- Caminho manual ("Escolher data"); a programação sozinha (17/10) tem teste próprio: dalila_programa_sozinha.sql.
+SELECT set_config('dalila.programar_sozinha', 'off', true);
 INSERT INTO auth.users(id,email,email_confirmed_at) VALUES
  ('10000000-0000-0000-0000-000000000161','dalila-dono-test@example.com',now()),
  ('10000000-0000-0000-0000-000000000162','dalila-alheio-test@example.com',now());

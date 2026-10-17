@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { filaAcabando } from "@/lib/empresa/visaoGeral";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 // Avisos da equipe (pedido do Davi, 15/10/2026): "quando estiver conversando
 // com a equipe… preciso que fique aparecendo uma notificação, porque se não eu
@@ -28,7 +30,7 @@ const curto = (t: string | null | undefined, n = 110) => {
 };
 
 export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[]> {
-  const [hist, msgs, eds, cars, mels, clientes, reels] = await Promise.all([
+  const [hist, msgs, eds, cars, mels, clientes, reels, progCars, progReels] = await Promise.all([
     db.from("historico_tarefas").select("id, atividade_id, cliente_id, para_membro_id, de_situacao, para_situacao, autor_id, criado_em")
       .eq("acao", "situacao").gt("criado_em", desde).in("para_situacao", ["andamento", "aguardando_aprovacao", "concluida"]).limit(100),
     db.from("briefing_mensagens").select("id, briefing_id, cliente_id, texto, membro_id, criada_em")
@@ -41,6 +43,11 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
       .gt("atualizado_em", desde).in("status", ["fazendo", "feito", "erro", "pendente"]).limit(50),
     db.from("clientes").select("id, nome_especialista"),
     db.from("reels").select("id, cliente_id, titulo, status, atualizado_em").gt("atualizado_em", desde).eq("status", "pronto").limit(50),
+    // A Dalila programou sozinha (17/10): "programei para o dia X", o Davi muda se quiser.
+    db.from("carrosseis").select("id, cliente_id, numero, tema, programado_para, programado_pela_dalila_em")
+      .gt("programado_pela_dalila_em", desde).eq("status", "programado").limit(50),
+    db.from("reels").select("id, cliente_id, titulo, programado_para, programado_pela_dalila_em")
+      .gt("programado_pela_dalila_em", desde).eq("status", "programado").limit(50),
   ]);
   const projeto = new Map(((clientes.data || []) as { id: string; nome_especialista: string }[]).map((c) => [c.id, c.nome_especialista]));
   const h = (hist.data || []) as { id: string; atividade_id: string; cliente_id: string | null; para_membro_id: string | null; para_situacao: string; autor_id: string | null; criado_em: string }[];
@@ -94,6 +101,17 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
   for (const x of (reels.data || []) as { id: string; cliente_id: string; titulo: string; atualizado_em: string }[]) {
     avisos.push({ id: `r-${x.id}-pronto`, tipo: "edicao", quando: x.atualizado_em, titulo: "Reel pronto: escolha a data (Dalila)", detalhe: curto(x.titulo),
       clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false, revisar: true });
+  }
+  type Programado = { id: string; cliente_id: string; titulo: string; programado_para: string; programado_pela_dalila_em: string };
+  const progs: (Programado & { tipo: "carrossel" | "reel" })[] = [
+    ...((progCars.data || []) as (Omit<Programado, "titulo"> & { numero: number | null; tema: string })[]).map((x) => ({
+      ...x, tipo: "carrossel" as const, titulo: `${x.numero ? `${String(x.numero).padStart(3, "0")} · ` : ""}${x.tema}` })),
+    ...((progReels.data || []) as Programado[]).map((x) => ({ ...x, tipo: "reel" as const })),
+  ];
+  for (const x of progs) {
+    avisos.push({ id: `dp-${x.id}-${x.programado_pela_dalila_em}`, tipo: "concluiu", quando: x.programado_pela_dalila_em,
+      titulo: `Dalila programou o ${x.tipo} para ${format(new Date(x.programado_para), "EEE, d MMM 'às' HH:mm", { locale: ptBR })}`,
+      detalhe: `${curto(x.titulo, 70)} · para mudar, clique nele em Programados`, clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false });
   }
   return avisos.sort((a, b) => a.quando.localeCompare(b.quando));
 }

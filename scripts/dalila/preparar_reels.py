@@ -9,8 +9,10 @@ Edição aprovada (Danilo) → linha em `reels` com status 'preparando'
      de servidor; a policy só aceita com o token, enquanto prepara);
   3. sugere a legenda com o Claude em segundo plano (mesmo login do ouvinte),
      a partir da fala do vídeo e de legendas reais do perfil;
-  4. marca 'pronto' → nasce a tarefa "Escolher data do reel" do Davi.
-Quem escolhe a data é o Davi; a publicação é da edge dalila-publicar.
+  4. marca 'pronto' → o banco programa sozinho no 1º dia sem reel às 18h
+     (desde 17/10, migração 20261017010000_dalila_programa_sozinha); sem
+     Instagram no projeto, nasce a tarefa "Escolher data do reel" do Davi.
+A publicação é da edge dalila-publicar.
 
   python3 preparar_reels.py            # uma passada
   python3 preparar_reels.py --sempre   # serviço (LaunchAgent com.infoprohub.dalila)
