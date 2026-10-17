@@ -184,6 +184,9 @@ def editar(arquivo, e):
     if st[0] == "erro":
         raise RuntimeError(st[1] or "a prévia falhou")
     aviso = "" if ctx.get("card") else " Não achei o card deste vídeo pela fala: me diga qual é."
+    if "comprimido" in nome.lower():   # veio pelo WhatsApp como vídeo, não como documento (~720p)
+        aviso += (" ⚠️ Este bruto veio comprimido pelo WhatsApp (uns 720p): o final fica com menos qualidade."
+                  " Para Full HD, mande no grupo como Documento.")
     danilo.db("UPDATE public.edicoes_video SET mensagem = %s WHERE id = %s", (f"Danilo: {resumo[:500]}{aviso}", id_))
     danilo.ligar_tarefas()
     log("pronto para revisão:", titulo)
