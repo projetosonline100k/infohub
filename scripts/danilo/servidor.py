@@ -115,8 +115,17 @@ def gerar_previa(id_):
             status(id_, "erro", f"Não consegui gerar a versão: {str(e)[:200]}")
 
 
+_aprovando = set()
+
+
 def aprovar(id_):
     with _fila:
+        # "Aprovar" repetido (dois cliques, app + web) esperando na fila: o primeiro já
+        # entregou e renomeou o bruto; o segundo não pode virar 'erro' por cima.
+        if db("SELECT status FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] == "aprovado":
+            log("aprovar repetido ignorado", id_)
+            _aprovando.discard(id_)
+            return
         try:
             pasta = pasta_de(id_)
             status(id_, "aprovando", "Gerando a versão final em Full HD…")
@@ -155,6 +164,8 @@ def aprovar(id_):
         except Exception as e:
             log("aprovar erro", id_, traceback.format_exc()[-400:])
             status(id_, "erro", f"Não consegui finalizar: {str(e)[:200]}")
+        finally:
+            _aprovando.discard(id_)
 
 
 _gerando_proxy = set()
@@ -410,7 +421,9 @@ class Handler(BaseHTTPRequestHandler):
                 destino.write_bytes(corpo)
                 return self._json(200, {"arquivo": str(destino), "nome": destino.name})
             if acao == "aprovar":
-                threading.Thread(target=aprovar, args=(id_,), daemon=True).start()
+                if id_ not in _aprovando:          # já está aprovando esta: não enfileira de novo
+                    _aprovando.add(id_)
+                    threading.Thread(target=aprovar, args=(id_,), daemon=True).start()
                 return self._json(202, {"ok": True})
         except FileNotFoundError:
             return self._json(404, {"erro": "edição não encontrada"})
