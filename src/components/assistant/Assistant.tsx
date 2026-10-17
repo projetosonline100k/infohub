@@ -1358,8 +1358,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
         } },
         // Furiosa: "Depois" só por 10 min (17/10: "quero ter a opção de Depois também") e "Já respondi".
         ...(shirley.atual.humor >= 3
-          ? [{ label: "Depois", onClick: () => shirley.adiar(10) }, { label: "Já respondi", onClick: () => shirley.jaRespondi() }]
-          : [{ label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (+${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiar() }]),
+          ? [{ label: shirley.atual.outros ? `Depois (todos)` : "Depois", onClick: () => shirley.adiarTodos(10) }, { label: "Já respondi", onClick: () => shirley.jaRespondi() }]
+          // "Depois" adia todo mundo que ela está cobrando, não só esta conversa.
+          : [{ label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (todos, +${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiarTodos(ADIAR_MIN[shirley.atual!.humor]) }]),
       ]}
     />
   ) : paraRevisar.atual ? (

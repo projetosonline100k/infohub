@@ -75,6 +75,18 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     forcar((n) => n + 1);
   }, [atual, alertas]);
 
+  // "Depois" vale para todos (17/10: "se eu clicar em depois, serve para todo o resto"): adia cada
+  // conversa que está cobrando agora; cada uma conta mais um "depois" (a paciência dela cai igual).
+  const adiarTodos = useCallback((minutos: number) => {
+    const v = { ...avisos.current };
+    for (const a of alertas) {
+      const antes = v[a.chatId]?.ultimaEm === a.ultimaEm ? v[a.chatId].vezes : 0;
+      v[a.chatId] = { ultimaEm: a.ultimaEm, ate: Date.now() + minutos * 60_000, vezes: antes + 1 };
+    }
+    for (const id of Object.keys(v)) if (!alertas.some((a) => a.chatId === id)) delete v[id];
+    avisos.current = v; gravar(v); forcar((n) => n + 1);
+  }, [alertas]);
+
   // "Já respondi por fora" (ligação, áudio no celular…): para de cobrar até chegar mensagem nova dela.
   const jaRespondi = useCallback(() => {
     if (!atual) return;
@@ -82,5 +94,5 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     avisos.current = v; gravar(v); forcar((n) => n + 1);
   }, [atual]);
 
-  return { atual, adiar, jaRespondi, todos: alertas, novas };
+  return { atual, adiar, adiarTodos, jaRespondi, todos: alertas, novas };
 }
