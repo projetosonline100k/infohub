@@ -6,6 +6,7 @@ import { CalendarClock, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { HORA_PADRAO, diaLocal, instante, problemaNoHorario, sugerirData } from "@/lib/empresa/programacao";
@@ -13,7 +14,9 @@ import { cn } from "@/lib/utils";
 
 // "Escolher data do carrossel" (tarefa do Davi, tipo 'agendar'): ele escolhe
 // dia e hora e a Dalila publica sozinha na nuvem (edge dalila-publicar).
-// Escolher a data é o ok do Davi para aquele post.
+// Desde 17/10 a Dalila já programa sozinha ao aprovar (1º dia livre às 10h):
+// aqui o Davi muda o dia, a hora ou a legenda até a hora do post.
+const LIMITE_LEGENDA = 2200;
 
 // `carrosseis` ainda não está nos tipos gerados deste worktree.
 const db = supabase as unknown as SupabaseClient;
@@ -39,6 +42,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
   const [carregando, setCarregando] = useState(false);
   const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
   const [instagram, setInstagram] = useState<string | null>(null);
+  const [legenda, setLegenda] = useState("");
 
   useEffect(() => {
     if (!tarefaId) return;
@@ -53,6 +57,7 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
       const dias = agenda.filter(ocupaDia("carrossel")).map((a) => a.dia);
       setOcupados(dias);
       setCarrossel((c as CarrosselParaProgramar) ?? null);
+      setLegenda(c?.legenda ?? "");
       if (c?.programado_para) {
         const d = new Date(c.programado_para);
         setData(diaLocal(d));
@@ -66,14 +71,15 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
   }, [tarefaId]);
 
   const quando = useMemo(() => instante(data, hora), [data, hora]);
-  const problema = problemaNoHorario(quando, new Date());
+  const problema = problemaNoHorario(quando, new Date())
+    ?? (!legenda.trim() ? "Escreva a legenda." : legenda.length > LIMITE_LEGENDA ? `A legenda passa de ${LIMITE_LEGENDA} caracteres.` : null);
   const diaOcupado = data && ocupados.includes(data);
   const naoPublicou = carrossel?.mensagem?.startsWith("Não publicou") ? carrossel.mensagem : null;
 
   const programar = async () => {
     if (!carrossel || !quando || problema || !instagram) return;
     setSalvando(true);
-    const { error } = await db.rpc("programar_carrossel", { p_carrossel: carrossel.id, p_quando: quando.toISOString() });
+    const { error } = await db.rpc("programar_carrossel", { p_carrossel: carrossel.id, p_quando: quando.toISOString(), p_legenda: legenda });
     setSalvando(false);
     if (error) { toast.error(error.message); return; }
     toast.success(`Programado: a Dalila publica ${format(quando, "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}.`);
@@ -100,7 +106,13 @@ export function ProgramarCarrossel({ tarefaId, onFechar }: { tarefaId: string | 
                 <img key={u} src={u} alt={`Página ${i + 1}`} className="h-28 w-auto shrink-0 rounded border object-cover" />
               ))}
             </div>
-            {carrossel.legenda && <p className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{carrossel.legenda}</p>}
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="flex items-center justify-between text-muted-foreground">
+                Legenda (pode editar até a hora do post)
+                <span className={legenda.length > LIMITE_LEGENDA ? "text-rose-600" : ""}>{legenda.length}/{LIMITE_LEGENDA}</span>
+              </span>
+              <Textarea value={legenda} onChange={(e) => setLegenda(e.target.value)} className="min-h-[120px] text-sm" />
+            </label>
             {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
             <CalendarioPosts agenda={agenda} tipo="carrossel" selecionado={data} onEscolher={setData} />
             <div className="grid grid-cols-2 gap-3">

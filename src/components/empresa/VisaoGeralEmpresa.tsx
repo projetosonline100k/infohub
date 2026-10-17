@@ -64,8 +64,9 @@ const categoriaDoMembro = (nome: string): Categoria =>
   /danilo/i.test(nome) ? "video" : /roy/i.test(nome) ? "carrossel" : /[íi]talo/i.test(nome) ? "copy" : /dalila/i.test(nome) ? "programar" : "outros";
 
 const hojeIso = () => format(new Date(), "yyyy-MM-dd");
-interface CarrosselProgramado { id: string; numero: number | null; tema: string; status: string; programado_para: string | null; paginas: string[] | null }
-interface ReelProgramado { id: string; titulo: string; status: string; programado_para: string | null; video_url: string | null }
+// tarefa_data_id abre a tela de mudar dia/legenda; programado_pela_dalila_em = a Dalila escolheu o dia sozinha (17/10).
+interface CarrosselProgramado { id: string; numero: number | null; tema: string; status: string; programado_para: string | null; paginas: string[] | null; tarefa_data_id: string | null; programado_pela_dalila_em: string | null }
+interface ReelProgramado { id: string; titulo: string; status: string; programado_para: string | null; video_url: string | null; tarefa_data_id: string | null; programado_pela_dalila_em: string | null }
 // "hoje às 12:00", "amanhã às 10:00", "sex, 17 out às 10:00".
 const quandoPublica = (iso: string) => {
   const d = new Date(iso), hoje = new Date(), amanha = new Date();
@@ -207,12 +208,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     setCarrosseis((cars || []) as unknown as CarrosselResumo[]);
     // Carrosséis com data marcada: a Dalila publica sozinha na nuvem.
     const { data: prog } = await supabase.from("carrosseis")
-      .select("id, numero, tema, status, programado_para, paginas")
+      .select("id, numero, tema, status, programado_para, paginas, tarefa_data_id, programado_pela_dalila_em")
       .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
     setCarrosseisProgramados((prog || []) as unknown as CarrosselProgramado[]);
     // Reels com data marcada (16/10): mesma coisa, aparecem junto dos carrosséis.
     const { data: reelsProg } = await (supabase as unknown as SupabaseClient).from("reels")
-      .select("id, titulo, status, programado_para, video_url")
+      .select("id, titulo, status, programado_para, video_url, tarefa_data_id, programado_pela_dalila_em")
       .eq("cliente_id", clienteId).in("status", ["programado", "publicando"]).order("programado_para");
     setReelsProgramados((reelsProg || []) as ReelProgramado[]);
     // Publicados pela Dalila (carrossel e reel) contam em "Postados" (16/10).
@@ -643,7 +644,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         ) : (
           <div className="flex w-0 min-w-full snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2">
             {postsDalila.map(({ tipo, item }) => tipo === "carrossel" ? (
-              <div key={item.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2">
+              <button key={item.id} type="button" disabled={!item.tarefa_data_id || item.status !== "programado"} onClick={() => setAgendarAberto(item.tarefa_data_id)}
+                title="Mudar o dia, a hora ou a legenda"
+                className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2 text-left transition-colors enabled:hover:border-emerald-600">
                 <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
                   {item.paginas?.[0] && <img src={item.paginas[0]} alt="" className="h-full w-full object-cover" loading="lazy" />}
                   <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white"><Instagram className="h-3 w-3" /></span>
@@ -654,11 +657,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                     <CalendarDays className="h-3 w-3" />
                     {item.status === "publicando" ? "Publicando agora…" : item.programado_para ? `Programado · ${quandoPublica(item.programado_para)}` : "Programado"}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">A Dalila publica sozinha</p>
+                  <p className="text-[11px] text-muted-foreground">{item.programado_pela_dalila_em ? "A Dalila escolheu o dia · clique para mudar" : "A Dalila publica sozinha"}</p>
                 </div>
-              </div>
+              </button>
             ) : (
-              <div key={item.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2">
+              <button key={item.id} type="button" disabled={!item.tarefa_data_id || item.status !== "programado"} onClick={() => setAgendarReelAberto(item.tarefa_data_id)}
+                title="Mudar o dia, a hora ou a legenda"
+                className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2 text-left transition-colors enabled:hover:border-emerald-600">
                 <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-primary/30 to-fuchsia-600/30">
                   {/* Capa = primeiro quadro do vídeo preparado pela Dalila. */}
                   {item.video_url && <video src={`${item.video_url}#t=0.5`} muted playsInline preload="metadata" className="h-full w-full object-cover" />}
@@ -670,9 +675,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                     <CalendarDays className="h-3 w-3" />
                     {item.status === "publicando" ? "Publicando agora…" : item.programado_para ? `Programado · ${quandoPublica(item.programado_para)}` : "Programado"}
                   </p>
-                  <p className="text-[11px] text-muted-foreground">A Dalila publica sozinha</p>
+                  <p className="text-[11px] text-muted-foreground">{item.programado_pela_dalila_em ? "A Dalila escolheu o dia · clique para mudar" : "A Dalila publica sozinha"}</p>
                 </div>
-              </div>
+              </button>
             ))}
             {programados.map((v) => (
               <div key={v.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border p-2">

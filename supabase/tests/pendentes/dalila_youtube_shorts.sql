@@ -3,6 +3,8 @@
 -- tira o Short; o app não lê tokens nem a sessão de envio; só o service_role
 -- pega a fila; o link do YouTube e o do Instagram ficam juntos na tarefa.
 BEGIN;
+-- Caminho manual ("Escolher data"); a programação sozinha (17/10) tem teste próprio: dalila_programa_sozinha.sql.
+SELECT set_config('dalila.programar_sozinha', 'off', true);
 INSERT INTO auth.users(id,email,email_confirmed_at) VALUES
  ('10000000-0000-0000-0000-000000000b71','yt-dono@example.com',now()),
  ('10000000-0000-0000-0000-000000000b72','yt-alheio@example.com',now());
