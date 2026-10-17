@@ -344,6 +344,11 @@ Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pel
   4. O servidor gera a prévia oficial e a edição aparece em "Precisa de você › Revisar edição".
 - **Entrada pelo Mac (16/10/2026):** por enquanto o Davi manda os brutos por AirDrop e arrasta para `~/Desktop/Para o Danilo`. O serviço olha essa pasta (primeiro) e a do Drive, com as mesmas regras. O arquivo local entra quando o tamanho para de mudar por 30 s. Depois do aprovado, o bruto vai para `Para o Danilo/Editados`. O final continua indo para `Eu.davi/Editado` no Drive.
 - **Drive:** processo do launchd não consegue fazer o Drive baixar um arquivo "dataless" (a política IOPOL de materializar nasce desligada; ligada, a leitura dá timeout). Por isso o serviço só pega bruto do Drive que já está no Mac (pasta "disponível off-line") e nunca lê arquivo dataless, porque o Drive cancela e recomeça o download.
+- **Editor pela web (16/10/2026, etapa 1 no ar):** o Mac continua sendo a fábrica. A cada versão, o serviço (`servico.sincronizar`) sobe para a nuvem:
+  - o `projeto.json` em `edicoes_video.projeto`;
+  - a prévia de 540p (`previa-v<N>.mp4`) e a onda do bruto (`ondas-v1.json`) no bucket público `edicoes`, em `<cliente>/<edicao>/<token_envio>/`. O token não é lido pelo app.
+
+  O navegador pede "Gerar versão" (com o projeto mexido) ou "Aprovar" em `edicoes_pedidos`. A thread `laco_web` do serviço pega o pedido, passa pelo servidor (porta 3103) e sobe de novo. Uma versão leva ~2 min. O sinal de vida está em `servicos_sinal` ('danilo'): sem ele, a tela mostra "esperando o Mac". Falta a etapa 2: o `EditorVideo.tsx` funcionar sem o servidor local (ler `projeto`/`previa_url`/`ondas_url` e gravar pedidos).
 - **Piloto primeiro:** com vários brutos de uma vez, edita 1 e espera o Davi aprovar. Os outros seguem o que ele mudou no piloto. O estado fica em `~/.infopro-hub/danilo/servico.json`.
 - **Tarefa "Editar: <vídeo>"** (tipo `edicao`, criada pela automação quando o card vai para Edição): é ligada à edição (`danilo.ligar_tarefas`). Aprovar conclui a tarefa. Sem bruto, ela fica "Esperando o bruto…".
 - **Outras tarefas da fila do Danilo:** `atender_tarefa`, igual ao Roy. Pedido de "editar os brutos da pasta" vira o acompanhamento do lote na barra.
