@@ -50,6 +50,17 @@ const COLUNAS: { status: Status; titulo: string; icone: typeof Lightbulb; ajuda:
 const MOVEIS: Status[] = ["ideia", "pode_fazer", "erro", "descartada", "adiada"];
 const ehNova = (m: Melhoria) => m.origem === "pedro" && !m.visto_em;
 const NIVEL = ["", "baixo", "médio", "alto"];
+// Ganho rápido (16/10): na coluna Ideias, as que o Davi escreveu vêm primeiro;
+// depois as do Pedro por impacto (maior antes) e esforço (menor antes); empate
+// fica na ordem de sempre (ordem/data). Sem nota conta como médio.
+const ganhoRapido = (m: Melhoria) => m.impacto === 3 && m.esforco === 1;
+const ordenarIdeias = (xs: Melhoria[]) => xs
+  .map((m, i) => ({ m, i }))
+  .sort((a, b) => (a.m.origem === "davi" ? 0 : 1) - (b.m.origem === "davi" ? 0 : 1)
+    || (b.m.impacto ?? 2) - (a.m.impacto ?? 2)
+    || (a.m.esforco ?? 2) - (b.m.esforco ?? 2)
+    || a.i - b.i)
+  .map(({ m }) => m);
 const NOME_SERVICO: Record<string, string> = { ouvinte: "o ouvinte do Atlas", danilo: "o serviço do Danilo", roy: "o serviço do Roy" };
 // Serviços que a melhoria mexeu e que ainda estão no ar desde antes dela ficar pronta.
 const faltaReiniciar = (m: Melhoria, ligados: Record<string, string>) =>
@@ -119,6 +130,15 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
     if (error) { toast.error("Não consegui mover"); void carregar(); return; }
     if (status === "pode_fazer") toast.success(m.status === "pendente" ? "Pronto: o Pedro continua de onde parou" : "Liberado: o Pedro começa a implementar (uma de cada vez)");
     if (status === "adiada") toast("Guardada em Não é prioridade agora");
+  };
+  // "Liberar as 3 de cima": as 3 primeiras da coluna Ideias (já em ordem de
+  // ganho rápido) vão juntas pra Pode fazer; o Pedro faz uma de cada vez.
+  const liberarTopo = async (ids: string[]) => {
+    if (!ids.length || !window.confirm(`Liberar ${ids.length === 1 ? "a ideia de cima" : `as ${ids.length} ideias de cima`} para o Pedro implementar?`)) return;
+    setItens((xs) => xs.map((x) => (ids.includes(x.id) ? { ...x, status: "pode_fazer" } : x)));
+    const { error } = await db.from("melhorias_sistema").update({ status: "pode_fazer" }).in("id", ids);
+    if (error) { toast.error("Não consegui liberar"); void carregar(); return; }
+    toast.success(`${ids.length === 1 ? "Liberada" : `${ids.length} liberadas`}: o Pedro implementa uma de cada vez`);
   };
   // × no cartão: ideia vai pra descartadas; descartada sai de vez.
   const apagar = async (m: Melhoria) => {
@@ -197,7 +217,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
           <DragDropContext onDragEnd={soltar}>
           <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-6">
             {COLUNAS.map((c) => {
-              const daColuna = itens.filter((m) => m.status === c.status);
+              const daColuna = c.status === "ideia" ? ordenarIdeias(itens.filter((m) => m.status === "ideia")) : itens.filter((m) => m.status === c.status);
               const Icone = c.icone;
               return (
                 <div key={c.status} className={cn("flex min-h-[180px] flex-col gap-1.5 rounded-xl border bg-muted/30 p-2", c.status === "pode_fazer" && "border-amber-500/40",
@@ -212,6 +232,12 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
                       <Input value={nova} onChange={(e) => setNova(e.target.value)} placeholder="Sua ideia…" className="h-7 text-xs" />
                       <Button type="submit" size="icon" variant="ghost" className="h-7 w-7 shrink-0" disabled={!nova.trim()}><Plus className="h-3.5 w-3.5" /></Button>
                     </form>
+                  )}
+                  {c.status === "ideia" && daColuna.length > 1 && (
+                    <button type="button" onClick={() => void liberarTopo(daColuna.slice(0, 3).map((m) => m.id))}
+                      title="Em cima ficam as de impacto alto e esforço baixo" className="flex items-center gap-1 self-start text-[10px] text-muted-foreground hover:text-primary">
+                      <Rocket className="h-3 w-3" />Liberar as {Math.min(3, daColuna.length)} de cima
+                    </button>
                   )}
                   {lista(c.status, daColuna, c.podeSoltar, "flex min-h-[90px] max-h-[440px] flex-1 flex-col gap-1.5 overflow-y-auto overscroll-contain rounded-lg border border-transparent pr-0.5 transition-colors",
                     c.status !== "ideia" ? <p className="py-3 text-center text-[11px] text-muted-foreground">{c.podeSoltar ? "solte aqui" : "—"}</p> : null)}
@@ -313,6 +339,7 @@ function CartaoMelhoria({ m, aberto, onAbrir, arrastando, onMover, onMudou, brie
       <p className="mt-1 flex flex-wrap gap-1 text-[10px] text-muted-foreground">
         {nova && <span className="rounded bg-fuchsia-600 px-1 font-bold text-white" title={`Chegou ${format(new Date(m.criado_em), "d/MM 'às' HH:mm")}; some quando você abre`}>NOVO</span>}
         {m.origem === "davi" && <span className="rounded bg-primary/10 px-1 text-primary">sua ideia</span>}
+        {ganhoRapido(m) && <span className="rounded bg-emerald-600 px-1 font-bold text-white" title="Impacto alto e esforço baixo: rende muito e sai rápido">ganho rápido</span>}
         {m.notas && <span className="rounded bg-amber-500/15 px-1 text-amber-700 dark:text-amber-300">com seus detalhes</span>}
         {m.impacto && <span>impacto {NIVEL[m.impacto]}</span>}
         {m.esforco && <span>· esforço {NIVEL[m.esforco]}</span>}
