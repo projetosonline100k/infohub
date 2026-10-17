@@ -505,7 +505,7 @@ def nova_versao(id_, minutos=30, projeto=None):
     'revisar' (o editor do Davi recarrega sozinho). Devolve (status, mensagem)."""
     import time
     cfg = json.loads((BASE / "config.json").read_text())
-    antes = db("SELECT versao FROM public.edicoes_video WHERE id = %s", (id_,))[0][0]
+    antes, mexida = db("SELECT versao, atualizado_em FROM public.edicoes_video WHERE id = %s", (id_,))[0]
     req = urllib.request.Request(f"http://127.0.0.1:{cfg['porta']}/edicoes/{id_}/projeto",
                                  data=json.dumps(projeto, ensure_ascii=False).encode() if projeto is not None
                                  else (pasta(id_) / "projeto.json").read_bytes(), method="POST",
@@ -513,8 +513,8 @@ def nova_versao(id_, minutos=30, projeto=None):
     urllib.request.urlopen(req, timeout=30).read()
     for _ in range(minutos * 6):
         time.sleep(10)
-        st, msg, v = db("SELECT status, mensagem, versao FROM public.edicoes_video WHERE id = %s", (id_,))[0]
-        if st == "erro" or (st == "revisar" and v > antes):
+        st, msg, v, quando = db("SELECT status, mensagem, versao, atualizado_em FROM public.edicoes_video WHERE id = %s", (id_,))[0]
+        if (st == "erro" and quando > mexida) or (st == "revisar" and v > antes):   # erro de antes do pedido não conta
             return st, msg
     raise RuntimeError(f"a prévia passou de {minutos} min")
 
@@ -568,17 +568,20 @@ def sincronizar_nuvem(id_):
     return True
 
 
-def aprovar_pelo_servidor(id_, minutos=60):
+def aprovar_pelo_servidor(id_, minutos=120):
     """Mesmo caminho do botão Aprovar do app no Mac (Full HD, Drive, Dalila)."""
     import time
     cfg = json.loads((BASE / "config.json").read_text())
+    if db("SELECT status FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] == "aprovado":
+        return "aprovado", None                       # pedido repetido: já foi
+    mexida = db("SELECT atualizado_em FROM public.edicoes_video WHERE id = %s", (id_,))[0][0]
     req = urllib.request.Request(f"http://127.0.0.1:{cfg['porta']}/edicoes/{id_}/aprovar", data=b"{}", method="POST",
                                  headers={"X-Chave": cfg["chave"], "Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=30).read()
     for _ in range(minutos * 6):
         time.sleep(10)
-        st, msg = db("SELECT status, mensagem FROM public.edicoes_video WHERE id = %s", (id_,))[0]
-        if st in ("aprovado", "erro"):
+        st, msg, quando = db("SELECT status, mensagem, atualizado_em FROM public.edicoes_video WHERE id = %s", (id_,))[0]
+        if st == "aprovado" or (st == "erro" and quando > mexida):   # erro de antes do pedido não conta
             return st, msg
     raise RuntimeError(f"o Full HD passou de {minutos} min")
 
