@@ -499,7 +499,7 @@ def montar(id_, refazer=False):
     print(f"{len(proj['remocoes'])} remoções · {len(proj['legendas'])} legendas · {len(proj['midias'])} mídias")
 
 
-def nova_versao(id_, minutos=30):
+def nova_versao(id_, minutos=30, projeto=None):
     """Manda o projeto.json ao servidor do Danilo (porta 3103, uma montagem por
     vez): ele guarda a versão anterior, gera a prévia oficial e põe a edição em
     'revisar' (o editor do Davi recarrega sozinho). Devolve (status, mensagem)."""
@@ -507,7 +507,8 @@ def nova_versao(id_, minutos=30):
     cfg = json.loads((BASE / "config.json").read_text())
     antes = db("SELECT versao FROM public.edicoes_video WHERE id = %s", (id_,))[0][0]
     req = urllib.request.Request(f"http://127.0.0.1:{cfg['porta']}/edicoes/{id_}/projeto",
-                                 data=(pasta(id_) / "projeto.json").read_bytes(), method="POST",
+                                 data=json.dumps(projeto, ensure_ascii=False).encode() if projeto is not None
+                                 else (pasta(id_) / "projeto.json").read_bytes(), method="POST",
                                  headers={"X-Chave": cfg["chave"], "Content-Type": "application/json"})
     urllib.request.urlopen(req, timeout=30).read()
     for _ in range(minutos * 6):
@@ -516,6 +517,70 @@ def nova_versao(id_, minutos=30):
         if st == "erro" or (st == "revisar" and v > antes):
             return st, msg
     raise RuntimeError(f"a prévia passou de {minutos} min")
+
+
+# ---------------------------------------------------------------- nuvem (editor pela web)
+def chaves_publicas():
+    """URL e chave pública do Supabase (no Mac não há chave de servidor: o
+    bucket `edicoes` aceita o envio pelo token da edição)."""
+    env = dict(l.split("=", 1) for l in (RAIZ / ".env").read_text().splitlines() if "=" in l and not l.startswith("#"))
+    url = env.get("VITE_SUPABASE_URL", "").strip().strip('"')
+    chave = env.get("VITE_SUPABASE_PUBLISHABLE_KEY", "").strip().strip('"')
+    if not url or not chave:
+        raise RuntimeError("falta VITE_SUPABASE_URL ou VITE_SUPABASE_PUBLISHABLE_KEY no .env")
+    return url, chave
+
+
+def _subir(caminho, dados, tipo):
+    import ssl
+    sys.path.insert(0, CREATOR)
+    import certifi
+    url, chave = chaves_publicas()
+    req = urllib.request.Request(f"{url}/storage/v1/object/edicoes/{caminho}", data=dados, method="POST",
+                                 headers={"apikey": chave, "Authorization": f"Bearer {chave}",
+                                          "Content-Type": tipo, "x-upsert": "false"})
+    try:
+        urllib.request.urlopen(req, context=ssl.create_default_context(cafile=certifi.where()), timeout=600).read()
+    except urllib.error.HTTPError as e:
+        corpo = e.read().decode()[:200]
+        if e.code not in (400, 409) or "exists" not in corpo:     # já subiu antes: serve
+            raise RuntimeError(f"Storage recusou {caminho} (HTTP {e.code}): {corpo}")
+    return f"{url}/storage/v1/object/public/edicoes/{caminho}"
+
+
+def sincronizar_nuvem(id_):
+    """Projeto, prévia e forma de onda da versão atual na nuvem, pro editor web.
+    A prévia (540p, ~20 MB) e a onda são do jeito que o mini editor do Mac usa."""
+    p = pasta(id_)
+    if not (p / "projeto.json").exists():
+        return False
+    cliente, token, versao, previa_url, ondas_url = db(
+        "SELECT cliente_id, token_envio, versao, previa_url, ondas_url FROM public.edicoes_video WHERE id = %s", (id_,))[0]
+    base = f"{cliente}/{id_}/{token}"
+    projeto = json.loads((p / "projeto.json").read_text())
+    if (p / "previa.mp4").exists() and not (previa_url or "").endswith(f"/previa-v{versao}.mp4"):
+        previa_url = _subir(f"{base}/previa-v{versao}.mp4", (p / "previa.mp4").read_bytes(), "video/mp4")
+    if not ondas_url:   # onda do bruto (tempo do bruto, igual à linha do tempo): não muda entre versões
+        from servidor import ondas
+        ondas_url = _subir(f"{base}/ondas-v1.json", json.dumps(ondas(p)).encode(), "application/json")
+    db("""UPDATE public.edicoes_video SET projeto = %s, projeto_em = now(), previa_url = %s, ondas_url = %s
+          WHERE id = %s""", (json.dumps(projeto, ensure_ascii=False), previa_url, ondas_url, id_))
+    return True
+
+
+def aprovar_pelo_servidor(id_, minutos=60):
+    """Mesmo caminho do botão Aprovar do app no Mac (Full HD, Drive, Dalila)."""
+    import time
+    cfg = json.loads((BASE / "config.json").read_text())
+    req = urllib.request.Request(f"http://127.0.0.1:{cfg['porta']}/edicoes/{id_}/aprovar", data=b"{}", method="POST",
+                                 headers={"X-Chave": cfg["chave"], "Content-Type": "application/json"})
+    urllib.request.urlopen(req, timeout=30).read()
+    for _ in range(minutos * 6):
+        time.sleep(10)
+        st, msg = db("SELECT status, mensagem FROM public.edicoes_video WHERE id = %s", (id_,))[0]
+        if st in ("aprovado", "erro"):
+            return st, msg
+    raise RuntimeError(f"o Full HD passou de {minutos} min")
 
 
 def conferir(id_, so_olhar=False):

@@ -408,6 +408,64 @@ def gravar_sinal():
         time.sleep(60)
 
 
+# ---------------------------------------------------------------- editor pela web
+def atender_pedido():
+    """Pedido feito no navegador (edicoes_pedidos): 'versao' traz o projeto mexido
+    → nova versão pelo servidor; 'aprovar' → Full HD, Drive e Dalila. Depois sobe
+    a prévia/projeto pra nuvem."""
+    linha = danilo.db("""UPDATE public.edicoes_pedidos p SET status = 'fazendo', atualizado_em = now()
+                         WHERE p.id = (SELECT id FROM public.edicoes_pedidos WHERE status = 'na_fila'
+                                       ORDER BY criado_em LIMIT 1 FOR UPDATE SKIP LOCKED)
+                         RETURNING p.id, p.edicao_id, p.tipo, p.projeto""")
+    if not linha:
+        return False
+    pid, eid, tipo, projeto = str(linha[0][0]), str(linha[0][1]), linha[0][2], linha[0][3]
+    log("pedido da web:", tipo, eid)
+    try:
+        if not (danilo.pasta(eid) / "projeto.json").exists():
+            raise RuntimeError("a pasta desta edição não está neste Mac")
+        if tipo == "versao":
+            st, msg = danilo.nova_versao(eid, projeto=projeto if isinstance(projeto, dict) else json.loads(projeto))
+        else:
+            st, msg = danilo.aprovar_pelo_servidor(eid)
+        if st == "erro":
+            raise RuntimeError(msg or "o servidor deu erro")
+        danilo.sincronizar_nuvem(eid)
+        danilo.db("UPDATE public.edicoes_pedidos SET status = 'feito', atualizado_em = now() WHERE id = %s", (pid,))
+    except Exception as erro:
+        log("pedido falhou:", pid, traceback.format_exc()[-400:])
+        danilo.db("UPDATE public.edicoes_pedidos SET status = 'erro', mensagem = %s, atualizado_em = now() WHERE id = %s",
+                  (str(erro)[:300], pid))
+    return True
+
+
+def sincronizar():
+    """Versão nova feita no Mac (mini editor, chat do Danilo, edição automática)
+    que ainda não subiu: sobe o projeto, a prévia e a onda (uma por vez)."""
+    for (eid,) in danilo.db("""SELECT id FROM public.edicoes_video
+                               WHERE status IN ('revisar', 'aprovado') AND atualizado_em > now() - interval '30 days'
+                                 AND (previa_url IS NULL OR previa_url NOT LIKE '%%/previa-v' || versao || '.mp4'
+                                      OR projeto_em IS NULL OR projeto_em < atualizado_em)
+                               ORDER BY atualizado_em DESC LIMIT 5"""):
+        try:
+            if danilo.sincronizar_nuvem(str(eid)):
+                return True
+        except Exception as erro:
+            log("nuvem: não subi", eid, str(erro)[:200])
+    return False
+
+
+def laco_web():
+    while True:
+        try:
+            if atender_pedido() or sincronizar():
+                continue
+        except Exception as erro:
+            log("erro no laço da web:", repr(erro)[:300])
+            time.sleep(30)
+        time.sleep(10)
+
+
 if __name__ == "__main__":
     if "--uma-vez" in sys.argv:
         danilo.ligar_tarefas()
@@ -416,6 +474,7 @@ if __name__ == "__main__":
         sys.exit(0)
     log("serviço do Danilo iniciado")
     threading.Thread(target=gravar_sinal, daemon=True).start()
+    threading.Thread(target=laco_web, daemon=True).start()   # pedidos do editor web não esperam a edição automática
     ultima_drive = 0.0
     while True:
         try:
