@@ -201,8 +201,10 @@ def contexto(bid, como=None):
             print('Responda como você, pela sua etapa (os colegas da conversa respondem pelas deles). Toda instrução que valha para as próximas peças'
                   ' (tom, formato, tamanho, referências, o que evitar) ANOTE nos aprendizados de quem faz aquela etapa — é isso que eles seguem:'
                   ' python3 scripts/inteligencia/aprender.py anotar --cliente <cliente_id> --agente "<nome de quem faz>" "<a regra>".'
-                  f' Se o Davi pedir peças novas (ex.: "Leo, traz 5 headlines sobre X"), crie: python3 scripts/empresa/esteira.py ideia {sid} "<o pedido>"'
-                  ' (a esteira faz o resto sozinha). Para ver uma peça: esteira.py contexto <peça>. NÃO use o entregar.')
+                  f' Se o Davi pedir peças novas (ex.: "Leo, traz 5 headlines sobre X"), só QUEM ELE CHAMOU cria, UMA vez, com o pedido inteiro'
+                  f' (a quantidade vai junto): python3 scripts/empresa/esteira.py ideia {sid} "<o pedido, ex.: 5 headlines do banco de vídeos virais>"'
+                  ' — UM pedido só (a 1ª etapa transforma em N cards). Os outros da conversa NÃO criam nada. Antes, veja as "Peças recentes" abaixo para não duplicar.'
+                  ' O que sai da 1ª etapa espera o Davi arrastar para a próxima; as outras andam sozinhas. Para ver uma peça: esteira.py contexto <peça>. NÃO use o entregar.')
             if pecas:
                 print('Peças recentes (o Davi costuma começar com Sobre "<título>"): ' + '; '.join(f'{t} (etapa {e + 1}, {s}, id {i})' for t, e, s, i in pecas))
                 print('Para mexer numa peça a pedido do Davi: veja com esteira.py contexto <id>; se for a SUA etapa e ele pediu ajuste, faça e entregue de novo'

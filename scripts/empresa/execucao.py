@@ -160,10 +160,11 @@ def contexto(aid):
               f'  python3 scripts/empresa/esteira.py contexto {pid}\n'
               'Siga o SEU manual (acima) e a inteligência (os "SIGA SEMPRE" do ler.py: são as instruções do Davi no chat da esteira).'
               f" Faça a sua parte e passe adiante:\n  python3 scripts/empresa/esteira.py entregar {pid} <<'FIM'\n  <o seu texto>\n  FIM\n"
-              f"Se for a 1ª etapa e a peça for uma IDEIA/pedido (não uma headline pronta), gere as headlines e mande todas:\n"
+              f"Se for a 1ª etapa e a peça for uma IDEIA/pedido (não uma headline pronta), gere EXATAMENTE a quantidade pedida (sem número: 5) e mande:\n"
               f"  python3 scripts/empresa/esteira.py novas {pid} <<'FIM'\n  [\"headline 1\", \"headline 2\"]\n  FIM\n"
               f'Se você é a REVISÃO e o texto não está bom, devolva com o que ajustar: python3 scripts/empresa/esteira.py devolver {pid} "<o que ajustar>"'
-              ' (no máximo 2 devoluções; depois disso, ajuste você mesmo e entregue).')
+              ' (no máximo 2 devoluções; depois disso, ajuste você mesmo e entregue).'
+              ' NÃO crie peças novas com o "ideia" aqui: isso só no chat, quando o Davi pedir.')
     if anterior and AJUSTE in (descricao or ''):
         print(f'\n⚠️ É um AJUSTE: o Davi leu a versão anterior e pediu mudanças (o último "{AJUSTE}" acima).'
               f'\nVersão anterior: "{anterior[1]}" ({anterior[0]}). Leia com scripts/consulta.py, faça só o que ele pediu'

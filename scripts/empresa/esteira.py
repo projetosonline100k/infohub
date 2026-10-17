@@ -17,6 +17,7 @@ O funcionário, no lugar do `execucao.py entregar`, usa:
   python3 scripts/empresa/esteira.py ideia <setor_id> "<ideia ou pedido>"   → nova peça na 1ª etapa (pedido do Davi no chat)
 """
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -97,6 +98,21 @@ def contexto(pid):
           "Na 1ª etapa, várias headlines de uma ideia: esteira.py novas <peça> (JSON). Na revisão, para voltar: esteira.py devolver <peça> \"<o que ajustar>\".")
 
 
+def _headline(texto):
+    """A headline do texto do Leo: 1ª linha útil, sem rótulo ("HEADLINE:") nem aspas."""
+    for linha in texto.strip().split('\n'):
+        l = re.sub(r'^\s*(headline|título|titulo)\s*[:\-]\s*', '', linha.strip(), flags=re.I).strip().strip('"“”').strip()
+        if l:
+            return l[:300]
+    return texto.strip()[:300]
+
+
+def _quantas(texto):
+    """Quantas o Davi pediu ("5 headlines", "me traga 3"): o número do pedido, ou None."""
+    m = re.search(r'\b(\d{1,2})\b', texto or '')
+    return int(m.group(1)) if m else None
+
+
 def entregar(pid, texto):
     p = _peca(pid)
     etapas = p['esteira'] or []
@@ -107,7 +123,15 @@ def entregar(pid, texto):
     textos[nome] = texto.strip()
     titulo = p['titulo']
     if p['etapa'] == 0 and texto.strip():
-        titulo = texto.strip().split('\n')[0][:300]   # 1ª etapa: o texto é a headline
+        titulo = _headline(texto)   # 1ª etapa: o texto é a headline
+    # 17/10 (Davi): "eu que devo arrastar para o Junior começar" — o que sai da 1ª etapa fica
+    # esperando na coluna dela (feito) até ele passar adiante; as outras etapas andam sozinhas.
+    if p['etapa'] == 0:
+        _q("""UPDATE esteira_itens SET textos = %s::jsonb, titulo = %s, nota = NULL, situacao = 'feito', atividade_id = NULL
+               WHERE id = %s""", (json.dumps(textos, ensure_ascii=False), titulo, pid), commit=True)
+        _concluir_tarefa(p['atividade_id'], 'Headline pronta: esperando o Davi passar adiante.')
+        print('ENTREGUE → esperando o Davi passar para a próxima etapa')
+        return
     prox = p['etapa'] + 1
     _q("""UPDATE esteira_itens SET textos = %s::jsonb, titulo = %s, etapa = %s, nota = NULL,
                  situacao = %s, atividade_id = NULL WHERE id = %s""",
@@ -119,13 +143,19 @@ def entregar(pid, texto):
 def novas(pid, bruto):
     p = _peca(pid)
     etapas = p['esteira'] or []
-    lista = [str(t).strip() for t in json.loads(bruto or '[]') if str(t).strip()]
+    lista = [_headline(str(t)) for t in json.loads(bruto or '[]') if str(t).strip()]
     if not lista:
         raise SystemExit('mande a lista de headlines (JSON)')
+    # Pediu N, vão N (17/10: "tinha pedido 5 headlines e o Leo está me trazendo mais").
+    n = _quantas(p['titulo'])
+    if n and len(lista) > n:
+        print(f'(o pedido era de {n}: fiquei com as {n} primeiras)')
+        lista = lista[:n]
     nome = etapas[0]['nome'] if etapas else 'Headlines'
     for i, h in enumerate(lista):
+        # Ficam na 1ª etapa, prontas, esperando o Davi passar adiante.
         _q("""INSERT INTO esteira_itens (cliente_id, setor_id, titulo, textos, etapa, situacao, ordem)
-              VALUES (%s, %s, %s, %s::jsonb, 1, 'fila', %s)""",
+              VALUES (%s, %s, %s, %s::jsonb, 0, 'feito', %s)""",
            (p['cliente_id'], p['setor_id'], h[:300], json.dumps({nome: h, 'Ideia': p['titulo']}, ensure_ascii=False), i), commit=True)
     # A ideia virou as headlines: o cartão dela sai do quadro.
     _q("UPDATE esteira_itens SET situacao = 'descartado', atividade_id = NULL, nota = %s WHERE id = %s",
