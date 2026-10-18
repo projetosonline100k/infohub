@@ -18,6 +18,7 @@ O funcionário, no lugar do `execucao.py entregar`, usa:
   python3 scripts/empresa/esteira.py anotado <peca_id> [--so-salvar] <<'FIM'   → roteiro/revisão em trechos com o porquê de cada um
   [{"texto": "trecho", "nota": "por que fiz assim (ou: troquei X por Y porque Z)"}]
   FIM
+  python3 scripts/empresa/esteira.py pensando <peca_id> "<o que estou decidindo agora>"  → aparece ao vivo na peça para o Davi
   python3 scripts/empresa/esteira.py checagem <peca_id> <<'FIM'          → conferência dos critérios numerados da etapa (antes do anotado)
   [{"n": 1, "ok": true, "obs": "como atende"}]
   FIM
@@ -321,6 +322,24 @@ def anotado(pid, bruto, so_salvar=False):
         entregar(pid, corrido)
 
 
+def pensando(pid, texto):
+    """O que o funcionário está pensando/decidindo enquanto faz a etapa (18/10, Davi: "vai aparecer
+    aqui o Junior escrevendo, o que está pensando, quais critérios usou?"). Aparece ao vivo na peça."""
+    from datetime import datetime, timezone
+    texto = ' '.join((texto or '').split())[:600]
+    if not texto:
+        raise SystemExit('mande o que está pensando')
+    p = _peca(pid)
+    etapas = p['esteira'] or []
+    nome = etapas[min(p['etapa'], len(etapas) - 1)]['nome']
+    textos = dict(p['textos'] or {})
+    pens = dict(textos.get('_pensamento') or {})
+    pens[nome] = (list(pens.get(nome) or []) + [{'em': datetime.now(timezone.utc).isoformat(timespec='seconds'), 'texto': texto}])[-40:]
+    textos['_pensamento'] = pens
+    _q("UPDATE esteira_itens SET textos = %s::jsonb WHERE id = %s", (json.dumps(textos, ensure_ascii=False), pid), commit=True)
+    print('ok (o Davi vê ao vivo)')
+
+
 def reescrever(pid, texto):
     """Ajuste pedido na conversa: reescreve o documento (e o texto da etapa) sem passar de etapa."""
     import html as _h
@@ -402,6 +421,8 @@ if __name__ == '__main__':
         novas(a[1], sys.stdin.read())
     elif a[0] == 'anotado' and len(a) > 1:
         anotado(a[1], sys.stdin.read(), so_salvar='--so-salvar' in a)
+    elif a[0] == 'pensando' and len(a) > 2:
+        pensando(a[1], ' '.join(a[2:]))
     elif a[0] == 'checagem' and len(a) > 1:
         checagem(a[1], sys.stdin.read())
     elif a[0] == 'reescrever' and len(a) > 1:

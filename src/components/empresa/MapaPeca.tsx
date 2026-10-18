@@ -22,8 +22,57 @@ const curva = (x1: number, y1: number, x2: number, y2: number) => {
 };
 const setRef = (m: Map<string, HTMLElement>, k: string) => (el: HTMLElement | null) => { if (el) m.set(k, el); else m.delete(k); };
 
-export function MapaPeca({ peca, etapas, nomeDe, onFalar }: {
-  peca: PecaMapa; etapas: EtapaMapa[]; nomeDe: (id: string) => string;
+/** Peça sendo feita agora: a tarefa de quem é a vez (progresso e o passo atual). */
+export interface AoVivo { situacao: "fila" | "fazendo"; tarefa: { progresso: number | null; observacao: string | null; situacao: string | null } | null }
+
+// Ao vivo (18/10, Davi: "vai aparecer aqui o Junior escrevendo, o que está pensando, quais critérios
+// usou?"): quem está fazendo, o progresso, e o que ele vai registrando (esteira.py pensando).
+function PainelAoVivo({ quem, etapa, aoVivo, pensamentos }: {
+  quem: string; etapa: string; aoVivo: AoVivo; pensamentos: { em: string; texto: string }[];
+}) {
+  const fazendo = aoVivo.situacao === "fazendo" && aoVivo.tarefa?.situacao === "andamento";
+  const pct = Math.max(5, aoVivo.tarefa?.progresso ?? 5);
+  // O pensamento mais novo à vista (rola só a lista, não a página).
+  const lista = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (lista.current) lista.current.scrollTop = lista.current.scrollHeight; }, [pensamentos.length]);
+  return (
+    <div className="mx-auto mt-3 max-w-[1180px] px-5">
+      <div className="rounded-xl border-2 border-sky-400/50 bg-sky-500/5 p-3">
+        <div className="flex items-center gap-2 text-sm">
+          <span className="h-7 w-7 shrink-0 overflow-hidden rounded-full bg-muted"><CabecaBoneco nome={quem} ehIa className="h-full w-full" /></span>
+          <span className="relative flex h-2.5 w-2.5">
+            {fazendo && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />}
+            <span className={cn("relative inline-flex h-2.5 w-2.5 rounded-full", fazendo ? "bg-sky-500" : "bg-amber-500")} />
+          </span>
+          <p className="font-semibold">{fazendo ? `${quem} está fazendo o ${etapa.toLowerCase()}` : `Na fila do ${quem}`}</p>
+          {fazendo && <span className="text-xs text-muted-foreground">· {aoVivo.tarefa?.progresso ?? 0}%</span>}
+        </div>
+        {fazendo ? (
+          <>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${pct}%` }} /></div>
+            {aoVivo.tarefa?.observacao && <p className="mt-1.5 text-xs text-muted-foreground">Agora: {aoVivo.tarefa.observacao}</p>}
+          </>
+        ) : (
+          <p className="mt-1 text-xs text-muted-foreground">Ele começa assim que terminar o que está fazendo. Daqui você acompanha tudo ao vivo: o que ele pensa, os trechos e os critérios.</p>
+        )}
+        {pensamentos.length > 0 && (
+          <div ref={lista} className="mt-2 max-h-48 space-y-1.5 overflow-y-auto border-t pt-2">
+            <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">O que o {quem} está pensando</p>
+            {pensamentos.map((p, i) => (
+              <p key={i} className={cn("flex gap-2 text-[12.5px] leading-snug", i === pensamentos.length - 1 && fazendo ? "text-foreground" : "text-muted-foreground")}>
+                <span className="shrink-0 tabular-nums text-[11px] text-muted-foreground">{new Date(p.em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+                <span>💭 {p.texto}</span>
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
+  peca: PecaMapa; etapas: EtapaMapa[]; nomeDe: (id: string) => string; aoVivo?: AoVivo | null;
   /** Clicou num bloco: conversa com quem fez, já sobre aquele trecho. */
   onFalar: (membroId: string, texto: string) => void;
 }) {
@@ -120,6 +169,11 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar }: {
     </div>
   );
 
+  const etapaAtual = etapas[Math.min(peca.etapa, etapas.length - 1)];
+  const pensamentos = ((textos._pensamento as Record<string, { em: string; texto: string }[]> | undefined) ?? {})[etapaAtual?.nome ?? ""] ?? [];
+  const painel = aoVivo && etapaAtual && peca.etapa < etapas.length
+    ? <PainelAoVivo quem={nomeDe(etapaAtual.membro_id)} etapa={etapaAtual.nome} aoVivo={aoVivo} pensamentos={pensamentos} /> : null;
+
   // ======================= Mapa: roteiro (esquerda) → revisão (direita) =======================
   if (modo === "mapa") {
     const usados = new Set(origem.filter((x): x is number => x !== null));
@@ -137,6 +191,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar }: {
     return (
       <div className="h-full overflow-y-auto rounded-xl border bg-muted/30">
         {seletor}
+        {painel}
         <div className="mx-auto max-w-[1180px] px-5 pt-3">
           {ideia && <p className="text-xs text-muted-foreground">Ideia: {ideia}</p>}
           <p className="inline-block rounded-lg border-2 border-amber-400/70 bg-amber-500/10 px-3 py-1.5 text-sm font-semibold">{peca.titulo}</p>
@@ -220,12 +275,13 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar }: {
   return (
     <div className="h-full overflow-y-auto rounded-xl border bg-muted/30">
       {seletor}
+      {painel}
       <div ref={caixa} className="relative mx-auto grid max-w-[1180px] grid-cols-[minmax(0,1fr)_280px] gap-x-14 px-5 py-4">
         {svg}
         <article className="min-w-0 rounded-lg border bg-card px-10 py-9 shadow-sm">
           {ideia && <p className="mb-2 text-xs text-muted-foreground">Ideia: {ideia}</p>}
           <h1 className="mb-6 text-2xl font-bold leading-tight">{peca.titulo}</h1>
-          {!paragrafos.length && <p className="text-sm text-muted-foreground">Ainda sem texto: o roteiro aparece aqui assim que ele escrever.</p>}
+          {!paragrafos.length && <p className="text-sm text-muted-foreground">{aoVivo ? "O texto vai aparecendo aqui, trecho por trecho, conforme ele escreve." : "Ainda sem texto: o roteiro aparece aqui assim que ele escrever."}</p>}
           {paragrafos.map((p) => {
             const alterado = p.original !== undefined && mudou(p.original, p.texto);
             return (

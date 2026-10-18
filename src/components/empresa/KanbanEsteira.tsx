@@ -36,12 +36,14 @@ interface Peca {
   nota: string | null; atividade_id: string | null; atualizado_em: string; documento_id: string | null;
 }
 interface Membro { id: string; nome: string; eh_ia: boolean }
+interface TarefaAoVivo { id: string; progresso: number | null; observacao: string | null; situacao: string | null }
 
 export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { clienteId: string; setorId: string | null; aberto: boolean; onFechar: () => void }) {
   const [setor, setSetor] = useState<{ nome: string; esteira: Etapa[] } | null>(null);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [progresso, setProgresso] = useState<Map<string, number>>(new Map());
+  const [tarefas, setTarefas] = useState<Map<string, TarefaAoVivo>>(new Map());
   const [ideia, setIdeia] = useState("");
   const [abertaId, setAbertaId] = useState<string | null>(null);
   const [conversaTarefa, setConversaTarefa] = useState<string | null>(null);
@@ -72,8 +74,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
     }
     const tarefas = lista.map((p) => p.atividade_id).filter(Boolean) as string[];
     if (tarefas.length) {
-      const { data: ts } = await supabase.from("atividades").select("id, progresso").in("id", tarefas);
-      setProgresso(new Map(((ts || []) as { id: string; progresso: number | null }[]).map((t) => [t.id, t.progresso ?? 0])));
+      const { data: ts } = await db.from("atividades").select("id, progresso, observacao, situacao").in("id", tarefas);
+      const lt = (ts || []) as TarefaAoVivo[];
+      setProgresso(new Map(lt.map((t) => [t.id, t.progresso ?? 0])));
+      setTarefas(new Map(lt.map((t) => [t.id, t])));
     }
   }, [setorId]);
 
@@ -83,9 +87,15 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
     const canal = supabase.channel(`esteira-${setorId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "esteira_itens", filter: `setor_id=eq.${setorId}` }, () => void carregar())
       .subscribe();
-    const t = window.setInterval(() => void carregar(), 20_000);   // progresso das tarefas
-    return () => { void supabase.removeChannel(canal); window.clearInterval(t); };
+    return () => { void supabase.removeChannel(canal); };
   }, [aberto, setorId, carregar]);
+  // Progresso das tarefas; com uma peça aberta, mais rápido (o Davi acompanha ao vivo).
+  const lendoPeca = !!docAberto;
+  useEffect(() => {
+    if (!aberto || !setorId) return;
+    const t = window.setInterval(() => void carregar(), lendoPeca ? 5_000 : 20_000);
+    return () => window.clearInterval(t);
+  }, [aberto, setorId, carregar, lendoPeca]);
 
   // A conversa do trio fica numa tarefa-âncora do escritório (criada na 1ª vez, já concluída).
   // Cada conversa (o grupo, ou só com um deles) fica numa tarefa-âncora do escritório (criada na 1ª vez, já concluída).
@@ -159,6 +169,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
           <div className="flex min-h-0 flex-1 gap-3">
             {docAberto ? (
               <SalaRoteiro peca={pecas.find((x) => x.id === docAberto.id) ?? docAberto} etapas={etapas} nomeDe={nomeDe} clienteId={clienteId}
+                tarefa={(() => { const aid = (pecas.find((x) => x.id === docAberto.id) ?? docAberto).atividade_id; return aid ? tarefas.get(aid) ?? null : null; })()}
                 onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }}
                 onFalar={(membroId, texto) => setFoco({ membroId, peca: docAberto, texto })} />
             ) : (
@@ -470,8 +481,8 @@ export function CriteriosEtapa({ etapa, quem, clienteId, onFechar, onMudar }: {
 // Roteiro anotado (17/10, desenho do Davi): o roteiro do Junior em trechos, com o porquê de cada
 // escolha, ao lado da revisão do Elias com o que mudou (palavra a palavra) e por quê.
 
-function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar, onFalar }: {
-  peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; clienteId: string; onVoltar: () => void; onPassar: (etapa: number) => void;
+function SalaRoteiro({ peca, etapas, nomeDe, clienteId, tarefa, onVoltar, onPassar, onFalar }: {
+  peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; clienteId: string; tarefa: TarefaAoVivo | null; onVoltar: () => void; onPassar: (etapa: number) => void;
   onFalar: (membroId: string, texto: string) => void;
 }) {
   const navigate = useNavigate();
@@ -487,7 +498,8 @@ function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar, onFa
         )}
       </div>
       <div className="min-h-0 flex-1">
-        <MapaPeca peca={peca as unknown as PecaMapa} etapas={etapas} nomeDe={nomeDe} onFalar={onFalar} />
+        <MapaPeca peca={peca as unknown as PecaMapa} etapas={etapas} nomeDe={nomeDe} onFalar={onFalar}
+          aoVivo={peca.situacao === "fazendo" || peca.situacao === "fila" ? { situacao: peca.situacao, tarefa } : null} />
       </div>
       <p className="text-[11px] text-muted-foreground">
         Verde: o porquê de quem escreveu. Azul: o que a revisão ajustou (riscado saiu, verde entrou). Passe o mouse para ver a ligação;
