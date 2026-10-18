@@ -307,8 +307,8 @@ function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar, onFa
         <MapaPeca peca={peca as unknown as PecaMapa} etapas={etapas} nomeDe={nomeDe} onFalar={onFalar} />
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Amarelo: a headline. Verde: o que o roteirista pensou em cada trecho. Azul: o que mudou na revisão (riscado saiu, verde entrou).
-        Clique num bloco para falar com quem fez, já sobre aquele trecho; arraste os blocos e use a roda do mouse para dar zoom.
+        Verde: o porquê de quem escreveu. Azul: o que a revisão ajustou (riscado saiu, verde entrou). Passe o mouse para ver a ligação;
+        clique num parágrafo ou numa nota para falar com quem fez, já sobre aquele trecho.
       </p>
     </div>
   );

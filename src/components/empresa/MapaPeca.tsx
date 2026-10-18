@@ -1,150 +1,147 @@
-import { memo, useEffect, useMemo } from "react";
-import ReactFlow, { Background, Controls, Handle, MarkerType, MiniMap, Position, useNodesState, type Edge, type Node, type NodeProps } from "reactflow";
-import "reactflow/dist/style.css";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
-import { diferencaPalavras, lerTrechos, mudou } from "@/lib/conteudo/trechos";
+import { diferencaPalavras, lerTrechos, mudou, type Trecho } from "@/lib/conteudo/trechos";
 import { CabecaBoneco } from "./BonecoMesa";
 
-// A peça da esteira como mapa mental (pedido do Davi, 17/10/2026: "em vez de ver o documento de
-// cada etapa, quero ver em formato de mapa mental, conectado e funcional"). Ideia → Headline (Leo)
-// → Roteiro em trechos (Junior, com o porquê) → Revisão (Elias, com o que mudou). Clicar num nó
-// abre a conversa com quem fez, já falando daquele trecho.
+// A peça da esteira lida como documento, com as anotações ao lado ligadas por linhas ao trecho
+// (pedido do Davi, 17/10/2026: "precisa ser uma visualização igual de docs mesmo, só que na
+// pegada de mapa mental, onde os comentários aparecem do lado"). O texto é a versão mais nova
+// (o que a revisão mudou aparece riscado/verde); à direita, o porquê do roteirista (verde) e o
+// ajuste do revisor (azul), cada um puxado por uma linha do seu parágrafo. Clicar num parágrafo
+// ou numa nota abre a conversa com quem fez, já sobre aquele trecho.
 export interface EtapaMapa { nome: string; membro_id: string }
 export interface PecaMapa { id: string; titulo: string; textos: Record<string, unknown>; etapa: number }
 
-type Dados = {
-  tipo: "ideia" | "titulo" | "trecho" | "cabeca";
-  texto: string; nota?: string | null; cor: "ambar" | "verde" | "azul" | "cinza";
-  quem?: string; ehIa?: boolean; diff?: ReturnType<typeof diferencaPalavras> | null; alterado?: boolean; n?: number;
-};
-
-const COR: Record<Dados["cor"], string> = {
-  ambar: "border-amber-400/70 bg-amber-950/60",
-  verde: "border-emerald-400/70 bg-emerald-950/60",
-  azul: "border-sky-400/70 bg-sky-950/50",
-  cinza: "border-zinc-600 bg-zinc-900",
-};
-
-const No = memo(function No({ data, selected }: NodeProps<Dados>) {
-  return (
-    <div className={cn("w-[270px] cursor-pointer rounded-xl border-2 px-3 py-2 text-zinc-100 shadow-lg transition-shadow", COR[data.cor],
-      selected && "ring-2 ring-white/60", data.tipo === "cabeca" && "w-[230px]")}>
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-zinc-500" />
-      {data.tipo === "cabeca" ? (
-        <p className="flex items-center gap-2 text-sm font-semibold">
-          <span className="h-7 w-7 overflow-hidden rounded-full bg-zinc-800"><CabecaBoneco nome={data.quem ?? "?"} ehIa className="h-full w-full" /></span>
-          {data.texto}
-        </p>
-      ) : (
-        <>
-          {data.quem && <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{data.n ? `${data.quem} · trecho ${data.n}` : data.quem}</p>}
-          <p className={cn("whitespace-pre-line text-[12.5px] leading-snug", data.tipo === "titulo" && "text-[14px] font-semibold")}>
-            {data.diff ? data.diff.map((d, i) => (
-              <span key={i} className={cn(d.tipo === "saiu" && "text-rose-300 line-through", d.tipo === "entrou" && "rounded bg-emerald-500/25 text-emerald-200")}>{d.texto}</span>
-            )) : data.texto}
-          </p>
-          {data.nota && (
-            <p className="mt-1.5 flex gap-1.5 border-t border-white/10 pt-1.5 text-[11px] leading-snug text-zinc-300">
-              <span className={cn("mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full border-2", data.cor === "azul" ? "border-sky-400" : "border-emerald-400")} />{data.nota}
-            </p>
-          )}
-          {data.alterado && !data.nota && <p className="mt-1 text-[10px] text-zinc-500">mudou (sem nota)</p>}
-        </>
-      )}
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-zinc-500" />
-    </div>
-  );
-});
-const TIPOS = { no: No };
-
-const LARGURA = 330, ALTURA_TRECHO = 150;
+interface Nota { chave: string; k: number; texto: string; quem: string; membroId: string; azul: boolean }
+interface Linha { k: number; d: string; azul: boolean }
 
 export function MapaPeca({ peca, etapas, nomeDe, onFalar }: {
   peca: PecaMapa; etapas: EtapaMapa[]; nomeDe: (id: string) => string;
-  /** Clicou num nó: conversa com quem fez, já sobre aquele trecho. */
+  /** Clicou num trecho/nota: conversa com quem fez, já sobre aquele trecho. */
   onFalar: (membroId: string, texto: string) => void;
 }) {
-  const { nodes, edges } = useMemo(() => {
-    const ns: Node<Dados>[] = [];
-    const es: Edge[] = [];
-    const textos = peca.textos ?? {};
-    const trechos = (textos._trechos as Record<string, unknown> | undefined) ?? {};
-    const liga = (de: string, para: string, cor = "#71717a", animado = false) =>
-      es.push({ id: `${de}-${para}`, source: de, target: para, animated: animado, style: { stroke: cor, strokeWidth: 2 }, markerEnd: { type: MarkerType.ArrowClosed, color: cor } });
+  const textos = peca.textos ?? {};
+  const todos = (textos._trechos as Record<string, unknown> | undefined) ?? {};
+  // Etapas que já escreveram trechos, na ordem da esteira (ex.: Roteiro · Junior, Revisão · Elias).
+  // i: posição na esteira (0 headline, 1 roteiro, 2+ revisão): quem vem depois do roteiro "ajustou" (azul).
+  const colunas = etapas.map((e, i) => ({ e, i, trechos: lerTrechos(todos[e.nome]) })).filter((c) => c.trechos.length);
+  // Sem trechos: o texto corrido da etapa mais avançada, em parágrafos.
+  const corrido = [...etapas].reverse().map((e) => ({ e, t: textos[e.nome] })).find((x) => typeof x.t === "string" && (x.t as string).trim());
+  const paragrafos: { k: number; final: Trecho; original?: string; membroId: string }[] = colunas.length
+    ? Array.from({ length: Math.max(...colunas.map((c) => c.trechos.length)) }, (_, k) => {
+      const ult = [...colunas].reverse().find((c) => c.trechos[k])!;
+      return { k, final: ult.trechos[k], original: colunas[0].trechos[k]?.texto, membroId: ult.e.membro_id };
+    })
+    : corrido
+      ? (corrido.t as string).split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean).map((t, k) => ({ k, final: { texto: t }, membroId: corrido.e.membro_id }))
+      : [];
+  const notas: Nota[] = colunas.flatMap((c, ci) => c.trechos.flatMap((t, k) => (t.nota
+    ? [{ chave: `${ci}-${k}`, k, texto: t.nota, quem: nomeDe(c.e.membro_id), membroId: c.e.membro_id, azul: ci > 0 || c.i > 1 }] : [])));
+  const ideia = typeof textos.Ideia === "string" ? textos.Ideia : null;
+  const assinatura = JSON.stringify([peca.textos, peca.titulo]);
 
-    // Coluna 0: a ideia (quando a headline veio de um pedido) e a headline.
-    const ideia = typeof textos.Ideia === "string" ? textos.Ideia : null;
-    let x = 0;
-    if (ideia) {
-      ns.push({ id: "ideia", type: "no", position: { x, y: 0 }, data: { tipo: "ideia", texto: ideia, cor: "cinza", quem: "Ideia / pedido" } });
-      x += LARGURA;
+  const [ativo, setAtivo] = useState<number | null>(null);
+  const caixa = useRef<HTMLDivElement>(null);
+  const refsP = useRef(new Map<number, HTMLElement>());
+  const refsN = useRef(new Map<string, HTMLElement>());
+  const [linhas, setLinhas] = useState<Linha[]>([]);
+  const [alturaSvg, setAlturaSvg] = useState(0);
+  const notasRef = useRef(notas);
+  notasRef.current = notas;
+
+  // Cada nota fica na altura do seu parágrafo (como comentário do Docs), sem encavalar na de cima;
+  // a linha sai do parágrafo e chega na nota (curva).
+  const lateral = useRef<HTMLDivElement>(null);
+  const [topos, setTopos] = useState<Record<string, number>>({});
+  const medir = useCallback(() => {
+    const c = caixa.current, a = lateral.current;
+    if (!c || !a) return;
+    const base = c.getBoundingClientRect(), ra = a.getBoundingClientRect();
+    const out: Linha[] = [];
+    const novos: Record<string, number> = {};
+    let fim = 0;
+    for (const n of notasRef.current) {
+      const p = refsP.current.get(n.k), el = refsN.current.get(n.chave);
+      if (!p || !el) continue;
+      const rp = p.getBoundingClientRect();
+      const top = Math.max(rp.top - ra.top, fim);
+      novos[n.chave] = top;
+      fim = top + el.offsetHeight + 10;
+      const x1 = rp.right - base.left + 4, y1 = rp.top - base.top + Math.min(rp.height / 2, 20);
+      const x2 = ra.left - base.left - 2, y2 = ra.top - base.top + top + 18;
+      const mx = (x1 + x2) / 2;
+      out.push({ k: n.k, azul: n.azul, d: `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}` });
     }
-    const e0 = etapas[0];
-    ns.push({ id: "titulo", type: "no", position: { x, y: 0 }, data: { tipo: "titulo", texto: peca.titulo, cor: "ambar", quem: e0 ? `${nomeDe(e0.membro_id)} · ${e0.nome}` : "Headline" } });
-    if (ideia) liga("ideia", "titulo");
-    x += LARGURA;
+    setTopos((t) => (JSON.stringify(t) === JSON.stringify(novos) ? t : novos));
+    setAlturaLateral(fim);
+    setLinhas(out);
+    setAlturaSvg(c.scrollHeight);
+  }, []);
+  const [alturaLateral, setAlturaLateral] = useState(0);
+  useLayoutEffect(() => {
+    medir();
+    const ro = new ResizeObserver(medir);
+    if (caixa.current) ro.observe(caixa.current);
+    return () => ro.disconnect();
+  }, [medir, assinatura]);
 
-    // Colunas seguintes: cada etapa com trechos (Roteiro, Revisão…) ou o texto corrido dela.
-    let anterior: string[] = ["titulo"];
-    let base: ReturnType<typeof lerTrechos> = [];
-    etapas.slice(1).forEach((e, idx) => {
-      const lista = lerTrechos(trechos[e.nome]);
-      const corrido = typeof textos[e.nome] === "string" ? (textos[e.nome] as string) : null;
-      if (!lista.length && !corrido) return;
-      const quem = nomeDe(e.membro_id);
-      const cab = `cab-${idx}`;
-      ns.push({ id: cab, type: "no", position: { x, y: -90 }, data: { tipo: "cabeca", texto: `${quem} · ${e.nome}`, quem, cor: "cinza" } });
-      const ids: string[] = [];
-      const itens = lista.length ? lista : [{ texto: corrido!, nota: null }];
-      itens.forEach((t, k) => {
-        const id = `e${idx}-t${k}`;
-        const original = idx > 0 ? base[k]?.texto : undefined;
-        const alterado = original !== undefined && mudou(original, t.texto);
-        ns.push({
-          id, type: "no", position: { x, y: k * ALTURA_TRECHO },
-          data: {
-            tipo: "trecho", texto: t.texto, nota: t.nota, quem, n: lista.length ? k + 1 : undefined, alterado,
-            diff: alterado ? diferencaPalavras(original!, t.texto) : null,
-            cor: idx === 0 ? (t.nota ? "verde" : "cinza") : (alterado || t.nota ? "azul" : "cinza"),
-          },
-        });
-        ids.push(id);
-        // Roteiro sai da headline; a revisão de cada trecho sai do trecho correspondente.
-        if (idx === 0) liga("titulo", id);
-        else liga(anterior[Math.min(k, anterior.length - 1)], id, alterado ? "#38bdf8" : "#71717a", alterado);
-      });
-      if (idx === 0) base = lista;
-      anterior = ids;
-      x += LARGURA + 40;
-    });
-    return { nodes: ns, edges: es };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- nomeDe muda a cada render; o conteúdo da peça é o que importa
-  }, [JSON.stringify(peca.textos), peca.titulo, JSON.stringify(etapas)]);
-  // Os blocos podem ser arrastados; quando a peça muda (ele reescreveu), o mapa se refaz.
-  const [nos, setNos, mudarNos] = useNodesState(nodes);
-  useEffect(() => setNos(nodes), [nodes, setNos]);
-
-  // Clicar num nó: conversa com quem fez aquele nó.
-  const quemDoNo = (id: string): string | null => {
-    if (id === "titulo" || id === "ideia") return etapas[0]?.membro_id ?? null;
-    const m = id.match(/^(?:e|cab-)(\d+)/);
-    return m ? etapas[Number(m[1]) + 1]?.membro_id ?? null : null;
-  };
+  const falar = (membroId: string, k: number, texto: string) =>
+    onFalar(membroId, colunas.length ? `Sobre o trecho ${k + 1} de "${peca.titulo}" ("${texto.slice(0, 80)}${texto.length > 80 ? "…" : ""}"): ` : `Sobre "${peca.titulo}": `);
+  const corNota = new Map<number, boolean>();
+  for (const n of notas) corNota.set(n.k, (corNota.get(n.k) ?? false) || n.azul);
 
   return (
-    <div className="h-full w-full overflow-hidden rounded-xl border bg-zinc-950">
-      <ReactFlow nodes={nos} onNodesChange={mudarNos} edges={edges} nodeTypes={TIPOS} fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.2} maxZoom={1.6}
-        nodesConnectable={false} proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, n) => {
-          const quem = quemDoNo(n.id);
-          if (!quem) return;
-          const d = n.data as Dados;
-          onFalar(quem, d.n ? `Sobre o trecho ${d.n} de "${peca.titulo}" ("${d.texto.slice(0, 80)}${d.texto.length > 80 ? "…" : ""}"): ` : `Sobre "${peca.titulo}": `);
-        }}>
-        <Background color="#27272a" gap={20} />
-        <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor={(n) => ({ ambar: "#f59e0b", verde: "#10b981", azul: "#0ea5e9", cinza: "#52525b" }[(n.data as Dados).cor])} maskColor="rgba(0,0,0,0.6)" />
-      </ReactFlow>
+    <div className="h-full overflow-y-auto rounded-xl border bg-muted/30">
+      <div ref={caixa} className="relative mx-auto grid max-w-[1180px] grid-cols-[minmax(0,1fr)_280px] gap-x-14 px-5 py-6">
+        <svg className="pointer-events-none absolute left-0 top-0 w-full" style={{ height: alturaSvg }}>
+          {linhas.map((l, i) => (
+            <path key={i} d={l.d} fill="none" strokeWidth={ativo === l.k ? 2.5 : 1.5}
+              className={cn(l.azul ? "stroke-sky-500" : "stroke-emerald-500", "transition-opacity", ativo !== null && ativo !== l.k && "opacity-20")} />
+          ))}
+        </svg>
+
+        {/* A folha: igual a um documento. */}
+        <article className="min-w-0 rounded-lg border bg-card px-10 py-9 shadow-sm">
+          {ideia && <p className="mb-2 text-xs text-muted-foreground">Ideia: {ideia}</p>}
+          <h1 className="mb-6 text-2xl font-bold leading-tight">{peca.titulo}</h1>
+          {!paragrafos.length && <p className="text-sm text-muted-foreground">Ainda sem texto: o roteiro aparece aqui assim que ele escrever.</p>}
+          {paragrafos.map((p) => {
+            const alterado = p.original !== undefined && mudou(p.original, p.final.texto);
+            return (
+              <p key={p.k} ref={(el) => { if (el) refsP.current.set(p.k, el); else refsP.current.delete(p.k); }}
+                onMouseEnter={() => setAtivo(p.k)} onMouseLeave={() => setAtivo(null)} onClick={() => falar(p.membroId, p.k, p.final.texto)}
+                title="Clique para falar sobre este trecho"
+                className={cn("-mx-3 mb-3 cursor-pointer rounded-md border-l-[3px] border-transparent px-3 py-1 text-[16px] leading-relaxed transition-colors hover:bg-muted/60",
+                  corNota.has(p.k) && (alterado || corNota.get(p.k) ? "border-sky-500" : "border-emerald-500"), ativo === p.k && "bg-muted/60")}>
+                {alterado ? diferencaPalavras(p.original!, p.final.texto).map((d, i) => (
+                  <span key={i} className={cn(d.tipo === "saiu" && "text-rose-500/80 line-through", d.tipo === "entrou" && "rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300")}>{d.texto}</span>
+                )) : p.final.texto}
+              </p>
+            );
+          })}
+        </article>
+
+        {/* As anotações ao lado, puxadas por uma linha do parágrafo. */}
+        <aside ref={lateral} className="relative" style={{ minHeight: alturaLateral }}>
+          {notas.length === 0 && paragrafos.length > 0 && (
+            <p className="pt-20 text-xs text-muted-foreground">Sem anotações ainda. Peça no chat: "anota o porquê de cada trecho".</p>
+          )}
+          {notas.map((n) => (
+            <button key={n.chave} type="button" ref={(el) => { if (el) refsN.current.set(n.chave, el); else refsN.current.delete(n.chave); }}
+              onMouseEnter={() => setAtivo(n.k)} onMouseLeave={() => setAtivo(null)}
+              onClick={() => falar(n.membroId, n.k, paragrafos[n.k]?.final.texto ?? "")}
+              style={{ top: topos[n.chave] ?? 0 }}
+              className={cn("absolute inset-x-0 rounded-lg border-2 bg-card px-3 py-2 text-left text-[12.5px] leading-snug shadow-sm transition-opacity",
+                n.azul ? "border-sky-400/70" : "border-emerald-400/70", ativo !== null && ativo !== n.k && "opacity-40")}>
+              <span className="mb-1 flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <span className="h-5 w-5 shrink-0 overflow-hidden rounded-full bg-muted"><CabecaBoneco nome={n.quem} ehIa className="h-full w-full" /></span>
+                {n.quem} · trecho {n.k + 1} · {n.azul ? "ajustou" : "pensou"}
+              </span>
+              {n.texto}
+            </button>
+          ))}
+        </aside>
+      </div>
     </div>
   );
 }
