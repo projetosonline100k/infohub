@@ -49,6 +49,10 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const abaAtivaRef = useRef(abaAtiva);
   abaAtivaRef.current = abaAtiva;
   const respostas = useRef(0);
+  // Por ref: o pai passa uma função nova a cada render (18/10: com o quadro atualizando a cada 5 s,
+  // o chat zerava e recarregava, e as mensagens piscavam).
+  const aoMudarDocumento = useRef(onDocumentoMudou);
+  aoMudarDocumento.current = onDocumentoMudou;
 
   const carregar = useCallback(async (id: string) => {
     const [{ data }, { data: b }] = await Promise.all([
@@ -60,11 +64,11 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
     setFazendo(typeof agora === "string" && agora.trim() ? agora.trim() : null);
     const lista = (data || []) as Mensagem[];
     const n = lista.filter((m) => m.papel === "funcionario").length;
-    if (n > respostas.current && respostas.current > 0) onDocumentoMudou();   // a resposta pode ter vindo com nova versão
+    if (n > respostas.current && respostas.current > 0) aoMudarDocumento.current();   // a resposta pode ter vindo com nova versão
     respostas.current = n;
     setMensagens(lista);
     if (abaAtivaRef.current) marcarConversaLida(id);   // está na tela: conta como lida
-  }, [onDocumentoMudou]);
+  }, []);
 
   useEffect(() => {
     let vivo = true;
