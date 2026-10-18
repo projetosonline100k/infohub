@@ -15,8 +15,7 @@ import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { colunasDoProjeto } from "@/lib/empresa/colunas";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ConversaEntrega } from "./ConversaEntrega";
-import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
-import { diferencaPalavras, lerTrechos, mudou } from "@/lib/conteudo/trechos";
+import { MapaPeca, type PecaMapa } from "./MapaPeca";
 
 // Esteira de um escritório (pedido do Davi, 17/10/2026): "o Leo cria as headlines,
 // passa para o Junior, que escreve os roteiros, que passa para o Elias revisar; nesse
@@ -43,7 +42,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   const [conversaTarefa, setConversaTarefa] = useState<string | null>(null);
   // Clicou num cartão (ou no topo da coluna): o chat vira só com quem faz aquela etapa (17/10:
   // "se eu clicar num bloco do Leo, a mensagem é para ele, em vez de falar com os três").
-  const [foco, setFoco] = useState<{ membroId: string; peca?: Peca } | null>(null);
+  const [foco, setFoco] = useState<{ membroId: string; peca?: Peca; texto?: string } | null>(null);
   const [conversaDe, setConversaDe] = useState<Record<string, string>>({});
   // Documento da peça aberto no lugar do quadro, com o chat de quem faz ao lado (17/10: "quando o Junior
   // for escrever, eu queria conseguir ver, conversar com ele mesmo").
@@ -153,12 +152,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
           <p className="text-sm text-muted-foreground">Este escritório ainda não tem esteira.</p>
         ) : (
           <div className="flex min-h-0 flex-1 gap-3">
-            {docAberto && temTrechos(docAberto) ? (
+            {docAberto ? (
               <SalaRoteiro peca={pecas.find((x) => x.id === docAberto.id) ?? docAberto} etapas={etapas} nomeDe={nomeDe} clienteId={clienteId}
-                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }} />
-            ) : docAberto ? (
-              <DocumentoDaPeca clienteId={clienteId} peca={docAberto} etapas={etapas} nomeDe={nomeDe}
-                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }} />
+                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }}
+                onFalar={(membroId, texto) => setFoco({ membroId, peca: docAberto, texto })} />
             ) : (
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void novaIdeia(); }}>
@@ -237,7 +234,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
               <div className="min-h-0 flex-1">
                 {foco ? (conversaDe[foco.membroId] ? (
                   <ConversaEntrega key={`${conversaDe[foco.membroId]}-${foco.peca?.id ?? ""}`} clienteId={clienteId} tarefaId={conversaDe[foco.membroId]} membroId={foco.membroId}
-                    nome={nomeDe(foco.membroId)} textoInicial={foco.peca ? `Sobre "${foco.peca.titulo}": ` : undefined} onDocumentoMudou={() => void carregar()} />
+                    nome={nomeDe(foco.membroId)} textoInicial={foco.texto ?? (foco.peca ? `Sobre "${foco.peca.titulo}": ` : undefined)} onDocumentoMudou={() => void carregar()} />
                 ) : <div className="flex h-full items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>) : conversaTarefa ? (
                   <ConversaEntrega key={conversaTarefa} clienteId={clienteId} tarefaId={conversaTarefa} membroId={etapas[0].membro_id}
                     nome={nomeDe(etapas[0].membro_id)} participantesIniciais={etapas.slice(1).map((e) => e.membro_id)} onDocumentoMudou={() => void carregar()} />
@@ -289,18 +286,12 @@ function CriteriosEtapa({ etapa, quem, onFechar, onSalvar }: { etapa: Etapa; que
 
 // Roteiro anotado (17/10, desenho do Davi): o roteiro do Junior em trechos, com o porquê de cada
 // escolha, ao lado da revisão do Elias com o que mudou (palavra a palavra) e por quê.
-const temTrechos = (p: Peca) => Object.keys(((p.textos as unknown as { _trechos?: Record<string, unknown> })?._trechos) ?? {}).length > 0;
 
-function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar }: {
+function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar, onFalar }: {
   peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; clienteId: string; onVoltar: () => void; onPassar: (etapa: number) => void;
+  onFalar: (membroId: string, texto: string) => void;
 }) {
   const navigate = useNavigate();
-  const [ativo, setAtivo] = useState<number | null>(null);
-  const todos = ((peca.textos as unknown as { _trechos?: Record<string, unknown> })._trechos) ?? {};
-  // As etapas com trechos, na ordem da esteira (ex.: Roteiro · Junior, Revisão · Elias).
-  const colunas = etapas.map((e, i) => ({ i, e, trechos: lerTrechos(todos[e.nome]) })).filter((c) => c.trechos.length);
-  const base = colunas[0]?.trechos ?? [];
-  const linhas = Math.max(...colunas.map((c) => c.trechos.length), 0);
   const prox = peca.etapa + 1 < etapas.length ? peca.etapa + 1 : null;
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
@@ -312,89 +303,13 @@ function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar }: {
           <Button size="sm" className="h-8 gap-1" onClick={() => onPassar(prox)}><Send className="h-3.5 w-3.5" />Passar para o {nomeDe(etapas[prox].membro_id)} ({etapas[prox].nome})</Button>
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-zinc-950 p-4 text-zinc-100">
-        <div className="grid gap-x-6" style={{ gridTemplateColumns: `repeat(${colunas.length}, minmax(0, 1fr))` }}>
-          {colunas.map((c) => (
-            <p key={c.i} className="mb-3 flex items-center justify-center gap-2 text-base font-semibold">
-              <span className="h-7 w-7 overflow-hidden rounded-full bg-zinc-800"><CabecaBoneco nome={nomeDe(c.e.membro_id)} ehIa className="h-full w-full" /></span>
-              {nomeDe(c.e.membro_id)} <span className="text-xs font-normal text-zinc-400">· {c.e.nome}</span>
-            </p>
-          ))}
-          {Array.from({ length: linhas }, (_, k) => colunas.map((c, ci) => {
-            const t = c.trechos[k];
-            if (!t) return <div key={`${c.i}-${k}`} />;
-            const original = ci > 0 ? base[k]?.texto : undefined;
-            const alterado = ci > 0 && original !== undefined && mudou(original, t.texto);
-            const destaque = ci === 0 ? !!t.nota : alterado || !!t.nota;
-            return (
-              <div key={`${c.i}-${k}`} onMouseEnter={() => setAtivo(k)} onMouseLeave={() => setAtivo(null)}
-                className={cn("mb-3 grid grid-cols-[minmax(0,1fr)_150px] items-start gap-2 rounded-lg transition-colors", ativo === k && "bg-white/5")}>
-                <p className={cn("rounded-lg px-2 py-1.5 text-[13px] leading-relaxed",
-                  destaque && (ci === 0 ? "border-2 border-emerald-400/70 bg-emerald-900/50" : "border-2 border-sky-400/70 bg-sky-900/40"))}>
-                  {alterado ? diferencaPalavras(original!, t.texto).map((d, x) => (
-                    <span key={x} className={cn(d.tipo === "saiu" && "text-rose-300 line-through decoration-rose-400", d.tipo === "entrou" && "rounded bg-emerald-500/25 text-emerald-200")}>{d.texto}</span>
-                  )) : t.texto}
-                </p>
-                {t.nota ? (
-                  <p className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-300">
-                    <span className={cn("mt-0.5 h-3 w-3 shrink-0 rounded-full border-2", ci === 0 ? "border-emerald-400 bg-emerald-900" : "border-sky-400 bg-sky-900")} />
-                    {t.nota}
-                  </p>
-                ) : alterado ? <p className="text-[11px] text-zinc-500">mudou (sem nota)</p> : <span />}
-              </div>
-            );
-          }))}
-        </div>
+      <div className="min-h-0 flex-1">
+        <MapaPeca peca={peca as unknown as PecaMapa} etapas={etapas} nomeDe={nomeDe} onFalar={onFalar} />
       </div>
       <p className="text-[11px] text-muted-foreground">
-        Verde: o que o {colunas[0] ? nomeDe(colunas[0].e.membro_id) : "roteirista"} pensou. Azul: o que mudou na revisão (riscado saiu, verde entrou).
-        Converse ao lado: o que você pedir, ele ajusta aqui.
+        Amarelo: a headline. Verde: o que o roteirista pensou em cada trecho. Azul: o que mudou na revisão (riscado saiu, verde entrou).
+        Clique num bloco para falar com quem fez, já sobre aquele trecho; arraste os blocos e use a roda do mouse para dar zoom.
       </p>
-    </div>
-  );
-}
-
-// O documento da peça com o botão de passar adiante; o chat com quem faz fica ao lado (o do quadro).
-function DocumentoDaPeca({ clienteId, peca, etapas, nomeDe, onVoltar, onPassar }: {
-  clienteId: string; peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; onVoltar: () => void; onPassar: (etapa: number) => void;
-}) {
-  const navigate = useNavigate();
-  const [doc, setDoc] = useState<{ titulo: string; conteudo: string } | null>(null);
-  const [mudou, setMudou] = useState(false);
-  useEffect(() => {
-    if (!peca.documento_id) return;
-    let vivo = true;
-    let ultimo = "";
-    const ler = async () => {
-      const { data } = await supabase.from("documentos").select("titulo, conteudo").eq("id", peca.documento_id!).maybeSingle();
-      if (!vivo || !data) return;
-      const c = typeof data.conteudo === "string" ? data.conteudo : "";
-      if (ultimo && c !== ultimo) { setMudou(true); window.setTimeout(() => setMudou(false), 2500); }
-      ultimo = c;
-      setDoc({ titulo: data.titulo, conteudo: c });
-    };
-    void ler();
-    const t = window.setInterval(() => void ler(), 4000);   // ele reescrevendo: a tela acompanha
-    return () => { vivo = false; window.clearInterval(t); };
-  }, [peca.documento_id]);
-  const prox = peca.etapa + 1 < etapas.length ? peca.etapa + 1 : null;
-  return (
-    <div className="flex min-w-0 flex-1 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={onVoltar} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">← Voltar ao quadro</button>
-        <button type="button" onClick={() => navigate(`/clientes/${clienteId}?documento=${peca.documento_id}`)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Abrir em Documentos (editar)</button>
-        {mudou && <span className="text-xs font-medium text-emerald-600">✎ atualizado agora</span>}
-        <span className="ml-auto" />
-        {prox !== null && (
-          <Button size="sm" className="h-8 gap-1" onClick={() => onPassar(prox)}><Send className="h-3.5 w-3.5" />Passar para o {nomeDe(etapas[prox].membro_id)} ({etapas[prox].nome})</Button>
-        )}
-      </div>
-      <div className={cn("min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5 transition-shadow", mudou && "ring-2 ring-emerald-400/60")}>
-        {doc ? (
-          <article className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: htmlLimpo(doc.conteudo) }} />
-        ) : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-      </div>
-      <p className="text-[11px] text-muted-foreground">Converse ao lado com o {nomeDe(etapas[Math.min(peca.etapa, etapas.length - 1)].membro_id)}: o que você pedir, ele ajusta aqui no documento.</p>
     </div>
   );
 }
