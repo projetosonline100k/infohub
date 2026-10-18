@@ -91,6 +91,11 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
     if chrome:
         # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele.
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
+    return rodar_claude_com(cmd, minutos, cwd, info)
+
+
+def rodar_claude_com(cmd, minutos, cwd=None, info=None):
+    """Roda o comando do Claude já montado e devolve (ok, texto)."""
     try:
         r = subprocess.run(cmd, cwd=cwd or RAIZ, capture_output=True, text=True, timeout=minutos * 60,
                            env={**os.environ, "PATH": f"{Path(PYTHON).parent}:/usr/bin:/bin:/usr/sbin:/sbin"})
@@ -103,6 +108,11 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
     texto = (dados.get("result") or "").strip()
     if info is not None:
         info["session_id"] = dados.get("session_id")
+    if dados.get("is_error") and "safeguards" in texto and "--model" not in cmd:
+        # 18/10: o filtro do Opus barrou por engano o roteiro do Junior ("This sometimes happens with
+        # safe, normal conversations... can't respond with Opus"). Tenta de novo com o Sonnet.
+        log("claude: filtro do Opus barrou; tentando com o Sonnet")
+        return rodar_claude_com(cmd + ["--model", "sonnet"], minutos, cwd, info)
     if dados.get("is_error"):
         if "authenticate" in texto or "OAuth" in texto:
             texto = "O Claude em segundo plano está deslogado. Rode o login de novo (ver scripts/instalar-jarvis-ouvinte.sh)."
