@@ -15,6 +15,7 @@ export interface PecaMapa { id: string; titulo: string; textos: Record<string, u
 
 interface Linha { grupo: string; d: string; azul: boolean }
 type Modo = "documento" | "mapa";
+type Filtro = "todas" | "roteiro" | "revisao" | "nenhuma";
 
 const curva = (x1: number, y1: number, x2: number, y2: number) => {
   const mx = (x1 + x2) / 2;
@@ -80,11 +81,21 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
     try { return (localStorage.getItem("esteira:modo") as Modo) || "documento"; } catch { return "documento"; }
   });
   const trocar = (m: Modo) => { setModo(m); try { localStorage.setItem("esteira:modo", m); } catch { /* sem storage */ } };
+  // Filtro das anotações (18/10: "tem muita info, quero ver somente o que o Elias está trazendo").
+  // Começa no revisor: o Davi revisa só o fim da esteira.
+  const [filtroSalvo, setFiltroSalvo] = useState<Filtro>(() => {
+    try { return (localStorage.getItem("esteira:filtro") as Filtro) || "revisao"; } catch { return "revisao"; }
+  });
+  const filtrar = (f: Filtro) => { setFiltroSalvo(f); try { localStorage.setItem("esteira:filtro", f); } catch { /* sem storage */ } };
 
   const textos = peca.textos ?? {};
   const { roteiro, revisao, origem } = montarPeca(textos, etapas);
   const ideia = typeof textos.Ideia === "string" ? textos.Ideia : null;
-  const assinatura = JSON.stringify([peca.textos, peca.titulo, modo]);
+  // Sem revisão ainda, "só o revisor" mostra as do roteirista (senão a tela fica vazia).
+  const filtro: Filtro = filtroSalvo === "revisao" && !revisao ? "todas" : filtroSalvo;
+  const verRoteiro = filtro === "todas" || filtro === "roteiro";
+  const verRevisao = filtro === "todas" || filtro === "revisao";
+  const assinatura = JSON.stringify([peca.textos, peca.titulo, modo, filtro]);
 
   const falar = (membroId: string, n: number | null, texto: string) =>
     onFalar(membroId, n !== null ? `Sobre o trecho ${n + 1} de "${peca.titulo}" ("${texto.slice(0, 80)}${texto.length > 80 ? "…" : ""}"): ` : `Sobre "${peca.titulo}": `);
@@ -144,7 +155,11 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
   const checagem = (textos._checagem as Record<string, { n: number; ok: boolean; obs?: string }[]> | undefined) ?? {};
   const criteriosDe = (e: EtapaMapa) => (Array.isArray(e.criterios) ? e.criterios : (e.criterios ?? "").split("\n").map((l) => l.replace(/^\s*\d+[.)-]\s*/, "")))
     .map((x) => String(x).trim()).filter(Boolean);
-  const conferencias = etapas.filter((e) => checagem[e.nome]?.length).map((e) => ({ e, itens: checagem[e.nome], crit: criteriosDe(e) }));
+  const conferencias = etapas.filter((e) => checagem[e.nome]?.length)
+    .filter((e) => (e.nome === roteiro?.etapa.nome ? verRoteiro : e.nome === revisao?.etapa.nome ? verRevisao : filtro !== "nenhuma"))
+    .map((e) => ({ e, itens: checagem[e.nome], crit: criteriosDe(e) }));
+  const opcoesFiltro: [Filtro, string][] = [["todas", "Todas"], ...(roteiro ? [["roteiro", nomeDe(roteiro.etapa.membro_id)] as [Filtro, string]] : []),
+    ...(revisao ? [["revisao", nomeDe(revisao.etapa.membro_id)] as [Filtro, string]] : []), ["nenhuma", "Nenhuma"]];
   const seletor = (
     <div className="sticky top-0 z-10 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 bg-muted/30 px-4 pt-3 backdrop-blur">
       {conferencias.map(({ e, itens, crit }) => (
@@ -158,6 +173,15 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
           ))}
         </div>
       ))}
+      <div className="flex items-center gap-1.5 text-xs">
+        <span className="text-muted-foreground">Anotações:</span>
+        <div className="inline-flex rounded-lg border bg-card p-0.5 font-medium">
+          {opcoesFiltro.map(([f, rotulo]) => (
+            <button key={f} type="button" onClick={() => filtrar(f)}
+              className={cn("rounded-md px-2.5 py-1", filtro === f ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60")}>{rotulo}</button>
+          ))}
+        </div>
+      </div>
       <div className="inline-flex rounded-lg border bg-card p-0.5 text-xs font-medium">
         {(["documento", "mapa"] as Modo[]).map((m) => (
           <button key={m} type="button" onClick={() => trocar(m)}
@@ -210,7 +234,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
                       className={cn("rounded-xl border-2 bg-card px-3 py-2 text-left text-[13px] leading-relaxed shadow-sm transition-opacity",
                         t.nota ? "border-emerald-400/70" : "border-border", cortado && "border-dashed opacity-60", apagado(`j${j}`) && "opacity-40")}>
                       {t.texto}
-                      {t.nota && <span className="mt-1.5 flex gap-1.5 border-t pt-1.5 text-[11.5px] text-muted-foreground"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />{t.nota}</span>}
+                      {t.nota && verRoteiro && <span className="mt-1.5 flex gap-1.5 border-t pt-1.5 text-[11.5px] text-muted-foreground"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />{t.nota}</span>}
                       {cortado && <span className="mt-1 block text-[10.5px] font-medium text-rose-500">✂ cortado na revisão</span>}
                     </button>
                   );
@@ -242,7 +266,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
                         <span key={i} className={cn(d.tipo === "saiu" && "text-rose-500/80 line-through", d.tipo === "entrou" && "rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300")}>{d.texto}</span>
                       )) : t.texto}
                       {!alterou && j !== null && !t.nota && <span className="mt-1 block text-[10.5px] text-muted-foreground">✓ manteve</span>}
-                      {t.nota && <span className="mt-1.5 flex gap-1.5 border-t pt-1.5 text-[11.5px] text-muted-foreground"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500" />{t.nota}</span>}
+                      {t.nota && verRevisao && <span className="mt-1.5 flex gap-1.5 border-t pt-1.5 text-[11.5px] text-muted-foreground"><span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-500" />{t.nota}</span>}
                     </button>
                   );
                 })}
@@ -267,7 +291,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
       return t.nota && k >= 0 ? [{ chave: `nj${j}`, k, texto: t.nota, quem: nomeDe(roteiro!.etapa.membro_id), membroId: roteiro!.etapa.membro_id, azul: false }] : [];
     }),
     ...(revisao?.trechos ?? []).flatMap((t, k) => (t.nota ? [{ chave: `nr${k}`, k, texto: t.nota, quem: nomeDe(revisao!.etapa.membro_id), membroId: revisao!.etapa.membro_id, azul: true }] : [])),
-  ].sort((a, b) => a.k - b.k || Number(a.azul) - Number(b.azul));
+  ].filter((n) => (n.azul ? verRevisao : verRoteiro)).sort((a, b) => a.k - b.k || Number(a.azul) - Number(b.azul));
   pares.current = notas.map((n) => ({ dir: n.chave, esq: `p${n.k}`, azul: n.azul, grupo: `p${n.k}` }));
   const corNota = new Map<number, boolean>();
   for (const n of notas) corNota.set(n.k, (corNota.get(n.k) ?? false) || n.azul);
@@ -298,7 +322,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
           })}
         </article>
         <aside ref={lateral} className="relative" style={{ minHeight: alturaLateral }}>
-          {notas.length === 0 && paragrafos.length > 0 && (
+          {notas.length === 0 && paragrafos.length > 0 && filtro === "todas" && (
             <p className="pt-20 text-xs text-muted-foreground">Sem anotações ainda. Peça no chat: "anota o porquê de cada trecho".</p>
           )}
           {notas.map((n) => (
