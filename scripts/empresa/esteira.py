@@ -15,6 +15,9 @@ O funcionário, no lugar do `execucao.py entregar`, usa:
   FIM
   python3 scripts/empresa/esteira.py devolver <peca_id> "<o que ajustar>"  → (revisão) volta para a etapa anterior, com a nota
   python3 scripts/empresa/esteira.py ideia <setor_id> "<ideia ou pedido>"   → nova peça na 1ª etapa (pedido do Davi no chat)
+  python3 scripts/empresa/esteira.py anotado <peca_id> [--so-salvar] <<'FIM'   → roteiro/revisão em trechos com o porquê de cada um
+  [{"texto": "trecho", "nota": "por que fiz assim (ou: troquei X por Y porque Z)"}]
+  FIM
 """
 import json
 import re
@@ -144,7 +147,13 @@ def contexto(pid):
         print(f"\nCRITÉRIOS DO DAVI PARA ESTA ETAPA ({etapas[p['etapa']]['nome']}): " + (crit if crit else
               '(ainda não definidos: siga o seu manual e os aprendizados, e na conversa proponha ao Davi os critérios que você usou)'))
     for nome, texto in (p['textos'] or {}).items():
+        if nome.startswith('_'):
+            continue
         print(f"\n--- {nome} ---\n{texto}")
+    for nome, ts in ((p['textos'] or {}).get('_trechos') or {}).items():
+        print(f"\n--- {nome} em trechos (com as notas) ---")
+        for i, t in enumerate(ts, 1):
+            print(f"{i}. {t['texto']}" + (f"\n   [nota: {t['nota']}]" if t.get('nota') else ''))
     if p.get('documento_id'):
         print(f"\n--- DOCUMENTO DA PEÇA (o que vale: o Davi pode ter editado; id {p['documento_id']}) ---\n"
               + re.sub(r'<[^>]+>', ' ', _conteudo_doc(p['documento_id'])).strip())
@@ -207,6 +216,34 @@ def entregar(pid, texto):
        (json.dumps(textos, ensure_ascii=False), titulo, prox, 'feito' if prox >= len(etapas) else 'fila', pid), commit=True)
     _concluir_tarefa(p['atividade_id'], f"Passou para {'o Davi (pronto)' if prox >= len(etapas) else etapas[prox]['nome']} na esteira.")
     print('ENTREGUE →', 'pronto para o Davi' if prox >= len(etapas) else etapas[prox]['nome'])
+
+
+def anotado(pid, bruto, so_salvar=False):
+    """Roteiro ou revisão em TRECHOS anotados (17/10, Davi: "preciso saber o que foi pensado, o
+    que o Elias ajustou"). stdin: [{"texto": "...", "nota": "por que fiz assim / o que mudei e por quê"}].
+    Na revisão, mande os MESMOS trechos do roteiro, na mesma ordem (com nota só onde mudou).
+    Grava o texto corrido (e o documento) como no entregar; so_salvar: sem passar de etapa (ajuste na conversa)."""
+    try:
+        lista = json.loads(bruto or '[]')
+    except json.JSONDecodeError as e:
+        raise SystemExit(f'JSON inválido: {e}')
+    trechos = [{'texto': str(t.get('texto', '')).strip(), 'nota': (str(t.get('nota')).strip() or None) if t.get('nota') else None}
+               for t in (lista if isinstance(lista, list) else []) if isinstance(t, dict) and str(t.get('texto', '')).strip()]
+    if not trechos:
+        raise SystemExit('mande a lista de trechos (JSON: [{"texto": "...", "nota": "..."}])')
+    p = _peca(pid)
+    etapas = p['esteira'] or []
+    nome = etapas[min(p['etapa'], len(etapas) - 1)]['nome']
+    textos = dict(p['textos'] or {})
+    t2 = dict(textos.get('_trechos') or {})
+    t2[nome] = trechos
+    textos['_trechos'] = t2
+    _q("UPDATE esteira_itens SET textos = %s::jsonb WHERE id = %s", (json.dumps(textos, ensure_ascii=False), pid), commit=True)
+    corrido = '\n\n'.join(t['texto'] for t in trechos)
+    if so_salvar:
+        reescrever(pid, corrido)
+    else:
+        entregar(pid, corrido)
 
 
 def reescrever(pid, texto):
@@ -288,6 +325,8 @@ if __name__ == '__main__':
         entregar(a[1], sys.stdin.read())
     elif a[0] == 'novas' and len(a) > 1:
         novas(a[1], sys.stdin.read())
+    elif a[0] == 'anotado' and len(a) > 1:
+        anotado(a[1], sys.stdin.read(), so_salvar='--so-salvar' in a)
     elif a[0] == 'reescrever' and len(a) > 1:
         reescrever(a[1], sys.stdin.read())
     elif a[0] == 'ideia' and len(a) > 2:

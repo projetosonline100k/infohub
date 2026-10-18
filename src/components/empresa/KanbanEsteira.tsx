@@ -16,6 +16,7 @@ import { colunasDoProjeto } from "@/lib/empresa/colunas";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
+import { diferencaPalavras, lerTrechos, mudou } from "@/lib/conteudo/trechos";
 
 // Esteira de um escritório (pedido do Davi, 17/10/2026): "o Leo cria as headlines,
 // passa para o Junior, que escreve os roteiros, que passa para o Elias revisar; nesse
@@ -152,7 +153,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
           <p className="text-sm text-muted-foreground">Este escritório ainda não tem esteira.</p>
         ) : (
           <div className="flex min-h-0 flex-1 gap-3">
-            {docAberto ? (
+            {docAberto && temTrechos(docAberto) ? (
+              <SalaRoteiro peca={pecas.find((x) => x.id === docAberto.id) ?? docAberto} etapas={etapas} nomeDe={nomeDe} clienteId={clienteId}
+                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }} />
+            ) : docAberto ? (
               <DocumentoDaPeca clienteId={clienteId} peca={docAberto} etapas={etapas} nomeDe={nomeDe}
                 onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }} />
             ) : (
@@ -283,6 +287,73 @@ function CriteriosEtapa({ etapa, quem, onFechar, onSalvar }: { etapa: Etapa; que
   );
 }
 
+// Roteiro anotado (17/10, desenho do Davi): o roteiro do Junior em trechos, com o porquê de cada
+// escolha, ao lado da revisão do Elias com o que mudou (palavra a palavra) e por quê.
+const temTrechos = (p: Peca) => Object.keys(((p.textos as unknown as { _trechos?: Record<string, unknown> })?._trechos) ?? {}).length > 0;
+
+function SalaRoteiro({ peca, etapas, nomeDe, clienteId, onVoltar, onPassar }: {
+  peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; clienteId: string; onVoltar: () => void; onPassar: (etapa: number) => void;
+}) {
+  const navigate = useNavigate();
+  const [ativo, setAtivo] = useState<number | null>(null);
+  const todos = ((peca.textos as unknown as { _trechos?: Record<string, unknown> })._trechos) ?? {};
+  // As etapas com trechos, na ordem da esteira (ex.: Roteiro · Junior, Revisão · Elias).
+  const colunas = etapas.map((e, i) => ({ i, e, trechos: lerTrechos(todos[e.nome]) })).filter((c) => c.trechos.length);
+  const base = colunas[0]?.trechos ?? [];
+  const linhas = Math.max(...colunas.map((c) => c.trechos.length), 0);
+  const prox = peca.etapa + 1 < etapas.length ? peca.etapa + 1 : null;
+  return (
+    <div className="flex min-w-0 flex-1 flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={onVoltar} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">← Voltar ao quadro</button>
+        {peca.documento_id && <button type="button" onClick={() => navigate(`/clientes/${clienteId}?documento=${peca.documento_id}`)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Abrir em Documentos</button>}
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{peca.titulo}</p>
+        {prox !== null && peca.situacao === "feito" && (
+          <Button size="sm" className="h-8 gap-1" onClick={() => onPassar(prox)}><Send className="h-3.5 w-3.5" />Passar para o {nomeDe(etapas[prox].membro_id)} ({etapas[prox].nome})</Button>
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border bg-zinc-950 p-4 text-zinc-100">
+        <div className="grid gap-x-6" style={{ gridTemplateColumns: `repeat(${colunas.length}, minmax(0, 1fr))` }}>
+          {colunas.map((c) => (
+            <p key={c.i} className="mb-3 flex items-center justify-center gap-2 text-base font-semibold">
+              <span className="h-7 w-7 overflow-hidden rounded-full bg-zinc-800"><CabecaBoneco nome={nomeDe(c.e.membro_id)} ehIa className="h-full w-full" /></span>
+              {nomeDe(c.e.membro_id)} <span className="text-xs font-normal text-zinc-400">· {c.e.nome}</span>
+            </p>
+          ))}
+          {Array.from({ length: linhas }, (_, k) => colunas.map((c, ci) => {
+            const t = c.trechos[k];
+            if (!t) return <div key={`${c.i}-${k}`} />;
+            const original = ci > 0 ? base[k]?.texto : undefined;
+            const alterado = ci > 0 && original !== undefined && mudou(original, t.texto);
+            const destaque = ci === 0 ? !!t.nota : alterado || !!t.nota;
+            return (
+              <div key={`${c.i}-${k}`} onMouseEnter={() => setAtivo(k)} onMouseLeave={() => setAtivo(null)}
+                className={cn("mb-3 grid grid-cols-[minmax(0,1fr)_150px] items-start gap-2 rounded-lg transition-colors", ativo === k && "bg-white/5")}>
+                <p className={cn("rounded-lg px-2 py-1.5 text-[13px] leading-relaxed",
+                  destaque && (ci === 0 ? "border-2 border-emerald-400/70 bg-emerald-900/50" : "border-2 border-sky-400/70 bg-sky-900/40"))}>
+                  {alterado ? diferencaPalavras(original!, t.texto).map((d, x) => (
+                    <span key={x} className={cn(d.tipo === "saiu" && "text-rose-300 line-through decoration-rose-400", d.tipo === "entrou" && "rounded bg-emerald-500/25 text-emerald-200")}>{d.texto}</span>
+                  )) : t.texto}
+                </p>
+                {t.nota ? (
+                  <p className="flex items-start gap-1.5 text-[11px] leading-snug text-zinc-300">
+                    <span className={cn("mt-0.5 h-3 w-3 shrink-0 rounded-full border-2", ci === 0 ? "border-emerald-400 bg-emerald-900" : "border-sky-400 bg-sky-900")} />
+                    {t.nota}
+                  </p>
+                ) : alterado ? <p className="text-[11px] text-zinc-500">mudou (sem nota)</p> : <span />}
+              </div>
+            );
+          }))}
+        </div>
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Verde: o que o {colunas[0] ? nomeDe(colunas[0].e.membro_id) : "roteirista"} pensou. Azul: o que mudou na revisão (riscado saiu, verde entrou).
+        Converse ao lado: o que você pedir, ele ajusta aqui.
+      </p>
+    </div>
+  );
+}
+
 // O documento da peça com o botão de passar adiante; o chat com quem faz fica ao lado (o do quadro).
 function DocumentoDaPeca({ clienteId, peca, etapas, nomeDe, onVoltar, onPassar }: {
   clienteId: string; peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; onVoltar: () => void; onPassar: (etapa: number) => void;
@@ -335,7 +406,7 @@ function CartaoPeca({ p, etapas, nomeDe, aberta, progresso, onAbrir, onMover, on
   const [nota, setNota] = useState("");
   const pronto = p.etapa >= etapas.length;
   const quem = !pronto ? nomeDe(etapas[p.etapa].membro_id) : null;
-  const textos = Object.entries(p.textos ?? {});
+  const textos = Object.entries(p.textos ?? {}).filter(([k, v]) => !k.startsWith("_") && typeof v === "string");
   const ultimo = textos.length ? textos[textos.length - 1][1] : "";
   return (
     <div className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", aberta && "ring-1 ring-primary/40", p.nota && !pronto && "border-amber-400/60")}>

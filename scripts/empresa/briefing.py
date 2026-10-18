@@ -209,7 +209,8 @@ def contexto(bid, como=None):
                 print('Peças recentes (o Davi costuma começar com Sobre "<título>"): ' + '; '.join(f'{t} (etapa {e + 1}, {s}, id {i})' for t, e, s, i in pecas))
                 print('Para mexer numa peça a pedido do Davi: veja com esteira.py contexto <id> (traz o documento e os CRITÉRIOS da etapa).'
                       ' Se for a SUA etapa e ele pediu ajuste, reescreva o documento AGORA, sem passar de etapa:'
-                      ' python3 scripts/empresa/esteira.py reescrever <id> <<\'FIM\'\n<o texto inteiro, já ajustado>\nFIM'
+                      ' python3 scripts/empresa/esteira.py anotado <id> --so-salvar <<\'FIM\'\n[{"texto": "<trecho>", "nota": "<por quê / o que mudou>"}, ...]\nFIM'
+                      ' (todos os trechos, já ajustados; a tela mostra o roteiro anotado ao lado da revisão)'
                       ' — ele vê o documento mudando na tela. Quem passa a peça adiante é o Davi (arrastando).'
                       ' Se ele disser como quer o trabalho (critério), anote também nos aprendizados (aprender.py) para valer nas próximas.')
         if quiz:
