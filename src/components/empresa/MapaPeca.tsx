@@ -83,7 +83,8 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
   });
   const trocar = (m: Modo) => { setModo(m); try { localStorage.setItem("esteira:modo", m); } catch { /* sem storage */ } };
   // Olho (18/10: "em vez de uma opção de ler, queria apenas um olho, onde eu marco ou desmarco"):
-  // aberto = mudanças e anotações à vista; fechado = o roteiro final limpo, para ler.
+  // aberto = o que mudou riscado/verde; fechado = o texto final limpo, com as anotações ao lado
+  // ("nem precisa sumir os comentários do Elias").
   const [marcas, setMarcas] = useState(() => { try { return localStorage.getItem("esteira:marcas") !== "nao"; } catch { return true; } });
   const alternarMarcas = () => setMarcas((v) => { try { localStorage.setItem("esteira:marcas", v ? "nao" : "sim"); } catch { /* sem storage */ } return !v; });
   // Filtro das anotações (18/10: "tem muita info, quero ver somente o que o Elias está trazendo").
@@ -117,7 +118,6 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
   const [alturaLateral, setAlturaLateral] = useState(0);
   const [alturaSvg, setAlturaSvg] = useState(0);
   const [ativo, setAtivo] = useState<string | null>(null);
-  const [copiado, setCopiado] = useState(false);
 
   const medir = useCallback(() => {
     const c = caixa.current, a = lateral.current;
@@ -179,7 +179,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
           ))}
         </div>
       ))}
-      {marcas && <div className="flex items-center gap-1.5 text-xs">
+      <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">Anotações:</span>
         <div className="inline-flex rounded-lg border bg-card p-0.5 font-medium">
           {opcoesFiltro.map(([f, rotulo]) => (
@@ -187,8 +187,8 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
               className={cn("rounded-md px-2.5 py-1", filtro === f ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60")}>{rotulo}</button>
           ))}
         </div>
-      </div>}
-      <button type="button" onClick={alternarMarcas} title={marcas ? "Esconder mudanças e anotações (só o texto final)" : "Mostrar mudanças e anotações"}
+      </div>
+      <button type="button" onClick={alternarMarcas} title={marcas ? "Esconder o riscado/verde (texto final limpo; as anotações ficam)" : "Mostrar o que mudou (riscado/verde)"}
         className={cn("flex h-8 w-8 items-center justify-center rounded-lg border bg-card", marcas ? "text-foreground" : "text-muted-foreground")}>
         {marcas ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
       </button>
@@ -209,7 +209,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
     ? <PainelAoVivo quem={nomeDe(etapaAtual.membro_id)} etapa={etapaAtual.nome} aoVivo={aoVivo} pensamentos={pensamentos} /> : null;
 
   // ======================= Mapa: roteiro (esquerda) → revisão (direita) =======================
-  if (modo === "mapa" && marcas) {
+  if (modo === "mapa") {
     const usados = new Set(origem.filter((x): x is number => x !== null));
     pares.current = revisao ? revisao.trechos.map((t, k) => {
       const j = origem[k];
@@ -272,7 +272,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
                       className={cn("absolute inset-x-0 rounded-xl border-2 bg-card px-3 py-2 text-left text-[13px] leading-relaxed shadow-sm transition-opacity",
                         alterou || j === null || t.nota ? "border-sky-400/70" : "border-border", apagado(g) && "opacity-40")}>
                       {j === null && <span className="mb-1 block text-[10.5px] font-semibold text-sky-600 dark:text-sky-400">+ trecho novo</span>}
-                      {alterou ? diferencaPalavras(antes!, t.texto).map((d, i) => (
+                      {alterou && marcas ? diferencaPalavras(antes!, t.texto).map((d, i) => (
                         <span key={i} className={cn(d.tipo === "saiu" && "text-rose-500/80 line-through", d.tipo === "entrou" && "rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300")}>{d.texto}</span>
                       )) : t.texto}
                       {!alterou && j !== null && !t.nota && <span className="mt-1 block text-[10.5px] text-muted-foreground">✓ manteve</span>}
@@ -284,32 +284,6 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
             </div>
           </div>
         )}
-      </div>
-    );
-  }
-
-  // ======================= Ler: o roteiro final, limpo (18/10: "ver o roteiro completo, sem os vermelhos, para ler mesmo") =======================
-  if (!marcas) {
-    const final = (revisao ?? roteiro)?.trechos.map((t) => t.texto) ?? [];
-    const corrido = final.join("\n\n");
-    return (
-      <div className="h-full overflow-y-auto rounded-xl border bg-muted/30">
-        {seletor}
-        {painel}
-        <article className="mx-auto my-4 max-w-[760px] rounded-lg border bg-card px-12 py-10 shadow-sm">
-          <h1 className="mb-6 text-2xl font-bold leading-tight">{peca.titulo}</h1>
-          {final.length ? final.map((t, i) => <p key={i} className="mb-4 whitespace-pre-line text-[17px] leading-relaxed">{t}</p>)
-            : <p className="text-sm text-muted-foreground">Ainda sem texto: o roteiro aparece aqui assim que ele escrever.</p>}
-          {final.length > 0 && (
-            <div className="mt-6 flex items-center gap-3 border-t pt-3 text-xs text-muted-foreground">
-              <span>{corrido.length.toLocaleString("pt-BR")} caracteres · versão {revisao ? `revisada pelo ${nomeDe(revisao.etapa.membro_id)}` : `do ${nomeDe(roteiro!.etapa.membro_id)}`}</span>
-              <button type="button" className="ml-auto rounded-md border px-2 py-1 font-medium hover:bg-muted"
-                onClick={() => { void navigator.clipboard.writeText(`${peca.titulo}\n\n${corrido}`); setCopiado(true); window.setTimeout(() => setCopiado(false), 1500); }}>
-                {copiado ? "Copiado ✓" : "Copiar texto"}
-              </button>
-            </div>
-          )}
-        </article>
       </div>
     );
   }
@@ -350,7 +324,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
                 title="Clique para falar sobre este trecho"
                 className={cn("-mx-3 mb-3 cursor-pointer rounded-md border-l-[3px] border-transparent px-3 py-1 text-[16px] leading-relaxed transition-colors hover:bg-muted/60",
                   corNota.has(p.k) && (corNota.get(p.k) ? "border-sky-500" : "border-emerald-500"), ativo === `p${p.k}` && "bg-muted/60")}>
-                {alterado ? diferencaPalavras(p.original!, p.texto).map((d, i) => (
+                {alterado && marcas ? diferencaPalavras(p.original!, p.texto).map((d, i) => (
                   <span key={i} className={cn(d.tipo === "saiu" && "text-rose-500/80 line-through", d.tipo === "entrou" && "rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-300")}>{d.texto}</span>
                 )) : p.texto}
               </p>
