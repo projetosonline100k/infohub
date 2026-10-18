@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { diferencaPalavras, montarPeca, mudou } from "@/lib/conteudo/trechos";
 import { CabecaBoneco } from "./BonecoMesa";
@@ -14,7 +15,7 @@ export interface EtapaMapa { nome: string; membro_id: string; criterios?: string
 export interface PecaMapa { id: string; titulo: string; textos: Record<string, unknown>; etapa: number }
 
 interface Linha { grupo: string; d: string; azul: boolean }
-type Modo = "ler" | "documento" | "mapa";
+type Modo = "documento" | "mapa";
 type Filtro = "todas" | "roteiro" | "revisao" | "nenhuma";
 
 const curva = (x1: number, y1: number, x2: number, y2: number) => {
@@ -78,9 +79,13 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
   onFalar: (membroId: string, texto: string) => void;
 }) {
   const [modo, setModo] = useState<Modo>(() => {
-    try { return (localStorage.getItem("esteira:modo") as Modo) || "documento"; } catch { return "documento"; }
+    try { return localStorage.getItem("esteira:modo") === "mapa" ? "mapa" : "documento"; } catch { return "documento"; }
   });
   const trocar = (m: Modo) => { setModo(m); try { localStorage.setItem("esteira:modo", m); } catch { /* sem storage */ } };
+  // Olho (18/10: "em vez de uma opção de ler, queria apenas um olho, onde eu marco ou desmarco"):
+  // aberto = mudanças e anotações à vista; fechado = o roteiro final limpo, para ler.
+  const [marcas, setMarcas] = useState(() => { try { return localStorage.getItem("esteira:marcas") !== "nao"; } catch { return true; } });
+  const alternarMarcas = () => setMarcas((v) => { try { localStorage.setItem("esteira:marcas", v ? "nao" : "sim"); } catch { /* sem storage */ } return !v; });
   // Filtro das anotações (18/10: "tem muita info, quero ver somente o que o Elias está trazendo").
   // Começa no revisor: o Davi revisa só o fim da esteira.
   const [filtroSalvo, setFiltroSalvo] = useState<Filtro>(() => {
@@ -174,7 +179,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
           ))}
         </div>
       ))}
-      {modo !== "ler" && <div className="flex items-center gap-1.5 text-xs">
+      {marcas && <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">Anotações:</span>
         <div className="inline-flex rounded-lg border bg-card p-0.5 font-medium">
           {opcoesFiltro.map(([f, rotulo]) => (
@@ -183,11 +188,15 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
           ))}
         </div>
       </div>}
+      <button type="button" onClick={alternarMarcas} title={marcas ? "Esconder mudanças e anotações (só o texto final)" : "Mostrar mudanças e anotações"}
+        className={cn("flex h-8 w-8 items-center justify-center rounded-lg border bg-card", marcas ? "text-foreground" : "text-muted-foreground")}>
+        {marcas ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+      </button>
       <div className="inline-flex rounded-lg border bg-card p-0.5 text-xs font-medium">
-        {(["ler", "documento", "mapa"] as Modo[]).map((m) => (
+        {(["documento", "mapa"] as Modo[]).map((m) => (
           <button key={m} type="button" onClick={() => trocar(m)}
             className={cn("rounded-md px-3 py-1", modo === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
-            {m === "ler" ? "Ler" : m === "documento" ? "Documento" : `Mapa${roteiro && revisao ? ` · ${nomeDe(roteiro.etapa.membro_id)} → ${nomeDe(revisao.etapa.membro_id)}` : ""}`}
+            {m === "documento" ? "Documento" : `Mapa${roteiro && revisao ? ` · ${nomeDe(roteiro.etapa.membro_id)} → ${nomeDe(revisao.etapa.membro_id)}` : ""}`}
           </button>
         ))}
       </div>
@@ -200,7 +209,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
     ? <PainelAoVivo quem={nomeDe(etapaAtual.membro_id)} etapa={etapaAtual.nome} aoVivo={aoVivo} pensamentos={pensamentos} /> : null;
 
   // ======================= Mapa: roteiro (esquerda) → revisão (direita) =======================
-  if (modo === "mapa") {
+  if (modo === "mapa" && marcas) {
     const usados = new Set(origem.filter((x): x is number => x !== null));
     pares.current = revisao ? revisao.trechos.map((t, k) => {
       const j = origem[k];
@@ -280,7 +289,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
   }
 
   // ======================= Ler: o roteiro final, limpo (18/10: "ver o roteiro completo, sem os vermelhos, para ler mesmo") =======================
-  if (modo === "ler") {
+  if (!marcas) {
     const final = (revisao ?? roteiro)?.trechos.map((t) => t.texto) ?? [];
     const corrido = final.join("\n\n");
     return (
