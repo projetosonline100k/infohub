@@ -18,6 +18,12 @@ O funcionário, no lugar do `execucao.py entregar`, usa:
   python3 scripts/empresa/esteira.py anotado <peca_id> [--so-salvar] <<'FIM'   → roteiro/revisão em trechos com o porquê de cada um
   [{"texto": "trecho", "nota": "por que fiz assim (ou: troquei X por Y porque Z)"}]
   FIM
+  python3 scripts/empresa/esteira.py checagem <peca_id> <<'FIM'          → conferência dos critérios numerados da etapa (antes do anotado)
+  [{"n": 1, "ok": true, "obs": "como atende"}]
+  FIM
+
+Em setores.esteira cada etapa tem: criterios (lista numerada; antes texto), formatos ([{nome, texto}]
+de referência, ex.: formatos de roteiro do Junior) e davi_aprova.
 """
 import json
 import re
@@ -133,6 +139,42 @@ def andar():
     return n
 
 
+def _criterios(e):
+    """Critérios da etapa como lista (o Davi salva um por um; antes era um texto só)."""
+    c = e.get('criterios')
+    if isinstance(c, list):
+        return [str(x).strip() for x in c if str(x).strip()]
+    return [re.sub(r'^\s*\d+[.)-]\s*', '', l).strip() for l in str(c or '').split('\n') if l.strip()]
+
+
+def checagem(pid, bruto):
+    """Conferência dos critérios da etapa (17/10, Davi: "sempre que o Elias for fazendo, ele lê
+    esse critério para ver se está ok"). stdin: [{"n": 1, "ok": true, "obs": "..."}]."""
+    try:
+        lista = json.loads(bruto or '[]')
+    except json.JSONDecodeError as e:
+        raise SystemExit(f'JSON inválido: {e}')
+    p = _peca(pid)
+    etapas = p['esteira'] or []
+    if p['etapa'] >= len(etapas):
+        raise SystemExit('a peça já está pronta')
+    e = etapas[p['etapa']]
+    crit = _criterios(e)
+    itens = [{'n': int(x['n']), 'ok': bool(x.get('ok')), 'obs': str(x.get('obs') or '').strip()[:400]}
+             for x in (lista if isinstance(lista, list) else []) if isinstance(x, dict) and str(x.get('n', '')).isdigit()
+             and 1 <= int(x['n']) <= len(crit)]
+    faltam = sorted(set(range(1, len(crit) + 1)) - {i['n'] for i in itens})
+    textos = dict(p['textos'] or {})
+    ck = dict(textos.get('_checagem') or {})
+    ck[e['nome']] = sorted(itens, key=lambda i: i['n'])
+    textos['_checagem'] = ck
+    _q("UPDATE esteira_itens SET textos = %s::jsonb WHERE id = %s", (json.dumps(textos, ensure_ascii=False), pid), commit=True)
+    ruins = [i['n'] for i in itens if not i['ok']]
+    print(f"conferência salva: {len(itens) - len(ruins)}/{len(crit)} ok"
+          + (f"; NÃO passaram: {ruins} (ajuste e confira de novo)" if ruins else '')
+          + (f"; faltou conferir: {faltam}" if faltam else ''))
+
+
 def contexto(pid):
     p = _peca(pid)
     etapas = p['esteira'] or []
@@ -143,13 +185,33 @@ def contexto(pid):
     if p['nota']:
         print(f"NOTA (ajuste pedido na revisão ou pelo Davi): {p['nota']}")
     if p['etapa'] < len(etapas):
-        crit = (etapas[p['etapa']].get('criterios') or '').strip()
-        print(f"\nCRITÉRIOS DO DAVI PARA ESTA ETAPA ({etapas[p['etapa']]['nome']}): " + (crit if crit else
-              '(ainda não definidos: siga o seu manual e os aprendizados, e na conversa proponha ao Davi os critérios que você usou)'))
+        e = etapas[p['etapa']]
+        crit = _criterios(e)
+        if crit:
+            print(f"\nCRITÉRIOS DO DAVI PARA ESTA ETAPA ({e['nome']}) — confira UM POR UM antes de entregar:")
+            for i, c in enumerate(crit, 1):
+                print(f"  {i}. {c}")
+            print(f"Antes de entregar, registre a conferência (o Davi vê critério por critério):\n"
+                  f"  python3 scripts/empresa/esteira.py checagem {p['id']} <<'FIM'\n"
+                  f'  [{{"n": 1, "ok": true, "obs": "<como o texto atende>"}}, {{"n": 2, "ok": false, "obs": "<o que falta>"}}]\n  FIM\n'
+                  "Se algum ficar \"ok\": false, ajuste o texto e confira de novo até todos passarem (ou explique na obs por que não dá).")
+        else:
+            print(f"\nCRITÉRIOS DO DAVI PARA ESTA ETAPA ({e['nome']}): (ainda não definidos: siga o seu manual e os aprendizados, "
+                  "e na conversa proponha ao Davi os critérios que você usou)")
+        formatos = [f for f in (e.get('formatos') or []) if isinstance(f, dict) and (f.get('texto') or '').strip()]
+        if formatos:
+            print(f"\nFORMATOS DE REFERÊNCIA QUE O DAVI DEU PARA ESTA ETAPA (escolha o que mais combina com a peça e siga a estrutura;"
+                  " diga na nota do 1º trecho qual formato usou):")
+            for i, f in enumerate(formatos, 1):
+                print(f"\n  [Formato {i}: {(f.get('nome') or '').strip() or 'sem nome'}]\n" + '\n'.join('    ' + l for l in f['texto'].strip().split('\n')))
     for nome, texto in (p['textos'] or {}).items():
         if nome.startswith('_'):
             continue
         print(f"\n--- {nome} ---\n{texto}")
+    for nome, ck in ((p['textos'] or {}).get('_checagem') or {}).items():
+        print(f"\n--- Conferência dos critérios ({nome}) ---")
+        for c in ck:
+            print(f"{c.get('n')}. {'✓' if c.get('ok') else '✗'} {c.get('obs') or ''}")
     for nome, ts in ((p['textos'] or {}).get('_trechos') or {}).items():
         print(f"\n--- {nome} em trechos (com as notas) ---")
         for i, t in enumerate(ts, 1):
@@ -327,6 +389,8 @@ if __name__ == '__main__':
         novas(a[1], sys.stdin.read())
     elif a[0] == 'anotado' and len(a) > 1:
         anotado(a[1], sys.stdin.read(), so_salvar='--so-salvar' in a)
+    elif a[0] == 'checagem' and len(a) > 1:
+        checagem(a[1], sys.stdin.read())
     elif a[0] == 'reescrever' and len(a) > 1:
         reescrever(a[1], sys.stdin.read())
     elif a[0] == 'ideia' and len(a) > 2:

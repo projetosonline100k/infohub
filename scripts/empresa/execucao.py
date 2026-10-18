@@ -169,7 +169,9 @@ def contexto(aid):
               f"\n  python3 scripts/empresa/esteira.py anotado {pid} <<'FIM'\n  [{{\"texto\": \"<trecho do roteiro>\", \"nota\": \"<por que fiz assim: estrutura, gancho, escolha de palavra>\"}}, ...]\n  FIM"
               '\n  - Roteiro: divida em trechos naturais (gancho, cada ponto, fechamento); nota nos trechos com escolha importante (não precisa em todos).'
               '\n  - Revisão: mande os MESMOS trechos do roteiro, na mesma ordem, já revisados; nota SÓ onde mudou, dizendo o que trocou e por quê'
-              ' (ex.: "Troquei proteína de primeira por carne de primeira porque fica mais fácil de entender"). O anotado já passa adiante (não use o entregar).')
+              ' (ex.: "Troquei proteína de primeira por carne de primeira porque fica mais fácil de entender"). O anotado já passa adiante (não use o entregar).'
+              '\nCRITÉRIOS: se o contexto trouxer critérios numerados, confira o seu texto contra CADA UM e registre com esteira.py checagem'
+              ' ANTES do anotado (o Davi vê critério por critério). Se houver FORMATOS de referência, use o que mais combina com a peça.')
     if anterior and AJUSTE in (descricao or ''):
         print(f'\n⚠️ É um AJUSTE: o Davi leu a versão anterior e pediu mudanças (o último "{AJUSTE}" acima).'
               f'\nVersão anterior: "{anterior[1]}" ({anterior[0]}). Leia com scripts/consulta.py, faça só o que ele pediu'

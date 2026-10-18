@@ -25,7 +25,12 @@ import { MapaPeca, type PecaMapa } from "./MapaPeca";
 const db = supabase as unknown as SupabaseClient;
 
 // criterios: como o Davi quer o trabalho desta etapa (17/10); davi_aprova: a etapa para e espera ele passar adiante.
-interface Etapa { nome: string; membro_id: string; criterios?: string; davi_aprova?: boolean }
+// formatos: modelos de referência da etapa (ex.: formatos de roteiro do Junior), 17/10.
+interface Formato { nome: string; texto: string }
+interface Etapa { nome: string; membro_id: string; criterios?: string | string[]; formatos?: Formato[]; davi_aprova?: boolean }
+// Critérios como lista numerada (antes era um texto só: cada linha vira um critério).
+const listaCriterios = (c: Etapa["criterios"]): string[] => (Array.isArray(c) ? c : (c ?? "").split("\n").map((l) => l.replace(/^\s*\d+[.)-]\s*/, "")))
+  .map((x) => String(x).trim()).filter(Boolean);
 interface Peca {
   id: string; titulo: string; textos: Record<string, string>; etapa: number; situacao: "fila" | "fazendo" | "feito" | "descartado";
   nota: string | null; atividade_id: string | null; atualizado_em: string; documento_id: string | null;
@@ -183,8 +188,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                     {c.membroId && (
                       <button type="button" onClick={() => setCriteriosDe(c.chave)}
                         className={cn("-mt-0.5 rounded-md px-1.5 py-0.5 text-left text-[10.5px]",
-                          etapas[c.chave]?.criterios?.trim() ? "text-muted-foreground hover:bg-muted" : "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300")}>
-                        {etapas[c.chave]?.criterios?.trim() ? "Critérios definidos ✎" : "⚠ Definir critérios desta etapa"}
+                          listaCriterios(etapas[c.chave]?.criterios).length ? "text-muted-foreground hover:bg-muted" : "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300")}>
+                        {listaCriterios(etapas[c.chave]?.criterios).length
+                          ? `${listaCriterios(etapas[c.chave]?.criterios).length} critério(s)${etapas[c.chave]?.formatos?.length ? ` · ${etapas[c.chave]!.formatos!.length} formato(s)` : ""} ✎`
+                          : "⚠ Definir critérios desta etapa"}
                       </button>
                     )}
                     <Droppable droppableId={String(c.chave)}>
@@ -245,13 +252,12 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
         )}
         {criteriosDe !== null && etapas[criteriosDe] && (
           <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} onFechar={() => setCriteriosDe(null)}
-            onSalvar={async (texto, daviAprova) => {
-              const nova = etapas.map((e, i) => (i === criteriosDe ? { ...e, criterios: texto, davi_aprova: daviAprova } : e));
+            onMudar={async (patch) => {
+              const nova = etapas.map((e, i) => (i === criteriosDe ? { ...e, ...patch } : e));
               const { error } = await db.from("setores").update({ esteira: nova }).eq("id", setorId);
-              if (error) { toast.error("Não consegui salvar os critérios"); return; }
-              toast.success(`Critérios do ${nomeDe(etapas[criteriosDe].membro_id)} salvos: ele segue isso nas próximas peças`);
-              setCriteriosDe(null);
+              if (error) { toast.error("Não consegui salvar"); return false; }
               void carregar();
+              return true;
             }} />
         )}
       </DialogContent>
@@ -260,24 +266,105 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
 }
 
 // Critérios de uma etapa (17/10: "tem que ter critérios para o Elias revisar e o Junior escrever").
-function CriteriosEtapa({ etapa, quem, onFechar, onSalvar }: { etapa: Etapa; quem: string; onFechar: () => void; onSalvar: (t: string, daviAprova: boolean) => Promise<void> }) {
-  const [texto, setTexto] = useState(etapa.criterios ?? "");
+export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
+  etapa: Etapa; quem: string; onFechar: () => void; onMudar: (patch: Partial<Etapa>) => Promise<boolean>;
+}) {
+  // Cada mudança salva na hora (17/10: "quero numerar e ir salvando cada critério").
+  const [lista, setLista] = useState(() => listaCriterios(etapa.criterios));
+  const [formatos, setFormatos] = useState<Formato[]>(etapa.formatos ?? []);
   const [daviAprova, setDaviAprova] = useState(etapa.davi_aprova ?? true);
+  const [novo, setNovo] = useState("");
+  const [editando, setEditando] = useState<number | null>(null);
+  const [aba, setAba] = useState<"criterios" | "formatos">("criterios");
+  const [novoFormato, setNovoFormato] = useState<Formato | null>(null);
+  const revisao = etapa.nome.toLowerCase().includes("revis");
+  // Sempre manda os três juntos: duas mudanças seguidas não apagam uma à outra.
+  const salvarLista = async (l: string[]) => { setLista(l); if (await onMudar({ criterios: l, formatos, davi_aprova: daviAprova })) toast.success("Critério salvo"); };
+  const salvarFormatos = async (f: Formato[]) => { setFormatos(f); if (await onMudar({ criterios: lista, formatos: f, davi_aprova: daviAprova })) toast.success("Formato salvo"); };
+  const adicionar = () => { const t = novo.trim(); if (!t) return; setNovo(""); void salvarLista([...lista, t]); };
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
-      <div className="w-full max-w-lg space-y-3 rounded-xl border bg-card p-4 shadow-xl">
-        <p className="text-sm font-semibold">Critérios do {quem} · {etapa.nome}</p>
-        <p className="text-xs text-muted-foreground">Como você quer esse trabalho: tamanho, tom, estrutura, o que nunca fazer, exemplos bons. Ele lê isso antes de cada peça.</p>
-        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={9} autoFocus
-          className="w-full rounded-md border bg-background p-2 text-sm"
-          placeholder={etapa.nome.toLowerCase().includes("revis") ? "Ex.: aprovar só se o gancho prende nos 3 primeiros segundos; cortar palavras difíceis; máx. 45 s de fala…" : "Ex.: roteiro de 40 a 60 s; começa com uma pergunta; 3 pontos com dado ou exemplo; fecha com chamada para comentar…"} />
-        <label className="flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={daviAprova} onChange={(e) => setDaviAprova(e.target.checked)} />
-          Parar e esperar eu passar adiante quando terminar
-        </label>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onFechar}>Cancelar</Button>
-          <Button size="sm" onClick={() => void onSalvar(texto.trim(), daviAprova)}>Salvar critérios</Button>
+      <div className="flex max-h-full w-full max-w-2xl flex-col gap-3 rounded-xl border bg-card p-4 shadow-xl">
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-sm font-semibold">{quem} · {etapa.nome}</p>
+          <div className="inline-flex rounded-lg border p-0.5 text-xs font-medium">
+            {(["criterios", "formatos"] as const).map((a) => (
+              <button key={a} type="button" onClick={() => setAba(a)} className={cn("rounded-md px-3 py-1", aba === a ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
+                {a === "criterios" ? `Critérios (${lista.length})` : `Formatos de ${revisao ? "referência" : etapa.nome.toLowerCase()} (${formatos.length})`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {aba === "criterios" ? (
+          <>
+            <p className="text-xs text-muted-foreground">Um critério por vez. O {quem} confere cada um, pelo número, antes de entregar, e você vê na peça o que passou (✓) e o que não passou (✗).</p>
+            <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+              {lista.map((c, i) => (
+                <li key={i} className="group flex items-start gap-2 rounded-lg border bg-background px-2 py-1.5 text-sm">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">{i + 1}</span>
+                  {editando === i ? (
+                    <input autoFocus defaultValue={c} className="flex-1 bg-transparent outline-none"
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditando(null); }}
+                      onBlur={(e) => { setEditando(null); const t = e.target.value.trim(); if (t && t !== c) void salvarLista(lista.map((x, j) => (j === i ? t : x))); }} />
+                  ) : (
+                    <button type="button" className="flex-1 text-left" onClick={() => setEditando(i)} title="Clique para editar">{c}</button>
+                  )}
+                  <button type="button" title="Subir" disabled={i === 0} onClick={() => { const l = [...lista]; [l[i - 1], l[i]] = [l[i], l[i - 1]]; void salvarLista(l); }}
+                    className="text-xs text-muted-foreground opacity-0 hover:text-foreground disabled:hidden group-hover:opacity-100">↑</button>
+                  <button type="button" title="Apagar" onClick={() => void salvarLista(lista.filter((_, j) => j !== i))}
+                    className="text-muted-foreground opacity-0 hover:text-rose-600 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>
+                </li>
+              ))}
+              {!lista.length && <p className="py-3 text-center text-xs text-muted-foreground">Nenhum critério ainda.</p>}
+            </ol>
+            <div className="flex gap-2">
+              <span className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{lista.length + 1}</span>
+              <Input value={novo} onChange={(e) => setNovo(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionar(); } }}
+                placeholder={revisao ? "Ex.: o gancho prende nos 3 primeiros segundos" : "Ex.: roteiro de 40 a 60 s de fala"} />
+              <Button size="sm" className="h-9 gap-1" onClick={adicionar} disabled={!novo.trim()}><Plus className="h-3.5 w-3.5" />Salvar</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">Modelos para o {quem} se basear: cole a estrutura ou um roteiro exemplo e dê um nome. Ele escolhe o que mais combina com cada peça e diz qual usou.</p>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+              {formatos.map((f, i) => (
+                <details key={i} className="group rounded-lg border bg-background px-3 py-2 text-sm">
+                  <summary className="flex cursor-pointer items-center gap-2 font-medium">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">{i + 1}</span>
+                    <span className="flex-1 truncate">{f.nome || "Sem nome"}</span>
+                    <button type="button" title="Apagar" onClick={(e) => { e.preventDefault(); void salvarFormatos(formatos.filter((_, j) => j !== i)); }}
+                      className="text-muted-foreground hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </summary>
+                  <textarea defaultValue={f.texto} rows={8} className="mt-2 w-full rounded-md border bg-card p-2 text-[13px]"
+                    onBlur={(e) => { const t = e.target.value; if (t !== f.texto) void salvarFormatos(formatos.map((x, j) => (j === i ? { ...x, texto: t } : x))); }} />
+                </details>
+              ))}
+              {!formatos.length && !novoFormato && <p className="py-3 text-center text-xs text-muted-foreground">Nenhum formato ainda.</p>}
+              {novoFormato && (
+                <div className="space-y-2 rounded-lg border-2 border-primary/40 bg-background p-3">
+                  <Input autoFocus value={novoFormato.nome} onChange={(e) => setNovoFormato({ ...novoFormato, nome: e.target.value })} placeholder="Nome (ex.: Lista de hábitos com CTA no meio)" />
+                  <textarea value={novoFormato.texto} onChange={(e) => setNovoFormato({ ...novoFormato, texto: e.target.value })} rows={9}
+                    className="w-full rounded-md border bg-card p-2 text-[13px]"
+                    placeholder={"Estrutura ou roteiro exemplo. Ex.:\n1. Gancho: promessa + número (\"6 problemas de…\")\n2. CTA de salvar logo depois\n3. Pontos com dado ou estudo\n4. CTA de compartilhar no meio\n5. Fecha com o ponto que ninguém quer ouvir"} />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setNovoFormato(null)}>Cancelar</Button>
+                    <Button size="sm" disabled={!novoFormato.texto.trim()} onClick={() => { void salvarFormatos([...formatos, { nome: novoFormato.nome.trim(), texto: novoFormato.texto.trim() }]); setNovoFormato(null); }}>Salvar formato</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {!novoFormato && <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => setNovoFormato({ nome: "", texto: "" })}><Plus className="h-3.5 w-3.5" />Novo formato</Button>}
+          </>
+        )}
+
+        <div className="flex items-center gap-2 border-t pt-3">
+          <label className="flex flex-1 items-center gap-2 text-xs">
+            <input type="checkbox" checked={daviAprova} onChange={(e) => { setDaviAprova(e.target.checked); void onMudar({ criterios: lista, formatos, davi_aprova: e.target.checked }); }} />
+            Parar e esperar eu passar adiante quando terminar
+          </label>
+          <Button size="sm" onClick={onFechar}>Pronto</Button>
         </div>
       </div>
     </div>

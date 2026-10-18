@@ -10,7 +10,7 @@ import { CabecaBoneco } from "./BonecoMesa";
 // - Mapa: "estilo mapa mental, vindo do Junior para o Elias" — os trechos do roteiro à esquerda,
 //   os revisados à direita, ligados trecho a trecho (azul quando mudou).
 // Clicar em qualquer bloco abre a conversa com quem fez, já sobre aquele trecho.
-export interface EtapaMapa { nome: string; membro_id: string }
+export interface EtapaMapa { nome: string; membro_id: string; criterios?: string | string[] }
 export interface PecaMapa { id: string; titulo: string; textos: Record<string, unknown>; etapa: number }
 
 interface Linha { grupo: string; d: string; azul: boolean }
@@ -91,8 +91,24 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar }: {
       ))}
     </svg>
   );
+  // Conferência dos critérios de cada etapa (esteira.py checagem): número a número, ✓ ou ✗.
+  const checagem = (textos._checagem as Record<string, { n: number; ok: boolean; obs?: string }[]> | undefined) ?? {};
+  const criteriosDe = (e: EtapaMapa) => (Array.isArray(e.criterios) ? e.criterios : (e.criterios ?? "").split("\n").map((l) => l.replace(/^\s*\d+[.)-]\s*/, "")))
+    .map((x) => String(x).trim()).filter(Boolean);
+  const conferencias = etapas.filter((e) => checagem[e.nome]?.length).map((e) => ({ e, itens: checagem[e.nome], crit: criteriosDe(e) }));
   const seletor = (
-    <div className="sticky top-0 z-10 flex justify-end bg-muted/30 px-4 pt-3 backdrop-blur">
+    <div className="sticky top-0 z-10 flex flex-wrap items-center justify-end gap-x-4 gap-y-1 bg-muted/30 px-4 pt-3 backdrop-blur">
+      {conferencias.map(({ e, itens, crit }) => (
+        <div key={e.nome} className="mr-auto flex flex-wrap items-center gap-1 text-[11px]">
+          <span className="font-semibold text-muted-foreground">Critérios do {nomeDe(e.membro_id)}:</span>
+          {itens.map((c) => (
+            <span key={c.n} title={`${c.n}. ${crit[c.n - 1] ?? ""}${c.obs ? `\n→ ${c.obs}` : ""}`}
+              className={cn("cursor-help rounded-full px-1.5 py-0.5 font-semibold", c.ok ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-rose-500/15 text-rose-700 dark:text-rose-300")}>
+              {c.n} {c.ok ? "✓" : "✗"}
+            </span>
+          ))}
+        </div>
+      ))}
       <div className="inline-flex rounded-lg border bg-card p-0.5 text-xs font-medium">
         {(["documento", "mapa"] as Modo[]).map((m) => (
           <button key={m} type="button" onClick={() => trocar(m)}
