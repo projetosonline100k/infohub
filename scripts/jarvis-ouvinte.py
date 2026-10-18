@@ -770,16 +770,48 @@ def _banco_ok():
         log(f"banco voltou às {datetime.now():%H:%M} (fora desde {desde:%H:%M}, ~{minutos} min)")
 
 
+def _descartar_conexao_da_thread():
+    """Joga fora a conexão reaproveitada desta thread (a próxima volta abre uma nova)."""
+    import migration_db
+    real = getattr(migration_db._local, 'conexao', None)
+    migration_db._local.conexao = None
+    migration_db._local.em_uso = False
+    if real is not None:
+        try:
+            real.close()
+        except Exception:
+            pass
+
+
+def _reiniciar_se_preso():
+    """18/10: das 01:16 às 13:45 o ouvinte ficou com o banco caindo a cada volta (só ele: um
+    processo novo conectava normal) e nenhuma tarefa rodou. Banco "fora" há mais de 20 min
+    seguidos e ninguém trabalhando: sai, e o launchd (KeepAlive) sobe um ouvinte novo."""
+    desde = _banco["fora_desde"]
+    if not desde or (datetime.now() - desde).total_seconds() < 20 * 60:
+        return
+    if subprocess.run(['pgrep', '-f', 'claude -p'], capture_output=True).returncode == 0:
+        return   # alguém trabalhando: espera terminar
+    log(f"banco preso desde {desde:%H:%M}: reiniciando o ouvinte")
+    os._exit(1)
+
+
 def laco(nome, funcao, intervalo):
     reusar_nesta_thread()   # uma conexão por laço, reaberta só quando cai (migration_db)
+    falhas = 0
     while True:
         try:
             recarregar_modulos()
             funcao()
             _banco_ok()
+            falhas = 0
         except Exception as e:  # rede caiu etc.: tenta de novo
             if eh_falha_de_conexao(e):
                 _banco_caiu(nome, e)
+                falhas += 1
+                if falhas >= 2:   # caiu duas vezes seguidas: não confia mais na conexão guardada
+                    _descartar_conexao_da_thread()
+                _reiniciar_se_preso()
             else:
                 log(f"{nome}: erro —", repr(e)[:300])
             time.sleep(15)
