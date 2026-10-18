@@ -369,13 +369,16 @@ export default function ClienteDetalhe() {
         <div className="p-6">
           {avisoPermissoes && <div role="status" className="mb-6 rounded-lg border border-border bg-muted/50 p-4 text-sm"><p>{avisoPermissoes}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carregarDados()}>Tentar novamente</Button></div>}
           {guiasTopo.length > 0 && (
-            <div className="mb-4 inline-flex rounded-lg bg-muted p-0.5 text-sm font-medium">
+            // Fixa no topo ao rolar (17/10: "quando eu rolar para baixo, não quero que ela suma").
+            <div className="sticky top-0 z-30 -mx-6 mb-4 bg-background/95 px-6 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="inline-flex max-w-full overflow-x-auto rounded-lg bg-muted p-0.5 text-sm font-medium">
               {guiasTopo.map((g) => (
                 <button key={g.id} type="button" onClick={g.ir}
                   className={`rounded-md px-3 py-1 transition-colors ${g.ativa ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                   {g.label}
                 </button>
               ))}
+            </div>
             </div>
           )}
           {abaAtiva === "informacoes" && (
