@@ -18,6 +18,7 @@ O funcionário, no lugar do `execucao.py entregar`, usa:
   python3 scripts/empresa/esteira.py anotado <peca_id> [--so-salvar] <<'FIM'   → roteiro/revisão em trechos com o porquê de cada um
   [{"texto": "trecho", "nota": "por que fiz assim (ou: troquei X por Y porque Z)"}]
   FIM
+  python3 scripts/empresa/esteira.py referencia <peca_id> <video_id>   → liga o vídeo do banco: link + original traduzido no fim do documento
   python3 scripts/empresa/esteira.py pensando <peca_id> "<o que estou decidindo agora>"  → aparece ao vivo na peça para o Davi
   python3 scripts/empresa/esteira.py checagem <peca_id> <<'FIM'          → conferência dos critérios numerados da etapa (antes do anotado)
   [{"n": 1, "ok": true, "obs": "como atende"}]
@@ -98,6 +99,68 @@ def _documento(p, conteudo_html=None):
     _q("UPDATE esteira_itens SET documento_id = %s WHERE id = %s", (r[0], p['id']), commit=True)
     p['documento_id'] = r[0]
     return r[0]
+
+
+REF_TITULO = 'Referência (vídeo original)'
+
+
+def _referencia(p, vid=None):
+    """O vídeo do banco (videos_referencia) que deu origem à peça (18/10, Davi: "sempre que trouxer o
+    roteiro, principalmente do banco, o link da referência ou o roteiro original traduzido").
+    Com vid (id ou prefixo de 8), liga a peça a ele; sem, usa o já ligado ou acha o "Referência: <id>"
+    que o Leo escreve na headline. Guarda em textos._referencia e devolve o dict (ou None)."""
+    textos = dict(p['textos'] or {})
+    if not vid and textos.get('_referencia'):
+        return textos['_referencia']
+    if not vid:
+        tudo = ' '.join(str(v) for k, v in textos.items() if not k.startswith('_'))
+        m = re.search(r'[Rr]efer[êe]ncia[^0-9a-f]{0,20}([0-9a-f]{8})(?:-[0-9a-f-]{27})?\b', tudo)
+        vid = m.group(1) if m else None
+    if not vid:
+        return None
+    r = _q("""SELECT id, criador, visualizacoes, idioma, link_video, coalesce(nullif(transcricao_pt, ''), transcricao), titulo_pt, titulo
+                FROM videos_referencia WHERE cliente_id = %s AND id::text LIKE %s ORDER BY visualizacoes DESC NULLS LAST LIMIT 1""",
+           (p['cliente_id'], vid.strip().lower() + '%'), um=True)
+    if not r:
+        return None
+    link = re.sub(r'[\]\s]+$', '', (r[4] or '').strip())
+    link = re.sub(r'(instagram\.com/(?:reel|p)/[^/?%]+/?).*$', r'\1', link)   # tira lixo de rastreio (?xtok, ]) do link
+    ref = {'id': str(r[0]), 'criador': r[1], 'views': r[2], 'idioma': r[3], 'link': link,
+           'original': (r[5] or '').strip(), 'traduzido': (r[3] or 'pt') != 'pt'}
+    textos['_referencia'] = ref
+    _q("UPDATE esteira_itens SET textos = %s::jsonb WHERE id = %s", (json.dumps(textos, ensure_ascii=False), p['id']), commit=True)
+    p['textos'] = textos
+    return ref
+
+
+def _bloco_referencia(ref):
+    import html as _h
+    if not ref:
+        return ''
+    views = f" · {ref['views']:,} views".replace(',', '.') if ref.get('views') else ''
+    quem = _h.escape(ref.get('criador') or 'vídeo original') + views
+    link = f'<a href="{_h.escape(ref["link"])}">{_h.escape(ref["link"])}</a>' if ref.get('link') else '(sem link no banco)'
+    rotulo = 'Roteiro original traduzido' if ref.get('traduzido') else 'Roteiro original'
+    corpo = ''.join(f'<p>{_h.escape(l.strip())}</p>' for l in re.split(r'\n\s*\n', ref.get('original') or '') if l.strip())
+    return (f"<h3>{REF_TITULO}</h3><p><strong>{quem}</strong><br>{link}</p>"
+            + (f"<p><strong>{rotulo}:</strong></p><blockquote>{corpo}</blockquote>" if corpo else ''))
+
+
+def _sem_referencia(html):
+    """O documento sem o bloco da referência (ele fica sempre no fim)."""
+    i = html.find(f'<h3>{REF_TITULO}')
+    return html[:i] if i >= 0 else html
+
+
+def referencia(pid, vid):
+    """esteira.py referencia <peça> <id do vídeo no banco>: liga e põe o bloco no fim do documento."""
+    p = _peca(pid)
+    ref = _referencia(p, vid)
+    if not ref:
+        raise SystemExit('vídeo não achado no banco de referências deste projeto')
+    if p.get('documento_id'):
+        _documento(p, _sem_referencia(_conteudo_doc(p['documento_id'])) + _bloco_referencia(ref))
+    print(f"REFERÊNCIA LIGADA: {ref.get('criador')} · {ref.get('link')}")
 
 
 def _conteudo_doc(did):
@@ -209,19 +272,26 @@ def contexto(pid):
         if nome.startswith('_'):
             continue
         print(f"\n--- {nome} ---\n{texto}")
-    if p['etapa'] < len(etapas):
+    ref = _referencia(p)
+    if ref:
+        print(f"\n--- Referência do banco (vai sozinha no fim do documento: link + {'original traduzido' if ref.get('traduzido') else 'original'}) ---\n"
+              f"{ref.get('criador')} · {ref.get('views') or '?'} views · {ref.get('link')}")
+    else:
+        print("\nREFERÊNCIA: se a peça veio de um vídeo do banco (videos_referencia), ligue antes de entregar — o Davi quer o link "
+              f"e o roteiro original traduzido no documento: python3 scripts/empresa/esteira.py referencia {p['id']} <id do vídeo>")
+    if etapas:
         # Skills do Davi carregadas na inteligência de quem faz (scripts/inteligencia/skills.py): valem como critério.
         sk = _q("""SELECT i.nome, i.observacao FROM inteligencia_membros i
                      JOIN membros m ON m.id = %s JOIN clientes c ON c.id = %s
                     WHERE i.agente = lower(m.nome) AND i.user_id = c.user_id AND i.nome LIKE 'Skill:%%' AND i.status = 'pronto'
                       AND (i.escopo = 'geral' OR i.cliente_id = c.id)
-                    ORDER BY i.nome""", (etapas[p['etapa']]['membro_id'], p['cliente_id']))
+                    ORDER BY i.nome""", (etapas[min(p['etapa'], len(etapas) - 1)]['membro_id'], p['cliente_id']))   # peça pronta: as do revisor (ajustes na conversa)
         if sk:
             print("\nSKILLS DO DAVI (valem como critério: siga o método delas; a 'gerador-roteiro-por-headline', se houver, orquestra as outras):")
             for nome, obs in sk:
                 print(f"  - {nome[len('Skill: '):]}" + (f": {obs[:160]}" if obs else ''))
             print(f"Leia o texto completo antes de escrever: python3 scripts/inteligencia/ler.py --cliente {p['cliente_id']} "
-                  f"--agente <seu nome em minúsculas> --saida /tmp/inteligencia-{p['id'][:8]}  (arquivos *-skill-*.txt)")
+                  f"--agente <seu nome em minúsculas> --saida /tmp/inteligencia-{str(p['id'])[:8]}  (arquivos *-skill-*.txt)")
     for nome, ck in ((p['textos'] or {}).get('_checagem') or {}).items():
         print(f"\n--- Conferência dos critérios ({nome}) ---")
         for c in ck:
@@ -259,6 +329,7 @@ def entregar(pid, texto):
     if p['etapa'] >= len(etapas):
         raise SystemExit('a peça já está pronta')
     nome = etapas[p['etapa']]['nome']
+    ref = _referencia(p) if p['etapa'] >= 1 else None   # antes de copiar os textos: ele grava textos._referencia
     textos = dict(p['textos'] or {})
     textos[nome] = texto.strip()
     titulo = p['titulo']
@@ -275,10 +346,11 @@ def entregar(pid, texto):
     # No documento: a 2ª etapa (Roteiro) escreve o corpo; as seguintes (Revisão) entram no fim.
     import html as _h
     if p['etapa'] == 1:
-        _documento(p, f"<h2>{_h.escape(titulo)}</h2>" + _html(texto))
+        _documento(p, f"<h2>{_h.escape(titulo)}</h2>" + _html(texto) + _bloco_referencia(ref))
     else:
-        atual = _conteudo_doc(_documento(p))
-        _documento(p, atual + f"<h3>{_h.escape(nome)} · {_q('SELECT nome FROM membros WHERE id = %s', (etapas[p['etapa']]['membro_id'],), um=True)[0]}</h3>" + _html(texto))
+        atual = _sem_referencia(_conteudo_doc(_documento(p)))
+        _documento(p, atual + f"<h3>{_h.escape(nome)} · {_q('SELECT nome FROM membros WHERE id = %s', (etapas[p['etapa']]['membro_id'],), um=True)[0]}</h3>" + _html(texto)
+                   + _bloco_referencia(ref))
     if _para_davi(etapas[p['etapa']]) and p['etapa'] + 1 < len(etapas):
         # Para e espera o Davi ler/conversar e passar adiante (17/10: "eu queria conseguir ver, conversar com ele").
         _q("""UPDATE esteira_itens SET textos = %s::jsonb, titulo = %s, nota = NULL, situacao = 'feito', atividade_id = NULL WHERE id = %s""",
@@ -346,10 +418,11 @@ def reescrever(pid, texto):
     p = _peca(pid)
     etapas = p['esteira'] or []
     nome = etapas[min(p['etapa'], len(etapas) - 1)]['nome']
+    ref = _referencia(p)
     textos = dict(p['textos'] or {})
     textos[nome] = texto.strip()
     _q("UPDATE esteira_itens SET textos = %s::jsonb WHERE id = %s", (json.dumps(textos, ensure_ascii=False), pid), commit=True)
-    _documento(p, f"<h2>{_h.escape(p['titulo'])}</h2>" + _html(texto))
+    _documento(p, f"<h2>{_h.escape(p['titulo'])}</h2>" + _html(texto) + _bloco_referencia(ref))
     print('DOCUMENTO REESCRITO')
 
 
@@ -425,6 +498,8 @@ if __name__ == '__main__':
         pensando(a[1], ' '.join(a[2:]))
     elif a[0] == 'checagem' and len(a) > 1:
         checagem(a[1], sys.stdin.read())
+    elif a[0] == 'referencia' and len(a) > 2:
+        referencia(a[1], a[2])
     elif a[0] == 'reescrever' and len(a) > 1:
         reescrever(a[1], sys.stdin.read())
     elif a[0] == 'ideia' and len(a) > 2:
