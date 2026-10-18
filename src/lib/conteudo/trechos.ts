@@ -38,3 +38,60 @@ export function lerTrechos(v: unknown): Trecho[] {
   return v.flatMap((x) => (x && typeof x === "object" && typeof (x as Trecho).texto === "string"
     ? [{ texto: (x as Trecho).texto, nota: typeof (x as Trecho).nota === "string" ? (x as Trecho).nota : null }] : []));
 }
+
+/** Parágrafos de um texto corrido (sem títulos soltos tipo "ROTEIRO"), para quando a etapa não veio em trechos. */
+export function paragrafos(texto: string): string[] {
+  return texto.split(/\n\s*\n|\n(?=\S)/).map((p) => p.trim())
+    .filter((p) => p && !(p.split(/\s+/).length <= 3 && p === p.toUpperCase()));
+}
+
+const palavras = (t: string) => new Set(t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").match(/[a-z0-9]+/g) ?? []);
+const parecido = (a: string, b: string) => {
+  const x = palavras(a), y = palavras(b);
+  if (!x.size || !y.size) return 0;
+  let comum = 0;
+  for (const w of x) if (y.has(w)) comum++;
+  return comum / Math.min(x.size, y.size);
+};
+
+/** Para cada trecho novo, de qual trecho original ele veio (em ordem, pelo texto parecido); null = trecho novo. */
+export function alinhar(originais: string[], novos: string[]): (number | null)[] {
+  let desde = 0;
+  return novos.map((n) => {
+    let melhor = -1, nota = 0.45;
+    for (let i = desde; i < originais.length; i++) {
+      const s = parecido(originais[i], n);
+      if (s > nota) { nota = s; melhor = i; }
+    }
+    if (melhor < 0) return null;
+    desde = melhor + 1;
+    return melhor;
+  });
+}
+
+/** Roteiro (quem escreveu) e revisão (quem ajustou) de uma peça da esteira, com a ligação trecho a trecho. */
+export function montarPeca(textos: Record<string, unknown>, etapas: { nome: string; membro_id: string }[]) {
+  const todos = (textos._trechos as Record<string, unknown> | undefined) ?? {};
+  const daEtapa = (i: number) => {
+    const e = etapas[i];
+    const t = lerTrechos(todos[e.nome]);
+    if (t.length) return { etapa: e, i, trechos: t, anotado: true, extras: [] as string[] };
+    const c = textos[e.nome];
+    if (typeof c !== "string" || !c.trim()) return null;
+    // Texto corrido: o que vem depois de "NOTAS…"/"Fontes" são anotações de quem escreveu, não roteiro.
+    const ps = paragrafos(c);
+    const corte = ps.findIndex((p) => /^(notas?\b|fontes?\b|observa[çc][õo]es\b)/i.test(p));
+    const roteiro = corte >= 0 ? ps.slice(0, corte) : ps;
+    return { etapa: e, i, trechos: roteiro.map((texto) => ({ texto, nota: null as string | null })), anotado: false, extras: corte >= 0 ? ps.slice(corte) : [] };
+  };
+  const comTexto = etapas.map((_, i) => (i >= 1 ? daEtapa(i) : null)).filter((x): x is NonNullable<typeof x> => !!x);
+  const roteiro = comTexto[0] ?? null;
+  const revisao = comTexto.length > 1 ? comTexto[comTexto.length - 1] : null;
+  // Os dois em trechos com a mesma contagem: a ligação é pela posição (o revisor devolve os mesmos trechos).
+  const origem = roteiro && revisao
+    ? (roteiro.anotado && revisao.anotado && roteiro.trechos.length === revisao.trechos.length
+      ? revisao.trechos.map((_, k) => k)
+      : alinhar(roteiro.trechos.map((t) => t.texto), revisao.trechos.map((t) => t.texto)))
+    : [];
+  return { roteiro, revisao, origem };
+}
