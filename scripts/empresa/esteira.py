@@ -54,11 +54,11 @@ def _q(sql, args=(), um=False, commit=False):
 
 def _peca(pid):
     r = _q("""SELECT p.id, p.cliente_id, p.setor_id, p.titulo, p.textos, p.etapa, p.situacao, p.nota, p.atividade_id,
-                     s.nome, s.esteira, p.documento_id
+                     s.nome, s.esteira, p.documento_id, s.cerebros
                 FROM esteira_itens p JOIN setores s ON s.id = p.setor_id WHERE p.id = %s""", (pid,), um=True)
     if not r:
         raise SystemExit('peça não encontrada')
-    return dict(zip(['id', 'cliente_id', 'setor_id', 'titulo', 'textos', 'etapa', 'situacao', 'nota', 'atividade_id', 'setor', 'esteira', 'documento_id'], r))
+    return dict(zip(['id', 'cliente_id', 'setor_id', 'titulo', 'textos', 'etapa', 'situacao', 'nota', 'atividade_id', 'setor', 'esteira', 'documento_id', 'cerebros'], r))
 
 
 def _para_davi(e):
@@ -211,6 +211,15 @@ def _criterios(e):
     return [re.sub(r'^\s*\d+[.)-]\s*', '', l).strip() for l in str(c or '').split('\n') if l.strip()]
 
 
+def _cerebro(p):
+    """O cérebro de para quem é a peça (textos._para); sem escolha, o primeiro cadastrado."""
+    lista = [c for c in (p.get('cerebros') or []) if isinstance(c, dict)]
+    if not lista:
+        return None
+    para = (p['textos'] or {}).get('_para')
+    return next((c for c in lista if c.get('id') == para), lista[0])
+
+
 def checagem(pid, bruto):
     """Conferência dos critérios da etapa (17/10, Davi: "sempre que o Elias for fazendo, ele lê
     esse critério para ver se está ok"). stdin: [{"n": 1, "ok": true, "obs": "..."}]."""
@@ -248,6 +257,13 @@ def contexto(pid):
     print(f"Agora: etapa {p['etapa'] + 1} ({etapas[p['etapa']]['nome'] if p['etapa'] < len(etapas) else 'pronto'}), {p['situacao']}")
     if p['nota']:
         print(f"NOTA (ajuste pedido na revisão ou pelo Davi): {p['nota']}")
+    cer = _cerebro(p)
+    if cer:
+        print(f"\nCÉREBRO DE {cer['nome'].upper()} (para quem é este roteiro: baseie-se nisto; use a apresentação e a narrativa daqui"
+              " em vez de inventar):")
+        for sec in cer.get('secoes') or []:
+            if (sec.get('texto') or '').strip():
+                print(f"\n  [{(sec.get('titulo') or '').strip() or 'Sem título'}]\n" + '\n'.join('    ' + l for l in sec['texto'].strip().split('\n')))
     if p['etapa'] < len(etapas):
         e = etapas[p['etapa']]
         crit = _criterios(e)
@@ -442,7 +458,8 @@ def novas(pid, bruto):
         # Ficam na 1ª etapa, prontas, esperando o Davi passar adiante.
         _q("""INSERT INTO esteira_itens (cliente_id, setor_id, titulo, textos, etapa, situacao, ordem)
               VALUES (%s, %s, %s, %s::jsonb, 0, 'feito', %s)""",
-           (p['cliente_id'], p['setor_id'], h[:300], json.dumps({nome: h, 'Ideia': p['titulo']}, ensure_ascii=False), i), commit=True)
+           (p['cliente_id'], p['setor_id'], h[:300], json.dumps({nome: h, 'Ideia': p['titulo'], **({'_para': (p['textos'] or {})['_para']} if (p['textos'] or {}).get('_para') else {})},
+                      ensure_ascii=False), i), commit=True)
     # A ideia virou as headlines: o cartão dela sai do quadro.
     _q("UPDATE esteira_itens SET situacao = 'descartado', atividade_id = NULL, nota = %s WHERE id = %s",
        (f'Virou {len(lista)} headline(s)', pid), commit=True)

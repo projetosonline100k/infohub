@@ -36,10 +36,16 @@ interface Peca {
   nota: string | null; atividade_id: string | null; atualizado_em: string; documento_id: string | null;
 }
 interface Membro { id: string; nome: string; eh_ia: boolean }
+// Cérebro (18/10): quem é o cliente para quem a esteira escreve — seções livres que o Junior e o Elias seguem.
+interface Secao { titulo: string; texto: string }
+interface Cerebro { id: string; nome: string; secoes: Secao[] }
+const SECOES_PADRAO = ["Informações importantes", "Apresentação", "Narrativa"];
 interface TarefaAoVivo { id: string; progresso: number | null; observacao: string | null; situacao: string | null }
 
 export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { clienteId: string; setorId: string | null; aberto: boolean; onFechar: () => void }) {
-  const [setor, setSetor] = useState<{ nome: string; esteira: Etapa[] } | null>(null);
+  const [setor, setSetor] = useState<{ nome: string; esteira: Etapa[]; cerebros: Cerebro[] } | null>(null);
+  const [cerebroAberto, setCerebroAberto] = useState(false);
+  const [paraId, setParaId] = useState<string | null>(null);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [progresso, setProgresso] = useState<Map<string, number>>(new Map());
@@ -59,12 +65,12 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   const carregar = useCallback(async () => {
     if (!setorId) return;
     const [{ data: s }, { data: ps }] = await Promise.all([
-      db.from("setores").select("nome, esteira").eq("id", setorId).maybeSingle(),
+      db.from("setores").select("nome, esteira, cerebros").eq("id", setorId).maybeSingle(),
       db.from("esteira_itens").select("id, titulo, textos, etapa, situacao, nota, atividade_id, atualizado_em, documento_id")
         .eq("setor_id", setorId).neq("situacao", "descartado").order("ordem").order("criado_em"),
     ]);
-    const st = s as { nome: string; esteira: Etapa[] | null } | null;
-    setSetor(st ? { nome: st.nome, esteira: st.esteira ?? [] } : null);
+    const st = s as { nome: string; esteira: Etapa[] | null; cerebros: Cerebro[] | null } | null;
+    setSetor(st ? { nome: st.nome, esteira: st.esteira ?? [], cerebros: Array.isArray(st.cerebros) ? st.cerebros : [] } : null);
     const lista = (ps || []) as Peca[];
     setPecas(lista);
     const ids = (st?.esteira ?? []).map((e) => e.membro_id);
@@ -128,6 +134,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   }, [foco, conversaDe, ancora]);
 
   const etapas = setor?.esteira ?? [];
+  const cerebros = setor?.cerebros ?? [];
   const nomeDe = (id: string) => membros.find((m) => m.id === id)?.nome ?? "?";
   const colunas = useMemo(() => [
     ...etapas.map((e, i) => ({ chave: i, titulo: e.nome, membroId: e.membro_id as string | null, pecas: pecas.filter((p) => p.etapa === i) })),
@@ -137,7 +144,9 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   const novaIdeia = async () => {
     const t = ideia.trim();
     if (!t || !setorId) return;
-    const { error } = await db.from("esteira_itens").insert({ cliente_id: clienteId, setor_id: setorId, titulo: t, etapa: 0 });
+    // Para quem é (o cérebro que o Junior e o Elias vão seguir); sem escolha, o primeiro.
+    const para = paraId && cerebros.some((c) => c.id === paraId) ? paraId : cerebros[0]?.id;
+    const { error } = await db.from("esteira_itens").insert({ cliente_id: clienteId, setor_id: setorId, titulo: t, etapa: 0, ...(para ? { textos: { _para: para } } : {}) });
     if (error) { toast.error("Não consegui criar"); return; }
     setIdeia("");
     toast.success(`${nomeDe(etapas[0]?.membro_id ?? "")} começa em até 1 minuto`);
@@ -177,7 +186,17 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void novaIdeia(); }}>
                 <Input value={ideia} onChange={(e) => setIdeia(e.target.value)} className="h-9"
                   placeholder={`Ideia, tema ou pedido para o ${nomeDe(etapas[0].membro_id)} (ex.: "5 headlines sobre vício em celular")`} />
+                {cerebros.length > 1 && (
+                  <select value={paraId ?? cerebros[0].id} onChange={(e) => setParaId(e.target.value)} title="Para quem é o roteiro"
+                    className="h-9 rounded-md border bg-background px-2 text-sm">
+                    {cerebros.map((c) => <option key={c.id} value={c.id}>Para: {c.nome}</option>)}
+                  </select>
+                )}
                 <Button type="submit" size="sm" className="h-9 gap-1" disabled={!ideia.trim()}><Plus className="h-4 w-4" />Mandar</Button>
+                <Button type="button" variant="outline" size="sm" className="h-9 gap-1" onClick={() => setCerebroAberto(true)}
+                  title="Quem é o cliente: informações, apresentação, narrativa… o Junior e o Elias se baseiam nisso">
+                  🧠 Cérebro{cerebros.length ? ` (${cerebros.length})` : ""}
+                </Button>
               </form>
               {/* Arrastar entre colunas (17/10: "eu que devo arrastar para o Junior começar"). */}
               <DragDropContext onDragEnd={(r: DropResult) => {
@@ -261,6 +280,15 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
             </aside>
           </div>
         )}
+        {cerebroAberto && (
+          <CerebroEsteira inicial={cerebros} onFechar={() => setCerebroAberto(false)}
+            onSalvar={async (lista) => {
+              const { error } = await db.from("setores").update({ cerebros: lista }).eq("id", setorId);
+              if (error) { toast.error("Não consegui salvar o cérebro"); return false; }
+              void carregar();
+              return true;
+            }} />
+        )}
         {criteriosDe !== null && etapas[criteriosDe] && (
           <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} clienteId={clienteId} onFechar={() => setCriteriosDe(null)}
             onMudar={async (patch) => {
@@ -277,6 +305,90 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
 }
 
 // Critérios de uma etapa (17/10: "tem que ter critérios para o Elias revisar e o Junior escrever").
+// O cérebro da esteira (18/10, Davi: "cadastrar cliente — Davi, informações importantes, apresentação,
+// narrativa e outras coisas que eu quiser ir colocando; o cérebro onde o Junior e o Elias vão se basear").
+// Cada mudança salva na hora (ao sair do campo); esteira.py contexto entrega o cérebro da peça.
+export function CerebroEsteira({ inicial, onFechar, onSalvar }: { inicial: Cerebro[]; onFechar: () => void; onSalvar: (l: Cerebro[]) => Promise<boolean> }) {
+  const [lista, setLista] = useState<Cerebro[]>(inicial);
+  const [selId, setSelId] = useState<string | null>(inicial[0]?.id ?? null);
+  const [novoNome, setNovoNome] = useState(inicial.length ? null : "");
+  const [versao, setVersao] = useState(0);   // tirou/pôs seção: os campos remontam com o texto certo
+  const sel = lista.find((c) => c.id === selId) ?? null;
+  const salvar = async (l: Cerebro[], aviso?: string) => { setLista(l); if (await onSalvar(l) && aviso) toast.success(aviso); };
+  const mudarSel = (f: (c: Cerebro) => Cerebro) => lista.map((c) => (c.id === selId ? f(c) : c));
+  const crescer = (el: HTMLTextAreaElement | null) => { if (!el) return; el.style.height = "auto"; el.style.height = `${Math.max(el.scrollHeight, 72)}px`; };
+  const criar = () => {
+    const nome = (novoNome ?? "").trim();
+    if (!nome) return;
+    const c: Cerebro = { id: crypto.randomUUID(), nome, secoes: SECOES_PADRAO.map((titulo) => ({ titulo, texto: "" })) };
+    setNovoNome(null); setSelId(c.id);
+    void salvar([...lista, c], `${nome} cadastrado`);
+  };
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
+      <div className="flex h-full max-h-[760px] w-full max-w-4xl gap-4 rounded-xl border bg-card p-4 shadow-xl">
+        <div className="flex w-52 shrink-0 flex-col gap-1.5 border-r pr-3">
+          <p className="text-sm font-semibold">🧠 Cérebro</p>
+          <p className="mb-1 text-[11px] text-muted-foreground">Para quem a esteira escreve. O Junior e o Elias leem antes de cada roteiro.</p>
+          {lista.map((c) => (
+            <button key={c.id} type="button" onClick={() => { setSelId(c.id); setNovoNome(null); }}
+              className={cn("rounded-md px-2 py-1.5 text-left text-sm", c.id === selId && novoNome === null ? "bg-primary/15 font-semibold" : "hover:bg-muted")}>
+              {c.nome}<span className="ml-1 text-[11px] font-normal text-muted-foreground">{c.secoes.filter((x) => x.texto.trim()).length}/{c.secoes.length}</span>
+            </button>
+          ))}
+          {novoNome !== null ? (
+            <form className="flex flex-col gap-1.5" onSubmit={(e) => { e.preventDefault(); criar(); }}>
+              <Input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome (ex.: Davi)" className="h-8" />
+              <div className="flex gap-1">
+                <Button type="submit" size="sm" className="h-7 flex-1" disabled={!novoNome.trim()}>Cadastrar</Button>
+                {lista.length > 0 && <Button type="button" variant="ghost" size="sm" className="h-7" onClick={() => setNovoNome(null)}>✕</Button>}
+              </div>
+            </form>
+          ) : (
+            <Button variant="outline" size="sm" className="mt-1 h-8 gap-1" onClick={() => setNovoNome("")}><Plus className="h-3.5 w-3.5" />Cliente</Button>
+          )}
+          <span className="flex-1" />
+          <Button size="sm" onClick={onFechar}>Pronto</Button>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          {!sel || novoNome !== null ? (
+            <p className="m-auto max-w-sm text-center text-sm text-muted-foreground">Cadastre o cliente (ex.: Davi). Ele já nasce com Informações importantes, Apresentação e Narrativa; depois é só ir acrescentando o que quiser.</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <input key={sel.id} defaultValue={sel.nome} className="min-w-0 flex-1 bg-transparent text-lg font-bold outline-none"
+                  onBlur={(e) => { const n = e.target.value.trim(); if (n && n !== sel.nome) void salvar(mudarSel((c) => ({ ...c, nome: n })), "Nome salvo"); }} />
+                <button type="button" title="Apagar este cadastro" className="text-muted-foreground hover:text-rose-600"
+                  onClick={() => { if (window.confirm(`Apagar o cérebro de ${sel.nome}?`)) { const l = lista.filter((c) => c.id !== sel.id); setSelId(l[0]?.id ?? null); if (!l.length) setNovoNome(""); void salvar(l); } }}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              {sel.secoes.map((sec, i) => (
+                <div key={`${sel.id}-${versao}-${i}`} className="group rounded-lg border bg-background p-3">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <input defaultValue={sec.titulo} placeholder="Título da seção" className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
+                      onBlur={(e) => { const t = e.target.value.trim(); if (t !== sec.titulo) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, titulo: t } : x)) })), "Salvo"); }} />
+                    <button type="button" title="Apagar seção" className="text-muted-foreground opacity-0 hover:text-rose-600 group-hover:opacity-100"
+                      onClick={() => { setVersao((v) => v + 1); void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.filter((_, j) => j !== i) }))); }}><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                  <textarea defaultValue={sec.texto} ref={crescer} onInput={(e) => crescer(e.currentTarget)}
+                    placeholder={sec.titulo === "Apresentação" ? "Como você se apresenta nos vídeos (ex.: Eu sou o Davi, …)" : sec.titulo === "Narrativa" ? "A lei/crença que liga qualquer assunto ao seu público (o fio condutor)" : "Escreva aqui…"}
+                    className="w-full resize-none overflow-hidden bg-transparent text-[13.5px] leading-relaxed outline-none"
+                    onBlur={(e) => { const t = e.target.value; if (t !== sec.texto) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, texto: t } : x)) })), "Salvo"); }} />
+                </div>
+              ))}
+              <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => void salvar(mudarSel((c) => ({ ...c, secoes: [...c.secoes, { titulo: "", texto: "" }] })))}>
+                <Plus className="h-3.5 w-3.5" />Seção
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Skills do Davi na inteligência do funcionário (18/10: "no do Junior poderia ter as skills também,
 // porque elas já vêm como critério"). Ficam em inteligencia_membros como "Skill: <nome>" (alcance geral);
 // as do Claude entram por scripts/inteligencia/skills.py, e aqui dá para ler, colar uma nova ou tirar.
