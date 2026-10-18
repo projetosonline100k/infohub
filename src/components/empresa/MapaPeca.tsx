@@ -14,7 +14,7 @@ export interface EtapaMapa { nome: string; membro_id: string; criterios?: string
 export interface PecaMapa { id: string; titulo: string; textos: Record<string, unknown>; etapa: number }
 
 interface Linha { grupo: string; d: string; azul: boolean }
-type Modo = "documento" | "mapa";
+type Modo = "ler" | "documento" | "mapa";
 type Filtro = "todas" | "roteiro" | "revisao" | "nenhuma";
 
 const curva = (x1: number, y1: number, x2: number, y2: number) => {
@@ -112,6 +112,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
   const [alturaLateral, setAlturaLateral] = useState(0);
   const [alturaSvg, setAlturaSvg] = useState(0);
   const [ativo, setAtivo] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
 
   const medir = useCallback(() => {
     const c = caixa.current, a = lateral.current;
@@ -173,7 +174,7 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
           ))}
         </div>
       ))}
-      <div className="flex items-center gap-1.5 text-xs">
+      {modo !== "ler" && <div className="flex items-center gap-1.5 text-xs">
         <span className="text-muted-foreground">Anotações:</span>
         <div className="inline-flex rounded-lg border bg-card p-0.5 font-medium">
           {opcoesFiltro.map(([f, rotulo]) => (
@@ -181,12 +182,12 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
               className={cn("rounded-md px-2.5 py-1", filtro === f ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/60")}>{rotulo}</button>
           ))}
         </div>
-      </div>
+      </div>}
       <div className="inline-flex rounded-lg border bg-card p-0.5 text-xs font-medium">
-        {(["documento", "mapa"] as Modo[]).map((m) => (
+        {(["ler", "documento", "mapa"] as Modo[]).map((m) => (
           <button key={m} type="button" onClick={() => trocar(m)}
             className={cn("rounded-md px-3 py-1", modo === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
-            {m === "documento" ? "Documento" : `Mapa${roteiro && revisao ? ` · ${nomeDe(roteiro.etapa.membro_id)} → ${nomeDe(revisao.etapa.membro_id)}` : ""}`}
+            {m === "ler" ? "Ler" : m === "documento" ? "Documento" : `Mapa${roteiro && revisao ? ` · ${nomeDe(roteiro.etapa.membro_id)} → ${nomeDe(revisao.etapa.membro_id)}` : ""}`}
           </button>
         ))}
       </div>
@@ -274,6 +275,32 @@ export function MapaPeca({ peca, etapas, nomeDe, onFalar, aoVivo = null }: {
             </div>
           </div>
         )}
+      </div>
+    );
+  }
+
+  // ======================= Ler: o roteiro final, limpo (18/10: "ver o roteiro completo, sem os vermelhos, para ler mesmo") =======================
+  if (modo === "ler") {
+    const final = (revisao ?? roteiro)?.trechos.map((t) => t.texto) ?? [];
+    const corrido = final.join("\n\n");
+    return (
+      <div className="h-full overflow-y-auto rounded-xl border bg-muted/30">
+        {seletor}
+        {painel}
+        <article className="mx-auto my-4 max-w-[760px] rounded-lg border bg-card px-12 py-10 shadow-sm">
+          <h1 className="mb-6 text-2xl font-bold leading-tight">{peca.titulo}</h1>
+          {final.length ? final.map((t, i) => <p key={i} className="mb-4 whitespace-pre-line text-[17px] leading-relaxed">{t}</p>)
+            : <p className="text-sm text-muted-foreground">Ainda sem texto: o roteiro aparece aqui assim que ele escrever.</p>}
+          {final.length > 0 && (
+            <div className="mt-6 flex items-center gap-3 border-t pt-3 text-xs text-muted-foreground">
+              <span>{corrido.length.toLocaleString("pt-BR")} caracteres · versão {revisao ? `revisada pelo ${nomeDe(revisao.etapa.membro_id)}` : `do ${nomeDe(roteiro!.etapa.membro_id)}`}</span>
+              <button type="button" className="ml-auto rounded-md border px-2 py-1 font-medium hover:bg-muted"
+                onClick={() => { void navigator.clipboard.writeText(`${peca.titulo}\n\n${corrido}`); setCopiado(true); window.setTimeout(() => setCopiado(false), 1500); }}>
+                {copiado ? "Copiado ✓" : "Copiar texto"}
+              </button>
+            </div>
+          )}
+        </article>
       </div>
     );
   }
