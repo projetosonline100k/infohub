@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { VideoDetailPanel } from "./VideoDetailPanel";
 import { InstagramInsightsPanel } from "./InstagramInsightsPanel";
 import { NumerosDoPost, TopPostsPanel } from "./TopPostsPanel";
+import { InteligenciaConteudo } from "./InteligenciaConteudo";
 import type { PostInstagram } from "@/lib/instagramMetricas";
 
 interface CronogramaViewProps {
@@ -653,6 +654,9 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="space-y-5">
+        {/* 17/10: o painel de métricas no topo, o calendário logo abaixo. */}
+        <InteligenciaConteudo clienteId={clienteId} posts={posts} programados={carrosseis} tituloDoCard={tituloDoCard}
+          metricaDe={(c) => (c.tipo === "carrossel" ? postDoCarrossel.get(c.id) : c.videoId ? postDoVideo.get(c.videoId) : undefined)} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold">Cronograma de Postagens</h3>

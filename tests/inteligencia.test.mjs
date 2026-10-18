@@ -3,38 +3,33 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 
-const source = readFileSync(new URL('../src/lib/empresa/inteligencia.ts', import.meta.url), 'utf8');
+const source = readFileSync(new URL('../src/lib/conteudo/inteligencia.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { chaveAgente, tipoDoArquivo, nomeSeguro, tituloSemExtensao, separarPorAlcance, resumo, tamanhoLegivel } =
-  await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const m = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
-test('mesmo funcionário em projetos diferentes = mesma chave', () => {
-  assert.equal(chaveAgente(' Ítalo '), 'ítalo');
-  assert.equal(chaveAgente('Ítalo'), chaveAgente('ítalo'));
+const agora = Date.parse('2026-10-17T12:00:00Z');
+const post = (dias, tipo, v, extra = {}) => ({ ig_media_id: `${tipo}${dias}${v}`, tipo, legenda: 'x', permalink: null,
+  publicado_em: new Date(agora - dias * 864e5).toISOString(), visualizacoes: v, alcance: v / 2, curtidas: 10, comentarios: 1,
+  salvamentos: 2, compartilhamentos: 1, video_vertical_id: null, carrossel_id: null, ...extra });
+
+test('períodos, soma, variação e engajamento', () => {
+  const posts = [post(1, 'REELS', 1000), post(5, 'FEED', 500), post(40, 'REELS', 750)];
+  const { atual, anterior } = m.separarPeriodos(posts, 30, agora);
+  assert.equal(atual.length, 2); assert.equal(anterior.length, 1);
+  assert.equal(m.somar(atual, 'visualizacoes'), 1500);
+  assert.equal(m.variacao(1500, 750), 100);
+  assert.equal(m.variacao(10, 0), null);
+  assert.equal(Math.round(m.engajamento(atual) * 10) / 10, Math.round((28 / 750) * 1000) / 10);
 });
 
-test('tipo pelo arquivo', () => {
-  assert.equal(tipoDoArquivo('Oferta 100M.PDF'), 'pdf');
-  assert.equal(tipoDoArquivo('notas.md'), 'texto');
-  assert.equal(tipoDoArquivo('aula.mov'), 'video');
-  assert.equal(tipoDoArquivo('x', 'audio/mpeg'), 'video');
-  assert.equal(tipoDoArquivo('planilha.xlsx'), null);
-});
-
-test('nome seguro e título', () => {
-  assert.equal(nomeSeguro('Palavras que Vendem (2ª ed).pdf'), 'palavras-que-vendem-2-ed.pdf');
-  assert.equal(nomeSeguro('///'), 'arquivo');
-  assert.equal(tituloSemExtensao('Oferta de 100M.pdf'), 'Oferta de 100M');
-});
-
-test('projeto novo chega zerado: só vê o geral + o dele', () => {
-  const item = (id, escopo, cliente_id, status = 'pronto', caracteres = 2500) => ({ id, escopo, cliente_id, status, caracteres });
-  const itens = [item('livro', 'geral', 'davi'), item('voz-davi', 'projeto', 'davi'), item('voz-matheus', 'projeto', 'matheus'), item('aula', 'geral', 'davi', 'pendente', 0)];
-  const { geral, projeto } = separarPorAlcance(itens, 'matheus');
-  assert.deepEqual(geral.map((i) => i.id), ['livro', 'aula']);
-  assert.deepEqual(projeto.map((i) => i.id), ['voz-matheus']);
-  assert.deepEqual(resumo([...geral, ...projeto]), { prontos: 2, pendentes: 1, erros: 0, caracteres: 5000 });
-  assert.equal(tamanhoLegivel(0), '');
-  assert.equal(tamanhoLegivel(100), '≈ 1 página');
-  assert.equal(tamanhoLegivel(500000), '≈ 200 páginas');
+test('formato, série diária, seguidores e fila', () => {
+  const f = m.porFormato([post(1, 'REELS', 900), post(2, 'FEED', 100), post(3, 'FEED', 200)]);
+  assert.equal(f.pctReels, 75); assert.equal(f.carrosseis.media, 150);
+  const s = m.serieDiaria([post(0, 'REELS', 300)], 7, 'visualizacoes', agora);
+  assert.equal(s.length, 7); assert.equal(s[6].atual, 300);
+  const seg = m.seguidoresNoPeriodo([{ dia: '2026-10-14', seguidores: 100 }, { dia: '2026-10-17', seguidores: 130 }], 30, agora);
+  assert.equal(seg.ganho, 30);
+  const fila = m.filaProgramada([{ tipo: 'reel', quando: '2026-10-18T21:00:00Z' }, { tipo: 'reel', quando: '2026-10-19T21:00:00Z' }, { tipo: 'carrossel', quando: '2026-10-10T13:00:00Z' }], agora);
+  assert.equal(fila.reels, 2); assert.equal(fila.carrosseis, 0);
+  assert.ok(m.resumoRapido({ visualizacoes: 1, varVisualizacoes: 12, formato: f, ganhoSeguidores: 30, melhor: null, fila }).some((x) => x.includes('subiram 12%')));
 });
