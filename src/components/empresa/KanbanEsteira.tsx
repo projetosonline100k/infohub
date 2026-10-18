@@ -251,7 +251,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
           </div>
         )}
         {criteriosDe !== null && etapas[criteriosDe] && (
-          <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} onFechar={() => setCriteriosDe(null)}
+          <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} clienteId={clienteId} onFechar={() => setCriteriosDe(null)}
             onMudar={async (patch) => {
               const nova = etapas.map((e, i) => (i === criteriosDe ? { ...e, ...patch } : e));
               const { error } = await db.from("setores").update({ esteira: nova }).eq("id", setorId);
@@ -266,8 +266,95 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
 }
 
 // Critérios de uma etapa (17/10: "tem que ter critérios para o Elias revisar e o Junior escrever").
-export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
-  etapa: Etapa; quem: string; onFechar: () => void; onMudar: (patch: Partial<Etapa>) => Promise<boolean>;
+// Skills do Davi na inteligência do funcionário (18/10: "no do Junior poderia ter as skills também,
+// porque elas já vêm como critério"). Ficam em inteligencia_membros como "Skill: <nome>" (alcance geral);
+// as do Claude entram por scripts/inteligencia/skills.py, e aqui dá para ler, colar uma nova ou tirar.
+interface Skill { id: string; nome: string; observacao: string | null; caracteres: number | null }
+function useSkills(clienteId: string, membroId: string, quem: string) {
+  const agente = quem.trim().toLowerCase();
+  const [itens, setItens] = useState<Skill[]>([]);
+  const carregar = useCallback(async () => {
+    const { data: cliente } = await supabase.from("clientes").select("user_id").eq("id", clienteId).maybeSingle();
+    let q = supabase.from("inteligencia_membros").select("id, nome, observacao, caracteres").eq("agente", agente).like("nome", "Skill:%")
+      .or(`escopo.eq.geral,cliente_id.eq.${clienteId}`).order("nome");
+    if (cliente?.user_id) q = q.eq("user_id", cliente.user_id);
+    const { data } = await q;
+    setItens((data ?? []) as Skill[]);
+  }, [agente, clienteId]);
+  useEffect(() => { void carregar(); }, [carregar]);
+  const adicionar = async (nome: string, texto: string) => {
+    const { error } = await supabase.from("inteligencia_membros").insert({
+      cliente_id: clienteId, membro_id: membroId, agente, escopo: "geral", tipo: "texto", status: "pronto",
+      nome: `Skill: ${nome}`, conteudo: texto, observacao: "Colada pelo Davi na janela de critérios da esteira.",
+    });
+    if (error) { toast.error("Não consegui salvar a skill"); return false; }
+    toast.success("Skill salva: ele segue isso nas próximas peças");
+    void carregar();
+    return true;
+  };
+  const remover = async (s: Skill) => {
+    const { error } = await supabase.from("inteligencia_membros").delete().eq("id", s.id);
+    if (error) { toast.error("Não consegui tirar a skill"); return; }
+    void carregar();
+  };
+  return { itens, adicionar, remover };
+}
+
+function AbaSkills({ quem, itens, adicionar, remover }: { quem: string } & ReturnType<typeof useSkills>) {
+  const [aberta, setAberta] = useState<{ id: string; texto: string | null } | null>(null);
+  const [nova, setNova] = useState<{ nome: string; texto: string } | null>(null);
+  const abrir = async (s: Skill) => {
+    if (aberta?.id === s.id) { setAberta(null); return; }
+    setAberta({ id: s.id, texto: null });
+    const { data } = await supabase.from("inteligencia_membros").select("conteudo").eq("id", s.id).maybeSingle();
+    setAberta({ id: s.id, texto: data?.conteudo ?? "" });
+  };
+  // As referências de uma skill ("Skill: x · ref") aparecem debaixo dela.
+  const principais = itens.filter((s) => !s.nome.includes(" · "));
+  const refs = (s: Skill) => itens.filter((r) => r.nome.startsWith(`${s.nome} · `));
+  const linha = (s: Skill, ref = false) => (
+    <div key={s.id} className={cn("rounded-lg border bg-background text-sm", ref && "ml-6")}>
+      <div className="flex items-start gap-2 px-3 py-2">
+        <button type="button" onClick={() => void abrir(s)} className="min-w-0 flex-1 text-left">
+          <p className="font-medium">{ref ? `↳ ${s.nome.split(" · ").pop()}` : s.nome.replace(/^Skill:\s*/, "")}
+            <span className="ml-2 text-[11px] font-normal text-muted-foreground">{s.caracteres ? `${Math.round(s.caracteres / 1000)} mil caracteres` : ""}</span></p>
+          {!ref && s.observacao && <p className="line-clamp-2 text-[11.5px] text-muted-foreground">{s.observacao}</p>}
+        </button>
+        <button type="button" title="Tirar esta skill" onClick={() => void remover(s)} className="text-muted-foreground hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+      </div>
+      {aberta?.id === s.id && (
+        <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap border-t px-3 py-2 font-sans text-[12px] leading-relaxed text-muted-foreground">
+          {aberta.texto ?? "Carregando…"}
+        </pre>
+      )}
+    </div>
+  );
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">As suas skills valem como critério: o {quem} lê o texto completo delas antes de cada peça e segue o método. Clique para ler.</p>
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+        {principais.map((s) => [linha(s), ...refs(s).map((r) => linha(r, true))])}
+        {!itens.length && !nova && <p className="py-3 text-center text-xs text-muted-foreground">Nenhuma skill ainda.</p>}
+        {nova && (
+          <div className="space-y-2 rounded-lg border-2 border-primary/40 bg-background p-3">
+            <Input autoFocus value={nova.nome} onChange={(e) => setNova({ ...nova, nome: e.target.value })} placeholder="Nome da skill (ex.: gancho-de-curiosidade)" />
+            <textarea value={nova.texto} onChange={(e) => setNova({ ...nova, texto: e.target.value })} rows={9}
+              className="w-full rounded-md border bg-card p-2 text-[13px]" placeholder="Cole aqui o texto da skill (o SKILL.md inteiro serve)" />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setNova(null)}>Cancelar</Button>
+              <Button size="sm" disabled={!nova.nome.trim() || !nova.texto.trim()}
+                onClick={() => void adicionar(nova.nome.trim(), nova.texto.trim()).then((ok) => ok && setNova(null))}>Salvar skill</Button>
+            </div>
+          </div>
+        )}
+      </div>
+      {!nova && <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => setNova({ nome: "", texto: "" })}><Plus className="h-3.5 w-3.5" />Colar uma skill</Button>}
+    </>
+  );
+}
+
+export function CriteriosEtapa({ etapa, quem, clienteId, onFechar, onMudar }: {
+  etapa: Etapa; quem: string; clienteId: string; onFechar: () => void; onMudar: (patch: Partial<Etapa>) => Promise<boolean>;
 }) {
   // Cada mudança salva na hora (17/10: "quero numerar e ir salvando cada critério").
   const [lista, setLista] = useState(() => listaCriterios(etapa.criterios));
@@ -275,7 +362,8 @@ export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
   const [daviAprova, setDaviAprova] = useState(etapa.davi_aprova ?? true);
   const [novo, setNovo] = useState("");
   const [editando, setEditando] = useState<number | null>(null);
-  const [aba, setAba] = useState<"criterios" | "formatos">("criterios");
+  const [aba, setAba] = useState<"criterios" | "formatos" | "skills">("criterios");
+  const skills = useSkills(clienteId, etapa.membro_id, quem);
   const [novoFormato, setNovoFormato] = useState<Formato | null>(null);
   const revisao = etapa.nome.toLowerCase().includes("revis");
   // Sempre manda os três juntos: duas mudanças seguidas não apagam uma à outra.
@@ -292,15 +380,16 @@ export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
         <div className="flex items-center gap-2">
           <p className="flex-1 text-sm font-semibold">{quem} · {etapa.nome}</p>
           <div className="inline-flex rounded-lg border p-0.5 text-xs font-medium">
-            {(["criterios", "formatos"] as const).map((a) => (
+            {(["criterios", "formatos", "skills"] as const).map((a) => (
               <button key={a} type="button" onClick={() => setAba(a)} className={cn("rounded-md px-3 py-1", aba === a ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
-                {a === "criterios" ? `Critérios (${lista.length})` : `Formatos de ${revisao ? "referência" : etapa.nome.toLowerCase()} (${formatos.length})`}
+                {a === "criterios" ? `Critérios (${lista.length})` : a === "skills" ? `Skills (${skills.itens.filter((x) => !x.nome.includes(" · ")).length})`
+                  : `Formatos de ${revisao ? "referência" : etapa.nome.toLowerCase()} (${formatos.length})`}
               </button>
             ))}
           </div>
         </div>
 
-        {aba === "criterios" ? (
+        {aba === "skills" ? <AbaSkills quem={quem} {...skills} /> : aba === "criterios" ? (
           <>
             <p className="text-xs text-muted-foreground">Um critério por vez. O {quem} confere cada um, pelo número, antes de entregar, e você vê na peça o que passou (✓) e o que não passou (✗).</p>
             <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">

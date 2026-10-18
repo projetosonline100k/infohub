@@ -208,6 +208,19 @@ def contexto(pid):
         if nome.startswith('_'):
             continue
         print(f"\n--- {nome} ---\n{texto}")
+    if p['etapa'] < len(etapas):
+        # Skills do Davi carregadas na inteligência de quem faz (scripts/inteligencia/skills.py): valem como critério.
+        sk = _q("""SELECT i.nome, i.observacao FROM inteligencia_membros i
+                     JOIN membros m ON m.id = %s JOIN clientes c ON c.id = %s
+                    WHERE i.agente = lower(m.nome) AND i.user_id = c.user_id AND i.nome LIKE 'Skill:%%' AND i.status = 'pronto'
+                      AND (i.escopo = 'geral' OR i.cliente_id = c.id)
+                    ORDER BY i.nome""", (etapas[p['etapa']]['membro_id'], p['cliente_id']))
+        if sk:
+            print("\nSKILLS DO DAVI (valem como critério: siga o método delas; a 'gerador-roteiro-por-headline', se houver, orquestra as outras):")
+            for nome, obs in sk:
+                print(f"  - {nome[len('Skill: '):]}" + (f": {obs[:160]}" if obs else ''))
+            print(f"Leia o texto completo antes de escrever: python3 scripts/inteligencia/ler.py --cliente {p['cliente_id']} "
+                  f"--agente <seu nome em minúsculas> --saida /tmp/inteligencia-{p['id'][:8]}  (arquivos *-skill-*.txt)")
     for nome, ck in ((p['textos'] or {}).get('_checagem') or {}).items():
         print(f"\n--- Conferência dos critérios ({nome}) ---")
         for c in ck:
