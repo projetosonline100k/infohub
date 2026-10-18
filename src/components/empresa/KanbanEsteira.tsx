@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
@@ -282,6 +282,10 @@ export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
   const salvarLista = async (l: string[]) => { setLista(l); if (await onMudar({ criterios: l, formatos, davi_aprova: daviAprova })) toast.success("Critério salvo"); };
   const salvarFormatos = async (f: Formato[]) => { setFormatos(f); if (await onMudar({ criterios: lista, formatos: f, davi_aprova: daviAprova })) toast.success("Formato salvo"); };
   const adicionar = () => { const t = novo.trim(); if (!t) return; setNovo(""); void salvarLista([...lista, t]); };
+  // Caixa que cresce com o texto (quebra a linha sozinha; Shift+Enter pula linha, Enter salva).
+  const crescer = (el: HTMLTextAreaElement | null) => { if (!el) return; el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
+  const campo = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => crescer(campo.current), [novo]);   // depois de salvar, a caixa volta a ter uma linha
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
       <div className="flex max-h-full w-full max-w-2xl flex-col gap-3 rounded-xl border bg-card p-4 shadow-xl">
@@ -304,11 +308,12 @@ export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
                 <li key={i} className="group flex items-start gap-2 rounded-lg border bg-background px-2 py-1.5 text-sm">
                   <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">{i + 1}</span>
                   {editando === i ? (
-                    <input autoFocus defaultValue={c} className="flex-1 bg-transparent outline-none"
-                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditando(null); }}
+                    <textarea autoFocus defaultValue={c} rows={1} ref={crescer} onInput={(e) => crescer(e.currentTarget)}
+                      className="flex-1 resize-none overflow-hidden bg-transparent leading-snug outline-none"
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") setEditando(null); }}
                       onBlur={(e) => { setEditando(null); const t = e.target.value.trim(); if (t && t !== c) void salvarLista(lista.map((x, j) => (j === i ? t : x))); }} />
                   ) : (
-                    <button type="button" className="flex-1 text-left" onClick={() => setEditando(i)} title="Clique para editar">{c}</button>
+                    <button type="button" className="flex-1 whitespace-pre-line text-left" onClick={() => setEditando(i)} title="Clique para editar">{c}</button>
                   )}
                   <button type="button" title="Subir" disabled={i === 0} onClick={() => { const l = [...lista]; [l[i - 1], l[i]] = [l[i], l[i - 1]]; void salvarLista(l); }}
                     className="text-xs text-muted-foreground opacity-0 hover:text-foreground disabled:hidden group-hover:opacity-100">↑</button>
@@ -320,8 +325,10 @@ export function CriteriosEtapa({ etapa, quem, onFechar, onMudar }: {
             </ol>
             <div className="flex gap-2">
               <span className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{lista.length + 1}</span>
-              <Input value={novo} onChange={(e) => setNovo(e.target.value)} autoFocus onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionar(); } }}
-                placeholder={revisao ? "Ex.: o gancho prende nos 3 primeiros segundos" : "Ex.: roteiro de 40 a 60 s de fala"} />
+              <textarea value={novo} onChange={(e) => setNovo(e.target.value)} autoFocus rows={1} ref={campo}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); adicionar(); } }}
+                className="max-h-48 min-h-9 flex-1 resize-none overflow-y-auto rounded-md [scrollbar-width:none] border bg-background px-3 py-2 text-sm leading-snug outline-none focus:ring-2 focus:ring-ring"
+                placeholder={revisao ? "Ex.: o gancho prende nos 3 primeiros segundos  (Shift+Enter pula linha)" : "Ex.: roteiro de 40 a 60 s de fala  (Shift+Enter pula linha)"} />
               <Button size="sm" className="h-9 gap-1" onClick={adicionar} disabled={!novo.trim()}><Plus className="h-3.5 w-3.5" />Salvar</Button>
             </div>
           </>
