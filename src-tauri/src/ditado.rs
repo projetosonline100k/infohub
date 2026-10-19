@@ -257,7 +257,7 @@ pub fn ditado_registrar(evento: String, detalhe: String) {
 }
 
 /// O Claude Code que vem com o app do Claude (a pasta muda a cada atualização).
-fn claude_bin() -> Option<std::path::PathBuf> {
+pub(crate) fn claude_bin() -> Option<std::path::PathBuf> {
     let base = std::path::PathBuf::from(std::env::var_os("HOME")?).join("Library/Application Support/Claude/claude-code");
     let mut achados: Vec<(Vec<u32>, std::path::PathBuf)> = Vec::new();
     for versao in std::fs::read_dir(&base).ok()?.flatten() {

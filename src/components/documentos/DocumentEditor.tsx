@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BancoViraisDoc } from "./BancoViraisDoc";
 import { AudioGravado, MicrofoneNoCursor } from "./AudioNoDocumento";
+import { ChatNoDocumento } from "./ChatNoDocumento";
 import { BotaoModelos, EscolherModelo } from "./EscolherModelo";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -337,6 +338,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             {editor && <MenuSelecaoTexto editor={editor} />}
             {editor && <BancoViraisDoc editor={editor} clienteId={clienteId} />}
             {editor && <MicrofoneNoCursor editor={editor} />}
+            {editor && <ChatNoDocumento editor={editor} clienteId={clienteId} />}
             </div>
           </div>
         </div>

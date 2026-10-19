@@ -40,6 +40,7 @@ import { HeadlineTitulo, MARCA_HEADLINE } from "@/lib/tiptapHeadlineTitulo";
 import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
 import { BancoViraisDoc } from "@/components/documentos/BancoViraisDoc";
 import { AudioGravado, MicrofoneNoCursor } from "@/components/documentos/AudioNoDocumento";
+import { ChatNoDocumento } from "@/components/documentos/ChatNoDocumento";
 import "@/components/documentos/editor.css";
 import { RoteiroChat } from "./RoteiroChat";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -805,6 +806,7 @@ export const VideoDetailPanel = ({
 <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor min-h-[50vh] flex-1 sm:min-h-[900px]" />
               {editor && <BancoViraisDoc editor={editor} clienteId={editedVideo.cliente_id} />}
               {editor && <MicrofoneNoCursor editor={editor} />}
+              {editor && <ChatNoDocumento editor={editor} clienteId={editedVideo.cliente_id} />}
             </div>
           </div>
         </main>

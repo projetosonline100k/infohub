@@ -26,6 +26,8 @@ mod whatsapp;
 mod danilo;
 #[cfg(target_os = "macos")]
 mod ditado;
+#[cfg(target_os = "macos")]
+mod escrita;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -84,6 +86,8 @@ pub fn run() {
             ditado::ditado_registrar,
             ditado::claude_rapido,
             ditado::claude_pesquisa,
+            escrita::claude_escrever,
+            escrita::claude_escrever_parar,
         ]);
     // Fora do macOS só existe o comando de destacar aba.
     #[cfg(not(target_os = "macos"))]
