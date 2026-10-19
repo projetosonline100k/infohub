@@ -4,11 +4,14 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { Eye, EyeOff, X } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { diferencaPalavras, mudou } from "@/lib/conteudo/trechos";
-import type { Revisao } from "@/lib/conteudo/escritaAgentes";
+import { linhasDoTexto, textoParaHtml, type Revisao } from "@/lib/conteudo/escritaAgentes";
 
+// 19/10, depois (Davi): "gerar as duas versões e eu ativo ou desativo (On/Off) em cima do texto
+// gerado: On = a revisão do Elias com as partes em vermelho e os comentários; Off = só o roteiro do
+// Junior". O On/Off troca o texto no documento (um passo do ⌘Z) e liga as marcas.
 // Revisão do Elias dentro do documento (19/10/2026, Davi: "igual ao olhinho: eu ativo, aí mostra
 // onde ele retirou, o que removeu e por quê; e na lateral direita os comentários do Elias, igual na
 // primeira versão" — a do MapaPeca). O texto final fica limpo no documento; com o olho ligado,
@@ -21,6 +24,9 @@ const LARGURA_NOTAS = 240;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
 interface Bloco { pos: number; tamanho: number; texto: string }
+
+/** Ativa = o texto do revisor está no documento (revisões antigas, sem a versão de antes, contam como ativas). */
+export const revisaoAtiva = (r: Revisao) => r.ativa !== false;
 
 function blocosDe(doc: PMNode): Bloco[] {
   const out: Bloco[] = [];
@@ -46,6 +52,21 @@ function localizar(rev: Revisao, blocos: Bloco[]): (Bloco | null)[] {
     }
     return null;
   });
+}
+
+/** Troca no documento as linhas `linhas` (seguidas, ignorando linhas vazias) pelo texto `novo`.
+ *  false = não achou (o texto foi editado). */
+export function trocarLinhas(editor: Editor, linhas: string[], novo: string): boolean {
+  if (!linhas.length || !novo.trim()) return false;
+  const doc = editor.state.doc;
+  const blocos = blocosDe(doc).filter((b) => norm(b.texto));
+  for (let i = 0; i + linhas.length <= blocos.length; i++) {
+    if (!linhas.every((l, k) => norm(blocos[i + k].texto) === norm(l))) continue;
+    const a = doc.resolve(blocos[i].pos + 1), ult = blocos[i + linhas.length - 1], b = doc.resolve(ult.pos + 1);
+    const from = a.depth ? a.before(1) : blocos[i].pos, to = b.depth ? b.after(1) : ult.pos + ult.tamanho;
+    return editor.chain().insertContentAt({ from, to }, textoParaHtml(novo)).run();
+  }
+  return false;
 }
 
 const widget = (classe: string, texto: string) => () => {
@@ -84,66 +105,67 @@ function decoracoes(doc: PMNode, revisoes: Revisao[]): DecorationSet {
 }
 
 interface Alvo { chave: string; quem: string; nota: string; y: number; meio: number; xFim: number }
+interface Chave { id: string; quem: string; y: number; ativa: boolean; podeTrocar: boolean }
 
-export function RevisaoNoDocumento({ editor, revisoes, onDispensar }: {
-  editor: Editor; revisoes: Revisao[]; onDispensar: (id: string) => void;
+export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }: {
+  editor: Editor; revisoes: Revisao[]; onAlternar: (id: string) => void; onDispensar: (id: string) => void;
 }) {
-  const [visivel, setVisivel] = useState(() => { try { return localStorage.getItem("docchat:olho") !== "nao"; } catch { return true; } });
-  const estado = useRef({ revisoes, visivel });
-  estado.current = { revisoes, visivel };
+  const ativas = revisoes.filter(revisaoAtiva);
+  const estado = useRef(ativas);
+  estado.current = ativas;
   const [alvos, setAlvos] = useState<Alvo[]>([]);
   const [topos, setTopos] = useState<number[]>([]);
-  const [botao, setBotao] = useState<{ y: number; id: string; quem: string } | null>(null);
+  const [chaves, setChaves] = useState<Chave[]>([]);
   const cartoes = useRef<(HTMLDivElement | null)[]>([]);
   const caixa = editor.view.dom.parentElement as HTMLElement | null;
+  const comNotas = ativas.some((r) => r.linhas.some((l) => l.nota));
 
-  // Decorações do ProseMirror (riscado/verde), refeitas a cada mudança do documento.
+  // Decorações do ProseMirror (riscado/verde) das revisões ligadas, refeitas a cada mudança do documento.
   useEffect(() => {
     const plugin = new Plugin({
       key: CHAVE,
-      props: {
-        decorations: (st) => (estado.current.visivel && estado.current.revisoes.length ? decoracoes(st.doc, estado.current.revisoes) : null),
-      },
+      props: { decorations: (st) => (estado.current.length ? decoracoes(st.doc, estado.current) : null) },
     });
     editor.registerPlugin(plugin);
     return () => { if (!editor.isDestroyed) editor.unregisterPlugin(CHAVE); };
   }, [editor]);
 
-  const alternar = () => setVisivel((v) => { try { localStorage.setItem("docchat:olho", v ? "nao" : "sim"); } catch { /* sem storage */ } return !v; });
-
-  // Onde fica cada comentário: na altura do trecho, na coluna da direita.
+  // Onde fica cada comentário (na altura do trecho, na coluna da direita) e o On/Off (em cima do texto).
   const recalcular = useCallback(() => {
     if (!caixa || editor.isDestroyed) return;
     const base = caixa.getBoundingClientRect();
     const blocos = blocosDe(editor.state.doc);
     const lista: Alvo[] = [];
-    let primeiro: { y: number; id: string; quem: string } | null = null;
+    const botoes: Chave[] = [];
     for (const rev of revisoes) {
-      const achados = localizar(rev, blocos);
-      rev.linhas.forEach((l, k) => {
+      const ativa = revisaoAtiva(rev);
+      const versao: Revisao = ativa ? rev : { ...rev, linhas: linhasDoTexto(rev.antes ?? "").map((texto) => ({ texto, original: texto, nota: null })) };
+      const achados = localizar(versao, blocos);
+      let primeiro = true;
+      versao.linhas.forEach((l, k) => {
         const b = achados[k];
         if (!b) return;
         const dom = editor.view.nodeDOM(b.pos) as HTMLElement | null;
         const r = dom?.getBoundingClientRect?.();
         if (!r) return;
-        if (rev === revisoes[revisoes.length - 1] && !primeiro) primeiro = { y: r.top - base.top, id: rev.id, quem: rev.quem };
-        if (l.nota) lista.push({ chave: `${rev.id}-${k}`, quem: rev.quem, nota: l.nota, y: r.top - base.top, meio: r.top - base.top + Math.min(r.height, 28) / 2, xFim: r.right - base.left });
+        if (primeiro) { primeiro = false; botoes.push({ id: rev.id, quem: rev.quem, y: r.top - base.top, ativa, podeTrocar: !!(rev.antes && rev.depois) }); }
+        if (ativa && l.nota) lista.push({ chave: `${rev.id}-${k}`, quem: rev.quem, nota: l.nota, y: r.top - base.top, meio: r.top - base.top + Math.min(r.height, 28) / 2, xFim: r.right - base.left });
       });
     }
     setAlvos(lista);
-    setBotao(primeiro);
+    setChaves(botoes);
   }, [caixa, editor, revisoes]);
 
-  // Atualiza as decorações e a coluna quando muda a revisão ou o olho.
+  // Atualiza as decorações e a coluna quando muda alguma revisão.
   useEffect(() => {
     if (editor.isDestroyed) return;
     editor.view.dispatch(editor.state.tr.setMeta(CHAVE, true).setMeta("addToHistory", false));
     if (caixa) {
       caixa.style.position = "relative";
-      caixa.style.paddingRight = visivel && revisoes.some((r) => r.linhas.some((l) => l.nota)) ? `${LARGURA_NOTAS + 24}px` : "";
+      caixa.style.paddingRight = comNotas ? `${LARGURA_NOTAS + 24}px` : "";
     }
     requestAnimationFrame(recalcular);
-  }, [editor, caixa, visivel, revisoes, recalcular]);
+  }, [editor, caixa, revisoes, comNotas, recalcular]);
   useEffect(() => () => { if (caixa) caixa.style.paddingRight = ""; }, [caixa]);
 
   useEffect(() => {
@@ -157,38 +179,39 @@ export function RevisaoNoDocumento({ editor, revisoes, onDispensar }: {
 
   // Empilha os comentários sem sobrepor (mede a altura de cada um depois de desenhar).
   useLayoutEffect(() => {
-    let fim = botao ? botao.y + 36 : 0;
+    let fim = 0;
     setTopos(alvos.map((a, i) => {
       const y = Math.max(a.y, fim);
       fim = y + (cartoes.current[i]?.offsetHeight ?? 60) + 8;
       return y;
     }));
-  }, [alvos, botao]);
+  }, [alvos]);
 
-  if (!caixa || !revisoes.length || !botao) return null;
-  const mostrarNotas = visivel && alvos.length > 0;
+  if (!caixa || !chaves.length) return null;
   const xColuna = caixa.clientWidth - LARGURA_NOTAS;
 
   return createPortal(
     <>
-      <div className="absolute z-10 flex items-center gap-1" contentEditable={false}
-        style={mostrarNotas ? { top: botao.y, left: xColuna } : { top: botao.y, right: -52 }}>
-        <button type="button" onClick={alternar}
-          title={visivel ? "Esconder o que o Elias mudou (texto limpo)" : `Mostrar o que ${botao.quem} tirou, trocou e por quê`}
-          className={cn("flex h-8 items-center gap-1.5 rounded-full border bg-card px-2.5 text-xs shadow-sm",
-            visivel ? "text-foreground" : "text-muted-foreground")}>
-          {visivel ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          {mostrarNotas && <span>Revisão de {botao.quem}</span>}
-        </button>
-        {mostrarNotas && (
-          <button type="button" onClick={() => onDispensar(botao.id)} title="Dispensar as marcas desta revisão"
-            className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-muted">
+      {chaves.map((c) => (
+        <div key={c.id} className="absolute z-10 flex items-center gap-1" contentEditable={false}
+          style={{ top: Math.max(0, c.y - 34), right: comNotas ? LARGURA_NOTAS + 24 : 0 }}>
+          <span className="text-xs text-muted-foreground">Revisão de {c.quem}</span>
+          <div className="flex overflow-hidden rounded-full border bg-card text-xs shadow-sm">
+            <button type="button" disabled={!c.podeTrocar || c.ativa} onClick={() => onAlternar(c.id)}
+              title={`Mostrar a revisão de ${c.quem}: o que tirou (vermelho), o que entrou (verde) e os comentários`}
+              className={cn("px-2.5 py-1", c.ativa ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted")}>On</button>
+            <button type="button" disabled={!c.podeTrocar || !c.ativa} onClick={() => onAlternar(c.id)}
+              title="Voltar para o texto antes da revisão"
+              className={cn("px-2.5 py-1", !c.ativa ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted")}>Off</button>
+          </div>
+          <button type="button" onClick={() => onDispensar(c.id)} title="Ficar com o texto como está e tirar as marcas"
+            className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground hover:bg-muted">
             <X className="h-3.5 w-3.5" />
           </button>
-        )}
-      </div>
+        </div>
+      ))}
 
-      {mostrarNotas && (
+      {alvos.length > 0 && (
         <>
           <svg className="pointer-events-none absolute left-0 top-0 h-full w-full overflow-visible" aria-hidden>
             {alvos.map((a, i) => {

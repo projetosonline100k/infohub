@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, BookOpen, Check, Loader2, Sparkles, Square, X } from "lucide-react";
-import { RevisaoNoDocumento } from "./RevisaoNoDocumento";
+import { ArrowUp, BookOpen, Check, Loader2, Quote, Sparkles, Square, X } from "lucide-react";
+import { RevisaoNoDocumento, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,7 +12,7 @@ import { isDesktop } from "@/lib/platform";
 import { proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
 import { alinhar } from "@/lib/conteudo/trechos";
 import {
-  ehRevisao, montarPedido, montarRevisao, separarNotas, textoParaHtml,
+  ehRevisao, linhasDoTexto, montarPedido, montarRevisao, separarNotas, textoParaHtml,
   type AgenteEscrita, type CerebroEscrita, type Conversa, type FormatoEscrita, type Revisao,
 } from "@/lib/conteudo/escritaAgentes";
 
@@ -96,18 +96,23 @@ const pararClaude = async (id: string) => {
 };
 
 // ---------------------------------------------------------------- onde escreve no documento
-interface Regiao { from: number; to: number; original: Slice }
+interface Regiao { from: number; to: number; original: Slice; inline: boolean }
+const MARCA = "docchat";   // transações da própria escrita (as outras empurram a região)
 
 /** Cursor numa linha vazia: escreve nela. Cursor no meio de texto: logo abaixo do bloco.
- *  Com seleção: no lugar dos blocos selecionados (a seleção vai junto no pedido). */
+ *  Palavra ou trecho dentro de um parágrafo: troca só aquele pedaço. Seleção de vários
+ *  parágrafos: no lugar deles. A seleção vai junto no pedido. */
 function regiaoInicial(editor: Editor): { regiao: Regiao; selecao: string | null; cursor: number } {
   const { state } = editor;
   const sel = state.selection;
-  let from: number, to: number, selecao: string | null = null;
-  if (!sel.empty) {
+  let from: number, to: number, selecao: string | null = null, inline = false;
+  if (!sel.empty && sel.$from.parent === sel.$to.parent && sel.$from.parent.isTextblock) {
+    from = sel.from; to = sel.to; inline = true;
+    selecao = state.doc.textBetween(from, to, "\n");
+  } else if (!sel.empty) {
     from = sel.$from.depth ? sel.$from.before(1) : sel.from;
     to = sel.$to.depth ? sel.$to.after(1) : sel.to;
-    selecao = state.doc.textBetween(sel.from, sel.to, "\n");
+    selecao = state.doc.textBetween(from, to, "\n");
   } else if (!sel.$from.depth) {
     from = to = sel.from;
   } else {
@@ -115,22 +120,33 @@ function regiaoInicial(editor: Editor): { regiao: Regiao; selecao: string | null
     if (bloco.type.name === "paragraph" && !bloco.textContent.trim()) { from = sel.$from.before(1); to = sel.$from.after(1); }
     else from = to = sel.$from.after(1);
   }
-  return { regiao: { from, to, original: state.doc.slice(from, to) }, selecao, cursor: from };
+  return { regiao: { from, to, original: state.doc.slice(from, to), inline }, selecao, cursor: from };
 }
 
-function trocarRegiao(editor: Editor, r: Regiao, html: string | null, historico: boolean) {
+function trocarRegiao(editor: Editor, r: Regiao, texto: string | null, historico: boolean) {
   const antes = editor.state.doc.content.size;
-  if (html === null) {
-    const tr = editor.state.tr.replace(r.from, r.to, r.original).setMeta("addToHistory", false);
-    editor.view.dispatch(tr);
+  if (texto === null) {
+    editor.view.dispatch(editor.state.tr.replace(r.from, r.to, r.original).setMeta("addToHistory", false).setMeta(MARCA, true));
   } else {
-    editor.chain().setMeta("addToHistory", historico).insertContentAt({ from: r.from, to: r.to }, html).scrollIntoView().run();
+    const conteudo = r.inline ? { type: "text", text: texto.replace(/\s*\n\s*/g, " ") } : textoParaHtml(texto);
+    editor.chain().setMeta("addToHistory", historico).setMeta(MARCA, true).insertContentAt({ from: r.from, to: r.to }, conteudo).scrollIntoView().run();
   }
   r.to += editor.state.doc.content.size - antes;
 }
 
+/** Se o Davi mexe no documento enquanto escrevem, a região anda junto (não escreve por cima). */
+function seguirRegiao(editor: Editor, r: Regiao) {
+  const aoMudar = ({ transaction: tr }: { transaction: import("@tiptap/pm/state").Transaction }) => {
+    if (!tr.docChanged || tr.getMeta(MARCA)) return;
+    r.from = tr.mapping.map(r.from, 1);
+    r.to = Math.max(r.from, tr.mapping.map(r.to, -1));
+  };
+  editor.on("transaction", aoMudar);
+  return () => { editor.off("transaction", aoMudar); };
+}
+
 interface Turno extends Conversa { erro?: string }
-interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" }
+interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" | "revisando" }
 
 /** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
 export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; clienteId: string | null; chave?: string | null }) {
@@ -151,6 +167,19 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const rodando = useRef<string | null>(null);
   const parou = useRef(false);
   const { esc, membros, skills } = useEscritorio(clienteId, aberto);
+  // 19/10 (Davi): "caso eu selecione uma palavra, preciso que ela apareça onde escrevo" — o trecho
+  // selecionado no documento aparece citado no campo (e é sobre ele o pedido).
+  const [selecionado, setSelecionado] = useState<string | null>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    const atualizar = () => {
+      const { from, to, empty } = editor.state.selection;
+      setSelecionado(empty ? null : editor.state.doc.textBetween(from, to, " ").trim() || null);
+    };
+    atualizar();
+    editor.on("selectionUpdate", atualizar);
+    return () => { editor.off("selectionUpdate", atualizar); };
+  }, [aberto, editor]);
 
   useEffect(() => gravar("docchat:agentes", escolhidos), [escolhidos]);
   useEffect(() => gravar("docchat:skillsOff", skillsOff), [skillsOff]);
@@ -235,15 +264,23 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     parou.current = false;
 
     const { regiao, selecao, cursor } = regiaoInicial(editor);
+    const largar = seguirRegiao(editor, regiao);
     const doc = editor.state.doc;
     const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
     const proximaHeadline = proximoNumeroHeadline(editor.getHTML());
     const blocos: { quem: string; texto: string }[] = [];
     let anterior: { quem: string; texto: string } | null = null;
     let erro: string | undefined;
-    const pintar = () => {
-      const tudo = blocos.map((b) => b.texto).filter((t) => t.trim()).join("\n");
-      trocarRegiao(editor, regiao, tudo ? textoParaHtml(tudo) : null, false);
+    let fixado = false;
+    const juntar = () => blocos.map((b) => b.texto).filter((t) => t.trim()).join("\n");
+    const pintar = () => { const tudo = juntar(); trocarRegiao(editor, regiao, tudo || null, false); };
+    // Volta o original sem registrar e põe o texto num passo só: ⌘Z desfaz tudo de uma vez.
+    const fixar = () => {
+      if (fixado) return;
+      fixado = true;
+      const tudo = juntar();
+      trocarRegiao(editor, regiao, null, false);
+      if (tudo) trocarRegiao(editor, regiao, tudo, true);
     };
 
     try {
@@ -251,7 +288,10 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         if (parou.current) break;
         const m = etapa?.membro;
         const quem = m?.nome ?? "Claude";
-        setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "pensando" });
+        // Revisão de algo que já existe (o que o Junior acabou de escrever, ou parágrafos selecionados):
+        // o texto de antes fica no documento e a revisão é feita por trás; no fim, entra com o On/Off.
+        const revisa = !!(etapa && ehRevisao(etapa.nome) && (anterior?.texto || (selecao && !regiao.inline)));
+        setAndamento({ quem, etapa: etapa?.nome ?? "", fase: revisa ? "revisando" : "pensando" });
         const agente: AgenteEscrita | null = m && etapa ? {
           etapa: etapa.nome, nome: m.nome, funcao: m.funcao, manual: m.manual,
           aprendizados: await aprendizados(m.nome.trim().toLowerCase()), criterios: etapa.criterios, formatos: etapa.formatos,
@@ -261,26 +301,34 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           documento, selecao: anterior ? null : selecao, anterior,
           historico: turnos.filter((t) => !t.erro), pedido, proximaHeadline,
         });
-        // Revisão: escreve no lugar da etapa anterior (que fica à vista até a revisão começar a chegar).
-        const substitui = !!(etapa && anterior && ehRevisao(etapa.nome));
-        const revisado = etapa && ehRevisao(etapa.nome) ? (anterior?.texto ?? selecao) : null;
-        const bloco = { quem, texto: "" };
-        const guardado = substitui ? blocos.pop()! : null;
-        blocos.push(bloco);
         const id = crypto.randomUUID();
         rodando.current = id;
+
+        if (revisa) {
+          const antes = anterior?.texto ?? selecao!;
+          fixar();
+          const { texto: final, notas } = separarNotas(await escreverComClaude(id, prompt, modelo, () => undefined));
+          if (final) {
+            const trocou = trocarLinhas(editor, linhasDoTexto(antes), final);
+            guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou }]);
+            if (!trocou) toast.info(`${quem} terminou a revisão. Como o texto foi mexido, deixei o seu; clique em On para ver a versão de ${quem}.`);
+          }
+          anterior = { quem, texto: final || antes };
+          continue;
+        }
+
+        const bloco = { quem, texto: "" };
+        blocos.push(bloco);
         let ultimo = 0;
         const bruto = await escreverComClaude(id, prompt, modelo, (total) => {
           const { texto: t } = separarNotas(total);
-          bloco.texto = t || (guardado?.texto ?? "");
+          bloco.texto = t;
           if (t) setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
           if (Date.now() - ultimo > 80) { ultimo = Date.now(); pintar(); }
         });
-        const { texto: final, notas: n } = separarNotas(bruto);
-        bloco.texto = final || (guardado?.texto ?? "");
+        bloco.texto = separarNotas(bruto).texto;
         pintar();
-        if (revisado && final) guardarRevisoes((l) => [...l, montarRevisao(id, quem, revisado, final, n, alinhar)]);
-        anterior = { quem, texto: final };
+        anterior = { quem, texto: bloco.texto };
       }
     } catch (e) {
       erro = parou.current ? undefined : (e instanceof Error ? e.message : String(e));
@@ -288,11 +336,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     } finally {
       rodando.current = null;
       setAndamento(null);
-      // Volta o original sem registrar e põe o texto final num passo só: ⌘Z desfaz tudo de uma vez.
-      const tudo = blocos.map((b) => b.texto).filter((t) => t.trim()).join("\n");
-      trocarRegiao(editor, regiao, null, false);
-      if (tudo) trocarRegiao(editor, regiao, textoParaHtml(tudo), true);
-      setTurnos((l) => [...l, { pedido: pedido || "(fazer a sua parte)", resposta: tudo, erro }].slice(-12));
+      fixar();
+      largar();
+      setTurnos((l) => [...l, { pedido: pedido || "(fazer a sua parte)", resposta: anterior?.texto ?? juntar(), erro }].slice(-12));
       requestAnimationFrame(() => campo.current?.focus());
     }
   };
@@ -302,7 +348,21 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     if (rodando.current) void pararClaude(rodando.current);
   };
 
-  const revisao = <RevisaoNoDocumento editor={editor} revisoes={revisoes} onDispensar={(id) => guardarRevisoes((l) => l.filter((r) => r.id !== id))} />;
+  // On/Off da revisão: troca no documento o texto de antes pelo do revisor (e volta).
+  const alternarRevisao = (id: string) => {
+    const r = revisoes.find((x) => x.id === id);
+    if (!r?.antes || !r.depois) return;
+    const ativa = revisaoAtiva(r);
+    if (!trocarLinhas(editor, linhasDoTexto(ativa ? r.depois : r.antes), ativa ? r.antes : r.depois)) {
+      toast.error("Não achei esse texto no documento (ele foi editado depois da revisão).");
+      return;
+    }
+    guardarRevisoes((l) => l.map((x) => (x.id === id ? { ...x, ativa: !ativa } : x)));
+  };
+  const revisao = (
+    <RevisaoNoDocumento editor={editor} revisoes={revisoes} onAlternar={alternarRevisao}
+      onDispensar={(id) => guardarRevisoes((l) => l.filter((r) => r.id !== id))} />
+  );
   if (!aberto) return revisao;
   const escrevendo = !!andamento;
   const placeholder = escolhidasOrdem.length
@@ -383,12 +443,18 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             <option value="opus">Opus</option>
             <option value="haiku">Haiku (rápido)</option>
           </select>
-          <button type="button" onClick={() => { parar(); setAberto(false); editor.commands.focus(); }}
-            className="rounded-full p-1 text-muted-foreground hover:bg-muted" title="Fechar (⌘I)">
+          <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }}
+            className="rounded-full p-1 text-muted-foreground hover:bg-muted" title="Fechar (⌘I); o que estiver escrevendo continua">
             <X className="h-4 w-4" />
           </button>
         </div>
 
+        {selecionado && (
+          <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">
+            <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="line-clamp-2 flex-1 italic">{selecionado}</span>
+          </div>
+        )}
         <div className="flex items-end gap-2 p-3">
           <textarea
             ref={campo}
@@ -420,7 +486,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             {andamento.fase === "pensando" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />}
             <span>
               <span className="font-medium text-foreground">{andamento.quem}</span>
-              {andamento.etapa ? ` (${andamento.etapa})` : ""} {andamento.fase === "pensando" ? "lendo critérios e skills…" : "escrevendo no documento…"}
+              {andamento.etapa ? ` (${andamento.etapa})` : ""} {andamento.fase === "pensando" ? "lendo critérios e skills…" : andamento.fase === "revisando" ? "revisando por trás (pode continuar mexendo; no fim entra o On/Off)…" : "escrevendo no documento…"}
             </span>
             {escolhidasOrdem.length > 1 && (
               <span className="ml-auto">{escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}</span>

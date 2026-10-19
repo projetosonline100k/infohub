@@ -143,7 +143,11 @@ export function linhasDoTexto(texto: string): string[] {
 }
 
 export interface LinhaRevisada { texto: string; original: string | null; nota: string | null }
-export interface Revisao { id: string; quem: string; linhas: LinhaRevisada[]; removidas: { depoisDe: number; texto: string }[] }
+export interface Revisao {
+  id: string; quem: string; linhas: LinhaRevisada[]; removidas: { depoisDe: number; texto: string }[];
+  antes?: string; depois?: string;   // as duas versões (Junior e Elias), para o On/Off
+  ativa?: boolean;                   // true = o texto do revisor está no documento
+}
 
 /** Junior → Elias, linha a linha: de qual linha veio cada uma, o que saiu inteiro e o comentário de cada mudança. */
 export function montarRevisao(id: string, quem: string, antes: string, depois: string, notas: string,
@@ -162,7 +166,7 @@ export function montarRevisao(id: string, quem: string, antes: string, depois: s
     origem.forEach((o, k) => { if (o !== null && o < i) depoisDe = k; });
     return [{ depoisDe, texto }];
   });
-  return { id, quem, linhas, removidas };
+  return { id, quem, linhas, removidas, antes, depois, ativa: true };
 }
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
