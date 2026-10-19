@@ -18,6 +18,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 import { RevisaoEntrega } from "./RevisaoEntrega";
+import { PassosTarefa } from "./PassosTarefa";
 import { QuadroPedro } from "./PassarDemanda";
 import { AssistantWhatsappTab } from "@/components/assistant/tabs/AssistantWhatsappTab";
 
@@ -379,6 +380,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
                                 : <span className="inline-flex items-center gap-1">entrega <b className="text-foreground"><PrazoEditavel valor={t.data_vencimento} onMudar={(d) => void mudarPrazo(t, d)} /></b>{tt.falta != null && <> (em {faltaTexto(tt.falta)})</>}</span>}
                             </p>
                             {t.observacao && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">“{t.observacao}”</p>}
+                            {membro.eh_ia && <PassosTarefa atividadeId={t.id} aoVivo />}
                           </div>
                         );
                       })}
@@ -389,8 +391,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
                 {/* 2. As tarefas, por situação */}
                 <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined}
                   onComecar={ia ? (t) => void comecarAgora(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
-                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />}
-                {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
+                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" comPassos={membro.eh_ia} tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />}
+                {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" comPassos={membro.eh_ia} tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
               </div>
             )}
 
@@ -436,7 +438,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   );
 }
 
-function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar, onMudarPrazo, onComecar }: {
+function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, onCancelar, onRevisar, onMudarPrazo, onComecar, comPassos }: {
+  comPassos?: boolean;   // tarefa de IA: mostra o que ela já fez (atividades.passos)
   onRevisar?: (t: TarefaFila) => void;
   onComecar?: (t: TarefaFila) => void;
   onMudarPrazo?: (t: TarefaFila, data: string | null) => void;
@@ -467,6 +470,7 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, 
                     {(() => { const tt = tempoDaTarefa(t, agora); return !t.concluida && tt.falta != null && tt.rotuloAlvo === "publica" ? <span>· publica em {faltaTexto(tt.falta)}</span> : null; })()}
                   </p>
                   {!t.concluida && (() => { const tt = tempoDaTarefa(t, agora); return tt.pct != null && tt.pct > 0 ? <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500" style={{ width: `${tt.pct}%` }} /></div> : null; })()}
+                  {comPassos && <PassosTarefa atividadeId={t.id} />}
                 </div>
                 {onRevisar && !t.concluida && (
                   <button type="button" onClick={() => onRevisar(t)} title="Ler a entrega e aprovar ou pedir ajuste"

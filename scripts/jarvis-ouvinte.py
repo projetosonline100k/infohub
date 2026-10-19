@@ -47,6 +47,7 @@ if "migration_db" in sys.modules:
 from migration_db import connect, eh_falha_de_conexao, reusar_nesta_thread  # noqa: E402
 sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
 import briefing  # noqa: E402
+import passos  # noqa: E402  (linha do tempo da tarefa: o que o funcionário já fez, 19/10)
 import execucao  # noqa: E402
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
@@ -75,11 +76,12 @@ def claude_bin():
     return max(achados, key=versao)
 
 
-def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None):
+def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None, atividade=None):
     """Roda o Claude em segundo plano e devolve (ok, texto do resultado).
     `sessao`: continua essa sessão (--resume). `info` (dict) recebe o
     session_id da execução, pra próxima continuar dela. `ferramentas`: troca
-    a lista liberada (ex.: só leitura)."""
+    a lista liberada (ex.: só leitura). `atividade`: anota cada passo na tarefa
+    (atividades.passos), para o Davi ver o que já foi feito."""
     binario = claude_bin()
     if not binario:
         return False, "Claude Code não encontrado neste Mac (abra o app do Claude uma vez)."
@@ -91,20 +93,25 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
     if chrome:
         # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele.
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
-    return rodar_claude_com(cmd, minutos, cwd, info)
+    return rodar_claude_com(cmd, minutos, cwd, info, atividade)
 
 
-def rodar_claude_com(cmd, minutos, cwd=None, info=None):
+def rodar_claude_com(cmd, minutos, cwd=None, info=None, atividade=None):
     """Roda o comando do Claude já montado e devolve (ok, texto)."""
-    try:
-        r = subprocess.run(cmd, cwd=cwd or RAIZ, capture_output=True, text=True, timeout=minutos * 60,
-                           env={**os.environ, "PATH": f"{Path(PYTHON).parent}:/usr/bin:/bin:/usr/sbin:/sbin"})
-    except subprocess.TimeoutExpired:
-        return False, f"O Claude passou de {minutos} min e foi interrompido."
-    try:
-        dados = json.loads(r.stdout)
-    except ValueError:
-        return False, (r.stderr or r.stdout or "sem resposta").strip()[:300]
+    env = {**os.environ, "PATH": f"{Path(PYTHON).parent}:/usr/bin:/bin:/usr/sbin:/sbin"}
+    if atividade:
+        dados, erro = passos.rodar(cmd, minutos, cwd=cwd or RAIZ, env=env, atividade=atividade)
+        if erro:
+            return False, erro
+    else:
+        try:
+            r = subprocess.run(cmd, cwd=cwd or RAIZ, capture_output=True, text=True, timeout=minutos * 60, env=env)
+        except subprocess.TimeoutExpired:
+            return False, f"O Claude passou de {minutos} min e foi interrompido."
+        try:
+            dados = json.loads(r.stdout)
+        except ValueError:
+            return False, (r.stderr or r.stdout or "sem resposta").strip()[:300]
     texto = (dados.get("result") or "").strip()
     if info is not None:
         info["session_id"] = dados.get("session_id")
@@ -112,7 +119,7 @@ def rodar_claude_com(cmd, minutos, cwd=None, info=None):
         # 18/10: o filtro do Opus barrou por engano o roteiro do Junior ("This sometimes happens with
         # safe, normal conversations... can't respond with Opus"). Tenta de novo com o Sonnet.
         log("claude: filtro do Opus barrou; tentando com o Sonnet")
-        return rodar_claude_com(cmd + ["--model", "sonnet"], minutos, cwd, info)
+        return rodar_claude_com(cmd + ["--model", "sonnet"], minutos, cwd, info, atividade)
     if dados.get("is_error"):
         if "authenticate" in texto or "OAuth" in texto:
             texto = "O Claude em segundo plano está deslogado. Rode o login de novo (ver scripts/instalar-jarvis-ouvinte.sh)."
@@ -491,6 +498,7 @@ Tarefa: {aid}
 Progresso (o Davi acompanha numa barra): ao terminar cada etapa, informe quanto do trabalho TODO já está feito e o que vem agora, por exemplo 15 depois de ler o contexto e o manual, 35 depois da pesquisa/leitura, 60 com o rascunho pronto, 85 revisando:
    python3 scripts/empresa/execucao.py progresso {aid} <0-100> "<o que está fazendo agora, curto>" <minutos que você acha que ainda faltam>
    (o Davi vê "faltam ~X min": seja realista e ajuste a cada etapa)
+   Cada passo seu aparece sozinho para o Davi na tarefa: escreva a descrição de cada comando (campo description) em português simples, dizendo o que está fazendo (ex.: "Baixando os comentários do vídeo").
 3. Faça o trabalho de verdade, como combinado. Pesquisa na internet: WebSearch/WebFetch; comentários e vídeos do YouTube: yt-dlp (`PYTHONPATH=~/.infopro-hub/ytdlp SSL_CERT_FILE=~/.infopro-hub/py/certifi/cacert.pem python3 -m yt_dlp --skip-download --write-comments --write-info-json ...`), trabalhe numa pasta temporária. Cite só o que você realmente leu; frases do público, do jeito que escreveram; nunca invente dado, depoimento ou número. Se algo combinado não deu para fazer, diga no documento (seção "Limites desta versão").
 4. Entregue UM documento organizado (HTML simples: h2, h3, p, ul, ol, li, strong, em, a, blockquote):
    python3 scripts/empresa/execucao.py entregar {aid} "<título do documento>" "<resumo de 1 linha do que entregou>" <<'FIM'
@@ -553,7 +561,7 @@ def _executar_sistema(aid):
         if (RAIZ / nome).exists() and not (obra / nome).exists():
             (obra / nome).symlink_to(RAIZ / nome)
     ok, texto = rodar_claude(PROMPT_SISTEMA.format(aid=aid, obra=obra, ramo=ramo, raiz=RAIZ, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"),
-                             minutos=90, cwd=obra, turnos=200)
+                             minutos=90, cwd=obra, turnos=200, atividade=aid)
     st = execucao.situacao(aid)
     novos = _git("rev-list", "--count", f"main..{ramo}").stdout.strip()
     if st == "andamento":
@@ -584,7 +592,7 @@ def _executar(aid):
                 _tentadas.discard(aid)
             log("execução:", aid, execucao.situacao(aid))
             return
-        ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50)
+        ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50, atividade=aid)
         if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
             execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
             log("execução: falhou —", aid, texto[:200])
