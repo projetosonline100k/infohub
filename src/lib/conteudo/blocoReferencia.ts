@@ -39,6 +39,11 @@ export function montarBlocoReferencia(d: DadosBloco): string {
   ].join("");
 }
 
+/** Enquanto o Claude prepara: a headline e o "Preparando +Info…" (bolinha girando no editor). */
+export function montarCarregando(numero: number, headline: string): string {
+  return `<h2>Headline ${String(numero).padStart(2, "0")}: ${esc(headline)}</h2><p>Preparando +Info (transcrição, conteúdo notável, por que viralizou)…</p>`;
+}
+
 /** Lê a resposta do Claude (JSON, às vezes cercado de texto ou ```). */
 export function lerAnalise(resposta: string): { headline?: string; notavel: string[]; porque: string[] } {
   const m = resposta.match(/\{[\s\S]*\}/);

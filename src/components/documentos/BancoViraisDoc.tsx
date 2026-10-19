@@ -10,13 +10,20 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
-import { lerAnalise, montarBlocoReferencia, proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
+import { lerAnalise, montarBlocoReferencia, montarCarregando, proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
+import { TEXTO_CARREGANDO } from "@/lib/tiptapHeadlineTitulo";
 
 // ⌘H no documento (18/10/2026, Davi): "mostra os vídeos que já estão salvos no banco; ao
 // selecionar, aparece em abre e fecha — link, transcrição, conteúdo notável, por que viralizou —
 // e já marca que aquele vídeo foi usado". No Mac, o Claude (rápido) escreve a headline em
 // português, o conteúdo notável e o porquê; na web entram só link e transcrição.
 const db = supabase as unknown as SupabaseClient;
+
+// Alguns vídeos chegaram com o link no lugar do título.
+function tituloDe(r: { titulo: string; titulo_pt: string | null; criador: string | null }) {
+  const t = (r.titulo_pt || r.titulo || "").trim();
+  return /^https?:\/\//i.test(t) || !t ? `Vídeo de ${r.criador?.split(" (")[0] || "referência"}` : t;
+}
 
 interface Referencia {
   id: string; titulo: string; titulo_pt: string | null; link_video: string | null; criador: string | null; thumbnail_url: string | null;
@@ -38,7 +45,6 @@ Responda SOMENTE com um JSON:
 export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteId: string | null }) {
   const [aberto, setAberto] = useState(false);
   const [lista, setLista] = useState<Referencia[]>([]);
-  const [preparando, setPreparando] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState<Referencia | null>(null);   // ficha do vídeo antes de usar
   const [todos, setTodos] = useState(false);   // false = só os não usados
@@ -68,10 +74,19 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
     });
   }, [aberto, clienteId]);
 
+  // 18/10 (Davi): "em vez de ficar numa página carregando, poderia ficar dentro do docs, com a
+  // bolinha embaixo da headline". A headline entra na hora, com "Preparando +Info…" girando
+  // embaixo; quando o Claude responde, o bloco completo entra no lugar dos dois.
   const escolher = useCallback(async (r: Referencia) => {
-    if (preparando) return;
-    setPreparando(r.id);
     const transcricao = (r.transcricao_pt || r.transcricao || "").trim();
+    const numero = proximoNumeroHeadline(editor.getHTML());
+    const titulo = tituloDe(r);
+    editor.chain().focus().insertContent(montarCarregando(numero, titulo)).run();
+    setAberto(false);
+    setAberta(null);
+    void db.from("videos_referencia").update({ usado_em: new Date().toISOString() }).eq("id", r.id).then(({ error }) => {
+      if (error) toast.error("Não consegui marcar o vídeo como usado");
+    });
     let analise: ReturnType<typeof lerAnalise> = { notavel: [], porque: [] };
     if (isDesktop() && transcricao) {
       try {
@@ -81,45 +96,42 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
         toast("Não consegui gerar o conteúdo notável agora; entrou o resto.");
       }
     }
+    if (editor.isDestroyed) return;   // saiu do documento no meio: fica o "Preparando" (dá para apagar)
     const html = montarBlocoReferencia({
-      numero: proximoNumeroHeadline(editor.getHTML()),
-      headline: analise.headline || r.titulo_pt || r.titulo,
+      numero, headline: analise.headline || titulo,
       link: r.link_video, transcricao: transcricao || null, notavel: analise.notavel, porque: analise.porque,
     });
-    editor.chain().focus().insertContent(html).run();
-    const { error } = await db.from("videos_referencia").update({ usado_em: new Date().toISOString() }).eq("id", r.id);
-    if (error) toast.error("Entrou no documento, mas não consegui marcar o vídeo como usado");
-    setPreparando(null);
-    setAberto(false);
-  }, [editor, preparando]);
+    // Acha a headline Nº {numero} seguida do "Preparando +Info" e troca os dois pelo bloco.
+    const doc = editor.state.doc;
+    const prefixo = `Headline ${String(numero).padStart(2, "0")}:`;
+    let alvo: { de: number; ate: number } | null = null;
+    let anterior: { pos: number; no: typeof doc.firstChild } | null = null;
+    doc.forEach((no, pos) => {
+      if (!alvo && no.type.name === "paragraph" && no.textContent.startsWith(TEXTO_CARREGANDO)
+        && anterior?.no?.type.name === "heading" && anterior.no.textContent.startsWith(prefixo)) {
+        alvo = { de: anterior.pos, ate: pos + no.nodeSize };
+      }
+      anterior = { pos, no };
+    });
+    // (o TS não enxerga a atribuição dentro do forEach)
+    const achado = alvo as { de: number; ate: number } | null;
+    if (achado) editor.chain().insertContentAt({ from: achado.de, to: achado.ate }, html).run();
+    else editor.chain().focus("end").insertContent(html).run();   // apagaram o "Preparando": entra no fim
+  }, [editor]);
 
-  // Alguns vídeos chegaram com o link no lugar do título.
-  const tituloDe = (r: Referencia) => {
-    const t = (r.titulo_pt || r.titulo || "").trim();
-    return /^https?:\/\//i.test(t) || !t ? `Vídeo de ${r.criador?.split(" (")[0] || "referência"}` : t;
-  };
   const fmt = (n: number | null) => (n == null ? "" : n >= 1e6 ? `${(n / 1e6).toFixed(1).replace(".", ",")} mi` : n >= 1e3 ? `${Math.round(n / 1e3)} mil` : String(n));
   const termo = busca.trim().toLowerCase();
   const visiveis = lista.filter((r) => (todos || !r.usado_em)
     && (!termo || `${r.titulo_pt ?? ""} ${r.titulo} ${r.criador ?? ""}`.toLowerCase().includes(termo)));
-  const preparandoRef = lista.find((r) => r.id === preparando);
 
   return (
-    <Dialog open={aberto} onOpenChange={(a) => { if (!preparando) { setAberto(a); if (!a) setAberta(null); } }}>
+    <Dialog open={aberto} onOpenChange={(a) => { setAberto(a); if (!a) setAberta(null); }}>
       <DialogContent className="max-w-5xl gap-3 p-5">
         <DialogHeader>
           <DialogTitle>Banco de vídeos virais</DialogTitle>
           <DialogDescription>Clique num vídeo para ver os detalhes; "Usar este vídeo" coloca no documento o link, a transcrição, o conteúdo notável e por que viralizou. (⌘H)</DialogDescription>
         </DialogHeader>
-        {preparando ? (
-          <div className="flex items-center gap-4 rounded-xl border bg-muted/40 p-4">
-            {preparandoRef?.thumbnail_url && <img src={preparandoRef.thumbnail_url} alt="" className="h-28 w-20 rounded-lg object-cover" />}
-            <div className="text-sm">
-              <p className="font-semibold">{preparandoRef ? tituloDe(preparandoRef) : ""}</p>
-              <p className="mt-1 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Preparando transcrição, conteúdo notável e por que viralizou…</p>
-            </div>
-          </div>
-        ) : aberta ? (
+        {aberta ? (
           // Ficha do vídeo (18/10: "queria abrir o vídeo e ver melhor as informações" antes de usar).
           <div className="flex gap-5">
             <button type="button" title="Assistir no Instagram" onClick={() => aberta.link_video && void abrirLinkExterno(aberta.link_video)}

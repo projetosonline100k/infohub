@@ -1,5 +1,10 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
+
+// Parágrafo "Preparando +Info…" (⌘H, enquanto o Claude escreve): ganha a bolinha girando
+// (classe bloco-carregando, editor.css) até o bloco de verdade entrar no lugar dele.
+export const TEXTO_CARREGANDO = "Preparando +Info";
 
 // "Headline N" vira título (18/10/2026, Davi: "quando eu escrever Headline e tal, quero que fique
 // em negrito, em título mesmo, para depois conseguir ocultar com a ferramenta de abrir e fechar").
@@ -23,6 +28,20 @@ export const HeadlineTitulo = Extension.create({
             tr = (tr ?? estado.tr).setNodeMarkup(pos, titulo, { level: 2 });
           });
           return tr;
+        },
+      }),
+      new Plugin({
+        key: new PluginKey("blocoCarregando"),
+        props: {
+          decorations: (estado) => {
+            const marcas: Decoration[] = [];
+            estado.doc.forEach((no, pos) => {
+              if (no.type.name === "paragraph" && no.textContent.startsWith(TEXTO_CARREGANDO)) {
+                marcas.push(Decoration.node(pos, pos + no.nodeSize, { class: "bloco-carregando" }));
+              }
+            });
+            return DecorationSet.create(estado.doc, marcas);
+          },
         },
       }),
     ];
