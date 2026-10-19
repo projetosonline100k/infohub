@@ -107,7 +107,7 @@ def contexto(bid, como=None):
             entrega = q.fetchone()
             q.execute("SELECT status FROM quizzes WHERE atividade_id = %s ORDER BY criado_em DESC LIMIT 1", (atividade_id,))
             quiz = q.fetchone()
-            q.execute("""SELECT id, titulo, status, versao FROM edicoes_video WHERE atividade_id = %s AND status <> 'cancelado'
+            q.execute("""SELECT id, titulo, status, versao, formato FROM edicoes_video WHERE atividade_id = %s AND status <> 'cancelado'
                           ORDER BY atualizado_em DESC""", (atividade_id,))
             edicoes_da_tarefa = q.fetchall()   # lote do Danilo: vários vídeos na mesma tarefa
             edicao = edicoes_da_tarefa[0] if edicoes_da_tarefa else None
@@ -170,8 +170,16 @@ def contexto(bid, como=None):
         print(f'CONVERSA SOBRE A ENTREGA da tarefa "{t_tit}" (id {atividade_id}, situação {t_sit}).')
         print(f'Documento entregue: "{d_tit}" ({d_id}). Leia: python3 scripts/consulta.py "select conteudo from documentos where id = \'{d_id}\'"' if d_id else 'Documento entregue: (não achei)')
         if edicao:
-            e_id, e_tit, e_st, e_v = edicao
-            print(f'É uma EDIÇÃO DE VÍDEO: "{e_tit}" (edição {e_id}, versão {e_v}, status {e_st}). O Davi está no EDITOR do Danilo, '
+            e_id, e_tit, e_st, e_v, e_fmt = edicao
+            if e_fmt == 'dark':
+                print(f'É uma EDIÇÃO DE VÍDEO no FORMATO DARK: "{e_tit}" (edição {e_id}, versão {e_v}, status {e_st}). O Davi está no EDITOR do Danilo '
+                      f'vendo a versão gerada e conversando com você. Pasta: ~/.infopro-hub/danilo/edicoes/{e_id}/ (dark_cenas.py = as cenas desenhadas; '
+                      'legendas.json = as legendas; voz.wav = a voz). Manual do formato: o topo de scripts/danilo/dark.py (primitivas em scripts/danilo/papel.py). '
+                      f'Para ajustar: mude o dark_cenas.py ou o legendas.json, confira com `python3 scripts/danilo/dark.py contato ~/.infopro-hub/danilo/edicoes/{e_id}` '
+                      f'(olhe o _dark_contato.jpg) e gere a versão com `python3 scripts/danilo/danilo.py versao {e_id}` (o editor recarrega sozinho). '
+                      'NÃO use o entregar e NÃO aprove (quem aprova é o Davi). O que valer para os próximos vídeos, anote nos aprendizados (aprender.py, agente "danilo").')
+            else:
+              print(f'É uma EDIÇÃO DE VÍDEO: "{e_tit}" (edição {e_id}, versão {e_v}, status {e_st}). O Davi está no EDITOR do Danilo, '
                   f'vendo a edição e conversando com você. Pasta: ~/.infopro-hub/danilo/edicoes/{e_id}/ (projeto.json, escolhas.json). '
                   'Manual: docs/agentes/danilo-editor.md (Parte B). Ferramentas: python3 scripts/danilo/danilo.py texto|ouvir|quadros|pintura|versao|conferir. '
                   'Para mudar a edição: edite o projeto.json DIRETO (tempos no bruto; ele já tem o que o Davi mexeu no editor). '
@@ -182,7 +190,7 @@ def contexto(bid, como=None):
             if len(edicoes_da_tarefa) > 1:
                 print('ATENÇÃO: esta tarefa é um LOTE com vários vídeos. Descubra pela mensagem do Davi de qual vídeo ele fala '
                       '(do editor ela começa com Sobre "<título>"); a de cima é só a mexida por último (troque o id nos comandos e na pasta pelo do vídeo certo). Se não der para saber, pergunte. '
-                      'Edições da tarefa: ' + '; '.join(f'"{t}" (edição {i}, status {st}, versão {v})' for i, t, st, v in edicoes_da_tarefa))
+                      'Edições da tarefa: ' + '; '.join(f'"{t}" (edição {i}, status {st}, versão {v})' for i, t, st, v, _f in edicoes_da_tarefa))
         if carrosseis:
             print('São CARROSSÉIS do Roy. O Davi está na REVISÃO do carrossel (páginas e legenda na tela) conversando com você ao lado:')
             for cid, num, tema, cst, cv, fb in carrosseis:

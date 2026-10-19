@@ -136,7 +136,13 @@ def aprovar(id_):
             import danilo
             remoto = entrega.get("destino_remoto") or danilo.REMOTO_DESTINO
             status(id_, "aprovando", "Enviando pro Drive…")
-            danilo.rclone("copyto", str(final), f"{remoto}/{entrega.get('nome_final') or id_}.mp4", timeout=3600)
+            aviso_drive = None
+            try:
+                danilo.rclone("copyto", str(final), f"{remoto}/{entrega.get('nome_final') or id_}.mp4", timeout=3600)
+            except OSError as e:          # Drive cheio/fora: o final fica no Mac (é dele que a Dalila lê)
+                log("entrega no Drive falhou", id_, str(e)[:200])
+                aviso_drive = ("O vídeo foi aprovado, mas a cópia não subiu para Eu.davi/Editado no Drive"
+                               + (" (o Drive está cheio)." if "quota" in str(e).lower() else ".") + " O Reel segue normal.")
             destino_txt = str(final)      # a Dalila lê daqui (a cópia de entrega fica em Eu.davi/Editado no Drive)
             if entrega.get("bruto_remoto"):
                 br = entrega["bruto_remoto"]
@@ -168,7 +174,7 @@ def aprovar(id_):
                       WHERE id = %s""", (linha[0],))
             if linha[1]:
                 db("UPDATE public.videos_vertical SET status = 'pronto' WHERE id = %s AND status IN ('gravacao', 'edicao')", (linha[1],))
-            status(id_, "aprovado", None, final_drive=destino_txt, duracao=round(dur, 1))
+            status(id_, "aprovado", aviso_drive, final_drive=destino_txt, duracao=round(dur, 1))
             log("aprovado", id_, destino_txt)
         except Exception as e:
             log("aprovar erro", id_, traceback.format_exc()[-400:])

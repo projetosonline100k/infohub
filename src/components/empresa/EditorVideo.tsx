@@ -281,6 +281,9 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const tFonteRef = useRef(tFonte); tFonteRef.current = tFonte;
   const relativo = (arq: string) => (arq.startsWith(pasta + "/") ? arq.slice(pasta.length + 1) : null);
   const ocupado = estado?.status === "renderizando" || estado?.status === "aprovando";
+  // Formato dark (19/10): sem o Davi na tela, só a voz e o papel desenhado. Não tem linha do
+  // tempo de vídeo: abre na versão gerada e os ajustes são pela conversa com o Danilo.
+  const dark = (projeto as { formato?: string } | null)?.formato === "dark";
   const zoomsFinais = useMemo(() => (projeto?.zooms ?? []).flatMap((z) => {
     const a = paraFinal(segs, z.inicio, "inicio"), b = paraFinal(segs, z.fim, "fim");
     return a != null && b != null && b - a > 0.05 ? [{ a, b, z: z.z, tipo: z.tipo }] : [];
@@ -671,8 +674,8 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
           {web && !macVivo && <span className="rounded bg-amber-500/20 px-2 py-0.5 text-[11px] text-amber-300">Mac do Davi desligado: os pedidos esperam ele ligar</span>}
           <div className="ml-auto flex items-center gap-1.5">
             {conversa && <BotaoBarra onClick={() => setChatAberto(!chatAberto)} ativo={chatAberto}><MessageCircle className="h-3.5 w-3.5" />Danilo</BotaoBarra>}
-            <BotaoBarra onClick={() => setVerVersao((v) => !v)} ativo={verVersao}>{verVersao ? "Voltar à montagem" : "Ver versão gerada"}</BotaoBarra>
-            <BotaoBarra onClick={() => void salvar(false)} disabled={!mudou || web}><Save className="h-3.5 w-3.5" />Salvar</BotaoBarra>
+            {!dark && <BotaoBarra onClick={() => setVerVersao((v) => !v)} ativo={verVersao}>{verVersao ? "Voltar à montagem" : "Ver versão gerada"}</BotaoBarra>}
+            {!dark && <BotaoBarra onClick={() => void salvar(false)} disabled={!mudou || web}><Save className="h-3.5 w-3.5" />Salvar</BotaoBarra>}
             <BotaoBarra onClick={() => void salvar(true)} disabled={ocupado}>Gerar versão</BotaoBarra>
             <a href={web ? previaWeb ?? undefined : url(`arquivo/${estado?.status === "aprovado" ? "final.mp4" : "previa.mp4"}`)} download className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs hover:bg-zinc-700"><Download className="h-3.5 w-3.5" />Baixar</a>
             <button type="button" onClick={() => void aprovar()} disabled={ocupado || estado?.status === "aprovado"}
@@ -693,9 +696,10 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
           }}>
         {!web && !cfg ? <Aviso>O serviço do Danilo não está ligado neste Mac.</Aviso>
           : !projeto ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
-          : verVersao ? (
-            <div className="flex min-h-0 flex-1 items-center justify-center bg-black p-4">
-              <video key={estado?.versao} src={web ? previaWeb ?? undefined : url(`arquivo/previa.mp4?v=${estado?.versao}`)} controls className="h-full max-h-full rounded" />
+          : verVersao || dark ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-black p-4">
+              <video key={estado?.versao} src={web ? previaWeb ?? undefined : url(`arquivo/previa.mp4?v=${estado?.versao}`)} controls className="min-h-0 flex-1 rounded" />
+              {dark && <p className="text-center text-xs text-zinc-400">Formato dark: para mudar uma cena, um texto ou a legenda, peça ao Danilo na conversa ao lado. Ele refaz e a versão nova aparece aqui.</p>}
             </div>
           ) : (
             <div className="flex min-h-0 flex-1">

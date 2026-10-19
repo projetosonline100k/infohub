@@ -339,6 +339,16 @@ def renderizar(pasta, previa=False, progresso=None):
     k = 0.5 if previa else 1.0
     LW, LH = int(LARG * k), int(ALT * k)
     projeto = json.loads((pasta / "projeto.json").read_text())
+    if projeto.get("formato") == "dark":
+        # Formato dark (19/10): só a voz, a tela inteira é o papel desenhado (dark.py,
+        # com dark_cenas.py e legendas.json na pasta da edição).
+        import dark
+        if progresso:
+            progresso(0.02)
+        saida = Path(dark.render(pasta, previa=previa))
+        destino = pasta / ("previa.mp4" if previa else "final.mp4")
+        saida.replace(destino)
+        return destino, dark.duracao(destino)
     segs = trechos_mantidos(projeto)
     mapa = Mapa(segs)
     dur = mapa.duracao

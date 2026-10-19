@@ -23,6 +23,7 @@ BEGIN
  UPDATE public.edicoes_video SET formato = 'papel', status = 'na_fila' WHERE id = '10000000-0000-0000-0000-0000000003e1';
  GET DIAGNOSTICS n = ROW_COUNT;
  IF n <> 1 THEN RAISE EXCEPTION 'dono não escolheu o formato'; END IF;
+ UPDATE public.edicoes_video SET formato = 'dark' WHERE id = '10000000-0000-0000-0000-0000000003e1';
  BEGIN
    UPDATE public.edicoes_video SET formato = 'outro' WHERE id = '10000000-0000-0000-0000-0000000003e1';
    RAISE EXCEPTION 'formato inválido aceito';
