@@ -332,6 +332,8 @@ export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ult
   const cobrar = deles.filter((e) => situacaoEntrega(e, agora) === "cobrar");
   if (cobrar.length) out.push({ texto: cobrar.length > 1 ? `Cobrar ${cobrar.length} entregas` : "Cobrar entrega", tom: "urg", dica: cobrar.map((e) => e.o_que).join(" · ") });
   else if (deles.length) out.push({ texto: "Aguardando entrega deles", tom: "media", dica: deles.map((e) => e.o_que).join(" · ") });
+  // Nada pedindo ação do Davi (19/10, Davi: "uma etiqueta Tudo ok!, sinalizando que está tudo nos conformes").
+  if (!out.some((e) => e.tom === "urg" || e.tom === "alta")) out.unshift({ texto: "Tudo ok!", tom: "ok", dica: "nada esperando você: respondido, compromissos em dia e cliente satisfeito" });
   if (mentorados.some((x) => x.upgrade?.nivel === "alto")) out.push({ texto: "Upgrade", tom: "ok", dica: "potencial alto de upgrade" });
   return out;
 }

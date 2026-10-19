@@ -72,7 +72,7 @@ test('aguardando resposta quando a última é minha com pergunta; depois de 48h 
   const met = calcularMetricas(hh, agora);
   const chat = (ultima_em, ultima_texto) => ({ chat_id: 'g@g.us', chat_nome: 'Royal Defense', eh_grupo: true, ultima_em, ultima_de_mim: true, ultima_texto, ultima_tipo: 'texto' });
   const tx = (c) => etiquetasDaConversa(c, hh, cards, { c1: true }, met, agora).map((e) => e.texto).filter((t) => t !== 'Upgrade');
-  assert.deepEqual(tx(chat('2026-10-19T09:54:00', 'Alguém do time vai conseguir gravar no dia 29?')), ['Aguardando resposta']);
+  assert.deepEqual(tx(chat('2026-10-19T09:54:00', 'Alguém do time vai conseguir gravar no dia 29?')), ['Tudo ok!', 'Aguardando resposta']);
   assert.deepEqual(tx(chat('2026-10-16T09:54:00', 'Conseguem dia 29?')), ['Sem resposta há 3 dias']);
-  assert.deepEqual(tx(chat('2026-10-19T09:54:00', 'Obrigado, pessoal!')), []);
+  assert.deepEqual(tx(chat('2026-10-19T09:54:00', 'Obrigado, pessoal!')), ['Tudo ok!']);
 });
