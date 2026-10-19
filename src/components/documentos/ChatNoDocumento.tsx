@@ -213,7 +213,8 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const chaveRev = `docchat:rev:${chave ?? "sem"}`;
   const [revisoes, setRevisoes] = useState<Revisao[]>(() => ler(chaveRev, []));
   useEffect(() => setRevisoes(ler(chaveRev, [])), [chaveRev]);
-  const guardarRevisoes = (f: (l: Revisao[]) => Revisao[]) => setRevisoes((l) => { const n = f(l).slice(-10); gravar(chaveRev, n); return n; });
+  const guardarRevisoes = (f: (l: Revisao[]) => Revisao[]) => setRevisoes((l) => { const n = f(l).slice(-200);   // era 10: no "gerar todos" de 15 roteiros os 5 primeiros perdiam os comentários (19/10)
+    gravar(chaveRev, n); return n; });
   const campo = useRef<HTMLTextAreaElement>(null);
   const rodando = useRef<Set<string>>(new Set());   // escritas em andamento (o "gerar todos" roda 2 de cada vez)
   const parou = useRef(false);
