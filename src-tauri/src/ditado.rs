@@ -242,6 +242,7 @@ pub fn iniciar(app: AppHandle) {
                 registrar("apertado", &format!("flags={flags:#x} cmd_esq={} cmd_dir={}",
                     unsafe { CGEventSourceKeyState(HID, 55) }, unsafe { CGEventSourceKeyState(HID, 54) }));
                 pausar_midia();
+                preaquecer_claude();   // abre o Claude enquanto o Davi fala
                 let _ = app.emit_to("jarvis", EVENTO_APERTADO, ());
             }
         }
@@ -271,14 +272,17 @@ fn claude_bin() -> Option<std::path::PathBuf> {
     achados.into_iter().max_by(|a, b| a.0.cmp(&b.0)).map(|(_, p)| p)
 }
 
-const PEDIDO: &str = "Você recebe a transcrição de uma fala do Davi (ditado por voz). Reescreva como uma mensagem pronta para ele mandar no WhatsApp para outra pessoa ou grupo:\n\
+
+macro_rules! INSTRUCAO_ORGANIZAR { () => { "Você recebe a transcrição de uma fala do Davi (ditado por voz). Reescreva como uma mensagem pronta para ele mandar no WhatsApp para outra pessoa ou grupo:\n\
 - português do Brasil, primeira pessoa (quem fala é o Davi), tom amigável, natural e direto, como ele falaria;\n\
 - organizada: parágrafos curtos; se houver vários pontos, pedidos ou passos, use uma lista com •; *negrito* do WhatsApp só se ajudar muito;\n\
 - tire vícios de fala (né, tipo, é…, então assim) e repetições; corrija erros óbvios de transcrição;\n\
 - mantenha o chamamento e a saudação que ele disse (ex.: \"Pessoal,\", \"Fala, Matheus\");\n\
 - NÃO invente nada, NÃO tire informação, NÃO responda à mensagem, NÃO acrescente saudação nem despedida que ele não disse;\n\
 - se a fala for curta e simples, devolva só uma frase limpa.\n\
-Responda SOMENTE com a mensagem final, sem comentários.\n\nTRANSCRIÇÃO:\n";
+Responda SOMENTE com a mensagem final, sem comentários." } }
+const PEDIDO: &str = concat!(INSTRUCAO_ORGANIZAR!(), "\n\nTRANSCRIÇÃO:\n");
+
 
 /// Claude rápido, sem ferramentas, MCP, comandos nem ajustes do usuário (~2–4 s para abrir em
 /// vez de ~8 s). None se não deu.
@@ -306,6 +310,69 @@ fn claude_bloqueante(prompt: &str, modelo: &str, web: bool) -> Option<String> {
     (saida.status.success() && !texto.is_empty()).then_some(texto)
 }
 
+// ---------------------------------------------------------------- Claude pré-aberto
+// 19/10 (Davi: "quero bem rápido"): abrir o Claude leva ~2–3 s. Ele já abre quando o Davi aperta
+// o ⌘ (instrução curta própria, sem o manual do Claude Code) e fica esperando a transcrição;
+// ao soltar, só falta a resposta. Vale por 90 s; o próximo aperto troca por um novo.
+struct ClaudeQuente {
+    filho: std::process::Child,
+    criado: Instant,
+}
+static QUENTE: std::sync::Mutex<Option<ClaudeQuente>> = std::sync::Mutex::new(None);
+
+fn largar(q: Option<ClaudeQuente>) {
+    if let Some(mut q) = q {
+        let _ = q.filho.kill();
+        let _ = q.filho.wait();
+    }
+}
+
+pub fn preaquecer_claude() {
+    std::thread::spawn(|| {
+        let Some(bin) = claude_bin() else { return };
+        let filho = Command::new(bin)
+            .args(["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--model", "haiku",
+                   "--system-prompt", INSTRUCAO_ORGANIZAR!(), "--tools", "", "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}",
+                   "--disable-slash-commands", "--setting-sources", "", "--no-session-persistence", "--max-turns", "1"])
+            .current_dir(std::env::temp_dir())
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn();
+        if let Ok(filho) = filho {
+            let antigo = QUENTE.lock().unwrap_or_else(|e| e.into_inner()).replace(ClaudeQuente { filho, criado: Instant::now() });
+            largar(antigo);
+        }
+    });
+}
+
+/// Usa o Claude pré-aberto (se ainda está vivo e é recente). None = não tinha.
+fn organizar_no_quente(texto: &str) -> Option<String> {
+    use std::io::{BufRead, Write};
+    let mut q = QUENTE.lock().unwrap_or_else(|e| e.into_inner()).take()?;
+    if q.criado.elapsed() > Duration::from_secs(90) || !matches!(q.filho.try_wait(), Ok(None)) {
+        largar(Some(q));
+        return None;
+    }
+    let mensagem = serde_json::json!({ "type": "user", "message": { "role": "user", "content": texto } }).to_string();
+    {
+        let mut entrada = q.filho.stdin.take()?;
+        entrada.write_all(format!("{mensagem}\n").as_bytes()).ok()?;
+    } // fecha a entrada: é a única mensagem
+    let saida = q.filho.stdout.take()?;
+    let mut resultado = None;
+    for linha in std::io::BufReader::new(saida).lines().map_while(Result::ok) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&linha) {
+            if v.get("type").and_then(|t| t.as_str()) == Some("result") {
+                resultado = v.get("result").and_then(|r| r.as_str()).map(|r| r.trim().to_string()).filter(|r| !r.is_empty());
+                break;
+            }
+        }
+    }
+    largar(Some(q));
+    resultado
+}
+
 /// Organiza a fala transcrita (Claude, modelo rápido). Se der errado, devolve a fala como veio.
 #[tauri::command]
 pub async fn ditado_organizar(texto: String) -> Result<String, String> {
@@ -314,7 +381,9 @@ pub async fn ditado_organizar(texto: String) -> Result<String, String> {
         return Ok(texto);
     }
     let original = texto.clone();
-    let resultado = tauri::async_runtime::spawn_blocking(move || claude_rapido_bloqueante(&format!("{PEDIDO}{texto}"), "haiku"))
+    let resultado = tauri::async_runtime::spawn_blocking(move || {
+        organizar_no_quente(&texto).or_else(|| claude_rapido_bloqueante(&format!("{PEDIDO}{texto}"), "haiku"))
+    })
         .await
         .map_err(|e| e.to_string())?;
     Ok(resultado.unwrap_or(original))

@@ -24,7 +24,7 @@ MODELOS = {
     "preciso": "mlx-community/whisper-large-v3-turbo",
     "rapido": "mlx-community/whisper-small-mlx",
 }
-OCIOSO_MAX_S = 10 * 60
+OCIOSO_MAX_S = 60 * 60   # 19/10: o ditado sofria ~10 s recarregando o modelo depois de 10 min parado
 SAIDA = sys.stdout
 # Nada de bibliotecas escrevendo no stdout: ele é só das respostas em JSON.
 sys.stdout = sys.stderr
