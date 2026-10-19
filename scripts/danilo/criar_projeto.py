@@ -175,6 +175,7 @@ def montar(pasta, escolhas=None):
         "legendas": legendas(palavras, esc.get("palavras_head", 0), esc.get("blocos_head", [])),
         "midias": esc.get("midias", []),
         "musica": esc.get("musica"),
+        "formato": esc.get("formato", "classico"),   # 'papel': tela dividida (papel.py, papel_cenas.py)
         "destaques": esc.get("destaques", []),
         "cor": "cinema",
         "zoom": [],

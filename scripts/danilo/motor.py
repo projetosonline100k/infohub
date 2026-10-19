@@ -440,7 +440,15 @@ def renderizar(pasta, previa=False, progresso=None):
     erro = proc.stderr.read()
     if proc.wait() != 0:
         raise RuntimeError(f"ffmpeg falhou: {erro.strip()[-300:]}")
-    temp.replace(saida)   # troca só no fim: o player nunca pega arquivo pela metade
+    if projeto.get("formato") == "papel" and (pasta / "papel_cenas.py").exists():
+        # Formato papel: tela dividida com o papel desenhado em cima (papel.py).
+        import papel
+        if progresso:
+            progresso(0.99)
+        papel.compor(pasta, temp, saida, lambda tb: mapa.para_final(tb, "inicio"), dur, LW)
+        temp.unlink(missing_ok=True)
+    else:
+        temp.replace(saida)   # troca só no fim: o player nunca pega arquivo pela metade
     return saida, dur
 
 

@@ -30,6 +30,7 @@ import {
 export interface EdicaoResumo {
   id: string; titulo: string; status: string; mensagem: string | null; versao: number; final_drive: string | null; duracao: number | null;
   previa_url?: string | null; projeto_em?: string | null;   // editor pela web (chegam pelo realtime)
+  formato?: "classico" | "papel" | null; opcoes_formato?: Record<string, string> | null;   // escolha do formato (18/10)
 }
 const db = supabase as unknown as SupabaseClient;   // edicoes_pedidos e colunas novas ainda fora dos tipos gerados
 const segsDaPrevia = (p: ProjetoEdicao) =>

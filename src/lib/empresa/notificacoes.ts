@@ -36,7 +36,7 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
     db.from("briefing_mensagens").select("id, briefing_id, cliente_id, texto, membro_id, criada_em")
       .eq("papel", "funcionario").gt("criada_em", desde).limit(100),
     db.from("edicoes_video").select("id, cliente_id, titulo, status, versao, mensagem, atualizado_em")
-      .gt("atualizado_em", desde).in("status", ["revisar", "erro"]).limit(50),
+      .gt("atualizado_em", desde).in("status", ["revisar", "erro", "escolher_formato"]).limit(50),
     db.from("carrosseis").select("id, cliente_id, tema, status, atualizado_em")
       .gt("atualizado_em", desde).in("status", ["revisar", "erro"]).limit(50),
     db.from("melhorias_sistema").select("id, cliente_id, titulo, status, resultado, atualizado_em")
@@ -86,8 +86,10 @@ export async function buscarAvisos(desde: string, meuId: string): Promise<Aviso[
   }
   for (const x of (eds.data || []) as { id: string; cliente_id: string; titulo: string; status: string; versao: number; mensagem: string | null; atualizado_em: string }[]) {
     avisos.push({ id: `e-${x.id}-${x.versao}-${x.status}`, tipo: x.status === "erro" ? "erro" : "edicao", quando: x.atualizado_em,
-      titulo: x.status === "erro" ? "Danilo teve um problema na edição" : `Danilo terminou a versão ${x.versao}`, detalhe: curto(x.status === "erro" ? x.mensagem : x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false,
-      revisar: x.status === "revisar" });
+      titulo: x.status === "erro" ? "Danilo teve um problema na edição"
+        : x.status === "escolher_formato" ? "Danilo quer saber o formato do vídeo" : `Danilo terminou a versão ${x.versao}`,
+      detalhe: curto(x.status === "erro" ? x.mensagem : x.titulo), clienteId: x.cliente_id, projeto: projeto.get(x.cliente_id), lido: false,
+      revisar: x.status === "revisar" || x.status === "escolher_formato" });
   }
   for (const x of (cars.data || []) as { id: string; cliente_id: string; tema: string; status: string; atualizado_em: string }[]) {
     avisos.push({ id: `c-${x.id}-${x.status}-${x.atualizado_em}`, tipo: x.status === "erro" ? "erro" : "carrossel", quando: x.atualizado_em,
