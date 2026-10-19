@@ -352,7 +352,13 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
 
   const tabArrastada = arrasto?.destacando ? tabs.find((tab) => tab.id === arrasto.id) : undefined;
 
-  return <nav ref={navRef} onDragStart={(event) => event.preventDefault()} className="relative z-[100] flex h-10 shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-3 pt-1 shadow-sm" aria-label="Abas abertas">
+  // No Mac as guias moram na barra de título, ao lado dos botões da janela (18/10, Davi: "igual
+  // do Chrome"): espaço à esquerda para os três botões e a parte vazia arrasta a janela
+  // (data-tauri-drag-region; dois cliques maximizam).
+  const naBarraDeTitulo = isDesktop() && /Mac/i.test(navigator.userAgent);
+  return <nav ref={navRef} data-tauri-drag-region={naBarraDeTitulo ? "" : undefined} onDragStart={(event) => event.preventDefault()}
+    className={cn("relative z-[100] flex shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-3 shadow-sm",
+      naBarraDeTitulo ? "h-[42px] pl-[84px] pt-1.5 bg-muted/60" : "h-10 pt-1")} aria-label="Abas abertas">
     {tabs.map((tab) => {
       const active = tab.id === activeId;
       const canClose = tabs.length > 1;
