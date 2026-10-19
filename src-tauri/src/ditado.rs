@@ -283,11 +283,21 @@ Responda SOMENTE com a mensagem final, sem comentários.\n\nTRANSCRIÇÃO:\n";
 /// Claude rápido, sem ferramentas, MCP, comandos nem ajustes do usuário (~2–4 s para abrir em
 /// vez de ~8 s). None se não deu.
 fn claude_rapido_bloqueante(prompt: &str, modelo: &str) -> Option<String> {
+    claude_bloqueante(prompt, modelo, false)
+}
+
+/// `web`: libera só a pesquisa na internet (WebSearch/WebFetch), com mais voltas.
+fn claude_bloqueante(prompt: &str, modelo: &str, web: bool) -> Option<String> {
     let bin = claude_bin()?;
-    let saida = Command::new(bin)
-        .args(["-p", prompt, "--model", modelo, "--output-format", "text", "--max-turns", "1",
-               "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", "", "--disable-slash-commands",
-               "--setting-sources", "", "--no-session-persistence"])
+    let (ferramentas, turnos) = if web { ("WebSearch,WebFetch", "15") } else { ("", "1") };
+    let mut cmd = Command::new(bin);
+    cmd.args(["-p", prompt, "--model", modelo, "--output-format", "text", "--max-turns", turnos,
+               "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", ferramentas, "--disable-slash-commands",
+               "--setting-sources", "", "--no-session-persistence"]);
+    if web {
+        cmd.args(["--allowedTools", "WebSearch", "WebFetch"]);
+    }
+    let saida = cmd
         .current_dir(std::env::temp_dir()) // pasta neutra: sem CLAUDE.md de projeto
         .stdin(Stdio::null())
         .output()
@@ -308,6 +318,16 @@ pub async fn ditado_organizar(texto: String) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
     Ok(resultado.unwrap_or(original))
+}
+
+/// Pesquisa na internet com o Claude (Radar de virais: achar vídeos que viralizaram no
+/// Instagram/TikTok). Leva ~30 s.
+#[tauri::command]
+pub async fn claude_pesquisa(pedido: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || claude_bloqueante(&pedido, "sonnet", true))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "A pesquisa não respondeu.".to_string())
 }
 
 /// Pedido livre ao Claude rápido, a partir do app (ex.: análise de um vídeo de referência

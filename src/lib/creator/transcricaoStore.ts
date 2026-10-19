@@ -38,7 +38,7 @@ interface Resultado {
 }
 
 // Guarda a capa no Storage (o link do Instagram expira) e devolve a URL pública.
-async function salvarCapa(userId: string, capa: Resultado["capa"]): Promise<string | null> {
+export async function salvarCapa(userId: string, capa: Resultado["capa"]): Promise<string | null> {
   if (!capa?.base64) return null;
   try {
     const bytes = Uint8Array.from(atob(capa.base64), (c) => c.charCodeAt(0));

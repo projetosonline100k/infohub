@@ -334,6 +334,33 @@ def transcrever_voz(caminho):
     return {"texto": texto, "segundos": round(time.time() - inicio, 1)}
 
 
+def buscar_youtube(termo):
+    """Radar de virais (18/10): busca no YouTube pelo yt-dlp, sem baixar nada — views reais.
+    Devolve os 60 primeiros da busca, ordenados por views (o app filtra os curtos)."""
+    import yt_dlp
+    termo = (termo or "").strip()
+    if not termo:
+        return {"erro": "Escreva um tema para buscar."}
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": True, "skip_download": True}) as ydl:
+        r = ydl.extract_info(f"ytsearch60:{termo}", download=False)
+    videos = []
+    for e in r.get("entries") or []:
+        if not e or not e.get("id"):
+            continue
+        thumbs = e.get("thumbnails") or []
+        videos.append({
+            "plataforma": "youtube",
+            "link": e.get("url") or f"https://www.youtube.com/watch?v={e['id']}",
+            "titulo": e.get("title") or "",
+            "criador": e.get("channel") or e.get("uploader"),
+            "visualizacoes": e.get("view_count"),
+            "duracao": e.get("duration"),
+            "capa_url": thumbs[-1]["url"] if thumbs else f"https://i.ytimg.com/vi/{e['id']}/hqdefault.jpg",
+        })
+    videos.sort(key=lambda v: -(v["visualizacoes"] or 0))
+    return {"videos": videos}
+
+
 def main():
     ffmpeg = preparar_ffmpeg()
     try:
@@ -357,6 +384,12 @@ def main():
                 responder({"id": id_, **traduzir(pedido.get("url") or "")})
             except Exception as e:
                 responder({"id": id_, "erro": f"Tradutor não respondeu: {str(e)[:200]}"})
+            continue
+        if pedido.get("modo") == "buscar_youtube":
+            try:
+                responder({"id": id_, **buscar_youtube(pedido.get("url") or "")})
+            except Exception as e:
+                responder({"id": id_, "erro": f"A busca no YouTube falhou: {str(e)[:200]}"})
             continue
         if pedido.get("modo") == "aquecer":
             # Ditado (18/10): o Davi segurou ⌘ — carrega o modelo enquanto ele fala.

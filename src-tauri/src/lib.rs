@@ -82,6 +82,7 @@ pub fn run() {
             ditado::ditado_colar,
             ditado::ditado_registrar,
             ditado::claude_rapido,
+            ditado::claude_pesquisa,
         ]);
     // Fora do macOS só existe o comando de destacar aba.
     #[cfg(not(target_os = "macos"))]

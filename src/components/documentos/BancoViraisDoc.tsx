@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
 import { lerAnalise, montarBlocoReferencia, montarCarregando, proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
 import { TEXTO_CARREGANDO } from "@/lib/tiptapHeadlineTitulo";
+import { RadarVirais } from "./RadarVirais";
 
 // ⌘H no documento (18/10/2026, Davi): "mostra os vídeos que já estão salvos no banco; ao
 // selecionar, aparece em abre e fecha — link, transcrição, conteúdo notável, por que viralizou —
@@ -47,6 +48,7 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
   const [lista, setLista] = useState<Referencia[]>([]);
   const [busca, setBusca] = useState("");
   const [aberta, setAberta] = useState<Referencia | null>(null);   // ficha do vídeo antes de usar
+  const [modo, setModo] = useState<"banco" | "radar">("banco");
   const [todos, setTodos] = useState(false);   // false = só os não usados
 
   // ⌘H (o menu do Mac não usa mais essa tecla para ocultar o app).
@@ -72,7 +74,7 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
       // Os ainda não usados primeiro.
       setLista(((data ?? []) as Referencia[]).sort((a, b) => Number(!!a.usado_em) - Number(!!b.usado_em)));
     });
-  }, [aberto, clienteId]);
+  }, [aberto, clienteId, modo]);
 
   // 18/10 (Davi): "em vez de ficar numa página carregando, poderia ficar dentro do docs, com a
   // bolinha embaixo da headline". A headline entra na hora, com "Preparando +Info…" girando
@@ -128,10 +130,22 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
     <Dialog open={aberto} onOpenChange={(a) => { setAberto(a); if (!a) setAberta(null); }}>
       <DialogContent className="max-w-5xl gap-3 p-5">
         <DialogHeader>
-          <DialogTitle>Banco de vídeos virais</DialogTitle>
-          <DialogDescription>Clique num vídeo para ver os detalhes; "Usar este vídeo" coloca no documento o link, a transcrição, o conteúdo notável e por que viralizou. (⌘H)</DialogDescription>
+          <div className="flex flex-wrap items-center gap-3 pr-8">
+            <DialogTitle>{modo === "banco" ? "Banco de vídeos virais" : "Radar de virais"}</DialogTitle>
+            <div className="inline-flex rounded-lg border p-0.5 text-xs font-medium">
+              {([["banco", "Banco"], ["radar", "✦ Radar de virais"]] as const).map(([m, r]) => (
+                <button key={m} type="button" onClick={() => { setModo(m); setAberta(null); }}
+                  className={cn("rounded-md px-3 py-1", modo === m ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>{r}</button>
+              ))}
+            </div>
+          </div>
+          <DialogDescription>{modo === "banco"
+            ? "Clique num vídeo para ver os detalhes; \"Usar este vídeo\" coloca no documento o link, a transcrição, o conteúdo notável e por que viralizou. (⌘H)"
+            : "Busque vídeos que viralizaram, gere headlines com as suas estruturas ou analise um link — com a IA."}</DialogDescription>
         </DialogHeader>
-        {aberta ? (
+        {modo === "radar" ? (
+          <RadarVirais editor={editor} clienteId={clienteId} onUsado={() => setAberto(false)} />
+        ) : aberta ? (
           // Ficha do vídeo (18/10: "queria abrir o vídeo e ver melhor as informações" antes de usar).
           <div className="flex gap-5">
             <button type="button" title="Assistir no Instagram" onClick={() => aberta.link_video && void abrirLinkExterno(aberta.link_video)}

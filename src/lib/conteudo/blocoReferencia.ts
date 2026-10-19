@@ -56,3 +56,10 @@ export function lerAnalise(resposta: string): { headline?: string; notavel: stri
     return { notavel: [], porque: [] };
   }
 }
+
+/** Primeiro objeto JSON de uma resposta do Claude (às vezes vem com texto ou ``` em volta). */
+export function lerJson<T>(resposta: string): T | null {
+  const m = resposta.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]) as T; } catch { return null; }
+}
