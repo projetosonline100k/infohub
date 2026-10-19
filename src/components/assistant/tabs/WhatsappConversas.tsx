@@ -175,12 +175,13 @@ export function WhatsappConversas({ pedido, info }: {
     const chat = <Conversa conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
     if (!info) return chat;
     return (
-      <ResizablePanelGroup direction="horizontal" autoSaveId="jarvis:whatsapp-conversa-info" className="h-full">
-        <ResizablePanel defaultSize={58} minSize={30} className="min-w-0">{chat}</ResizablePanel>
-        <ResizableHandle withHandle />
+      // Informações à esquerda e a conversa à direita (19/10, Davi).
+      <ResizablePanelGroup direction="horizontal" autoSaveId="jarvis:whatsapp-info-conversa" className="h-full">
         <ResizablePanel defaultSize={42} minSize={22} className="min-w-0">
           <div className="h-full overflow-y-auto px-4 pb-4">{info(aberta)}</div>
         </ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={58} minSize={30} className="min-w-0">{chat}</ResizablePanel>
       </ResizablePanelGroup>
     );
   }
