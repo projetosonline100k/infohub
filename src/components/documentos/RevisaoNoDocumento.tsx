@@ -21,6 +21,7 @@ import { linhasDoTexto, textoParaHtml, type Revisao } from "@/lib/conteudo/escri
 
 const CHAVE = new PluginKey<DecorationSet>("revisaoElias");
 const LARGURA_NOTAS = 240;
+const MIN_NOTAS = 170;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
 interface Bloco { pos: number; tamanho: number; texto: string }
@@ -143,9 +144,11 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   const [alvos, setAlvos] = useState<Alvo[]>([]);
   const [topos, setTopos] = useState<number[]>([]);
   const [chaves, setChaves] = useState<Chave[]>([]);
+  // Coluna dos comentários: na margem à direita do texto, sem estreitar o texto (19/10, Davi:
+  // "quando ativo o Elias muda o layout; não quero que altere, me dificulta a leitura").
+  const [coluna, setColuna] = useState({ x: 0, largura: LARGURA_NOTAS });
   const cartoes = useRef<(HTMLDivElement | null)[]>([]);
   const caixa = editor.view.dom.parentElement as HTMLElement | null;
-  const comNotas = ativas.some((r) => r.linhas.some((l) => l.nota));
 
   // Decorações do ProseMirror (riscado/verde) das revisões ligadas, refeitas a cada mudança do documento.
   useEffect(() => {
@@ -161,6 +164,11 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   const recalcular = useCallback(() => {
     if (!caixa || editor.isDestroyed) return;
     const base = caixa.getBoundingClientRect();
+    let rolagem = caixa.parentElement;
+    while (rolagem && !/(auto|scroll)/.test(getComputedStyle(rolagem).overflowY)) rolagem = rolagem.parentElement;
+    const limite = (rolagem ?? document.documentElement).getBoundingClientRect().right - 20;   // até a barra de rolagem
+    const x = caixa.clientWidth + 20;
+    setColuna({ x, largura: Math.max(MIN_NOTAS, Math.min(LARGURA_NOTAS, limite - base.left - x)) });
     const blocos = blocosDe(editor.state.doc);
     const lista: Alvo[] = [];
     const botoes: Chave[] = [];
@@ -187,13 +195,9 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   useEffect(() => {
     if (editor.isDestroyed) return;
     editor.view.dispatch(editor.state.tr.setMeta(CHAVE, true).setMeta("addToHistory", false));
-    if (caixa) {
-      caixa.style.position = "relative";
-      caixa.style.paddingRight = comNotas ? `${LARGURA_NOTAS + 24}px` : "";
-    }
+    if (caixa) caixa.style.position = "relative";
     requestAnimationFrame(recalcular);
-  }, [editor, caixa, revisoes, comNotas, recalcular]);
-  useEffect(() => () => { if (caixa) caixa.style.paddingRight = ""; }, [caixa]);
+  }, [editor, caixa, revisoes, recalcular]);
 
   useEffect(() => {
     const aoMudar = () => requestAnimationFrame(recalcular);
@@ -215,13 +219,13 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   }, [alvos]);
 
   if (!caixa || !chaves.length) return null;
-  const xColuna = caixa.clientWidth - LARGURA_NOTAS;
+  const xColuna = coluna.x;
 
   return createPortal(
     <>
       {chaves.map((c) => (
         <div key={c.id} className="absolute z-10 flex items-center gap-1" contentEditable={false}
-          style={{ top: Math.max(0, c.y - 34), right: comNotas ? LARGURA_NOTAS + 24 : 0 }}>
+          style={{ top: Math.max(0, c.y - 34), right: 0 }}>
           <span className="text-xs text-muted-foreground">Revisão de {c.quem}</span>
           <div className="flex overflow-hidden rounded-full border bg-card text-xs shadow-sm">
             <button type="button" disabled={!c.podeTrocar || c.ativa} onClick={() => onAlternar(c.id)}
@@ -243,7 +247,7 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
           <svg className="pointer-events-none absolute left-0 top-0 h-full w-full overflow-visible" aria-hidden>
             {alvos.map((a, i) => {
               const y2 = (topos[i] ?? a.y) + 14;
-              const x1 = Math.min(a.xFim, xColuna - 40) + 6, x2 = xColuna - 2;
+              const x1 = Math.min(a.xFim, caixa.clientWidth) + 6, x2 = xColuna - 2;
               return <path key={a.chave} d={`M ${x1} ${a.meio} C ${x1 + 30} ${a.meio}, ${x2 - 30} ${y2}, ${x2} ${y2}`}
                 fill="none" className="stroke-sky-500/50" strokeWidth={1.5} />;
             })}
@@ -251,7 +255,7 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
           {alvos.map((a, i) => (
             <div key={a.chave} ref={(el) => { cartoes.current[i] = el; }} contentEditable={false}
               className="absolute rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs leading-relaxed text-foreground"
-              style={{ top: topos[i] ?? a.y, left: xColuna, width: LARGURA_NOTAS }}>
+              style={{ top: topos[i] ?? a.y, left: xColuna, width: coluna.largura }}>
               <div className="mb-0.5 font-semibold text-sky-600 dark:text-sky-400">{a.quem}</div>
               <div className="whitespace-pre-wrap">{a.nota}</div>
             </div>
