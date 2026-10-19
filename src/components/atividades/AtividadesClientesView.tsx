@@ -1,3 +1,4 @@
+import { comConclusaoDaEquipe } from "@/lib/atividades/concluidaEquipe";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRecarregarAoVoltar } from "@/hooks/useRecarregarAoVoltar";
 import { useAuth } from "@/auth/AuthProvider";
@@ -211,7 +212,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
       if (ativRes.error) throw ativRes.error;
       if (colRes.error) throw colRes.error;
 
-      setAtividades(ativRes.data || []);
+      setAtividades(comConclusaoDaEquipe(ativRes.data || []));
 
       const porCliente: Record<string, Coluna[]> = {};
       (colRes.data || []).forEach((c) => {
