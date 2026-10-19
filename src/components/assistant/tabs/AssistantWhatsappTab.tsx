@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { WhatsappConversas } from "./WhatsappConversas";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import {
   DIFICULDADE, EMOJI_SATISFACAO, UPGRADE, calcularMetricas, cardRespondido, marcarCard, marcarItem, minutosRestantes, progressoCard, dataCurta, diasDesde, formatarMinutos, htmlSeguro, media, mediana, textoParaCopiar,
@@ -113,10 +114,17 @@ export function AssistantWhatsappTab() {
     return (
       <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
         {seletor}
-        <div className="flex min-h-0 flex-1">
-          <div className="min-w-0 flex-[3] overflow-y-auto px-4 pb-4"><PainelWhatsapp onAbrirConversa={abrirConversa} /></div>
-          <div className="min-h-0 min-w-[300px] flex-[2] border-l border-border pt-1"><WhatsappConversas pedido={pedido} /></div>
-        </div>
+        {/* 19/10 (Davi): "quero conseguir aumentar ou diminuir a largura do chat ou do painel" —
+            arrastar a divisória; a largura fica guardada (autoSaveId). */}
+        <ResizablePanelGroup direction="horizontal" autoSaveId="jarvis:whatsapp-dividido" className="min-h-0 flex-1">
+          <ResizablePanel defaultSize={60} minSize={25} className="min-w-0">
+            <div className="h-full overflow-y-auto px-4 pb-4"><PainelWhatsapp onAbrirConversa={abrirConversa} /></div>
+          </ResizablePanel>
+          <ResizableHandle withHandle />
+          <ResizablePanel defaultSize={40} minSize={20} className="min-h-0 min-w-0">
+            <div className="h-full pt-1"><WhatsappConversas pedido={pedido} /></div>
+          </ResizablePanel>
+        </ResizablePanelGroup>
       </div>
     );
   }
