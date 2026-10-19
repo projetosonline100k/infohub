@@ -17,8 +17,9 @@ test('bloco com headline numerada, link e seções recolhidas (escapando HTML)',
   assert.match(html, /^<h2>Headline 02: Um caçador &lt;joga&gt;<\/h2>/);
   assert.match(html, /href="https:\/\/x.com\/a\?b=1&amp;c=2"/);
   assert.equal((html.match(/data-collapsed="true"/g) || []).length, 4);
-  assert.match(html, /<h3 data-collapsed="true">Transcrição<\/h3><p>linha 1<\/p><p>linha 2<\/p>/);
-  assert.match(html, /Roteiro finalizado:/);
+  assert.match(html, /<h3 data-collapsed="true">\+Info<\/h3><p><a href=/);
+  assert.match(html, /<h4 data-collapsed="true">Transcrição<\/h4><p>linha 1<\/p><p>linha 2<\/p>/);
+  assert.match(html, /<h3>Roteiro finalizado:<\/h3><p><\/p>$/);
 });
 
 test('lê a análise do Claude mesmo com texto em volta', () => {

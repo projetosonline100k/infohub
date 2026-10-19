@@ -22,17 +22,20 @@ const paragrafos = (t: string | null) => (t ?? "").split(/\n\s*\n|\n/).map((p) =
   .map((p) => `<p>${esc(p)}</p>`).join("") || "<p></p>";
 const lista = (itens: string[]) => (itens.length ? `<ul>${itens.map((i) => `<li><p>${esc(i)}</p></li>`).join("")}</ul>` : "<p></p>");
 
-/** HTML do bloco: o título com a headline, o link, e as seções recolhidas. */
+/** HTML do bloco: o título com a headline; link e as três seções dentro de "+Info" (recolhido,
+ *  18/10: "quero que essas info fiquem dentro do nome +Info"); "Roteiro finalizado" fica fora. */
 export function montarBlocoReferencia(d: DadosBloco): string {
   const n = String(d.numero).padStart(2, "0");
-  const secao = (titulo: string, corpo: string) => `<h3 data-collapsed="true">${esc(titulo)}</h3>${corpo}`;
+  // h3 recolhido esconde tudo até o próximo h3 (o "Roteiro finalizado"); dentro, cada seção é h4.
+  const secao = (titulo: string, corpo: string) => `<h4 data-collapsed="true">${esc(titulo)}</h4>${corpo}`;
   return [
     `<h2>Headline ${n}: ${esc(d.headline)}</h2>`,
+    `<h3 data-collapsed="true">+Info</h3>`,
     d.link ? `<p><a href="${esc(d.link)}">Link da referência</a></p>` : "",
     secao("Transcrição", paragrafos(d.transcricao)),
     secao("Conteúdo Notável", lista(d.notavel)),
     secao("Por que o vídeo viralizou", lista(d.porque)),
-    secao("Roteiro finalizado:", "<p></p>"),
+    `<h3>Roteiro finalizado:</h3><p></p>`,
   ].join("");
 }
 
