@@ -6,6 +6,7 @@ import { alarmeDoEvento, chamarGoogleCalendar, type GoogleCalendarEvent } from "
 import { alarmesParaTocar, tocarAlarme, type EventoComAlarme } from "@/lib/agendaAlarmes";
 import { isDesktop } from "@/lib/platform";
 import { pedirAlarmeAoAtlas } from "@/lib/desktop/alarmeAtlas";
+import { conferirAlarmesGoogle, MARCA_ALARME } from "@/lib/atividades/alarmeGoogle";
 import { STORAGE_KEY } from "@/hooks/useGoogleCalendar";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -165,6 +166,8 @@ export function useAlarmesAgenda() {
         for (const evento of resposta.events) {
           const minutos = alarmeDoEvento(evento);
           if (evento.status === "cancelled" || !evento.start.dateTime || minutos === null) continue;
+          // Alarme de atividade espelhado no Google (alarmeGoogle.ts): quem toca é o alarme da atividade.
+          if (evento.extendedProperties?.private?.[MARCA_ALARME]) continue;
           // "primary" e o id do calendário principal trazem o mesmo evento: a
           // chave usa só o id do evento + horário + alarme.
           const chave = `${evento.id}:${evento.start.dateTime}:${minutos}`;
@@ -194,6 +197,7 @@ export function useAlarmesAgenda() {
     let recarga = 0;
     let recargaAtividades = 0;
     let relogio = 0;
+    let conferenciaGoogle = 0;
     let espera = 0;
     let canalRealtime: ReturnType<typeof supabase.channel> | null = null;
     let aoFocar: (() => void) | null = null;
@@ -268,6 +272,9 @@ export function useAlarmesAgenda() {
       aoFocar = pedirSincronizacao;
       window.addEventListener("focus", aoFocar);
       relogio = window.setInterval(verificar, 15_000);
+      // Alarmes das atividades ↔ Google Agenda (cria os que faltam, apaga os que não valem mais).
+      void conferirAlarmesGoogle();
+      conferenciaGoogle = window.setInterval(() => void conferirAlarmesGoogle(), 60_000);
       window.addEventListener(EVENTO_ALARMES_ALTERADOS, aoAlterar);
       window.addEventListener(EVENTO_ALARMES_ATIVIDADE, aoAlterarAtividades);
     });
@@ -277,6 +284,7 @@ export function useAlarmesAgenda() {
       window.clearInterval(recarga);
       window.clearInterval(recargaAtividades);
       window.clearInterval(relogio);
+      window.clearInterval(conferenciaGoogle);
       window.clearTimeout(espera);
       if (canalRealtime) void supabase.removeChannel(canalRealtime);
       if (aoFocar) window.removeEventListener("focus", aoFocar);

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isDesktop } from "@/lib/platform";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
+import { sincronizarAlarmeGoogle } from "@/lib/atividades/alarmeGoogle";
 
 // Alarme de uma atividade + espelho no app Lembretes do macOS.
 // No desktop, cada projeto vira uma lista ("Infopro – Projeto"; Pessoal =
@@ -105,6 +106,8 @@ export async function definirAlarmeAtividade(atividade: AlarmeDaAtividade, quand
     .eq("id", atividade.id);
   if (error) throw error;
   avisar();
+  // Também no Google Agenda: o aviso toca no celular (alarmeGoogle.ts).
+  void sincronizarAlarmeGoogle(atividade.id);
   if (isDesktop() && LEMBRETES_LIGADO) void atualizarLembreteDoAlarme(atividade, quando);
 }
 
