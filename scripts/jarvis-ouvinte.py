@@ -276,6 +276,34 @@ def pegar_pedido_whatsapp():
         c.close()
 
 
+def pedir_whatsapp_apos_resposta():
+    """19/10/2026 (Davi): "no momento que eu respondo, já entender que não é mais 24 horas, se fiz alguma
+    tarefa, se não fiz, como fui". O Davi mandou mensagem no WhatsApp (pelo app ou pelo celular) depois da
+    última leitura e parou há 3 min: pede a atualização do painel sozinho (no máximo uma a cada 10 min)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""UPDATE public.whatsapp_painel p
+                        SET atualizacao_pedida_em = now(), atualizacao_status = 'pedida', atualizacao_mensagem = null
+                       FROM auth.users u
+                      WHERE u.id = p.user_id AND lower(u.email) = %s
+                        AND coalesce(p.atualizacao_status, 'ok') NOT IN ('pedida', 'rodando')
+                        AND coalesce(p.atualizacao_pedida_em, 'epoch') < now() - interval '10 minutes'
+                        AND EXISTS (SELECT 1 FROM public.whatsapp_mensagens m
+                                     WHERE m.user_id = p.user_id AND m.de_mim AND m.chat_nome IS DISTINCT FROM 'Meus arquivos'
+                                       AND m.enviada_em > greatest(coalesce(p.atualizado_em, 'epoch'), coalesce(p.atualizacao_pedida_em, 'epoch')))
+                        AND NOT EXISTS (SELECT 1 FROM public.whatsapp_mensagens m
+                                         WHERE m.user_id = p.user_id AND m.de_mim AND m.enviada_em > now() - interval '3 minutes')
+                  RETURNING 1""", (EMAIL,))
+        row = q.fetchone()
+        c.commit()
+        if row:
+            log("whatsapp: o Davi respondeu alguém; pedi a atualização do painel")
+        return row
+    finally:
+        c.close()
+
+
 def status_whatsapp():
     c = connect()
     try:
@@ -288,17 +316,19 @@ def status_whatsapp():
         c.close()
 
 
-PROMPT_WHATSAPP = """O Davi clicou em "Atualizar" na guia WhatsApp do Atlas. Atualize o painel de respostas aos mentorados, exatamente como descrito na memória do projeto (painel-mentorados-whatsapp, whatsapp-ler-todas-conversas, respostas-mentorados-sanduiche-disc):
+PROMPT_WHATSAPP = """O Davi clicou em "Atualizar" na guia WhatsApp do Atlas (ou o pedido veio sozinho porque ele acabou de responder alguém no WhatsApp). Atualize o painel de respostas aos mentorados, exatamente como descrito na memória do projeto (painel-mentorados-whatsapp, whatsapp-ler-todas-conversas, respostas-mentorados-sanduiche-disc):
 1. Leia as conversas DO BANCO: `python3 /Users/davi/Infopro-hub/scripts/whatsapp-ler.py` (todas as conversas com atividade desde a última atualização, privados e grupos, com os áudios já transcritos; use `--chat "nome"` pra ver mais de uma conversa). As mensagens chegam pelo WAHA no Mac, então não precisa abrir o WhatsApp Web.
    Só se a primeira linha disser que o WAHA não está WORKING: aí leia pelo WhatsApp Web no Claude in Chrome, como antes.
 2. Atualize /Users/davi/Infopro-hub/.claude/painel/build.py e historico.json, rode `python3 build.py` nessa pasta.
 3. Publique com: cd /Users/davi/Infopro-hub/scripts && python3 publicar-painel-whatsapp.py (isso fecha o pedido).
 Se não der (ex.: WAHA desconectado e WhatsApp Web deslogado), rode:
   python3 /Users/davi/Infopro-hub/scripts/esperar-pedido-whatsapp.py --erro "<motivo curto>"
+Nas conversas que o Davi respondeu desde a última leitura, deixe tudo em dia: a interação vira respondida (sai do "precisa responder" e do "+24h"), a promessa que ele cumpriu vira cumprida (e a que ele fez de novo entra como aberta), e entra a avaliação da resposta dele (acolheu, solução, próximos passos, junto, DISC) com a reação da pessoa, se já houver.
 Nunca envie mensagens no WhatsApp: só leia."""
 
 
 def atender_whatsapp():
+    pedir_whatsapp_apos_resposta()
     if not pegar_pedido_whatsapp():
         return
     log("whatsapp: pedido de atualização")
