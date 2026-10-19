@@ -133,7 +133,26 @@ function decoracoes(doc: PMNode, revisoes: Revisao[]): DecorationSet {
   return DecorationSet.create(doc, marcas);
 }
 
-interface Alvo { chave: string; quem: string; nota: string; y: number; meio: number; xFim: number }
+/** Marca leve no texto (19/10, Davi: "seria interessante se ficasse marcado onde foi a mudança"): a linha
+ *  que o Elias mudou fica com um fundo suave e, se ele comentou, ganha o número do comentário. */
+function marcasLeves(doc: PMNode, revisoes: Revisao[]): DecorationSet {
+  const blocos = blocosDe(doc);
+  const marcas: Decoration[] = [];
+  for (const rev of revisoes) {
+    const achados = localizar(rev, blocos);
+    let n = 0;
+    rev.linhas.forEach((l, k) => {
+      const num = l.nota ? ++n : 0;
+      const b = achados[k];
+      if (!b) return;
+      if (l.original === null || mudou(l.original, l.texto) || num) marcas.push(Decoration.node(b.pos, b.pos + b.tamanho, { class: "rev-mudou" }));
+      if (num) marcas.push(Decoration.widget(b.pos + b.tamanho - 1, widget("rev-num", String(num)), { side: 1, key: `${rev.id}-n${num}` }));
+    });
+  }
+  return DecorationSet.create(doc, marcas);
+}
+
+interface Alvo { chave: string; quem: string; nota: string; num: number; y: number; meio: number; xFim: number; xIni: number }
 interface Chave { id: string; quem: string; y: number; ativa: boolean; podeTrocar: boolean }
 
 export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }: {
@@ -147,7 +166,9 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   const [chaves, setChaves] = useState<Chave[]>([]);
   // Coluna dos comentários: na margem à direita do texto, sem estreitar o texto (19/10, Davi:
   // "quando ativo o Elias muda o layout; não quero que altere, me dificulta a leitura").
-  const [coluna, setColuna] = useState({ x: 0, largura: LARGURA_NOTAS });
+  // 19/10 (Davi: "fica ruim de empilhar; e se for dos dois lados?"): também uma coluna à esquerda.
+  const [coluna, setColuna] = useState({ x: 0, largura: LARGURA_NOTAS, xEsq: 0, larguraEsq: 0 });
+  const [lados, setLados] = useState<("d" | "e")[]>([]);
   const cartoes = useRef<(HTMLDivElement | null)[]>([]);
   const caixa = editor.view.dom.parentElement as HTMLElement | null;
 
@@ -158,7 +179,7 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
       // 19/10, depois (Davi: "se fica tudo corrigido é difícil ler, preciso rolar; quero o roteiro intacto
       // com as mudanças do Elias e só os comentários na lateral"): sem riscado/verde no texto; o On/Off
       // continua trocando pela versão do Junior. (decoracoes() fica para se ele quiser as marcas de volta.)
-      props: { decorations: (st) => (MOSTRAR_MARCAS && estado.current.length ? decoracoes(st.doc, estado.current) : null) },
+      props: { decorations: (st) => (!estado.current.length ? null : MOSTRAR_MARCAS ? decoracoes(st.doc, estado.current) : marcasLeves(st.doc, estado.current)) },
     });
     editor.registerPlugin(plugin);
     return () => { if (!editor.isDestroyed) editor.unregisterPlugin(CHAVE); };
@@ -170,9 +191,11 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
     const base = caixa.getBoundingClientRect();
     let rolagem = caixa.parentElement;
     while (rolagem && !/(auto|scroll)/.test(getComputedStyle(rolagem).overflowY)) rolagem = rolagem.parentElement;
-    const limite = (rolagem ?? document.documentElement).getBoundingClientRect().right - 20;   // até a barra de rolagem
+    const area = (rolagem ?? document.documentElement).getBoundingClientRect();
     const x = caixa.clientWidth + 20;
-    setColuna({ x, largura: Math.max(MIN_NOTAS, Math.min(LARGURA_NOTAS, limite - base.left - x)) });
+    const larguraEsq = Math.min(LARGURA_NOTAS, base.left - area.left - 40);
+    setColuna({ x, largura: Math.max(MIN_NOTAS, Math.min(LARGURA_NOTAS, area.right - 20 - base.left - x)),
+      xEsq: -(larguraEsq + 20), larguraEsq: larguraEsq >= 120 ? larguraEsq : 0 });   // à esquerda cabe menos (lista de documentos aberta)
     const blocos = blocosDe(editor.state.doc);
     const lista: Alvo[] = [];
     const botoes: Chave[] = [];
@@ -180,15 +203,17 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
       const ativa = revisaoAtiva(rev);
       const versao: Revisao = ativa ? rev : { ...rev, linhas: linhasDoTexto(rev.antes ?? "").map((texto) => ({ texto, original: texto, nota: null })) };
       const achados = localizar(versao, blocos);
-      let primeiro = true;
+      let primeiro = true, n = 0;
       versao.linhas.forEach((l, k) => {
+        const num = l.nota ? ++n : 0;
         const b = achados[k];
         if (!b) return;
         const dom = editor.view.nodeDOM(b.pos) as HTMLElement | null;
         const r = dom?.getBoundingClientRect?.();
         if (!r) return;
         if (primeiro) { primeiro = false; botoes.push({ id: rev.id, quem: rev.quem, y: r.top - base.top, ativa, podeTrocar: !!(rev.antes && rev.depois) }); }
-        if (ativa && l.nota) lista.push({ chave: `${rev.id}-${k}`, quem: rev.quem, nota: l.nota, y: r.top - base.top, meio: r.top - base.top + Math.min(r.height, 28) / 2, xFim: r.right - base.left });
+        if (ativa && l.nota) lista.push({ chave: `${rev.id}-${k}`, quem: rev.quem, nota: l.nota, num, y: r.top - base.top,
+          meio: r.top - base.top + Math.min(r.height, 28) / 2, xFim: r.right - base.left, xIni: r.left - base.left });
       });
     }
     setAlvos(lista.sort((a, b) => a.y - b.y));   // na ordem do documento (as revisões terminam fora de ordem no "gerar todos")
@@ -213,14 +238,18 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   }, [editor, caixa, recalcular]);
 
   // Empilha os comentários sem sobrepor (mede a altura de cada um depois de desenhar).
+  // Cada um vai para o lado em que fica mais perto da sua linha (direita, na dúvida).
   useLayoutEffect(() => {
-    let fim = 0;
+    let fimD = 0, fimE = 0;
+    const novosLados: ("d" | "e")[] = [];
     setTopos(alvos.map((a, i) => {
-      const y = Math.max(a.y, fim);
-      fim = y + (cartoes.current[i]?.offsetHeight ?? 60) + 8;
-      return y;
+      const altura = (cartoes.current[i]?.offsetHeight ?? 60) + 8;
+      const yD = Math.max(a.y, fimD), yE = coluna.larguraEsq ? Math.max(a.y, fimE) : Infinity;
+      if (yE + 12 < yD) { novosLados.push("e"); fimE = yE + altura; return yE; }
+      novosLados.push("d"); fimD = yD + altura; return yD;
     }));
-  }, [alvos]);
+    setLados(novosLados);
+  }, [alvos, coluna.larguraEsq]);
 
   if (!caixa || !chaves.length) return null;
   const xColuna = coluna.x;
@@ -251,6 +280,11 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
           <svg className="pointer-events-none absolute left-0 top-0 h-full w-full overflow-visible" aria-hidden>
             {alvos.map((a, i) => {
               const y2 = (topos[i] ?? a.y) + 14;
+              if (lados[i] === "e") {
+                const x1 = Math.max(a.xIni, 0) - 6, x2 = coluna.xEsq + coluna.larguraEsq + 2;
+                return <path key={a.chave} d={`M ${x1} ${a.meio} C ${x1 - 30} ${a.meio}, ${x2 + 30} ${y2}, ${x2} ${y2}`}
+                  fill="none" className="stroke-sky-500/50" strokeWidth={1.5} />;
+              }
               const x1 = Math.min(a.xFim, caixa.clientWidth) + 6, x2 = xColuna - 2;
               return <path key={a.chave} d={`M ${x1} ${a.meio} C ${x1 + 30} ${a.meio}, ${x2 - 30} ${y2}, ${x2} ${y2}`}
                 fill="none" className="stroke-sky-500/50" strokeWidth={1.5} />;
@@ -259,8 +293,10 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
           {alvos.map((a, i) => (
             <div key={a.chave} ref={(el) => { cartoes.current[i] = el; }} contentEditable={false}
               className="absolute rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs leading-relaxed text-foreground"
-              style={{ top: topos[i] ?? a.y, left: xColuna, width: coluna.largura }}>
-              <div className="mb-0.5 font-semibold text-sky-600 dark:text-sky-400">{a.quem}</div>
+              style={lados[i] === "e" ? { top: topos[i] ?? a.y, left: coluna.xEsq, width: coluna.larguraEsq } : { top: topos[i] ?? a.y, left: xColuna, width: coluna.largura }}>
+              <div className="mb-0.5 flex items-center gap-1.5 font-semibold text-sky-600 dark:text-sky-400">
+                <span className="grid h-4 min-w-4 place-items-center rounded-full bg-sky-500 px-1 text-[10px] text-white">{a.num}</span>{a.quem}
+              </div>
               <div className="whitespace-pre-wrap">{a.nota}</div>
             </div>
           ))}
