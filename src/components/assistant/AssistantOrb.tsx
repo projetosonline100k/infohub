@@ -100,11 +100,6 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
             voz === "entendendo" && "animate-pulse border-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.6)]",
             voz === "pensando" && "animate-spin border-cyan-300/80 border-t-transparent [animation-duration:1.4s]",
           )} />
-          <span className={cn("pointer-events-none absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] shadow",
-            voz === "ouvindo" ? "bg-rose-500" : voz === "entendendo" ? "bg-amber-400" : "bg-cyan-500")}
-            title={voz === "ouvindo" ? "Ouvindo (solte a tecla para mandar)" : voz === "entendendo" ? "Transcrevendo…" : "O Claude está trabalhando (no ditado: organizando o texto)"}>
-            {voz === "pensando" ? "…" : "🎙️"}
-          </span>
         </>
       )}
       {diaEncerrado && (

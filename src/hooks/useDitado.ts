@@ -39,6 +39,7 @@ export function useDitado(ativo: boolean): EstadoVoz {
   const inicio = useRef(0);
 
   const processar = useCallback(async (audio: Blob) => {
+    ocupado.current = true;
     setEstado("entendendo");
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -56,12 +57,14 @@ export function useDitado(ativo: boolean): EstadoVoz {
     } catch (e) {
       toast.error(`Não consegui fazer o ditado: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
+      ocupado.current = false;
       setEstado(null);
     }
   }, []);
 
+  const ocupado = useRef(false);   // transcrevendo/organizando: não começa outra gravação
   const comecar = useCallback(async () => {
-    if (apertado.current) return;
+    if (apertado.current || ocupado.current) return;
     apertado.current = true;
     cancelado.current = false;
     void pararFala();
@@ -91,6 +94,8 @@ export function useDitado(ativo: boolean): EstadoVoz {
     gravador.current = rec;
     inicio.current = Date.now();
     rec.start();
+    // Segurança: soltou e o aviso se perdeu? Para sozinho em 2 min.
+    window.setTimeout(() => { if (gravador.current === rec && rec.state !== "inactive") { gravador.current = null; apertado.current = false; rec.stop(); } }, 120_000);
     bip(990);
     setEstado("ouvindo");
   }, [processar]);

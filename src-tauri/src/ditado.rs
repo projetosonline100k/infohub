@@ -49,7 +49,22 @@ fn cmd_fisico() -> bool {
 }
 const CMD: u64 = 0x0010_0000;
 const OUTROS_MODIFICADORES: u64 = 0x0002_0000 | 0x0004_0000 | 0x0008_0000; // shift, control, option
-const SEGURAR: Duration = Duration::from_millis(450);
+const SEGURAR: Duration = Duration::from_millis(600);
+const MAXIMO: Duration = Duration::from_secs(120);   // nenhuma gravação passa disso
+
+/// Registro dos disparos (18/10: "ele fica ativando sozinho") em ~/.infopro-hub/ditado.log,
+/// para descobrir o que acionou: hora, evento e o estado do teclado.
+fn registrar(evento: &str, detalhe: &str) {
+    use std::io::Write;
+    let Some(home) = std::env::var_os("HOME") else { return };
+    let arquivo = std::path::PathBuf::from(home).join(".infopro-hub/ditado.log");
+    if std::fs::metadata(&arquivo).map(|m| m.len() > 200_000).unwrap_or(false) {
+        let _ = std::fs::remove_file(&arquivo);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(arquivo) {
+        let _ = writeln!(f, "{} {evento} {detalhe}", agora_ms());
+    }
+}
 const TECLA_V: u16 = 9;
 
 /// Alguma tecla que não é modificador (⌘, ⇧, ⌥, ⌃, caps, fn = 54…63) ou botão do mouse apertado.
@@ -70,13 +85,22 @@ pub fn iniciar(app: AppHandle) {
         let mut desde: Option<Instant> = None;
         let mut sujo = false;      // esse aperto de ⌘ virou atalho: não é ditado
         let mut gravando = false;
+        let mut gravando_desde = Instant::now();
         loop {
             std::thread::sleep(Duration::from_millis(30));
             let flags = unsafe { CGEventSourceFlagsState(HID) };
             let surdo = agora_ms() < SURDO_ATE.load(std::sync::atomic::Ordering::Relaxed);
-            if !cmd_fisico() || surdo {
+            let estourou = gravando && gravando_desde.elapsed() >= MAXIMO;
+            if !cmd_fisico() || surdo || estourou {
                 if gravando {
+                    registrar("solto", if estourou { "limite de 2 min" } else if surdo { "colando" } else { "soltou o cmd" });
                     let _ = app.emit_to("jarvis", EVENTO_SOLTO, ());
+                }
+                if estourou {
+                    // Continua segurando: só volta a valer depois de soltar.
+                    gravando = false;
+                    sujo = true;
+                    continue;
                 }
                 desde = None;
                 sujo = false;
@@ -92,11 +116,15 @@ pub fn iniciar(app: AppHandle) {
                 sujo = true;
                 if gravando {
                     gravando = false;
+                    registrar("cancelado", &format!("flags={flags:#x} outra_tecla={}", outra_coisa_apertada()));
                     let _ = app.emit_to("jarvis", EVENTO_CANCELADO, ());
                 }
             }
             if !sujo && !gravando && desde.map_or(false, |d| d.elapsed() >= SEGURAR) {
                 gravando = true;
+                gravando_desde = Instant::now();
+                registrar("apertado", &format!("flags={flags:#x} cmd_esq={} cmd_dir={}",
+                    unsafe { CGEventSourceKeyState(HID, 55) }, unsafe { CGEventSourceKeyState(HID, 54) }));
                 let _ = app.emit_to("jarvis", EVENTO_APERTADO, ());
             }
         }
