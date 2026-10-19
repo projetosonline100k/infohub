@@ -229,3 +229,53 @@ export function htmlSeguro(texto: string | null | undefined): string {
 export function textoParaCopiar(texto: string): string {
   return texto.replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
 }
+
+// ---------------------------------------------------------------- dados de uma conversa
+// 19/10/2026 (Davi): "em vez de um negócio do lado, ao clicar no grupo do WhatsApp aparecem as
+// informações daquele grupo ou pessoa, de forma organizada". O painel não guarda o chat_id: liga
+// pelo nome do grupo (mentorado.grupo), pelo nome da pessoa e pelo telefone que aparece no card.
+const simples = (t: string | null | undefined) =>
+  (t ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+const bate = (a: string, b: string) => !!a && !!b && (a === b || (a.length >= 4 && b.includes(a)) || (b.length >= 4 && a.includes(b)));
+
+export interface ChatResumo { chat_id: string; chat_nome: string | null; eh_grupo: boolean }
+
+/** Quão forte o nome bate: 3 igual, 2 mesmo primeiro nome, 1 um contém o outro, 0 nada. */
+function forca(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 3;
+  const pa = a.split(" ")[0], pb = b.split(" ")[0];
+  if (pa.length >= 3 && pa === pb) return 2;
+  return bate(a, b) ? 1 : 0;
+}
+/** Só os de ligação mais forte (ex.: "Carol" não puxa a Carolina se existe uma Carol). */
+function melhores<T>(itens: T[], nota: (x: T) => number): T[] {
+  const notas = itens.map(nota);
+  const max = Math.max(0, ...notas);
+  return max ? itens.filter((_, k) => notas[k] === max) : [];
+}
+
+export function daConversa(chat: ChatResumo, h: Historico | null, cards: CardWhatsapp[]): { mentorados: Mentorado[]; cards: CardWhatsapp[] } {
+  const nome = simples(chat.chat_nome);
+  const numero = chat.chat_id.split("@")[0].replace(/\D/g, "");
+  // Grupo: pelo nome do grupo e, de desempate, pelo nome da pessoa dentro dele (dois mentorados
+  // podem ter o mesmo grupo genérico, ex.: "Mentoria Core Experience Premium 90 reels").
+  const mentorados = melhores(h?.mentorados ?? [], (m) => (chat.eh_grupo
+    ? forca(simples(m.grupo), nome) + (bate(simples(m.nome), nome) ? 3 : 0)
+    : forca(simples(m.nome), nome)));
+  const ids = new Set(mentorados.map((m) => m.card).filter(Boolean));
+  const peloTelefone = (c: CardWhatsapp) => {
+    const numeros = (c.when.match(/\+?\d[\d\s().-]{8,}\d/g) || []).map((d) => d.replace(/\D/g, "")).filter((d) => d.length >= 10);
+    return !chat.eh_grupo && numero.length >= 8 && numeros.some((n) => numero.endsWith(n.slice(-8)));
+  };
+  const ligados = cards.filter((c) => ids.has(c.id) || peloTelefone(c));
+  if (ligados.length) return { mentorados, cards: ligados };
+  // Sem ligação direta: pelo nome do card ("Pessoa · Grupo").
+  return {
+    mentorados,
+    cards: melhores(cards, (c) => {
+      const partes = c.nome.split(/[·|]/).map(simples).filter(Boolean);
+      return chat.eh_grupo ? Math.max(forca(simples(c.nome), nome), ...partes.slice(1).map((p) => forca(p, nome))) : forca(partes[0] ?? "", nome);
+    }),
+  };
+}

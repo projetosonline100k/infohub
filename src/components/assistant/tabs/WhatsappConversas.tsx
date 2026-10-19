@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 
 // Guia WhatsApp → "Conversas": o WhatsApp ao vivo dentro do Atlas. As
 // mensagens chegam pelo WAHA no Mac (scripts/whatsapp-receptor.py) na tabela
@@ -105,7 +106,12 @@ function acharConversa(conversas: Conversa[], nome: string, when: string): Conve
     ?? null;
 }
 
-export function WhatsappConversas({ pedido }: { pedido?: { nome: string; when: string; n: number } | null } = {}) {
+/** `info`: coluna ao lado da conversa aberta com o que se sabe daquele grupo ou pessoa (19/10, Davi:
+ *  "ao clicar no grupo aparecem as informações dele, focado neles; não precisa abrir do lado"). */
+export function WhatsappConversas({ pedido, info }: {
+  pedido?: { nome: string; when: string; n: number } | null;
+  info?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean }) => React.ReactNode;
+} = {}) {
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
@@ -166,7 +172,17 @@ export function WhatsappConversas({ pedido }: { pedido?: { nome: string; when: s
   }, [conversas, busca]);
 
   if (aberta) {
-    return <Conversa conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
+    const chat = <Conversa conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
+    if (!info) return chat;
+    return (
+      <ResizablePanelGroup direction="horizontal" autoSaveId="jarvis:whatsapp-conversa-info" className="h-full">
+        <ResizablePanel defaultSize={58} minSize={30} className="min-w-0">{chat}</ResizablePanel>
+        <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={42} minSize={22} className="min-w-0">
+          <div className="h-full overflow-y-auto px-4 pb-4">{info(aberta)}</div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    );
   }
 
   return (

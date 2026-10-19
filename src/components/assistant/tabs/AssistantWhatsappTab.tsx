@@ -10,7 +10,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { cn } from "@/lib/utils";
 import {
   DIFICULDADE, EMOJI_SATISFACAO, UPGRADE, calcularMetricas, cardRespondido, marcarCard, marcarItem, minutosRestantes, progressoCard, dataCurta, diasDesde, formatarMinutos, htmlSeguro, media, mediana, textoParaCopiar,
-  type CardWhatsapp, type Historico,
+  daConversa, type ChatResumo, type CardWhatsapp, type Historico,
 } from "@/lib/whatsapp/painel";
 
 type SubAba = "responder" | "saude" | "desempenho" | "compromissos";
@@ -132,7 +132,7 @@ export function AssistantWhatsappTab() {
     return (
       <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
         {seletor}
-        <div className="min-h-0 flex-1"><WhatsappConversas /></div>
+        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} /></div>
       </div>
     );
   }
@@ -406,6 +406,127 @@ function PainelWhatsapp({ onAbrirConversa }: { onAbrirConversa?: (c: CardWhatsap
 }
 
 type Metricas = ReturnType<typeof calcularMetricas>;
+
+// ---------------------------------------------------------------- informações de uma conversa
+// Ao entrar num grupo ou pessoa (modo Conversas): o que o painel sabe só dela — o que responder
+// agora (o mesmo card do painel, com o checklist), perfil DISC, compromissos, saúde e histórico.
+function InfoDaConversa({ chat }: { chat: ChatResumo }) {
+  const { user } = useAuth();
+  const [dados, setDados] = useState<{ cards: CardWhatsapp[]; h: Historico | null; respondidos: Record<string, boolean> } | null>(null);
+  const [agora, setAgora] = useState(() => new Date());
+  const carregar = useCallback(async () => {
+    if (!user?.id) return;
+    const { data } = await supabase.from("whatsapp_painel").select("cards, historico, respondidos").eq("user_id", user.id).maybeSingle();
+    setDados({
+      cards: (data?.cards as unknown as CardWhatsapp[]) || [],
+      h: data?.historico && Object.keys(data.historico as object).length ? (data.historico as unknown as Historico) : null,
+      respondidos: (data?.respondidos as Record<string, boolean>) || {},
+    });
+    setAgora(new Date());
+  }, [user?.id]);
+  useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => {
+    if (!user?.id) return;
+    const canal = supabase.channel(`whatsapp-info-${user.id}-${chat.chat_id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_painel", filter: `user_id=eq.${user.id}` }, () => { void carregar(); })
+      .subscribe();
+    window.addEventListener("focus", carregar);
+    return () => { void supabase.removeChannel(canal); window.removeEventListener("focus", carregar); };
+  }, [user?.id, chat.chat_id, carregar]);
+
+  const metricas = useMemo(() => (dados?.h ? calcularMetricas(dados.h, agora) : null), [dados?.h, agora]);
+  if (!dados) return <Nota>Carregando…</Nota>;
+  const { mentorados, cards } = daConversa(chat, dados.h, dados.cards);
+  if (!mentorados.length && !cards.length) {
+    return <div className="py-8 text-center text-sm text-muted-foreground">Ainda não tenho informações desta conversa no painel.<br />Ela entra quando o Claude ler o WhatsApp e ela tiver algo para acompanhar.</div>;
+  }
+  const meta = metricas?.meta ?? 240;
+  const ids = new Set(mentorados.map((m) => m.id));
+  const salvar = async (respondidos: Record<string, boolean>) => {
+    setDados({ ...dados, respondidos });
+    const { error } = await supabase.from("whatsapp_painel").update({ respondidos }).eq("user_id", user!.id);
+    if (error) toast.error("Não consegui salvar a marcação");
+  };
+  const pendentes = cards.filter((c) => !cardRespondido(c, dados.respondidos));
+  const feitos = cards.filter((c) => cardRespondido(c, dados.respondidos));
+  const promessas = (dados.h?.promessas ?? []).filter((p) => ids.has(p.mentorado));
+  const abertas = promessas.filter((p) => p.status === "aberta");
+  const agenda = (dados.h?.agenda ?? []).filter((a) => a.mentorado && ids.has(a.mentorado));
+  const avaliacoes = (dados.h?.avaliacoes ?? []).filter((a) => ids.has(a.mentorado)).slice(-4).reverse();
+
+  return (
+    <div className="space-y-1 pt-2">
+      {mentorados.map((x) => {
+        const s = metricas?.saude.find((y) => y.mentorado.id === x.id);
+        const [upRotulo, upTom] = UPGRADE[x.upgrade?.nivel] ?? ["—", "cinza"];
+        const ult = x.satisfacao.at(-1);
+        return (
+          <div key={x.id} className="mb-2 rounded-xl border border-border bg-card p-3">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-1.5 text-[15px] font-semibold"><Disc letra={x.disc} mini /> {x.nome}</div>
+                <div className="text-[11px] text-muted-foreground">{x.grupo}</div>
+              </div>
+              <span className="text-[22px] leading-none" title="satisfação">{EMOJI_SATISFACAO[ult?.nivel ?? 0] ?? "❔"}</span>
+            </div>
+            <div className="mt-2.5 grid grid-cols-3 gap-2 text-xs">
+              <span><small className="block text-[10px] text-muted-foreground">Silêncio deles</small><b>{s?.silencio == null ? "—" : s.silencio === 0 ? "hoje" : `${s.silencio} ${s.silencio === 1 ? "dia" : "dias"}`}</b></span>
+              <span><small className="block text-[10px] text-muted-foreground">Sua resposta (média)</small><b>{formatarMinutos(s ? media(s.tempos) : null)}</b></span>
+              <span><small className="block text-[10px] text-muted-foreground">Upgrade</small><Tag tom={upTom}>{upRotulo}</Tag></span>
+            </div>
+            {ult?.evidencia && <p className="mt-2 text-xs text-muted-foreground"><b>Satisfação:</b> {ult.evidencia}</p>}
+            {!!x.upgrade?.sinais?.length && <p className="mt-1 text-xs text-muted-foreground"><b>Upgrade:</b> {x.upgrade.sinais.join(" · ")}</p>}
+          </div>
+        );
+      })}
+
+      <Titulo>Responder agora {pendentes.length ? `(${pendentes.length})` : ""}</Titulo>
+      {!pendentes.length && <Nota>Nada esperando resposta sua aqui. 🎉</Nota>}
+      {pendentes.map((c) => (
+        <CardResposta key={c.id} card={c} atual espera={metricas?.esperaPorCard[c.id]} meta={meta} cor={metricas?.cor}
+          respondidos={dados.respondidos} refCard={() => undefined}
+          onMarcar={(v) => void salvar(marcarCard(c, v, dados.respondidos))}
+          onMarcarItem={(itemId, v) => void salvar(marcarItem(c, itemId, v, dados.respondidos))} />
+      ))}
+      {feitos.map((c) => (
+        <CardResposta key={c.id} card={c} feito meta={meta} respondidos={dados.respondidos} refCard={() => undefined}
+          onMarcar={(v) => void salvar(marcarCard(c, v, dados.respondidos))}
+          onMarcarItem={(itemId, v) => void salvar(marcarItem(c, itemId, v, dados.respondidos))} />
+      ))}
+
+      <Titulo>O que você prometeu {abertas.length ? `(${abertas.length} em aberto)` : ""}</Titulo>
+      {abertas.map((p, i) => {
+        const atrasada = metricas?.promessaAtrasada(p);
+        const d = diasDesde(p.desde, agora) ?? 0;
+        return (
+          <div key={i} className={cn("mb-2 rounded-lg border bg-card px-3 py-2.5 text-[13px]", atrasada ? "border-orange-600" : "border-border")}>
+            <div>{p.o_que}</div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+              prometido {d === 0 ? "hoje" : `há ${d} ${d === 1 ? "dia" : "dias"}`} · prazo {dataCurta(p.prazo)} {atrasada && <Tag tom="urg">atrasada</Tag>}
+            </div>
+          </div>
+        );
+      })}
+      {!abertas.length && <Nota>Nenhuma promessa em aberto{promessas.length ? ` (${promessas.length} já cumprida${promessas.length > 1 ? "s" : ""})` : ""}.</Nota>}
+
+      {agenda.length > 0 && <Titulo>Agenda</Titulo>}
+      {agenda.map((a, i) => (
+        <div key={i} className="mb-2 rounded-lg border border-border bg-card px-3 py-2.5 text-[13px]"><b>{dataCurta(a.data)}</b> · {a.o_que}</div>
+      ))}
+
+      {avaliacoes.length > 0 && <Titulo>Últimos atendimentos</Titulo>}
+      {avaliacoes.map((a, i) => (
+        <div key={i} className="mb-2 rounded-lg border border-border bg-card px-3 py-2.5 text-[13px]">
+          <div className="flex items-center justify-between gap-2">
+            <span>{a.resumo}</span>
+            <span className="shrink-0 text-[11px] text-muted-foreground">{dataCurta(a.data)}</span>
+          </div>
+          {(a.reacao || a.obs) && <div className="mt-0.5 text-[11px] text-muted-foreground">{a.reacao === "positiva" ? "😊 " : a.reacao === "negativa" ? "😟 " : ""}{a.obs}</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function CardResposta({ card: c, feito, atual, espera, meta, cor, respondidos, onMarcar, onMarcarItem, refCard, onAbrir }: {
   card: CardWhatsapp; feito?: boolean; atual?: boolean; espera?: number; meta: number; cor?: (min: number) => string;
