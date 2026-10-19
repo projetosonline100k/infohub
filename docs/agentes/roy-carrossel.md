@@ -292,3 +292,13 @@ Pedido do Davi: o Roy assumiu o que era do Gabriel (que virou o funcionário de 
     - o texto de cada resultado, com a oferta indicada;
     - a sugestão visual das telas.
 - Se o Davi quiser a página "de verdade" (HTML no ar), avisar que isso ainda não existe no fluxo e perguntar onde publicar.
+
+**Drive pelo rclone (19/10/2026):** o Roy não usa mais o app Google Drive do Mac. Ele travava arquivos (Errno 11) e o cache ocupava ~20 GB num disco quase cheio. Agora tudo passa por `scripts/roy/drive.py`:
+- remote `metafocando`, configurado em `~/.config/rclone/rclone.conf` (nunca imprimir);
+- pasta `Projeto 100k/Eu.davi/Carrossel ` (com o espaço no fim);
+- grava com `copyto`, confere pelo MD5 do Drive e apaga as páginas antigas antes de subir uma versão nova;
+- `carrosseis.pasta_drive` passa a guardar o **link** da pasta (drive.google.com/…), não o caminho do Mac;
+- as fontes já usadas vêm do banco (`fonte_id`) e de `USADAS_MANUAL`; o Drive não é mais varrido;
+- Drive cheio (`storageQuotaExceeded`): o carrossel segue para a revisão, a pasta fica `drive_pendente` e o serviço tenta de hora em hora.
+- Em 19/10 o Drive do metafocando estava **cheio** (o 026 ficou pendente).
+- O client_id compartilhado do rclone vai ser aposentado em 2026. O Davi cria um próprio e o remote é reconfigurado com o mesmo nome.

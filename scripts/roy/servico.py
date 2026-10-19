@@ -144,7 +144,7 @@ O Davi te passou esta tarefa no Infopro:
 ---
 {ja_feitos}
 NESTA ETAPA você só ESCOLHE os reels e começa cada carrossel; o conteúdo de cada um é escrito depois, numa etapa própria.
-1. `python3 scripts/roy/roy.py candidatos 30`: reels ainda não usados, do mais novo para o mais antigo. Escolha conforme a tarefa (se ela citar reels ou temas, use esses; se pedir os que mais performaram, considere isso). Quantos: o que a tarefa pedir (1 se não disser). Não repita assunto de carrossel que já existe (veja os nomes das pastas em "~/Library/CloudStorage/GoogleDrive-metafocando@gmail.com/Meu Drive/Projeto 100k/Eu.davi/Carrossel /", que tem um espaço no fim). Pule vídeo sem fala útil.
+1. `python3 scripts/roy/roy.py candidatos 30`: reels ainda não usados, do mais novo para o mais antigo. Escolha conforme a tarefa (se ela citar reels ou temas, use esses; se pedir os que mais performaram, considere isso). Quantos: o que a tarefa pedir (1 se não disser). Não repita assunto de carrossel que já existe (veja os nomes das pastas: `python3 -c "import sys; sys.path.insert(0, 'scripts/roy'); import drive; print(chr(10).join(sorted(drive.pastas())))"`). Pule vídeo sem fala útil.
 2. Para CADA escolhido: `python3 scripts/roy/roy.py iniciar <media_id> --tarefa {tarefa}` (marca EM PRODUÇÃO ligado a esta tarefa, baixa e transcreve; leva 1 a 2 minutos cada). Se um falhar, siga com os outros.
 3. NÃO escreva conteudo.json, NÃO rode render.py nem renderizar. Não publique nada.
 

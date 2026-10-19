@@ -32,11 +32,11 @@ sys.path.insert(0, str(AQUI))
 from migration_db import connect  # noqa: E402
 import instagram  # noqa: E402
 import render  # noqa: E402
+import drive  # noqa: E402
 
 CLIENTE = "e4b24f93-0eda-43fc-b50e-3ebe24f8905f"  # projeto Davi Queiroz (empresa do Roy)
 TRABALHO = render.BASE / "carrosseis"
-# Atenção: a pasta "Carrossel " tem um espaço no fim.
-DRIVE = Path.home() / "Library/CloudStorage/GoogleDrive-metafocando@gmail.com/Meu Drive/Projeto 100k/Eu.davi/Carrossel "
+# Drive pelo rclone (drive.py), não mais pelo app Google Drive do Mac (19/10/2026).
 FF = Path.home() / ".infopro-hub/creator-bin/ffmpeg"
 OCR = render.BASE / "bin" / "ocr"
 # Fontes já convertidas antes do Roy rodar no Infopro (manual, item 8).
@@ -77,15 +77,8 @@ def fontes_usadas():
     usadas = set(USADAS_MANUAL)
     for linha in db("SELECT fonte_id FROM public.carrosseis WHERE cliente_id = %s", (CLIENTE,)) or []:
         usadas.add(linha[0])
-    if DRIVE.is_dir():
-        for ref in DRIVE.glob("*/referencia.txt"):
-            try:
-                texto = ref.read_text(errors="replace")
-            except OSError:  # Drive pode negar leitura ao processo em segundo plano
-                continue
-            m = re.search(r"ID da fonte:\s*(\d+)", texto)
-            if m:
-                usadas.add(m.group(1))
+    # O Drive não é mais lido aqui (19/10): todo carrossel do Roy está no banco (fonte_id)
+    # e os de antes dele estão em USADAS_MANUAL. drive.referencias() existe se precisar.
     return usadas
 
 
@@ -107,7 +100,10 @@ def candidatos(n=10):
 
 # ------------------------------------------------------------------ início
 def proximo_numero():
-    nums = [int(p.name[:3]) for p in DRIVE.glob("[0-9][0-9][0-9] - *")] if DRIVE.is_dir() else []
+    try:
+        nums = [int(n[:3]) for n in drive.pastas() if n[:3].isdigit()]
+    except OSError:
+        nums = []
     linha = db("SELECT max(numero) FROM public.carrosseis WHERE cliente_id = %s", (CLIENTE,))
     if linha and linha[0][0]:
         nums.append(linha[0][0])
@@ -351,59 +347,23 @@ def _nome_pasta(numero, tema, dia):
     return f"{numero:03d} - {dia} - {tema}"
 
 
-def _gravar_no_drive(origem, destino, tentativas=6):
-    """O Google Drive do Mac às vezes trava um arquivo enquanto sincroniza
-    (Errno 11, "Resource deadlock avoided"). Tenta de novo com calma e, se
-    precisar, apaga o antigo e grava por um arquivo temporário."""
-    import errno
-    import os
-    import time
-    destino = Path(destino)
-    for i in range(tentativas):
-        try:
-            tmp = destino.with_name(f".{destino.name}.roy-tmp")
-            shutil.copyfile(origem, tmp)
-            os.replace(tmp, destino)
-            return
-        except OSError as e:
-            if e.errno not in (errno.EDEADLK, errno.EBUSY, errno.EAGAIN, errno.EPERM, errno.EACCES) or i == tentativas - 1:
-                raise
-            time.sleep(2 * (i + 1))
-            try:
-                destino.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-
-def _escrever_no_drive(texto, destino):
-    import tempfile
-    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt") as f:
-        f.write(texto)
-    try:
-        _gravar_no_drive(f.name, destino)
-    finally:
-        Path(f.name).unlink(missing_ok=True)
-
-
 def salvar_drive(id_, pasta, conteudo, numero, versao, estado):
-    if not DRIVE.is_dir():
-        raise SystemExit(f"Pasta do Drive não encontrada: {DRIVE}")
-    existente = next(iter(DRIVE.glob(f"{numero:03d} - *")), None)
-    destino = existente or DRIVE / _nome_pasta(numero, conteudo["theme"], date.today().isoformat())
-    certo = destino.with_name(_nome_pasta(numero, conteudo["theme"], destino.name[6:16]))
-    if destino != certo:  # o tema mudou num ajuste
-        destino.rename(certo)
-        destino = certo
-    destino.mkdir(exist_ok=True)
-    for velho in destino.glob("[0-9][0-9].png"):
-        velho.unlink()
+    """Grava a pasta NNN - data - tema no Drive (rclone) e confere pelo MD5 que
+    tudo chegou (manual, item 6). Devolve o link da pasta no Drive."""
+    existente = drive.pasta_do_numero(numero)
+    nome = existente or _nome_pasta(numero, conteudo["theme"], date.today().isoformat())
+    certo = _nome_pasta(numero, conteudo["theme"], nome[6:16])
+    if existente and existente != certo:  # o tema mudou num ajuste
+        drive.renomear(existente, certo)
+    nome = certo
+    drive.apagar_paginas(nome)
     pngs = sorted(pasta.glob("[0-9][0-9].png"))
     for p in pngs:
-        _gravar_no_drive(p, destino / p.name)
-    _gravar_no_drive(pasta / "conteudo.json", destino / "conteudo.json")
-    _escrever_no_drive(conteudo["caption"].strip() + "\n", destino / "legenda.txt")
+        drive.gravar(p, f"{nome}/{p.name}")
+    drive.gravar(pasta / "conteudo.json", f"{nome}/conteudo.json")
+    drive.escrever(conteudo["caption"].strip() + "\n", f"{nome}/legenda.txt")
     if (pasta / "transcricao.txt").exists():
-        _gravar_no_drive(pasta / "transcricao.txt", destino / "transcricao.txt")
+        drive.gravar(pasta / "transcricao.txt", f"{nome}/transcricao.txt")
     fonte = json.loads((pasta / "fonte.json").read_text())
     linhas = [
         "Perfil: @eu.davioficial", f"Tema: {conteudo['theme']}", f"Fonte: {fonte.get('permalink')}",
@@ -417,12 +377,16 @@ def salvar_drive(id_, pasta, conteudo, numero, versao, estado):
     ] + _fontes_das_capas(conteudo) + [
         "Arquivos em ordem:",
     ] + [f"{p.name} | SHA256: {_hash(p)}" for p in pngs]
-    _escrever_no_drive("\n".join(linhas) + "\n", destino / "referencia.txt")
+    drive.escrever("\n".join(linhas) + "\n", f"{nome}/referencia.txt")
     # Confere que tudo chegou ao Drive antes de seguir (manual, item 6).
+    no_drive = drive.md5s(nome)
     for p in pngs:
-        if _hash(destino / p.name) != _hash(p):
+        if no_drive.get(p.name) != drive.md5_local(p):
             raise OSError(f"{p.name} não chegou certo no Drive")
-    return destino
+    extras = sorted(n for n in no_drive if n[:2].isdigit() and n.endswith(".png") and n not in {p.name for p in pngs})
+    if extras:
+        raise OSError(f"sobrou página antiga no Drive: {extras}")
+    return drive.link(nome)
 
 
 def _fontes_das_capas(conteudo):
@@ -543,19 +507,27 @@ def aprovar(id_):
     # Tarefa de origem (do Roy) concluída quando todos os carrosséis dela forem aprovados.
     concluir_tarefa_roy(db("SELECT atividade_roy_id FROM public.carrosseis WHERE id = %s", (id_,))[0][0])
     # Drive: o referencia.txt passa a dizer que foi aprovado (se o Drive deixar).
-    ref = Path(pasta_drive or "") / "referencia.txt"
-    if pasta_drive and ref.exists():
-        try:
+    try:
+        nome = drive.pasta_do_numero(numero) if numero else None
+        if nome:
             texto = re.sub(r"^Estado da criação: .*$", "Estado da criação: APROVADO PELO DAVI — COM A DALILA PARA PROGRAMAR",
-                           ref.read_text(), flags=re.M)
-            _escrever_no_drive(texto, ref)
-        except OSError:
-            pass
+                           drive.ler(f"{nome}/referencia.txt"), flags=re.M)
+            drive.escrever(texto, f"{nome}/referencia.txt")
+    except OSError:
+        pass
     return dalila[2] if dalila else None
 
 
+_drive_cheio_ate = 0.0
+
+
 def drive_pendentes():
-    """Pastas que o Drive não deixou gravar: tenta de novo (serviço do Roy)."""
+    """Pastas que o Drive não deixou gravar: tenta de novo (serviço do Roy).
+    Drive cheio: espera 1 hora antes de tentar de novo."""
+    global _drive_cheio_ate
+    import time
+    if time.time() < _drive_cheio_ate:
+        return 0
     feitos = 0
     for marca in TRABALHO.glob("*/drive_pendente"):
         pasta = marca.parent
@@ -564,7 +536,11 @@ def drive_pendentes():
             continue
         numero, versao, status = linha[0]
         estado = "APROVADO PELO DAVI — COM A DALILA PARA PROGRAMAR" if status == "aprovado" else "CONCLUÍDO E REVISADO PELO ROY — AGUARDANDO O DAVI"
-        destino = salvar_drive(pasta.name, pasta, json.loads((pasta / "conteudo.json").read_text()), numero, versao, estado)
+        try:
+            destino = salvar_drive(pasta.name, pasta, json.loads((pasta / "conteudo.json").read_text()), numero, versao, estado)
+        except drive.DriveCheio:
+            _drive_cheio_ate = time.time() + 3600
+            raise
         db("UPDATE public.carrosseis SET pasta_drive = %s WHERE id = %s", (str(destino), pasta.name))
         marca.unlink()
         feitos += 1
