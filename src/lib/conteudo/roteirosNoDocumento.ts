@@ -8,7 +8,7 @@ export interface RoteiroMarcado { numero: number; titulo: string; inicio: number
 
 // Começo da linha: marcação opcional (#, *, -, >), depois "headline N" / "roteiro N" / "#N",
 // e o resto da linha (depois de ":", "-", "–", ".", ")") é o título.
-const MARCA = /^[ \t]*(?:[*>-][ \t]*)*(?:(?:headline|roteiro)[ \t]*#?[ \t]*(\d{1,3})|#[ \t]?(\d{1,3}))\b[ \t]*[:\-–—.)]?[ \t]*(.*)$/gim;
+const MARCA = /^[ \t]*(?:[*>-][ \t]*)*(?:(?:headlines?|roteiros?)[ \t]*#?[ \t]*(\d{1,3})|#[ \t]?(\d{1,3}))\b[ \t]*[:\-–—.)]?[ \t]*(.*)$/gim;
 
 export function roteirosNoDocumento(texto: string | null | undefined): RoteiroMarcado[] {
   const t = (texto ?? "").replace(/<\/(p|h\d|li|div)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");

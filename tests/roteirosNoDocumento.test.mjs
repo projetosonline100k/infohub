@@ -34,6 +34,10 @@ test('texto sem marcação e "# Título" de markdown não contam', () => {
   assert.equal(roteirosNoDocumento(null).length, 0);
 });
 
+test('"Headlines 3" (com s) também conta', () => {
+  assert.deepEqual(roteirosNoDocumento('Headlines 3: Não leia esses 3 livros').map((r) => [r.numero, r.titulo]), [[3, 'Não leia esses 3 livros']]);
+});
+
 test('roteiro em HTML (editor) vira texto, e conta as headlines do HTML', () => {
   const html = '<h2 data-collapsed="true">Headline 1: Livros</h2><p>Primeiro &amp; segundo</p><ul><li><p>item</p></li></ul><h2>Headline 2: Outro</h2>';
   assert.equal(textoDoRoteiro(html), 'Headline 1: Livros\nPrimeiro & segundo\n• item\nHeadline 2: Outro');

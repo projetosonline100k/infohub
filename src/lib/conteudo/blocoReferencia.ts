@@ -14,7 +14,7 @@ const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 export function proximoNumeroHeadline(conteudo: string | null | undefined): number {
   const texto = (conteudo ?? "").replace(/<[^>]+>/g, " ");
   let maior = 0;
-  for (const m of texto.matchAll(/headline\s*#?\s*(\d{1,3})/gi)) maior = Math.max(maior, Number(m[1]));
+  for (const m of texto.matchAll(/headlines?\s*#?\s*(\d{1,3})/gi)) maior = Math.max(maior, Number(m[1]));
   return maior + 1;
 }
 

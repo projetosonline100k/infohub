@@ -5,7 +5,7 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 // em negrito, em título mesmo, para depois conseguir ocultar com a ferramenta de abrir e fechar").
 // Todo parágrafo de topo que começa com "Headline N", "Roteiro N" ou "#N" vira título nível 2 —
 // e aí ganha a setinha de recolher (tiptapTituloRecolhivel). Mesma regra de roteirosNoDocumento.
-export const MARCA_HEADLINE = /^\s*(?:(?:headline|roteiro)\s*#?\s*\d{1,3}|#\s?\d{1,3})\b/i;
+export const MARCA_HEADLINE = /^\s*(?:(?:headlines?|roteiros?)\s*#?\s*\d{1,3}|#\s?\d{1,3})\b/i;
 
 export const HeadlineTitulo = Extension.create({
   name: "headlineTitulo",
