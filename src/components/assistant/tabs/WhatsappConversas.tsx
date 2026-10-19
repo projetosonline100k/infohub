@@ -212,7 +212,11 @@ export function WhatsappConversas({ pedido, info, etiquetas }: {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
                     <span className={cn("min-w-0 truncate text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
-                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">{etiquetas?.(c)}</span>
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                      {/* 19/10 (Davi): etiqueta "Mensagem nova" para o que chegou e ainda não foi aberto. */}
+                      {naoLida && <span className="whitespace-nowrap rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white">Mensagem nova</span>}
+                      {etiquetas?.(c)}
+                    </span>
                     <span className={cn("shrink-0 text-[10.5px]", naoLida ? "font-semibold text-emerald-600" : "text-muted-foreground")}>{horaCurta(c.ultima_em)}</span>
                   </span>
                   <span className="flex items-center gap-2">
