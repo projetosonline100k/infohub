@@ -99,7 +99,7 @@ export function montarPedido(d: DadosPedido): string {
   partes.push(["COMO RESPONDER:",
     "- Escreva SOMENTE o texto que entra no documento, em português do Brasil. Nada de \"Claro!\", explicação ou pergunta antes.",
     "- Uma frase ou parágrafo por linha. Sem markdown: nada de #, ** ou tabelas. Listas só com \"- \" no começo da linha.",
-    `- Headline sempre numa linha própria começando com "Headline N:" (a próxima do documento é a ${d.proximaHeadline}).`,
+    `- Headline sempre SOZINHA numa linha própria, começando com "Headline N:" (a próxima do documento é a ${d.proximaHeadline}); o roteiro começa na linha de baixo, nunca na mesma linha da headline.`,
     "- Roteiro: a fala pronta para gravar, sem rótulos de cena, a não ser que o formato peça.",
     a && d.anterior && ehRevisao(a.etapa)
       ? `- Depois do texto, numa linha sozinha, escreva ${MARCA_NOTAS} e um JSON com um comentário em cada linha que você mudou (ou logo onde tirou algo): [{"linha": 3, "nota": "tirei X e troquei por Y porque Z"}]. "linha" é o número da linha no SEU texto revisado (1 = a primeira). Esses comentários aparecem ao lado do texto para o Davi; NÃO entram no documento.`

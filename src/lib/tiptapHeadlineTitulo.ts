@@ -12,6 +12,8 @@ export const TEXTO_CARREGANDO = "Preparando +Info";
 // e aí ganha a setinha de recolher (tiptapTituloRecolhivel). Mesma regra de roteirosNoDocumento.
 export const MARCA_HEADLINE = /^\s*(?:(?:headlines?|roteiros?)\s*#?\s*\d{1,3}|#\s?\d{1,3})\b/i;
 
+export const MAX_HEADLINE = 160;
+
 export const HeadlineTitulo = Extension.create({
   name: "headlineTitulo",
   addProseMirrorPlugins() {
@@ -24,7 +26,9 @@ export const HeadlineTitulo = Extension.create({
           if (!titulo) return null;
           let tr = null as ReturnType<typeof estado.tr.setNodeMarkup> | null;
           estado.doc.forEach((no, pos) => {
-            if (no.type.name !== "paragraph" || !MARCA_HEADLINE.test(no.textContent)) return;
+            // Só linha curta (a headline): parágrafo longo que começa com "Headline" é roteiro e fica
+            // texto normal (19/10, Davi: "sempre que gerar o roteiro precisa vir em texto normal").
+            if (no.type.name !== "paragraph" || no.textContent.length > MAX_HEADLINE || !MARCA_HEADLINE.test(no.textContent)) return;
             tr = (tr ?? estado.tr).setNodeMarkup(pos, titulo, { level: 2 });
           });
           return tr;

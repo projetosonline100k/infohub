@@ -54,19 +54,46 @@ function localizar(rev: Revisao, blocos: Bloco[]): (Bloco | null)[] {
   });
 }
 
-/** Troca no documento as linhas `linhas` (seguidas, ignorando linhas vazias) pelo texto `novo`.
- *  false = não achou (o texto foi editado). */
-export function trocarLinhas(editor: Editor, linhas: string[], novo: string): boolean {
-  if (!linhas.length || !novo.trim()) return false;
-  const doc = editor.state.doc;
+const palavrasDe = (t: string) => norm(t).toLowerCase().split(" ").filter(Boolean);
+
+/** Onde está no documento o texto destas linhas, pelas palavras (não pelo formato: título ou texto,
+ *  linhas quebradas ou juntadas dão no mesmo). `exato` = todas as palavras iguais; senão basta o
+ *  começo e o fim baterem (o meio pode ter sido mexido). null = não achou. */
+export function acharTrecho(doc: PMNode, linhas: string[], exato: boolean): { from: number; to: number } | null {
+  const alvo = palavrasDe(linhas.join(" "));
+  if (!alvo.length) return null;
   const blocos = blocosDe(doc).filter((b) => norm(b.texto));
-  for (let i = 0; i + linhas.length <= blocos.length; i++) {
-    if (!linhas.every((l, k) => norm(blocos[i + k].texto) === norm(l))) continue;
-    const a = doc.resolve(blocos[i].pos + 1), ult = blocos[i + linhas.length - 1], b = doc.resolve(ult.pos + 1);
-    const from = a.depth ? a.before(1) : blocos[i].pos, to = b.depth ? b.after(1) : ult.pos + ult.tamanho;
-    return editor.chain().insertContentAt({ from, to }, textoParaHtml(novo)).run();
+  const W: string[] = [], dono: number[] = [], inicioBloco = new Set<number>(), fimBloco = new Set<number>();
+  blocos.forEach((b, k) => {
+    const ps = palavrasDe(b.texto);
+    inicioBloco.add(W.length);
+    ps.forEach((p) => { W.push(p); dono.push(k); });
+    fimBloco.add(W.length - 1);
+  });
+  const n = Math.min(6, alvo.length);
+  const bate = (de: number, pedaco: string[]) => pedaco.every((p, k) => W[de + k] === p);
+  const faixa = (p: number, q: number) => {
+    const b0 = blocos[dono[p]], b1 = blocos[dono[q]];
+    const a = doc.resolve(b0.pos + 1), b = doc.resolve(b1.pos + 1);
+    return { from: a.depth ? a.before(1) : b0.pos, to: b.depth ? b.after(1) : b1.pos + b1.tamanho };
+  };
+  for (const p of inicioBloco) {
+    if (!bate(p, alvo.slice(0, n))) continue;
+    if (bate(p, alvo) && fimBloco.has(p + alvo.length - 1)) return faixa(p, p + alvo.length - 1);
+    if (exato) continue;
+    // Começo e fim batendo, com tamanho parecido (o meio pode ter sido editado).
+    for (let q = p + Math.floor(alvo.length * 0.5); q < Math.min(W.length, p + alvo.length * 2); q++) {
+      if (fimBloco.has(q) && bate(q - n + 1, alvo.slice(-n))) return faixa(p, q);
+    }
   }
-  return false;
+  return null;
+}
+
+/** Troca no documento o texto destas linhas pelo texto `novo` (um passo do ⌘Z). false = não achou. */
+export function trocarLinhas(editor: Editor, linhas: string[], novo: string, exato = false): boolean {
+  if (!novo.trim()) return false;
+  const onde = acharTrecho(editor.state.doc, linhas, exato);
+  return !!onde && editor.chain().insertContentAt(onde, textoParaHtml(novo)).run();
 }
 
 const widget = (classe: string, texto: string) => () => {

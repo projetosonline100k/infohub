@@ -309,7 +309,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           fixar();
           const { texto: final, notas } = separarNotas(await escreverComClaude(id, prompt, modelo, () => undefined));
           if (final) {
-            const trocou = trocarLinhas(editor, linhasDoTexto(antes), final);
+            const trocou = trocarLinhas(editor, linhasDoTexto(antes), final, true);   // mexeu no texto enquanto ele revisava: fica o do Davi
             guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou }]);
             if (!trocou) toast.info(`${quem} terminou a revisão. Como o texto foi mexido, deixei o seu; clique em On para ver a versão de ${quem}.`);
           }
