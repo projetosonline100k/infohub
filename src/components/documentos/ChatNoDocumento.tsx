@@ -3,7 +3,7 @@ import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowUp, BookOpen, Check, Loader2, Quote, Sparkles, Square, X } from "lucide-react";
-import { RevisaoNoDocumento, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
+import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { CerebroEsteira } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -318,10 +318,12 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const trabalhar = async (o: {
     regiao: Regiao; selecao: string | null; documento: string; pedido: string; proximaHeadline: number;
     fila: (typeof escolhidasOrdem[number] | null)[]; aoAndar?: (a: Andamento) => void;
+    jaSeguida?: boolean;   // o "gerar todos" já acompanha a região desde o começo (seguir duas vezes andava o dobro)
+    numero?: number;       // ROTEIRO NN deste texto (guardado na revisão)
   }): Promise<{ texto: string; erro?: string }> => {
     const { regiao, selecao, documento, pedido, proximaHeadline, fila } = o;
     const andar = o.aoAndar ?? setAndamento;
-    const largar = seguirRegiao(editor, regiao);
+    const largar = o.jaSeguida ? () => undefined : seguirRegiao(editor, regiao);
     const blocos: { quem: string; texto: string }[] = [];
     let anterior: { quem: string; texto: string } | null = null;
     let erro: string | undefined;
@@ -366,7 +368,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           rodando.current.delete(id);
           if (final) {
             const trocou = trocarLinhas(editor, linhasDoTexto(antes), final, true);   // mexeu no texto enquanto ele revisava: fica o do Davi
-            guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou }]);
+            guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou, numero: o.numero }]);
             if (!trocou) toast.info(`${quem} terminou a revisão. Como o texto foi mexido, deixei o seu; clique em On para ver a versão de ${quem}.`);
           }
           anterior = { quem, texto: final || antes };
@@ -415,6 +417,19 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     requestAnimationFrame(() => campo.current?.focus());
   };
 
+  /** Tira do documento todo texto que veio das revisões (versão que estiver no ar) e as revisões. */
+  const apagarGerados = () => {
+    if (!revisoes.length || !window.confirm(`Apagar do documento os ${revisoes.length} textos gerados (Junior/Elias)? As headlines e os links ficam.`)) return;
+    let apagados = 0;
+    for (const r of revisoes) {
+      const linhas = linhasDoTexto((revisaoAtiva(r) ? r.depois : r.antes) ?? r.linhas.map((l) => l.texto).join("\n"));
+      const onde = acharTrecho(editor.state.doc, linhas, false);
+      if (onde) { editor.chain().deleteRange(onde).run(); apagados++; }
+    }
+    guardarRevisoes(() => []);
+    toast.success(`${apagados} texto(s) apagado(s). Agora é só "Gerar todos" de novo.`);
+  };
+
   // ---------------------------------------------------------------- gerar todos os roteiros (19/10, opção 1)
   const [vazios, setVazios] = useState<RoteiroVazio[]>([]);
   const [lote, setLote] = useState<{ total: number; feitos: number; agora: string[] } | null>(null);
@@ -454,7 +469,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         const doc = editor.state.doc;
         const documento = `${doc.textBetween(0, t.regiao.from, "\n")}\n[CURSOR]\n${doc.textBetween(t.regiao.from, doc.content.size, "\n")}`;
         const r = await trabalhar({ regiao: t.regiao, selecao: null, documento, pedido, proximaHeadline: t.numero, fila: etapasRoteiro,
-          aoAndar: () => undefined });
+          aoAndar: () => undefined, jaSeguida: true, numero: t.numero });
         if (r.erro) falhas++;
         mudarAgora((l) => l.filter((x) => x !== rotulo));
         setLote((l) => (l ? { ...l, feitos: l.feitos + 1 } : l));
@@ -582,6 +597,12 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           </button>
         </div>
 
+        {!lote && revisoes.length >= 2 && (
+          <div className="mx-3 mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <span className="flex-1">{revisoes.length} textos gerados neste documento.</span>
+            <button type="button" onClick={apagarGerados} className="rounded-md border px-2 py-0.5 hover:bg-muted">Apagar os textos gerados</button>
+          </div>
+        )}
         {(vazios.length >= 2 || lote) && (
           <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
             {lote ? (

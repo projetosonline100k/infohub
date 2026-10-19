@@ -147,6 +147,7 @@ export interface Revisao {
   id: string; quem: string; linhas: LinhaRevisada[]; removidas: { depoisDe: number; texto: string }[];
   antes?: string; depois?: string;   // as duas versões (Junior e Elias), para o On/Off
   ativa?: boolean;                   // true = o texto do revisor está no documento
+  numero?: number;                   // ROTEIRO NN a que este texto pertence ("gerar todos")
 }
 
 /** Junior → Elias, linha a linha: de qual linha veio cada uma, o que saiu inteiro e o comentário de cada mudança. */
