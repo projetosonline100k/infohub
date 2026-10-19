@@ -24,6 +24,8 @@ mod creator;
 mod whatsapp;
 #[cfg(target_os = "macos")]
 mod danilo;
+#[cfg(target_os = "macos")]
+mod ditado;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -75,6 +77,8 @@ pub fn run() {
             whatsapp::whatsapp_enviar_audio,
             whatsapp::whatsapp_midia_base,
             danilo::danilo_base,
+            ditado::ditado_organizar,
+            ditado::ditado_colar,
         ]);
     // Fora do macOS só existe o comando de destacar aba.
     #[cfg(not(target_os = "macos"))]
@@ -98,6 +102,10 @@ pub fn run() {
                 let estado_atalho = global_shortcut::registrar(&app.handle().clone());
                 app.manage(estado_atalho);
             }
+
+            // Ditado: segurar ⌘ sozinho = o Atlas escuta e cola o texto organizado (ditado.rs).
+            #[cfg(target_os = "macos")]
+            ditado::iniciar(app.handle().clone());
 
             // Menu do app (macOS) próprio: igual ao padrão, mas "Desfazer" e
             // "Refazer" avisam o Infopro (evento "menu-desfazer"/"menu-refazer")

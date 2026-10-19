@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAssistantVoz } from "@/hooks/useAssistantVoz";
+import { useDitado } from "@/hooks/useDitado";
 import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { AssistantOrb } from "./AssistantOrb";
 import { AssistantPanel } from "./AssistantPanel";
@@ -731,7 +732,10 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Lua clicada: mostra o que é e por que apareceu (16/10: "ao clicar nela, me mostre o que é").
   const [luaAberta, setLuaAberta] = useState<Lua | null>(null);
   // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
-  const estadoVoz = useAssistantVoz(variant === "window" ? user?.id : undefined);
+  const estadoVozConversa = useAssistantVoz(variant === "window" ? user?.id : undefined);
+  // Ditado: segurar ⌘ sozinho = o Atlas escuta e cola o texto organizado (useDitado).
+  const estadoDitado = useDitado(variant === "window");
+  const estadoVoz = estadoDitado ?? estadoVozConversa;
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
   // cobrança é de uma atividade, já inicia o foco nela.
   const handleCobrancaComecar = useCallback(async () => {

@@ -99,7 +99,7 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
           )} />
           <span className={cn("pointer-events-none absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] shadow",
             voz === "ouvindo" ? "bg-rose-500" : voz === "entendendo" ? "bg-amber-400" : "bg-cyan-500")}
-            title={voz === "ouvindo" ? "Ouvindo (solte ⌥ Espaço pra mandar)" : voz === "entendendo" ? "Transcrevendo…" : "O Claude está trabalhando no seu pedido"}>
+            title={voz === "ouvindo" ? "Ouvindo (solte a tecla para mandar)" : voz === "entendendo" ? "Transcrevendo…" : "O Claude está trabalhando (no ditado: organizando o texto)"}>
             {voz === "pensando" ? "…" : "🎙️"}
           </span>
         </>
