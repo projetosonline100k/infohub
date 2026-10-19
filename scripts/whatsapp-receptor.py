@@ -328,16 +328,28 @@ def transcritor():
     while True:
         _acordar.wait(timeout=60)
         _acordar.clear()
-        c = connect()
-        q = c.cursor()
-        q.execute("""SELECT id, midia_arquivo FROM public.whatsapp_mensagens
-                     WHERE transcricao_status = 'pendente' AND midia_arquivo IS NOT NULL ORDER BY enviada_em DESC""")
-        fila = q.fetchall()
-        c.close()
+        # 19/10: uma queda do banco ("network error", "max clients reached") matava esta thread e os
+        # áudios ficavam "transcrevendo…" para sempre. Agora espera e tenta de novo na próxima volta.
+        try:
+            c = connect()
+            try:
+                q = c.cursor()
+                q.execute("""SELECT id, midia_arquivo FROM public.whatsapp_mensagens
+                             WHERE transcricao_status IN ('pendente', 'transcrevendo') AND midia_arquivo IS NOT NULL
+                             ORDER BY enviada_em DESC""")
+                fila = q.fetchall()
+            finally:
+                c.close()
+        except Exception as e:
+            log("transcrição: banco fora, tento de novo em 1 min —", repr(e)[:150])
+            continue
         for id_msg, nome in fila:
             arq = MIDIA / nome
             if not arq.exists():
-                marcar(id_msg, "erro")
+                try:
+                    marcar(id_msg, "erro")
+                except Exception:
+                    pass
                 continue
             try:
                 marcar(id_msg, "transcrevendo")
@@ -348,8 +360,11 @@ def transcritor():
                 marcar(id_msg, "pronta", (r.get("text") or "").strip() or "(áudio sem fala)")
                 log("audio transcrito em", f"{time.time() - inicio:.1f}s")
             except Exception as e:
-                marcar(id_msg, "erro")
                 log("audio: erro", repr(e)[:200])
+                try:
+                    marcar(id_msg, "erro")
+                except Exception:   # banco fora: fica 'transcrevendo' e a próxima volta tenta de novo
+                    pass
 
 
 # ------------------------------------------------------------ webhook

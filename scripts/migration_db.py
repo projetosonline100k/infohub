@@ -31,7 +31,7 @@ if not values.get('PGPASSWORD'):
     print('PASSWORD_EMPTY')
     sys.exit(2)
 
-def _connect_uma_vez():
+def _connect_uma_vez(porta=None):
     ssl_context = ssl.create_default_context(cafile=certifi.where())
     ssl_context.load_verify_locations(
         cafile=str(Path(__file__).resolve().parents[1] / 'prod-ca-2021.crt')
@@ -40,7 +40,7 @@ def _connect_uma_vez():
     # strict mode. Keep certificate-chain and hostname verification enabled.
     ssl_context.verify_flags &= ~ssl.VERIFY_X509_STRICT
     return pg8000.dbapi.connect(
-        host=host, port=int(values.get('PGPORT', '5432')),
+        host=host, port=porta or int(values.get('PGPORT', '5432')),
         database=values.get('PGDATABASE', 'postgres'), user=user,
         # 30 s (era 15): o pooler às vezes demora e dava "read operation timed out".
         password=values['PGPASSWORD'], timeout=30,
@@ -48,10 +48,10 @@ def _connect_uma_vez():
     )
 
 
-def _conectar(tentativas):
+def _conectar(tentativas, porta=None):
     for n in range(tentativas):
         try:
-            return _connect_uma_vez()
+            return _connect_uma_vez(porta)
         except (pg8000.dbapi.InterfaceError, ssl.SSLError, OSError):
             if n == tentativas - 1:
                 raise
@@ -64,7 +64,8 @@ def _conectar(tentativas):
 # reusar_nesta_thread() guarda UMA conexão e só reconecta quando ela cai.
 # Scripts comuns (que não chamam) continuam abrindo e fechando como antes.
 _local = threading.local()
-OCIOSA_S = 30   # parada há mais que isso: confere com SELECT 1 antes de usar
+OCIOSA_S = 30
+PORTA_TRANSACAO = 6543   # parada há mais que isso: confere com SELECT 1 antes de usar
 
 
 def reusar_nesta_thread():
@@ -115,7 +116,10 @@ def _reusada(tentativas):
             real = None
     if real is None:
         _local.conexao = None
-        real = _conectar(tentativas)
+        # 19/10: a conexão guardada da thread (ouvinte, serviços) fica aberta o tempo todo; no Session
+        # pooler (15 vagas) elas enchiam tudo e o receptor do WhatsApp perdia mensagens ("max clients
+        # reached"). Vão pelo Transaction pooler (6543), que aguenta muitas conexões paradas.
+        real = _conectar(tentativas, PORTA_TRANSACAO)
         _local.conexao = real
     _local.em_uso = True
     return _ConexaoReusada(real)
