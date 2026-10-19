@@ -2,7 +2,8 @@
 
 Edição aprovada (Danilo) → linha em `reels` com status 'preparando'
 (migração 20261016050000_dalila_reels). Para cada uma, este script:
-  1. comprime o final do Drive para caber no Storage (plano gratuito do
+  1. comprime o final do Danilo (final_drive: desde 17/10 o final.mp4 local
+     em ~/.infopro-hub/danilo/edicoes/<id>/; antes, a pasta do Drive) para caber no Storage (plano gratuito do
      Supabase: 50 MB por arquivo) — HEVC pela VideoToolbox, 1080x1920, 30 fps,
      AAC 128k, moov no início (o que a Meta pede para Reels);
   2. sobe no bucket público `reels` com o token do reel (no Mac não há chave
@@ -175,7 +176,7 @@ def preparar(reel):
     rid = reel["id"]
     final = Path(reel["final_drive"] or "")
     if not final.is_file():
-        db("UPDATE public.reels SET mensagem = 'Esperando o vídeo final aparecer no Drive deste Mac' WHERE id = %s", (rid,))
+        db("UPDATE public.reels SET mensagem = 'Esperando o vídeo final do Danilo aparecer neste Mac' WHERE id = %s", (rid,))
         return False
     pasta = TRABALHO / rid
     pasta.mkdir(parents=True, exist_ok=True)

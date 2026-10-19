@@ -119,6 +119,9 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 1. **Edição aprovada** (`edicoes_video.status = 'aprovado'`, pelo servidor do Danilo): o gatilho `edicao_aprovada_reel` cria a linha em `reels` (status `preparando`) e a tarefa da Dalila "Programar reel: <título>".
    - Não foi preciso mexer no código do Danilo.
    - O título vem da edição, sem "Piloto —" e sem "(IMG_…)". O do card só é usado quando o da edição é genérico ("Bruto IMG_…").
+- **De onde vem o vídeo (aviso do Danilo, 17/10):** desde o commit 22dd442 o Danilo entrega pelo rclone. Na aprovação, `edicoes_video.final_drive` aponta para o arquivo **local** Full HD `~/.infopro-hub/danilo/edicoes/<id>/final.mp4`, que fica no Mac e não é apagado nem movido.
+  - A cópia de entrega no Drive (`metafocando:Projeto 100k/Eu.davi/Editado/`) não é usada pela Dalila.
+  - Os finais antigos ainda apontam para a pasta do app Google Drive do Mac. Se o app sair, esses caminhos somem, mas os que já viraram reel já estão comprimidos no bucket.
 2. **O Mac prepara** (`scripts/dalila/preparar_reels.py`, serviço LaunchAgent `com.infoprohub.dalila`, log em `~/.infopro-hub/dalila/servico.log`):
    - comprime o final do Drive para HEVC (VideoToolbox), 1080×1920, 30 fps, AAC 128k, `+faststart`, com até 46 MB. O plano gratuito do Supabase aceita **no máximo 50 MB por arquivo** e esse limite não sobe. No piloto: 281 MB viraram 41 MB em cerca de 80 s, sem diferença visível;
    - sobe no bucket público `reels` com o `token_envio` do reel (a policy só aceita enquanto `preparando`);
