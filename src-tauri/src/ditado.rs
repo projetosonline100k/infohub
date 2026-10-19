@@ -21,6 +21,7 @@ extern "C" {
     fn CGEventSourceFlagsState(estado: i32) -> u64;
     fn CGEventSourceKeyState(estado: i32, tecla: u16) -> bool;
     fn CGEventSourceButtonState(estado: i32, botao: u32) -> bool;
+    fn CGEventSourceCreate(estado: i32) -> *mut std::ffi::c_void;
     fn CGEventCreateKeyboardEvent(fonte: *const std::ffi::c_void, tecla: u16, apertada: bool) -> *mut std::ffi::c_void;
     fn CGEventSetFlags(evento: *mut std::ffi::c_void, flags: u64);
     fn CGEventPost(onde: u32, evento: *mut std::ffi::c_void);
@@ -35,6 +36,17 @@ extern "C" {
 }
 
 const HID: i32 = 1; // kCGEventSourceStateHIDSystemState
+const PRIVADO: i32 = -1; // kCGEventSourceStatePrivate: o ⌘V do colar não mexe no estado do teclado
+/// Fim da "surdez" depois de colar (ms desde a época). 18/10: o ⌘V simulado deixava o Mac
+/// achando que o ⌘ seguia apertado, e o ditado começava a gravar sozinho.
+static SURDO_ATE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+fn agora_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
+}
+/// ⌘ de verdade no teclado (as duas teclas físicas: 55 esquerda, 54 direita).
+fn cmd_fisico() -> bool {
+    unsafe { CGEventSourceKeyState(HID, 55) || CGEventSourceKeyState(HID, 54) }
+}
 const CMD: u64 = 0x0010_0000;
 const OUTROS_MODIFICADORES: u64 = 0x0002_0000 | 0x0004_0000 | 0x0008_0000; // shift, control, option
 const SEGURAR: Duration = Duration::from_millis(450);
@@ -61,7 +73,8 @@ pub fn iniciar(app: AppHandle) {
         loop {
             std::thread::sleep(Duration::from_millis(30));
             let flags = unsafe { CGEventSourceFlagsState(HID) };
-            if flags & CMD == 0 {
+            let surdo = agora_ms() < SURDO_ATE.load(std::sync::atomic::Ordering::Relaxed);
+            if !cmd_fisico() || surdo {
                 if gravando {
                     let _ = app.emit_to("jarvis", EVENTO_SOLTO, ());
                 }
@@ -161,18 +174,23 @@ pub fn ditado_colar(texto: String) -> Result<bool, String> {
     }
     // Espera o ⌘ do Davi sair do teclado (senão o ⌘V vira outra coisa).
     let limite = Instant::now() + Duration::from_secs(2);
-    while unsafe { CGEventSourceFlagsState(HID) } & CMD != 0 && Instant::now() < limite {
+    while cmd_fisico() && Instant::now() < limite {
         std::thread::sleep(Duration::from_millis(20));
     }
+    SURDO_ATE.store(agora_ms() + 1200, std::sync::atomic::Ordering::Relaxed);
     unsafe {
+        let fonte = CGEventSourceCreate(PRIVADO);
         for apertada in [true, false] {
-            let ev = CGEventCreateKeyboardEvent(std::ptr::null(), TECLA_V, apertada);
+            let ev = CGEventCreateKeyboardEvent(fonte as *const _, TECLA_V, apertada);
             if ev.is_null() {
                 return Ok(false);
             }
             CGEventSetFlags(ev, CMD);
             CGEventPost(0, ev); // kCGHIDEventTap
             CFRelease(ev);
+        }
+        if !fonte.is_null() {
+            CFRelease(fonte);
         }
     }
     Ok(true)

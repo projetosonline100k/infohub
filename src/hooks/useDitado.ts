@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { isDesktop } from "@/lib/platform";
 import { pararFala } from "@/lib/desktop/voz";
+import { medirAudio } from "@/lib/desktop/nivelAudio";
 import type { EstadoVoz } from "@/hooks/useAssistantVoz";
 
 // Ditado (18/10/2026, Davi): segurar ⌘ sozinho = o Atlas escuta; soltar = transcreve
@@ -79,7 +80,9 @@ export function useDitado(ativo: boolean): EstadoVoz {
     const rec = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined);
     const partes: Blob[] = [];
     rec.ondataavailable = (e) => { if (e.data.size) partes.push(e.data); };
+    const pararMedidor = medirAudio(stream);   // a órbita da orbe vibra com a voz (OndaVoz)
     rec.onstop = () => {
+      pararMedidor();
       stream.getTracks().forEach((t) => t.stop());
       const duracao = Date.now() - inicio.current;
       if (cancelado.current || duracao < 600 || !partes.length) { setEstado(null); return; }   // virou atalho ou foi sem querer
