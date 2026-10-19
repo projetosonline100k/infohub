@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
 import { EscritorioEmpresa } from "./EscritorioEmpresa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
+import { EscolherFormato } from "./EscolherFormato";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
 import { KanbanEsteira } from "./KanbanEsteira";
 import { alertasDoWhatsapp, type AlertaShirley, type ConversaResumo } from "@/lib/whatsapp/shirley";
@@ -141,6 +142,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const offlineDesde = equipeOfflineDesde(ultimoSinal, agoraSinal);
   const paradas = iasParadas(sinais, agoraSinal);
   const [edicaoAberta, setEdicaoAberta] = useState<EdicaoResumo | null>(null);
+  const [formatoAberto, setFormatoAberto] = useState<EdicaoResumo | null>(null);   // Danilo perguntando o formato
   // Carrosséis do Roy: prontos pra revisar também entram em "Precisa de você".
   const [carrosseis, setCarrosseis] = useState<CarrosselResumo[]>([]);
   const [carrosseisProgramados, setCarrosseisProgramados] = useState<CarrosselProgramado[]>([]);
@@ -192,8 +194,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       ? await supabase.from("videos_referencia").select("id, thumbnail_url").in("id", refs)
       : { data: [] as { id: string; thumbnail_url: string | null }[] };
     const capaDe = new Map((capas || []).map((c) => [c.id, c.thumbnail_url]));
-    const { data: eds } = await supabase.from("edicoes_video")
-      .select("id, titulo, status, mensagem, versao, final_drive, duracao").eq("cliente_id", clienteId)
+    const { data: eds } = await (supabase as unknown as SupabaseClient).from("edicoes_video")
+      .select("id, titulo, status, mensagem, versao, final_drive, duracao, formato, opcoes_formato").eq("cliente_id", clienteId)
       .neq("status", "aprovado").order("criado_em", { ascending: false });
     // Aprovada no editor mas ainda na fila do Mac (17/10: "mesmo que ele não vá fazer no momento,
     // já sai da minha tarefa e vai para o lado"): conta como "aprovando", em Tarefas sendo executadas.
@@ -349,6 +351,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       no: <LinhaAcao icone={CalendarClock} titulo={a.texto} atrasada
         detalhe={a.prontos ? `Clique para abrir ${a.tipo === "reel" ? "a primeira" : "o primeiro"} e programar` : `Peça ${a.tipo === "reel" ? "uma edição ao Danilo" : "um carrossel ao Roy"} para o perfil não ficar sem post`}
         onClick={a.abrir} />,
+    })),
+    ...edicoes.filter((e) => e.status === "escolher_formato").map((e) => ({
+      chave: `fmt-${e.id}`, categoria: "video" as Categoria,
+      no: <LinhaAcao icone={Video} titulo={`Escolher formato: ${e.titulo}`}
+        detalhe="Clássico (pinturas) ou papel animado (tela dividida)? O Danilo só começa depois da sua escolha."
+        onClick={() => setFormatoAberto(e)}
+        onCancelar={() => void cancelar(`a edição "${e.titulo}"`, () => cancelarEdicao(e.id))} />,
     })),
     ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
       chave: `ed-${e.id}`, categoria: "video" as Categoria,
@@ -618,6 +627,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
       <KanbanEsteira clienteId={clienteId} setorId={esteiraAberta} aberto={!!esteiraAberta} onFechar={() => setEsteiraAberta(null)} />
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
+      <EscolherFormato edicao={formatoAberto} onFechar={(escolheu) => { setFormatoAberto(null); if (escolheu) void carregar(); }} />
       <RevisaoCarrossel clienteId={clienteId} carrossel={carrosselAberto} onFechar={() => { setCarrosselAberto(null); void carregar(); }}
         onRecarregar={() => void carregar()} />
       <FilaPessoa clienteId={clienteId} membro={membroAberto} setorNome={setores.find((s) => s.id === membroAberto?.setor_id)?.nome}

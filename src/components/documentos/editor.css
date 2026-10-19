@@ -232,3 +232,23 @@
   color: hsl(var(--muted-foreground));
   font-weight: 400;
 }
+
+/* ⌘H: o +Info sendo preparado pelo Claude (tiptapHeadlineTitulo, TEXTO_CARREGANDO). */
+.document-editor .ProseMirror p.bloco-carregando {
+  display: flex;
+  align-items: center;
+  gap: 0.6em;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.85em;
+}
+.document-editor .ProseMirror p.bloco-carregando::before {
+  content: "";
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  border: 2px solid hsl(var(--primary));
+  border-top-color: transparent;
+  border-radius: 9999px;
+  animation: bloco-carregando-gira 0.8s linear infinite;
+}
+@keyframes bloco-carregando-gira { to { transform: rotate(360deg); } }

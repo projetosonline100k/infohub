@@ -18,6 +18,7 @@ ele já tem o que o Davi mudou no mini editor) e rode `versao`. NÃO rode `monta
 ele reconstrói o projeto do escolhas.json e apaga os ajustes do Davi.
 """
 import json
+import math
 import os
 import re
 import shutil
@@ -191,8 +192,16 @@ def guardar_editados(log=print):
                 log("bruto aprovado guardado em Editados:", f.name)
 
 
+def texto_do_roteiro(roteiro):
+    """Roteiro do card em texto puro: desde 18/10 ele é HTML do editor (TipTap);
+    os antigos continuam texto. Igual ao textoDoRoteiro do app."""
+    import html
+    t = re.sub(r"<(br|/p|/h[1-6]|/li)\b[^>]*>", "\n", roteiro or "", flags=re.I)
+    return html.unescape(re.sub(r"<[^>]+>", " ", t)).strip()
+
+
 def _palavras(t):
-    t = unicodedata.normalize("NFKD", (t or "").lower())
+    t = unicodedata.normalize("NFKD", texto_do_roteiro(t).lower())
     t = "".join(ch for ch in t if not unicodedata.combining(ch))
     return re.sub(r"[^a-z0-9 ]+", " ", t).split()
 
@@ -330,7 +339,7 @@ def preparar(arquivo, log=print):
         contexto = {"bruto": nome, "bruto_drive": str(marcado), "card": None}
         if card[0]:
             vid, titulo, nota = card
-            roteiro = db("SELECT roteiro FROM public.videos_vertical WHERE id = %s", (vid,))[0][0]
+            roteiro = texto_do_roteiro(db("SELECT roteiro FROM public.videos_vertical WHERE id = %s", (vid,))[0][0])
             db("UPDATE public.videos_vertical SET status = 'edicao' WHERE id = %s AND status = 'gravacao'", (vid,))
             db("UPDATE public.edicoes_video SET video_vertical_id = %s, titulo = %s WHERE id = %s", (vid, titulo, id_))
             contexto["card"] = {"id": vid, "titulo": titulo, "roteiro": roteiro, "nota": nota}
@@ -369,7 +378,9 @@ def ligar_tarefas():
             continue
         eid, st = ed[0]
         db("UPDATE public.edicoes_video SET atividade_id = %s WHERE id = %s AND atividade_id IS NULL", (aid, eid))
-        if st in ("revisar", "erro"):
+        if st == "escolher_formato":
+            sit, prog, obs = "aguardando_aprovacao", 10, "Escolha o formato (clássico ou papel animado) em Precisa de você."
+        elif st in ("revisar", "erro"):
             sit, prog, obs = "aguardando_aprovacao", 100, ("Pronto para sua revisão em Precisa de você › Revisar edição."
                                                            if st == "revisar" else "Deu erro na edição: veja em Precisa de você.")
         else:
@@ -566,6 +577,118 @@ def sincronizar_nuvem(id_):
     db("""UPDATE public.edicoes_video SET projeto = %s, projeto_em = now(), previa_url = %s, ondas_url = %s
           WHERE id = %s""", (json.dumps(projeto, ensure_ascii=False), previa_url, ondas_url, id_))
     return True
+
+
+# ---------------------------------------------------------------- formato (clássico x papel)
+def _frase_inicial(tr, max_palavras=9):
+    palavras = " ".join(s["text"].strip() for s in tr["segments"]).split()
+    frase = []
+    for w in palavras:
+        frase.append(w)
+        if w[-1:] in ".?!" or len(frase) >= max_palavras:
+            break
+    return " ".join(frase)
+
+
+def _quebrar(texto, fonte, largura, d):
+    linhas, atual = [], ""
+    for w in texto.split():
+        teste = f"{atual} {w}".strip()
+        if d.textlength(teste, font=fonte) <= largura or not atual:
+            atual = teste
+        else:
+            linhas.append(atual)
+            atual = w
+    return linhas + ([atual] if atual else [])
+
+
+def montar_opcoes_formato(id_):
+    """Duas imagens (540x960) com um quadro do próprio bruto: 'classico' (pinturas
+    + legenda amarela) e 'papel' (tela dividida com o papel desenhado). Devolve os caminhos."""
+    from PIL import Image, ImageDraw, ImageFilter, ImageFont
+    sys.path.insert(0, str(AQUI))
+    import criar_projeto
+    import papel as PP
+    p = pasta(id_)
+    bruto = next(p.glob("bruto.*"))
+    tr = json.loads((p / "transcricao.json").read_text())
+    ctx = json.loads((p / "contexto.json").read_text()) if (p / "contexto.json").exists() else {}
+    titulo = ((ctx.get("card") or {}).get("titulo") or _frase_inicial(tr)).strip()
+    frase = _frase_inicial(tr)
+    quadro = p / "_quadro_formato.jpg"
+    t = criar_projeto.duracao(bruto) * 0.3
+    subprocess.run([FF, "-v", "error", "-y", "-hwaccel", "videotoolbox", "-ss", f"{t:.1f}", "-i", str(bruto), "-frames:v", "1",
+                    "-vf", "scale=540:960:force_original_aspect_ratio=increase,crop=540:960", str(quadro)], check=True)
+    base = Image.open(quadro).convert("RGB")
+    arial = "/System/Library/Fonts/Supplemental/Arial Bold.ttf"
+
+    # clássico: o Davi em tela cheia, legenda amarela e duas pinturas de cantos arredondados
+    cl = base.copy()
+    d = ImageDraw.Draw(cl)
+    fonte = ImageFont.truetype(arial, 34)
+    linhas = _quebrar(frase, fonte, 470, d)[:3]
+    y = 520 - 42 * len(linhas)
+    for l in linhas:
+        w = d.textlength(l, font=fonte)
+        d.text(((540 - w) / 2, y), l, font=fonte, fill=(255, 214, 10), stroke_width=3, stroke_fill=(16, 16, 16))
+        y += 42
+    for i, arq in enumerate(("exemplo-1.jpg", "exemplo-2.jpg")):
+        img = Image.open(ACERVO / arq).convert("RGB")
+        esc = max(212 / img.width, 225 / img.height)          # cobre a moldura sem deformar
+        img = img.resize((int(img.width * esc) + 1, int(img.height * esc) + 1))
+        img = img.crop(((img.width - 212) // 2, (img.height - 225) // 2, (img.width - 212) // 2 + 212, (img.height - 225) // 2 + 225))
+        m = Image.new("L", img.size, 0)
+        ImageDraw.Draw(m).rounded_rectangle([0, 0, 211, 224], 17, fill=255)
+        cl.paste(img, (48 + i * 232, 590), m)
+
+    # papel: em cima o papel desenhado, embaixo o Davi, degradê no meio
+    W, METADE, FADE, k = 540, 480, 112, 2
+    PP.S = W / PP.PW * k
+    folha = PP._fundo(W, METADE, FADE, k)
+    camada = Image.new("RGBA", folha.size, (0, 0, 0, 0))
+    dd = ImageDraw.Draw(camada, "RGBA")
+    linhas, atual = [], ""
+    for w in titulo.split():                                  # quebra nas palavras (~26 letras por linha)
+        if len(f"{atual} {w}") > 26 and atual:
+            linhas.append(atual)
+            atual = w
+        else:
+            atual = f"{atual} {w}".strip()
+    for i, l in enumerate((linhas + [atual])[:2]):
+        PP.texto(camada, 9, 0, 1, l, (40, 40 + i * 85), 70)
+    PP.traco(dd, [(50, 225), (500, 232), (880, 222)], 1, 3, 0, cor=PP.VERMELHO, larg=6)
+    arco = [(760 + 70 * math.cos(math.pi + math.pi * i / 20), 380 + 70 * math.sin(math.pi + math.pi * i / 20)) for i in range(21)]
+    PP.traco(dd, [(560, 380), (930, 383)], 1, 4, 0)
+    PP.traco(dd, arco, 1, 5, 0, cor=PP.VERMELHO)
+    for j in range(5):
+        a = math.pi + math.pi * (j + 0.5) / 5
+        PP.traco(dd, [(760 + 90 * math.cos(a), 380 + 90 * math.sin(a)), (760 + 125 * math.cos(a), 380 + 125 * math.sin(a))], 1, 6 + j, 0,
+                 cor=PP.VERMELHO, larg=5)
+    PP.marcatexto(dd, 9, 0, 1, 50, 420, 340, 7, 0)
+    PP.texto(camada, 9, 0, 1, "desenhando junto", (50, 290), 56)
+    folha.alpha_composite(camada, (0, int((METADE - FADE - PP.PH * W / PP.PW) / 2 * k)))
+    pa = Image.new("RGB", (540, 960), "black")
+    pa.paste(base.crop((0, 0, 540, 960 - METADE + FADE)), (0, METADE - FADE))
+    pa = pa.convert("RGBA")
+    pa.alpha_composite(folha.resize((W, METADE), Image.LANCZOS))
+    saidas = {}
+    for nome, img in (("classico", cl), ("papel", pa.convert("RGB"))):
+        arq = p / f"formato-{nome}.jpg"
+        img.save(arq, quality=85)
+        saidas[nome] = arq
+    quadro.unlink(missing_ok=True)
+    return saidas
+
+
+def perguntar_formato(id_):
+    """Sobe as duas imagens e põe a edição em 'escolher_formato' (o Davi escolhe no Infopro)."""
+    imgs = montar_opcoes_formato(id_)
+    cliente, token = db("SELECT cliente_id, token_envio FROM public.edicoes_video WHERE id = %s", (id_,))[0]
+    urls = {nome: _subir(f"{cliente}/{id_}/{token}/formato-{nome}.jpg", arq.read_bytes(), "image/jpeg") for nome, arq in imgs.items()}
+    db("""UPDATE public.edicoes_video SET status = 'escolher_formato', opcoes_formato = %s, atualizado_em = now(),
+          mensagem = 'Danilo: qual formato? Clássico (pinturas) ou Papel animado (tela dividida).' WHERE id = %s""",
+       (json.dumps(urls), id_))
+    return urls
 
 
 def aprovar_pelo_servidor(id_, minutos=120):

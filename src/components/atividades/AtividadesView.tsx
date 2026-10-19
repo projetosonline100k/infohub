@@ -1,3 +1,4 @@
+import { comConclusaoDaEquipe } from "@/lib/atividades/concluidaEquipe";
 import { LousaAtividades } from "./LousaAtividades";
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRecarregarAoVoltar } from "@/hooks/useRecarregarAoVoltar";
@@ -827,7 +828,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
       const { data, error } = await query;
 
       if (error) throw error;
-      setAtividades(data || []);
+      setAtividades(comConclusaoDaEquipe(data || []));
       carregarChecklistResumo((data || []).map((a) => a.id));
       carregarVisaoGeral();
 

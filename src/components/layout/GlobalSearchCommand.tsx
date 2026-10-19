@@ -1,3 +1,4 @@
+import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, User, Gauge, CalendarDays, Zap, CheckSquare, FileText, Loader2 } from "lucide-react";
@@ -130,8 +131,11 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
   const nomeProjeto = (clienteId: string | null) =>
     clienteId ? projetos.find((p) => p.id === clienteId)?.nome_especialista : undefined;
 
+  // O que escolher no ⌘K abre numa guia nova (19/10, Davi). Fora do workspace (sem guias), navega.
+  const guias = useWorkspaceTabsOpcional();
   const ir = (rota: string) => {
     onOpenChange(false);
+    if (guias) guias.abrirNovaGuia(rota);
     navigate(rota);
   };
 

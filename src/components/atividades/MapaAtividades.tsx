@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { format } from "date-fns";
-import { AlertTriangle, Check, Expand, Maximize, Minus, Plus, Shrink } from "lucide-react";
-import { cn, iniciais } from "@/lib/utils";
-import { parseResponsaveis } from "@/lib/responsaveis";
-import { IndicadorAlarme } from "./IndicadorAlarme";
+import { AlertTriangle, Expand, Maximize, Minus, Plus, Shrink } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { KanbanCard } from "./KanbanCard";
 import {
   agruparPorColuna, COLUNAS_PADRAO, enquadrar, estaAtrasadaMapa, zoomNoPonto,
   type AtividadeMapa, type ColunaMapa, type Visao,
@@ -16,36 +15,49 @@ export interface AtividadeNoMapa extends AtividadeMapa {
   prioridade: string;
   responsavel_nome: string | null;
   alarme_em?: string | null;
+  // O card é o mesmo do quadro do projeto (KanbanCard, 19/10): cronômetro, checklist, prazo…
+  descricao?: string | null;
+  data_inicio?: string | null;
+  tempo_estimado?: number | null;
+  timer_iniciado_em?: string | null;
+  timer_decorrido_segundos?: number | null;
+}
+
+/** Cronômetro do card (as mesmas ações do quadro do projeto). */
+export interface AcoesTimer {
+  iniciar: (id: string) => void;
+  pausar: (id: string) => void;
+  zerar: (id: string) => void;
+  finalizado: (id: string) => void;
 }
 
 interface ProjetoNoMapa { id: string; nome: string }
 
 const LARGURA_COLUNA = 210;
 const MAX_CONCLUIDAS = 5;
-
-const COR_PRIORIDADE: Record<string, string> = {
-  urgente: "bg-red-500",
-  alta: "bg-orange-400",
-  media: "bg-blue-400",
-  baixa: "bg-muted-foreground/40",
-};
+const ALTURA_COLUNA = "h-[560px]";   // todas as colunas do mesmo tamanho; os cards rolam dentro
 
 interface Arrasto {
   atividade: AtividadeNoMapa;
   x: number;
   y: number;
-  alvo: { clienteId: string; statusKey: string } | null;
+  alvo: { clienteId: string; statusKey: string; indice: number } | null;
 }
 
 // Visão geral de todas as atividades de todos os projetos num canvas com
 // zoom (pinça/⌘+roda), navegação (arrastar o fundo, rolar) e cards que dá
 // pra arrastar entre colunas pra mudar o status — sem entrar em cada projeto.
-export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMover, onAbrir, onConcluir }: {
+export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMover, onAbrir, onConcluir, onCriar, timer, checklistPorAtividade }: {
   projetos: ProjetoNoMapa[];
   atividades: AtividadeNoMapa[];
   colunasPorCliente: Record<string, ColunaMapa[]>;
-  onMover: (atividade: AtividadeNoMapa, coluna: ColunaMapa) => void;
+  /** `indice`: posição na coluna de destino (19/10: "mudar a ordem dos cards"). */
+  onMover: (atividade: AtividadeNoMapa, coluna: ColunaMapa, indice: number) => void;
+  timer?: AcoesTimer;
+  checklistPorAtividade?: Record<string, { total: number; concluidas: number }>;
   onAbrir: (atividade: AtividadeNoMapa) => void;
+  /** "+" na coluna (19/10, Davi: "não consigo criar uma atividade"): cria nesse projeto e coluna. */
+  onCriar?: (clienteId: string, statusKey: string, titulo: string) => Promise<void>;
   // Check do card: conclui (vai pra coluna de conclusão) ou reabre.
   onConcluir: (atividade: AtividadeNoMapa, concluida: boolean) => void;
 }) {
@@ -58,6 +70,9 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
   const [arrasto, setArrasto] = useState<Arrasto | null>(null);
   // Tela cheia: o mapa cobre a janela toda (Esc ou o botão volta).
   const [telaCheia, setTelaCheia] = useState(false);
+  const [criandoEm, setCriandoEm] = useState<{ clienteId: string; statusKey: string } | null>(null);
+  const [novoTitulo, setNovoTitulo] = useState("");
+  const [salvandoNova, setSalvandoNova] = useState(false);
   const enquadrouRef = useRef(false);
   const hojeIso = format(new Date(), "yyyy-MM-dd");
 
@@ -95,9 +110,12 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
   }, [porProjeto.length, ajustar]);
 
   // Roda/trackpad: pinça ou ⌘/Ctrl+roda dá zoom no cursor; rolar navega.
+  // 19/10: liga quando o mapa existe de fato — antes rodava só na montagem, quando as atividades
+  // ainda estavam carregando (sem canvas), e a pinça/rolagem nunca chegavam ao mapa.
+  const temMapa = porProjeto.length > 0;
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !temMapa) return;
     const aoRolar = (event: WheelEvent) => {
       event.preventDefault();
       const caixa = canvas.getBoundingClientRect();
@@ -105,6 +123,16 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       if (event.ctrlKey || event.metaKey) {
         setVisao(zoomNoPonto(atual, atual.escala * Math.exp(-event.deltaY * 0.01), event.clientX - caixa.left, event.clientY - caixa.top));
       } else {
+        // Sobre uma coluna com mais cards do que cabem: rola a coluna (até o fim dela).
+        const lista = (event.target as HTMLElement).closest<HTMLElement>("[data-mapa-rolagem]");
+        if (lista && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
+          const podeDescer = lista.scrollTop + lista.clientHeight < lista.scrollHeight - 1;
+          const podeSubir = lista.scrollTop > 0;
+          if ((event.deltaY > 0 && podeDescer) || (event.deltaY < 0 && podeSubir)) {
+            lista.scrollTop += event.deltaY / atual.escala;
+            return;
+          }
+        }
         setVisao({ ...atual, x: atual.x - event.deltaX, y: atual.y - event.deltaY });
       }
     };
@@ -129,7 +157,7 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       canvas.removeEventListener("gesturechange", aoGesto);
       canvas.removeEventListener("gestureend", aoIniciarGesto);
     };
-  }, []);
+  }, [temMapa]);
 
   const zoomBotao = useCallback((fator: number) => {
     const canvas = canvasRef.current;
@@ -169,8 +197,10 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
   };
 
   // Arrastar um card: solto numa coluna do mesmo projeto muda o status.
+  const arrastouRef = useRef(false);   // depois de arrastar, o clique que vem junto não abre o card
   const iniciarArrastoCard = (event: React.PointerEvent, atividade: AtividadeNoMapa) => {
-    if (event.button !== 0) return;
+    // Botões do card (concluir, cronômetro) não arrastam.
+    if (event.button !== 0 || (event.target as HTMLElement).closest("button, input, [role=menu]")) return;
     event.stopPropagation();
     const origem = { x: event.clientX, y: event.clientY };
     let ativo = false;
@@ -179,17 +209,24 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       if (!ativo && Math.hypot(e.clientX - origem.x, e.clientY - origem.y) < 5) return;
       ativo = true;
       const coluna = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-mapa-coluna]");
-      alvo = coluna ? { clienteId: coluna.dataset.cliente!, statusKey: coluna.dataset.mapaColuna! } : null;
+      // Posição na coluna: quantos cards (fora o arrastado) ficam acima do mouse.
+      const indice = coluna
+        ? Array.from(coluna.querySelectorAll<HTMLElement>("[data-mapa-card]"))
+          .filter((el) => el.dataset.mapaCard !== atividade.id)
+          .filter((el) => { const r = el.getBoundingClientRect(); return r.top + r.height / 2 < e.clientY; }).length
+        : 0;
+      alvo = coluna ? { clienteId: coluna.dataset.cliente!, statusKey: coluna.dataset.mapaColuna!, indice } : null;
       setArrasto({ atividade, x: e.clientX, y: e.clientY, alvo });
     };
     const soltar = () => {
       window.removeEventListener("pointermove", mover);
       setArrasto(null);
-      if (!ativo) { onAbrir(atividade); return; }
-      if (!alvo || alvo.statusKey === atividade.status) return;
-      if (alvo.clienteId !== atividade.cliente_id) return;
+      if (!ativo) return;   // clique simples: quem abre é o próprio card (onClick)
+      arrastouRef.current = true;
+      window.setTimeout(() => { arrastouRef.current = false; }, 0);
+      if (!alvo || alvo.clienteId !== atividade.cliente_id) return;
       const coluna = colunasDe(alvo.clienteId).find((c) => c.status_key === alvo!.statusKey);
-      if (coluna) onMover(atividade, coluna);
+      if (coluna) onMover(atividade, coluna, alvo.indice);
     };
     window.addEventListener("pointermove", mover);
     window.addEventListener("pointerup", soltar, { once: true });
@@ -240,64 +277,87 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
                     key={coluna.status_key}
                     data-mapa-coluna={coluna.status_key}
                     data-cliente={projeto.id}
-                    className={cn("flex min-h-24 flex-col gap-1.5 rounded-xl bg-muted/50 p-2 transition-colors",
+                    className={cn("flex min-h-24 flex-col gap-1.5 rounded-xl bg-muted/50 p-2 transition-colors", ALTURA_COLUNA,
                       ehAlvo && !alvoInvalido && "bg-primary/15 ring-2 ring-primary/50", alvoInvalido && "bg-destructive/10")}
                     style={{ width: LARGURA_COLUNA }}
                   >
-                    <p className="flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {coluna.nome}<span className="font-normal">{lista.length}</span>
+                    <p className="group/col flex items-center justify-between gap-1 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <span className="truncate">{coluna.nome}</span>
+                      <span className="flex items-center gap-1 font-normal">
+                        {onCriar && (
+                          <button type="button" title={`Nova atividade em ${coluna.nome}`} onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => { setCriandoEm({ clienteId: projeto.id, statusKey: coluna.status_key }); setNovoTitulo(""); }}
+                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-60 hover:bg-primary hover:text-primary-foreground hover:opacity-100 group-hover/col:opacity-100">
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {lista.length}
+                      </span>
                     </p>
-                    {visiveis.map((atividade) => {
+                    {onCriar && criandoEm?.clienteId === projeto.id && criandoEm.statusKey === coluna.status_key && (
+                      <form onPointerDown={(e) => e.stopPropagation()} className="select-text"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const t = novoTitulo.trim();
+                          if (!t || salvandoNova) return;
+                          setSalvandoNova(true);
+                          void onCriar(projeto.id, coluna.status_key, t).then(() => setNovoTitulo("")).catch(() => {}).finally(() => setSalvandoNova(false));
+                        }}>
+                        <input autoFocus value={novoTitulo} onChange={(e) => setNovoTitulo(e.target.value)} disabled={salvandoNova}
+                          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setCriandoEm(null); }}
+                          onBlur={() => { if (!novoTitulo.trim()) setCriandoEm(null); }}
+                          placeholder="Título e Enter (Esc fecha)"
+                          className="w-full rounded-lg border border-primary/50 bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40" />
+                      </form>
+                    )}
+                    {/* Altura fixa (19/10, Davi: "o bloco vai crescendo; quero um tamanho fixo e só rolar"):
+                        os cards rolam aqui dentro; a rodinha/trackpad sobre a coluna rola a coluna (aoRolar). */}
+                    <div data-mapa-rolagem className="-mr-1 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent">
+                    {visiveis.map((atividade, i) => {
                       const atrasada = estaAtrasadaMapa(atividade, hojeIso);
-                      const responsaveis = parseResponsaveis(atividade.responsavel_nome);
                       const apagada = soAtrasadas && !atrasada;
+                      const linhaAntes = ehAlvo && !alvoInvalido && arrasto?.alvo?.indice === i && arrasto.atividade.id !== atividade.id;
                       return (
-                        <div
-                          key={atividade.id}
-                          data-mapa-card
-                          onPointerDown={(event) => iniciarArrastoCard(event, atividade)}
-                          className={cn("cursor-pointer rounded-lg border bg-background p-2 text-sm shadow-sm transition-opacity hover:border-primary/50",
-                            atrasada && "border-l-4 border-l-destructive",
-                            atividade.concluida && "opacity-60",
-                            apagada && "opacity-20",
-                            arrasto?.atividade.id === atividade.id && "opacity-30")}
-                        >
-                          <div className="flex items-start gap-1.5">
-                            {/* Não inicia arrasto nem abre o card: só marca/desmarca. */}
-                            <button
-                              type="button"
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => { event.stopPropagation(); onConcluir(atividade, !atividade.concluida); }}
-                              aria-label={atividade.concluida ? "Reabrir atividade" : "Concluir atividade"}
-                              title={atividade.concluida ? "Reabrir" : "Concluir"}
-                              className={cn("mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                                atividade.concluida ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/50 hover:border-primary hover:bg-primary/15")}
-                            >
-                              {atividade.concluida && <Check className="h-3 w-3" strokeWidth={3} />}
-                            </button>
-                            <p className={cn("line-clamp-3 min-w-0 flex-1 leading-snug", atividade.concluida && "line-through")}>{atividade.titulo}</p>
-                          </div>
-                          <div className="mt-1.5 flex items-center gap-1.5">
-                            <span className={cn("h-2 w-2 shrink-0 rounded-full", COR_PRIORIDADE[atividade.prioridade] || COR_PRIORIDADE.baixa)} title={`Prioridade ${atividade.prioridade}`} />
-                            {atividade.data_vencimento && (
-                              <span className={cn("flex items-center gap-0.5 text-[11px]", atrasada ? "font-medium text-destructive" : "text-muted-foreground")}>
-                                {atrasada && <AlertTriangle className="h-3 w-3" />}
-                                {format(new Date(`${atividade.data_vencimento.slice(0, 10)}T12:00:00`), "dd/MM")}
-                              </span>
-                            )}
-                            <IndicadorAlarme alarmeEm={atividade.alarme_em} concluida={atividade.concluida} />
-                            <span className="ml-auto flex -space-x-1">
-                              {responsaveis.slice(0, 3).map((nome) => (
-                                <span key={nome} title={nome} className="flex h-5 w-5 items-center justify-center rounded-full border border-background bg-muted text-[9px] font-medium">{iniciais(nome)}</span>
-                              ))}
-                            </span>
+                        <div key={atividade.id}>
+                          {linhaAntes && <div className="mb-1.5 h-1 rounded-full bg-primary" />}
+                          <div
+                            data-mapa-card={atividade.id}
+                            onPointerDown={(event) => iniciarArrastoCard(event, atividade)}
+                            onClickCapture={(event) => { if (arrastouRef.current) { event.stopPropagation(); event.preventDefault(); } }}
+                            className={cn("transition-opacity", apagada && "opacity-20", arrasto?.atividade.id === atividade.id && "opacity-30")}
+                          >
+                            <KanbanCard
+                              id={atividade.id}
+                              titulo={atividade.titulo}
+                              descricao={atividade.descricao}
+                              concluida={atividade.concluida}
+                              prioridade={atividade.prioridade}
+                              dataVencimento={atividade.data_vencimento}
+                              dataInicio={atividade.data_inicio}
+                              tempoEstimado={atividade.tempo_estimado}
+                              timerIniciadoEm={atividade.timer_iniciado_em}
+                              timerDecorridoSegundos={atividade.timer_decorrido_segundos ?? 0}
+                              responsavelNome={atividade.responsavel_nome}
+                              alarmeEm={atividade.alarme_em}
+                              checklist={checklistPorAtividade?.[atividade.id]}
+                              onClick={() => onAbrir(atividade)}
+                              onToggleConcluida={(_, concluida) => onConcluir(atividade, concluida)}
+                              onIniciarTimer={timer?.iniciar ?? (() => {})}
+                              onPausarTimer={timer?.pausar ?? (() => {})}
+                              onZerarTimer={timer?.zerar ?? (() => {})}
+                              onTimerFinalizado={timer?.finalizado ?? (() => {})}
+                            />
                           </div>
                         </div>
                       );
                     })}
+                    {ehAlvo && !alvoInvalido && arrasto?.alvo && arrasto.alvo.indice >= visiveis.filter((x) => x.id !== arrasto.atividade.id).length && (
+                      <div className="h-1 rounded-full bg-primary" />
+                    )}
                     {coluna.eh_conclusao && lista.length > MAX_CONCLUIDAS && (
                       <p className="px-1 text-[11px] text-muted-foreground">+{lista.length - MAX_CONCLUIDAS} concluídas</p>
                     )}
+                    </div>
                   </div>
                 );
               })}

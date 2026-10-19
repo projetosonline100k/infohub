@@ -24,6 +24,8 @@ mod creator;
 mod whatsapp;
 #[cfg(target_os = "macos")]
 mod danilo;
+#[cfg(target_os = "macos")]
+mod ditado;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -75,6 +77,13 @@ pub fn run() {
             whatsapp::whatsapp_enviar_audio,
             whatsapp::whatsapp_midia_base,
             danilo::danilo_base,
+            ditado::ditado_organizar,
+            creator::voz_aquecer,
+            creator::voz_transcrever_trechos,
+            ditado::ditado_colar,
+            ditado::ditado_registrar,
+            ditado::claude_rapido,
+            ditado::claude_pesquisa,
         ]);
     // Fora do macOS só existe o comando de destacar aba.
     #[cfg(not(target_os = "macos"))]
@@ -99,6 +108,10 @@ pub fn run() {
                 app.manage(estado_atalho);
             }
 
+            // Ditado: segurar ⌘ sozinho = o Atlas escuta e cola o texto organizado (ditado.rs).
+            #[cfg(target_os = "macos")]
+            ditado::iniciar(app.handle().clone());
+
             // Menu do app (macOS) próprio: igual ao padrão, mas "Desfazer" e
             // "Refazer" avisam o Infopro (evento "menu-desfazer"/"menu-refazer")
             // em vez de irem direto pro WebKit. Assim o ⌘Z funciona também no
@@ -110,7 +123,8 @@ pub fn run() {
                 let app_menu = Submenu::with_items(h, "Infopro Hub", true, &[
                     &PredefinedMenuItem::about(h, None, None)?,
                     &PredefinedMenuItem::separator(h)?,
-                    &PredefinedMenuItem::hide(h, None)?,
+                    // Sem ⌘H (18/10): no documento, ⌘H abre o banco de vídeos virais. "Ocultar" segue no menu.
+                    &MenuItem::with_id(h, "menu-ocultar", "Ocultar Infopro Hub", true, None::<&str>)?,
                     &PredefinedMenuItem::hide_others(h, None)?,
                     &PredefinedMenuItem::separator(h)?,
                     &PredefinedMenuItem::quit(h, None)?,
@@ -132,6 +146,10 @@ pub fn run() {
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
+                    if id == "menu-ocultar" {
+                        let _ = app.hide();
+                        return;
+                    }
                     if id == "menu-desfazer" || id == "menu-refazer" {
                         // Vai pra janela em foco (principal ou Jarvis).
                         for (_, w) in app.webview_windows() {

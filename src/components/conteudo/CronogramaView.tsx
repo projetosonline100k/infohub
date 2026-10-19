@@ -44,6 +44,7 @@ import { cn } from "@/lib/utils";
 import { VideoDetailPanel } from "./VideoDetailPanel";
 import { InstagramInsightsPanel } from "./InstagramInsightsPanel";
 import { NumerosDoPost, TopPostsPanel } from "./TopPostsPanel";
+import { InteligenciaConteudo } from "./InteligenciaConteudo";
 import type { PostInstagram } from "@/lib/instagramMetricas";
 
 interface CronogramaViewProps {
@@ -130,10 +131,13 @@ const parseDraggableId = (draggableId: string) => {
 interface PostDalila {
   id: string; tipo: "carrossel" | "reel"; titulo: string; status: string;
   quando: string; permalink: string | null; capa: string | null; video: string | null;
+  /** Reel: o card de vídeo (Vertical) dele — o mesmo vídeo, então ele não aparece de novo (17/10). */
+  videoId?: string | null;
 }
 interface PostDalilaBanco {
   id: string; status: string; programado_para: string | null; publicado_em: string | null; permalink: string | null;
   numero?: number | null; tema?: string; paginas?: string[] | null; titulo?: string; video_url?: string | null;
+  video_vertical_id?: string | null;
 }
 const STATUS_COM_DATA = ["programado", "publicando", "publicado"];
 
@@ -205,7 +209,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
         .eq("cliente_id", clienteId).in("status", STATUS_COM_DATA),
       // `reels` ainda não está nos tipos gerados.
       (supabase as unknown as SupabaseClient).from("reels")
-        .select("id, titulo, status, programado_para, publicado_em, permalink, video_url")
+        .select("id, titulo, status, programado_para, publicado_em, permalink, video_url, video_vertical_id")
         .eq("cliente_id", clienteId).in("status", STATUS_COM_DATA),
     ]);
     const posts: PostDalila[] = [];
@@ -215,7 +219,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
     }
     for (const r of (reels || []) as PostDalilaBanco[]) {
       const quando = r.publicado_em ?? r.programado_para;
-      if (quando) posts.push({ id: r.id, tipo: "reel", titulo: `Reel · ${r.titulo}`, status: r.status, quando, permalink: r.permalink, capa: null, video: r.video_url ?? null });
+      if (quando) posts.push({ id: r.id, tipo: "reel", titulo: `Reel · ${r.titulo}`, status: r.status, quando, permalink: r.permalink, capa: null, video: r.video_url ?? null, videoId: r.video_vertical_id ?? null });
     }
     setCarrosseis(posts.sort((a, b) => a.quando.localeCompare(b.quando)));
     setLoading(false);
@@ -292,14 +296,19 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
             {publicado ? `Publicado ${format(quando, "HH:mm")}` : c.status === "publicando" ? "Publicando…" : `Programado ${format(quando, "HH:mm")}`}
           </span>
           {postDoCarrossel.get(c.id) && <NumerosDoPost post={postDoCarrossel.get(c.id)!} className="text-[10px]" />}
+          {/* Reel publicado: as métricas do post entram no próprio card (não nasce outro card "Postado"). */}
+          {c.videoId && postDoVideo.get(c.videoId) && <NumerosDoPost post={postDoVideo.get(c.videoId)!} className="text-[10px]" />}
         </span>
       </button>
     );
   };
 
+  // Vídeo que já tem card de reel (programado/publicado pela Dalila) não aparece de novo: o card do
+  // reel muda de status e ganha as métricas (17/10: "em vez de criar um card, mantenha e só mude o status").
+  const videosComReel = useMemo(() => new Set(carrosseis.map((c) => c.videoId).filter(Boolean) as string[]), [carrosseis]);
   const getVideosForDay = (day: Date) =>
     scheduledVideos
-      .filter((video) => video.data_postagem && isSameDay(parseISO(video.data_postagem), day))
+      .filter((video) => video.data_postagem && isSameDay(parseISO(video.data_postagem), day) && !(video.platform === "vertical" && videosComReel.has(video.id)))
       .sort((a, b) => a.ordem - b.ordem);
 
   const handlePrevious = () => {
@@ -645,6 +654,9 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
   return (
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="space-y-5">
+        {/* 17/10: o painel de métricas no topo, o calendário logo abaixo. */}
+        <InteligenciaConteudo clienteId={clienteId} posts={posts} programados={carrosseis} tituloDoCard={tituloDoCard}
+          metricaDe={(c) => (c.tipo === "carrossel" ? postDoCarrossel.get(c.id) : c.videoId ? postDoVideo.get(c.videoId) : undefined)} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold">Cronograma de Postagens</h3>

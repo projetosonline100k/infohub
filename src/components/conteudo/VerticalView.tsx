@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { roteirosNoDocumento, rotuloRoteiros } from "@/lib/conteudo/roteirosNoDocumento";
 import { Plus, Trash2, GripVertical, Instagram, Youtube, Sparkles, Check, FileText, Tag, X, List, LayoutGrid, Calendar } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
@@ -1026,9 +1027,15 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                       ))}
                                     </div>
                                   )}
-                                  {video.roteiro && (
-                                    <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />
-                                  )}
+                                  {video.roteiro && (() => {
+                                    // Documento com vários roteiros ("Headline 1", "#2"…): mostra quantos (18/10).
+                                    const n = roteirosNoDocumento(video.roteiro).length;
+                                    return n > 0 ? (
+                                      <span className={`inline-flex flex-shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[10.5px] font-semibold ${isEscalado ? "bg-primary-foreground/20 text-primary-foreground" : "bg-blue-500/15 text-blue-600 dark:text-blue-300"}`}>
+                                        <FileText className="h-3 w-3" />{rotuloRoteiros(n)}
+                                      </span>
+                                    ) : <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isEscalado ? "text-primary-foreground" : "text-blue-500"}`} />;
+                                  })()}
                                   <Button
                                     size="icon"
                                     variant="ghost"

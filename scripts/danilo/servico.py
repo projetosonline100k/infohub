@@ -145,11 +145,11 @@ Faça a edição assim:
    - "palavras_head" e "blocos_head": a headline é a fala exata do gancho (1ª frase), em blocos de 2–4 palavras.
    - "cortes": as retomadas que você achou, com o motivo.
    - "correcoes": nomes próprios ("David"→"Davi"), "InstaLivros"→"INSTALIVROS" etc.
-   - "midias": 2 pinturas lado a lado na abertura (logo depois da headline, ~10 s: x 95/560, y 1180, w 425, h 450) e UMA pintura diferente por tópico (~7 s a partir do começo do tópico, centralizada: x=(1080-w)/2, y 1180, w 480–660, h 450–480). Escolha pinturas clássicas que traduzam a ideia daquele trecho: `danilo.py pintura buscar "<termos em inglês>"` e `danilo.py pintura baixar {id} abertura1 "File:..."` (só baixa domínio público/CC e registra a fonte). Olhe a imagem baixada antes de usar. Nada repetido.
+{formato_midias}
    - "musica": {{"arquivo": "{pasta}/imagens/musica.ogg", "volume": 0.07}}.
    - "enfases": 2 ou 3 tempos de frases de impacto (zoom seco).
    - "destaques": se falar INSTALIVROS: [{{"texto": "INSTALIVROS", "inicio": <1ª menção>}}].
-4. `danilo.py montar {id}` e depois `danilo.py conferir {id}`: leia a transcrição da PRÉVIA (a fala tem que correr inteira, sem tomada repetida, sem palavra cortada) e olhe {pasta}/_conferir.jpg (headline, legendas e pinturas sem cobrir o rosto). Corrija e repita até ficar certo.
+{formato_passo}4. `danilo.py montar {id}` e depois `danilo.py conferir {id}`: leia a transcrição da PRÉVIA (a fala tem que correr inteira, sem tomada repetida, sem palavra cortada) e olhe {pasta}/_conferir.jpg (headline, legendas e pinturas sem cobrir o rosto). Corrija e repita até ficar certo.
 5. Não publique nada, não mexa no Drive (o serviço cuida) e não rode o servidor.
 
 No fim, escreva 2 ou 3 frases simples em português para o Davi: o que cortou, as pinturas e o que ele deve olhar (dúvidas suas, como reforço x retomada ou falta do vídeo de fundo verde do INSTALIVROS). Na ÚLTIMA linha, só isto:
@@ -166,6 +166,13 @@ def _referencia(e):
             "no mini editor, e faça este vídeo com os mesmos ajustes.\n")
 
 
+MIDIAS_CLASSICO = """   - "midias": 2 pinturas lado a lado na abertura (logo depois da headline, ~10 s: x 95/560, y 1180, w 425, h 450) e UMA pintura diferente por tópico (~7 s a partir do começo do tópico, centralizada: x=(1080-w)/2, y 1180, w 480–660, h 450–480). Escolha pinturas clássicas que traduzam a ideia daquele trecho: `danilo.py pintura buscar "<termos em inglês>"` e `danilo.py pintura baixar {id} abertura1 "File:..."` (só baixa domínio público/CC e registra a fonte). Olhe a imagem baixada antes de usar. Nada repetido.
+   - "formato": "classico"."""
+MIDIAS_PAPEL = """   - FORMATO PAPEL ANIMADO (o Davi escolheu): "formato": "papel" e "midias": [] (sem pinturas). A tela fica dividida: em cima um papel onde cenas são desenhadas à mão acompanhando a fala, embaixo o vídeo (só a parte de cima do quadro aparece; legendas e headline continuam no lugar de sempre)."""
+PASSO_PAPEL = """3b. Escreva {pasta}/papel_cenas.py com as cenas do papel. Leia antes o topo de scripts/danilo/papel.py (primitivas: traco, texto, circulo, marcatexto, boneco, prog; folha 940x560) e scripts/danilo/papel_exemplo.py (as 9 cenas do vídeo dos 4 hábitos que o Davi aprovou: copie o jeito). Uma cena por ideia da fala (gancho, cada tópico, a virada), cada uma começando no TEMPO DO BRUTO em que ele começa a falar dela (veja na transcricao.json); FIM = começo do CTA do INSTALIVROS, se houver (ali volta a tela cheia). Palavra-chave escrita à mão no instante em que ele fala; marca-texto amarelo na ênfase; vermelho na conclusão. Confira com `python3 scripts/danilo/papel.py contato {pasta}` e olhe {pasta}/_papel_contato.jpg: nada cortado na borda, nada encavalado; corrija até ficar limpo.
+"""
+
+
 def editar(arquivo, e):
     nome = Path(arquivo).name
     log("bruto novo:", nome)
@@ -173,21 +180,60 @@ def editar(arquivo, e):
     ctx = json.loads((danilo.pasta(id_) / "contexto.json").read_text())
     titulo = (ctx.get("card") or {}).get("titulo") or nome
     no_lote(e, id_, nome, titulo)
-    danilo._msg(id_, "Danilo editando: retomadas, headline, pinturas…")
-    ok, texto = rodar_claude(PROMPT_EDICAO.format(id=id_, pasta=danilo.pasta(id_), cliente=danilo.CLIENTE,
-                                                             referencia=_referencia(e)), minutos=75)
+    danilo.perguntar_formato(id_)              # o Davi escolhe: clássico ou papel animado (18/10)
+    log("esperando o Davi escolher o formato:", titulo)
+    return id_
+
+
+def editar_no_formato(id_, e):
+    """O Davi escolheu o formato: agora o Claude edita (e, no papel, desenha as cenas)."""
+    pasta = danilo.pasta(id_)
+    ctx = json.loads((pasta / "contexto.json").read_text())
+    nome = ctx.get("bruto") or id_
+    titulo = (ctx.get("card") or {}).get("titulo") or nome
+    formato = danilo.db("SELECT formato FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] or "classico"
+    log("editando", titulo, "no formato", formato)
+    danilo._msg(id_, "Danilo editando: retomadas, headline, " + ("cenas do papel…" if formato == "papel" else "pinturas…"))
+    ok, texto = rodar_claude(PROMPT_EDICAO.format(
+        id=id_, pasta=pasta, cliente=danilo.CLIENTE, referencia=_referencia(e),
+        formato_midias=(MIDIAS_PAPEL if formato == "papel" else MIDIAS_CLASSICO.format(id=id_)),
+        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" else "")), minutos=90)
     if not ok or f"PRONTO: {id_}" not in texto:
         raise RuntimeError(f"o Claude não terminou a edição: {(texto or '')[-250:]}")
     resumo = re.sub(r"\n?PRONTO:.*$", "", texto.strip()).strip()
     log("claude:", resumo[:400])
+    proj = json.loads((pasta / "projeto.json").read_text())
+    if proj.get("formato") != formato:               # garante o formato escolhido (o motor decide por ele)
+        proj["formato"] = formato
+        (pasta / "projeto.json").write_text(json.dumps(proj, ensure_ascii=False, indent=1))
     st = danilo.nova_versao(id_)
     if st[0] == "erro":
         raise RuntimeError(st[1] or "a prévia falhou")
     aviso = "" if ctx.get("card") else " Não achei o card deste vídeo pela fala: me diga qual é."
+    if "comprimido" in nome.lower():   # veio pelo WhatsApp como vídeo, não como documento (~720p)
+        aviso += (" ⚠️ Este bruto veio comprimido pelo WhatsApp (uns 720p): o final fica com menos qualidade."
+                  " Para Full HD, mande no grupo como Documento.")
     danilo.db("UPDATE public.edicoes_video SET mensagem = %s WHERE id = %s", (f"Danilo: {resumo[:500]}{aviso}", id_))
     danilo.ligar_tarefas()
     log("pronto para revisão:", titulo)
-    return id_
+
+
+def atender_formato():
+    """Edição com o formato escolhido pelo Davi (status 'na_fila' + formato): edita."""
+    linha = danilo.db("""UPDATE public.edicoes_video e SET status = 'editando', atualizado_em = now()
+                         WHERE e.id = (SELECT id FROM public.edicoes_video WHERE cliente_id = %s AND status = 'na_fila'
+                                       AND formato IS NOT NULL ORDER BY atualizado_em LIMIT 1 FOR UPDATE SKIP LOCKED)
+                         RETURNING e.id""", (danilo.CLIENTE,))
+    if not linha:
+        return False
+    id_ = str(linha[0][0])
+    try:
+        editar_no_formato(id_, estado())
+    except Exception as erro:
+        log("edição falhou:", id_, traceback.format_exc()[-600:])
+        danilo.db("UPDATE public.edicoes_video SET status = 'erro', mensagem = %s WHERE id = %s",
+                  (f"Danilo não conseguiu editar sozinho: {str(erro)[:250]}", id_))
+    return True
 
 
 LIVRE_MIN_GB = 3    # folga pra prévias e o final; se o bruto ainda não está no Mac, soma 2× o tamanho dele
@@ -481,6 +527,8 @@ if __name__ == "__main__":
             danilo.ligar_tarefas()
             danilo.guardar_editados(log)
             if atender_tarefa():
+                continue
+            if atender_formato():
                 continue
             if time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
                 ultima_drive = time.time()

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
@@ -15,7 +15,7 @@ import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { colunasDoProjeto } from "@/lib/empresa/colunas";
 import { CabecaBoneco } from "./BonecoMesa";
 import { ConversaEntrega } from "./ConversaEntrega";
-import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
+import { MapaPeca, type PecaMapa } from "./MapaPeca";
 
 // Esteira de um escritório (pedido do Davi, 17/10/2026): "o Leo cria as headlines,
 // passa para o Junior, que escreve os roteiros, que passa para o Elias revisar; nesse
@@ -25,24 +25,37 @@ import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
 const db = supabase as unknown as SupabaseClient;
 
 // criterios: como o Davi quer o trabalho desta etapa (17/10); davi_aprova: a etapa para e espera ele passar adiante.
-interface Etapa { nome: string; membro_id: string; criterios?: string; davi_aprova?: boolean }
+// formatos: modelos de referência da etapa (ex.: formatos de roteiro do Junior), 17/10.
+interface Formato { nome: string; texto: string }
+interface Etapa { nome: string; membro_id: string; criterios?: string | string[]; formatos?: Formato[]; davi_aprova?: boolean }
+// Critérios como lista numerada (antes era um texto só: cada linha vira um critério).
+const listaCriterios = (c: Etapa["criterios"]): string[] => (Array.isArray(c) ? c : (c ?? "").split("\n").map((l) => l.replace(/^\s*\d+[.)-]\s*/, "")))
+  .map((x) => String(x).trim()).filter(Boolean);
 interface Peca {
   id: string; titulo: string; textos: Record<string, string>; etapa: number; situacao: "fila" | "fazendo" | "feito" | "descartado";
   nota: string | null; atividade_id: string | null; atualizado_em: string; documento_id: string | null;
 }
 interface Membro { id: string; nome: string; eh_ia: boolean }
+// Cérebro (18/10): quem é o cliente para quem a esteira escreve — seções livres que o Junior e o Elias seguem.
+interface Secao { titulo: string; texto: string }
+interface Cerebro { id: string; nome: string; secoes: Secao[] }
+const SECOES_PADRAO = ["Informações importantes", "Apresentação", "Narrativa"];
+interface TarefaAoVivo { id: string; progresso: number | null; observacao: string | null; situacao: string | null }
 
 export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { clienteId: string; setorId: string | null; aberto: boolean; onFechar: () => void }) {
-  const [setor, setSetor] = useState<{ nome: string; esteira: Etapa[] } | null>(null);
+  const [setor, setSetor] = useState<{ nome: string; esteira: Etapa[]; cerebros: Cerebro[] } | null>(null);
+  const [cerebroAberto, setCerebroAberto] = useState(false);
+  const [paraId, setParaId] = useState<string | null>(null);
   const [membros, setMembros] = useState<Membro[]>([]);
   const [pecas, setPecas] = useState<Peca[]>([]);
   const [progresso, setProgresso] = useState<Map<string, number>>(new Map());
+  const [tarefas, setTarefas] = useState<Map<string, TarefaAoVivo>>(new Map());
   const [ideia, setIdeia] = useState("");
   const [abertaId, setAbertaId] = useState<string | null>(null);
   const [conversaTarefa, setConversaTarefa] = useState<string | null>(null);
   // Clicou num cartão (ou no topo da coluna): o chat vira só com quem faz aquela etapa (17/10:
   // "se eu clicar num bloco do Leo, a mensagem é para ele, em vez de falar com os três").
-  const [foco, setFoco] = useState<{ membroId: string; peca?: Peca } | null>(null);
+  const [foco, setFoco] = useState<{ membroId: string; peca?: Peca; texto?: string } | null>(null);
   const [conversaDe, setConversaDe] = useState<Record<string, string>>({});
   // Documento da peça aberto no lugar do quadro, com o chat de quem faz ao lado (17/10: "quando o Junior
   // for escrever, eu queria conseguir ver, conversar com ele mesmo").
@@ -52,12 +65,12 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   const carregar = useCallback(async () => {
     if (!setorId) return;
     const [{ data: s }, { data: ps }] = await Promise.all([
-      db.from("setores").select("nome, esteira").eq("id", setorId).maybeSingle(),
+      db.from("setores").select("nome, esteira, cerebros").eq("id", setorId).maybeSingle(),
       db.from("esteira_itens").select("id, titulo, textos, etapa, situacao, nota, atividade_id, atualizado_em, documento_id")
         .eq("setor_id", setorId).neq("situacao", "descartado").order("ordem").order("criado_em"),
     ]);
-    const st = s as { nome: string; esteira: Etapa[] | null } | null;
-    setSetor(st ? { nome: st.nome, esteira: st.esteira ?? [] } : null);
+    const st = s as { nome: string; esteira: Etapa[] | null; cerebros: Cerebro[] | null } | null;
+    setSetor(st ? { nome: st.nome, esteira: st.esteira ?? [], cerebros: Array.isArray(st.cerebros) ? st.cerebros : [] } : null);
     const lista = (ps || []) as Peca[];
     setPecas(lista);
     const ids = (st?.esteira ?? []).map((e) => e.membro_id);
@@ -67,8 +80,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
     }
     const tarefas = lista.map((p) => p.atividade_id).filter(Boolean) as string[];
     if (tarefas.length) {
-      const { data: ts } = await supabase.from("atividades").select("id, progresso").in("id", tarefas);
-      setProgresso(new Map(((ts || []) as { id: string; progresso: number | null }[]).map((t) => [t.id, t.progresso ?? 0])));
+      const { data: ts } = await db.from("atividades").select("id, progresso, observacao, situacao").in("id", tarefas);
+      const lt = (ts || []) as TarefaAoVivo[];
+      setProgresso(new Map(lt.map((t) => [t.id, t.progresso ?? 0])));
+      setTarefas(new Map(lt.map((t) => [t.id, t])));
     }
   }, [setorId]);
 
@@ -78,9 +93,15 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
     const canal = supabase.channel(`esteira-${setorId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "esteira_itens", filter: `setor_id=eq.${setorId}` }, () => void carregar())
       .subscribe();
-    const t = window.setInterval(() => void carregar(), 20_000);   // progresso das tarefas
-    return () => { void supabase.removeChannel(canal); window.clearInterval(t); };
+    return () => { void supabase.removeChannel(canal); };
   }, [aberto, setorId, carregar]);
+  // Progresso das tarefas; com uma peça aberta, mais rápido (o Davi acompanha ao vivo).
+  const lendoPeca = !!docAberto;
+  useEffect(() => {
+    if (!aberto || !setorId) return;
+    const t = window.setInterval(() => void carregar(), lendoPeca ? 5_000 : 20_000);
+    return () => window.clearInterval(t);
+  }, [aberto, setorId, carregar, lendoPeca]);
 
   // A conversa do trio fica numa tarefa-âncora do escritório (criada na 1ª vez, já concluída).
   // Cada conversa (o grupo, ou só com um deles) fica numa tarefa-âncora do escritório (criada na 1ª vez, já concluída).
@@ -113,6 +134,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   }, [foco, conversaDe, ancora]);
 
   const etapas = setor?.esteira ?? [];
+  const cerebros = setor?.cerebros ?? [];
   const nomeDe = (id: string) => membros.find((m) => m.id === id)?.nome ?? "?";
   const colunas = useMemo(() => [
     ...etapas.map((e, i) => ({ chave: i, titulo: e.nome, membroId: e.membro_id as string | null, pecas: pecas.filter((p) => p.etapa === i) })),
@@ -122,7 +144,9 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
   const novaIdeia = async () => {
     const t = ideia.trim();
     if (!t || !setorId) return;
-    const { error } = await db.from("esteira_itens").insert({ cliente_id: clienteId, setor_id: setorId, titulo: t, etapa: 0 });
+    // Para quem é (o cérebro que o Junior e o Elias vão seguir); sem escolha, o primeiro.
+    const para = paraId && cerebros.some((c) => c.id === paraId) ? paraId : cerebros[0]?.id;
+    const { error } = await db.from("esteira_itens").insert({ cliente_id: clienteId, setor_id: setorId, titulo: t, etapa: 0, ...(para ? { textos: { _para: para } } : {}) });
     if (error) { toast.error("Não consegui criar"); return; }
     setIdeia("");
     toast.success(`${nomeDe(etapas[0]?.membro_id ?? "")} começa em até 1 minuto`);
@@ -153,14 +177,26 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
         ) : (
           <div className="flex min-h-0 flex-1 gap-3">
             {docAberto ? (
-              <DocumentoDaPeca clienteId={clienteId} peca={docAberto} etapas={etapas} nomeDe={nomeDe}
-                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }} />
+              <SalaRoteiro peca={pecas.find((x) => x.id === docAberto.id) ?? docAberto} etapas={etapas} nomeDe={nomeDe} clienteId={clienteId}
+                tarefa={(() => { const aid = (pecas.find((x) => x.id === docAberto.id) ?? docAberto).atividade_id; return aid ? tarefas.get(aid) ?? null : null; })()}
+                onVoltar={() => setDocAberto(null)} onPassar={(e) => { void mover(docAberto, e); setDocAberto(null); }}
+                onFalar={(membroId, texto) => setFoco({ membroId, peca: docAberto, texto })} />
             ) : (
             <div className="flex min-w-0 flex-1 flex-col gap-2">
               <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); void novaIdeia(); }}>
                 <Input value={ideia} onChange={(e) => setIdeia(e.target.value)} className="h-9"
                   placeholder={`Ideia, tema ou pedido para o ${nomeDe(etapas[0].membro_id)} (ex.: "5 headlines sobre vício em celular")`} />
+                {cerebros.length > 1 && (
+                  <select value={paraId ?? cerebros[0].id} onChange={(e) => setParaId(e.target.value)} title="Para quem é o roteiro"
+                    className="h-9 rounded-md border bg-background px-2 text-sm">
+                    {cerebros.map((c) => <option key={c.id} value={c.id}>Para: {c.nome}</option>)}
+                  </select>
+                )}
                 <Button type="submit" size="sm" className="h-9 gap-1" disabled={!ideia.trim()}><Plus className="h-4 w-4" />Mandar</Button>
+                <Button type="button" variant="outline" size="sm" className="h-9 gap-1" onClick={() => setCerebroAberto(true)}
+                  title="Quem é o cliente: informações, apresentação, narrativa… o Junior e o Elias se baseiam nisso">
+                  🧠 Cérebro{cerebros.length ? ` (${cerebros.length})` : ""}
+                </Button>
               </form>
               {/* Arrastar entre colunas (17/10: "eu que devo arrastar para o Junior começar"). */}
               <DragDropContext onDragEnd={(r: DropResult) => {
@@ -182,8 +218,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
                     {c.membroId && (
                       <button type="button" onClick={() => setCriteriosDe(c.chave)}
                         className={cn("-mt-0.5 rounded-md px-1.5 py-0.5 text-left text-[10.5px]",
-                          etapas[c.chave]?.criterios?.trim() ? "text-muted-foreground hover:bg-muted" : "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300")}>
-                        {etapas[c.chave]?.criterios?.trim() ? "Critérios definidos ✎" : "⚠ Definir critérios desta etapa"}
+                          listaCriterios(etapas[c.chave]?.criterios).length ? "text-muted-foreground hover:bg-muted" : "bg-amber-500/10 text-amber-700 hover:bg-amber-500/20 dark:text-amber-300")}>
+                        {listaCriterios(etapas[c.chave]?.criterios).length
+                          ? `${listaCriterios(etapas[c.chave]?.criterios).length} critério(s)${etapas[c.chave]?.formatos?.length ? ` · ${etapas[c.chave]!.formatos!.length} formato(s)` : ""} ✎`
+                          : "⚠ Definir critérios desta etapa"}
                       </button>
                     )}
                     <Droppable droppableId={String(c.chave)}>
@@ -233,7 +271,7 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
               <div className="min-h-0 flex-1">
                 {foco ? (conversaDe[foco.membroId] ? (
                   <ConversaEntrega key={`${conversaDe[foco.membroId]}-${foco.peca?.id ?? ""}`} clienteId={clienteId} tarefaId={conversaDe[foco.membroId]} membroId={foco.membroId}
-                    nome={nomeDe(foco.membroId)} textoInicial={foco.peca ? `Sobre "${foco.peca.titulo}": ` : undefined} onDocumentoMudou={() => void carregar()} />
+                    nome={nomeDe(foco.membroId)} textoInicial={foco.texto ?? (foco.peca ? `Sobre "${foco.peca.titulo}": ` : undefined)} onDocumentoMudou={() => void carregar()} />
                 ) : <div className="flex h-full items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>) : conversaTarefa ? (
                   <ConversaEntrega key={conversaTarefa} clienteId={clienteId} tarefaId={conversaTarefa} membroId={etapas[0].membro_id}
                     nome={nomeDe(etapas[0].membro_id)} participantesIniciais={etapas.slice(1).map((e) => e.membro_id)} onDocumentoMudou={() => void carregar()} />
@@ -242,15 +280,23 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
             </aside>
           </div>
         )}
-        {criteriosDe !== null && etapas[criteriosDe] && (
-          <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} onFechar={() => setCriteriosDe(null)}
-            onSalvar={async (texto, daviAprova) => {
-              const nova = etapas.map((e, i) => (i === criteriosDe ? { ...e, criterios: texto, davi_aprova: daviAprova } : e));
-              const { error } = await db.from("setores").update({ esteira: nova }).eq("id", setorId);
-              if (error) { toast.error("Não consegui salvar os critérios"); return; }
-              toast.success(`Critérios do ${nomeDe(etapas[criteriosDe].membro_id)} salvos: ele segue isso nas próximas peças`);
-              setCriteriosDe(null);
+        {cerebroAberto && (
+          <CerebroEsteira inicial={cerebros} onFechar={() => setCerebroAberto(false)}
+            onSalvar={async (lista) => {
+              const { error } = await db.from("setores").update({ cerebros: lista }).eq("id", setorId);
+              if (error) { toast.error("Não consegui salvar o cérebro"); return false; }
               void carregar();
+              return true;
+            }} />
+        )}
+        {criteriosDe !== null && etapas[criteriosDe] && (
+          <CriteriosEtapa etapa={etapas[criteriosDe]} quem={nomeDe(etapas[criteriosDe].membro_id)} clienteId={clienteId} onFechar={() => setCriteriosDe(null)}
+            onMudar={async (patch) => {
+              const nova = etapas.map((e, i) => (i === criteriosDe ? { ...e, ...patch } : e));
+              const { error } = await db.from("setores").update({ esteira: nova }).eq("id", setorId);
+              if (error) { toast.error("Não consegui salvar"); return false; }
+              void carregar();
+              return true;
             }} />
         )}
       </DialogContent>
@@ -259,71 +305,318 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
 }
 
 // Critérios de uma etapa (17/10: "tem que ter critérios para o Elias revisar e o Junior escrever").
-function CriteriosEtapa({ etapa, quem, onFechar, onSalvar }: { etapa: Etapa; quem: string; onFechar: () => void; onSalvar: (t: string, daviAprova: boolean) => Promise<void> }) {
-  const [texto, setTexto] = useState(etapa.criterios ?? "");
-  const [daviAprova, setDaviAprova] = useState(etapa.davi_aprova ?? true);
+// O cérebro da esteira (18/10, Davi: "cadastrar cliente — Davi, informações importantes, apresentação,
+// narrativa e outras coisas que eu quiser ir colocando; o cérebro onde o Junior e o Elias vão se basear").
+// Cada mudança salva na hora (ao sair do campo); esteira.py contexto entrega o cérebro da peça.
+export function CerebroEsteira({ inicial, onFechar, onSalvar }: { inicial: Cerebro[]; onFechar: () => void; onSalvar: (l: Cerebro[]) => Promise<boolean> }) {
+  const [lista, setLista] = useState<Cerebro[]>(inicial);
+  const [selId, setSelId] = useState<string | null>(inicial[0]?.id ?? null);
+  const [novoNome, setNovoNome] = useState(inicial.length ? null : "");
+  const [versao, setVersao] = useState(0);   // tirou/pôs seção: os campos remontam com o texto certo
+  const sel = lista.find((c) => c.id === selId) ?? null;
+  const salvar = async (l: Cerebro[], aviso?: string) => { setLista(l); if (await onSalvar(l) && aviso) toast.success(aviso); };
+  const mudarSel = (f: (c: Cerebro) => Cerebro) => lista.map((c) => (c.id === selId ? f(c) : c));
+  const crescer = (el: HTMLTextAreaElement | null) => { if (!el) return; el.style.height = "auto"; el.style.height = `${Math.max(el.scrollHeight, 72)}px`; };
+  const criar = () => {
+    const nome = (novoNome ?? "").trim();
+    if (!nome) return;
+    const c: Cerebro = { id: crypto.randomUUID(), nome, secoes: SECOES_PADRAO.map((titulo) => ({ titulo, texto: "" })) };
+    setNovoNome(null); setSelId(c.id);
+    void salvar([...lista, c], `${nome} cadastrado`);
+  };
   return (
     <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
-      <div className="w-full max-w-lg space-y-3 rounded-xl border bg-card p-4 shadow-xl">
-        <p className="text-sm font-semibold">Critérios do {quem} · {etapa.nome}</p>
-        <p className="text-xs text-muted-foreground">Como você quer esse trabalho: tamanho, tom, estrutura, o que nunca fazer, exemplos bons. Ele lê isso antes de cada peça.</p>
-        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={9} autoFocus
-          className="w-full rounded-md border bg-background p-2 text-sm"
-          placeholder={etapa.nome.toLowerCase().includes("revis") ? "Ex.: aprovar só se o gancho prende nos 3 primeiros segundos; cortar palavras difíceis; máx. 45 s de fala…" : "Ex.: roteiro de 40 a 60 s; começa com uma pergunta; 3 pontos com dado ou exemplo; fecha com chamada para comentar…"} />
-        <label className="flex items-center gap-2 text-xs">
-          <input type="checkbox" checked={daviAprova} onChange={(e) => setDaviAprova(e.target.checked)} />
-          Parar e esperar eu passar adiante quando terminar
-        </label>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onFechar}>Cancelar</Button>
-          <Button size="sm" onClick={() => void onSalvar(texto.trim(), daviAprova)}>Salvar critérios</Button>
+      <div className="flex h-full max-h-[760px] w-full max-w-4xl gap-4 rounded-xl border bg-card p-4 shadow-xl">
+        <div className="flex w-52 shrink-0 flex-col gap-1.5 border-r pr-3">
+          <p className="text-sm font-semibold">🧠 Cérebro</p>
+          <p className="mb-1 text-[11px] text-muted-foreground">Para quem a esteira escreve. O Junior e o Elias leem antes de cada roteiro.</p>
+          {lista.map((c) => (
+            <button key={c.id} type="button" onClick={() => { setSelId(c.id); setNovoNome(null); }}
+              className={cn("rounded-md px-2 py-1.5 text-left text-sm", c.id === selId && novoNome === null ? "bg-primary/15 font-semibold" : "hover:bg-muted")}>
+              {c.nome}<span className="ml-1 text-[11px] font-normal text-muted-foreground">{c.secoes.filter((x) => x.texto.trim()).length}/{c.secoes.length}</span>
+            </button>
+          ))}
+          {novoNome !== null ? (
+            <form className="flex flex-col gap-1.5" onSubmit={(e) => { e.preventDefault(); criar(); }}>
+              <Input autoFocus value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Nome (ex.: Davi)" className="h-8" />
+              <div className="flex gap-1">
+                <Button type="submit" size="sm" className="h-7 flex-1" disabled={!novoNome.trim()}>Cadastrar</Button>
+                {lista.length > 0 && <Button type="button" variant="ghost" size="sm" className="h-7" onClick={() => setNovoNome(null)}>✕</Button>}
+              </div>
+            </form>
+          ) : (
+            <Button variant="outline" size="sm" className="mt-1 h-8 gap-1" onClick={() => setNovoNome("")}><Plus className="h-3.5 w-3.5" />Cliente</Button>
+          )}
+          <span className="flex-1" />
+          <Button size="sm" onClick={onFechar}>Pronto</Button>
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
+          {!sel || novoNome !== null ? (
+            <p className="m-auto max-w-sm text-center text-sm text-muted-foreground">Cadastre o cliente (ex.: Davi). Ele já nasce com Informações importantes, Apresentação e Narrativa; depois é só ir acrescentando o que quiser.</p>
+          ) : (
+            <>
+              <div className="flex items-center gap-2">
+                <input key={sel.id} defaultValue={sel.nome} className="min-w-0 flex-1 bg-transparent text-lg font-bold outline-none"
+                  onBlur={(e) => { const n = e.target.value.trim(); if (n && n !== sel.nome) void salvar(mudarSel((c) => ({ ...c, nome: n })), "Nome salvo"); }} />
+                <button type="button" title="Apagar este cadastro" className="text-muted-foreground hover:text-rose-600"
+                  onClick={() => { if (window.confirm(`Apagar o cérebro de ${sel.nome}?`)) { const l = lista.filter((c) => c.id !== sel.id); setSelId(l[0]?.id ?? null); if (!l.length) setNovoNome(""); void salvar(l); } }}>
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              {sel.secoes.map((sec, i) => (
+                <div key={`${sel.id}-${versao}-${i}`} className="group rounded-lg border bg-background p-3">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <input defaultValue={sec.titulo} placeholder="Título da seção" className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
+                      onBlur={(e) => { const t = e.target.value.trim(); if (t !== sec.titulo) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, titulo: t } : x)) })), "Salvo"); }} />
+                    <button type="button" title="Apagar seção" className="text-muted-foreground opacity-0 hover:text-rose-600 group-hover:opacity-100"
+                      onClick={() => { setVersao((v) => v + 1); void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.filter((_, j) => j !== i) }))); }}><Trash2 className="h-3.5 w-3.5" /></button>
+                  </div>
+                  <textarea defaultValue={sec.texto} ref={crescer} onInput={(e) => crescer(e.currentTarget)}
+                    placeholder={sec.titulo === "Apresentação" ? "Como você se apresenta nos vídeos (ex.: Eu sou o Davi, …)" : sec.titulo === "Narrativa" ? "A lei/crença que liga qualquer assunto ao seu público (o fio condutor)" : "Escreva aqui…"}
+                    className="w-full resize-none overflow-hidden bg-transparent text-[13.5px] leading-relaxed outline-none"
+                    onBlur={(e) => { const t = e.target.value; if (t !== sec.texto) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, texto: t } : x)) })), "Salvo"); }} />
+                </div>
+              ))}
+              <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => void salvar(mudarSel((c) => ({ ...c, secoes: [...c.secoes, { titulo: "", texto: "" }] })))}>
+                <Plus className="h-3.5 w-3.5" />Seção
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-// O documento da peça com o botão de passar adiante; o chat com quem faz fica ao lado (o do quadro).
-function DocumentoDaPeca({ clienteId, peca, etapas, nomeDe, onVoltar, onPassar }: {
-  clienteId: string; peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; onVoltar: () => void; onPassar: (etapa: number) => void;
+// Skills do Davi na inteligência do funcionário (18/10: "no do Junior poderia ter as skills também,
+// porque elas já vêm como critério"). Ficam em inteligencia_membros como "Skill: <nome>" (alcance geral);
+// as do Claude entram por scripts/inteligencia/skills.py, e aqui dá para ler, colar uma nova ou tirar.
+interface Skill { id: string; nome: string; observacao: string | null; caracteres: number | null }
+function useSkills(clienteId: string, membroId: string, quem: string) {
+  const agente = quem.trim().toLowerCase();
+  const [itens, setItens] = useState<Skill[]>([]);
+  const carregar = useCallback(async () => {
+    const { data: cliente } = await supabase.from("clientes").select("user_id").eq("id", clienteId).maybeSingle();
+    let q = supabase.from("inteligencia_membros").select("id, nome, observacao, caracteres").eq("agente", agente).like("nome", "Skill:%")
+      .or(`escopo.eq.geral,cliente_id.eq.${clienteId}`).order("nome");
+    if (cliente?.user_id) q = q.eq("user_id", cliente.user_id);
+    const { data } = await q;
+    setItens((data ?? []) as Skill[]);
+  }, [agente, clienteId]);
+  useEffect(() => { void carregar(); }, [carregar]);
+  const adicionar = async (nome: string, texto: string) => {
+    const { error } = await supabase.from("inteligencia_membros").insert({
+      cliente_id: clienteId, membro_id: membroId, agente, escopo: "geral", tipo: "texto", status: "pronto",
+      nome: `Skill: ${nome}`, conteudo: texto, observacao: "Colada pelo Davi na janela de critérios da esteira.",
+    });
+    if (error) { toast.error("Não consegui salvar a skill"); return false; }
+    toast.success("Skill salva: ele segue isso nas próximas peças");
+    void carregar();
+    return true;
+  };
+  const remover = async (s: Skill) => {
+    const { error } = await supabase.from("inteligencia_membros").delete().eq("id", s.id);
+    if (error) { toast.error("Não consegui tirar a skill"); return; }
+    void carregar();
+  };
+  return { itens, adicionar, remover };
+}
+
+function AbaSkills({ quem, itens, adicionar, remover }: { quem: string } & ReturnType<typeof useSkills>) {
+  const [aberta, setAberta] = useState<{ id: string; texto: string | null } | null>(null);
+  const [nova, setNova] = useState<{ nome: string; texto: string } | null>(null);
+  const abrir = async (s: Skill) => {
+    if (aberta?.id === s.id) { setAberta(null); return; }
+    setAberta({ id: s.id, texto: null });
+    const { data } = await supabase.from("inteligencia_membros").select("conteudo").eq("id", s.id).maybeSingle();
+    setAberta({ id: s.id, texto: data?.conteudo ?? "" });
+  };
+  // As referências de uma skill ("Skill: x · ref") aparecem debaixo dela.
+  const principais = itens.filter((s) => !s.nome.includes(" · "));
+  const refs = (s: Skill) => itens.filter((r) => r.nome.startsWith(`${s.nome} · `));
+  const linha = (s: Skill, ref = false) => (
+    <div key={s.id} className={cn("rounded-lg border bg-background text-sm", ref && "ml-6")}>
+      <div className="flex items-start gap-2 px-3 py-2">
+        <button type="button" onClick={() => void abrir(s)} className="min-w-0 flex-1 text-left">
+          <p className="font-medium">{ref ? `↳ ${s.nome.split(" · ").pop()}` : s.nome.replace(/^Skill:\s*/, "")}
+            <span className="ml-2 text-[11px] font-normal text-muted-foreground">{s.caracteres ? `${Math.round(s.caracteres / 1000)} mil caracteres` : ""}</span></p>
+          {!ref && s.observacao && <p className="line-clamp-2 text-[11.5px] text-muted-foreground">{s.observacao}</p>}
+        </button>
+        <button type="button" title="Tirar esta skill" onClick={() => void remover(s)} className="text-muted-foreground hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+      </div>
+      {aberta?.id === s.id && (
+        <pre className="max-h-72 overflow-y-auto whitespace-pre-wrap border-t px-3 py-2 font-sans text-[12px] leading-relaxed text-muted-foreground">
+          {aberta.texto ?? "Carregando…"}
+        </pre>
+      )}
+    </div>
+  );
+  return (
+    <>
+      <p className="text-xs text-muted-foreground">As suas skills valem como critério: o {quem} lê o texto completo delas antes de cada peça e segue o método. Clique para ler.</p>
+      <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+        {principais.map((s) => [linha(s), ...refs(s).map((r) => linha(r, true))])}
+        {!itens.length && !nova && <p className="py-3 text-center text-xs text-muted-foreground">Nenhuma skill ainda.</p>}
+        {nova && (
+          <div className="space-y-2 rounded-lg border-2 border-primary/40 bg-background p-3">
+            <Input autoFocus value={nova.nome} onChange={(e) => setNova({ ...nova, nome: e.target.value })} placeholder="Nome da skill (ex.: gancho-de-curiosidade)" />
+            <textarea value={nova.texto} onChange={(e) => setNova({ ...nova, texto: e.target.value })} rows={9}
+              className="w-full rounded-md border bg-card p-2 text-[13px]" placeholder="Cole aqui o texto da skill (o SKILL.md inteiro serve)" />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setNova(null)}>Cancelar</Button>
+              <Button size="sm" disabled={!nova.nome.trim() || !nova.texto.trim()}
+                onClick={() => void adicionar(nova.nome.trim(), nova.texto.trim()).then((ok) => ok && setNova(null))}>Salvar skill</Button>
+            </div>
+          </div>
+        )}
+      </div>
+      {!nova && <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => setNova({ nome: "", texto: "" })}><Plus className="h-3.5 w-3.5" />Colar uma skill</Button>}
+    </>
+  );
+}
+
+export function CriteriosEtapa({ etapa, quem, clienteId, onFechar, onMudar }: {
+  etapa: Etapa; quem: string; clienteId: string; onFechar: () => void; onMudar: (patch: Partial<Etapa>) => Promise<boolean>;
+}) {
+  // Cada mudança salva na hora (17/10: "quero numerar e ir salvando cada critério").
+  const [lista, setLista] = useState(() => listaCriterios(etapa.criterios));
+  const [formatos, setFormatos] = useState<Formato[]>(etapa.formatos ?? []);
+  const [daviAprova, setDaviAprova] = useState(etapa.davi_aprova ?? true);
+  const [novo, setNovo] = useState("");
+  const [editando, setEditando] = useState<number | null>(null);
+  const [aba, setAba] = useState<"criterios" | "formatos" | "skills">("criterios");
+  const skills = useSkills(clienteId, etapa.membro_id, quem);
+  const [novoFormato, setNovoFormato] = useState<Formato | null>(null);
+  const revisao = etapa.nome.toLowerCase().includes("revis");
+  // Sempre manda os três juntos: duas mudanças seguidas não apagam uma à outra.
+  const salvarLista = async (l: string[]) => { setLista(l); if (await onMudar({ criterios: l, formatos, davi_aprova: daviAprova })) toast.success("Critério salvo"); };
+  const salvarFormatos = async (f: Formato[]) => { setFormatos(f); if (await onMudar({ criterios: lista, formatos: f, davi_aprova: daviAprova })) toast.success("Formato salvo"); };
+  const adicionar = () => { const t = novo.trim(); if (!t) return; setNovo(""); void salvarLista([...lista, t]); };
+  // Caixa que cresce com o texto (quebra a linha sozinha; Shift+Enter pula linha, Enter salva).
+  const crescer = (el: HTMLTextAreaElement | null) => { if (!el) return; el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
+  const campo = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => crescer(campo.current), [novo]);   // depois de salvar, a caixa volta a ter uma linha
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/70 p-6 backdrop-blur-sm">
+      <div className="flex max-h-full w-full max-w-2xl flex-col gap-3 rounded-xl border bg-card p-4 shadow-xl">
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-sm font-semibold">{quem} · {etapa.nome}</p>
+          <div className="inline-flex rounded-lg border p-0.5 text-xs font-medium">
+            {(["criterios", "formatos", "skills"] as const).map((a) => (
+              <button key={a} type="button" onClick={() => setAba(a)} className={cn("rounded-md px-3 py-1", aba === a ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted")}>
+                {a === "criterios" ? `Critérios (${lista.length})` : a === "skills" ? `Skills (${skills.itens.filter((x) => !x.nome.includes(" · ")).length})`
+                  : `Formatos de ${revisao ? "referência" : etapa.nome.toLowerCase()} (${formatos.length})`}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {aba === "skills" ? <AbaSkills quem={quem} {...skills} /> : aba === "criterios" ? (
+          <>
+            <p className="text-xs text-muted-foreground">Um critério por vez. O {quem} confere cada um, pelo número, antes de entregar, e você vê na peça o que passou (✓) e o que não passou (✗).</p>
+            <ol className="min-h-0 flex-1 space-y-1.5 overflow-y-auto">
+              {lista.map((c, i) => (
+                <li key={i} className="group flex items-start gap-2 rounded-lg border bg-background px-2 py-1.5 text-sm">
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">{i + 1}</span>
+                  {editando === i ? (
+                    <textarea autoFocus defaultValue={c} rows={1} ref={crescer} onInput={(e) => crescer(e.currentTarget)}
+                      className="flex-1 resize-none overflow-hidden bg-transparent leading-snug outline-none"
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Escape") setEditando(null); }}
+                      onBlur={(e) => { setEditando(null); const t = e.target.value.trim(); if (t && t !== c) void salvarLista(lista.map((x, j) => (j === i ? t : x))); }} />
+                  ) : (
+                    <button type="button" className="flex-1 whitespace-pre-line text-left" onClick={() => setEditando(i)} title="Clique para editar">{c}</button>
+                  )}
+                  <button type="button" title="Subir" disabled={i === 0} onClick={() => { const l = [...lista]; [l[i - 1], l[i]] = [l[i], l[i - 1]]; void salvarLista(l); }}
+                    className="text-xs text-muted-foreground opacity-0 hover:text-foreground disabled:hidden group-hover:opacity-100">↑</button>
+                  <button type="button" title="Apagar" onClick={() => void salvarLista(lista.filter((_, j) => j !== i))}
+                    className="text-muted-foreground opacity-0 hover:text-rose-600 group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5" /></button>
+                </li>
+              ))}
+              {!lista.length && <p className="py-3 text-center text-xs text-muted-foreground">Nenhum critério ainda.</p>}
+            </ol>
+            <div className="flex gap-2">
+              <span className="mt-2 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-bold text-muted-foreground">{lista.length + 1}</span>
+              <textarea value={novo} onChange={(e) => setNovo(e.target.value)} autoFocus rows={1} ref={campo}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); adicionar(); } }}
+                className="max-h-48 min-h-9 flex-1 resize-none overflow-y-auto rounded-md [scrollbar-width:none] border bg-background px-3 py-2 text-sm leading-snug outline-none focus:ring-2 focus:ring-ring"
+                placeholder={revisao ? "Ex.: o gancho prende nos 3 primeiros segundos  (Shift+Enter pula linha)" : "Ex.: roteiro de 40 a 60 s de fala  (Shift+Enter pula linha)"} />
+              <Button size="sm" className="h-9 gap-1" onClick={adicionar} disabled={!novo.trim()}><Plus className="h-3.5 w-3.5" />Salvar</Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="text-xs text-muted-foreground">Modelos para o {quem} se basear: cole a estrutura ou um roteiro exemplo e dê um nome. Ele escolhe o que mais combina com cada peça e diz qual usou.</p>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+              {formatos.map((f, i) => (
+                <details key={i} className="group rounded-lg border bg-background px-3 py-2 text-sm">
+                  <summary className="flex cursor-pointer items-center gap-2 font-medium">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-[11px] font-bold text-primary">{i + 1}</span>
+                    <span className="flex-1 truncate">{f.nome || "Sem nome"}</span>
+                    <button type="button" title="Apagar" onClick={(e) => { e.preventDefault(); void salvarFormatos(formatos.filter((_, j) => j !== i)); }}
+                      className="text-muted-foreground hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  </summary>
+                  <textarea defaultValue={f.texto} rows={8} className="mt-2 w-full rounded-md border bg-card p-2 text-[13px]"
+                    onBlur={(e) => { const t = e.target.value; if (t !== f.texto) void salvarFormatos(formatos.map((x, j) => (j === i ? { ...x, texto: t } : x))); }} />
+                </details>
+              ))}
+              {!formatos.length && !novoFormato && <p className="py-3 text-center text-xs text-muted-foreground">Nenhum formato ainda.</p>}
+              {novoFormato && (
+                <div className="space-y-2 rounded-lg border-2 border-primary/40 bg-background p-3">
+                  <Input autoFocus value={novoFormato.nome} onChange={(e) => setNovoFormato({ ...novoFormato, nome: e.target.value })} placeholder="Nome (ex.: Lista de hábitos com CTA no meio)" />
+                  <textarea value={novoFormato.texto} onChange={(e) => setNovoFormato({ ...novoFormato, texto: e.target.value })} rows={9}
+                    className="w-full rounded-md border bg-card p-2 text-[13px]"
+                    placeholder={"Estrutura ou roteiro exemplo. Ex.:\n1. Gancho: promessa + número (\"6 problemas de…\")\n2. CTA de salvar logo depois\n3. Pontos com dado ou estudo\n4. CTA de compartilhar no meio\n5. Fecha com o ponto que ninguém quer ouvir"} />
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setNovoFormato(null)}>Cancelar</Button>
+                    <Button size="sm" disabled={!novoFormato.texto.trim()} onClick={() => { void salvarFormatos([...formatos, { nome: novoFormato.nome.trim(), texto: novoFormato.texto.trim() }]); setNovoFormato(null); }}>Salvar formato</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+            {!novoFormato && <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => setNovoFormato({ nome: "", texto: "" })}><Plus className="h-3.5 w-3.5" />Novo formato</Button>}
+          </>
+        )}
+
+        <div className="flex items-center gap-2 border-t pt-3">
+          <label className="flex flex-1 items-center gap-2 text-xs">
+            <input type="checkbox" checked={daviAprova} onChange={(e) => { setDaviAprova(e.target.checked); void onMudar({ criterios: lista, formatos, davi_aprova: e.target.checked }); }} />
+            Parar e esperar eu passar adiante quando terminar
+          </label>
+          <Button size="sm" onClick={onFechar}>Pronto</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Roteiro anotado (17/10, desenho do Davi): o roteiro do Junior em trechos, com o porquê de cada
+// escolha, ao lado da revisão do Elias com o que mudou (palavra a palavra) e por quê.
+
+function SalaRoteiro({ peca, etapas, nomeDe, clienteId, tarefa, onVoltar, onPassar, onFalar }: {
+  peca: Peca; etapas: Etapa[]; nomeDe: (id: string) => string; clienteId: string; tarefa: TarefaAoVivo | null; onVoltar: () => void; onPassar: (etapa: number) => void;
+  onFalar: (membroId: string, texto: string) => void;
 }) {
   const navigate = useNavigate();
-  const [doc, setDoc] = useState<{ titulo: string; conteudo: string } | null>(null);
-  const [mudou, setMudou] = useState(false);
-  useEffect(() => {
-    if (!peca.documento_id) return;
-    let vivo = true;
-    let ultimo = "";
-    const ler = async () => {
-      const { data } = await supabase.from("documentos").select("titulo, conteudo").eq("id", peca.documento_id!).maybeSingle();
-      if (!vivo || !data) return;
-      const c = typeof data.conteudo === "string" ? data.conteudo : "";
-      if (ultimo && c !== ultimo) { setMudou(true); window.setTimeout(() => setMudou(false), 2500); }
-      ultimo = c;
-      setDoc({ titulo: data.titulo, conteudo: c });
-    };
-    void ler();
-    const t = window.setInterval(() => void ler(), 4000);   // ele reescrevendo: a tela acompanha
-    return () => { vivo = false; window.clearInterval(t); };
-  }, [peca.documento_id]);
   const prox = peca.etapa + 1 < etapas.length ? peca.etapa + 1 : null;
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={onVoltar} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">← Voltar ao quadro</button>
-        <button type="button" onClick={() => navigate(`/clientes/${clienteId}?documento=${peca.documento_id}`)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Abrir em Documentos (editar)</button>
-        {mudou && <span className="text-xs font-medium text-emerald-600">✎ atualizado agora</span>}
-        <span className="ml-auto" />
-        {prox !== null && (
+        {peca.documento_id && <button type="button" onClick={() => navigate(`/clientes/${clienteId}?documento=${peca.documento_id}`)} className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Abrir em Documentos</button>}
+        <p className="min-w-0 flex-1 truncate text-sm font-semibold">{peca.titulo}</p>
+        {prox !== null && peca.situacao === "feito" && (
           <Button size="sm" className="h-8 gap-1" onClick={() => onPassar(prox)}><Send className="h-3.5 w-3.5" />Passar para o {nomeDe(etapas[prox].membro_id)} ({etapas[prox].nome})</Button>
         )}
       </div>
-      <div className={cn("min-h-0 flex-1 overflow-y-auto rounded-xl border bg-card p-5 transition-shadow", mudou && "ring-2 ring-emerald-400/60")}>
-        {doc ? (
-          <article className="prose prose-sm max-w-none dark:prose-invert" dangerouslySetInnerHTML={{ __html: htmlLimpo(doc.conteudo) }} />
-        ) : <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+      <div className="min-h-0 flex-1">
+        <MapaPeca peca={peca as unknown as PecaMapa} etapas={etapas} nomeDe={nomeDe} onFalar={onFalar}
+          aoVivo={peca.situacao === "fazendo" || peca.situacao === "fila" ? { situacao: peca.situacao, tarefa } : null} />
       </div>
-      <p className="text-[11px] text-muted-foreground">Converse ao lado com o {nomeDe(etapas[Math.min(peca.etapa, etapas.length - 1)].membro_id)}: o que você pedir, ele ajusta aqui no documento.</p>
+      <p className="text-[11px] text-muted-foreground">
+        Verde: o porquê de quem escreveu. Azul: o que a revisão ajustou (riscado saiu, verde entrou). Passe o mouse para ver a ligação;
+        clique num parágrafo ou numa nota para falar com quem fez, já sobre aquele trecho.
+      </p>
     </div>
   );
 }
@@ -335,7 +628,7 @@ function CartaoPeca({ p, etapas, nomeDe, aberta, progresso, onAbrir, onMover, on
   const [nota, setNota] = useState("");
   const pronto = p.etapa >= etapas.length;
   const quem = !pronto ? nomeDe(etapas[p.etapa].membro_id) : null;
-  const textos = Object.entries(p.textos ?? {});
+  const textos = Object.entries(p.textos ?? {}).filter(([k, v]) => !k.startsWith("_") && typeof v === "string");
   const ultimo = textos.length ? textos[textos.length - 1][1] : "";
   return (
     <div className={cn("rounded-lg border bg-card p-2 text-xs shadow-sm", aberta && "ring-1 ring-primary/40", p.nota && !pronto && "border-amber-400/60")}>

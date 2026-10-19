@@ -2,6 +2,7 @@ import { forwardRef, memo } from "react";
 import { cn } from "@/lib/utils";
 import { AssistantEyes } from "./AssistantEyes";
 import { AssistantOrbRing, type AssistantOrbRingEstado } from "./AssistantOrbRing";
+import { OndaVoz } from "./OndaVoz";
 
 interface AssistantOrbProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   open?: boolean;
@@ -90,18 +91,15 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
       <AssistantOrbGlowFace pulse={pulse} pausado={pausado || diaEncerrado} />
       {voz && (
         <>
-          {/* Anel do modo voz: fora do glow (filter) pra não brigar com a respiração. */}
+          {/* Ouvindo: a órbita que vibra com a voz (OndaVoz). Os outros estados: o anel de sempre.
+              Fora do glow (filter) pra não brigar com a respiração. */}
+          {voz === "ouvindo" && <OndaVoz />}
           <span aria-hidden="true" className={cn(
             "pointer-events-none absolute -inset-1.5 rounded-full border-2",
-            voz === "ouvindo" && "animate-pulse border-rose-500 shadow-[0_0_18px_rgba(244,63,94,0.7)]",
+            voz === "ouvindo" && "border-transparent",
             voz === "entendendo" && "animate-pulse border-amber-400 shadow-[0_0_14px_rgba(251,191,36,0.6)]",
             voz === "pensando" && "animate-spin border-cyan-300/80 border-t-transparent [animation-duration:1.4s]",
           )} />
-          <span className={cn("pointer-events-none absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-[11px] shadow",
-            voz === "ouvindo" ? "bg-rose-500" : voz === "entendendo" ? "bg-amber-400" : "bg-cyan-500")}
-            title={voz === "ouvindo" ? "Ouvindo (solte ⌥ Espaço pra mandar)" : voz === "entendendo" ? "Transcrevendo…" : "O Claude está trabalhando no seu pedido"}>
-            {voz === "pensando" ? "…" : "🎙️"}
-          </span>
         </>
       )}
       {diaEncerrado && (

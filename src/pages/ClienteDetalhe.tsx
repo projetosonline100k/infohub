@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight, Building2, ClipboardList, FileText, Info, ListChecks } from "lucide-react";
 import { iniciais } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
@@ -218,6 +218,7 @@ export default function ClienteDetalhe() {
 
   // 16/10: "Informações gerais" virou guia do Escritório e "Pesquisa" guia de Documentos. Só aparecem
   // soltas no menu para quem não tem acesso ao Conteúdo / aos Documentos.
+  const ICONE_ABA: Record<string, typeof FileText> = { informacoes: Info, pesquisa: ClipboardList, atividades: ListChecks, documentos: FileText };
   const abasPrincipais = [
     { id: "informacoes", label: "Informações gerais" },
     { id: "pesquisa", label: "Pesquisa" },
@@ -277,6 +278,24 @@ export default function ClienteDetalhe() {
                 {iniciais(cliente.nome_especialista)}
               </AvatarFallback>
             </Avatar>
+            {/* 19/10 (Davi): "mesmo minimizada, que apareçam os ícones para eu clicar". */}
+            <div className="mt-2 flex flex-col items-center gap-1 border-t pt-3">
+              {[
+                ...(pode("conteudo") ? [{ id: "escritorio", label: "Escritório", Icone: Building2,
+                  ativo: (abaAtiva === "conteudo" && GUIAS_ESCRITORIO.includes(subAbaConteudo)) || abaAtiva === "informacoes",
+                  ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo("visao-geral"); } }] : []),
+                ...abasPrincipais.map((item) => ({
+                  id: item.id, label: item.label, Icone: ICONE_ABA[item.id] ?? FileText,
+                  ativo: abaAtiva === item.id || (item.id === "documentos" && abaAtiva === "pesquisa"),
+                  ir: () => setAbaAtiva(item.id),
+                })),
+              ].map(({ id: idAba, label, Icone, ativo, ir }) => (
+                <Button key={idAba} variant="ghost" size="icon" onClick={ir} title={label} aria-label={label}
+                  className={ativo ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground" : ""}>
+                  <Icone className="h-4 w-4" />
+                </Button>
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -369,13 +388,16 @@ export default function ClienteDetalhe() {
         <div className="p-6">
           {avisoPermissoes && <div role="status" className="mb-6 rounded-lg border border-border bg-muted/50 p-4 text-sm"><p>{avisoPermissoes}</p><Button variant="outline" size="sm" className="mt-3" onClick={() => void carregarDados()}>Tentar novamente</Button></div>}
           {guiasTopo.length > 0 && (
-            <div className="mb-4 inline-flex rounded-lg bg-muted p-0.5 text-sm font-medium">
+            // Fixa no topo ao rolar (17/10: "quando eu rolar para baixo, não quero que ela suma").
+            <div className="sticky top-0 z-30 -mx-6 mb-4 bg-background/95 px-6 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="inline-flex max-w-full overflow-x-auto rounded-lg bg-muted p-0.5 text-sm font-medium">
               {guiasTopo.map((g) => (
                 <button key={g.id} type="button" onClick={g.ir}
                   className={`rounded-md px-3 py-1 transition-colors ${g.ativa ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                   {g.label}
                 </button>
               ))}
+            </div>
             </div>
           )}
           {abaAtiva === "informacoes" && (

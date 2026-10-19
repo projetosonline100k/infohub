@@ -13,6 +13,14 @@ pub async fn destacar_aba(app: AppHandle, caminho: String, titulo: String, x: Op
         .inner_size(1280.0, 800.0)
         .min_inner_size(400.0, 450.0)
         .focused(true);
+    // Guias na barra de título, como a janela principal (tauri.conf.json, 18/10).
+    #[cfg(target_os = "macos")]
+    {
+        janela = janela
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 24.0));
+    }
     if let (Some(x), Some(y)) = (x, y) {
         janela = janela.position(x, y);
     }

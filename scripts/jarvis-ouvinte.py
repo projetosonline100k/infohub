@@ -91,6 +91,11 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
     if chrome:
         # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele.
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
+    return rodar_claude_com(cmd, minutos, cwd, info)
+
+
+def rodar_claude_com(cmd, minutos, cwd=None, info=None):
+    """Roda o comando do Claude já montado e devolve (ok, texto)."""
     try:
         r = subprocess.run(cmd, cwd=cwd or RAIZ, capture_output=True, text=True, timeout=minutos * 60,
                            env={**os.environ, "PATH": f"{Path(PYTHON).parent}:/usr/bin:/bin:/usr/sbin:/sbin"})
@@ -103,6 +108,11 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
     texto = (dados.get("result") or "").strip()
     if info is not None:
         info["session_id"] = dados.get("session_id")
+    if dados.get("is_error") and "safeguards" in texto and "--model" not in cmd:
+        # 18/10: o filtro do Opus barrou por engano o roteiro do Junior ("This sometimes happens with
+        # safe, normal conversations... can't respond with Opus"). Tenta de novo com o Sonnet.
+        log("claude: filtro do Opus barrou; tentando com o Sonnet")
+        return rodar_claude_com(cmd + ["--model", "sonnet"], minutos, cwd, info)
     if dados.get("is_error"):
         if "authenticate" in texto or "OAuth" in texto:
             texto = "O Claude em segundo plano está deslogado. Rode o login de novo (ver scripts/instalar-jarvis-ouvinte.sh)."
@@ -579,6 +589,7 @@ def atender_execucao():
 sys.path.insert(0, str(RAIZ / "scripts" / "pedro"))
 import melhorias  # noqa: E402
 import esteira  # noqa: E402  (esteira de produção por escritório, 17/10)
+import vigia  # noqa: E402  (trabalho travado: recomeça sozinho; se não der, avisa o Davi — 17/10)
 
 OBRAS = Path.home() / ".infopro-hub" / "pedro" / "obras"
 
@@ -721,7 +732,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, melhorias, cobranca_rodada, esteira):
+        for m in (briefing, execucao, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -769,16 +780,48 @@ def _banco_ok():
         log(f"banco voltou às {datetime.now():%H:%M} (fora desde {desde:%H:%M}, ~{minutos} min)")
 
 
+def _descartar_conexao_da_thread():
+    """Joga fora a conexão reaproveitada desta thread (a próxima volta abre uma nova)."""
+    import migration_db
+    real = getattr(migration_db._local, 'conexao', None)
+    migration_db._local.conexao = None
+    migration_db._local.em_uso = False
+    if real is not None:
+        try:
+            real.close()
+        except Exception:
+            pass
+
+
+def _reiniciar_se_preso():
+    """18/10: das 01:16 às 13:45 o ouvinte ficou com o banco caindo a cada volta (só ele: um
+    processo novo conectava normal) e nenhuma tarefa rodou. Banco "fora" há mais de 20 min
+    seguidos e ninguém trabalhando: sai, e o launchd (KeepAlive) sobe um ouvinte novo."""
+    desde = _banco["fora_desde"]
+    if not desde or (datetime.now() - desde).total_seconds() < 20 * 60:
+        return
+    if subprocess.run(['pgrep', '-f', 'claude -p'], capture_output=True).returncode == 0:
+        return   # alguém trabalhando: espera terminar
+    log(f"banco preso desde {desde:%H:%M}: reiniciando o ouvinte")
+    os._exit(1)
+
+
 def laco(nome, funcao, intervalo):
     reusar_nesta_thread()   # uma conexão por laço, reaberta só quando cai (migration_db)
+    falhas = 0
     while True:
         try:
             recarregar_modulos()
             funcao()
             _banco_ok()
+            falhas = 0
         except Exception as e:  # rede caiu etc.: tenta de novo
             if eh_falha_de_conexao(e):
                 _banco_caiu(nome, e)
+                falhas += 1
+                if falhas >= 2:   # caiu duas vezes seguidas: não confia mais na conexão guardada
+                    _descartar_conexao_da_thread()
+                _reiniciar_se_preso()
             else:
                 log(f"{nome}: erro —", repr(e)[:300])
             time.sleep(15)
@@ -809,6 +852,10 @@ if __name__ == "__main__":
     threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
     # Esteira (17/10): peça na fila de uma etapa vira tarefa de quem é a vez; a execução pega.
     threading.Thread(target=laco, args=("esteira", lambda: esteira.andar(), 60), daemon=True).start()
+    def _vigiar():
+        for linha in vigia.rodar():
+            log("vigia:", linha)
+    threading.Thread(target=laco, args=("vigia", _vigiar, 300), daemon=True).start()
     threading.Thread(target=laco, args=("rodada", rodada_melhorias, 60), daemon=True).start()
     threading.Thread(target=laco, args=("cobranca", rodada_cobranca, 60), daemon=True).start()
     laco("conversa", atender_conversa, 3)
