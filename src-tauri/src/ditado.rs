@@ -30,20 +30,9 @@ extern "C" {
 extern "C" {
     fn AXIsProcessTrusted() -> bool;
 }
-#[link(name = "CoreAudio", kind = "framework")]
-extern "C" {
-    fn AudioObjectGetPropertyData(objeto: u32, endereco: *const EnderecoAudio, qualificador_tam: u32, qualificador: *const std::ffi::c_void,
-                                  tamanho: *mut u32, dados: *mut std::ffi::c_void) -> i32;
-}
 extern "C" {
     fn dlopen(caminho: *const std::ffi::c_char, modo: i32) -> *mut std::ffi::c_void;
     fn dlsym(biblioteca: *mut std::ffi::c_void, nome: *const std::ffi::c_char) -> *mut std::ffi::c_void;
-}
-#[repr(C)]
-struct EnderecoAudio {
-    seletor: u32,
-    escopo: u32,
-    elemento: u32,
 }
 
 // ---------------------------------------------------------------- Mídia
@@ -53,23 +42,62 @@ struct EnderecoAudio {
 // som saindo do Mac; ao soltar, dá play só no que ele mesmo pausou.
 static PAUSOU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-const fn quatro(c: &[u8; 4]) -> u32 {
-    u32::from_be_bytes(*c)
+/// Bloco Objective-C global (sem capturas) para receber a resposta do MediaRemote.
+#[repr(C)]
+struct DescritorBloco {
+    reservado: u64,
+    tamanho: u64,
+}
+#[repr(C)]
+struct Bloco {
+    isa: *const std::ffi::c_void,
+    flags: i32,
+    reservado: i32,
+    invocar: extern "C" fn(*const Bloco, bool),
+    descritor: *const DescritorBloco,
+}
+unsafe impl Sync for Bloco {}
+extern "C" {
+    static _NSConcreteGlobalBlock: std::ffi::c_void;
+    fn dispatch_get_global_queue(identificador: isize, flags: usize) -> *mut std::ffi::c_void;
+}
+static RESPOSTA_TOCANDO: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
+static AVISO_TOCANDO: std::sync::Condvar = std::sync::Condvar::new();
+extern "C" fn recebeu_tocando(_bloco: *const Bloco, tocando: bool) {
+    *RESPOSTA_TOCANDO.lock().unwrap_or_else(|e| e.into_inner()) = Some(tocando);
+    AVISO_TOCANDO.notify_all();
 }
 
-/// A saída de som do Mac está tocando alguma coisa agora?
+/// Tem música/vídeo tocando agora? (o mesmo que a Central de Controle mostra). Antes era
+/// "a saída de som está ligada", que dizia sim quase sempre e o ditado dava play no que
+/// estava parado. Sem resposta em 300 ms: não (melhor não pausar do que dar play errado).
 fn som_tocando() -> bool {
+    type Perguntar = unsafe extern "C" fn(*mut std::ffi::c_void, *const Bloco);
+    static DESCRITOR: DescritorBloco = DescritorBloco { reservado: 0, tamanho: std::mem::size_of::<Bloco>() as u64 };
     unsafe {
-        let mut dispositivo: u32 = 0;
-        let mut tam = std::mem::size_of::<u32>() as u32;
-        let saida = EnderecoAudio { seletor: quatro(b"dOut"), escopo: quatro(b"glob"), elemento: 0 };
-        if AudioObjectGetPropertyData(1, &saida, 0, std::ptr::null(), &mut tam, &mut dispositivo as *mut u32 as *mut _) != 0 || dispositivo == 0 {
+        let lib = dlopen(c"/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote".as_ptr(), 1);
+        if lib.is_null() {
             return false;
         }
-        let mut rodando: u32 = 0;
-        let mut tam = std::mem::size_of::<u32>() as u32;
-        let tocando = EnderecoAudio { seletor: quatro(b"gone"), escopo: quatro(b"glob"), elemento: 0 };
-        AudioObjectGetPropertyData(dispositivo, &tocando, 0, std::ptr::null(), &mut tam, &mut rodando as *mut u32 as *mut _) == 0 && rodando != 0
+        let f = dlsym(lib, c"MRMediaRemoteGetNowPlayingApplicationIsPlaying".as_ptr());
+        if f.is_null() {
+            return false;
+        }
+        static BLOCO: std::sync::OnceLock<&'static Bloco> = std::sync::OnceLock::new();
+        let bloco: &'static Bloco = BLOCO.get_or_init(|| Box::leak(Box::new(Bloco {
+            isa: std::ptr::addr_of!(_NSConcreteGlobalBlock),
+            flags: 1 << 28, // BLOCK_IS_GLOBAL
+            reservado: 0,
+            invocar: recebeu_tocando,
+            descritor: &DESCRITOR,
+        })));
+        *RESPOSTA_TOCANDO.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        let perguntar: Perguntar = std::mem::transmute(f);
+        perguntar(dispatch_get_global_queue(0, 0), bloco);
+        let guarda = RESPOSTA_TOCANDO.lock().unwrap_or_else(|e| e.into_inner());
+        let (guarda, _) = AVISO_TOCANDO.wait_timeout_while(guarda, Duration::from_millis(300), |r| r.is_none())
+            .unwrap_or_else(|e| e.into_inner());
+        guarda.unwrap_or(false)
     }
 }
 
@@ -126,8 +154,12 @@ fn agora_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 /// ⌘ de verdade no teclado (as duas teclas físicas: 55 esquerda, 54 direita).
+/// 18/10 (registro): o ⌘V de colar deixava o Mac com um ⌘ "apertado" sem a marca de tecla
+/// física (flags 0x20100000 em vez de 0x100108) e o ditado disparava ~1,8 s depois de colar.
+/// Só vale ⌘ com a marca do lado (0x08 esquerdo, 0x10 direito) E a tecla apertada.
 fn cmd_fisico() -> bool {
-    unsafe { CGEventSourceKeyState(HID, 55) || CGEventSourceKeyState(HID, 54) }
+    let flags = unsafe { CGEventSourceFlagsState(HID) };
+    flags & CMD != 0 && flags & 0x18 != 0 && unsafe { CGEventSourceKeyState(HID, 55) || CGEventSourceKeyState(HID, 54) }
 }
 const CMD: u64 = 0x0010_0000;
 const OUTROS_MODIFICADORES: u64 = 0x0002_0000 | 0x0004_0000 | 0x0008_0000; // shift, control, option
@@ -297,7 +329,7 @@ pub fn ditado_colar(texto: String) -> Result<bool, String> {
     while cmd_fisico() && Instant::now() < limite {
         std::thread::sleep(Duration::from_millis(20));
     }
-    SURDO_ATE.store(agora_ms() + 1200, std::sync::atomic::Ordering::Relaxed);
+    SURDO_ATE.store(agora_ms() + 2500, std::sync::atomic::Ordering::Relaxed);
     unsafe {
         let fonte = CGEventSourceCreate(PRIVADO);
         for apertada in [true, false] {
@@ -306,7 +338,7 @@ pub fn ditado_colar(texto: String) -> Result<bool, String> {
                 return Ok(false);
             }
             CGEventSetFlags(ev, CMD);
-            CGEventPost(0, ev); // kCGHIDEventTap
+            CGEventPost(1, ev); // kCGSessionEventTap: entra na sessão sem passar pelo estado do teclado (HID)
             CFRelease(ev);
         }
         if !fonte.is_null() {
