@@ -35,6 +35,7 @@ interface ProjetoNoMapa { id: string; nome: string }
 
 const LARGURA_COLUNA = 210;
 const MAX_CONCLUIDAS = 5;
+const ALTURA_COLUNA = "h-[560px]";   // todas as colunas do mesmo tamanho; os cards rolam dentro
 
 interface Arrasto {
   atividade: AtividadeNoMapa;
@@ -122,6 +123,16 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       if (event.ctrlKey || event.metaKey) {
         setVisao(zoomNoPonto(atual, atual.escala * Math.exp(-event.deltaY * 0.01), event.clientX - caixa.left, event.clientY - caixa.top));
       } else {
+        // Sobre uma coluna com mais cards do que cabem: rola a coluna (até o fim dela).
+        const lista = (event.target as HTMLElement).closest<HTMLElement>("[data-mapa-rolagem]");
+        if (lista && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
+          const podeDescer = lista.scrollTop + lista.clientHeight < lista.scrollHeight - 1;
+          const podeSubir = lista.scrollTop > 0;
+          if ((event.deltaY > 0 && podeDescer) || (event.deltaY < 0 && podeSubir)) {
+            lista.scrollTop += event.deltaY / atual.escala;
+            return;
+          }
+        }
         setVisao({ ...atual, x: atual.x - event.deltaX, y: atual.y - event.deltaY });
       }
     };
@@ -266,7 +277,7 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
                     key={coluna.status_key}
                     data-mapa-coluna={coluna.status_key}
                     data-cliente={projeto.id}
-                    className={cn("flex min-h-24 flex-col gap-1.5 rounded-xl bg-muted/50 p-2 transition-colors",
+                    className={cn("flex min-h-24 flex-col gap-1.5 rounded-xl bg-muted/50 p-2 transition-colors", ALTURA_COLUNA,
                       ehAlvo && !alvoInvalido && "bg-primary/15 ring-2 ring-primary/50", alvoInvalido && "bg-destructive/10")}
                     style={{ width: LARGURA_COLUNA }}
                   >
@@ -299,6 +310,9 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
                           className="w-full rounded-lg border border-primary/50 bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40" />
                       </form>
                     )}
+                    {/* Altura fixa (19/10, Davi: "o bloco vai crescendo; quero um tamanho fixo e só rolar"):
+                        os cards rolam aqui dentro; a rodinha/trackpad sobre a coluna rola a coluna (aoRolar). */}
+                    <div data-mapa-rolagem className="-mr-1 flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/25 [&::-webkit-scrollbar-track]:bg-transparent">
                     {visiveis.map((atividade, i) => {
                       const atrasada = estaAtrasadaMapa(atividade, hojeIso);
                       const apagada = soAtrasadas && !atrasada;
@@ -343,6 +357,7 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
                     {coluna.eh_conclusao && lista.length > MAX_CONCLUIDAS && (
                       <p className="px-1 text-[11px] text-muted-foreground">+{lista.length - MAX_CONCLUIDAS} concluídas</p>
                     )}
+                    </div>
                   </div>
                 );
               })}
