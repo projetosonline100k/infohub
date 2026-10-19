@@ -108,9 +108,11 @@ function acharConversa(conversas: Conversa[], nome: string, when: string): Conve
 
 /** `info`: coluna ao lado da conversa aberta com o que se sabe daquele grupo ou pessoa (19/10, Davi:
  *  "ao clicar no grupo aparecem as informações dele, focado neles; não precisa abrir do lado"). */
-export function WhatsappConversas({ pedido, info }: {
+export function WhatsappConversas({ pedido, info, etiquetas }: {
   pedido?: { nome: string; when: string; n: number } | null;
   info?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean }) => React.ReactNode;
+  /** Etiquetas ao lado do nome na lista (Precisa responder, Risco de churn…). */
+  etiquetas?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean }) => React.ReactNode;
 } = {}) {
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -209,7 +211,8 @@ export function WhatsappConversas({ pedido, info }: {
                 <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
-                    <span className={cn("min-w-0 flex-1 truncate text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
+                    <span className={cn("min-w-0 truncate text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">{etiquetas?.(c)}</span>
                     <span className={cn("shrink-0 text-[10.5px]", naoLida ? "font-semibold text-emerald-600" : "text-muted-foreground")}>{horaCurta(c.ultima_em)}</span>
                   </span>
                   <span className="flex items-center gap-2">

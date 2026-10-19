@@ -37,3 +37,19 @@ test('grupo genérico repetido desempata pelo nome da pessoa', () => {
   assert.deepEqual(r.mentorados.map((x) => x.id), ['k']);
   assert.deepEqual(r.cards.map((x) => x.id), ['ck']);
 });
+
+const { etiquetasDaConversa, calcularMetricas } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+
+test('etiquetas: esperando resposta, +24h, compromisso atrasado; some quando a última mensagem é minha', () => {
+  const agora = new Date('2026-10-19T10:00:00');
+  const mm = { ...m('mar', 'Marcela', 'Royal Defense', 'c1'), satisfacao: [{ data: '2026-10-10', nivel: 1, evidencia: 'reclamou' }],
+    interacoes: [{ recebida: '2026-10-16T15:33:00', respondida: null }], ultima_msg_mentorado: '2026-10-16T15:33:00' };
+  const hh = { config: { meta_resposta_horas_uteis: 4, horario_util: [9, 18], silencio_alerta_dias: 3, silencio_critico_dias: 7 },
+    mentorados: [mm], avaliacoes: [], agenda: [], promessas: [{ mentorado: 'mar', o_que: 'confirmar estúdio', desde: '2026-10-09', prazo: '2026-10-14', status: 'aberta' }] };
+  const met = calcularMetricas(hh, agora);
+  const chat = { chat_id: 'g@g.us', chat_nome: 'Royal Defense', eh_grupo: true, ultima_em: '2026-10-16T15:33:00', ultima_de_mim: false };
+  const textos = etiquetasDaConversa(chat, hh, cards, {}, met, agora).map((e) => e.texto);
+  assert.deepEqual(textos, ['Precisa responder', '+24h sem resposta', 'Risco de churn', 'Insatisfeito', 'Compromisso atrasado', 'Upgrade']);
+  const depois = etiquetasDaConversa({ ...chat, ultima_em: '2026-10-19T09:54:00', ultima_de_mim: true }, hh, cards, {}, met, agora).map((e) => e.texto);
+  assert.deepEqual(depois, ['Risco de churn', 'Insatisfeito', 'Compromisso atrasado', 'Upgrade']);
+});

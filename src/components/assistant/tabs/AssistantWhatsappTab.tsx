@@ -10,7 +10,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { cn } from "@/lib/utils";
 import {
   DIFICULDADE, EMOJI_SATISFACAO, UPGRADE, calcularMetricas, cardRespondido, marcarCard, marcarItem, minutosRestantes, progressoCard, dataCurta, diasDesde, formatarMinutos, htmlSeguro, media, mediana, textoParaCopiar,
-  daConversa, type ChatResumo, type CardWhatsapp, type Historico,
+  daConversa, etiquetasDaConversa, type ChatResumo, type CardWhatsapp, type Historico,
 } from "@/lib/whatsapp/painel";
 
 type SubAba = "responder" | "saude" | "desempenho" | "compromissos";
@@ -96,6 +96,7 @@ function BotaoCopiar({ texto }: { texto: string }) {
 type ModoWhatsapp = "painel" | "conversas" | "dividido";
 
 export function AssistantWhatsappTab() {
+  const etiquetas = useEtiquetas();
   const [modo, setModo] = useState<ModoWhatsapp>(() => ler<ModoWhatsapp>("jarvis:whatsapp-modo", "painel"));
   const [pedido, setPedido] = useState<{ nome: string; when: string; n: number } | null>(null);
   const trocar = (m: ModoWhatsapp) => { setModo(m); try { localStorage.setItem("jarvis:whatsapp-modo", m); } catch { /* sem storage */ } };
@@ -122,7 +123,7 @@ export function AssistantWhatsappTab() {
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={40} minSize={20} className="min-h-0 min-w-0">
-            <div className="h-full pt-1"><WhatsappConversas pedido={pedido} /></div>
+            <div className="h-full pt-1"><WhatsappConversas pedido={pedido} etiquetas={etiquetas} /></div>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
@@ -132,7 +133,7 @@ export function AssistantWhatsappTab() {
     return (
       <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
         {seletor}
-        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} /></div>
+        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} etiquetas={etiquetas} /></div>
       </div>
     );
   }
@@ -410,7 +411,8 @@ type Metricas = ReturnType<typeof calcularMetricas>;
 // ---------------------------------------------------------------- informações de uma conversa
 // Ao entrar num grupo ou pessoa (modo Conversas): o que o painel sabe só dela — o que responder
 // agora (o mesmo card do painel, com o checklist), perfil DISC, compromissos, saúde e histórico.
-function InfoDaConversa({ chat }: { chat: ChatResumo }) {
+/** O painel (cards, histórico, marcas) para as telas de conversa, ao vivo. */
+function useDadosPainel() {
   const { user } = useAuth();
   const [dados, setDados] = useState<{ cards: CardWhatsapp[]; h: Historico | null; respondidos: Record<string, boolean> } | null>(null);
   const [agora, setAgora] = useState(() => new Date());
@@ -427,14 +429,37 @@ function InfoDaConversa({ chat }: { chat: ChatResumo }) {
   useEffect(() => { void carregar(); }, [carregar]);
   useEffect(() => {
     if (!user?.id) return;
-    const canal = supabase.channel(`whatsapp-info-${user.id}-${chat.chat_id}`)
+    const canal = supabase.channel(`whatsapp-dados-${user.id}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_painel", filter: `user_id=eq.${user.id}` }, () => { void carregar(); })
       .subscribe();
-    window.addEventListener("focus", carregar);
-    return () => { void supabase.removeChannel(canal); window.removeEventListener("focus", carregar); };
-  }, [user?.id, chat.chat_id, carregar]);
-
+    const recarregar = () => { void carregar(); };
+    window.addEventListener("focus", recarregar);
+    const relogio = setInterval(() => setAgora(new Date()), 60_000);
+    return () => { void supabase.removeChannel(canal); window.removeEventListener("focus", recarregar); clearInterval(relogio); };
+  }, [user?.id, carregar]);
   const metricas = useMemo(() => (dados?.h ? calcularMetricas(dados.h, agora) : null), [dados?.h, agora]);
+  const salvar = async (respondidos: Record<string, boolean>) => {
+    if (!dados || !user?.id) return;
+    setDados({ ...dados, respondidos });
+    const { error } = await supabase.from("whatsapp_painel").update({ respondidos }).eq("user_id", user.id);
+    if (error) toast.error("Não consegui salvar a marcação");
+  };
+  return { dados, metricas, agora, salvar };
+}
+
+/** Etiquetas ao lado do nome na lista de conversas. */
+function useEtiquetas() {
+  const { dados, metricas, agora } = useDadosPainel();
+  return useCallback((c: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean }) => {
+    if (!dados) return null;
+    return etiquetasDaConversa(c, dados.h, dados.cards, dados.respondidos, metricas, agora).map((e) => (
+      <span key={e.texto} title={e.dica}><Tag tom={e.tom}>{e.texto}</Tag></span>
+    ));
+  }, [dados, metricas, agora]);
+}
+
+function InfoDaConversa({ chat }: { chat: ChatResumo }) {
+  const { dados, metricas, agora, salvar } = useDadosPainel();
   if (!dados) return <Nota>Carregando…</Nota>;
   const { mentorados, cards } = daConversa(chat, dados.h, dados.cards);
   if (!mentorados.length && !cards.length) {
@@ -442,11 +467,6 @@ function InfoDaConversa({ chat }: { chat: ChatResumo }) {
   }
   const meta = metricas?.meta ?? 240;
   const ids = new Set(mentorados.map((m) => m.id));
-  const salvar = async (respondidos: Record<string, boolean>) => {
-    setDados({ ...dados, respondidos });
-    const { error } = await supabase.from("whatsapp_painel").update({ respondidos }).eq("user_id", user!.id);
-    if (error) toast.error("Não consegui salvar a marcação");
-  };
   const pendentes = cards.filter((c) => !cardRespondido(c, dados.respondidos));
   const feitos = cards.filter((c) => cardRespondido(c, dados.respondidos));
   const promessas = (dados.h?.promessas ?? []).filter((p) => ids.has(p.mentorado));
