@@ -93,7 +93,9 @@ export function situacaoEntrega(e: Entrega, agora: Date): "entregue" | "cobrar" 
   return agora.getTime() - new Date(e.desde).getTime() >= DIAS_PARA_COBRAR * 86_400_000 ? "cobrar" : "aguardando";
 }
 export interface Historico {
-  config: { meta_resposta_horas_uteis: number; horario_util: [number, number]; silencio_alerta_dias: number; silencio_critico_dias: number };
+  config: { meta_resposta_horas_uteis: number; horario_util: [number, number]; silencio_alerta_dias: number; silencio_critico_dias: number;
+    /** Nomes da equipe (CS etc.) como aparecem no WhatsApp: mensagem deles nos grupos não espera resposta. */
+    equipe?: string[] };
   atualizado_em?: string;
   mentorados: Mentorado[];
   avaliacoes: Avaliacao[];
@@ -300,8 +302,19 @@ export function daConversa(chat: ChatResumo, h: Historico | null, cards: CardWha
 export interface Etiqueta { texto: string; tom: "urg" | "alta" | "media" | "ok"; dica: string }
 type Metricas = ReturnType<typeof calcularMetricas>;
 
-export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean; ultima_texto?: string | null; ultima_tipo?: string }, h: Historico | null, cards: CardWhatsapp[],
-  respondidos: Record<string, boolean>, m: Metricas | null, agora: Date): Etiqueta[] {
+/** É da equipe? (lista do painel + quem fala em vários grupos de clientes; compara o nome sem acento). */
+export function ehDaEquipe(nome: string | null | undefined, equipe: Iterable<string>): boolean {
+  const n = simples(nome);
+  if (!n) return false;
+  for (const e of equipe) {
+    const x = simples(e);
+    if (x && (n === x || n.startsWith(`${x} `) || x.startsWith(`${n} `))) return true;
+  }
+  return false;
+}
+
+export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean; ultima_texto?: string | null; ultima_tipo?: string; ultima_autor?: string | null },
+  h: Historico | null, cards: CardWhatsapp[], respondidos: Record<string, boolean>, m: Metricas | null, agora: Date, equipe: Iterable<string> = []): Etiqueta[] {
   const { mentorados, cards: cs } = daConversa(chat, h, cards);
   if (!mentorados.length && !cs.length) return [];
   const ids = new Set(mentorados.map((x) => x.id));
@@ -318,6 +331,15 @@ export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ult
     out.push(h2 >= 48
       ? { texto: `Sem resposta há ${Math.floor(h2 / 24)} dias`, tom: "alta", dica: "você perguntou e eles não responderam: retome a conversa" }
       : { texto: "Aguardando resposta", tom: "media", dica: "você perguntou; a bola está com eles" });
+  }
+  // Cliente falou no grupo e ninguém da equipe respondeu ainda (19/10, Davi: "Aguardando resposta do CS").
+  const equipeToda = [...equipe, ...(h?.config?.equipe ?? [])];
+  const doCliente = chat.eh_grupo && !chat.ultima_de_mim && !!chat.ultima_autor && !ehDaEquipe(chat.ultima_autor, equipeToda)
+    && (chat.ultima_tipo === "audio" || (chat.ultima_texto ?? "").includes("?") || (chat.ultima_texto ?? "").length > 60);
+  if (doCliente && !out.some((e) => e.texto === "Precisa responder") && chat.ultima_em) {
+    const hCs = (agora.getTime() - new Date(chat.ultima_em).getTime()) / 3_600_000;
+    out.push({ texto: "Aguardando resposta do CS", tom: hCs >= 4 ? "urg" : "alta",
+      dica: `${chat.ultima_autor} mandou há ${hCs < 1 ? `${Math.max(1, Math.round(hCs * 60))} min` : `${Math.floor(hCs)}h`}; quem responde é a equipe de CS` });
   }
   const horas = Math.max(0, ...esperando.map((p) => (agora.getTime() - new Date(p.interacao.recebida).getTime()) / 3_600_000));
   if (horas >= 24) out.push({ texto: "+24h sem resposta", tom: "urg", dica: `esperando há ${Math.floor(horas)}h` });

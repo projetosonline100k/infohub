@@ -76,3 +76,19 @@ test('aguardando resposta quando a última é minha com pergunta; depois de 48h 
   assert.deepEqual(tx(chat('2026-10-16T09:54:00', 'Conseguem dia 29?')), ['Sem resposta há 3 dias']);
   assert.deepEqual(tx(chat('2026-10-19T09:54:00', 'Obrigado, pessoal!')), ['Tudo ok!']);
 });
+
+const { ehDaEquipe } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+
+test('aguardando resposta do CS: cliente perguntou no grupo e ninguém da equipe respondeu', () => {
+  const hh = { config: { meta_resposta_horas_uteis: 4, horario_util: [9, 18], silencio_alerta_dias: 3, silencio_critico_dias: 7, equipe: ['Natália Cristina'] },
+    mentorados: [m('mar', 'Marcela', 'Royal Defense', 'c1')], avaliacoes: [], agenda: [], promessas: [] };
+  const agora = new Date('2026-10-19T11:00:00');
+  const met = calcularMetricas(hh, agora);
+  const g = (autor, texto, em = '2026-10-19T10:46:00') => ({ chat_id: 'g@g.us', chat_nome: 'Royal Defense', eh_grupo: true, ultima_em: em, ultima_de_mim: false, ultima_texto: texto, ultima_tipo: 'texto', ultima_autor: autor });
+  const tx = (c) => etiquetasDaConversa(c, hh, cards, { c1: true }, met, agora, ['Shirley Fidelis']).map((e) => e.texto).filter((t) => t !== 'Upgrade');
+  assert.deepEqual(tx(g('Marcela', 'Qual seria o horário no dia 29/10?')), ['Aguardando resposta do CS']);
+  assert.deepEqual(tx(g('Shirley Fidelis', 'Às 10h, pode ser?')), ['Tudo ok!']);
+  assert.deepEqual(tx(g('Natália', 'Fechado então!?')), ['Tudo ok!']);
+  assert.deepEqual(tx(g('Rafael', 'Consigo')), ['Tudo ok!']);
+  assert.ok(ehDaEquipe('Natália', ['Natália Cristina']) && !ehDaEquipe('Marcela', ['Shirley Fidelis']));
+});

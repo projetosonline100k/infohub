@@ -474,15 +474,36 @@ function useDadosPainel() {
   return { dados, metricas, agora, salvar };
 }
 
+/** Quem é da equipe pelo WhatsApp: fala em 3 ou mais grupos de clientes nas últimas 3 semanas. */
+function useEquipeWhatsapp() {
+  const [equipe, setEquipe] = useState<string[]>([]);
+  useEffect(() => {
+    const desde = new Date(Date.now() - 21 * 86_400_000).toISOString();
+    void supabase.from("whatsapp_mensagens").select("chat_id, autor_nome").eq("eh_grupo", true).eq("de_mim", false)
+      .gte("enviada_em", desde).not("autor_nome", "is", null).limit(4000)
+      .then(({ data }) => {
+        const grupos = new Map<string, Set<string>>();
+        for (const r of (data ?? []) as { chat_id: string; autor_nome: string | null }[]) {
+          if (!r.autor_nome?.trim()) continue;
+          if (!grupos.has(r.autor_nome)) grupos.set(r.autor_nome, new Set());
+          grupos.get(r.autor_nome)!.add(r.chat_id);
+        }
+        setEquipe([...grupos].filter(([, g]) => g.size >= 3).map(([n]) => n));
+      });
+  }, []);
+  return equipe;
+}
+
 /** Etiquetas ao lado do nome na lista de conversas. */
 function useEtiquetas() {
   const { dados, metricas, agora } = useDadosPainel();
-  return useCallback((c: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean; ultima_texto?: string | null; ultima_tipo?: string }) => {
+  const equipe = useEquipeWhatsapp();
+  return useCallback((c: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean; ultima_texto?: string | null; ultima_tipo?: string; ultima_autor?: string | null }) => {
     if (!dados) return null;
-    return etiquetasDaConversa(c, dados.h, dados.cards, dados.respondidos, metricas, agora).map((e) => (
+    return etiquetasDaConversa(c, dados.h, dados.cards, dados.respondidos, metricas, agora, equipe).map((e) => (
       <span key={e.texto} title={e.dica}><Tag tom={e.tom}>{e.texto}</Tag></span>
     ));
-  }, [dados, metricas, agora]);
+  }, [dados, metricas, agora, equipe]);
 }
 
 function InfoDaConversa({ chat }: { chat: ChatResumo }) {
