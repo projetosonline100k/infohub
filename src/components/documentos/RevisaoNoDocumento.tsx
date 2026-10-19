@@ -191,7 +191,7 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
         if (ativa && l.nota) lista.push({ chave: `${rev.id}-${k}`, quem: rev.quem, nota: l.nota, y: r.top - base.top, meio: r.top - base.top + Math.min(r.height, 28) / 2, xFim: r.right - base.left });
       });
     }
-    setAlvos(lista);
+    setAlvos(lista.sort((a, b) => a.y - b.y));   // na ordem do documento (as revisões terminam fora de ordem no "gerar todos")
     setChaves(botoes);
   }, [caixa, editor, revisoes]);
 
