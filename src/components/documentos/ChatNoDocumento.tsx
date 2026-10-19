@@ -4,6 +4,7 @@ import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowUp, BookOpen, Check, Loader2, Quote, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
+import { CerebroEsteira } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -58,7 +59,7 @@ function useEscritorio(clienteId: string | null, ativo: boolean) {
       setSkills((sk ?? []) as SkillItem[]);
     })();
   }, [ativo, clienteId, esc]);
-  return { esc, membros, skills };
+  return { esc, membros, skills, setEsc };
 }
 
 // ---------------------------------------------------------------- Claude no Mac, ao vivo
@@ -166,7 +167,16 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const campo = useRef<HTMLTextAreaElement>(null);
   const rodando = useRef<string | null>(null);
   const parou = useRef(false);
-  const { esc, membros, skills } = useEscritorio(clienteId, aberto);
+  const { esc, membros, skills, setEsc } = useEscritorio(clienteId, aberto);
+  // 19/10 (Davi: "aqui mesmo, quero conseguir subir mais cérebros"): a mesma tela de cérebro da esteira.
+  const [cerebrosAbertos, setCerebrosAbertos] = useState(false);
+  const salvarCerebros = async (lista: CerebroEscrita[]) => {
+    if (!esc) return false;
+    const { error } = await db.from("setores").update({ cerebros: lista }).eq("id", esc.id);
+    if (error) { toast.error("Não consegui salvar o cérebro"); return false; }
+    setEsc({ ...esc, cerebros: lista });
+    return true;
+  };
   // 19/10 (Davi): "caso eu selecione uma palavra, preciso que ela apareça onde escrevo" — o trecho
   // selecionado no documento aparece citado no campo (e é sobre ele o pedido).
   const [selecionado, setSelecionado] = useState<string | null>(null);
@@ -372,6 +382,13 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   return (
     <>
       {revisao}
+      {cerebrosAbertos && esc && (
+        <div className="fixed inset-0 z-[70]" onKeyDown={(e) => e.stopPropagation()}>
+          <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]}
+            onFechar={() => setCerebrosAbertos(false)}
+            onSalvar={(l) => salvarCerebros(l as CerebroEscrita[])} />
+        </div>
+      )}
       <div style={{ height: 160 }} aria-hidden />
       <div
         className="fixed z-50 border-t bg-background px-4 pb-3 pt-2"
@@ -429,11 +446,13 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             </PopoverContent>
           </Popover>
 
-          {esc && esc.cerebros.length > 0 && (
-            <select value={cerebro?.id ?? "nenhum"} onChange={(e) => setPara(e.target.value)} disabled={escrevendo}
+          {esc && (
+            <select value={cerebro?.id ?? "nenhum"} disabled={escrevendo}
+              onChange={(e) => { if (e.target.value === "__cerebros") setCerebrosAbertos(true); else setPara(e.target.value); }}
               className="rounded-full border bg-transparent px-2 py-1 text-xs text-muted-foreground" title="Cérebro: para quem é o texto">
               {esc.cerebros.map((c) => <option key={c.id} value={c.id}>🧠 Para: {c.nome}</option>)}
               <option value="nenhum">🧠 Sem cérebro</option>
+              <option value="__cerebros">＋ Novo cérebro / editar…</option>
             </select>
           )}
 
