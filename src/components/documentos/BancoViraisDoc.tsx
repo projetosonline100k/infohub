@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Eye, Instagram, Loader2, Search } from "lucide-react";
+import { Eye, Instagram, Loader2, Play, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -38,6 +40,7 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
   const [lista, setLista] = useState<Referencia[]>([]);
   const [preparando, setPreparando] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
+  const [aberta, setAberta] = useState<Referencia | null>(null);   // ficha do vídeo antes de usar
   const [todos, setTodos] = useState(false);   // false = só os não usados
 
   // ⌘H (o menu do Mac não usa mais essa tecla para ocultar o app).
@@ -102,11 +105,11 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
   const preparandoRef = lista.find((r) => r.id === preparando);
 
   return (
-    <Dialog open={aberto} onOpenChange={(a) => { if (!preparando) setAberto(a); }}>
+    <Dialog open={aberto} onOpenChange={(a) => { if (!preparando) { setAberto(a); if (!a) setAberta(null); } }}>
       <DialogContent className="max-w-5xl gap-3 p-5">
         <DialogHeader>
           <DialogTitle>Banco de vídeos virais</DialogTitle>
-          <DialogDescription>Escolha um vídeo: entra no documento com link, transcrição, conteúdo notável e por que viralizou. (⌘H)</DialogDescription>
+          <DialogDescription>Clique num vídeo para ver os detalhes; "Usar este vídeo" coloca no documento o link, a transcrição, o conteúdo notável e por que viralizou. (⌘H)</DialogDescription>
         </DialogHeader>
         {preparando ? (
           <div className="flex items-center gap-4 rounded-xl border bg-muted/40 p-4">
@@ -114,6 +117,42 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
             <div className="text-sm">
               <p className="font-semibold">{preparandoRef ? tituloDe(preparandoRef) : ""}</p>
               <p className="mt-1 flex items-center gap-2 text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Preparando transcrição, conteúdo notável e por que viralizou…</p>
+            </div>
+          </div>
+        ) : aberta ? (
+          // Ficha do vídeo (18/10: "queria abrir o vídeo e ver melhor as informações" antes de usar).
+          <div className="flex gap-5">
+            <button type="button" title="Assistir no Instagram" onClick={() => aberta.link_video && void abrirLinkExterno(aberta.link_video)}
+              className="group relative aspect-[9/16] w-56 shrink-0 overflow-hidden rounded-xl bg-muted">
+              {aberta.thumbnail_url
+                ? <img src={aberta.thumbnail_url} alt="" className="h-full w-full object-cover" />
+                : <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-pink-500/25 to-purple-500/25"><Instagram className="h-8 w-8 text-muted-foreground" /></div>}
+              {aberta.link_video && (
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/30">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 text-slate-900 shadow-lg transition group-hover:scale-110"><Play className="ml-0.5 h-5 w-5" /></span>
+                </span>
+              )}
+            </button>
+            <div className="flex min-w-0 flex-1 flex-col gap-3">
+              <div>
+                <p className="text-lg font-bold leading-snug">{tituloDe(aberta)}</p>
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-sm text-muted-foreground">
+                  {aberta.criador && <span>{aberta.criador}</span>}
+                  {aberta.visualizacoes ? <span className="flex items-center gap-1"><Eye className="h-3.5 w-3.5" />{fmt(aberta.visualizacoes)} views</span> : null}
+                  {aberta.usado_em && <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium">já usado</span>}
+                </p>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border bg-muted/30 p-3" style={{ maxHeight: 300 }}>
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Transcrição</p>
+                <p className="whitespace-pre-line text-sm leading-relaxed">{(aberta.transcricao_pt || aberta.transcricao || "").trim() || "Sem transcrição ainda."}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setAberta(null)}>← Voltar</Button>
+                {aberta.link_video && <Button variant="outline" size="sm" className="gap-1" onClick={() => void abrirLinkExterno(aberta.link_video!)}><Play className="h-3.5 w-3.5" />Assistir no Instagram</Button>}
+                <span className="flex-1" />
+                <Button size="sm" onClick={() => { const r = aberta; setAberta(null); void escolher(r); }}>Usar este vídeo</Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">Ao usar, entram no documento o link, a transcrição, o conteúdo notável e por que viralizou, e o vídeo fica marcado como usado.</p>
             </div>
           </div>
         ) : (
@@ -137,7 +176,7 @@ export function BancoViraisDoc({ editor, clienteId }: { editor: Editor; clienteI
               onWheel={(e) => { if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) e.currentTarget.scrollLeft += e.deltaY; }}>
               {visiveis.length === 0 && <p className="py-10 text-sm text-muted-foreground">Nenhum vídeo{termo ? " com essa busca" : todos ? " no banco" : " sem usar"}.</p>}
               {visiveis.map((r) => (
-                <button key={r.id} type="button" onClick={() => void escolher(r)}
+                <button key={r.id} type="button" onClick={() => setAberta(r)}
                   className="group w-40 shrink-0 text-left focus-visible:outline-none">
                   <div className={cn("relative aspect-[9/16] overflow-hidden rounded-xl bg-muted ring-offset-2 ring-offset-background transition group-hover:ring-2 group-hover:ring-primary group-focus-visible:ring-2 group-focus-visible:ring-primary",
                     r.usado_em && "opacity-60")}>
