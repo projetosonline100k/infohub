@@ -3,15 +3,17 @@ import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowUp, BookOpen, Check, Loader2, Sparkles, Square, X } from "lucide-react";
+import { RevisaoNoDocumento } from "./RevisaoNoDocumento";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
 import { proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
+import { alinhar } from "@/lib/conteudo/trechos";
 import {
-  ehRevisao, montarPedido, separarNotas, textoParaHtml,
-  type AgenteEscrita, type CerebroEscrita, type Conversa, type FormatoEscrita,
+  ehRevisao, montarPedido, montarRevisao, separarNotas, textoParaHtml,
+  type AgenteEscrita, type CerebroEscrita, type Conversa, type FormatoEscrita, type Revisao,
 } from "@/lib/conteudo/escritaAgentes";
 
 // ⌘I no documento (19/10/2026, Davi): "ativa o modo chat; onde estiver o cursor é lá que começa a
@@ -127,10 +129,11 @@ function trocarRegiao(editor: Editor, r: Regiao, html: string | null, historico:
   r.to += editor.state.doc.content.size - antes;
 }
 
-interface Turno extends Conversa { quem: string; notas: string[]; erro?: string }
+interface Turno extends Conversa { erro?: string }
 interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" }
 
-export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; clienteId: string | null }) {
+/** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
+export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; clienteId: string | null; chave?: string | null }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState("");
   const [turnos, setTurnos] = useState<Turno[]>([]);
@@ -139,7 +142,11 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
   const [skillsOff, setSkillsOff] = useState<string[]>(() => ler("docchat:skillsOff", []));    // nome da skill
   const [para, setPara] = useState<string>(() => ler("docchat:para", ""));
   const [modelo, setModelo] = useState<string>(() => ler("docchat:modelo", "sonnet"));
-  const [posicao, setPosicao] = useState<{ left: number; width: number } | null>(null);
+  const [posicao, setPosicao] = useState<{ left: number; width: number; bottom: number } | null>(null);
+  const chaveRev = `docchat:rev:${chave ?? "sem"}`;
+  const [revisoes, setRevisoes] = useState<Revisao[]>(() => ler(chaveRev, []));
+  useEffect(() => setRevisoes(ler(chaveRev, [])), [chaveRev]);
+  const guardarRevisoes = (f: (l: Revisao[]) => Revisao[]) => setRevisoes((l) => { const n = f(l).slice(-10); gravar(chaveRev, n); return n; });
   const campo = useRef<HTMLTextAreaElement>(null);
   const rodando = useRef<string | null>(null);
   const parou = useRef(false);
@@ -150,10 +157,12 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
   useEffect(() => gravar("docchat:para", para), [para]);
   useEffect(() => gravar("docchat:modelo", modelo), [modelo]);
 
+  // A barra ocupa o rodapé da coluna do documento (a área que rola), com fundo próprio.
   const medir = useCallback(() => {
-    const r = editor.view.dom.getBoundingClientRect();
-    const width = Math.min(760, Math.max(360, r.width + 32), window.innerWidth - 32);
-    setPosicao({ left: Math.max(16, Math.min(r.left + r.width / 2 - width / 2, window.innerWidth - width - 16)), width });
+    let el = editor.view.dom.parentElement;
+    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    const r = (el ?? editor.view.dom).getBoundingClientRect();
+    setPosicao({ left: r.left, width: r.width, bottom: Math.max(0, window.innerHeight - r.bottom) });
   }, [editor]);
 
   // ⌘I abre e fecha (o itálico continua no botão da barra de ferramentas).
@@ -230,7 +239,6 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
     const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
     const proximaHeadline = proximoNumeroHeadline(editor.getHTML());
     const blocos: { quem: string; texto: string }[] = [];
-    const notas: string[] = [];
     let anterior: { quem: string; texto: string } | null = null;
     let erro: string | undefined;
     const pintar = () => {
@@ -255,6 +263,7 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
         });
         // Revisão: escreve no lugar da etapa anterior (que fica à vista até a revisão começar a chegar).
         const substitui = !!(etapa && anterior && ehRevisao(etapa.nome));
+        const revisado = etapa && ehRevisao(etapa.nome) ? (anterior?.texto ?? selecao) : null;
         const bloco = { quem, texto: "" };
         const guardado = substitui ? blocos.pop()! : null;
         blocos.push(bloco);
@@ -270,7 +279,7 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
         const { texto: final, notas: n } = separarNotas(bruto);
         bloco.texto = final || (guardado?.texto ?? "");
         pintar();
-        if (n) notas.push(`${quem}: ${n}`);
+        if (revisado && final) guardarRevisoes((l) => [...l, montarRevisao(id, quem, revisado, final, n, alinhar)]);
         anterior = { quem, texto: final };
       }
     } catch (e) {
@@ -283,8 +292,7 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
       const tudo = blocos.map((b) => b.texto).filter((t) => t.trim()).join("\n");
       trocarRegiao(editor, regiao, null, false);
       if (tudo) trocarRegiao(editor, regiao, textoParaHtml(tudo), true);
-      const quem = fila.map((e) => e?.membro?.nome ?? "Claude").join(" → ");
-      setTurnos((l) => [...l, { quem, pedido: pedido || "(fazer a sua parte)", resposta: tudo, notas, erro }].slice(-12));
+      setTurnos((l) => [...l, { pedido: pedido || "(fazer a sua parte)", resposta: tudo, erro }].slice(-12));
       requestAnimationFrame(() => campo.current?.focus());
     }
   };
@@ -294,7 +302,8 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
     if (rodando.current) void pararClaude(rodando.current);
   };
 
-  if (!aberto) return null;
+  const revisao = <RevisaoNoDocumento editor={editor} revisoes={revisoes} onDispensar={(id) => guardarRevisoes((l) => l.filter((r) => r.id !== id))} />;
+  if (!aberto) return revisao;
   const escrevendo = !!andamento;
   const placeholder = escolhidasOrdem.length
     ? `Pedir para ${escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}… (vazio = fazer a sua parte com o que está no documento)`
@@ -302,24 +311,14 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
 
   return (
     <>
-      <div style={{ height: 220 }} aria-hidden />
+      {revisao}
+      <div style={{ height: 160 }} aria-hidden />
       <div
-        className="fixed bottom-5 z-50 rounded-2xl border bg-background/95 shadow-2xl backdrop-blur"
-        style={posicao ? { left: posicao.left, width: posicao.width } : { left: "50%", width: 720, transform: "translateX(-50%)" }}
+        className="fixed z-50 border-t bg-background px-4 pb-3 pt-2"
+        style={posicao ? { left: posicao.left, width: posicao.width, bottom: posicao.bottom } : { left: 0, right: 0, bottom: 0 }}
         onKeyDown={(e) => e.stopPropagation()}
       >
-        {turnos.length > 0 && (
-          <div className="max-h-40 space-y-2 overflow-y-auto border-b px-4 py-3 text-xs">
-            {turnos.map((t, i) => (
-              <div key={i}>
-                <div className="text-muted-foreground"><span className="font-medium text-foreground">Você</span> → {t.quem}: {t.pedido}</div>
-                {t.erro ? <div className="text-destructive">{t.erro}</div>
-                  : t.notas.map((n, k) => <div key={k} className="whitespace-pre-wrap pl-3 text-muted-foreground">↳ {n}</div>)}
-              </div>
-            ))}
-          </div>
-        )}
-
+       <div className="mx-auto max-w-[780px] rounded-2xl border bg-card shadow-lg">
         <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
           {etapas.map((e) => {
             const on = escolhidos.includes(e.membro_id);
@@ -428,6 +427,7 @@ export function ChatNoDocumento({ editor, clienteId }: { editor: Editor; cliente
             )}
           </div>
         )}
+       </div>
       </div>
     </>
   );

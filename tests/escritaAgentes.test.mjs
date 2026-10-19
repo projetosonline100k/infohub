@@ -50,3 +50,24 @@ test('documento grande é cortado em volta do cursor', () => {
   const r = recortarDocumento(doc, 1000);
   assert.ok(r.includes('[CURSOR]') && r.length < 1100);
 });
+
+const { lerNotasRevisao, linhasDoTexto, montarRevisao } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const alinharSimples = (a, b) => b.map((t) => { const i = a.findIndex((x) => x.split(' ')[0] === t.split(' ')[0]); return i < 0 ? null : i; });
+
+test('comentários do Elias por linha (JSON ou texto solto)', () => {
+  assert.deepEqual(lerNotasRevisao('[{"linha": 2, "nota": "tirei o clichê"}, {"linha": "x", "nota": "y"}]'), [{ linha: 2, nota: 'tirei o clichê' }]);
+  assert.deepEqual(lerNotasRevisao('mudei o gancho'), [{ linha: 1, nota: 'mudei o gancho' }]);
+  assert.deepEqual(lerNotasRevisao(''), []);
+});
+
+test('linhas como ficam no documento', () => {
+  assert.deepEqual(linhasDoTexto('# Título\n\n- **um** item\ntexto'), ['Título', 'um item', 'texto']);
+});
+
+test('revisão: linha de origem, linha removida e comentário', () => {
+  const r = montarRevisao('r1', 'Elias', 'Gancho velho\nMeio\nSobra\nFim', 'Gancho novo\nMeio\nFim', '[{"linha": 1, "nota": "gancho mais forte"}, {"linha": 9, "nota": "tirei a sobra"}]', alinharSimples);
+  assert.deepEqual(r.linhas.map((l) => l.original), ['Gancho velho', 'Meio', 'Fim']);
+  assert.equal(r.linhas[0].nota, 'gancho mais forte');
+  assert.equal(r.linhas[2].nota, 'tirei a sobra');
+  assert.deepEqual(r.removidas, [{ depoisDe: 1, texto: 'Sobra' }]);
+});

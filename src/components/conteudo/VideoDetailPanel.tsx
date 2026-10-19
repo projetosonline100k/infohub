@@ -806,7 +806,7 @@ export const VideoDetailPanel = ({
 <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor min-h-[50vh] flex-1 sm:min-h-[900px]" />
               {editor && <BancoViraisDoc editor={editor} clienteId={editedVideo.cliente_id} />}
               {editor && <MicrofoneNoCursor editor={editor} />}
-              {editor && <ChatNoDocumento editor={editor} clienteId={editedVideo.cliente_id} />}
+              {editor && <ChatNoDocumento editor={editor} clienteId={editedVideo.cliente_id} chave={`video:${editedVideo.id}`} />}
             </div>
           </div>
         </main>

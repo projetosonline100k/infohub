@@ -101,7 +101,9 @@ export function montarPedido(d: DadosPedido): string {
     "- Uma frase ou parágrafo por linha. Sem markdown: nada de #, ** ou tabelas. Listas só com \"- \" no começo da linha.",
     `- Headline sempre numa linha própria começando com "Headline N:" (a próxima do documento é a ${d.proximaHeadline}).`,
     "- Roteiro: a fala pronta para gravar, sem rótulos de cena, a não ser que o formato peça.",
-    `- Depois do texto, numa linha sozinha, escreva ${MARCA_NOTAS} e até 5 linhas curtas para o Davi: qual formato usou, como ficaram os critérios, o que mudou (na revisão). Essas notas NÃO entram no documento.`,
+    a && d.anterior && ehRevisao(a.etapa)
+      ? `- Depois do texto, numa linha sozinha, escreva ${MARCA_NOTAS} e um JSON com um comentário em cada linha que você mudou (ou logo onde tirou algo): [{"linha": 3, "nota": "tirei X e troquei por Y porque Z"}]. "linha" é o número da linha no SEU texto revisado (1 = a primeira). Esses comentários aparecem ao lado do texto para o Davi; NÃO entram no documento.`
+      : `- Depois do texto, numa linha sozinha, escreva ${MARCA_NOTAS} e até 5 linhas curtas para o Davi: qual formato usou e como ficaram os critérios. Essas notas NÃO entram no documento.`,
   ].join("\n"));
   return partes.join("\n\n");
 }
@@ -113,6 +115,54 @@ export function separarNotas(bruto: string): { texto: string; notas: string } {
   // A marca pode estar chegando pela metade ("===NO"): não deixa o pedaço aparecer no documento.
   const parcial = bruto.match(/\n?=+[A-Z]*=*$/);
   return { texto: (parcial ? bruto.slice(0, parcial.index) : bruto).trim(), notas: "" };
+}
+
+/** Comentários do revisor por linha ([{linha, nota}]); texto solto vira comentário da 1ª linha. */
+export function lerNotasRevisao(notas: string): { linha: number; nota: string }[] {
+  const m = notas.match(/\[[\s\S]*\]/);
+  if (m) {
+    try {
+      const j = JSON.parse(m[0]) as unknown;
+      if (Array.isArray(j)) {
+        return j.flatMap((x) => {
+          const o = x as { linha?: unknown; nota?: unknown };
+          const linha = Number(o?.linha), nota = typeof o?.nota === "string" ? o.nota.trim() : "";
+          return Number.isInteger(linha) && linha >= 1 && nota ? [{ linha, nota }] : [];
+        });
+      }
+    } catch { /* cai no texto solto */ }
+  }
+  const t = notas.trim();
+  return t ? [{ linha: 1, nota: t }] : [];
+}
+
+/** O texto que cada linha vira no documento (sem "- ", "# " nem **), na ordem dos blocos de textoParaHtml. */
+export function linhasDoTexto(texto: string): string[] {
+  return texto.replace(/\r/g, "").split("\n").map((l) => l.trim()).filter(Boolean)
+    .map((l) => l.replace(/^[-•*]\s+/, "").replace(/^#{1,3}\s+/, "").replace(/\*\*(.+?)\*\*/g, "$1"));
+}
+
+export interface LinhaRevisada { texto: string; original: string | null; nota: string | null }
+export interface Revisao { id: string; quem: string; linhas: LinhaRevisada[]; removidas: { depoisDe: number; texto: string }[] }
+
+/** Junior → Elias, linha a linha: de qual linha veio cada uma, o que saiu inteiro e o comentário de cada mudança. */
+export function montarRevisao(id: string, quem: string, antes: string, depois: string, notas: string,
+  alinhar: (a: string[], b: string[]) => (number | null)[]): Revisao {
+  const a = linhasDoTexto(antes), b = linhasDoTexto(depois);
+  const origem = alinhar(a, b);
+  const comentarios = lerNotasRevisao(notas);
+  const linhas = b.map((texto, k) => ({
+    texto, original: origem[k] === null ? null : a[origem[k]!],
+    nota: comentarios.filter((c) => Math.min(c.linha, b.length) === k + 1).map((c) => c.nota).join("\n") || null,
+  }));
+  const usadas = new Set(origem.filter((x): x is number => x !== null));
+  const removidas = a.flatMap((texto, i) => {
+    if (usadas.has(i)) return [];
+    let depoisDe = -1;
+    origem.forEach((o, k) => { if (o !== null && o < i) depoisDe = k; });
+    return [{ depoisDe, texto }];
+  });
+  return { id, quem, linhas, removidas };
 }
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

@@ -338,7 +338,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             {editor && <MenuSelecaoTexto editor={editor} />}
             {editor && <BancoViraisDoc editor={editor} clienteId={clienteId} />}
             {editor && <MicrofoneNoCursor editor={editor} />}
-            {editor && <ChatNoDocumento editor={editor} clienteId={clienteId} />}
+            {editor && <ChatNoDocumento editor={editor} clienteId={clienteId} chave={docAtualId} />}
             </div>
           </div>
         </div>
