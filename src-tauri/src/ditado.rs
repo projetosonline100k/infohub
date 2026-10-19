@@ -280,6 +280,22 @@ const PEDIDO: &str = "Você recebe a transcrição de uma fala do Davi (ditado p
 - se a fala for curta e simples, devolva só uma frase limpa.\n\
 Responda SOMENTE com a mensagem final, sem comentários.\n\nTRANSCRIÇÃO:\n";
 
+/// Claude rápido, sem ferramentas, MCP, comandos nem ajustes do usuário (~2–4 s para abrir em
+/// vez de ~8 s). None se não deu.
+fn claude_rapido_bloqueante(prompt: &str, modelo: &str) -> Option<String> {
+    let bin = claude_bin()?;
+    let saida = Command::new(bin)
+        .args(["-p", prompt, "--model", modelo, "--output-format", "text", "--max-turns", "1",
+               "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", "", "--disable-slash-commands",
+               "--setting-sources", "", "--no-session-persistence"])
+        .current_dir(std::env::temp_dir()) // pasta neutra: sem CLAUDE.md de projeto
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    let texto = String::from_utf8_lossy(&saida.stdout).trim().to_string();
+    (saida.status.success() && !texto.is_empty()).then_some(texto)
+}
+
 /// Organiza a fala transcrita (Claude, modelo rápido). Se der errado, devolve a fala como veio.
 #[tauri::command]
 pub async fn ditado_organizar(texto: String) -> Result<String, String> {
@@ -287,28 +303,22 @@ pub async fn ditado_organizar(texto: String) -> Result<String, String> {
     if texto.is_empty() {
         return Ok(texto);
     }
-    let Some(bin) = claude_bin() else { return Ok(texto) };
     let original = texto.clone();
-    let resultado = tauri::async_runtime::spawn_blocking(move || {
-        // Pasta neutra: sem CLAUDE.md de projeto (mais rápido e sem contexto que não serve).
-        Command::new(bin)
-            // Sem ferramentas, MCP, comandos nem ajustes do usuário: o Claude abre em ~2–4 s em vez de ~8 s.
-            .args(["-p", &format!("{PEDIDO}{texto}"), "--model", "haiku", "--output-format", "text", "--max-turns", "1",
-                   "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", "", "--disable-slash-commands",
-                   "--setting-sources", "", "--no-session-persistence"])
-            .current_dir(std::env::temp_dir())
-            .stdin(Stdio::null())
-            .output()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
-    match resultado {
-        Ok(saida) if saida.status.success() => {
-            let organizado = String::from_utf8_lossy(&saida.stdout).trim().to_string();
-            Ok(if organizado.is_empty() { original } else { organizado })
-        }
-        _ => Ok(original),
-    }
+    let resultado = tauri::async_runtime::spawn_blocking(move || claude_rapido_bloqueante(&format!("{PEDIDO}{texto}"), "haiku"))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(resultado.unwrap_or(original))
+}
+
+/// Pedido livre ao Claude rápido, a partir do app (ex.: análise de um vídeo de referência
+/// no documento, ⌘H). `modelo`: "haiku" (padrão) ou "sonnet".
+#[tauri::command]
+pub async fn claude_rapido(pedido: String, modelo: Option<String>) -> Result<String, String> {
+    let modelo = match modelo.as_deref() { Some("sonnet") => "sonnet", _ => "haiku" }.to_string();
+    tauri::async_runtime::spawn_blocking(move || claude_rapido_bloqueante(&pedido, &modelo))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "O Claude não respondeu.".to_string())
 }
 
 /// Põe o texto na área de transferência e, com permissão de Acessibilidade, cola (⌘V)

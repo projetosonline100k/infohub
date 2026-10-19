@@ -81,6 +81,7 @@ pub fn run() {
             creator::voz_aquecer,
             ditado::ditado_colar,
             ditado::ditado_registrar,
+            ditado::claude_rapido,
         ]);
     // Fora do macOS só existe o comando de destacar aba.
     #[cfg(not(target_os = "macos"))]
@@ -120,7 +121,8 @@ pub fn run() {
                 let app_menu = Submenu::with_items(h, "Infopro Hub", true, &[
                     &PredefinedMenuItem::about(h, None, None)?,
                     &PredefinedMenuItem::separator(h)?,
-                    &PredefinedMenuItem::hide(h, None)?,
+                    // Sem ⌘H (18/10): no documento, ⌘H abre o banco de vídeos virais. "Ocultar" segue no menu.
+                    &MenuItem::with_id(h, "menu-ocultar", "Ocultar Infopro Hub", true, None::<&str>)?,
                     &PredefinedMenuItem::hide_others(h, None)?,
                     &PredefinedMenuItem::separator(h)?,
                     &PredefinedMenuItem::quit(h, None)?,
@@ -142,6 +144,10 @@ pub fn run() {
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
+                    if id == "menu-ocultar" {
+                        let _ = app.hide();
+                        return;
+                    }
                     if id == "menu-desfazer" || id == "menu-refazer" {
                         // Vai pra janela em foco (principal ou Jarvis).
                         for (_, w) in app.webview_windows() {
