@@ -195,7 +195,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       : { data: [] as { id: string; thumbnail_url: string | null }[] };
     const capaDe = new Map((capas || []).map((c) => [c.id, c.thumbnail_url]));
     const { data: eds } = await (supabase as unknown as SupabaseClient).from("edicoes_video")
-      .select("id, titulo, status, mensagem, versao, final_drive, duracao, formato, opcoes_formato").eq("cliente_id", clienteId)
+      .select("id, titulo, status, mensagem, versao, final_drive, duracao, formato, opcoes_formato, atividade_id").eq("cliente_id", clienteId)
       .neq("status", "aprovado").order("criado_em", { ascending: false });
     // Aprovada no editor mas ainda na fila do Mac (17/10: "mesmo que ele não vá fazer no momento,
     // já sai da minha tarefa e vai para o lado"): conta como "aprovando", em Tarefas sendo executadas.
@@ -273,9 +273,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Tarefa do Roy que já virou carrossel aparece só pelo card do carrossel (revisão com as páginas),
   // não como "Aprovar entrega" (esse caminho é o do Ítalo, que entrega documento).
   const tarefasComCarrossel = useMemo(() => new Set(carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter(Boolean)), [carrosseis]);
-  // Edição de vídeo (Danilo) também: aparece em "Revisar edição", que abre o editor.
-  const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id) && !(t.tipo === "edicao" && t.situacao === "aguardando_aprovacao")), hoje),
-    [contaId, videos, membros, tarefas, hoje, tarefasComCarrossel]);
+  // Edição de vídeo (Danilo) também: aparece em "Revisar edição", que abre o editor — mas só quando
+  // existe a edição ligada à tarefa (19/10: a versão dark saiu fora do editor e a tarefa sumia de tudo).
+  const tarefasComEdicao = useMemo(() => new Set(edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter(Boolean)), [edicoes]);
+  const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)
+    && !(t.tipo === "edicao" && t.situacao === "aguardando_aprovacao" && tarefasComEdicao.has(t.id))), hoje),
+    [contaId, videos, membros, tarefas, hoje, tarefasComCarrossel, tarefasComEdicao]);
   const executando = useMemo(() => tarefasEmExecucao(contaId, membros, tarefas), [contaId, membros, tarefas]);
   const estados = useMemo(() => estadoDosMembros(membros, tarefas, hoje), [membros, tarefas, hoje]);
   const programados = useMemo(() => videosProgramados(videos, hoje), [videos, hoje]);
