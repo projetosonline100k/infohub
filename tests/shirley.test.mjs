@@ -53,7 +53,7 @@ test('grupo de cliente da Core conta (com o nome do cliente); outros grupos não
   const r = alertasDoWhatsapp([
     conv({ id: 'g1', nome: 'Isabel · Core Audience 2.0', eh_grupo: true, ultima_em: antes(90) }),
     conv({ id: 'g2', nome: 'Família', eh_grupo: true, ultima_em: antes(90) }),
-  ], agora);
+  ], agora, 60, () => true);   // grupo só avisa quando é com o Davi (19/10): aqui o painel diz que é
   assert.deepEqual(r.map((x) => [x.chatId, x.nome]), [['g1', 'Isabel']]);
   assert.equal(clienteDoGrupo('Royal Defense | Core Audience'), 'Royal Defense');
   assert.equal(clienteDoGrupo('Dra Helia - core Experience '), 'Dra Helia');
@@ -76,4 +76,16 @@ test('Shirley perde a paciência: adiar e esperar muito deixam ela brava; furios
   assert.equal(humorDaShirley(0, 5, true), 2);
   assert.equal(ADIAR_MIN[3], 0);
   assert.ok(falaDaShirley(3, 'Carol', '9h', false).startsWith('🤬 DAVI'));
+});
+
+test('grupo de cliente só chama o Davi quando é com ele (o resto é do CS)', () => {
+  const agora = new Date('2026-10-19T14:30:00');
+  const g = (texto, autor = 'Marcela') => ({ chat_id: 'g@g.us', chat_nome: 'Royal Defense | Core Audience', eh_grupo: true, ultima_em: '2026-10-19T12:20:00', ultima_de_mim: false, ultima_texto: texto, ultima_autor: autor });
+  const nada = () => false;
+  assert.equal(alertasDoWhatsapp([g('Qual seria o horário no dia 29/10?')], agora, 60, nada).length, 0);
+  assert.equal(alertasDoWhatsapp([g('Davi, consegue ver isso?')], agora, 60, nada).length, 1);
+  assert.equal(alertasDoWhatsapp([g('Qual seria o horário?')], agora, 60, () => true).length, 1);
+  assert.equal(alertasDoWhatsapp([g('Quero cancelar, péssimo')], agora, 60, nada).length, 1);
+  assert.equal(alertasDoWhatsapp([g('Quero cancelar, péssimo', 'Natália Cristina')], agora, 60, nada, (n) => n === 'Natália Cristina').length, 0);
+  assert.equal(alertasDoWhatsapp([{ ...g('Oi, tudo bem? Me ajuda aqui'), eh_grupo: false, chat_nome: 'Carol' }], agora, 60, nada).length, 1);
 });

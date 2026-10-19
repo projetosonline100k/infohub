@@ -63,10 +63,21 @@ export function horarioDeCobrar(agora: Date): boolean {
  * mais de `esperaMin` minutos. Mais urgente primeiro (insatisfeito, depois quem espera há mais tempo).
  * Conversa parada há mais de 3 dias fica de fora (já virou "sem resposta" antiga, é do painel).
  */
-export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, esperaMin = 60): AlertaShirley[] {
+/** 19/10 (Davi: "você está mostrando mensagem que eu não preciso responder, isso é para o CS"):
+ *  em grupo, só chama o Davi quando é com ele (cita "Davi" ou o painel diz que ele precisa responder);
+ *  o resto do grupo é da equipe de CS. Conversa individual é sempre com ele. */
+export function ehComODavi(c: ConversaResumo, precisaResponder?: (c: ConversaResumo) => boolean): boolean {
+  if (!c.eh_grupo) return true;
+  return /\bdavi\b/i.test(c.ultima_texto ?? "") || !!precisaResponder?.(c);
+}
+
+export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, esperaMin = 60,
+  precisaResponder?: (c: ConversaResumo) => boolean, ehEquipe?: (nome: string | null) => boolean): AlertaShirley[] {
   const lista: AlertaShirley[] = [];
   for (const c of conversas) {
-    if (!conta(c)) continue;
+    if (!conta(c) || (c.eh_grupo && ehEquipe?.(c.ultima_autor))) continue;
+    // Insatisfeito avisa mesmo em grupo (risco de churn); o resto do grupo só se for com o Davi.
+    if (!pareceInsatisfeito(c.ultima_texto) && !ehComODavi(c, precisaResponder)) continue;
     const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
     if (minutos < 0 || minutos > 3 * 24 * 60) continue;
     const trecho = (c.ultima_texto ?? "").replace(/\s+/g, " ").trim().slice(0, 140);
@@ -78,9 +89,11 @@ export function alertasDoWhatsapp(conversas: ConversaResumo[], agora: Date, espe
 }
 
 /** Mensagens de clientes que acabaram de chegar (conversa individual, última é do cliente, há menos de `janelaMin`). */
-export function chegaramAgora(conversas: ConversaResumo[], agora: Date, janelaMin = 20): AlertaShirley[] {
+export function chegaramAgora(conversas: ConversaResumo[], agora: Date, janelaMin = 20,
+  precisaResponder?: (c: ConversaResumo) => boolean, ehEquipe?: (nome: string | null) => boolean): AlertaShirley[] {
   return conversas.flatMap((c) => {
-    if (!conta(c)) return [];
+    if (!conta(c) || (c.eh_grupo && ehEquipe?.(c.ultima_autor))) return [];
+    if (!pareceInsatisfeito(c.ultima_texto) && !ehComODavi(c, precisaResponder)) return [];
     const minutos = Math.floor((agora.getTime() - new Date(c.ultima_em).getTime()) / 60_000);
     if (minutos < 0 || minutos >= janelaMin) return [];
     return [{ chatId: c.chat_id, nome: nomeDe(c), motivo: pareceInsatisfeito(c.ultima_texto) ? "insatisfeito" as const : "esperando" as const,

@@ -1512,7 +1512,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     // As que acabaram de chegar + a que está sendo cobrada agora no balão (16/10: "tem que ter a órbita ao redor").
     ...mensagens.todas.map((m): Lua => ({
       id: `w-${m.chatId}-${m.quando}`, nome: "Shirley", ehIa: true, cor: "whatsapp",
-      dica: `Shirley · WhatsApp: ${m.nome}`, titulo: `💬 ${m.nome} mandou mensagem`, porque: "Shirley (CS) · WhatsApp, agora",
+      dica: `WhatsApp: ${m.nome}`, titulo: `💬 ${m.nome} mandou mensagem`, porque: "WhatsApp, agora",
       trecho: m.texto, acaoRotulo: "Responder",
       acao: () => { mensagens.dispensar(m.chatId); prepararConversaAberta(m); setAba("whatsapp"); void abrirPainel(); },
       onClick: () => {},
@@ -1521,7 +1521,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       id: `w-${w.chatId}-${w.ultimaEm}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
       dica: `Shirley · WhatsApp: ${w.nome}`,
       titulo: w.motivo === "insatisfeito" ? `🚨 ${w.nome} pode estar insatisfeito` : `📱 ${w.nome} mandou mensagem`,
-      porque: `Shirley (CS) · WhatsApp, há ${tempoEsperando(Math.max(1, w.minutos))}`,
+      porque: `WhatsApp, há ${tempoEsperando(Math.max(1, w.minutos))}`,
       trecho: w.trecho, acaoRotulo: "Abrir WhatsApp",
       acao: () => { setAba("whatsapp"); void abrirPainel(); },
       onClick: () => {},

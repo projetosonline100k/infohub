@@ -3,7 +3,6 @@ import { format, isToday, isYesterday } from "date-fns";
 import { Clock, MessageCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { FotoChat } from "./tabs/WhatsappConversas";
 
 // Balão da Shirley com cara de WhatsApp (16/10, Davi: "as mensagens da Shirley
@@ -37,14 +36,13 @@ export function CartaoWhatsapp({ chatId, chatNome, nome, grupo, faixa, tomFaixa 
     <div className="relative">
       <div role="status" className={cn("w-[330px] overflow-hidden rounded-2xl border bg-[#efeae2] shadow-lg animate-in fade-in-0 slide-in-from-bottom-1 zoom-in-95 dark:bg-slate-900",
         bravo && "border-2 border-rose-500 shadow-[0_0_18px_rgba(244,63,94,0.45)] animate-shake")}>
-        {/* Cabeçalho do WhatsApp: a Shirley avisando */}
+        {/* Cabeçalho do WhatsApp: quem mandou (19/10, Davi: "tira o nome da Shirley, mantém o nome do grupo ou da pessoa") */}
         <div className="flex items-center gap-2.5 bg-[#075e54] px-3 py-2 text-white">
-          <span className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-white/90"><CabecaBoneco nome="Shirley" ehIa className="h-full w-full" /></span>
+          <FotoChat chatId={chatId} nome={chatNome ?? nome} grupo={grupo} tamanho="h-9 w-9" />
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate text-[13px] font-semibold">Shirley (CS)</p>
-            <p className="truncate text-[11px] text-white/80">WhatsApp · {nome}{grupo ? " (grupo)" : ""}</p>
+            <p className="truncate text-[13px] font-semibold">{chatNome ?? nome}</p>
+            <p className="truncate text-[11px] text-white/80">WhatsApp{grupo ? " · grupo" : ""}</p>
           </div>
-          <FotoChat chatId={chatId} nome={chatNome ?? nome} grupo={grupo} tamanho="h-8 w-8" />
         </div>
         {/* As últimas mensagens, em balões */}
         <div className="max-h-[150px] space-y-1.5 overflow-y-auto px-2.5 py-2">

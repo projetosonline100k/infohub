@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { ADIAR_MIN, alertasDoWhatsapp, chegaramAgora, horarioDeCobrar, humorDaShirley, type AlertaShirley, type ConversaResumo, type Humor } from "@/lib/whatsapp/shirley";
+import { calcularMetricas, ehDaEquipe, etiquetasDaConversa, type CardWhatsapp, type Historico } from "@/lib/whatsapp/painel";
 
 // Shirley (CS) na orbe do Atlas (16/10): a cada 2 min olha as conversas do
 // WhatsApp; cliente insatisfeito alerta na hora, quem espera há mais de 1h
@@ -30,9 +31,18 @@ export function useShirley(meuId: string | undefined, ativo: boolean) {
     if (!meuId || !horarioDeCobrar(new Date())) { setAlertas([]); setNovas([]); return; }
     const { data, error } = await supabase.rpc("whatsapp_conversas");
     if (error || !data) return;
-    const lista = alertasDoWhatsapp(data as unknown as ConversaResumo[], new Date());
+    // Grupo só é com o Davi quando o painel diz "Precisa responder" (o resto é do CS).
+    const { data: pn } = await supabase.from("whatsapp_painel").select("cards, historico, respondidos").eq("user_id", meuId).maybeSingle();
+    const h = pn?.historico && Object.keys(pn.historico as object).length ? (pn.historico as unknown as Historico) : null;
+    const cards = (pn?.cards as unknown as CardWhatsapp[]) || [];
+    const respondidos = (pn?.respondidos as Record<string, boolean>) || {};
+    const agora = new Date();
+    const metricas = h ? calcularMetricas(h, agora) : null;
+    const precisa = (c: ConversaResumo) => etiquetasDaConversa(c, h, cards, respondidos, metricas, agora).some((e) => e.texto === "Precisa responder");
+    const equipe = (nome: string | null) => ehDaEquipe(nome, h?.config?.equipe ?? ["Shirley Fidelis"]);
+    const lista = alertasDoWhatsapp(data as unknown as ConversaResumo[], agora, 60, precisa, equipe);
     setAlertas(lista);
-    setNovas(chegaramAgora(data as unknown as ConversaResumo[], new Date()));
+    setNovas(chegaramAgora(data as unknown as ConversaResumo[], agora, 20, precisa, equipe));
     // Cliente insatisfeito: pede o painel atualizado (no máximo 1 vez a cada 20 min).
     if (lista.some((a) => a.motivo === "insatisfeito") && Date.now() - pediuPainelEm.current > 20 * 60_000) {
       pediuPainelEm.current = Date.now();
