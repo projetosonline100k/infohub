@@ -19,7 +19,7 @@ pub async fn destacar_aba(app: AppHandle, caminho: String, titulo: String, x: Op
         janela = janela
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true)
-            .traffic_light_position(tauri::LogicalPosition::new(16.0, 21.0));
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 24.0));
     }
     if let (Some(x), Some(y)) = (x, y) {
         janela = janela.position(x, y);

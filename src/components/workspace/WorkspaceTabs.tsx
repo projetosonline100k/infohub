@@ -358,7 +358,7 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
   const naBarraDeTitulo = isDesktop() && /Mac/i.test(navigator.userAgent);
   return <nav ref={navRef} data-tauri-drag-region={naBarraDeTitulo ? "" : undefined} onDragStart={(event) => event.preventDefault()}
     className={cn("relative z-[100] flex shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-3 shadow-sm",
-      naBarraDeTitulo ? "h-[42px] pl-[84px] pt-1.5 bg-muted/60" : "h-10 pt-1")} aria-label="Abas abertas">
+      naBarraDeTitulo ? "h-[42px] pl-[84px] pt-1.5 bg-muted" : "h-10 pt-1")} aria-label="Abas abertas">
     {tabs.map((tab) => {
       const active = tab.id === activeId;
       const canClose = tabs.length > 1;
