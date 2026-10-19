@@ -4,14 +4,14 @@ import { NodeViewWrapper, ReactNodeViewRenderer, type Editor, type NodeViewProps
 import { Loader2, Mic, Pause, Play, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 
 // Áudio gravado dentro do documento (18/10/2026, Davi: "em vez de só ficar piscando um |, quero
-// ao lado um microfone; ao clicar, gravar um áudio já com a transcrição; ouvir, acelerar,
-// clicar na parte específica do áudio"). O microfone aparece ao lado do cursor numa linha vazia;
-// o áudio vai para o Storage (audios-documentos) e o Whisper do Mac devolve os trechos com o
-// tempo (voz_transcrever_trechos). O bloco guarda a URL e os trechos no próprio documento.
+// ao lado um microfone; ao clicar, gravar um áudio; ouvir, acelerar, clicar na parte específica").
+// 19/10 (Davi): "não quero que use IA, só que grave o áudio" — sem transcrição: funciona igual na
+// web e no app, para qualquer pessoa. O microfone aparece ao lado do cursor numa linha vazia; o
+// áudio vai para o Storage (audios-documentos) e o bloco guarda a URL no próprio documento.
+// (Blocos antigos com trechos ainda mostram o texto clicável.)
 
 export interface TrechoAudio { inicio: number; fim: number; texto: string }
 
@@ -74,7 +74,7 @@ function PlayerAudio({ node, deleteNode }: NodeViewProps) {
           </p>
         ) : estado !== "pronto" || !node.attrs.src ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />{estado === "enviando" ? "Guardando o áudio e transcrevendo…" : "Preparando o áudio…"}
+            <Loader2 className="h-4 w-4 animate-spin" />{estado === "enviando" ? "Guardando o áudio…" : "Preparando o áudio…"}
           </p>
         ) : (
           <>
@@ -114,7 +114,6 @@ function PlayerAudio({ node, deleteNode }: NodeViewProps) {
                 })}
               </p>
             )}
-            {trechos.length === 0 && !isDesktop() && <p className="mt-2 text-xs text-muted-foreground">A transcrição sai quando o áudio é gravado pelo app do Mac.</p>}
           </>
         )}
       </div>
@@ -124,12 +123,6 @@ function PlayerAudio({ node, deleteNode }: NodeViewProps) {
 
 // ---------------------------------------------------------------- Microfone ao lado do cursor
 
-const paraBase64 = (blob: Blob) => new Promise<string>((ok, erro) => {
-  const r = new FileReader();
-  r.onload = () => ok(String(r.result).split(",")[1] ?? "");
-  r.onerror = () => erro(r.error);
-  r.readAsDataURL(blob);
-});
 
 /** Acha o bloco de áudio pelo id e troca os atributos (ele pode ter mudado de lugar). */
 function atualizarBloco(editor: Editor, id: string, attrs: Record<string, unknown>) {
@@ -196,15 +189,10 @@ export function MicrofoneNoCursor({ editor }: { editor: Editor }) {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) throw new Error("sem login");
       const caminho = `${u.user.id}/${crypto.randomUUID()}.${ext}`;
-      const [envio, transcricao] = await Promise.all([
-        supabase.storage.from("audios-documentos").upload(caminho, audio, { contentType: audio.type || "audio/mp4" }),
-        isDesktop()
-          ? import("@tauri-apps/api/core").then(async ({ invoke }) => invoke<{ trechos?: TrechoAudio[] }>("voz_transcrever_trechos", { base64: await paraBase64(audio), extensao: ext })).catch(() => ({ trechos: [] }))
-          : Promise.resolve({ trechos: [] as TrechoAudio[] }),
-      ]);
+      const envio = await supabase.storage.from("audios-documentos").upload(caminho, audio, { contentType: audio.type || "audio/mp4" });
       if (envio.error) throw envio.error;
       const src = supabase.storage.from("audios-documentos").getPublicUrl(caminho).data.publicUrl;
-      atualizarBloco(editor, id, { src, estado: "pronto", trechos: transcricao.trechos ?? [] });
+      atualizarBloco(editor, id, { src, estado: "pronto" });
     } catch (e) {
       toast.error(`Não consegui guardar o áudio: ${e instanceof Error ? e.message : String(e)}`);
       atualizarBloco(editor, id, { estado: "erro" });
@@ -238,7 +226,7 @@ export function MicrofoneNoCursor({ editor }: { editor: Editor }) {
   const seg = gravando ? Math.floor((Date.now() - gravando.desde) / 1000) : 0;
   return (
     <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => void alternar()}
-      title={gravando ? "Parar e transcrever" : "Gravar um áudio aqui (com transcrição)"}
+      title={gravando ? "Parar a gravação" : "Gravar um áudio aqui"}
       style={onde ? { left: onde.left, top: onde.top } : undefined}
       className={cn("fixed z-50 flex -translate-y-1/2 items-center gap-1.5 rounded-full border shadow-sm transition",
         gravando ? "bg-rose-500 px-3 py-1.5 text-xs font-semibold text-white" : "h-7 w-7 justify-center bg-background text-muted-foreground hover:bg-primary hover:text-primary-foreground",
