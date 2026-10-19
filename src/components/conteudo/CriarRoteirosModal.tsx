@@ -1,3 +1,4 @@
+import { textoDoRoteiro } from "@/lib/conteudo/roteirosNoDocumento";
 import { useState, useEffect } from "react";
 import { X, ChevronLeft, ChevronRight, MessageSquare, SkipForward, Save } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -55,7 +56,7 @@ export function CriarRoteirosModal({
       const initialRoteiros: Record<string, string> = {};
       const initialTitulos: Record<string, string> = {};
       videos.forEach((v) => {
-        initialRoteiros[v.id] = v.roteiro || "";
+        initialRoteiros[v.id] = textoDoRoteiro(v.roteiro);
         initialTitulos[v.id] = v.titulo;
       });
       setRoteiros(initialRoteiros);

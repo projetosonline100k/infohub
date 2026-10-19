@@ -27,3 +27,14 @@ export function roteirosNoDocumento(texto: string | null | undefined): RoteiroMa
 }
 
 export const rotuloRoteiros = (n: number) => `${n} roteiro${n === 1 ? "" : "s"}`;
+
+/** Roteiro só em texto (o editor guarda HTML desde 18/10): para mostrar, mandar no WhatsApp etc. */
+export function textoDoRoteiro(roteiro: string | null | undefined): string {
+  const r = roteiro ?? "";
+  if (!/<[a-z][^>]*>/i.test(r)) return r.trim();   // texto puro (roteiros antigos): como está
+  return r
+    .replace(/<\/(p|h[1-6]|li|div)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<li[^>]*>/gi, "• ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&")
+    .replace(/\n\s*\n/g, "\n").trim();
+}

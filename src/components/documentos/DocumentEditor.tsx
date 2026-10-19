@@ -11,6 +11,7 @@ import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
+import { HeadlineTitulo } from "@/lib/tiptapHeadlineTitulo";
 import { ArrowLeft, Star, MoreHorizontal, PanelLeft, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +88,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       }),
       ItalicSemAsterisco,
       TituloRecolhivel,
+      HeadlineTitulo,   // "Headline N" vira título recolhível (18/10)
       Underline,
       TextAlign.configure({
         types: ["heading", "paragraph"],

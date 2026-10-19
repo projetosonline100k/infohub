@@ -1,30 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import {
-  AlignCenter,
-  AlignJustify,
-  AlignLeft,
-  AlignRight,
   ArrowLeft,
-  Bold,
   ChevronDown,
   FileText,
-  Highlighter,
-  Italic,
-  Link,
-  List,
-  ListOrdered,
   MessageSquare,
   MoreHorizontal,
   PanelLeft,
-  Pilcrow,
   Sparkles,
   Star,
-  Strikethrough,
   Tag,
   Trash2,
-  Underline,
-  Undo,
-  Redo,
   Calendar,
   CheckCircle2,
   ExternalLink,
@@ -41,7 +26,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { SlashCommandTextarea, SelectionRange } from "./SlashCommandTextarea";
+import type { SelectionRange } from "./SlashCommandTextarea";
+import { useEditor, EditorContent } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import UnderlineExt from "@tiptap/extension-underline";
+import TextAlign from "@tiptap/extension-text-align";
+import Placeholder from "@tiptap/extension-placeholder";
+import LinkExt from "@tiptap/extension-link";
+import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
+import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
+import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
+import { HeadlineTitulo, MARCA_HEADLINE } from "@/lib/tiptapHeadlineTitulo";
+import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
+import { BancoViraisDoc } from "@/components/documentos/BancoViraisDoc";
+import "@/components/documentos/editor.css";
 import { RoteiroChat } from "./RoteiroChat";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
@@ -89,6 +87,14 @@ interface VideoDetailPanelProps {
   videoTags: string[];
   onTagToggle: (tagId: string) => void;
   platform: "vertical" | "youtube";
+}
+
+// Roteiros antigos são texto puro: cada linha vira um parágrafo (HTML já guardado passa direto).
+function roteiroParaHtml(texto: string | null | undefined): string {
+  const t = texto ?? "";
+  if (/<(p|h[1-6]|ul|ol|li|br|strong|em)[\s>/]/i.test(t)) return t;
+  const esc = (x: string) => x.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return t.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => `<p>${esc(l)}</p>`).join("");
 }
 
 const STATUS_OPTIONS = [
@@ -146,6 +152,32 @@ export const VideoDetailPanel = ({
   // (senão espreme o texto a ponto de quebrar letra por letra, como
   // aconteceu antes desse ajuste) — só decide isso depois que useIsMobile
   // resolve o tamanho real da tela, e só uma vez.
+  // Roteiro em editor de verdade (18/10/2026, Davi: "quando eu escrever Headline, quero em título,
+  // em negrito, para conseguir ocultar com a ferramenta de abrir e fechar" e "apertei ⌘H e nada"):
+  // o mesmo editor dos Documentos — barra que funciona, títulos recolhíveis, "Headline N" vira
+  // título sozinho e ⌘H traz um vídeo do banco de virais. O roteiro passa a ser guardado em HTML.
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, italic: false }),
+      ItalicSemAsterisco,
+      TituloRecolhivel,
+      HeadlineTitulo,
+      UnderlineExt,
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      Placeholder.configure({ placeholder: "Escreva o roteiro… Comece um roteiro com \"Headline 1\" (vira título) e use ⌘H para trazer um vídeo do banco de virais." }),
+      LinkExt.configure({ openOnClick: true }),
+      ...extensoesEstiloTexto,
+    ],
+    content: "",
+    onUpdate: ({ editor: e }) => setEditedVideo((prev) => (prev ? { ...prev, roteiro: e.getHTML() } : prev)),
+    onSelectionUpdate: ({ editor: e }) => {
+      const { from, to } = e.state.selection;
+      const texto = from === to ? "" : e.state.doc.textBetween(from, to, "\n");
+      setSelectionLength(texto.length);
+      setSelectionContext(texto ? { text: texto, range: { start: from, end: to } } : null);
+    },
+  });
+
   const [showProps, setShowProps] = useState(true);
   const propsAjustadasRef = useRef(false);
   useEffect(() => {
@@ -178,6 +210,13 @@ export const VideoDetailPanel = ({
     });
     setAutoSaveStatus("idle");
   }, [video]);
+
+  const idCarregado = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editor || !editedVideo || idCarregado.current === editedVideo.id) return;
+    idCarregado.current = editedVideo.id;
+    editor.commands.setContent(roteiroParaHtml(editedVideo.roteiro), { emitUpdate: false });
+  }, [editor, editedVideo]);
 
   useEffect(() => {
     if (!editedVideo || !onAutoSave) return;
@@ -263,18 +302,12 @@ export const VideoDetailPanel = ({
   };
 
   const handleInsertText = (text: string) => {
-    setEditedVideo((prev) => {
-      if (!prev) return prev;
-      const currentRoteiro = prev.roteiro || "";
-      return { ...prev, roteiro: currentRoteiro + "\n\n" + text };
-    });
+    editor?.chain().focus("end").insertContent(roteiroParaHtml(text)).run();
   };
 
+  // range = posições do editor (vindas de onSelectionUpdate).
   const handleReplaceText = (text: string, range: { start: number; end: number }) => {
-    if (!editedVideo) return;
-    const currentRoteiro = editedVideo.roteiro || "";
-    const newRoteiro = currentRoteiro.substring(0, range.start) + text + currentRoteiro.substring(range.end);
-    setEditedVideo((prev) => prev ? { ...prev, roteiro: newRoteiro } : prev);
+    editor?.chain().focus().insertContentAt({ from: range.start, to: range.end }, text).run();
     setSelectionContext(null);
   };
 
@@ -344,22 +377,6 @@ export const VideoDetailPanel = ({
 
   if (!open) return null;
 
-  const toolbarIcons = [
-    { icon: Bold, title: "Negrito" },
-    { icon: Italic, title: "Itálico" },
-    { icon: Underline, title: "Sublinhado" },
-    { icon: Strikethrough, title: "Tachado" },
-    { icon: Highlighter, title: "Destaque" },
-    { icon: AlignLeft, title: "Alinhar à esquerda" },
-    { icon: AlignCenter, title: "Centralizar" },
-    { icon: AlignRight, title: "Alinhar à direita" },
-    { icon: AlignJustify, title: "Justificar" },
-    { icon: List, title: "Lista" },
-    { icon: ListOrdered, title: "Lista numerada" },
-    { icon: Link, title: "Link" },
-    { icon: Undo, title: "Desfazer" },
-    { icon: Redo, title: "Refazer" },
-  ];
 
   const saveStatusLabel = (() => {
     if (autoSaveStatus === "saving") return "Salvando...";
@@ -367,23 +384,15 @@ export const VideoDetailPanel = ({
     if (autoSaveStatus === "error") return "Erro ao salvar";
     return "";
   })();
-  const roteiroCharacterCount = (editedVideo.roteiro || "").length;
+  const roteiroCharacterCount = editor ? editor.getText().length : (editedVideo.roteiro || "").length;
   const roteirosMarcados = roteirosNoDocumento(editedVideo.roteiro);
-  // Pula para o roteiro N: cursor no começo dele e a folha rolada até lá (pela proporção de linhas).
-  const irParaRoteiro = (inicio: number) => {
-    const folha = folhaRef.current;
-    const campo = folha?.querySelector("textarea");
-    if (!folha || !campo) return;
-    const texto = campo.value;
-    const linhas = texto.split("\n").length || 1;
-    const linha = texto.slice(0, inicio).split("\n").length - 1;
-    campo.focus({ preventScroll: true });
-    campo.setSelectionRange(inicio, inicio);
-    // O campo tem rolagem própria: rola ele até o roteiro (altura de linha real) e traz o campo para a vista.
-    const alturaLinha = parseFloat(getComputedStyle(campo).lineHeight) || campo.scrollHeight / linhas;
-    campo.scrollTo({ top: Math.max(0, linha * alturaLinha - 24), behavior: "smooth" });
-    const topoCampo = campo.getBoundingClientRect().top - folha.getBoundingClientRect().top + folha.scrollTop;
-    folha.scrollTo({ top: Math.max(0, topoCampo - 70), behavior: "smooth" });
+  // Pula para o roteiro N (o N-ésimo título "Headline…" do editor) e põe o cursor nele.
+  const irParaRoteiro = (indice: number) => {
+    if (!editor) return;
+    const alvo = Array.from(editor.view.dom.children).filter((el) => MARCA_HEADLINE.test(el.textContent || ""))[indice];
+    if (!alvo) return;
+    alvo.scrollIntoView({ behavior: "smooth", block: "start" });
+    try { editor.chain().focus().setTextSelection(editor.view.posAtDOM(alvo, 0)).run(); } catch { /* só rola */ }
   };
   const relatedStatus = relatedVideos.find((relatedVideo) => relatedVideo.id === editedVideo.id)?.status || editedVideo.status;
   const statusLabel = STATUS_OPTIONS.find((option) => option.value === relatedStatus)?.label || relatedStatus;
@@ -758,34 +767,7 @@ export const VideoDetailPanel = ({
         </div>
       </header>
 
-      <div className="flex flex-wrap items-center gap-0.5 border-b bg-background p-2 shrink-0">
-        <Select value="paragraph" onValueChange={() => {}}>
-          <SelectTrigger className="h-8 w-36 text-xs">
-            <SelectValue placeholder="Texto normal" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="paragraph">
-              <div className="flex items-center gap-2">
-                <Pilcrow className="h-4 w-4" />
-                Texto normal
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <div className="mx-1 h-6 w-px bg-border" />
-        {toolbarIcons.map(({ icon: Icon, title }, index) => (
-          <Button
-            key={title}
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={cn("h-8 w-8", [5, 9, 12].includes(index) && "ml-2")}
-            title={title}
-          >
-            <Icon className="h-4 w-4" />
-          </Button>
-        ))}
-      </div>
+      <DocumentToolbar editor={editor} />
 
       <div className="flex flex-1 overflow-hidden relative">
         {isMobile ? (
@@ -808,7 +790,7 @@ export const VideoDetailPanel = ({
             <div className="sticky top-0 z-10 mx-auto mb-3 flex max-w-[816px] items-center gap-1.5 overflow-x-auto rounded-md border bg-background/95 px-3 py-2 backdrop-blur">
               <span className="shrink-0 text-xs font-semibold text-muted-foreground">{rotuloRoteiros(roteirosMarcados.length)}:</span>
               {roteirosMarcados.map((r, i) => (
-                <button key={`${r.numero}-${i}`} type="button" title={r.titulo} onClick={() => irParaRoteiro(r.inicio)}
+                <button key={`${r.numero}-${i}`} type="button" title={r.titulo} onClick={() => irParaRoteiro(i)}
                   className="flex max-w-[220px] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-muted">
                   <span className="font-bold text-primary">{r.numero}</span>
                   <span className="truncate">{r.titulo || "sem título"}</span>
@@ -818,15 +800,8 @@ export const VideoDetailPanel = ({
           )}
           <div className="mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
             <div className="flex min-h-[60vh] flex-col px-5 py-6 sm:min-h-[900px] sm:p-8 md:p-16">
-              <SlashCommandTextarea
-                value={editedVideo.roteiro || ""}
-                onValueChange={(value) => setEditedVideo({ ...editedVideo, roteiro: value })}
-                placeholder="Escreva o roteiro do vídeo... Use / para inserir itens do Núcleo de Influência ou // para Termos Virais"
-                clienteId={editedVideo.cliente_id}
-                className="min-h-[50vh] flex-1 resize-none border-none bg-transparent p-0 text-base leading-7 shadow-none focus-visible:ring-0 sm:min-h-[900px] sm:text-lg sm:leading-8"
-                onSelectionChange={handleSelectionChange}
-                onSelectionLengthChange={setSelectionLength}
-              />
+<EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor min-h-[50vh] flex-1 sm:min-h-[900px]" />
+              {editor && <BancoViraisDoc editor={editor} clienteId={editedVideo.cliente_id} />}
             </div>
           </div>
         </main>

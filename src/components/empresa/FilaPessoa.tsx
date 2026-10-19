@@ -1,3 +1,4 @@
+import { textoDoRoteiro } from "@/lib/conteudo/roteirosNoDocumento";
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -62,7 +63,7 @@ async function pacoteParaIa(t: TarefaFila): Promise<string> {
   if (!v) return t.titulo;
   return [
     `Vídeo: ${v.titulo}`,
-    v.roteiro?.trim() ? `\nRoteiro:\n${v.roteiro.trim()}` : "",
+    textoDoRoteiro(v.roteiro) ? `\nRoteiro:\n${textoDoRoteiro(v.roteiro)}` : "",
     v.arquivo_url ? `\nVídeo bruto: ${v.arquivo_url}` : "\n(Anexei o vídeo bruto.)",
   ].filter(Boolean).join("\n");
 }
