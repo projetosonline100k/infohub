@@ -56,7 +56,7 @@ def _ouvinte():
     return mod
 
 
-def rodar_claude(prompt, minutos, turnos=200):
+def rodar_claude(prompt, minutos, turnos=200, atividade=None):
     """Igual ao do ouvinte do Jarvis (mesmo login), com mais voltas: editar um
     vídeo pede muitas idas e vindas (ouvir trechos, baixar pinturas, conferir)."""
     import os
@@ -67,9 +67,16 @@ def rodar_claude(prompt, minutos, turnos=200):
         return False, "Claude Code não encontrado neste Mac (abra o app do Claude uma vez)."
     cmd = [binario, "-p", prompt, "--output-format", "json", "--max-turns", str(turnos),
            "--allowedTools", "Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"]
+    env = {**os.environ, "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin:/usr/sbin:/sbin"}
+    if atividade:   # cada passo do Claude aparece ao vivo na tarefa ("O que já foi feito", 19/10)
+        sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
+        import passos
+        dados, erro = passos.rodar(cmd, minutos, cwd=RAIZ, env=env, atividade=str(atividade))
+        if erro:
+            return False, erro
+        return not dados.get("is_error"), (dados.get("result") or "").strip()
     try:
-        r = subprocess.run(cmd, cwd=RAIZ, capture_output=True, text=True, timeout=minutos * 60,
-                           env={**os.environ, "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin:/usr/sbin:/sbin"})
+        r = subprocess.run(cmd, cwd=RAIZ, capture_output=True, text=True, timeout=minutos * 60, env=env)
     except subprocess.TimeoutExpired:
         return False, f"O Claude passou de {minutos} min e foi interrompido."
     try:
@@ -151,6 +158,7 @@ Faça a edição assim:
    - "destaques": se falar INSTALIVROS: [{{"texto": "INSTALIVROS", "inicio": <1ª menção>}}].
 {formato_passo}4. `danilo.py montar {id}` e depois `danilo.py conferir {id}`: leia a transcrição da PRÉVIA (a fala tem que correr inteira, sem tomada repetida, sem palavra cortada) e olhe {pasta}/_conferir.jpg (headline, legendas e pinturas sem cobrir o rosto). Corrija e repita até ficar certo.
 5. Não publique nada, não mexa no Drive (o serviço cuida) e não rode o servidor.
+6. Cada passo seu aparece sozinho para o Davi na tarefa: escreva a descrição de cada comando (campo description) em português simples, dizendo o que está fazendo.
 
 No fim, escreva 2 ou 3 frases simples em português para o Davi: o que cortou, as pinturas e o que ele deve olhar (dúvidas suas, como reforço x retomada ou falta do vídeo de fundo verde do INSTALIVROS). Na ÚLTIMA linha, só isto:
 PRONTO: {id}"""
@@ -197,7 +205,8 @@ def editar_no_formato(id_, e):
     ok, texto = rodar_claude(PROMPT_EDICAO.format(
         id=id_, pasta=pasta, cliente=danilo.CLIENTE, referencia=_referencia(e),
         formato_midias=(MIDIAS_PAPEL if formato == "papel" else MIDIAS_CLASSICO.format(id=id_)),
-        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" else "")), minutos=90)
+        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" else "")), minutos=90,
+        atividade=danilo.db("SELECT atividade_id FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] or e.get("atividade"))
     if not ok or f"PRONTO: {id_}" not in texto:
         raise RuntimeError(f"o Claude não terminou a edição: {(texto or '')[-250:]}")
     resumo = re.sub(r"\n?PRONTO:.*$", "", texto.strip()).strip()
@@ -393,6 +402,7 @@ O Davi te passou esta tarefa no Infopro:
 Editar brutos que estão em Eu.davi › Precisa de edição NÃO é com você aqui: o serviço do Danilo pega sozinho (piloto primeiro). Se a tarefa for só isso, não faça nada e responda que o serviço já está cuidando.
 Para outros pedidos (ex.: refazer algo numa edição existente em ~/.infopro-hub/danilo/edicoes/<id>/), use `python3 scripts/danilo/danilo.py` (montar, conferir, ouvir, pintura…).
 Não publique nada e não mande mensagem para ninguém.
+Cada passo seu aparece sozinho para o Davi na tarefa: escreva a descrição de cada comando (campo description) em português simples, dizendo o que está fazendo.
 
 No fim, escreva 1 ou 2 frases simples em português para o Davi dizendo o que você fez."""
 
@@ -427,7 +437,7 @@ def atender_tarefa():
         return True
     try:
         ok, texto = rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao, cliente=danilo.CLIENTE),
-                                 minutos=45, turnos=80)
+                                 minutos=45, turnos=80, atividade=aid)
         if not ok:
             raise RuntimeError(texto)
         progresso(aid, 100, f"Danilo: {texto.strip()[:800]}", "aguardando_aprovacao")
