@@ -47,6 +47,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { roteirosNoDocumento, rotuloRoteiros } from "@/lib/conteudo/roteirosNoDocumento";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -133,6 +134,7 @@ export const VideoDetailPanel = ({
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
   const [selectionLength, setSelectionLength] = useState(0);
   const [showChat, setShowChat] = useState(false);
+  const folhaRef = useRef<HTMLElement>(null);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedSnapshotRef = useRef("");
   const currentVideoIdRef = useRef<string | null>(null);
@@ -366,6 +368,23 @@ export const VideoDetailPanel = ({
     return "";
   })();
   const roteiroCharacterCount = (editedVideo.roteiro || "").length;
+  const roteirosMarcados = roteirosNoDocumento(editedVideo.roteiro);
+  // Pula para o roteiro N: cursor no começo dele e a folha rolada até lá (pela proporção de linhas).
+  const irParaRoteiro = (inicio: number) => {
+    const folha = folhaRef.current;
+    const campo = folha?.querySelector("textarea");
+    if (!folha || !campo) return;
+    const texto = campo.value;
+    const linhas = texto.split("\n").length || 1;
+    const linha = texto.slice(0, inicio).split("\n").length - 1;
+    campo.focus({ preventScroll: true });
+    campo.setSelectionRange(inicio, inicio);
+    // O campo tem rolagem própria: rola ele até o roteiro (altura de linha real) e traz o campo para a vista.
+    const alturaLinha = parseFloat(getComputedStyle(campo).lineHeight) || campo.scrollHeight / linhas;
+    campo.scrollTo({ top: Math.max(0, linha * alturaLinha - 24), behavior: "smooth" });
+    const topoCampo = campo.getBoundingClientRect().top - folha.getBoundingClientRect().top + folha.scrollTop;
+    folha.scrollTo({ top: Math.max(0, topoCampo - 70), behavior: "smooth" });
+  };
   const relatedStatus = relatedVideos.find((relatedVideo) => relatedVideo.id === editedVideo.id)?.status || editedVideo.status;
   const statusLabel = STATUS_OPTIONS.find((option) => option.value === relatedStatus)?.label || relatedStatus;
 
@@ -783,7 +802,20 @@ export const VideoDetailPanel = ({
           )
         )}
 
-        <main className="flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+        <main ref={folhaRef} className="flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+          {roteirosMarcados.length > 0 && (
+            // Vários roteiros no documento ("Headline 1", "#2"…): índice para pular direto (18/10).
+            <div className="sticky top-0 z-10 mx-auto mb-3 flex max-w-[816px] items-center gap-1.5 overflow-x-auto rounded-md border bg-background/95 px-3 py-2 backdrop-blur">
+              <span className="shrink-0 text-xs font-semibold text-muted-foreground">{rotuloRoteiros(roteirosMarcados.length)}:</span>
+              {roteirosMarcados.map((r, i) => (
+                <button key={`${r.numero}-${i}`} type="button" title={r.titulo} onClick={() => irParaRoteiro(r.inicio)}
+                  className="flex max-w-[220px] shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-xs hover:bg-muted">
+                  <span className="font-bold text-primary">{r.numero}</span>
+                  <span className="truncate">{r.titulo || "sem título"}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <div className="mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
             <div className="flex min-h-[60vh] flex-col px-5 py-6 sm:min-h-[900px] sm:p-8 md:p-16">
               <SlashCommandTextarea
