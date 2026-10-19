@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { alarmeDoEvento, chamarGoogleCalendar, type GoogleCalendarEvent } from "@/lib/googleCalendar";
 import { alarmesParaTocar, tocarAlarme, type EventoComAlarme } from "@/lib/agendaAlarmes";
 import { isDesktop } from "@/lib/platform";
+import { pedirAlarmeAoAtlas } from "@/lib/desktop/alarmeAtlas";
 import { STORAGE_KEY } from "@/hooks/useGoogleCalendar";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -40,7 +41,17 @@ async function chamarAtencaoDaJanela() {
   }
 }
 
-function disparar(evento: EventoComAlarme) {
+async function disparar(evento: EventoComAlarme) {
+  const hora0 = format(evento.inicio, "HH:mm");
+  // No Mac, o Atlas toca grande, por cima de tudo (lib/desktop/alarmeAtlas.ts); só se ele não
+  // responder é que a janela principal toca como antes.
+  const noAtlas = await pedirAlarmeAoAtlas({
+    id: `ev:${evento.chave}:${Date.now()}`, titulo: evento.titulo, podeConcluir: false,
+    descricao: evento.minutosAntes === 0 ? `Começa agora (${hora0})` : `Começa às ${hora0} (em ${evento.minutosAntes} min)`,
+  }, (acao) => {
+    if (acao === "soneca") window.setTimeout(() => void disparar({ ...evento, minutosAntes: 0 }), 5 * 60_000);
+  });
+  if (noAtlas) return;
   const parar = tocarAlarme();
   void chamarAtencaoDaJanela();
   const hora = format(evento.inicio, "HH:mm");
@@ -54,7 +65,7 @@ function disparar(evento: EventoComAlarme) {
       label: "Adiar 5 min",
       onClick: () => {
         parar();
-        window.setTimeout(() => disparar({ ...evento, minutosAntes: 0 }), 5 * 60_000);
+        window.setTimeout(() => void disparar({ ...evento, minutosAntes: 0 }), 5 * 60_000);
       },
     },
     onDismiss: parar,
@@ -87,7 +98,17 @@ async function concluirAtividadeDoAlarme(alarme: AlarmeAtividade) {
   }
 }
 
-function dispararAtividade(alarme: AlarmeAtividade) {
+async function dispararAtividade(alarme: AlarmeAtividade) {
+  const ref = { id: alarme.id, titulo: alarme.titulo, alarme_lembrete_id: alarme.lembreteId };
+  const noAtlas = await pedirAlarmeAoAtlas({
+    id: `at:${alarme.id}:${Date.now()}`, titulo: alarme.titulo, podeConcluir: true,
+    descricao: `Alarme da atividade · ${format(new Date(alarme.alarmeEm), "HH:mm")}`,
+  }, (acao) => {
+    if (acao === "concluir") void concluirAtividadeDoAlarme(alarme);
+    else if (acao === "soneca") void definirAlarmeAtividade(ref, new Date(Date.now() + 5 * 60_000));
+    else void definirAlarmeAtividade(ref, null);   // Parar: o alarme já cumpriu o papel (não repete a cada 5 min)
+  });
+  if (noAtlas) return;
   const parar = tocarAlarme();
   void chamarAtencaoDaJanela();
   const acao = (fn: () => Promise<unknown> | void, id: string | number) => () => { parar(); toast.dismiss(id); void fn(); };
@@ -160,13 +181,13 @@ export function useAlarmesAgenda() {
       alarmesAtividades.forEach((alarme) => {
         if (!deveTocarAtividade(alarme.alarmeEm, agora, lerUltimosToques()[alarme.id])) return;
         marcarToque(alarme.id, agora);
-        dispararAtividade(alarme);
+        void dispararAtividade(alarme);
       });
       const tocar = alarmesParaTocar(eventos, Date.now(), new Set(lerTocados()));
       tocar.forEach((evento) => {
         if (lerTocados().includes(evento.chave)) return;
         marcarTocado(evento.chave);
-        disparar(evento);
+        void disparar(evento);
       });
     };
 

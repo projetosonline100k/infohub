@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useAssistantVoz } from "@/hooks/useAssistantVoz";
 import { useDitado } from "@/hooks/useDitado";
+import { useAlarmeAtlas } from "@/hooks/useAlarmeAtlas";
+import { AlarmeAtlasCard } from "./AlarmeAtlasCard";
 import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { AssistantOrb } from "./AssistantOrb";
 import { AssistantPanel } from "./AssistantPanel";
@@ -735,6 +737,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const estadoVozConversa = useAssistantVoz(variant === "window" ? user?.id : undefined);
   // Ditado: segurar ⌘ sozinho = o Atlas escuta e cola o texto organizado (useDitado).
   const estadoDitado = useDitado(variant === "window");
+  // Alarme tocando no Atlas (useAlarmesAgenda na janela principal pede): grande, por cima de tudo.
+  const alarmeAtlas = useAlarmeAtlas(variant === "window");
   const estadoVoz = estadoDitado ?? estadoVozConversa;
   // "Bora, vou fazer": compromete (volta depois perguntando se fez) e, se a
   // cobrança é de uma atividade, já inicia o foco nela.
@@ -1122,7 +1126,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // dentro dos 460x620), nunca troca a janela pra modo notification com o
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
-    dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
+    alarmeAtlas.atual || dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
     priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || !!luaAberta || !!mensagens.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
@@ -1268,7 +1272,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Rodada 12: extraído numa variável só pra poder ser posicionado
   // diferente por variant (empilhado com a orbe na nativa — ver mais
   // abaixo — vs. flutuando acima dela na embutida, como sempre foi).
-  const notificacaoJsx = dialogoExcedido && tarefaAtual ? (
+  const notificacaoJsx = alarmeAtlas.atual ? (
+    <AlarmeAtlasCard alarme={alarmeAtlas.atual} onResponder={alarmeAtlas.responder} />
+  ) : dialogoExcedido && tarefaAtual ? (
     <AssistantOvertimeCard
       estimadoMin={tarefaAtual.tempo_estimado || 0}
       executadoSegundos={elapsedSegundos}
@@ -1585,6 +1591,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 diaEncerrado={diaEncerrado}
                 voz={estadoVoz}
                 onPointerDown={handleOrbPointerDown}
+                className={alarmeAtlas.atual ? "scale-[1.3] animate-pulse drop-shadow-[0_0_22px_rgba(251,191,36,0.9)]" : undefined}
               />
               {/* Com a orbe sozinha e com balão; com o painel aberto, não (fica no canto, colada nele). */}
               {janelaModo !== "panel" && <OrbitaAtlas luas={luas} falandoId={falandoId} />}
