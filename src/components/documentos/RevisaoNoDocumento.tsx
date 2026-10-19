@@ -21,6 +21,7 @@ import { linhasDoTexto, textoParaHtml, type Revisao } from "@/lib/conteudo/escri
 
 const CHAVE = new PluginKey<DecorationSet>("revisaoElias");
 const LARGURA_NOTAS = 240;
+const MOSTRAR_MARCAS = false;   // riscado (saiu) e verde (entrou) dentro do texto
 const MIN_NOTAS = 170;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
@@ -154,7 +155,10 @@ export function RevisaoNoDocumento({ editor, revisoes, onAlternar, onDispensar }
   useEffect(() => {
     const plugin = new Plugin({
       key: CHAVE,
-      props: { decorations: (st) => (estado.current.length ? decoracoes(st.doc, estado.current) : null) },
+      // 19/10, depois (Davi: "se fica tudo corrigido é difícil ler, preciso rolar; quero o roteiro intacto
+      // com as mudanças do Elias e só os comentários na lateral"): sem riscado/verde no texto; o On/Off
+      // continua trocando pela versão do Junior. (decoracoes() fica para se ele quiser as marcas de volta.)
+      props: { decorations: (st) => (MOSTRAR_MARCAS && estado.current.length ? decoracoes(st.doc, estado.current) : null) },
     });
     editor.registerPlugin(plugin);
     return () => { if (!editor.isDestroyed) editor.unregisterPlugin(CHAVE); };
