@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { naoLidasPorMembro } from "@/lib/empresa/notificacoes";
 import { ArrowLeft, ListTodo, MessageCircle, X } from "lucide-react";
@@ -43,10 +43,14 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
   // ?conversa=<membro>: o Atlas avisou que ele respondeu — abre direto a conversa (16/10).
   const [params, setParams] = useSearchParams();
   const pedida = params.get("conversa");
+  // Atende cada pedido uma vez só (19/10: a lista é recriada a cada desenho e o efeito tirava o
+  // ?conversa= do endereço sem parar — "history.replaceState() mais de 100 vezes" e a tela em branco).
+  const atendida = useRef<string | null>(null);
   useEffect(() => {
-    if (!pedida) return;
+    if (!pedida || atendida.current === pedida) return;
     const p = lista.find((x) => x.membro.id === pedida);
     if (!p) return;                       // a equipe ainda está carregando
+    atendida.current = pedida;
     setAberta(true);
     setConversa(p);
     setParams((sp) => { const n = new URLSearchParams(sp); n.delete("conversa"); return n; }, { replace: true });
