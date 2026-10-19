@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CheckCircle2, FileText, Loader2, Pencil } from "lucide-react";
@@ -184,7 +185,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 ) : carregando ? (
                   <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 ) : docs.length === 0 ? (
-                  <p className="py-8 text-center text-sm text-muted-foreground">Não achei documento ligado a esta tarefa. Veja a observação acima ou abra em Atividades.</p>
+                  <EntregaSemDocumento tarefaId={tarefaId!} observacao={info?.observacao ?? null} />
                 ) : docs.map((d) => (
                   <div key={d.id} className="mb-6 last:mb-0">
                     <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
