@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { isDesktop } from "@/lib/platform";
 import { lerSessao, salvarSessao } from "@/lib/workspace/sessao";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface WorkspaceTab {
   id: string;
@@ -110,6 +111,28 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
       return current.map((tab) => tab.id === ativa.id ? { ...tab, path, title: mesmaSecao ? tab.title : title } : tab);
     });
   }, [setActiveId]);
+
+  // Guia de projeto aberta pelo ⌘K, por atalho ou restaurada mostrava só "Projeto" (19/10, Davi):
+  // troca pelo nome do projeto assim que ele chega do banco.
+  const nomesProjeto = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const idDe = (path: string) => path.match(/^\/clientes\/([0-9a-f-]{36})/i)?.[1];
+    const faltam = [...new Set(tabs.filter((t) => t.title === "Projeto").map((t) => idDe(t.path)).filter((x): x is string => !!x))];
+    if (!faltam.length) return;
+    const aplicar = () => setTabs((atual) => {
+      const novo = atual.map((t) => {
+        const id = idDe(t.path);
+        return t.title === "Projeto" && id && nomesProjeto.current[id] ? { ...t, title: nomesProjeto.current[id] } : t;
+      });
+      return novo.some((t, i) => t !== atual[i]) ? novo : atual;   // sem nome novo: não mexe (evita laço)
+    });
+    const buscar = faltam.filter((id) => !nomesProjeto.current[id]);
+    if (!buscar.length) { aplicar(); return; }
+    void supabase.from("clientes").select("id, nome_especialista").in("id", buscar).then(({ data }) => {
+      for (const c of data ?? []) if (c.nome_especialista) nomesProjeto.current[c.id] = c.nome_especialista;
+      aplicar();
+    });
+  }, [tabs]);
 
   const [divisao, setDivisaoState] = useState<string[] | null>(() => sessao?.divisao ?? null);
   const [larguras, setLarguras] = useState<number[]>(() => sessao?.larguras ?? []);
