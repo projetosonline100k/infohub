@@ -282,7 +282,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
 
   return (
     <Dialog open={!!membro} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehPedro || ehCs ? "max-w-6xl" : "max-w-xl")}>
+      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehCs ? "max-h-[96vh] w-[97vw] max-w-[97vw]" : ehPedro ? "max-w-6xl" : "max-w-xl")}>
         {membro && (
           <>
             <DialogHeader>
@@ -321,7 +321,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
             {ehCs && (
               <section className="space-y-1">
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WhatsApp dos clientes</p>
-                <div className="h-[70vh] overflow-hidden rounded-xl border bg-card p-4">
+                <div className="h-[80vh] overflow-hidden rounded-xl border bg-card p-4">
                   <div className="h-full overflow-y-auto"><AssistantWhatsappTab /></div>
                 </div>
               </section>
