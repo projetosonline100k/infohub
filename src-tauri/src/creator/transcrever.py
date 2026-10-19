@@ -358,6 +358,16 @@ def main():
             except Exception as e:
                 responder({"id": id_, "erro": f"Tradutor não respondeu: {str(e)[:200]}"})
             continue
+        if pedido.get("modo") == "aquecer":
+            # Ditado (18/10): o Davi segurou ⌘ — carrega o modelo enquanto ele fala.
+            try:
+                import mlx.core as mx
+                from mlx_whisper.transcribe import ModelHolder
+                ModelHolder.get_model(MODELOS["preciso"], mx.float16)
+                responder({"id": id_, "ok": True})
+            except Exception as e:
+                responder({"id": id_, "erro": f"Não consegui aquecer: {str(e)[:200]}"})
+            continue
         if pedido.get("modo") == "voz":
             try:
                 responder({"id": id_, **transcrever_voz(pedido.get("url") or "")})

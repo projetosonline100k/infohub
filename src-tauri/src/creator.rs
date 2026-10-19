@@ -120,6 +120,13 @@ pub async fn creator_transcrever(estado: tauri::State<'_, CreatorState>, url: St
 }
 
 
+/// Ditado (18/10): carrega o Whisper enquanto o Davi ainda está falando (segurou ⌘),
+/// para a transcrição sair na hora em que ele soltar.
+#[tauri::command]
+pub async fn voz_aquecer(estado: tauri::State<'_, CreatorState>) -> Result<(), String> {
+    creator_transcrever(estado, String::new(), Some("aquecer".to_string())).await.map(|_| ())
+}
+
 /// Modo voz da orbe (⌥+Espaço): transcreve o que o Davi falou. O áudio
 /// gravado no Jarvis vem em base64, vira um arquivo temporário e passa pelo
 /// mesmo trabalhador (Whisper no Mac, sem custo), em português.

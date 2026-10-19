@@ -127,7 +127,10 @@ pub async fn ditado_organizar(texto: String) -> Result<String, String> {
     let resultado = tauri::async_runtime::spawn_blocking(move || {
         // Pasta neutra: sem CLAUDE.md de projeto (mais rápido e sem contexto que não serve).
         Command::new(bin)
-            .args(["-p", &format!("{PEDIDO}{texto}"), "--model", "haiku", "--output-format", "text", "--max-turns", "1"])
+            // Sem ferramentas, MCP, comandos nem ajustes do usuário: o Claude abre em ~2–4 s em vez de ~8 s.
+            .args(["-p", &format!("{PEDIDO}{texto}"), "--model", "haiku", "--output-format", "text", "--max-turns", "1",
+                   "--strict-mcp-config", "--mcp-config", "{\"mcpServers\":{}}", "--tools", "", "--disable-slash-commands",
+                   "--setting-sources", "", "--no-session-persistence"])
             .current_dir(std::env::temp_dir())
             .stdin(Stdio::null())
             .output()

@@ -78,6 +78,7 @@ pub fn run() {
             whatsapp::whatsapp_midia_base,
             danilo::danilo_base,
             ditado::ditado_organizar,
+            creator::voz_aquecer,
             ditado::ditado_colar,
         ]);
     // Fora do macOS só existe o comando de destacar aba.

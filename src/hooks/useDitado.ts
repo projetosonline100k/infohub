@@ -44,8 +44,10 @@ export function useDitado(ativo: boolean): EstadoVoz {
       const extensao = audio.type.includes("webm") ? "webm" : "m4a";
       const fala = (await invoke<string>("voz_transcrever", { base64: await paraBase64(audio), extensao })).trim();
       if (fala.replace(/[^\p{L}\p{N}]/gu, "").length < 2) { toast("Não entendi o ditado. Pode repetir?"); return; }
-      setEstado("pensando");
-      const texto = (await invoke<string>("ditado_organizar", { texto: fala })).trim() || fala;
+      // Fala curta (até ~12 palavras) não precisa organizar: cola na hora.
+      const curta = fala.split(/\s+/).length <= 12;
+      if (!curta) setEstado("pensando");
+      const texto = curta ? fala : (await invoke<string>("ditado_organizar", { texto: fala })).trim() || fala;
       const colou = await invoke<boolean>("ditado_colar", { texto });
       bip(660);
       if (colou) toast.success("Texto colado ✓ (também está copiado)", { duration: 2500 });
@@ -62,6 +64,8 @@ export function useDitado(ativo: boolean): EstadoVoz {
     apertado.current = true;
     cancelado.current = false;
     void pararFala();
+    // Carrega o Whisper enquanto ele fala (se já estiver carregado, não custa nada).
+    void import("@tauri-apps/api/core").then(({ invoke }) => invoke("voz_aquecer")).catch(() => {});
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
