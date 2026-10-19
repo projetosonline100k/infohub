@@ -10,7 +10,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { cn } from "@/lib/utils";
 import {
   DIFICULDADE, EMOJI_SATISFACAO, UPGRADE, calcularMetricas, cardRespondido, marcarCard, marcarItem, minutosRestantes, progressoCard, dataCurta, diasDesde, formatarMinutos, htmlSeguro, media, mediana, textoParaCopiar,
-  daConversa, etiquetasDaConversa, type ChatResumo, type CardWhatsapp, type Historico,
+  daConversa, etiquetasDaConversa, situacaoEntrega, type ChatResumo, type Entrega, type CardWhatsapp, type Historico,
 } from "@/lib/whatsapp/painel";
 
 type SubAba = "responder" | "saude" | "desempenho" | "compromissos";
@@ -408,6 +408,33 @@ function PainelWhatsapp({ onAbrirConversa }: { onAbrirConversa?: (c: CardWhatsap
 
 type Metricas = ReturnType<typeof calcularMetricas>;
 
+/** O que eles ficaram de entregar: quem cobra é o Davi (vencido = "cobrar"). */
+function ListaEntregas({ entregas, nomes, agora }: { entregas: Entrega[]; nomes?: Record<string, string>; agora: Date }) {
+  const abertas = entregas.filter((e) => situacaoEntrega(e, agora) !== "entregue")
+    .sort((a, b) => Number(situacaoEntrega(b, agora) === "cobrar") - Number(situacaoEntrega(a, agora) === "cobrar"));
+  const feitas = entregas.length - abertas.length;
+  return (
+    <>
+      {abertas.map((e, i) => {
+        const cobrar = situacaoEntrega(e, agora) === "cobrar";
+        const d = diasDesde(e.desde, agora) ?? 0;
+        return (
+          <div key={i} className={cn("mb-2 rounded-lg border bg-card px-3 py-2.5 text-[13px]", cobrar ? "border-orange-600" : "border-border")}>
+            <div>{nomes ? <><b>{nomes[e.mentorado] ?? e.mentorado}</b> · </> : null}{e.o_que}</div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+              combinado {d === 0 ? "hoje" : `há ${d} ${d === 1 ? "dia" : "dias"}`} · prazo {dataCurta(e.prazo)}
+              {e.cobrado_em && <> · cobrado {dataCurta(e.cobrado_em)}</>}
+              {cobrar ? <Tag tom="urg">cobrar</Tag> : <Tag tom="media">aguardando</Tag>}
+            </div>
+          </div>
+        );
+      })}
+      {!abertas.length && <Nota>Nada pendente da parte deles{feitas ? ` (${feitas} já entregue${feitas > 1 ? "s" : ""})` : ""}.</Nota>}
+      <Nota>Quem cobra é você: venceu o prazo (ou 3 dias sem prazo), entra em "cobrar".</Nota>
+    </>
+  );
+}
+
 // ---------------------------------------------------------------- informações de uma conversa
 // Ao entrar num grupo ou pessoa (modo Conversas): o que o painel sabe só dela — o que responder
 // agora (o mesmo card do painel, com o checklist), perfil DISC, compromissos, saúde e histórico.
@@ -528,6 +555,9 @@ function InfoDaConversa({ chat }: { chat: ChatResumo }) {
         );
       })}
       {!abertas.length && <Nota>Nenhuma promessa em aberto{promessas.length ? ` (${promessas.length} já cumprida${promessas.length > 1 ? "s" : ""})` : ""}.</Nota>}
+
+      <Titulo>O que eles precisam te entregar</Titulo>
+      <ListaEntregas entregas={(dados.h?.entregas ?? []).filter((e) => ids.has(e.mentorado))} agora={agora} />
 
       {agenda.length > 0 && <Titulo>Agenda</Titulo>}
       {agenda.map((a, i) => (
@@ -805,6 +835,8 @@ function AbaCompromissos({ h, m, agora }: { h: Historico; m: Metricas; agora: Da
         );
       })}
       {!m.promessas.length && <Nota>Nenhuma promessa em aberto.</Nota>}
+      <Titulo>O que eles precisam te entregar</Titulo>
+      <ListaEntregas entregas={h.entregas ?? []} nomes={nomes} agora={agora} />
       <Titulo>Agenda</Titulo>
       {m.agenda.map((a, i) => (
         <div key={i} className="mb-2 rounded-lg border border-border bg-card px-3 py-2.5 text-[13px]"><b>{dataCurta(a.data)}</b> · {a.o_que}</div>

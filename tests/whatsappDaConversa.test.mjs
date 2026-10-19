@@ -53,3 +53,14 @@ test('etiquetas: esperando resposta, +24h, compromisso atrasado; some quando a Ã
   const depois = etiquetasDaConversa({ ...chat, ultima_em: '2026-10-19T09:54:00', ultima_de_mim: true }, hh, cards, {}, met, agora).map((e) => e.texto);
   assert.deepEqual(depois, ['Risco de churn', 'Insatisfeito', 'Compromisso atrasado', 'Upgrade']);
 });
+
+const { situacaoEntrega } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+
+test('entregas deles: cobrar quando vence o prazo ou 3 dias sem prazo; cobranÃ§a reinicia a contagem', () => {
+  const agora = new Date('2026-10-19T10:00:00');
+  assert.equal(situacaoEntrega({ mentorado: 'x', o_que: 'roteiros', desde: '2026-10-15', prazo: '2026-10-18', status: 'aguardando' }, agora), 'cobrar');
+  assert.equal(situacaoEntrega({ mentorado: 'x', o_que: 'roteiros', desde: '2026-10-15', prazo: '2026-10-20', status: 'aguardando' }, agora), 'aguardando');
+  assert.equal(situacaoEntrega({ mentorado: 'x', o_que: 'fotos', desde: '2026-10-15T09:00', prazo: null, status: 'aguardando' }, agora), 'cobrar');
+  assert.equal(situacaoEntrega({ mentorado: 'x', o_que: 'fotos', desde: '2026-10-15T09:00', prazo: null, status: 'aguardando', cobrado_em: '2026-10-18T09:00' }, agora), 'aguardando');
+  assert.equal(situacaoEntrega({ mentorado: 'x', o_que: 'fotos', desde: '2026-10-01', prazo: '2026-10-02', status: 'entregue' }, agora), 'entregue');
+});

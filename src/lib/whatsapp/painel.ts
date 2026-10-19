@@ -79,12 +79,26 @@ export interface Avaliacao {
   reacao?: string; obs?: string;
 }
 export interface Promessa { mentorado: string; o_que: string; desde: string; prazo: string | null; status: string }
+/** O que o mentorado ficou de entregar ao Davi (19/10/2026, Davi: "nunca é o especialista que deve cobrar
+ *  a gente, eu é quem devo cobrar"). status: "aguardando" | "entregue". cobrado_em: última cobrança. */
+export interface Entrega { mentorado: string; o_que: string; desde: string; prazo: string | null; status: string; cobrado_em?: string | null; entregue_em?: string | null }
+export const DIAS_PARA_COBRAR = 3;   // sem prazo: cobra depois de 3 dias (contando da última cobrança)
+
+/** "cobrar" quando venceu o prazo, ou, sem prazo, passaram 3 dias desde o combinado/última cobrança. */
+export function situacaoEntrega(e: Entrega, agora: Date): "entregue" | "cobrar" | "aguardando" {
+  if (e.status === "entregue") return "entregue";
+  const base = e.cobrado_em && e.cobrado_em > (e.prazo ?? "") ? e.cobrado_em : null;
+  if (base) return agora.getTime() - new Date(base).getTime() >= DIAS_PARA_COBRAR * 86_400_000 ? "cobrar" : "aguardando";
+  if (e.prazo) return new Date(e.prazo.length === 10 ? `${e.prazo}T23:59` : e.prazo) < agora ? "cobrar" : "aguardando";
+  return agora.getTime() - new Date(e.desde).getTime() >= DIAS_PARA_COBRAR * 86_400_000 ? "cobrar" : "aguardando";
+}
 export interface Historico {
   config: { meta_resposta_horas_uteis: number; horario_util: [number, number]; silencio_alerta_dias: number; silencio_critico_dias: number };
   atualizado_em?: string;
   mentorados: Mentorado[];
   avaliacoes: Avaliacao[];
   promessas: Promessa[];
+  entregas?: Entrega[];
   agenda: { data: string | null; o_que: string; mentorado?: string }[];
 }
 
@@ -307,6 +321,10 @@ export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ult
   const atrasadas = promessas.filter((p) => m?.promessaAtrasada(p));
   if (atrasadas.length) out.push({ texto: atrasadas.length > 1 ? `${atrasadas.length} compromissos atrasados` : "Compromisso atrasado", tom: "urg", dica: atrasadas.map((p) => p.o_que).join(" · ") });
   else if (promessas.length) out.push({ texto: promessas.length > 1 ? `${promessas.length} compromissos` : "Compromisso", tom: "media", dica: promessas.map((p) => p.o_que).join(" · ") });
+  const deles = (h?.entregas ?? []).filter((e) => ids.has(e.mentorado) && situacaoEntrega(e, agora) !== "entregue");
+  const cobrar = deles.filter((e) => situacaoEntrega(e, agora) === "cobrar");
+  if (cobrar.length) out.push({ texto: cobrar.length > 1 ? `Cobrar ${cobrar.length} entregas` : "Cobrar entrega", tom: "urg", dica: cobrar.map((e) => e.o_que).join(" · ") });
+  else if (deles.length) out.push({ texto: "Aguardando entrega deles", tom: "media", dica: deles.map((e) => e.o_que).join(" · ") });
   if (mentorados.some((x) => x.upgrade?.nivel === "alto")) out.push({ texto: "Upgrade", tom: "ok", dica: "potencial alto de upgrade" });
   return out;
 }
