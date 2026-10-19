@@ -24,6 +24,7 @@ import { AtividadeItem } from "./AtividadeItem";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { AtividadesView } from "./AtividadesView";
 import { MapaAtividades } from "./MapaAtividades";
+import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
 import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
@@ -56,6 +57,9 @@ interface Atividade {
   data_vencimento: string | null;
   data_inicio: string | null;
   responsavel_nome: string | null;
+  pasta_id?: string | null;
+  timer_iniciado_em?: string | null;
+  timer_decorrido_segundos?: number | null;
 }
 
 interface Coluna {
@@ -292,6 +296,25 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     return filtrarPorResponsavel(lista, filtroResponsavel, meusNomes, user?.id);
   }, [atividades, selectedClienteIds, mostrarConcluidas, filtroResponsavel, meusNomes, user?.id]);
 
+  // Mapa: filtro por pessoa e por pasta (19/10: "todas as funções do modo atividade normal").
+  const [filtroPessoa, setFiltroPessoa] = useState("todas");
+  const [filtroPasta, setFiltroPasta] = useState("todas");
+  const [pastas, setPastas] = useState<{ id: string; nome: string; cliente_id: string | null }[]>([]);
+  useEffect(() => {
+    if (modo !== "mapa" || clientes.length === 0) return;
+    void supabase.from("pastas_atividade").select("id, nome, cliente_id").in("cliente_id", clientes.map((c) => c.id))
+      .eq("origem", "atividades").is("deleted_at", null).order("ordem")
+      .then(({ data }) => setPastas((data ?? []) as { id: string; nome: string; cliente_id: string | null }[]));
+  }, [modo, clientes]);
+  const pessoasNoMapa = useMemo(() => Array.from(new Set(atividadesFiltradas.flatMap((a) => (a.responsavel_nome || "")
+    .split(",").map((n) => n.trim()).filter(Boolean)))).sort((x, y) => x.localeCompare(y)), [atividadesFiltradas]);
+  const atividadesDoMapa = useMemo(() => atividadesFiltradas
+    .filter((a) => filtroPessoa === "todas" || (filtroPessoa === "ninguem"
+      ? !(a.responsavel_nome || "").trim()
+      : (a.responsavel_nome || "").split(",").map((n) => n.trim()).includes(filtroPessoa)))
+    .filter((a) => filtroPasta === "todas" || a.pasta_id === filtroPasta), [atividadesFiltradas, filtroPessoa, filtroPasta]);
+  const nomeCliente = (id: string | null) => clientes.find((c) => c.id === id)?.nome ?? "";
+
   // Sem filtro: só mostra cliente que realmente tem tarefa (senão a lista
   // fica enorme com grupo vazio pra cada cliente cadastrado). Com filtro
   // aplicado, mostra o(s) cliente(s) escolhido(s) mesmo sem tarefas, pra
@@ -353,23 +376,61 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
 
   // Mapa: card solto em outra coluna do mesmo projeto muda o status (e
   // conclui/reabre se a coluna for/deixar de ser a de conclusão).
-  const moverNoMapa = async (atividade: Atividade, coluna: Coluna | { status_key: string; eh_conclusao: boolean }) => {
-    if (coluna.eh_conclusao) {
+  // Mapa: muda de coluna e/ou de posição (19/10, Davi: "mover os cards, mudar a ordem").
+  const moverNoMapa = async (atividade: Atividade, coluna: Coluna | { status_key: string; eh_conclusao: boolean }, indice: number) => {
+    if (coluna.eh_conclusao && !atividade.concluida) {
       const resumo = checklistPorAtividade[atividade.id];
       if (resumo && resumo.total > 0 && resumo.concluidas < resumo.total) {
         toast.error("Finalize todos os itens do checklist antes de concluir a tarefa");
         return;
       }
     }
-    const ordem = Math.max(-1, ...atividades.filter((a) => a.cliente_id === atividade.cliente_id && a.status === coluna.status_key).map((a) => a.ordem)) + 1;
-    const patch = { status: coluna.status_key, concluida: coluna.eh_conclusao, ordem };
+    // A coluna de destino em ordem, sem o card que está andando; ele entra na posição pedida.
+    const destino = atividades
+      .filter((a) => a.cliente_id === atividade.cliente_id && a.status === coluna.status_key && a.id !== atividade.id)
+      .sort((x, y) => x.ordem - y.ordem);
+    destino.splice(Math.max(0, Math.min(indice, destino.length)), 0, { ...atividade, status: coluna.status_key });
+    const novasOrdens = new Map(destino.map((a, i) => [a.id, i + 1]));
+    const mudouColuna = atividade.status !== coluna.status_key;
     const anterior = atividades;
-    setAtividades((prev) => prev.map((a) => (a.id === atividade.id ? { ...a, ...patch } : a)));
-    const { error } = await supabase.from("atividades").update(patch).eq("id", atividade.id);
-    if (error) {
+    setAtividades((prev) => prev.map((a) => {
+      if (a.id === atividade.id) return { ...a, status: coluna.status_key, concluida: mudouColuna ? coluna.eh_conclusao : a.concluida, ordem: novasOrdens.get(a.id)! };
+      return novasOrdens.has(a.id) ? { ...a, ordem: novasOrdens.get(a.id)! } : a;
+    }));
+    const pedidos = destino
+      .filter((a) => a.id === atividade.id || a.ordem !== novasOrdens.get(a.id))
+      .map((a) => supabase.from("atividades").update(a.id === atividade.id
+        ? { status: coluna.status_key, ordem: novasOrdens.get(a.id)!, ...(mudouColuna ? { concluida: coluna.eh_conclusao } : {}) }
+        : { ordem: novasOrdens.get(a.id)! }).eq("id", a.id));
+    const resultados = await Promise.all(pedidos);
+    if (resultados.some((r) => r.error)) {
       setAtividades(anterior);
       toast.error("Não foi possível mover a atividade");
     }
+  };
+
+  // Cronômetro no mapa (o mesmo do quadro do projeto).
+  const [timerFinalizadoId, setTimerFinalizadoId] = useState<string | null>(null);
+  const atualizarAtividade = async (id: string, patch: Partial<Atividade>, erro: string) => {
+    const anterior = atividades;
+    setAtividades((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)));
+    const { error } = await supabase.from("atividades").update(patch).eq("id", id);
+    if (error) { setAtividades(anterior); toast.error(erro); }
+  };
+  const acoesTimer = {
+    iniciar: (id: string) => void atualizarAtividade(id, { timer_iniciado_em: new Date().toISOString() }, "Erro ao iniciar o timer"),
+    pausar: (id: string) => {
+      const a = atividades.find((x) => x.id === id);
+      if (!a?.timer_iniciado_em) return;
+      const decorrido = Math.round((a.timer_decorrido_segundos || 0) + (Date.now() - new Date(a.timer_iniciado_em).getTime()) / 1000);
+      void atualizarAtividade(id, { timer_iniciado_em: null, timer_decorrido_segundos: decorrido }, "Erro ao pausar o timer");
+    },
+    zerar: (id: string) => void atualizarAtividade(id, { timer_iniciado_em: null, timer_decorrido_segundos: 0 }, "Erro ao zerar o timer"),
+    finalizado: (id: string) => {
+      const a = atividades.find((x) => x.id === id);
+      void atualizarAtividade(id, { timer_iniciado_em: null, timer_decorrido_segundos: (a?.tempo_estimado || 0) * 60 }, "Erro ao parar o timer");
+      setTimerFinalizadoId(id);
+    },
   };
 
   const excluirAtividade = async (id: string) => {
@@ -509,6 +570,24 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
           </button>
         )}
 
+        {modo === "mapa" && (
+          <>
+            <select value={filtroPessoa} onChange={(e) => setFiltroPessoa(e.target.value)} title="Filtrar por pessoa"
+              className="h-8 rounded-md border bg-background px-2 text-sm">
+              <option value="todas">Todas as pessoas</option>
+              <option value="ninguem">Sem responsável</option>
+              {pessoasNoMapa.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select value={filtroPasta} onChange={(e) => setFiltroPasta(e.target.value)} title="Filtrar por pasta"
+              className="h-8 max-w-[220px] rounded-md border bg-background px-2 text-sm">
+              <option value="todas">Todas as pastas</option>
+              {pastas.filter((p) => selectedClienteIds.size === 0 || (p.cliente_id && selectedClienteIds.has(p.cliente_id))).map((p) => (
+                <option key={p.id} value={p.id}>{selectedClienteIds.size === 1 ? p.nome : `${p.nome} · ${nomeCliente(p.cliente_id)}`}</option>
+              ))}
+            </select>
+          </>
+        )}
+
         {(!clienteFiltradoUnico || modo === "mapa") && (
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer ml-auto">
             <Checkbox checked={mostrarConcluidas} onCheckedChange={(v) => setMostrarConcluidas(!!v)} />
@@ -521,9 +600,11 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
         // Visão geral: todos os projetos de uma vez, num canvas com zoom.
         <MapaAtividades
           projetos={clientesParaExibir}
-          atividades={atividadesFiltradas}
+          atividades={atividadesDoMapa}
           colunasPorCliente={colunasPorCliente}
-          onMover={(atividade, coluna) => void moverNoMapa(atividade as Atividade, coluna)}
+          onMover={(atividade, coluna, indice) => void moverNoMapa(atividade as Atividade, coluna, indice)}
+          timer={acoesTimer}
+          checklistPorAtividade={checklistPorAtividade}
           onAbrir={(atividade) => { setSelectedAtividade(atividade as Atividade); setPanelOpen(true); }}
           onConcluir={(atividade, concluida) => void toggleAtividade(atividade.id, concluida)}
           onCriar={async (clienteId, statusKey, titulo) => {
@@ -641,6 +722,21 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
 
       {/* Card completo (lista agregada e mapa). */}
       {(!clienteFiltradoUnico || modo === "mapa") && (
+        <>
+        <TimerFinalizarDialog
+          atividade={atividades.find((a) => a.id === timerFinalizadoId) || null}
+          onClose={() => setTimerFinalizadoId(null)}
+          onConcluir={(id) => {
+            setTimerFinalizadoId(null);
+            void toggleAtividade(id, true).then(() => atualizarAtividade(id, { timer_iniciado_em: null, timer_decorrido_segundos: 0 }, "Erro ao zerar o timer"));
+          }}
+          onPrecisaMaisTempo={(id, minutos) => {
+            setTimerFinalizadoId(null);
+            const a = atividades.find((x) => x.id === id);
+            void atualizarAtividade(id, { tempo_estimado: (a?.tempo_estimado || 0) + minutos }, "Erro ao adicionar tempo")
+              .then(() => toast.success("Tempo atualizado. Clique no relógio para reiniciar o timer."));
+          }}
+        />
         <AtividadeDetailPanel
           open={panelOpen}
           onClose={() => {
@@ -652,6 +748,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
           onUpdate={carregarDados}
           onDelete={excluirAtividade}
         />
+        </>
       )}
     </div>
   );
