@@ -40,12 +40,14 @@ interface Arrasto {
 // Visão geral de todas as atividades de todos os projetos num canvas com
 // zoom (pinça/⌘+roda), navegação (arrastar o fundo, rolar) e cards que dá
 // pra arrastar entre colunas pra mudar o status — sem entrar em cada projeto.
-export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMover, onAbrir, onConcluir }: {
+export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMover, onAbrir, onConcluir, onCriar }: {
   projetos: ProjetoNoMapa[];
   atividades: AtividadeNoMapa[];
   colunasPorCliente: Record<string, ColunaMapa[]>;
   onMover: (atividade: AtividadeNoMapa, coluna: ColunaMapa) => void;
   onAbrir: (atividade: AtividadeNoMapa) => void;
+  /** "+" na coluna (19/10, Davi: "não consigo criar uma atividade"): cria nesse projeto e coluna. */
+  onCriar?: (clienteId: string, statusKey: string, titulo: string) => Promise<void>;
   // Check do card: conclui (vai pra coluna de conclusão) ou reabre.
   onConcluir: (atividade: AtividadeNoMapa, concluida: boolean) => void;
 }) {
@@ -58,6 +60,9 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
   const [arrasto, setArrasto] = useState<Arrasto | null>(null);
   // Tela cheia: o mapa cobre a janela toda (Esc ou o botão volta).
   const [telaCheia, setTelaCheia] = useState(false);
+  const [criandoEm, setCriandoEm] = useState<{ clienteId: string; statusKey: string } | null>(null);
+  const [novoTitulo, setNovoTitulo] = useState("");
+  const [salvandoNova, setSalvandoNova] = useState(false);
   const enquadrouRef = useRef(false);
   const hojeIso = format(new Date(), "yyyy-MM-dd");
 
@@ -247,9 +252,35 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
                       ehAlvo && !alvoInvalido && "bg-primary/15 ring-2 ring-primary/50", alvoInvalido && "bg-destructive/10")}
                     style={{ width: LARGURA_COLUNA }}
                   >
-                    <p className="flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      {coluna.nome}<span className="font-normal">{lista.length}</span>
+                    <p className="group/col flex items-center justify-between gap-1 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <span className="truncate">{coluna.nome}</span>
+                      <span className="flex items-center gap-1 font-normal">
+                        {onCriar && (
+                          <button type="button" title={`Nova atividade em ${coluna.nome}`} onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() => { setCriandoEm({ clienteId: projeto.id, statusKey: coluna.status_key }); setNovoTitulo(""); }}
+                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground opacity-60 hover:bg-primary hover:text-primary-foreground hover:opacity-100 group-hover/col:opacity-100">
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                        {lista.length}
+                      </span>
                     </p>
+                    {onCriar && criandoEm?.clienteId === projeto.id && criandoEm.statusKey === coluna.status_key && (
+                      <form onPointerDown={(e) => e.stopPropagation()} className="select-text"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const t = novoTitulo.trim();
+                          if (!t || salvandoNova) return;
+                          setSalvandoNova(true);
+                          void onCriar(projeto.id, coluna.status_key, t).then(() => setNovoTitulo("")).catch(() => {}).finally(() => setSalvandoNova(false));
+                        }}>
+                        <input autoFocus value={novoTitulo} onChange={(e) => setNovoTitulo(e.target.value)} disabled={salvandoNova}
+                          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") setCriandoEm(null); }}
+                          onBlur={() => { if (!novoTitulo.trim()) setCriandoEm(null); }}
+                          placeholder="Título e Enter (Esc fecha)"
+                          className="w-full rounded-lg border border-primary/50 bg-background px-2.5 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/40" />
+                      </form>
+                    )}
                     {visiveis.map((atividade) => {
                       const atrasada = estaAtrasadaMapa(atividade, hojeIso);
                       const responsaveis = parseResponsaveis(atividade.responsavel_nome);

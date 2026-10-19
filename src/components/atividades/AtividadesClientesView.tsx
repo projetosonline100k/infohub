@@ -526,6 +526,21 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
           onMover={(atividade, coluna) => void moverNoMapa(atividade as Atividade, coluna)}
           onAbrir={(atividade) => { setSelectedAtividade(atividade as Atividade); setPanelOpen(true); }}
           onConcluir={(atividade, concluida) => void toggleAtividade(atividade.id, concluida)}
+          onCriar={async (clienteId, statusKey, titulo) => {
+            try {
+              await criarAtividadeService({
+                titulo, clienteId, pastaId: lerPastaAtivaSalva(clienteId), dataAtividade: format(new Date(), "yyyy-MM-dd"),
+                statusKey, concluida: false,
+                ordem: atividades.filter((a) => a.cliente_id === clienteId && a.status === statusKey).length + 1,
+              });
+              toast.success("Atividade criada");
+              void carregarDados();
+            } catch (error) {
+              console.error("Erro ao criar atividade no mapa:", error);
+              toast.error("Não consegui criar a atividade");
+              throw error;
+            }
+          }}
         />
       ) : clienteFiltradoUnico ? (
         // Aba Atividades de verdade daquele cliente: lista, quadro, calendário
