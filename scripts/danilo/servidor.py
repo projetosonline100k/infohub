@@ -131,18 +131,27 @@ def aprovar(id_):
             status(id_, "aprovando", "Gerando a versão final em Full HD…")
             final, dur = motor.renderizar(pasta, previa=False, progresso=andamento(id_, "Gerando o Full HD…"))
             entrega = json.loads((pasta / "entrega.json").read_text()) if (pasta / "entrega.json").exists() else {}
-            destino_txt = None
-            # Sem entrega no Drive não é "aprovado": o final é o original do post da Dalila.
-            if not (entrega.get("destino_dir") and Path(entrega["destino_dir"]).is_dir()):
-                raise RuntimeError(f"pasta de entrega do Drive não encontrada ({entrega.get('destino_dir') or 'sem entrega.json'})")
+            # Entrega no Drive pelo rclone (19/10: o app Google Drive do Mac saiu). Sem
+            # entrega não é "aprovado": o final é o original do post da Dalila.
+            import danilo
+            remoto = entrega.get("destino_remoto") or danilo.REMOTO_DESTINO
             status(id_, "aprovando", "Enviando pro Drive…")
-            destino = Path(entrega["destino_dir"]) / f"{entrega.get('nome_final') or id_}.mp4"
-            shutil.copyfile(final, destino)
-            destino_txt = str(destino)
+            danilo.rclone("copyto", str(final), f"{remoto}/{entrega.get('nome_final') or id_}.mp4", timeout=3600)
+            destino_txt = str(final)      # a Dalila lê daqui (a cópia de entrega fica em Eu.davi/Editado no Drive)
+            if entrega.get("bruto_remoto"):
+                br = entrega["bruto_remoto"]
+                nome = br.rsplit("/", 1)[-1]
+                if not nome.startswith("[EDITADO]"):
+                    try:
+                        danilo.rclone("moveto", br, br.rsplit("/", 1)[0] + "/[EDITADO] " + nome.replace("[EM EDIÇÃO] ", ""), timeout=300)
+                    except OSError as e:
+                        log("não renomeei o bruto no Drive", id_, str(e)[:200])
             bruto = Path(entrega.get("bruto_drive") or "")
-            if bruto.exists() and not bruto.name.startswith("[EDITADO]"):
+            if entrega.get("bruto_drive") and bruto.exists() and not bruto.name.startswith("[EDITADO]"):
                 nome = bruto.name.replace("[EM EDIÇÃO] ", "")
                 bruto.rename(bruto.with_name(f"[EDITADO] {nome}"))
+            if entrega.get("bruto_local"):              # cópia baixada do Drive: não acumula disco
+                Path(entrega["bruto_local"]).unlink(missing_ok=True)
             # Avança o fluxo: tarefa do Danilo concluída, vídeo → "pronto"
             # (as automações por etapa passam pra quem programa).
             linha = db("SELECT atividade_id, video_vertical_id, cliente_id FROM public.edicoes_video WHERE id = %s", (id_,))[0]

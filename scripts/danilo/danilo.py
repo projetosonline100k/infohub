@@ -60,6 +60,46 @@ DESTINO = DRIVE / "Editado"
 # Depois de aprovado, o bruto vai pra LOCAL/Editados.
 LOCAL = Path.home() / "Desktop" / "Para o Danilo"
 LOCAL_EDITADOS = LOCAL / "Editados"
+# Drive pelo rclone (19/10): o app Google Drive do Mac saiu (arquivos "dataless",
+# travas, ~20 GB de cache). Remote "metafocando" (~/.config/rclone/rclone.conf).
+RCLONE = "/opt/homebrew/bin/rclone"
+REMOTO = "metafocando:Projeto 100k/Eu.davi"
+REMOTO_ENTRADA = f"{REMOTO}/Precisa de edição"
+REMOTO_DESTINO = f"{REMOTO}/Editado"
+
+
+class Remoto:
+    """Bruto na pasta Precisa de edição do Drive (só existe lá até ser baixado)."""
+    parent = None
+
+    def __init__(self, nome, tamanho):
+        self.name, self.tamanho = nome, tamanho
+        self.suffix = Path(nome).suffix
+
+    @property
+    def caminho(self):
+        return f"{REMOTO_ENTRADA}/{self.name}"
+
+    def __str__(self):
+        return self.caminho
+
+    def __eq__(self, outro):
+        return str(self) == str(outro)
+
+    def __hash__(self):
+        return hash(str(self))
+
+
+def rclone(*args, timeout=3600):
+    r = subprocess.run([RCLONE, *args], capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        erro = "\n".join(l for l in r.stderr.splitlines() if "client_id" not in l and "rclone.org/drive" not in l)
+        raise OSError(f"rclone {args[0]} falhou: {erro.strip()[-300:]}")
+    return r.stdout
+
+
+def listar_remoto():
+    return [Remoto(x["Name"], x["Size"]) for x in json.loads(rclone("lsjson", "--files-only", REMOTO_ENTRADA, timeout=120) or "[]")]
 BASE = Path.home() / ".infopro-hub" / "danilo"
 EDICOES = BASE / "edicoes"
 BRUTOS = BASE / "brutos"
@@ -116,8 +156,8 @@ def abre(f):
     """O vídeo abre? Devolve o motivo se não abre (None se está ok). Arquivo
     truncado fica sem o fim (às vezes sem o 'moov') e o ffmpeg não lê ou cai
     no meio da edição. Só olha arquivo já no Mac (não dispara download)."""
-    if not no_mac(f):
-        return None
+    if isinstance(f, Remoto) or not no_mac(f):
+        return None      # do Drive: confere depois de baixar
     falta = faltando(f)
     if falta:
         return (f"o envio do celular parou no meio: faltaram {falta / 1e6:.0f} MB "
@@ -133,7 +173,7 @@ _tamanhos = {}   # arquivo local → (tamanho, quando viu): espera a cópia/AirD
 
 def _local_parado(f, segundos=30):
     """Arquivo local pronto: o tamanho não muda há `segundos`."""
-    tam, agora = f.stat().st_size, datetime.now().timestamp()
+    tam, agora = (f.tamanho if isinstance(f, Remoto) else f.stat().st_size), datetime.now().timestamp()
     visto = _tamanhos.get(str(f))
     if not visto or visto[0] != tam:
         _tamanhos[str(f)] = (tam, agora)
@@ -149,22 +189,18 @@ def novos(minutos_parado=3):
                    for r in db("SELECT bruto_drive FROM public.edicoes_video WHERE cliente_id = %s "
                                "AND bruto_drive IS NOT NULL AND status <> 'cancelado'", (CLIENTE,))}
     agora = datetime.now().timestamp()
-    pastas = [p for p in (LOCAL, ENTRADA) if p.is_dir()]
-    if not pastas:
-        raise OSError(f"nenhuma pasta de entrada encontrada ({LOCAL} / {ENTRADA})")
     out = []
-    for pasta_ in pastas:
-        for f in pasta_.iterdir():
+    entradas = [(LOCAL, list(LOCAL.iterdir()))] if LOCAL.is_dir() else []
+    entradas.append((None, listar_remoto()))
+    for pasta_, arquivos in entradas:
+        for f in arquivos:
             # "[EM EDIÇÃO]" sem edição registrada = o serviço caiu no meio: pega de novo.
             orfao = f.name.startswith(EM_EDICAO) and f.name[len(EM_EDICAO):] not in registrados
-            if not f.is_file() or f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not orfao):
+            if (pasta_ is not None and not f.is_file()) or f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not orfao):
                 continue
             if f.name.replace(EM_EDICAO, "") in registrados:
                 continue
-            if pasta_ == LOCAL:
-                if not _local_parado(f):
-                    continue
-            elif agora - f.stat().st_mtime < minutos_parado * 60:
+            if not _local_parado(f):      # local: a cópia terminou; Drive: o envio do celular terminou
                 continue
             motivo = abre(f)
             if motivo:
@@ -227,7 +263,9 @@ def identificar_card(fala):
 
 
 def no_mac(arquivo):
-    """O arquivo do Drive já está baixado (não é "dataless")?"""
+    """O arquivo do Drive já está baixado (não é "dataless")? Bruto do rclone: sempre dá pra baixar."""
+    if isinstance(arquivo, Remoto):
+        return True
     return not (os.stat(arquivo).st_flags & 0x40000000)   # SF_DATALESS
 
 
@@ -311,24 +349,36 @@ def motivo_do_erro(saida, codigo=None):
 
 
 def preparar(arquivo, log=print):
-    """Bruto do Drive → edição criada, transcrita e ligada ao card. Devolve o id."""
-    arquivo = Path(arquivo)
+    """Bruto (Drive pelo rclone ou pasta local) → edição criada, transcrita e
+    ligada ao card. Devolve o id."""
+    remoto = isinstance(arquivo, Remoto)
+    if not remoto:
+        arquivo = Path(arquivo)
     nome = arquivo.name.replace(EM_EDICAO, "")
-    marcado = arquivo.with_name(EM_EDICAO + nome)
+    marcado = f"{REMOTO_ENTRADA}/{EM_EDICAO}{nome}" if remoto else arquivo.with_name(EM_EDICAO + nome)
     uid = db("SELECT user_id FROM public.clientes WHERE id = %s", (CLIENTE,))[0][0]
     # Registra antes de renomear: se o serviço cair no meio, o bruto não fica órfão.
     id_ = str(db("""INSERT INTO public.edicoes_video (cliente_id, user_id, titulo, status, mensagem, bruto_drive)
                     VALUES (%s, %s, %s, 'editando', 'Danilo baixando o bruto do Drive…', %s) RETURNING id""",
                  (CLIENTE, uid, f"Bruto {Path(nome).stem}", str(marcado)))[0][0])
-    if arquivo != marcado:
-        arquivo.rename(marcado)                   # outra verificação não pega o mesmo bruto
+    if remoto:                                    # outra verificação não pega o mesmo bruto
+        if arquivo.name != EM_EDICAO + nome:
+            rclone("moveto", arquivo.caminho, marcado, timeout=300)
+    elif arquivo != marcado:
+        arquivo.rename(marcado)
     try:
         BRUTOS.mkdir(parents=True, exist_ok=True)
-        # A pasta Precisa de edição fica "disponível off-line": o bruto já está no
-        # Mac e a edição lê direto dele (sem cópia de 1 GB num disco apertado).
-        if not no_mac(marcado):
-            copiar_do_drive(marcado, os.devnull, log=log)   # ler inteiro faz o Drive baixar
-        local = marcado
+        if remoto:      # só o bruto da vez vem pro Mac; sai depois de aprovado (servidor.aprovar)
+            _msg(id_, "Danilo baixando o bruto do Drive…")
+            local = BRUTOS / nome
+            rclone("copyto", marcado, str(local), timeout=3 * 3600)
+            motivo = abre(local)
+            if motivo:
+                raise RuntimeError(f"o bruto baixado não abre: {motivo}")
+        else:
+            if not no_mac(marcado):
+                copiar_do_drive(marcado, os.devnull, log=log)   # (Drive do Mac antigo) ler inteiro faz baixar
+            local = marcado
         p = pasta(id_)
         (p / "imagens").mkdir(parents=True)
         os.symlink(local, p / f"bruto{local.suffix.lower()}")
@@ -350,8 +400,12 @@ def preparar(arquivo, log=print):
             log("card não identificado:", card[1])
         (p / "contexto.json").write_text(json.dumps(contexto, ensure_ascii=False, indent=1))
         base = "-".join(_palavras((contexto.get("card") or {}).get("titulo") or "")[:8]) or Path(nome).stem
-        (p / "entrega.json").write_text(json.dumps({"destino_dir": str(DESTINO), "bruto_drive": str(marcado),
-                                                    "nome_final": f"{base}-{Path(nome).stem}-editado-danilo"}, ensure_ascii=False))
+        (p / "entrega.json").write_text(json.dumps({
+            "destino_remoto": REMOTO_DESTINO,                  # o final sobe pro Drive pelo rclone
+            "bruto_remoto": marcado if remoto else None,       # vira [EDITADO] no Drive depois de aprovado
+            "bruto_drive": None if remoto else str(marcado),   # pasta local Para o Danilo: vira [EDITADO] e vai pra Editados
+            "bruto_local": str(local) if remoto else None,     # cópia baixada: apagada depois de aprovado
+            "nome_final": f"{base}-{Path(nome).stem}-editado-danilo"}, ensure_ascii=False))
         musica = ACERVO / "gymnopedie-1.ogg"
         if musica.exists():
             shutil.copyfile(musica, p / "imagens" / "musica.ogg")

@@ -174,7 +174,7 @@ PASSO_PAPEL = """3b. Escreva {pasta}/papel_cenas.py com as cenas do papel. Leia 
 
 
 def editar(arquivo, e):
-    nome = Path(arquivo).name
+    nome = arquivo.name
     log("bruto novo:", nome)
     id_ = danilo.preparar(arquivo, log=log)
     ctx = json.loads((danilo.pasta(id_) / "contexto.json").read_text())
@@ -244,7 +244,10 @@ def espaco_ok(e, bruto):
     Então nem pega o vídeo: avisa na tarefa do lote (uma vez) e tenta no próximo ciclo."""
     import shutil
     livre = shutil.disk_usage(Path.home()).free / 1e9
-    precisa = LIVRE_MIN_GB + (0 if danilo.no_mac(bruto) else 2 * bruto.stat().st_size / 1e9)
+    if isinstance(bruto, danilo.Remoto):        # vem pelo rclone: precisa caber a cópia
+        precisa = LIVRE_MIN_GB + 1.2 * bruto.tamanho / 1e9
+    else:
+        precisa = LIVRE_MIN_GB + (0 if danilo.no_mac(bruto) else 2 * bruto.stat().st_size / 1e9)
     if livre >= precisa:
         if e.pop("sem_espaco", None):
             salvar_estado(e)
