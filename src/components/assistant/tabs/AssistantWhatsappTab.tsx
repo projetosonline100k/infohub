@@ -477,7 +477,7 @@ function useDadosPainel() {
 /** Etiquetas ao lado do nome na lista de conversas. */
 function useEtiquetas() {
   const { dados, metricas, agora } = useDadosPainel();
-  return useCallback((c: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean }) => {
+  return useCallback((c: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean; ultima_texto?: string | null; ultima_tipo?: string }) => {
     if (!dados) return null;
     return etiquetasDaConversa(c, dados.h, dados.cards, dados.respondidos, metricas, agora).map((e) => (
       <span key={e.texto} title={e.dica}><Tag tom={e.tom}>{e.texto}</Tag></span>

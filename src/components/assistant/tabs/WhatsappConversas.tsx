@@ -112,7 +112,7 @@ export function WhatsappConversas({ pedido, info, etiquetas }: {
   pedido?: { nome: string; when: string; n: number } | null;
   info?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean }) => React.ReactNode;
   /** Etiquetas ao lado do nome na lista (Precisa responder, Risco de churn…). */
-  etiquetas?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean }) => React.ReactNode;
+  etiquetas?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean; ultima_texto: string | null; ultima_tipo: string }) => React.ReactNode;
 } = {}) {
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [carregando, setCarregando] = useState(true);

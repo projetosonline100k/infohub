@@ -300,7 +300,7 @@ export function daConversa(chat: ChatResumo, h: Historico | null, cards: CardWha
 export interface Etiqueta { texto: string; tom: "urg" | "alta" | "media" | "ok"; dica: string }
 type Metricas = ReturnType<typeof calcularMetricas>;
 
-export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean }, h: Historico | null, cards: CardWhatsapp[],
+export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ultima_de_mim?: boolean; ultima_texto?: string | null; ultima_tipo?: string }, h: Historico | null, cards: CardWhatsapp[],
   respondidos: Record<string, boolean>, m: Metricas | null, agora: Date): Etiqueta[] {
   const { mentorados, cards: cs } = daConversa(chat, h, cards);
   if (!mentorados.length && !cs.length) return [];
@@ -312,6 +312,13 @@ export function etiquetasDaConversa(chat: ChatResumo & { ultima_em?: string; ult
   const esperando = (m?.pendentes ?? []).filter((p) => ids.has(p.mentorado.id) && !minhaDepois(p.interacao.recebida));
   const cardsAbertos = chat.ultima_de_mim ? [] : cs.filter((c) => !cardRespondido(c, respondidos));
   if (cardsAbertos.length || esperando.length) out.push({ texto: "Precisa responder", tom: "urg", dica: cardsAbertos[0]?.tag || "mensagem esperando resposta sua" });
+  // A bola está com eles (19/10, Davi: "como eu deixei uma pergunta, deveria ter Aguardando resposta").
+  if (chat.ultima_de_mim && chat.ultima_em && (chat.ultima_tipo === "audio" || (chat.ultima_texto ?? "").includes("?"))) {
+    const h2 = (agora.getTime() - new Date(chat.ultima_em).getTime()) / 3_600_000;
+    out.push(h2 >= 48
+      ? { texto: `Sem resposta há ${Math.floor(h2 / 24)} dias`, tom: "alta", dica: "você perguntou e eles não responderam: retome a conversa" }
+      : { texto: "Aguardando resposta", tom: "media", dica: "você perguntou; a bola está com eles" });
+  }
   const horas = Math.max(0, ...esperando.map((p) => (agora.getTime() - new Date(p.interacao.recebida).getTime()) / 3_600_000));
   if (horas >= 24) out.push({ texto: "+24h sem resposta", tom: "urg", dica: `esperando há ${Math.floor(horas)}h` });
   const saude = (m?.saude ?? []).filter((s) => ids.has(s.mentorado.id));
