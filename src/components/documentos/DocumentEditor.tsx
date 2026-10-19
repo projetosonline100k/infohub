@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BancoViraisDoc } from "./BancoViraisDoc";
+import { AudioGravado, MicrofoneNoCursor } from "./AudioNoDocumento";
 import { BotaoModelos, EscolherModelo } from "./EscolherModelo";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -89,6 +90,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       ItalicSemAsterisco,
       TituloRecolhivel,
       HeadlineTitulo,   // "Headline N" vira título recolhível (18/10)
+      AudioGravado,   // áudio gravado no documento, com transcrição por trechos (18/10)
       Underline,
       TextAlign.configure({
         types: ["heading", "paragraph"],
@@ -334,6 +336,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
               {editor && <EscolherModelo editor={editor} nome={titulo === "Documento sem título" ? "" : titulo} />}
             {editor && <MenuSelecaoTexto editor={editor} />}
             {editor && <BancoViraisDoc editor={editor} clienteId={clienteId} />}
+            {editor && <MicrofoneNoCursor editor={editor} />}
             </div>
           </div>
         </div>

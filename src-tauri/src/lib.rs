@@ -79,6 +79,7 @@ pub fn run() {
             danilo::danilo_base,
             ditado::ditado_organizar,
             creator::voz_aquecer,
+            creator::voz_transcrever_trechos,
             ditado::ditado_colar,
             ditado::ditado_registrar,
             ditado::claude_rapido,

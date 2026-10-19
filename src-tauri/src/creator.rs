@@ -130,6 +130,23 @@ pub async fn voz_aquecer(estado: tauri::State<'_, CreatorState>) -> Result<(), S
 /// Modo voz da orbe (⌥+Espaço): transcreve o que o Davi falou. O áudio
 /// gravado no Jarvis vem em base64, vira um arquivo temporário e passa pelo
 /// mesmo trabalhador (Whisper no Mac, sem custo), em português.
+/// Áudio gravado no documento (18/10): transcreve com os trechos e o tempo de cada um.
+#[tauri::command]
+pub async fn voz_transcrever_trechos(estado: tauri::State<'_, CreatorState>, base64: String, extensao: String) -> Result<serde_json::Value, String> {
+    let bytes = decodificar_base64(&base64).ok_or("Áudio inválido")?;
+    let ext: String = extensao.chars().filter(|c| c.is_ascii_alphanumeric()).take(5).collect();
+    let arquivo = std::env::temp_dir().join(format!(
+        "audio-documento-{}.{}",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0),
+        if ext.is_empty() { "m4a".to_string() } else { ext }
+    ));
+    std::fs::write(&arquivo, bytes).map_err(|e| e.to_string())?;
+    let caminho = arquivo.to_string_lossy().to_string();
+    let resposta = creator_transcrever(estado, caminho, Some("voz_trechos".to_string())).await;
+    let _ = std::fs::remove_file(&arquivo);
+    resposta
+}
+
 #[tauri::command]
 pub async fn voz_transcrever(estado: tauri::State<'_, CreatorState>, base64: String, extensao: String) -> Result<String, String> {
     let bytes = decodificar_base64(&base64).ok_or("Áudio inválido")?;

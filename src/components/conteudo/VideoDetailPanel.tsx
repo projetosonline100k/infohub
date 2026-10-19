@@ -39,6 +39,7 @@ import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
 import { HeadlineTitulo, MARCA_HEADLINE } from "@/lib/tiptapHeadlineTitulo";
 import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
 import { BancoViraisDoc } from "@/components/documentos/BancoViraisDoc";
+import { AudioGravado, MicrofoneNoCursor } from "@/components/documentos/AudioNoDocumento";
 import "@/components/documentos/editor.css";
 import { RoteiroChat } from "./RoteiroChat";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -162,6 +163,7 @@ export const VideoDetailPanel = ({
       ItalicSemAsterisco,
       TituloRecolhivel,
       HeadlineTitulo,
+      AudioGravado,   // áudio gravado no documento, com transcrição por trechos (18/10)
       UnderlineExt,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Placeholder.configure({ placeholder: "Escreva o roteiro… Comece um roteiro com \"Headline 1\" (vira título) e use ⌘H para trazer um vídeo do banco de virais." }),
@@ -802,6 +804,7 @@ export const VideoDetailPanel = ({
             <div className="flex min-h-[60vh] flex-col px-5 py-6 sm:min-h-[900px] sm:p-8 md:p-16">
 <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor min-h-[50vh] flex-1 sm:min-h-[900px]" />
               {editor && <BancoViraisDoc editor={editor} clienteId={editedVideo.cliente_id} />}
+              {editor && <MicrofoneNoCursor editor={editor} />}
             </div>
           </div>
         </main>

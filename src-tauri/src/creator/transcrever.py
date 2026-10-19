@@ -334,6 +334,34 @@ def transcrever_voz(caminho):
     return {"texto": texto, "segundos": round(time.time() - inicio, 1)}
 
 
+def transcrever_trechos(caminho):
+    """Áudio gravado no documento (18/10): texto + trechos com o tempo de cada um, para o player
+    pular para o ponto clicado. Português, mesmo modelo do modo voz."""
+    import mlx_whisper
+    if not os.path.exists(caminho):
+        return {"erro": "Áudio não encontrado."}
+    r = mlx_whisper.transcribe(caminho, path_or_hf_repo=MODELOS["preciso"], language="pt", verbose=None,
+                               word_timestamps=True,
+                               initial_prompt="Infopro, Claude, Danilo, Dalila, Roy, reels, roteiro, headline.")
+    # Trechos por frase (ou a cada 14 palavras): fino o bastante para clicar e pular.
+    trechos, atual = [], []
+    def fechar():
+        if atual:
+            trechos.append({"inicio": round(float(atual[0]["start"]), 2), "fim": round(float(atual[-1]["end"]), 2),
+                            "texto": "".join(p["word"] for p in atual).strip()})
+            atual.clear()
+    for seg in r.get("segments") or []:
+        for p in seg.get("words") or []:
+            atual.append(p)
+            if p["word"].strip()[-1:] in ".!?…" or len(atual) >= 14:
+                fechar()
+    fechar()
+    if not trechos:
+        trechos = [{"inicio": round(float(s.get("start") or 0), 2), "fim": round(float(s.get("end") or 0), 2),
+                    "texto": (s.get("text") or "").strip()} for s in (r.get("segments") or []) if (s.get("text") or "").strip()]
+    return {"texto": (r.get("text") or "").strip(), "trechos": trechos}
+
+
 def buscar_youtube(termo):
     """Radar de virais (18/10): busca no YouTube pelo yt-dlp, sem baixar nada — views reais.
     Devolve os 60 primeiros da busca, ordenados por views (o app filtra os curtos)."""
@@ -384,6 +412,12 @@ def main():
                 responder({"id": id_, **traduzir(pedido.get("url") or "")})
             except Exception as e:
                 responder({"id": id_, "erro": f"Tradutor não respondeu: {str(e)[:200]}"})
+            continue
+        if pedido.get("modo") == "voz_trechos":
+            try:
+                responder({"id": id_, **transcrever_trechos(pedido.get("url") or "")})
+            except Exception as e:
+                responder({"id": id_, "erro": f"Não consegui transcrever o áudio: {str(e)[:200]}"})
             continue
         if pedido.get("modo") == "buscar_youtube":
             try:
