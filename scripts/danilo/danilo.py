@@ -192,8 +192,16 @@ def guardar_editados(log=print):
                 log("bruto aprovado guardado em Editados:", f.name)
 
 
+def texto_do_roteiro(roteiro):
+    """Roteiro do card em texto puro: desde 18/10 ele é HTML do editor (TipTap);
+    os antigos continuam texto. Igual ao textoDoRoteiro do app."""
+    import html
+    t = re.sub(r"<(br|/p|/h[1-6]|/li)\b[^>]*>", "\n", roteiro or "", flags=re.I)
+    return html.unescape(re.sub(r"<[^>]+>", " ", t)).strip()
+
+
 def _palavras(t):
-    t = unicodedata.normalize("NFKD", (t or "").lower())
+    t = unicodedata.normalize("NFKD", texto_do_roteiro(t).lower())
     t = "".join(ch for ch in t if not unicodedata.combining(ch))
     return re.sub(r"[^a-z0-9 ]+", " ", t).split()
 
@@ -331,7 +339,7 @@ def preparar(arquivo, log=print):
         contexto = {"bruto": nome, "bruto_drive": str(marcado), "card": None}
         if card[0]:
             vid, titulo, nota = card
-            roteiro = db("SELECT roteiro FROM public.videos_vertical WHERE id = %s", (vid,))[0][0]
+            roteiro = texto_do_roteiro(db("SELECT roteiro FROM public.videos_vertical WHERE id = %s", (vid,))[0][0])
             db("UPDATE public.videos_vertical SET status = 'edicao' WHERE id = %s AND status = 'gravacao'", (vid,))
             db("UPDATE public.edicoes_video SET video_vertical_id = %s, titulo = %s WHERE id = %s", (vid, titulo, id_))
             contexto["card"] = {"id": vid, "titulo": titulo, "roteiro": roteiro, "nota": nota}
