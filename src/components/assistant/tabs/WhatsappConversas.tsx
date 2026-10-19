@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowLeft, FileText, Loader2, Mic, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCheck, Clock3, FileText, Loader2, Mic, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isDesktop } from "@/lib/platform";
@@ -16,6 +16,18 @@ interface Conversa {
   chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean;
   ultima_tipo: string; ultima_texto: string | null; ultima_autor: string | null; total: number;
 }
+// 19/10 (Davi): "quando mando mensagem, em vez de ficar vazio e só aparecer quando é enviada, já
+// aparece com o relógio no cantinho igual ao WhatsApp; quando enviar, os dois tracinhos". A mensagem
+// fica aqui até a de verdade chegar do WhatsApp (pelo receptor, ao vivo).
+interface Pendente { id: string; tipo: "texto" | "audio"; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob }
+const normTexto = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
+
+function Situacao({ estado }: { estado: "enviando" | "enviada" | "erro" }) {
+  if (estado === "enviando") return <Clock3 className="inline h-3 w-3" aria-label="enviando" />;
+  if (estado === "erro") return <AlertCircle className="inline h-3 w-3 text-rose-500" aria-label="não enviou" />;
+  return <CheckCheck className="inline h-3.5 w-3.5" aria-label="enviada" />;
+}
+
 interface Mensagem {
   id: string; chat_id: string; chat_nome: string | null; eh_grupo: boolean; de_mim: boolean; autor_nome: string | null;
   tipo: string; texto: string | null; transcricao: string | null; transcricao_status: string | null; enviada_em: string;
@@ -210,7 +222,6 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     setTextoEstado(valor);
     try { if (valor) localStorage.setItem(chaveRascunho, valor); else localStorage.removeItem(chaveRascunho); } catch { /* sem storage */ }
   };
-  const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const urlDe = useMidiaUrl();
   const [ampliada, setAmpliada] = useState<string | null>(null);
@@ -256,19 +267,35 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     gravador.stop();
   });
 
+  const [pendentes, setPendentes] = useState<Pendente[]>([]);
+  const mudarPendente = (id: string, mudanca: Partial<Pendente> | null) =>
+    setPendentes((l) => (mudanca ? l.map((p) => (p.id === id ? { ...p, ...mudanca } : p)) : l.filter((p) => p.id !== id)));
+  useEffect(() => setPendentes([]), [conversa.chat_id]);
+
+  const mandar = async (p: Pendente) => {
+    mudarPendente(p.id, { estado: "enviando", erro: undefined });
+    setErroEnvio(null);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      if (p.tipo === "audio" && p.audio) {
+        await invoke("whatsapp_enviar_audio", { chatId: conversa.chat_id, base64: await paraBase64(p.audio), mimetype: p.audio.type.split(";")[0] });
+      } else {
+        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto });
+      }
+      mudarPendente(p.id, { estado: "enviada" });
+    } catch (e) {
+      const msg = typeof e === "string" ? e : e instanceof Error ? e.message : "Não consegui enviar";
+      mudarPendente(p.id, { estado: "erro", erro: msg });
+      toast.error(msg);
+    }
+  };
+
   const enviarAudio = async () => {
     const audio = await pararGravacao();
     if (!audio || audio.size < 1000) return;
-    setEnviando(true);
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("whatsapp_enviar_audio", { chatId: conversa.chat_id, base64: await paraBase64(audio), mimetype: audio.type.split(";")[0] });
-    } catch (e) {
-      const msg = typeof e === "string" ? e : e instanceof Error ? e.message : "Não consegui enviar o áudio";
-      setErroEnvio(msg);
-    } finally {
-      setEnviando(false);
-    }
+    const p: Pendente = { id: crypto.randomUUID(), tipo: "audio", texto: "", criada: new Date().toISOString(), estado: "enviando", audio };
+    setPendentes((l) => [...l, p]);
+    void mandar(p);
   };
   const fimRef = useRef<HTMLDivElement>(null);
   const podeEnviar = isDesktop();
@@ -297,25 +324,25 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     onVista(conversa.chat_id, novidade.enviada_em);
   }, [novidade, conversa.chat_id, onVista]);
 
-  useLayoutEffect(() => { fimRef.current?.scrollIntoView({ block: "end" }); }, [mensagens.length, carregando]);
+  useLayoutEffect(() => { fimRef.current?.scrollIntoView({ block: "end" }); }, [mensagens.length, carregando, pendentes.length]);
 
-  const enviar = async () => {
+  // A mensagem entra na conversa na hora (com o relógio) e o campo já fica livre para a próxima.
+  const enviar = () => {
     const t = texto.trim();
-    if (!t || enviando) return;
-    setEnviando(true);
-    setErroEnvio(null);
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: t });
-      setTexto("");
-    } catch (e) {
-      const msg = typeof e === "string" ? e : e instanceof Error ? e.message : "Não consegui enviar";
-      setErroEnvio(msg);
-      toast.error(msg);
-    } finally {
-      setEnviando(false);
-    }
+    if (!t) return;
+    const p: Pendente = { id: crypto.randomUUID(), tipo: "texto", texto: t, criada: new Date().toISOString(), estado: "enviando" };
+    setPendentes((l) => [...l, p]);
+    setTexto("");
+    void mandar(p);
   };
+
+  // A pendente sai quando a de verdade (minha, mesmo texto, depois dela) chega do WhatsApp.
+  const aindaPendentes = pendentes.filter((p) => !mensagens.some((m) => m.de_mim
+    && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 60_000
+    && (p.tipo === "audio" ? m.tipo === "audio" : normTexto(m.texto) === normTexto(p.texto))));
+  useEffect(() => {
+    if (aindaPendentes.length !== pendentes.length) setPendentes(aindaPendentes);
+  }, [aindaPendentes.length, pendentes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   let diaAnterior = "";
   return (
@@ -376,12 +403,35 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                   ) : (
                     <p><span className="text-muted-foreground">{ROTULO_TIPO[m.tipo] ?? "Mensagem"}{m.midia_arquivo === null && m.tipo !== "outro" ? " (abra no celular)" : ""}</span>{m.texto ? ` ${m.texto}` : ""}</p>
                   )}
-                  <p className="mt-0.5 text-right text-[9.5px] text-muted-foreground">{format(new Date(m.enviada_em), "HH:mm")}</p>
+                  <p className="mt-0.5 flex items-center justify-end gap-1 text-[9.5px] text-muted-foreground">
+                    {format(new Date(m.enviada_em), "HH:mm")}{m.de_mim && <Situacao estado="enviada" />}
+                  </p>
                 </div>
               </div>
             </div>
           );
         })}
+        {aindaPendentes.map((p) => (
+          <div key={p.id} className="flex justify-end">
+            <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
+              "bg-emerald-100 text-emerald-950 dark:bg-emerald-900/60 dark:text-emerald-50", p.estado === "erro" && "ring-1 ring-rose-400")}>
+              {p.tipo === "audio"
+                ? <span className="inline-flex items-center gap-1 text-[11.5px]"><Mic className="h-3 w-3" />Áudio</span>
+                : <p className="whitespace-pre-wrap break-words">{p.texto}</p>}
+              <p className="mt-0.5 flex items-center justify-end gap-1 text-[9.5px] text-muted-foreground">
+                {format(new Date(p.criada), "HH:mm")}<Situacao estado={p.estado} />
+              </p>
+              {p.estado === "erro" && (
+                <p className="mt-0.5 text-[10.5px] text-rose-600 dark:text-rose-400">
+                  Não enviou: {p.erro}{" "}
+                  <button type="button" onClick={() => void mandar(p)} className="font-semibold underline">tentar de novo</button>
+                  {" · "}
+                  <button type="button" onClick={() => { if (p.tipo === "texto") setTexto(p.texto); mudarPendente(p.id, null); }} className="underline">desistir</button>
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
         <div ref={fimRef} />
       </div>
 
@@ -414,15 +464,15 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
             placeholder={`Mensagem para ${conversa.chat_nome ?? "a conversa"}…`}
             className="max-h-28 min-h-[34px] flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-[12.5px] outline-none focus:border-primary/50" />
           {/* Igual ao WhatsApp: sem texto, o botão grava áudio. */}
-          {!texto.trim() && !enviando ? (
+          {!texto.trim() ? (
             <button type="button" onClick={() => void comecarGravacao()} aria-label="Gravar áudio"
               className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
               <Mic className="h-4 w-4" />
             </button>
           ) : (
-            <button type="submit" disabled={!texto.trim() || enviando} aria-label="Enviar"
+            <button type="submit" disabled={!texto.trim()} aria-label="Enviar"
               className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white disabled:opacity-40">
-              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              <Send className="h-4 w-4" />
             </button>
           )}
         </form>
