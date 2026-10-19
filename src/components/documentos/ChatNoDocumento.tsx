@@ -127,10 +127,10 @@ function regiaoInicial(editor: Editor): { regiao: Regiao; selecao: string | null
 function trocarRegiao(editor: Editor, r: Regiao, texto: string | null, historico: boolean) {
   const antes = editor.state.doc.content.size;
   if (texto === null) {
-    editor.view.dispatch(editor.state.tr.replace(r.from, r.to, r.original).setMeta("addToHistory", false).setMeta(MARCA, true));
+    editor.view.dispatch(editor.state.tr.replace(r.from, r.to, r.original).setMeta("addToHistory", false).setMeta(MARCA, r));
   } else {
     const conteudo = r.inline ? { type: "text", text: texto.replace(/\s*\n\s*/g, " ") } : textoParaHtml(texto);
-    editor.chain().setMeta("addToHistory", historico).setMeta(MARCA, true).insertContentAt({ from: r.from, to: r.to }, conteudo).scrollIntoView().run();
+    editor.chain().setMeta("addToHistory", historico).setMeta(MARCA, r).insertContentAt({ from: r.from, to: r.to }, conteudo).run();
   }
   r.to += editor.state.doc.content.size - antes;
 }
@@ -138,12 +138,62 @@ function trocarRegiao(editor: Editor, r: Regiao, texto: string | null, historico
 /** Se o Davi mexe no documento enquanto escrevem, a região anda junto (não escreve por cima). */
 function seguirRegiao(editor: Editor, r: Regiao) {
   const aoMudar = ({ transaction: tr }: { transaction: import("@tiptap/pm/state").Transaction }) => {
-    if (!tr.docChanged || tr.getMeta(MARCA)) return;
+    if (!tr.docChanged || tr.getMeta(MARCA) === r) return;   // as transações desta própria escrita
     r.from = tr.mapping.map(r.from, 1);
     r.to = Math.max(r.from, tr.mapping.map(r.to, -1));
   };
   editor.on("transaction", aoMudar);
   return () => { editor.off("transaction", aoMudar); };
+}
+
+// ---------------------------------------------------------------- roteiros do documento (gerar todos)
+interface RoteiroVazio { numero: number; headline: string; link: string | null; depois: number }
+const MARCA_ROTEIRO = /^\s*(?:roteiros?|headlines?)\s*#?\s*(\d{1,3})\s*[:.)\-–]?\s*(.*)$/i;
+// Linhas que não contam como roteiro escrito: o link/ref da referência e títulos de apoio.
+const LINHA_DE_APOIO = /^\s*(link( d[ae])? refer[eê]ncia|refer[eê]ncia|ref\b|\+\s*info|transcri[cç][aã]o|conte[uú]do not[aá]vel|por que)/i;
+
+/** "ROTEIRO NN: headline" (ou "Headline NN") sem roteiro escrito embaixo, com o link de referência,
+ *  e a posição logo depois da última linha preenchida da seção (onde o roteiro vai entrar). */
+function roteirosVazios(editor: Editor): RoteiroVazio[] {
+  const doc = editor.state.doc;
+  const secoes: { numero: number; headline: string; blocos: { no: import("@tiptap/pm/model").Node; pos: number }[] }[] = [];
+  doc.forEach((no, pos) => {
+    const m = no.textContent.match(MARCA_ROTEIRO);
+    if (m && no.textContent.length < 300) secoes.push({ numero: Number(m[1]), headline: m[2].trim(), blocos: [{ no, pos }] });
+    else secoes[secoes.length - 1]?.blocos.push({ no, pos });
+  });
+  return secoes.flatMap((sec) => {
+    const corpo = sec.blocos.slice(1);
+    const escrito = corpo.filter((b) => b.no.textContent.trim() && !LINHA_DE_APOIO.test(b.no.textContent)).map((b) => b.no.textContent).join(" ");
+    if (escrito.trim().length >= 40 || !sec.headline) return [];
+    let link: string | null = null;
+    for (const b of sec.blocos) {
+      b.no.descendants((n) => {
+        const href = n.marks.find((mk) => mk.type.name === "link")?.attrs.href as string | undefined;
+        if (!link && href) link = href;
+        return !link;
+      });
+      if (!link) link = b.no.textContent.match(/https?:\/\/\S+/)?.[0] ?? null;
+    }
+    const ultimo = [...sec.blocos].reverse().find((b) => b.no.textContent.trim()) ?? sec.blocos[0];
+    return [{ numero: sec.numero, headline: sec.headline, link, depois: ultimo.pos + ultimo.no.nodeSize }];
+  });
+}
+
+/** Transcrição do vídeo de referência: do banco de virais; se não estiver lá, transcreve no Mac. */
+async function transcricaoDaReferencia(link: string): Promise<string | null> {
+  const limpo = link.split("?")[0].replace(/\/$/, "");
+  const { data } = await db.from("videos_referencia").select("transcricao_pt, transcricao")
+    .or(`link_video.eq.${link},link_video.ilike.${limpo}%`).limit(1).maybeSingle();
+  const doBanco = (data as { transcricao_pt?: string | null; transcricao?: string | null } | null);
+  if (doBanco?.transcricao_pt || doBanco?.transcricao) return doBanco.transcricao_pt || doBanco.transcricao || null;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const r = await invoke<{ texto?: string }>("creator_transcrever", { url: link, modo: "preciso" });
+    return r.texto?.trim() || null;
+  } catch {
+    return null;   // sem referência: o Junior escreve só pela headline
+  }
 }
 
 interface Turno extends Conversa { erro?: string }
@@ -165,7 +215,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   useEffect(() => setRevisoes(ler(chaveRev, [])), [chaveRev]);
   const guardarRevisoes = (f: (l: Revisao[]) => Revisao[]) => setRevisoes((l) => { const n = f(l).slice(-10); gravar(chaveRev, n); return n; });
   const campo = useRef<HTMLTextAreaElement>(null);
-  const rodando = useRef<string | null>(null);
+  const rodando = useRef<Set<string>>(new Set());   // escritas em andamento (o "gerar todos" roda 2 de cada vez)
   const parou = useRef(false);
   const { esc, membros, skills, setEsc } = useEscritorio(clienteId, aberto);
   // 19/10 (Davi: "aqui mesmo, quero conseguir subir mais cérebros"): a mesma tela de cérebro da esteira.
@@ -264,20 +314,14 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     return ((data ?? []) as { conteudo: string | null }[]).map((d) => d.conteudo ?? "").filter(Boolean).join("\n\n") || null;
   };
 
-  const enviar = async () => {
-    if (rodando.current) return;
-    if (!isDesktop()) { toast.info("O modo chat escreve com o Claude do Mac: abra o documento no app Infopro Hub."); return; }
-    const pedido = texto.trim();
-    const fila = escolhidasOrdem.length ? escolhidasOrdem : [null];
-    if (!pedido && !escolhidasOrdem.length) return;
-    setTexto("");
-    parou.current = false;
-
-    const { regiao, selecao, cursor } = regiaoInicial(editor);
+  /** Uma escrita completa (cada etapa escolhida, com a revisão por trás) numa região do documento. */
+  const trabalhar = async (o: {
+    regiao: Regiao; selecao: string | null; documento: string; pedido: string; proximaHeadline: number;
+    fila: (typeof escolhidasOrdem[number] | null)[]; aoAndar?: (a: Andamento) => void;
+  }): Promise<{ texto: string; erro?: string }> => {
+    const { regiao, selecao, documento, pedido, proximaHeadline, fila } = o;
+    const andar = o.aoAndar ?? setAndamento;
     const largar = seguirRegiao(editor, regiao);
-    const doc = editor.state.doc;
-    const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
-    const proximaHeadline = proximoNumeroHeadline(editor.getHTML());
     const blocos: { quem: string; texto: string }[] = [];
     let anterior: { quem: string; texto: string } | null = null;
     let erro: string | undefined;
@@ -292,7 +336,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
       trocarRegiao(editor, regiao, null, false);
       if (tudo) trocarRegiao(editor, regiao, tudo, true);
     };
-
+    let idAtual: string | null = null;
     try {
       for (const etapa of fila) {
         if (parou.current) break;
@@ -301,7 +345,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         // Revisão de algo que já existe (o que o Junior acabou de escrever, ou parágrafos selecionados):
         // o texto de antes fica no documento e a revisão é feita por trás; no fim, entra com o On/Off.
         const revisa = !!(etapa && ehRevisao(etapa.nome) && (anterior?.texto || (selecao && !regiao.inline)));
-        setAndamento({ quem, etapa: etapa?.nome ?? "", fase: revisa ? "revisando" : "pensando" });
+        andar({ quem, etapa: etapa?.nome ?? "", fase: revisa ? "revisando" : "pensando" });
         const agente: AgenteEscrita | null = m && etapa ? {
           etapa: etapa.nome, nome: m.nome, funcao: m.funcao, manual: m.manual,
           aprendizados: await aprendizados(m.nome.trim().toLowerCase()), criterios: etapa.criterios, formatos: etapa.formatos,
@@ -312,12 +356,14 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           historico: turnos.filter((t) => !t.erro), pedido, proximaHeadline,
         });
         const id = crypto.randomUUID();
-        rodando.current = id;
+        idAtual = id;
+        rodando.current.add(id);
 
         if (revisa) {
           const antes = anterior?.texto ?? selecao!;
           fixar();
           const { texto: final, notas } = separarNotas(await escreverComClaude(id, prompt, modelo, () => undefined));
+          rodando.current.delete(id);
           if (final) {
             const trocou = trocarLinhas(editor, linhasDoTexto(antes), final, true);   // mexeu no texto enquanto ele revisava: fica o do Davi
             guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou }]);
@@ -333,29 +379,97 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         const bruto = await escreverComClaude(id, prompt, modelo, (total) => {
           const { texto: t } = separarNotas(total);
           bloco.texto = t;
-          if (t) setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
+          if (t) andar({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
           if (Date.now() - ultimo > 80) { ultimo = Date.now(); pintar(); }
         });
+        rodando.current.delete(id);
         bloco.texto = separarNotas(bruto).texto;
         pintar();
         anterior = { quem, texto: bloco.texto };
       }
     } catch (e) {
       erro = parou.current ? undefined : (e instanceof Error ? e.message : String(e));
-      if (erro) toast.error(`Não deu para escrever: ${erro}`);
     } finally {
-      rodando.current = null;
-      setAndamento(null);
+      if (idAtual) rodando.current.delete(idAtual);
       fixar();
       largar();
-      setTurnos((l) => [...l, { pedido: pedido || "(fazer a sua parte)", resposta: anterior?.texto ?? juntar(), erro }].slice(-12));
-      requestAnimationFrame(() => campo.current?.focus());
     }
+    return { texto: anterior?.texto ?? juntar(), erro };
+  };
+
+  const enviar = async () => {
+    if (rodando.current.size || lote) return;
+    if (!isDesktop()) { toast.info("O modo chat escreve com o Claude do Mac: abra o documento no app Infopro Hub."); return; }
+    const pedido = texto.trim();
+    const fila = escolhidasOrdem.length ? escolhidasOrdem : [null];
+    if (!pedido && !escolhidasOrdem.length) return;
+    setTexto("");
+    parou.current = false;
+    const { regiao, selecao, cursor } = regiaoInicial(editor);
+    const doc = editor.state.doc;
+    const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
+    const { texto: resposta, erro } = await trabalhar({ regiao, selecao, documento, pedido, proximaHeadline: proximoNumeroHeadline(editor.getHTML()), fila });
+    if (erro) toast.error(`Não deu para escrever: ${erro}`);
+    setAndamento(null);
+    setTurnos((l) => [...l, { pedido: pedido || "(fazer a sua parte)", resposta, erro }].slice(-12));
+    requestAnimationFrame(() => campo.current?.focus());
+  };
+
+  // ---------------------------------------------------------------- gerar todos os roteiros (19/10, opção 1)
+  const [vazios, setVazios] = useState<RoteiroVazio[]>([]);
+  const [lote, setLote] = useState<{ total: number; feitos: number; agora: string[] } | null>(null);
+  useEffect(() => {
+    if (!aberto) return;
+    const contar = () => setVazios(roteirosVazios(editor));
+    contar();
+    editor.on("update", contar);
+    return () => { editor.off("update", contar); };
+  }, [aberto, editor]);
+
+  const gerarTodos = async () => {
+    if (rodando.current.size || lote) return;
+    if (!isDesktop()) { toast.info("Gerar os roteiros usa o Claude do Mac: abra o documento no app Infopro Hub."); return; }
+    const etapasRoteiro = (escolhidasOrdem.length ? escolhidasOrdem : etapas).filter((e) => !/headline/i.test(e.nome));
+    if (!etapasRoteiro.length) { toast.info("Escolha quem escreve (Junior, e o Elias para revisar)."); return; }
+    const alvos = roteirosVazios(editor);
+    if (!alvos.length) return;
+    parou.current = false;
+    setLote({ total: alvos.length, feitos: 0, agora: [] });
+    // Cada alvo vira uma região já agora (elas andam juntas conforme os outros escrevem).
+    const tarefas = alvos.map((a) => ({ ...a, regiao: { from: a.depois, to: a.depois, original: editor.state.doc.slice(a.depois, a.depois), inline: false } as Regiao }));
+    const seguirTodas = tarefas.map((t) => seguirRegiao(editor, t.regiao));
+    let proxima = 0, falhas = 0;
+    const mudarAgora = (f: (l: string[]) => string[]) => setLote((l) => (l ? { ...l, agora: f(l.agora) } : l));
+    const trabalhador = async () => {
+      while (proxima < tarefas.length && !parou.current) {
+        const t = tarefas[proxima++];
+        const rotulo = `Roteiro ${String(t.numero).padStart(2, "0")}`;
+        mudarAgora((l) => [...l, rotulo]);
+        const referencia = t.link ? await transcricaoDaReferencia(t.link) : null;
+        const pedido = [
+          `Escreva o roteiro completo da headline do ${rotulo}: "${t.headline}".`,
+          "A headline já está no documento: NÃO escreva a headline de novo nem um título; comece direto na fala do roteiro.",
+          referencia ? `Vídeo de referência (deu certo; aproveite a estrutura e o que funcionou, sem copiar):\n"""\n${referencia.slice(0, 5000)}\n"""` : "",
+        ].filter(Boolean).join("\n\n");
+        const doc = editor.state.doc;
+        const documento = `${doc.textBetween(0, t.regiao.from, "\n")}\n[CURSOR]\n${doc.textBetween(t.regiao.from, doc.content.size, "\n")}`;
+        const r = await trabalhar({ regiao: t.regiao, selecao: null, documento, pedido, proximaHeadline: t.numero, fila: etapasRoteiro,
+          aoAndar: () => undefined });
+        if (r.erro) falhas++;
+        mudarAgora((l) => l.filter((x) => x !== rotulo));
+        setLote((l) => (l ? { ...l, feitos: l.feitos + 1 } : l));
+      }
+    };
+    await Promise.all([trabalhador(), trabalhador()]);
+    seguirTodas.forEach((f) => f());
+    setLote(null);
+    if (falhas) toast.error(`${falhas} roteiro(s) não saíram; rode "Gerar todos" de novo para tentar só os que faltam.`);
+    else if (!parou.current) toast.success("Roteiros prontos. Confira cada um com o On/Off da revisão.");
   };
 
   const parar = () => {
     parou.current = true;
-    if (rodando.current) void pararClaude(rodando.current);
+    for (const id of rodando.current) void pararClaude(id);
   };
 
   // On/Off da revisão: troca no documento o texto de antes pelo do revisor (e volta).
@@ -374,7 +488,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
       onDispensar={(id) => guardarRevisoes((l) => l.filter((r) => r.id !== id))} />
   );
   if (!aberto) return revisao;
-  const escrevendo = !!andamento;
+  const escrevendo = !!andamento || !!lote;
   const placeholder = escolhidasOrdem.length
     ? `Pedir para ${escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}… (vazio = fazer a sua parte com o que está no documento)`
     : "Pedir ao Claude… ele escreve onde está o cursor";
@@ -468,6 +582,25 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           </button>
         </div>
 
+        {(vazios.length >= 2 || lote) && (
+          <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
+            {lote ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                <span className="flex-1">Gerando roteiros: <b>{lote.feitos} de {lote.total}</b> prontos{lote.agora.length ? ` · agora: ${lote.agora.join(", ")}` : ""}</span>
+                <button type="button" onClick={parar} className="rounded-md border px-2 py-0.5 hover:bg-muted">Parar</button>
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="flex-1">{vazios.length} roteiros ainda sem texto neste documento{cerebro ? ` · para ${cerebro.nome}` : ""}</span>
+                <button type="button" onClick={() => void gerarTodos()} className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90">
+                  Gerar todos ({vazios.length})
+                </button>
+              </>
+            )}
+          </div>
+        )}
         {selecionado && (
           <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">
             <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
