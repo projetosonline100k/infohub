@@ -43,6 +43,9 @@ interface WorkspaceTabsContextValue {
   // Guia nova (Painel) logo depois de `tabId`; devolve a guia criada.
   novaGuiaADireita: (tabId: string) => WorkspaceTab;
   fecharOutras: (id: string) => void;
+  // Guia NOVA com `path`, logo depois da ativa, e já ativa (⌘T, escolha no ⌘K — 19/10).
+  // Quem chama navega para `path`.
+  abrirNovaGuia: (path: string, title?: string) => WorkspaceTab;
   // Abre `path` ao lado da guia ativa (tela dividida); devolve a guia aberta.
   abrirAoLado: (path: string, title?: string) => WorkspaceTab;
 }
@@ -234,12 +237,29 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     closeTab(tab.id);
   };
 
+  const abrirNovaGuia = (path: string, title = titleForPath(path)): WorkspaceTab => {
+    const nova = { id: `${path}-${Date.now()}`, path, title };
+    setTabs((current) => {
+      const i = current.findIndex((t) => t.id === activeIdRef.current);
+      const next = [...current];
+      next.splice(i < 0 ? next.length : i + 1, 0, nova);
+      return next;
+    });
+    setActiveId(nova.id);
+    return nova;
+  };
+
   const value = useMemo(() => ({
     tabs, activeId, openTab, syncPath, closeTab, reorderTabs, detachTab,
     divisao, larguras, moverDivisoria, igualarLarguras, dividir, tirarDaDivisao, desfazerDivisao, focarGuia,
-    novaGuiaADireita, fecharOutras, abrirAoLado,
+    novaGuiaADireita, fecharOutras, abrirAoLado, abrirNovaGuia,
   }), [tabs, activeId, divisao, larguras]);
   return <WorkspaceTabsContext.Provider value={value}>{children}</WorkspaceTabsContext.Provider>;
+}
+
+/** Igual ao useWorkspaceTabs, mas devolve null fora do provider (ex.: busca usada fora do workspace). */
+export function useWorkspaceTabsOpcional() {
+  return useContext(WorkspaceTabsContext);
 }
 
 export function useWorkspaceTabs() {
@@ -256,7 +276,7 @@ interface Arrasto { id: string; inicioX: number; inicioY: number; x: number; y: 
 
 export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => void }) {
   const {
-    tabs, activeId, closeTab, reorderTabs, detachTab, divisao, dividir, tirarDaDivisao, desfazerDivisao, novaGuiaADireita, fecharOutras,
+    tabs, activeId, closeTab, reorderTabs, detachTab, divisao, dividir, tirarDaDivisao, desfazerDivisao, novaGuiaADireita, fecharOutras, abrirNovaGuia,
   } = useWorkspaceTabs();
   const navRef = useRef<HTMLElement>(null);
   const tabRefs = useRef(new Map<string, HTMLDivElement>());
@@ -282,6 +302,19 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [tabs, activeId, onNavigate]);
+
+  // ⌘T: guia nova no Painel, como no navegador (19/10).
+  const abrirNovaGuiaRef = useRef(abrirNovaGuia);
+  abrirNovaGuiaRef.current = abrirNovaGuia;
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "t") return;
+      e.preventDefault();
+      onNavigate(abrirNovaGuiaRef.current("/").path);
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [onNavigate]);
 
   const fallbackDe = (id: string) => {
     const index = tabs.findIndex((tab) => tab.id === id);
