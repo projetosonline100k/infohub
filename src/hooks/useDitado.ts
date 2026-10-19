@@ -31,6 +31,12 @@ function bip(freq: number) {
   } catch { /* sem áudio */ }
 }
 
+// Registro dos passos (~/.infopro-hub/ditado.log, junto com os da tecla): id da janela, para
+// ver se duas cópias do Atlas estão agindo, e o tempo de cada etapa.
+const ID_JANELA = Math.random().toString(36).slice(2, 6);
+const log = (evento: string, detalhe = "") =>
+  void import("@tauri-apps/api/core").then(({ invoke }) => invoke("ditado_registrar", { evento, detalhe: `[${ID_JANELA}] ${detalhe}` })).catch(() => {});
+
 // Uma gravação por vez no app inteiro, mesmo que o hook exista em mais de um lugar.
 let gravandoAgora = false;
 
@@ -44,16 +50,22 @@ export function useDitado(ativo: boolean): EstadoVoz {
   const processar = useCallback(async (audio: Blob) => {
     ocupado.current = true;
     setEstado("entendendo");
+    const t0 = performance.now();
+    const ms = () => `${Math.round(performance.now() - t0)}ms`;
+    log("processar", `${Math.round(audio.size / 1024)}KB`);
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       const extensao = audio.type.includes("webm") ? "webm" : "m4a";
       const fala = (await invoke<string>("voz_transcrever", { base64: await paraBase64(audio), extensao })).trim();
+      log("transcreveu", `${ms()} ${fala.split(/\s+/).length} palavras: ${fala.slice(0, 60)}`);
       if (fala.replace(/[^\p{L}\p{N}]/gu, "").length < 2) { toast("Não entendi o ditado. Pode repetir?"); return; }
-      // Fala curta (até ~12 palavras) não precisa organizar: cola na hora.
-      const curta = fala.split(/\s+/).length <= 12;
+      // Fala curta (até ~25 palavras) não precisa organizar: o Whisper já pontua; cola na hora.
+      const curta = fala.split(/\s+/).length <= 25;
       if (!curta) setEstado("pensando");
       const texto = curta ? fala : (await invoke<string>("ditado_organizar", { texto: fala })).trim() || fala;
+      if (!curta) log("organizou", ms());
       const colou = await invoke<boolean>("ditado_colar", { texto });
+      log("colou", `${ms()} colou=${colou}`);
       bip(660);
       if (colou) toast.success("Texto colado ✓ (também está copiado)", { duration: 2500 });
       else toast("Texto copiado: cole com ⌘V. Para colar sozinho, libere o Infopro em Ajustes → Privacidade → Acessibilidade.", { duration: 7000 });
@@ -67,6 +79,7 @@ export function useDitado(ativo: boolean): EstadoVoz {
 
   const ocupado = useRef(false);   // transcrevendo/organizando: não começa outra gravação
   const comecar = useCallback(async () => {
+    log("recebeu-apertado", `apertado=${apertado.current} ocupado=${ocupado.current} gravando=${gravandoAgora}`);
     if (apertado.current || ocupado.current || gravandoAgora) return;
     apertado.current = true;
     gravandoAgora = true;
@@ -94,6 +107,7 @@ export function useDitado(ativo: boolean): EstadoVoz {
       pararMedidor();
       stream.getTracks().forEach((t) => t.stop());
       const duracao = Date.now() - inicio.current;
+      log("parou", `${duracao}ms cancelado=${cancelado.current}`);
       if (cancelado.current || duracao < 600 || !partes.length) { setEstado(null); return; }   // virou atalho ou foi sem querer
       void processar(new Blob(partes, { type: rec.mimeType || "audio/mp4" }));
     };

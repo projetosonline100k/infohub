@@ -216,6 +216,13 @@ pub fn iniciar(app: AppHandle) {
     });
 }
 
+/// Passos do lado do Atlas (gravou, transcreveu, organizou, colou) no mesmo registro,
+/// com o tempo de cada um — para achar repetição e demora.
+#[tauri::command]
+pub fn ditado_registrar(evento: String, detalhe: String) {
+    registrar(&format!("atlas:{evento}"), &detalhe);
+}
+
 /// O Claude Code que vem com o app do Claude (a pasta muda a cada atualização).
 fn claude_bin() -> Option<std::path::PathBuf> {
     let base = std::path::PathBuf::from(std::env::var_os("HOME")?).join("Library/Application Support/Claude/claude-code");
