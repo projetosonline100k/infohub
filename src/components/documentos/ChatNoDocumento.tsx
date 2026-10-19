@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, BookOpen, Check, Loader2, Quote, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, Check, Loader2, Quote, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
-import { CerebroEsteira } from "@/components/empresa/KanbanEsteira";
+import { CerebroEsteira, CriteriosEtapa } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -221,6 +221,17 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const { esc, membros, skills, setEsc } = useEscritorio(clienteId, aberto);
   // 19/10 (Davi: "aqui mesmo, quero conseguir subir mais cérebros"): a mesma tela de cérebro da esteira.
   const [cerebrosAbertos, setCerebrosAbertos] = useState(false);
+  // 19/10 (Davi: "preciso conseguir mudar as configurações do Elias e dos outros, hoje só ativo ou
+  // desativo"): a engrenagem de cada um abre os critérios, formatos e skills dele (os mesmos da esteira).
+  const [configDe, setConfigDe] = useState<number | null>(null);
+  const salvarEtapa = async (i: number, patch: Partial<Etapa>) => {
+    if (!esc) return false;
+    const nova = esc.esteira.map((e, k) => (k === i ? { ...e, ...patch } : e));
+    const { error } = await db.from("setores").update({ esteira: nova }).eq("id", esc.id);
+    if (error) { toast.error("Não consegui salvar"); return false; }
+    setEsc({ ...esc, esteira: nova });
+    return true;
+  };
   const salvarCerebros = async (lista: CerebroEscrita[]) => {
     if (!esc) return false;
     const { error } = await db.from("setores").update({ cerebros: lista }).eq("id", esc.id);
@@ -512,6 +523,13 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   return (
     <>
       {revisao}
+      {configDe !== null && esc && esc.esteira[configDe] && (
+        <div className="fixed inset-0 z-[70]" onKeyDown={(e) => e.stopPropagation()}>
+          <CriteriosEtapa etapa={esc.esteira[configDe] as Parameters<typeof CriteriosEtapa>[0]["etapa"]}
+            quem={membros[esc.esteira[configDe].membro_id]?.nome ?? ""} clienteId={esc.cliente_id}
+            onFechar={() => setConfigDe(null)} onMudar={(patch) => salvarEtapa(configDe, patch as Partial<Etapa>)} />
+        </div>
+      )}
       {cerebrosAbertos && esc && (
         <div className="fixed inset-0 z-[70]" onKeyDown={(e) => e.stopPropagation()}>
           <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]}
@@ -530,8 +548,8 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           {etapas.map((e) => {
             const on = escolhidos.includes(e.membro_id);
             return (
+              <span key={e.membro_id} className="flex items-center">
               <button
-                key={e.membro_id}
                 type="button"
                 disabled={escrevendo}
                 onClick={() => alternar(e.membro_id)}
@@ -546,6 +564,11 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
                 {e.membro!.nome} <span className="opacity-60">· {e.nome}</span>
                 {on && <Check className="h-3 w-3" />}
               </button>
+              <button type="button" onClick={() => setConfigDe(e.i)} title={`Configurar ${e.membro!.nome}: critérios, formatos e skills`}
+                className="-ml-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <Settings2 className="h-3.5 w-3.5" />
+              </button>
+              </span>
             );
           })}
 

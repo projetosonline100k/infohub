@@ -79,16 +79,35 @@ export function acharTrecho(doc: PMNode, linhas: string[], exato: boolean): { fr
     const a = doc.resolve(b0.pos + 1), b = doc.resolve(b1.pos + 1);
     return { from: a.depth ? a.before(1) : b0.pos, to: b.depth ? b.after(1) : b1.pos + b1.tamanho };
   };
+  // 1º: o trecho exato em qualquer lugar do documento (19/10: vários roteiros começam e terminam com
+  // as mesmas frases — "Salva esse vídeo agora…", "E se você deseja entender…" — e a busca "parecida"
+  // casava o começo de um com o fim de outro; o Off trocava vários roteiros de uma vez).
+  for (const p of inicioBloco) {
+    if (bate(p, alvo) && fimBloco.has(p + alvo.length - 1)) return faixa(p, p + alvo.length - 1);
+  }
+  if (exato) return null;
+  // 2º: parecido de verdade — mesmo começo e fim, tamanho parecido e a maior parte das palavras iguais.
+  // Palavras na mesma ordem (maior subsequência comum): roteiros do mesmo tema não passam por iguais.
+  const emOrdem = (a: string[], b: string[]) => {
+    let ant = new Array(b.length + 1).fill(0);
+    for (let i = 1; i <= a.length; i++) {
+      const at = new Array(b.length + 1).fill(0);
+      for (let j = 1; j <= b.length; j++) at[j] = a[i - 1] === b[j - 1] ? ant[j - 1] + 1 : Math.max(ant[j], at[j - 1]);
+      ant = at;
+    }
+    return ant[b.length];
+  };
+  let melhor: { p: number; q: number; nota: number } | null = null;
   for (const p of inicioBloco) {
     if (!bate(p, alvo.slice(0, n))) continue;
-    if (bate(p, alvo) && fimBloco.has(p + alvo.length - 1)) return faixa(p, p + alvo.length - 1);
-    if (exato) continue;
-    // Começo e fim batendo, com tamanho parecido (o meio pode ter sido editado).
-    for (let q = p + Math.floor(alvo.length * 0.5); q < Math.min(W.length, p + alvo.length * 2); q++) {
-      if (fimBloco.has(q) && bate(q - n + 1, alvo.slice(-n))) return faixa(p, q);
+    for (let q = p + Math.floor(alvo.length * 0.7); q < Math.min(W.length, p + Math.ceil(alvo.length * 1.3)); q++) {
+      if (!fimBloco.has(q) || !bate(q - n + 1, alvo.slice(-n))) continue;
+      const trecho = W.slice(p, q + 1);
+      const nota = emOrdem(trecho, alvo) / Math.max(trecho.length, alvo.length);
+      if (nota >= 0.75 && (!melhor || nota > melhor.nota)) melhor = { p, q, nota };
     }
   }
-  return null;
+  return melhor ? faixa(melhor.p, melhor.q) : null;
 }
 
 /** Troca no documento o texto destas linhas pelo texto `novo` (um passo do ⌘Z). false = não achou. */
