@@ -114,13 +114,16 @@ export function useAssistantVoz(userId: string | undefined): EstadoVoz {
   // Atalho global (só chega na janela do Atlas).
   useEffect(() => {
     if (!isDesktop()) return;
-    let desligar = () => {};
+    // Desfeito antes de o listen terminar: solta na hora (senão o ouvinte antigo grava junto).
+    let vivo = true;
+    const soltar: (() => void)[] = [];
     void import("@tauri-apps/api/event").then(async ({ listen }) => {
-      const a = await listen("voz-apertado", () => void comecar());
-      const b = await listen("voz-solto", () => terminar());
-      desligar = () => { a(); b(); };
+      for (const [evento, f] of [["voz-apertado", () => void comecar()], ["voz-solto", () => terminar()]] as const) {
+        const u = await listen(evento, f);
+        if (vivo) soltar.push(u); else u();
+      }
     });
-    return () => desligar();
+    return () => { vivo = false; soltar.forEach((u) => u()); terminar(); };
   }, [comecar, terminar]);
 
   // Resposta do Claude a uma fala: lê o resumo em voz alta.

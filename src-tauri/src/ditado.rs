@@ -30,6 +30,88 @@ extern "C" {
 extern "C" {
     fn AXIsProcessTrusted() -> bool;
 }
+#[link(name = "CoreAudio", kind = "framework")]
+extern "C" {
+    fn AudioObjectGetPropertyData(objeto: u32, endereco: *const EnderecoAudio, qualificador_tam: u32, qualificador: *const std::ffi::c_void,
+                                  tamanho: *mut u32, dados: *mut std::ffi::c_void) -> i32;
+}
+extern "C" {
+    fn dlopen(caminho: *const std::ffi::c_char, modo: i32) -> *mut std::ffi::c_void;
+    fn dlsym(biblioteca: *mut std::ffi::c_void, nome: *const std::ffi::c_char) -> *mut std::ffi::c_void;
+}
+#[repr(C)]
+struct EnderecoAudio {
+    seletor: u32,
+    escopo: u32,
+    elemento: u32,
+}
+
+// ---------------------------------------------------------------- Mídia
+// 18/10 (Davi): "quando eu ativar o modo para gravar minha voz, quero que tudo que esteja
+// tocando (som, música, vídeo) pause, e que volte quando eu soltar". Pausa com o comando de
+// mídia do sistema (o mesmo da tecla ⏯: Spotify, Música, YouTube no navegador…) — só se havia
+// som saindo do Mac; ao soltar, dá play só no que ele mesmo pausou.
+static PAUSOU: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+const fn quatro(c: &[u8; 4]) -> u32 {
+    u32::from_be_bytes(*c)
+}
+
+/// A saída de som do Mac está tocando alguma coisa agora?
+fn som_tocando() -> bool {
+    unsafe {
+        let mut dispositivo: u32 = 0;
+        let mut tam = std::mem::size_of::<u32>() as u32;
+        let saida = EnderecoAudio { seletor: quatro(b"dOut"), escopo: quatro(b"glob"), elemento: 0 };
+        if AudioObjectGetPropertyData(1, &saida, 0, std::ptr::null(), &mut tam, &mut dispositivo as *mut u32 as *mut _) != 0 || dispositivo == 0 {
+            return false;
+        }
+        let mut rodando: u32 = 0;
+        let mut tam = std::mem::size_of::<u32>() as u32;
+        let tocando = EnderecoAudio { seletor: quatro(b"gone"), escopo: quatro(b"glob"), elemento: 0 };
+        AudioObjectGetPropertyData(dispositivo, &tocando, 0, std::ptr::null(), &mut tam, &mut rodando as *mut u32 as *mut _) == 0 && rodando != 0
+    }
+}
+
+/// Comando de mídia do sistema (MediaRemote): 0 = play, 1 = pause.
+fn comando_midia(comando: u32) -> bool {
+    type Enviar = unsafe extern "C" fn(u32, *const std::ffi::c_void) -> bool;
+    unsafe {
+        let lib = dlopen(c"/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote".as_ptr(), 1);
+        if lib.is_null() {
+            return false;
+        }
+        let f = dlsym(lib, c"MRMediaRemoteSendCommand".as_ptr());
+        if f.is_null() {
+            return false;
+        }
+        let enviar: Enviar = std::mem::transmute(f);
+        enviar(comando, std::ptr::null())
+    }
+}
+
+/// Começou a gravar: pausa o que estiver tocando.
+pub fn pausar_midia() {
+    if PAUSOU.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let tocava = som_tocando();
+    let pausou = tocava && comando_midia(1);
+    PAUSOU.store(pausou, std::sync::atomic::Ordering::Relaxed);
+    registrar("midia", &format!("tocava={tocava} pausou={pausou}"));
+}
+
+/// Parou de gravar: volta o que ele pausou (e só isso).
+pub fn retomar_midia() {
+    if PAUSOU.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        std::thread::spawn(|| {
+            std::thread::sleep(Duration::from_millis(150));
+            let ok = comando_midia(0);
+            registrar("midia", &format!("retomou={ok}"));
+        });
+    }
+}
+
 #[link(name = "CoreFoundation", kind = "framework")]
 extern "C" {
     fn CFRelease(objeto: *const std::ffi::c_void);
@@ -54,7 +136,7 @@ const MAXIMO: Duration = Duration::from_secs(120);   // nenhuma gravação passa
 
 /// Registro dos disparos (18/10: "ele fica ativando sozinho") em ~/.infopro-hub/ditado.log,
 /// para descobrir o que acionou: hora, evento e o estado do teclado.
-fn registrar(evento: &str, detalhe: &str) {
+pub(crate) fn registrar(evento: &str, detalhe: &str) {
     use std::io::Write;
     let Some(home) = std::env::var_os("HOME") else { return };
     let arquivo = std::path::PathBuf::from(home).join(".infopro-hub/ditado.log");
@@ -94,6 +176,7 @@ pub fn iniciar(app: AppHandle) {
             if !cmd_fisico() || surdo || estourou {
                 if gravando {
                     registrar("solto", if estourou { "limite de 2 min" } else if surdo { "colando" } else { "soltou o cmd" });
+                    retomar_midia();
                     let _ = app.emit_to("jarvis", EVENTO_SOLTO, ());
                 }
                 if estourou {
@@ -117,6 +200,7 @@ pub fn iniciar(app: AppHandle) {
                 if gravando {
                     gravando = false;
                     registrar("cancelado", &format!("flags={flags:#x} outra_tecla={}", outra_coisa_apertada()));
+                    retomar_midia();
                     let _ = app.emit_to("jarvis", EVENTO_CANCELADO, ());
                 }
             }
@@ -125,6 +209,7 @@ pub fn iniciar(app: AppHandle) {
                 gravando_desde = Instant::now();
                 registrar("apertado", &format!("flags={flags:#x} cmd_esq={} cmd_dir={}",
                     unsafe { CGEventSourceKeyState(HID, 55) }, unsafe { CGEventSourceKeyState(HID, 54) }));
+                pausar_midia();
                 let _ = app.emit_to("jarvis", EVENTO_APERTADO, ());
             }
         }

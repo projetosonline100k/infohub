@@ -31,6 +31,9 @@ function bip(freq: number) {
   } catch { /* sem áudio */ }
 }
 
+// Uma gravação por vez no app inteiro, mesmo que o hook exista em mais de um lugar.
+let gravandoAgora = false;
+
 export function useDitado(ativo: boolean): EstadoVoz {
   const [estado, setEstado] = useState<EstadoVoz>(null);
   const apertado = useRef(false);
@@ -64,8 +67,9 @@ export function useDitado(ativo: boolean): EstadoVoz {
 
   const ocupado = useRef(false);   // transcrevendo/organizando: não começa outra gravação
   const comecar = useCallback(async () => {
-    if (apertado.current || ocupado.current) return;
+    if (apertado.current || ocupado.current || gravandoAgora) return;
     apertado.current = true;
+    gravandoAgora = true;
     cancelado.current = false;
     void pararFala();
     // Carrega o Whisper enquanto ele fala (se já estiver carregado, não custa nada).
@@ -75,16 +79,18 @@ export function useDitado(ativo: boolean): EstadoVoz {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       apertado.current = false;
+      gravandoAgora = false;
       toast.error("O Atlas não tem acesso ao microfone.");
       return;
     }
-    if (!apertado.current) { stream.getTracks().forEach((t) => t.stop()); return; }   // já soltou
+    if (!apertado.current) { gravandoAgora = false; stream.getTracks().forEach((t) => t.stop()); return; }   // já soltou
     const tipo = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t));
     const rec = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined);
     const partes: Blob[] = [];
     rec.ondataavailable = (e) => { if (e.data.size) partes.push(e.data); };
     const pararMedidor = medirAudio(stream);   // a órbita da orbe vibra com a voz (OndaVoz)
     rec.onstop = () => {
+      gravandoAgora = false;
       pararMedidor();
       stream.getTracks().forEach((t) => t.stop());
       const duracao = Date.now() - inicio.current;
@@ -111,14 +117,17 @@ export function useDitado(ativo: boolean): EstadoVoz {
 
   useEffect(() => {
     if (!ativo || !isDesktop()) return;
-    let desligar = () => {};
+    // 18/10: se o efeito era desfeito antes de o listen terminar (recarga do código, StrictMode),
+    // o ouvinte antigo ficava vivo e gravava junto ("solto e ele continua captando").
+    let vivo = true;
+    const soltar: (() => void)[] = [];
     void import("@tauri-apps/api/event").then(async ({ listen }) => {
-      const a = await listen("ditado-apertado", () => void comecar());
-      const b = await listen("ditado-solto", () => parar(false));
-      const c = await listen("ditado-cancelado", () => parar(true));
-      desligar = () => { a(); b(); c(); };
+      for (const [evento, f] of [["ditado-apertado", () => void comecar()], ["ditado-solto", () => parar(false)], ["ditado-cancelado", () => parar(true)]] as const) {
+        const u = await listen(evento, f);
+        if (vivo) soltar.push(u); else u();
+      }
     });
-    return () => desligar();
+    return () => { vivo = false; soltar.forEach((u) => u()); parar(true); };
   }, [ativo, comecar, parar]);
 
   return estado;

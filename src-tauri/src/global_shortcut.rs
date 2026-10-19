@@ -68,6 +68,8 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
                     mostrar_e_focar_jarvis(&app_para_handler, EVENTO_ABRIR_ENCERRAR_DIA);
                 } else if recebido == &atalho_voz {
                     let evento = if apertou { EVENTO_VOZ_APERTADO } else { EVENTO_VOZ_SOLTO };
+                    // Gravando a voz: pausa o que estiver tocando e volta ao soltar (ditado.rs).
+                    if apertou { crate::ditado::pausar_midia() } else { crate::ditado::retomar_midia() }
                     let _ = app_para_handler.emit_to("jarvis", evento, ());
                 } else if recebido == &atalho_conversa {
                     let evento = if apertou { EVENTO_ATALHO_J_APERTADO } else { EVENTO_ATALHO_J_SOLTO };
