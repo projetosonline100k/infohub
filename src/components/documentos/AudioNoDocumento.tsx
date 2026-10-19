@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer, type Editor, type NodeViewProps } from "@tiptap/react";
-import { Loader2, Mic, Pause, Play, Square, Trash2 } from "lucide-react";
+import { ChevronDown, Download, FileText, Loader2, Mic, Pause, Play, Square, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { isDesktop } from "@/lib/platform";
 
 // Áudio gravado dentro do documento (18/10/2026, Davi: "em vez de só ficar piscando um |, quero
 // ao lado um microfone; ao clicar, gravar um áudio; ouvir, acelerar, clicar na parte específica").
@@ -12,6 +13,16 @@ import { cn } from "@/lib/utils";
 // web e no app, para qualquer pessoa. O microfone aparece ao lado do cursor numa linha vazia; o
 // áudio vai para o Storage (audios-documentos) e o bloco guarda a URL no próprio documento.
 // (Blocos antigos com trechos ainda mostram o texto clicável.)
+// 19/10, depois (Davi: "pode colocar a opção de baixar a transcrição, ou ver a transcrição do áudio"):
+// a transcrição volta, mas só quando ele pede (botão "Transcrição"), pelo Whisper do próprio Mac,
+// de graça e sem mandar o áudio para fora; dá para ler, clicar no trecho e baixar em .txt.
+
+const blobParaBase64 = (b: Blob) => new Promise<string>((ok, erro) => {
+  const r = new FileReader();
+  r.onload = () => ok(String(r.result).split(",")[1] ?? "");
+  r.onerror = () => erro(r.error);
+  r.readAsDataURL(b);
+});
 
 export interface TrechoAudio { inicio: number; fim: number; texto: string }
 
@@ -48,7 +59,7 @@ export const AudioGravado = Node.create({
 const VELOCIDADES = [1, 1.25, 1.5, 2];
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-function PlayerAudio({ node, deleteNode }: NodeViewProps) {
+function PlayerAudio({ node, deleteNode, updateAttributes }: NodeViewProps) {
   const audio = useRef<HTMLAudioElement>(null);
   const [tocando, setTocando] = useState(false);
   const [agora, setAgora] = useState(0);
@@ -56,6 +67,34 @@ function PlayerAudio({ node, deleteNode }: NodeViewProps) {
   const [vel, setVel] = useState(1);
   const trechos = (node.attrs.trechos ?? []) as TrechoAudio[];
   const estado = node.attrs.estado as string;
+  const [verTexto, setVerTexto] = useState(false);
+  const [transcrevendo, setTranscrevendo] = useState(false);
+
+  const transcrever = async () => {
+    if (trechos.length) { setVerTexto((v) => !v); return; }
+    if (!isDesktop()) { toast.info("A transcrição roda no app do Mac (de graça, sem mandar o áudio para fora). Abra este documento no app."); return; }
+    setTranscrevendo(true);
+    try {
+      const blob = await (await fetch(node.attrs.src)).blob();
+      const ext = (node.attrs.src as string).split("?")[0].split(".").pop()?.slice(0, 5) || "m4a";
+      const { invoke } = await import("@tauri-apps/api/core");
+      const r = await invoke<{ trechos?: TrechoAudio[] }>("voz_transcrever_trechos", { base64: await blobParaBase64(blob), extensao: ext });
+      if (!r.trechos?.length) { toast.info("Não ouvi fala neste áudio."); return; }
+      updateAttributes({ trechos: r.trechos });
+      setVerTexto(true);
+    } catch (e) {
+      toast.error(`Não consegui transcrever: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setTranscrevendo(false);
+    }
+  };
+  const baixar = () => {
+    const texto = trechos.map((t) => `[${mmss(t.inicio)}] ${t.texto}`).join("\n");
+    const url = URL.createObjectURL(new Blob([texto], { type: "text/plain;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = `transcricao-${new Date().toISOString().slice(0, 10)}.txt`; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const pular = (t: number, tocar = true) => {
     const a = audio.current;
@@ -97,12 +136,20 @@ function PlayerAudio({ node, deleteNode }: NodeViewProps) {
                 setVel(prox);
                 if (audio.current) audio.current.playbackRate = prox;
               }} className="w-12 shrink-0 rounded-md border px-1.5 py-1 text-xs font-semibold hover:bg-muted">{String(vel).replace(".", ",")}x</button>
+              <button type="button" onClick={() => void transcrever()} disabled={transcrevendo}
+                title={trechos.length ? (verTexto ? "Esconder a transcrição" : "Ver a transcrição") : "Transcrever este áudio (no Mac, de graça)"}
+                className="flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-60">
+                {transcrevendo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                {transcrevendo ? "Transcrevendo…" : "Transcrição"}
+                {trechos.length > 0 && <ChevronDown className={cn("h-3 w-3 transition-transform", verTexto && "rotate-180")} />}
+              </button>
               <button type="button" title="Apagar o áudio" onClick={() => deleteNode()} className="shrink-0 text-muted-foreground hover:text-rose-600">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
-            {trechos.length > 0 && (
-              <p className="mt-2.5 text-[14px] leading-relaxed">
+            {trechos.length > 0 && verTexto && (
+              <div className="mt-2.5">
+              <p className="text-[14px] leading-relaxed">
                 {trechos.map((t, i) => {
                   const ativo = agora >= t.inicio && agora < (trechos[i + 1]?.inicio ?? t.fim + 0.5);
                   return (
@@ -113,6 +160,14 @@ function PlayerAudio({ node, deleteNode }: NodeViewProps) {
                   );
                 })}
               </p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={baixar} className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs hover:bg-muted">
+                  <Download className="h-3.5 w-3.5" />Baixar transcrição (.txt)
+                </button>
+                <button type="button" onClick={() => void navigator.clipboard.writeText(trechos.map((t) => t.texto).join(" ")).then(() => toast.success("Transcrição copiada"))}
+                  className="rounded-md border px-2 py-1 text-xs hover:bg-muted">Copiar</button>
+              </div>
+              </div>
             )}
           </>
         )}
