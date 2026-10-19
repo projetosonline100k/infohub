@@ -95,9 +95,12 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
   }, [porProjeto.length, ajustar]);
 
   // Roda/trackpad: pinça ou ⌘/Ctrl+roda dá zoom no cursor; rolar navega.
+  // 19/10: liga quando o mapa existe de fato — antes rodava só na montagem, quando as atividades
+  // ainda estavam carregando (sem canvas), e a pinça/rolagem nunca chegavam ao mapa.
+  const temMapa = porProjeto.length > 0;
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas || !temMapa) return;
     const aoRolar = (event: WheelEvent) => {
       event.preventDefault();
       const caixa = canvas.getBoundingClientRect();
@@ -129,7 +132,7 @@ export function MapaAtividades({ projetos, atividades, colunasPorCliente, onMove
       canvas.removeEventListener("gesturechange", aoGesto);
       canvas.removeEventListener("gestureend", aoIniciarGesto);
     };
-  }, []);
+  }, [temMapa]);
 
   const zoomBotao = useCallback((fator: number) => {
     const canvas = canvasRef.current;
