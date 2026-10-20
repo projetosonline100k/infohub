@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, ArrowLeft, CheckCheck, Clock3, FileText, Loader2, Mic, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, CheckCheck, Clock3, FileText, Loader2, MessageCircle, Mic, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -122,6 +122,8 @@ function acharConversa(conversas: Conversa[], nome: string, when: string): Conve
 type PropsConversas = {
   /** Qual número: "principal" (padrão) ou "pessoal". */
   conta?: string;
+  /** Tela grande (guia WhatsApp do projeto, ⌘⌥W): igual ao WhatsApp Web — lista sempre à esquerda. */
+  tela?: boolean;
   pedido?: { nome: string; when: string; n: number } | null;
   info?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean }) => React.ReactNode;
   /** Etiquetas ao lado do nome na lista (Precisa responder, Risco de churn…). */
@@ -139,7 +141,7 @@ export function WhatsappConversas(props: PropsConversas = {}) {
   return <ContaWhatsapp.Provider value={props.conta ?? "principal"}><ListaConversas {...props} /></ContaWhatsapp.Provider>;
 }
 
-function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
+function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConversas) {
   const conta = useContext(ContaWhatsapp);
   const chaveAberta = conta === "principal" ? CHAVE_ABERTA : `${CHAVE_ABERTA}:${conta}`;
   const [conversas, setConversas] = useState<Conversa[]>([]);
@@ -207,8 +209,8 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
     <div className="flex h-full flex-col">
       <div className="relative mx-3 mb-2">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa…"
-          className="h-8 w-full rounded-md border border-border bg-background pl-8 pr-2 text-[12px] outline-none focus:border-primary/50" />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar ou começar uma nova conversa"
+          className={cn("w-full rounded-lg bg-muted pl-8 pr-2 outline-none focus:ring-1 focus:ring-emerald-500/40", tela ? "h-9 text-[13px]" : "h-8 text-[12px]")} />
       </div>
       {carregando ? (
         <div className="flex justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
@@ -222,15 +224,16 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
             const naoLida = !c.ultima_de_mim && (!vistas[c.chat_id] || vistas[c.chat_id] < c.ultima_em);
             return (
               <button key={c.chat_id} type="button" onClick={() => { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }}
-                className={cn("flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2 text-left hover:bg-accent/60", aberta?.chat_id === c.chat_id && "bg-accent")}>
-                <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} />
-                <span className="min-w-0 flex-1">
+                className={cn("flex w-full items-center text-left hover:bg-muted/70", tela ? "gap-3 px-3 py-2.5" : "gap-2.5 border-b border-border/60 px-3 py-2",
+                  aberta?.chat_id === c.chat_id && "bg-muted")}>
+                <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} tamanho={tela ? "h-12 w-12" : undefined} />
+                <span className={cn("min-w-0 flex-1", tela && "border-b border-border/50 pb-2.5")}>
                   <span className="flex items-baseline gap-2">
-                    <span className={cn("min-w-0 truncate text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
+                    <span className={cn("min-w-0 truncate", tela ? "text-[15px]" : "text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
                     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                       {/* 19/10 (Davi): etiqueta "Mensagem nova" para o que chegou e ainda não foi aberto. */}
                       {/* 20/10 (Davi): "mesmo quando receber mensagem, identifique se é para mim ou não". */}
-                      {naoLida && (paraODavi(c, ehEquipe)
+                      {naoLida && conta === "principal" && (paraODavi(c, ehEquipe)
                         ? <span className="whitespace-nowrap rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white" title="Conversa privada ou mensagem que fala com você">Mensagem nova · pra você</span>
                         : <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground" title={c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Quem mandou é da equipe" : "Mensagem do grupo que não fala com você (é para o CS)"}>{c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Mensagem nova · equipe" : "Mensagem nova · CS"}</span>)}
                       {etiquetas?.(c)}
@@ -238,8 +241,11 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
                     <span className={cn("shrink-0 text-[10.5px]", naoLida ? "font-semibold text-emerald-600" : "text-muted-foreground")}>{horaCurta(c.ultima_em)}</span>
                   </span>
                   <span className="flex items-center gap-2">
-                    <span className="min-w-0 flex-1 truncate text-[11.5px] text-muted-foreground">{resumo(c)}</span>
-                    {naoLida && <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" aria-label="Não lida" />}
+                    <span className={cn("flex min-w-0 flex-1 items-center gap-1 truncate text-muted-foreground", tela ? "text-[13.5px]" : "text-[11.5px]")}>
+                      {c.ultima_de_mim && <CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-500" />}
+                      <span className="truncate">{resumo(c)}</span>
+                    </span>
+                    {naoLida && <span className={cn("shrink-0 rounded-full bg-emerald-500", tela ? "h-[18px] min-w-[18px]" : "h-2 w-2")} aria-label="Não lida" />}
                   </span>
                 </span>
               </button>
@@ -252,6 +258,22 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
 
   // 20/10 (Davi): "quando abro uma conversa, ele não fecha: fica aberto na lateral o contato" —
   // como no WhatsApp Web, a lista continua à esquerda e a conversa abre do lado.
+  if (tela && !aberta) {
+    return (
+      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-info-conversa" : "jarvis:whatsapp-lista-conversa"} className="h-full">
+        <ResizablePanel defaultSize={34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
+        <ResizableHandle />
+        <ResizablePanel defaultSize={66} minSize={28} className="min-w-0">
+          <div className="flex h-full flex-col items-center justify-center gap-2 border-l bg-muted/40 text-center text-muted-foreground">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600"><MessageCircle className="h-8 w-8" /></span>
+            <p className="text-lg font-light text-foreground">WhatsApp</p>
+            <p className="max-w-xs text-[13px]">Escolha uma conversa na lista para ler e responder.</p>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
+    );
+  }
+
   if (aberta) {
     const chat = <Conversa key={aberta.chat_id} conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
     return (
@@ -414,7 +436,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   let diaAnterior = "";
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-2 pb-2">
+      <div className="flex items-center gap-2 border-b border-border bg-muted/60 px-2 py-1.5">
         <button type="button" onClick={onVoltar} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Voltar às conversas">
           <ArrowLeft className="h-4 w-4" />
         </button>
@@ -425,7 +447,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-muted/30 px-2.5 py-2">
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[#efeae2] px-2.5 py-2 dark:bg-[#0b141a]">
         {carregando ? (
           <div className="flex justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
         ) : mensagens.map((m) => {
@@ -437,7 +459,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
               {separador && <div className="my-2 text-center"><span className="rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground shadow-sm">{dia}</span></div>}
               <div className={cn("flex", m.de_mim ? "justify-end" : "justify-start")}>
                 <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
-                  m.de_mim ? "bg-emerald-100 text-emerald-950 dark:bg-emerald-900/60 dark:text-emerald-50" : "bg-background")}>
+                  m.de_mim ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]")}>
                   {m.eh_grupo && !m.de_mim && <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome ?? "?"}</p>}
                   {m.tipo === "audio" ? (
                     <div className="space-y-1">
@@ -481,7 +503,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
         {aindaPendentes.map((p) => (
           <div key={p.id} className="flex justify-end">
             <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
-              "bg-emerald-100 text-emerald-950 dark:bg-emerald-900/60 dark:text-emerald-50", p.estado === "erro" && "ring-1 ring-rose-400")}>
+              "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]", p.estado === "erro" && "ring-1 ring-rose-400")}>
               {p.tipo === "audio"
                 ? <span className="inline-flex items-center gap-1 text-[11.5px]"><Mic className="h-3 w-3" />Áudio</span>
                 : <p className="whitespace-pre-wrap break-words">{p.texto}</p>}

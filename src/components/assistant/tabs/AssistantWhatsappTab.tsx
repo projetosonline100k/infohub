@@ -97,7 +97,9 @@ function BotaoCopiar({ texto }: { texto: string }) {
 type ModoWhatsapp = "painel" | "conversas" | "dividido";
 
 /** `conta`: qual número (20/10). O "pessoal" do Davi mostra só as conversas (o painel é dos clientes). */
-export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string } = {}) {
+export function AssistantWhatsappTab({ conta = "principal", tela = false }: { conta?: string; tela?: boolean } = {}) {
+  // tela: guia WhatsApp do projeto / ⌘⌥W — ocupa a caixa toda, sem as margens negativas do painel do Atlas.
+  const caixa = tela ? "flex h-full flex-col" : "-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2";
   const etiquetas = useEtiquetas();
   const equipe = useEquipeWhatsapp();
   const ehEquipe = useCallback((nome: string | null) => ehDaEquipe(nome, equipe), [equipe]);
@@ -117,14 +119,14 @@ export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string }
   );
   if (conta !== "principal") {
     return (
-      <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
-        <div className="min-h-0 flex-1"><WhatsappConversas conta={conta} /></div>
+      <div className={caixa}>
+        <div className="min-h-0 flex-1"><WhatsappConversas conta={conta} tela={tela} /></div>
       </div>
     );
   }
   if (modo === "dividido") {
     return (
-      <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
+      <div className={caixa}>
         {seletor}
         {/* 19/10 (Davi): "quero conseguir aumentar ou diminuir a largura do chat ou do painel" —
             arrastar a divisória; a largura fica guardada (autoSaveId). */}
@@ -142,9 +144,9 @@ export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string }
   }
   if (modo === "conversas") {
     return (
-      <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
+      <div className={caixa}>
         {seletor}
-        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} etiquetas={etiquetas} ehEquipe={ehEquipe} /></div>
+        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} etiquetas={etiquetas} ehEquipe={ehEquipe} tela={tela} /></div>
       </div>
     );
   }

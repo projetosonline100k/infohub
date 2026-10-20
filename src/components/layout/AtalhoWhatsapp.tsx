@@ -35,8 +35,8 @@ export function AtalhoWhatsapp({ clienteId }: { clienteId?: string }) {
       <DialogContent className="flex h-[94vh] max-h-[94vh] w-[97vw] max-w-[97vw] flex-col">
         <DialogTitle className="text-sm">{conta === "principal" ? "WhatsApp dos clientes" : "Seu WhatsApp pessoal"}</DialogTitle>
         <DialogDescription className="sr-only">Conversas do WhatsApp (⌘⌥W abre e fecha)</DialogDescription>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card p-4">
-          <div className="h-full overflow-y-auto"><AssistantWhatsappTab key={conta} conta={conta} /></div>
+        <div className="min-h-0 flex-1 overflow-hidden rounded-xl border bg-card pt-2">
+          <AssistantWhatsappTab key={conta} conta={conta} tela />
         </div>
       </DialogContent>
     </Dialog>

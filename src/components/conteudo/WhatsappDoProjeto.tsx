@@ -13,9 +13,8 @@ export function WhatsappDoProjeto({ clienteId }: { clienteId: string }) {
   }, [clienteId]);
   if (!conta) return null;
   return (
-    <div className="flex h-[calc(100vh-190px)] min-h-[480px] flex-col rounded-xl border bg-card p-4">
-      <p className="mb-2 text-sm font-semibold">{conta === "principal" ? "WhatsApp dos clientes" : "Seu WhatsApp pessoal"}</p>
-      <div className="min-h-0 flex-1 overflow-y-auto"><AssistantWhatsappTab key={conta} conta={conta} /></div>
+    <div className="h-[calc(100vh-170px)] min-h-[480px] overflow-hidden rounded-xl border bg-card pt-2">
+      <AssistantWhatsappTab key={conta} conta={conta} tela />
     </div>
   );
 }
