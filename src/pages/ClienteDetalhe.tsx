@@ -46,7 +46,7 @@ interface Produto {
 
 const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm", "cronograma"];
 // 16/10: o Creator (Vertical, Youtube, Brainstorm, Cronograma) virou guias dentro do Escritório.
-const GUIAS_ESCRITORIO = ["visao-geral", ...GUIAS_CREATOR, "conhecimento", "quiz"];
+const GUIAS_ESCRITORIO = ["visao-geral", ...GUIAS_CREATOR, "conhecimento", "quiz", "whatsapp"];
 const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
   if (!id) return {};
   try { return JSON.parse(localStorage.getItem(`projeto-aba:${id}`) || "{}"); } catch { return {}; }
@@ -239,6 +239,7 @@ export default function ClienteDetalhe() {
         { id: "vertical", label: "Vertical" }, { id: "youtube", label: "Youtube" },
         { id: "brainstorm", label: "Brainstorm" }, { id: "cronograma", label: "Cronograma" },
         { id: "conhecimento", label: "Fonte de conhecimento" }, { id: "quiz", label: "Quiz" },
+        { id: "whatsapp", label: "WhatsApp" },
       ].map((g) => g.id === "informacoes"
         ? { ...g, ativa: abaAtiva === "informacoes", ir: () => setAbaAtiva("informacoes") }
         : { ...g, ativa: abaAtiva === "conteudo" && subAbaConteudo === g.id, ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo(g.id); } })

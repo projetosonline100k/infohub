@@ -1,0 +1,21 @@
+import { useEffect, useState } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+import { AssistantWhatsappTab } from "@/components/assistant/tabs/AssistantWhatsappTab";
+
+// Guia "WhatsApp" do projeto (20/10, Davi): o número daquele projeto (clientes.whatsapp_conta;
+// sem número próprio, o principal da Core/CS), igual ao que abre pela Shirley ou ⌘⌥W.
+export function WhatsappDoProjeto({ clienteId }: { clienteId: string }) {
+  const [conta, setConta] = useState<string | null>(null);
+  useEffect(() => {
+    void (supabase as unknown as SupabaseClient).from("clientes").select("whatsapp_conta").eq("id", clienteId).maybeSingle()
+      .then(({ data }) => setConta((data as { whatsapp_conta?: string | null } | null)?.whatsapp_conta || "principal"));
+  }, [clienteId]);
+  if (!conta) return null;
+  return (
+    <div className="flex h-[calc(100vh-190px)] min-h-[480px] flex-col rounded-xl border bg-card p-4">
+      <p className="mb-2 text-sm font-semibold">{conta === "principal" ? "WhatsApp dos clientes" : "Seu WhatsApp pessoal"}</p>
+      <div className="min-h-0 flex-1 overflow-y-auto"><AssistantWhatsappTab key={conta} conta={conta} /></div>
+    </div>
+  );
+}
