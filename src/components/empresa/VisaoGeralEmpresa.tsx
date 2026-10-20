@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useEstadoConversas, type EstadoConversa } from "@/hooks/useEstadoConversas";
+import { carrosselDaConversa, useEstadoConversas, type EstadoConversa } from "@/hooks/useEstadoConversas";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -281,6 +281,15 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     ...carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter((x): x is string => !!x),
     ...edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter((x): x is string => !!x),
   ]);
+  // Chat do lote é um só: a etiqueta vai no carrossel da última mensagem (sem registro, no primeiro do lote).
+  const estadoDoCarrossel = (c: CarrosselResumo) => {
+    const lote = (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id;
+    const estado = lote ? estadosConversa.get(lote) : undefined;
+    if (!estado || !lote) return undefined;
+    const daVez = carrosselDaConversa(lote)
+      ?? carrosseis.find((x) => (x as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id === lote)?.id;
+    return daVez === c.id ? estado : undefined;
+  };
   const tarefasComEdicao = useMemo(() => new Set(edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter(Boolean)), [edicoes]);
   const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)
     && !(t.tipo === "edicao" && t.situacao === "aguardando_aprovacao" && tarefasComEdicao.has(t.id))), hoje),
@@ -380,7 +389,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       const l = linhaPrecisa(c);
       return { chave: `car-${c.id}`, categoria: "carrossel" as Categoria,
         no: <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)}
-          conversa={(c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ? estadosConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id!) : undefined} quem="Roy"
+          conversa={estadoDoCarrossel(c)} quem="Roy"
           onCancelar={() => void cancelar(`o carrossel "${c.tema}"`, () => cancelarCarrossel(c.id))} /> };
     }),
     ...precisa.map((item) => {

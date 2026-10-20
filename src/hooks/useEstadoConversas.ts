@@ -10,6 +10,17 @@ import { conversaLidaEm } from "@/lib/empresa/notificacoes";
 const db = supabase as unknown as SupabaseClient;
 export type EstadoConversa = "pensando" | "nova";
 
+// Os carrosséis de um lote dividem o mesmo chat com o Roy (20/10, Davi: "mandei mensagem para um e
+// todos ficaram pensando"): guarda de qual carrossel foi a última mensagem; a etiqueta vai só nele.
+const chaveDaVez = (atividadeId: string) => `conversa-carrossel:${atividadeId}`;
+export function marcarCarrosselDaConversa(atividadeId: string, carrosselId: string) {
+  try { localStorage.setItem(chaveDaVez(atividadeId), carrosselId); } catch { /* sem storage */ }
+  window.dispatchEvent(new Event("conversa-lida"));
+}
+export function carrosselDaConversa(atividadeId: string): string | null {
+  try { return localStorage.getItem(chaveDaVez(atividadeId)); } catch { return null; }
+}
+
 export function useEstadoConversas(clienteId: string, atividadeIds: string[]): Map<string, EstadoConversa> {
   const [estados, setEstados] = useState<Map<string, EstadoConversa>>(new Map());
   const chave = [...new Set(atividadeIds)].sort().join(",");

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { marcarCarrosselDaConversa } from "@/hooks/useEstadoConversas";
 import { CheckCircle2, ChevronLeft, ChevronRight, ExternalLink, Loader2, MessageSquareWarning, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -352,7 +353,8 @@ export function RevisaoCarrossel({ clienteId, carrossel, onFechar, onRecarregar 
         {conversa && (
           <aside className="h-[460px] shrink-0 lg:h-auto lg:w-[340px]">
             <ConversaEntrega key={conversa.tarefaId} clienteId={clienteId} tarefaId={conversa.tarefaId} membroId={conversa.membroId}
-              nome="Roy" onDocumentoMudou={() => onRecarregar?.()} />
+              nome="Roy" onDocumentoMudou={() => onRecarregar?.()}
+              onEnviou={() => marcarCarrosselDaConversa(conversa.tarefaId, c.id)} />
           </aside>
         )}
       </DialogContent>
