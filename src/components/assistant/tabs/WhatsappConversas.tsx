@@ -243,9 +243,11 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
     if (t) return conversas.filter((c) => (c.chat_nome ?? c.chat_id).toLowerCase().includes(t));
     if (visao.tipo === "arquivadas") return conversas.filter((c) => org.arquivada(c.chat_id));
     const ativas = conversas.filter((c) => !org.arquivada(c.chat_id));
-    return visao.tipo === "pasta" ? ativas.filter((c) => org.pastaDe(c.chat_id) === visao.id) : ativas;
+    // 20/10 (Davi: "movi para a pasta e não sumiu daqui"): conversa numa pasta sai da lista geral.
+    return visao.tipo === "pasta" ? ativas.filter((c) => org.pastaDe(c.chat_id) === visao.id)
+      : ativas.filter((c) => !org.pastaDe(c.chat_id) || !org.pastas.some((p) => p.id === org.pastaDe(c.chat_id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversas, busca, visao, org.arquivada, org.pastaDe]);
+  }, [conversas, busca, visao, org.arquivada, org.pastaDe, org.pastas]);
   useEffect(() => {
     if (visao.tipo === "pasta" && !org.pastas.some((p) => p.id === visao.id)) setVisao({ tipo: "tudo" });
   }, [org.pastas, visao]);
@@ -307,7 +309,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
         </button>
       ) : (
         <div className="mx-3 mb-1.5 flex flex-wrap items-center gap-1.5">
-          {[{ id: null as string | null, nome: "Tudo" }, ...org.pastas].map((p) => {
+          {[{ id: null as string | null, nome: "Geral" }, ...org.pastas].map((p) => {
             const ativa = p.id ? visao.tipo === "pasta" && visao.id === p.id : visao.tipo === "tudo";
             const n = p.id ? naoLidasDa(p.id) : 0;
             return (
