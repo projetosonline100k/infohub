@@ -1129,7 +1129,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     alarmeAtlas.atual || dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || (variant !== "window" && (!!paraRevisar.atual || !!luaAberta || !!mensagens.atual)) || !!shirley.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || (variant !== "window" && (!!paraRevisar.atual || !!luaAberta || !!mensagens.atual || !!shirley.atual)) || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1352,7 +1352,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
         { label: mensagens.restantes ? `Depois (+${mensagens.restantes})` : "Depois", onClick: () => mensagens.dispensar() },
       ]}
     />
-  ) : shirley.atual ? (
+  ) : variant !== "window" && shirley.atual ? (
     <CartaoWhatsapp
       chatId={shirley.atual.chatId} chatNome={shirley.atual.chatNome ?? null} nome={shirley.atual.nome} grupo={!!shirley.atual.grupo}
       bravo={shirley.atual.humor >= 2}
@@ -1526,9 +1526,12 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       onClick: () => {},
     })),
     ...[...shirley.novas, ...(shirley.atual && !shirley.novas.some((n) => n.chatId === shirley.atual!.chatId) ? [shirley.atual] : [])].map((w): Lua => ({
-      id: `w-${w.chatId}-${w.ultimaEm}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" ? "urgente" : "whatsapp",
+      // 20/10 (Davi): a cobrança da Shirley não abre mais balão na orbe — vira o aviso de cima; só a
+      // urgência (cliente insatisfeito ou esperando há muito, Shirley furiosa) fica vermelha.
+      id: `w-${w.chatId}-${w.ultimaEm}`, nome: "Shirley", ehIa: true, cor: w.motivo === "insatisfeito" || ((w as { humor?: number }).humor ?? 0) >= 3 || w.minutos >= 24 * 60 ? "urgente" : "whatsapp",
       dica: `Shirley · WhatsApp: ${w.nome}`,
-      titulo: w.motivo === "insatisfeito" ? `🚨 ${w.nome} pode estar insatisfeito` : `📱 ${w.nome} mandou mensagem`,
+      titulo: w.motivo === "insatisfeito" ? `🚨 ${w.nome} pode estar insatisfeito`
+        : ((w as { humor?: number }).humor ?? 0) >= 3 || w.minutos >= 24 * 60 ? `🚨 ${w.nome} · sem resposta há ${tempoEsperando(Math.max(1, w.minutos))}` : `📱 ${w.nome} mandou mensagem`,
       porque: `WhatsApp, há ${tempoEsperando(Math.max(1, w.minutos))}`,
       trecho: w.trecho, acaoRotulo: "Abrir WhatsApp",
       acao: () => {
