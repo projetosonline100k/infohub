@@ -228,16 +228,10 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
                   aberta?.chat_id === c.chat_id && "bg-muted")}>
                 <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} tamanho={tela ? "h-12 w-12" : undefined} />
                 <span className={cn("min-w-0 flex-1", tela && "border-b border-border/50 pb-2.5")}>
+                  {/* Nome e hora em cima, a mensagem no meio e as etiquetas embaixo (20/10, Davi: "preciso
+                      que as etiquetas apareçam embaixo do nome; hoje preciso ir para o lado"). */}
                   <span className="flex items-baseline gap-2">
-                    <span className={cn("min-w-0 truncate", tela ? "text-[15px]" : "text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
-                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-                      {/* 19/10 (Davi): etiqueta "Mensagem nova" para o que chegou e ainda não foi aberto. */}
-                      {/* 20/10 (Davi): "mesmo quando receber mensagem, identifique se é para mim ou não". */}
-                      {naoLida && conta === "principal" && (paraODavi(c, ehEquipe)
-                        ? <span className="whitespace-nowrap rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white" title="Conversa privada ou mensagem que fala com você">Mensagem nova · pra você</span>
-                        : <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground" title={c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Quem mandou é da equipe" : "Mensagem do grupo que não fala com você (é para o CS)"}>{c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Mensagem nova · equipe" : "Mensagem nova · CS"}</span>)}
-                      {etiquetas?.(c)}
-                    </span>
+                    <span className={cn("min-w-0 flex-1 truncate", tela ? "text-[15px]" : "text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
                     <span className={cn("shrink-0 text-[10.5px]", naoLida ? "font-semibold text-emerald-600" : "text-muted-foreground")}>{horaCurta(c.ultima_em)}</span>
                   </span>
                   <span className="flex items-center gap-2">
@@ -246,6 +240,14 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
                       <span className="truncate">{resumo(c)}</span>
                     </span>
                     {naoLida && <span className={cn("shrink-0 rounded-full bg-emerald-500", tela ? "h-[18px] min-w-[18px]" : "h-2 w-2")} aria-label="Não lida" />}
+                  </span>
+                  <span className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
+                      {/* 19/10 (Davi): etiqueta "Mensagem nova" para o que chegou e ainda não foi aberto. */}
+                      {/* 20/10 (Davi): "mesmo quando receber mensagem, identifique se é para mim ou não". */}
+                      {naoLida && conta === "principal" && (paraODavi(c, ehEquipe)
+                        ? <span className="whitespace-nowrap rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white" title="Conversa privada ou mensagem que fala com você">Mensagem nova · pra você</span>
+                        : <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground" title={c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Quem mandou é da equipe" : "Mensagem do grupo que não fala com você (é para o CS)"}>{c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Mensagem nova · equipe" : "Mensagem nova · CS"}</span>)}
+                      {etiquetas?.(c)}
                   </span>
                 </span>
               </button>
