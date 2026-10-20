@@ -96,6 +96,34 @@ function apagarRascunho(id: string) {
   try { localStorage.removeItem(chaveRascunho(id)); } catch { /* nada */ }
 }
 
+// Edição sem tarefa (feita pelo Danilo direto da pasta): cria UMA "Revisar edição" dele e liga pela
+// função edicao_ligar_tarefa (o app não grava em edicoes_video). Uma criação por edição, mesmo se o
+// editor abrir duas vezes ao mesmo tempo; se outra já ficou ligada, a criada a mais vai pra lixeira.
+const criando = new Map<string, Promise<string | null>>();
+function tarefaDaEdicao(edicaoId: string, clienteId: string, titulo: string | null, danilo: { id: string; setor_id: string | null }) {
+  const ja = criando.get(edicaoId);
+  if (ja) return ja;
+  const p = (async () => {
+    const db = supabase as unknown as SupabaseClient;
+    const [{ data: coluna }, { data: pasta }] = await Promise.all([
+      supabase.from("colunas_atividade").select("status_key").eq("cliente_id", clienteId).eq("eh_conclusao", false).order("ordem").limit(1).maybeSingle(),
+      supabase.from("pastas_atividade").select("id").eq("cliente_id", clienteId).is("deleted_at", null).eq("origem", "atividades").order("ordem").limit(1).maybeSingle(),
+    ]);
+    const { data: nova } = await db.from("atividades").insert({
+      titulo: `Revisar edição: ${(titulo ?? "vídeo").replace(/^Bruto /, "")}`, cliente_id: clienteId, pasta_id: pasta?.id ?? null,
+      data_atividade: new Date().toISOString().slice(0, 10), status: coluna?.status_key ?? "backlog", concluida: false, prioridade: "media",
+      responsavel_id: danilo.id, setor_id: danilo.setor_id, situacao: "aguardando_aprovacao", tipo: "edicao", progresso: 100,
+    }).select("id").single();
+    const criada = (nova as { id: string } | null)?.id;
+    if (!criada) return null;
+    const { data: ligada } = await db.rpc("edicao_ligar_tarefa", { p_edicao: edicaoId, p_tarefa: criada });
+    if (ligada && ligada !== criada) await db.from("atividades").update({ deleted_at: new Date().toISOString() }).eq("id", criada);
+    return (ligada as string | null) ?? null;
+  })();
+  criando.set(edicaoId, p);
+  return p;
+}
+
 export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null; onFechar: () => void }) {
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
   // Editor pela web (e no Mac sem o serviço local): projeto e prévia vêm da nuvem
@@ -193,20 +221,8 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       let tarefaId = ed.atividade_id;
       // 20/10: edição que o Danilo fez pela pasta (ex.: BRUTOS do Instalivros) chegava sem tarefa e o chat
       // não aparecia. Sem tarefa: cria uma "Revisar edição" dele e liga — o chat é dela, e aprovar conclui.
-      if (!tarefaId) {
-        const [{ data: coluna }, { data: pasta }] = await Promise.all([
-          supabase.from("colunas_atividade").select("status_key").eq("cliente_id", ed.cliente_id).eq("eh_conclusao", false).order("ordem").limit(1).maybeSingle(),
-          supabase.from("pastas_atividade").select("id").eq("cliente_id", ed.cliente_id).is("deleted_at", null).eq("origem", "atividades").order("ordem").limit(1).maybeSingle(),
-        ]);
-        const { data: nova } = await (supabase as unknown as SupabaseClient).from("atividades").insert({
-          titulo: `Revisar edição: ${(ed.titulo ?? "vídeo").replace(/^Bruto /, "")}`, cliente_id: ed.cliente_id, pasta_id: pasta?.id ?? null,
-          data_atividade: new Date().toISOString().slice(0, 10), status: coluna?.status_key ?? "backlog", concluida: false, prioridade: "media",
-          responsavel_id: d.id, setor_id: d.setor_id, situacao: "aguardando_aprovacao", tipo: "edicao", progresso: 100,
-        }).select("id").single();
-        if (!nova) return;
-        tarefaId = (nova as { id: string }).id;
-        await supabase.from("edicoes_video").update({ atividade_id: tarefaId }).eq("id", edicao.id).is("atividade_id", null);
-      }
+      if (!tarefaId) tarefaId = await tarefaDaEdicao(edicao.id, ed.cliente_id, ed.titulo, d);
+      if (!tarefaId) return;
       if (vivo) setConversa({ tarefaId, clienteId: ed.cliente_id, membroId: d.id });
     })();
     return () => { vivo = false; };
@@ -304,7 +320,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const dark = (projeto as { formato?: string } | null)?.formato === "dark";
   const zoomsFinais = useMemo(() => (projeto?.zooms ?? []).flatMap((z) => {
     const a = paraFinal(segs, z.inicio, "inicio"), b = paraFinal(segs, z.fim, "fim");
-    return a != null && b != null && b - a > 0.05 ? [{ a, b, z: z.z, tipo: z.tipo }] : [];
+    return a != null && b != null && b - a > 0.05 ? [{ a, b, z: z.z, tipo: z.tipo, de: z.de }] : [];
   }), [projeto, segs]);
 
   // Desfazer / refazer (⌘Z / ⇧⌘Z). Refs pra não ter efeito colateral dentro de setState.
@@ -664,7 +680,15 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const noBuraco = projeto && !web ? !!lacunaEm(projeto, tFonte) : false;
   const nivelZoom = zoomNoFinal(zoomsFinais, tFinal);
   const cor = previaCor(projeto?.cor ?? "cinema", projeto?.ajuste_cor);
-  const estiloVideo: React.CSSProperties = web ? {} : { filter: cor.filtro || undefined, transform: `scale(${nivelZoom})`, transformOrigin: "50% 32%" };
+  const td = projeto?.tela_dividida;
+  const naDivisao = !!td && tFonte >= td.inicio && tFonte < td.fim;
+  // Tela dividida (igual ao motor): do quadro já com zoom, a faixa 230–1190 desce pra metade de baixo.
+  const antesDoZoom = (y: number) => 1920 * 0.32 + (y - 1920 * 0.32) / nivelZoom;
+  const estiloVideo: React.CSSProperties = web ? {} : {
+    filter: cor.filtro || undefined, transformOrigin: "50% 32%",
+    transform: naDivisao ? `translateY(${(960 - 230) * escala}px) scale(${nivelZoom})` : `scale(${nivelZoom})`,
+    ...(naDivisao && { clipPath: `inset(${(antesDoZoom(230) / 19.2).toFixed(3)}% 0 ${(100 - antesDoZoom(1190) / 19.2).toFixed(3)}% 0)` }),
+  };
   const unico = selecao.length === 1 ? selecao[0] : null;
   const legSel = unico?.tipo === "legenda" ? projeto?.legendas.find((l) => l.id === unico.id) : undefined;
   const midSel = unico?.tipo === "midia" ? projeto?.midias.find((m) => m.id === unico.id) : undefined;
@@ -747,16 +771,18 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                         : "Você mudou a edição. Clique em Gerar versão para ver (o Mac do Davi monta em uns 2 min)."}
                     </div>
                   )}
-                  {midAtivas.map((m) => {
+                  {midAtivas.map((m, i) => {
                     const rel = relativo(m.arquivo);
+                    // z-index explícito: no WebKit o <video> sobe de camada e cobria a imagem seguinte (o papel da headline).
+                    const raio = (m.alfa || m.chroma ? 0 : m.raio ?? 34) * escala;
                     return m.tipo === "imagem" && rel ? (
-                      <img key={m.id} src={url(`arquivo/${rel}`)} alt="" className="absolute object-cover"
-                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: 34 * escala }} />
+                      <img key={m.id} src={url(`arquivo/${rel}`)} alt="" className={cn("absolute", m.alfa ? "object-contain" : "object-cover")}
+                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: raio, zIndex: i + 1 }} />
                     ) : m.tipo === "video" && rel ? (
                       // Fundo verde: toca a cópia com transparência que o motor gera (_alfa/<nome>.mov).
                       <VideoSobreposto key={m.id} tocando={tocando} t={tFinal - (paraFinal(segs, m.inicio, "inicio") ?? 0)}
                         src={url(`arquivo/${m.chroma ? rel.replace(/[^/]+$/, (n) => `_alfa/${n.replace(/\.[^.]+$/, "")}.mov`) : rel}`)}
-                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: m.chroma ? 0 : 34 * escala }}
+                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: raio, zIndex: i + 1 }}
                         cobrir={!m.chroma} />
                     ) : (
                       <div key={m.id} className="absolute flex items-center justify-center bg-black/60 text-xs" style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: 34 * escala }}>
@@ -767,6 +793,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                   {legAtivas.map((l) => (
                     <div key={l.id} className={cn("pointer-events-none absolute whitespace-pre-line text-center font-bold leading-tight text-[#FFD60A]", l.tipo !== "head" && "left-0 right-0 px-[6%]")}
                       style={{
+                        zIndex: 100,
                         // Headline: caixa de `largura` px centrada; as linhas quebram nela (o motor quebra igual).
                         ...(l.tipo === "head" ? { bottom: (1920 - 1110) * escala, left: ((1080 - (l.largura ?? 960)) / 2) * escala, width: (l.largura ?? 960) * escala }
                           : { top: 1080 * escala, transform: "translateY(-50%)" }),
