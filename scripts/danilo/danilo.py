@@ -52,7 +52,12 @@ def _liberar_download_do_drive():
 
 _liberar_download_do_drive()
 
-CLIENTE = "e4b24f93-0eda-43fc-b50e-3ebe24f8905f"   # projeto Davi Queiroz
+DAVI = "e4b24f93-0eda-43fc-b50e-3ebe24f8905f"      # projeto Davi Queiroz
+# Um Danilo por projeto (20/10: "para cada projeto o Danilo tem que ser individual"): cada
+# projeto roda o próprio servico.py com DANILO_CLIENTE (instalar.sh), com fila própria.
+# O principal (Davi) é o único que olha o Drive Eu.davi, atende o editor web e grava o sinal.
+CLIENTE = os.environ.get("DANILO_CLIENTE") or DAVI
+PRINCIPAL = CLIENTE == DAVI
 DRIVE = Path.home() / "Library/CloudStorage/GoogleDrive-metafocando@gmail.com/Meu Drive/Projeto 100k/Eu.davi"
 ENTRADA = DRIVE / "Precisa de edição"
 DESTINO = DRIVE / "Editado"
@@ -426,9 +431,9 @@ def ligar_tarefas():
         ed = db("""SELECT id, status FROM public.edicoes_video WHERE video_vertical_id = %s AND status <> 'cancelado'
                    ORDER BY criado_em DESC LIMIT 1""", (vid,))
         if not ed:
-            db("""UPDATE public.atividades SET observacao = 'Esperando o bruto em Eu.davi › Precisa de edição '
-                    || '(o Danilo pega sozinho quando cair lá).'
-                  WHERE id = %s AND observacao IS NULL""", (aid,))
+            espera = ("Esperando o bruto em Eu.davi › Precisa de edição (o Danilo pega sozinho quando cair lá)."
+                      if PRINCIPAL else "Esperando o bruto deste vídeo.")
+            db("UPDATE public.atividades SET observacao = %s WHERE id = %s AND observacao IS NULL", (espera, aid))
             continue
         eid, st = ed[0]
         db("UPDATE public.edicoes_video SET atividade_id = %s WHERE id = %s AND atividade_id IS NULL", (aid, eid))

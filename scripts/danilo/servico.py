@@ -30,8 +30,10 @@ RAIZ = AQUI.parents[1]
 sys.path.insert(0, str(AQUI))
 import danilo  # noqa: E402
 
-LOG = danilo.BASE / "servico.log"
-ESTADO = danilo.BASE / "servico.json"
+# Danilo de outro projeto (DANILO_CLIENTE): log e estado próprios, para as filas não se misturarem.
+_SUFIXO = "" if danilo.PRINCIPAL else f"-{danilo.CLIENTE[:8]}"
+LOG = danilo.BASE / f"servico{_SUFIXO}.log"
+ESTADO = danilo.BASE / f"servico{_SUFIXO}.json"
 
 
 def log(*partes):
@@ -389,7 +391,7 @@ def atender_drive():
 
 
 # ---------------------------------------------------------------- tarefas do Danilo
-PROMPT_TAREFA = """Você é o Danilo, o editor de vídeos (IA) do Eu.daviqueiroz (projeto Infopro Hub). Está rodando em segundo plano: o Davi não vê este terminal.
+PROMPT_TAREFA = """Você é o Danilo, o editor de vídeos (IA) do projeto {projeto} (Infopro Hub, cliente {cliente}). Está rodando em segundo plano: o Davi não vê este terminal.
 
 Leia primeiro docs/agentes/danilo-editor.md inteiro e os seus aprendizados: `python3 scripts/inteligencia/ler.py --cliente {cliente} --agente danilo`.
 
@@ -399,14 +401,23 @@ O Davi te passou esta tarefa no Infopro:
 {descricao}
 ---
 
-Editar brutos que estão em Eu.davi › Precisa de edição NÃO é com você aqui: o serviço do Danilo pega sozinho (piloto primeiro). Se a tarefa for só isso, não faça nada e responda que o serviço já está cuidando.
-Para outros pedidos (ex.: refazer algo numa edição existente em ~/.infopro-hub/danilo/edicoes/<id>/), use `python3 scripts/danilo/danilo.py` (montar, conferir, ouvir, pintura…).
+{drive}Para outros pedidos (ex.: refazer algo numa edição existente em ~/.infopro-hub/danilo/edicoes/<id>/), use `python3 scripts/danilo/danilo.py` (montar, conferir, ouvir, pintura…).
 Não publique nada e não mande mensagem para ninguém.
 Cada passo seu aparece sozinho para o Davi na tarefa: escreva a descrição de cada comando (campo description) em português simples, dizendo o que está fazendo.
 
 No fim, escreva 1 ou 2 frases simples em português para o Davi dizendo o que você fez."""
 
+PROMPT_DRIVE = ("Editar brutos que estão em Eu.davi › Precisa de edição NÃO é com você aqui: o serviço do Danilo pega "
+                "sozinho (piloto primeiro). Se a tarefa for só isso, não faça nada e responda que o serviço já está cuidando.\n")
+PROMPT_OUTRO_PROJETO = ("Você é o Danilo DESTE projeto: use só o que é dele (cards, roteiros, aprendizados com --cliente {cliente}). "
+                        "Nada do Eu.davi/Davi Queiroz vale aqui (voz, Drive, CTA, estilo): o manual vale como técnica de edição.\n")
+
 _tentadas = set()
+
+
+def _nome_projeto():
+    r = danilo.db("SELECT nome_especialista FROM public.clientes WHERE id = %s", (danilo.CLIENTE,))
+    return r[0][0] if r else danilo.CLIENTE
 
 
 def atender_tarefa():
@@ -429,14 +440,16 @@ def atender_tarefa():
     aid, titulo, descricao = str(linha[0][0]), linha[0][1], linha[0][2] or ""
     log("tarefa:", titulo[:150])
     # Pedido de editar os brutos da pasta: o laço do Drive faz; a tarefa acompanha o lote.
-    if re.search(r"precisa de edi[cç][aã]o", f"{titulo} {descricao}", re.I) and re.search(r"edit", titulo, re.I):
+    if danilo.PRINCIPAL and re.search(r"precisa de edi[cç][aã]o", f"{titulo} {descricao}", re.I) and re.search(r"edit", titulo, re.I):
         e = estado()
         e["atividade"] = aid
         salvar_estado(e)
         progresso(aid, 10, "Agora: editando os brutos da pasta Precisa de edição (piloto primeiro).")
         return True
     try:
-        ok, texto = rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao, cliente=danilo.CLIENTE),
+        ok, texto = rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao, cliente=danilo.CLIENTE, projeto=_nome_projeto(),
+                                                      drive=PROMPT_DRIVE if danilo.PRINCIPAL
+                                                      else PROMPT_OUTRO_PROJETO.format(cliente=danilo.CLIENTE)),
                                  minutos=45, turnos=80, atividade=aid)
         if not ok:
             raise RuntimeError(texto)
@@ -518,9 +531,10 @@ def reenfileirar():
     """Ao ligar: o que ficou pela metade quando o serviço caiu/reiniciou volta pra fila
     (20/10: um "aprovar" ficou 5 h em 'fazendo' e o Davi achou que o Danilo parou).
     Só este serviço anda com esses pedidos e edições, então ao ligar nada está em curso."""
+    # Pedidos do editor web: só o principal atende (são de qualquer projeto).
     pedidos = danilo.db("""UPDATE public.edicoes_pedidos SET status = 'na_fila', atualizado_em = now(),
                              mensagem = 'Retomado: o serviço do Danilo reiniciou no meio'
-                           WHERE status = 'fazendo' RETURNING id, tipo, edicao_id""")
+                           WHERE status = 'fazendo' RETURNING id, tipo, edicao_id""") if danilo.PRINCIPAL else []
     # Edição já no formato escolhido, cortada no meio: o Claude refaz do começo.
     edicoes = danilo.db("""UPDATE public.edicoes_video SET status = 'na_fila', atualizado_em = now(),
                              mensagem = 'Retomando a edição (o serviço do Danilo reiniciou no meio)…'
@@ -552,23 +566,25 @@ if __name__ == "__main__":
         while atender_tarefa() or atender_drive():
             pass
         sys.exit(0)
-    log("serviço do Danilo iniciado")
+    log("serviço do Danilo iniciado" + ("" if danilo.PRINCIPAL else f" (projeto {_nome_projeto()})"))
     try:
         reenfileirar()
     except Exception as erro:
         log("não consegui retomar o que ficou pela metade:", repr(erro)[:200])
-    threading.Thread(target=gravar_sinal, daemon=True).start()
-    threading.Thread(target=laco_web, daemon=True).start()   # pedidos do editor web não esperam a edição automática
+    if danilo.PRINCIPAL:   # sinal do Mac e editor web: um só serviço (o do Davi) para todos os projetos
+        threading.Thread(target=gravar_sinal, daemon=True).start()
+        threading.Thread(target=laco_web, daemon=True).start()   # pedidos do editor web não esperam a edição automática
     ultima_drive = 0.0
     while True:
         try:
             danilo.ligar_tarefas()
-            danilo.guardar_editados(log)
+            if danilo.PRINCIPAL:
+                danilo.guardar_editados(log)
             if atender_tarefa():
                 continue
             if atender_formato():
                 continue
-            if time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
+            if danilo.PRINCIPAL and time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
                 ultima_drive = time.time()
                 if atender_drive():
                     ultima_drive = 0.0                # editou um: já olha o próximo
