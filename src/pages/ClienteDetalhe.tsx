@@ -66,7 +66,14 @@ export default function ClienteDetalhe() {
   const [avisoPermissoes, setAvisoPermissoes] = useState("");
   const requisicaoAtual = useRef(0);
   const [abaAtiva, setAbaAtiva] = useState(() => lerAbaProjeto(id).aba ?? "atividades");
-  const [sidebarRecolhida, setSidebarRecolhida] = useState(false);
+  // 20/10 (Davi): a barra lateral do projeto lembra se ficou fechada ao sair e voltar (vale para todos os projetos).
+  const [sidebarRecolhida, setSidebarRecolhidaEstado] = useState(() => {
+    try { return localStorage.getItem("projeto:barra-recolhida") === "1"; } catch { return false; }
+  });
+  const setSidebarRecolhida = (v: boolean) => {
+    setSidebarRecolhidaEstado(v);
+    try { localStorage.setItem("projeto:barra-recolhida", v ? "1" : "0"); } catch { /* sem storage */ }
+  };
   const [subAbaConteudo, setSubAbaConteudo] = useState(() => lerAbaProjeto(id).sub ?? "visao-geral");
   // Lembra a seção aberta de cada projeto pra reabrir igual (fechar e abrir o app).
   // (Ao trocar de projeto na mesma guia não grava: a seção ainda é a do anterior.)
