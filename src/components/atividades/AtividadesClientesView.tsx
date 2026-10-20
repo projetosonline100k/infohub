@@ -373,7 +373,8 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
       // Tarefa que repete: o banco já cria a próxima (20/10, Davi: "dou check, some e volta a mesma").
       const regra = (atual as { repetir?: string | null }).repetir;
       if (concluida && regra) {
-        toast.success(`Feita! Ela se repete (${REGRA_REPETIR[regra] ?? "regra própria"}): a próxima já entrou na coluna do dia dela.`);
+        toast.success(regra === "semanal" ? "Feita! Ela se repete: a da semana que vem já está na mesma coluna."
+          : `Feita! Ela se repete (${REGRA_REPETIR[regra] ?? "regra própria"}): a próxima já foi criada.`);
       }
     } catch (error) {
       console.error("Erro ao atualizar atividade:", error);

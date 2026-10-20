@@ -84,9 +84,10 @@ interface AtividadeDetailPanelProps {
 // cópia sozinho (gatilho atividade_repete_ao_concluir).
 const OPCOES_REPETIR = [
   { valor: "nao", rotulo: "Não repete" },
+  // Primeiro o que o Davi usa (20/10: "repetir é repetir no mesmo dia na semana seguinte").
+  { valor: "semanal", rotulo: "Toda semana (mesmo dia, mesma coluna)" },
   { valor: "diario", rotulo: "Todo dia" },
   { valor: "dias_uteis", rotulo: "Dias úteis (seg a sex)" },
-  { valor: "semanal", rotulo: "Toda semana" },
   { valor: "dias", rotulo: "Dias escolhidos" },
 ];
 // Domingo = 0, como extract(dow) no banco.
