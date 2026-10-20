@@ -67,10 +67,11 @@ export function WorkspacePages() {
         >
           <AbaAtivaContext.Provider value={visivel}>
           <div className="h-full overflow-auto">
-          {/* A página ocupa a área toda, mas nunca menos que 720px (420px numa
-              metade dividida) nem menos que o conteúdo precisa. Se não couber,
-              a própria área rola pro lado. */}
-          <div className={cn("w-fit", lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]", isClienteDetalhePath(pathname) ? "" : "p-3 sm:p-6")}>
+          {/* A página ocupa a largura da janela (nunca menos que 720px, ou 420px numa
+              metade dividida). 20/10: era "w-fit" (a página esticava até o item mais
+              largo) e um texto comprido empurrava tudo pro lado — agora o conteúdo se
+              ajusta à janela e só rola pro lado se a janela ficar menor que o mínimo. */}
+          <div className={cn("w-full", lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]", isClienteDetalhePath(pathname) ? "" : "p-3 sm:p-6")}>
             <Routes location={{ pathname, search: search ? `?${search}` : "", hash: "", state: null, key: tab.id }}>
               <Route path="/" element={<DashGeral />} />
               <Route path="/clientes" element={<Clientes />} />
