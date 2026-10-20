@@ -32,6 +32,7 @@
     "updater:default",
     "autostart:default",
     "process:default",
-    "opener:default"
+    "opener:default",
+    "notification:default"
   ]
 }

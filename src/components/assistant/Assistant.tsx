@@ -56,7 +56,8 @@ import { playConclusaoSound } from "@/lib/assistant/sound";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
-import { OrbitaAtlas, type Lua } from "./OrbitaAtlas";
+import { type Lua } from "./OrbitaAtlas";
+import { notificarMac } from "@/lib/desktop/notificacao";
 import { CartaoWhatsapp } from "./CartaoWhatsapp";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
@@ -1539,6 +1540,22 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   ] as Lua[]).filter((l, i, todas) => !luasVistas.includes(l.id) && todas.findIndex((x) => x.id === l.id) === i)
     .map((l) => ({ ...l, onClick: () => setLuaAberta(l) }));
 
+  // 20/10: "em vez de esferas, prefiro uma notificação normal" — cada aviso novo vira notificação
+  // do Mac (uma vez só por aviso; os já avisados ficam guardados para não repetir ao recarregar).
+  const idsLuas = luas.map((l) => l.id).join("|");
+  useEffect(() => {
+    if (variant !== "window" || !luas.length) return;
+    let avisados: string[] = [];
+    try { avisados = JSON.parse(localStorage.getItem("atlas:notificados") || "[]"); } catch { /* sem storage */ }
+    const novas = luas.filter((l) => !avisados.includes(l.id));
+    if (!novas.length) return;
+    for (const l of novas) {
+      void notificarMac(l.titulo, [l.porque, l.trecho ? `“${l.trecho}”` : ""].filter(Boolean).join("\n"));
+    }
+    try { localStorage.setItem("atlas:notificados", JSON.stringify([...avisados, ...novas.map((l) => l.id)].slice(-300))); } catch { /* sem storage */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idsLuas, variant]);
+
   // Com balão: padding de 38px (o mesmo recuo da orbe sozinha, centrada em 140×140), para as luas
   // caberem em volta dela sem sair da janela; com o painel continua p-6 (TAMANHO do painel conta com ele).
   // Quem está "falando" no balão: a lua dela fica no topo da órbita, logo abaixo do rabinho do balão.
@@ -1594,7 +1611,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 className={alarmeAtlas.atual ? "scale-[1.3] animate-pulse drop-shadow-[0_0_22px_rgba(251,191,36,0.9)]" : undefined}
               />
               {/* Com a orbe sozinha e com balão; com o painel aberto, não (fica no canto, colada nele). */}
-              {janelaModo !== "panel" && <OrbitaAtlas luas={luas} falandoId={falandoId} />}
+              {/* Órbita (luas em volta da orbe) trocada por notificação do Mac em 20/10 (efeito acima). */}
             </div>
           </>
         ) : (

@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
+import { ehComODavi, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 
 // Guia WhatsApp → "Conversas": o WhatsApp ao vivo dentro do Atlas. As
@@ -124,13 +125,21 @@ type PropsConversas = {
   pedido?: { nome: string; when: string; n: number } | null;
   info?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean }) => React.ReactNode;
   /** Etiquetas ao lado do nome na lista (Precisa responder, Risco de churn…). */
+  /** Quem é da equipe (nome do autor no grupo): mensagem nova deles não é "pra você". */
+  ehEquipe?: (nome: string | null) => boolean;
   etiquetas?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean; ultima_texto: string | null; ultima_tipo: string; ultima_autor: string | null }) => React.ReactNode;
 };
+/** Mensagem nova é para o Davi? Privado sempre; grupo só se fala com ele e não veio da equipe. */
+function paraODavi(c: ConversaResumo, ehEquipe?: (nome: string | null) => boolean): boolean {
+  if (c.eh_grupo && ehEquipe?.(c.ultima_autor)) return false;
+  return ehComODavi(c);
+}
+
 export function WhatsappConversas(props: PropsConversas = {}) {
   return <ContaWhatsapp.Provider value={props.conta ?? "principal"}><ListaConversas {...props} /></ContaWhatsapp.Provider>;
 }
 
-function ListaConversas({ pedido, info, etiquetas }: PropsConversas) {
+function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
   const conta = useContext(ContaWhatsapp);
   const chaveAberta = conta === "principal" ? CHAVE_ABERTA : `${CHAVE_ABERTA}:${conta}`;
   const [conversas, setConversas] = useState<Conversa[]>([]);
@@ -235,7 +244,10 @@ function ListaConversas({ pedido, info, etiquetas }: PropsConversas) {
                     <span className={cn("min-w-0 truncate text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
                     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                       {/* 19/10 (Davi): etiqueta "Mensagem nova" para o que chegou e ainda não foi aberto. */}
-                      {naoLida && <span className="whitespace-nowrap rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white">Mensagem nova</span>}
+                      {/* 20/10 (Davi): "mesmo quando receber mensagem, identifique se é para mim ou não". */}
+                      {naoLida && (paraODavi(c, ehEquipe)
+                        ? <span className="whitespace-nowrap rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white" title="Conversa privada ou mensagem que fala com você">Mensagem nova · pra você</span>
+                        : <span className="whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground" title={c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Quem mandou é da equipe" : "Mensagem do grupo que não fala com você (é para o CS)"}>{c.eh_grupo && ehEquipe?.(c.ultima_autor) ? "Mensagem nova · equipe" : "Mensagem nova · CS"}</span>)}
                       {etiquetas?.(c)}
                     </span>
                     <span className={cn("shrink-0 text-[10.5px]", naoLida ? "font-semibold text-emerald-600" : "text-muted-foreground")}>{horaCurta(c.ultima_em)}</span>

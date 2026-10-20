@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import {
   DIFICULDADE, EMOJI_SATISFACAO, UPGRADE, calcularMetricas, cardRespondido, marcarCard, marcarItem, minutosRestantes, progressoCard, dataCurta, diasDesde, formatarMinutos, htmlSeguro, media, mediana, textoParaCopiar,
   daConversa, etiquetasDaConversa, situacaoEntrega, type ChatResumo, type Entrega, type CardWhatsapp, type Historico,
+  ehDaEquipe,
 } from "@/lib/whatsapp/painel";
 
 type SubAba = "responder" | "saude" | "desempenho" | "compromissos";
@@ -98,6 +99,8 @@ type ModoWhatsapp = "painel" | "conversas" | "dividido";
 /** `conta`: qual número (20/10). O "pessoal" do Davi mostra só as conversas (o painel é dos clientes). */
 export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string } = {}) {
   const etiquetas = useEtiquetas();
+  const equipe = useEquipeWhatsapp();
+  const ehEquipe = useCallback((nome: string | null) => ehDaEquipe(nome, equipe), [equipe]);
   const [modo, setModo] = useState<ModoWhatsapp>(() => ler<ModoWhatsapp>("jarvis:whatsapp-modo", "painel"));
   const [pedido, setPedido] = useState<{ nome: string; when: string; n: number } | null>(null);
   const trocar = (m: ModoWhatsapp) => { setModo(m); try { localStorage.setItem("jarvis:whatsapp-modo", m); } catch { /* sem storage */ } };
@@ -131,7 +134,7 @@ export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string }
           </ResizablePanel>
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={40} minSize={20} className="min-h-0 min-w-0">
-            <div className="h-full pt-1"><WhatsappConversas pedido={pedido} etiquetas={etiquetas} /></div>
+            <div className="h-full pt-1"><WhatsappConversas pedido={pedido} etiquetas={etiquetas} ehEquipe={ehEquipe} /></div>
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
@@ -141,7 +144,7 @@ export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string }
     return (
       <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
         {seletor}
-        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} etiquetas={etiquetas} /></div>
+        <div className="min-h-0 flex-1"><WhatsappConversas info={(c) => <InfoDaConversa chat={c} />} etiquetas={etiquetas} ehEquipe={ehEquipe} /></div>
       </div>
     );
   }

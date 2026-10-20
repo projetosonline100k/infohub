@@ -38,6 +38,7 @@ pub fn run() {
         // restaurasse um tamanho de painel de uma sessão anterior, a janela
         // nasceria grande antes do React montar, aparecendo como um
         // "quadrado" atrás da orbe (rodada 4, item 1).
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_window_state::Builder::default().with_denylist(&["jarvis"]).build())
         // Registrado desligado por padrão — nenhuma UI liga isso ainda,
         // ver src/lib/desktop/autostart.ts.
