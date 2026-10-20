@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEstadoConversas, type EstadoConversa } from "@/hooks/useEstadoConversas";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -275,6 +276,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const tarefasComCarrossel = useMemo(() => new Set(carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter(Boolean)), [carrosseis]);
   // Edição de vídeo (Danilo) também: aparece em "Revisar edição", que abre o editor — mas só quando
   // existe a edição ligada à tarefa (19/10: a versão dark saiu fora do editor e a tarefa sumia de tudo).
+  // Chats das entregas (carrossel do Roy e edição do Danilo): "pensando…" / "Mensagem nova" na linha.
+  const estadosConversa = useEstadoConversas(clienteId, [
+    ...carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter((x): x is string => !!x),
+    ...edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter((x): x is string => !!x),
+  ]);
   const tarefasComEdicao = useMemo(() => new Set(edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter(Boolean)), [edicoes]);
   const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)
     && !(t.tipo === "edicao" && t.situacao === "aguardando_aprovacao" && tarefasComEdicao.has(t.id))), hoje),
@@ -367,12 +373,14 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       no: <LinhaAcao icone={Video} titulo={`${e.status === "erro" ? "Edição com problema" : "Revisar edição"}: ${e.titulo}`}
         detalhe={e.status === "erro" ? e.mensagem ?? "erro" : `Danilo terminou · versão ${e.versao}${e.duracao ? ` · ${Math.round(e.duracao)}s` : ""}`}
         atrasada={e.status === "erro"} onClick={() => setEdicaoAberta(e)}
+        conversa={(e as EdicaoResumo & { atividade_id?: string | null }).atividade_id ? estadosConversa.get((e as EdicaoResumo & { atividade_id?: string | null }).atividade_id!) : undefined} quem="Danilo"
         onCancelar={() => void cancelar(`a edição "${e.titulo}"`, () => cancelarEdicao(e.id))} />,
     })),
     ...carrosseis.filter(precisaRevisar).map((c) => {
       const l = linhaPrecisa(c);
       return { chave: `car-${c.id}`, categoria: "carrossel" as Categoria,
         no: <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)}
+          conversa={(c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ? estadosConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id!) : undefined} quem="Roy"
           onCancelar={() => void cancelar(`o carrossel "${c.tema}"`, () => cancelarCarrossel(c.id))} /> };
     }),
     ...precisa.map((item) => {
@@ -718,8 +726,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   );
 }
 
-function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancelar }: {
+function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancelar, conversa, quem }: {
   icone: typeof Crown; titulo: string; detalhe?: string; atrasada?: boolean; onClick: () => void;
+  // Estado do chat da entrega: "Roy pensando…" (Davi mandou, sem resposta) ou "Mensagem nova".
+  conversa?: EstadoConversa; quem?: string;
   // Cancelar a entrega (não vai seguir): aparece um × ao passar o mouse.
   onCancelar?: () => void;
 }) {
@@ -728,7 +738,11 @@ function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancela
       <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-lg border bg-background p-2.5 text-left transition-colors hover:border-primary/40">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted"><Icone className="h-4 w-4" /></span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium">{titulo}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-sm font-medium">{titulo}</span>
+            {conversa === "pensando" && <span className="shrink-0 animate-pulse rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">{quem ?? "Pensando"} pensando…</span>}
+            {conversa === "nova" && <span className="shrink-0 rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white">Mensagem nova</span>}
+          </span>
           {detalhe && <span className={cn("block truncate text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>{detalhe}</span>}
         </span>
         <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground", onCancelar && "group-hover/linha:opacity-0")} />
