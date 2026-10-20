@@ -29,6 +29,7 @@ AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parents[1]
 sys.path.insert(0, str(AQUI))
 import danilo  # noqa: E402
+from migration_db import reusar_nesta_thread  # noqa: E402
 
 # Danilo de outro projeto (DANILO_CLIENTE): log e estado próprios, para as filas não se misturarem.
 _SUFIXO = "" if danilo.PRINCIPAL else f"-{danilo.CLIENTE[:8]}"
@@ -504,6 +505,7 @@ _iniciado_em = datetime.now(timezone.utc)
 
 
 def gravar_sinal():
+    reusar_nesta_thread()
     while True:
         try:
             danilo.db("""INSERT INTO public.servicos_sinal (user_id, servico, ultimo_sinal, iniciado_em)
@@ -585,6 +587,7 @@ def reenfileirar():
 
 
 def laco_web():
+    reusar_nesta_thread()
     while True:
         try:
             if atender_pedido() or sincronizar():
@@ -601,6 +604,9 @@ if __name__ == "__main__":
         while atender_tarefa() or atender_drive():
             pass
         sys.exit(0)
+    # 20/10: uma conexão por laço, reaberta só quando cai (com 4 Danilos, abrir uma por consulta
+    # pesava no servidor do banco e deixava o app lento).
+    reusar_nesta_thread()
     log("serviço do Danilo iniciado" + ("" if danilo.PRINCIPAL else f" (projeto {_nome_projeto()})"))
     try:
         reenfileirar()
