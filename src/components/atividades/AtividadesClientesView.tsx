@@ -438,6 +438,10 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     if (resultados.some((r) => r.error)) {
       setAtividades(anterior);
       toast.error("Não foi possível mover a atividade");
+    } else if (coluna.eh_conclusao && !atividade.concluida) {
+      // 20/10 (Davi: "movi um card do Matheus Souto e sumiu"): soltar na coluna de conclusão conclui.
+      const nome = (coluna as { nome?: string }).nome;
+      toast.success(`"${atividade.titulo}" foi concluída${nome ? ` (a coluna ${nome} é a de concluídas)` : ""}. Para ver, ligue "Ver concluídas".`);
     }
   };
 
