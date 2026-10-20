@@ -243,7 +243,21 @@ def atender_voz(novas):
     log("voz: ok" if ok and not faltam else f"voz: {len(faltam)} sem resposta")
 
 
+SINAL_CHAT = Path.home() / ".infopro-hub" / "atlas-chat.json"
+
+
+def chat_atendendo():
+    """Um chat do Claude Code está ligado ao Atlas (jarvis-conversa.py esperar, sinal com menos de 5 min):
+    a conversa é dele; o ouvinte só volta a responder se o chat sumir (20/10, Davi: "esse chat no Atlas")."""
+    try:
+        return time.time() - json.loads(SINAL_CHAT.read_text()).get("quando", 0) < 5 * 60
+    except (OSError, ValueError):
+        return False
+
+
 def atender_conversa():
+    if chat_atendendo():
+        return
     novas, historico = pegar_mensagens()
     if not novas:
         return

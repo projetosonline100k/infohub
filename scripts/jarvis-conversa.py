@@ -12,7 +12,20 @@
 import json
 import sys
 import time
+from pathlib import Path
 from migration_db import connect
+
+# 20/10/2026 (Davi: "quero que esse chat se conecte no Atlas"): enquanto um chat do Claude Code está
+# esperando aqui, ele deixa este sinal de vida; o ouvinte (jarvis-ouvinte.py) não responde a conversa
+# do Atlas enquanto o sinal tiver menos de 5 min. Fechou o chat → o ouvinte volta a responder sozinho.
+SINAL = Path.home() / '.infopro-hub' / 'atlas-chat.json'
+
+
+def sinal_de_vida(estado='esperando'):
+    try:
+        SINAL.write_text(json.dumps({'quando': time.time(), 'estado': estado}))
+    except OSError:
+        pass
 
 EMAIL = 'eu.daviqueiroz22@gmail.com'  # conta admin do app (src/lib/admin.ts)
 
@@ -62,15 +75,21 @@ def responder(id_msg, texto):
 
 if len(sys.argv) >= 2 and sys.argv[1] == 'esperar':
     while True:
+        sinal_de_vida()
         try:
             pendentes = pegar_pendentes()
             if pendentes:
+                sinal_de_vida('respondendo')
                 print('MENSAGEM_JARVIS', json.dumps({'mensagens': pendentes}, ensure_ascii=False), flush=True)
                 sys.exit(0)
         except Exception as e:  # rede caiu etc.: tenta de novo
             print('falha ao consultar:', e, file=sys.stderr, flush=True)
         time.sleep(3)
 elif len(sys.argv) == 3 and sys.argv[1] == 'responder':
+    sinal_de_vida('respondendo')
     responder(sys.argv[2], sys.stdin.read())
+elif len(sys.argv) >= 2 and sys.argv[1] == 'desligar':
+    SINAL.unlink(missing_ok=True)   # o ouvinte volta a responder na hora
+    print('DESLIGADO')
 else:
     sys.exit(__doc__ or 'uso: esperar | responder <id> < texto')
