@@ -326,7 +326,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
             <span className="ml-auto flex gap-0.5">
               <button type="button" title="Renomear pasta" onClick={async () => { const n = await pedirTexto("Novo nome da pasta", pastaAtiva.nome); if (n) void org.renomearPasta(pastaAtiva.id, n); }}
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-              <button type="button" title="Apagar pasta (as conversas voltam para Tudo)" onClick={async () => { if (await confirmar(`Apagar a pasta "${pastaAtiva.nome}"? As conversas dela voltam para Tudo.`, { botao: "Apagar pasta", destrutivo: true })) void org.apagarPasta(pastaAtiva.id); }}
+              <button type="button" title="Apagar pasta (as conversas voltam para Geral)" onClick={async () => { if (await confirmar(`Apagar a pasta "${pastaAtiva.nome}"? As conversas dela voltam para Geral.`, { botao: "Apagar pasta", destrutivo: true })) void org.apagarPasta(pastaAtiva.id); }}
                 className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
             </span>
           )}
@@ -343,7 +343,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
       ) : filtradas.length === 0 ? (
         <p className="px-4 py-8 text-center text-xs text-muted-foreground">
           {busca.trim() ? "Nenhuma conversa com esse nome." : visao.tipo === "pasta" ? "Pasta vazia. Para pôr uma conversa aqui: setinha da conversa (ou botão direito) › Mover para pasta."
-            : visao.tipo === "arquivadas" ? "Nenhuma conversa arquivada." : conversas.length ? "Todas as conversas estão arquivadas." : "Nenhuma mensagem ainda. Elas chegam pelo WhatsApp conectado no Mac."}
+            : visao.tipo === "arquivadas" ? "Nenhuma conversa arquivada." : conversas.length ? "Todas as conversas estão arquivadas ou em pastas." : "Nenhuma mensagem ainda. Elas chegam pelo WhatsApp conectado no Mac."}
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
