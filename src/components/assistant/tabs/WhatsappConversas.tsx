@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, ArrowLeft, CheckCheck, Clock3, FileText, Loader2, MessageCircle, Mic, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, FileText, Folder, FolderPlus, Loader2, MessageCircle, Mic, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -9,6 +9,12 @@ import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { ehComODavi, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent,
+  DropdownMenuSubTrigger, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useOrganizacaoWhatsapp } from "@/hooks/useOrganizacaoWhatsapp";
+import { confirmar, pedirTexto } from "@/components/DialogosGlobais";
 
 // Guia WhatsApp → "Conversas": o WhatsApp ao vivo dentro do Atlas. As
 // mensagens chegam pelo WAHA no Mac (scripts/whatsapp-receptor.py) na tabela
@@ -226,10 +232,66 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chaveNovas, conta]);
 
+  // Arquivar e pastas (20/10, Davi: "no meu WhatsApp eu consigo arquivar; aqui está tudo junto" e
+  // "conseguir criar pastas"). Arquivada some da lista e fica em "Arquivadas"; a busca acha todas.
+  const org = useOrganizacaoWhatsapp(conta);
+  const [visao, setVisao] = useState<{ tipo: "tudo" } | { tipo: "pasta"; id: string } | { tipo: "arquivadas" }>({ tipo: "tudo" });
+  const [menuDe, setMenuDe] = useState<string | null>(null);
+  const qtdArquivadas = conversas.filter((c) => org.arquivada(c.chat_id)).length;
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    return t ? conversas.filter((c) => (c.chat_nome ?? c.chat_id).toLowerCase().includes(t)) : conversas;
-  }, [conversas, busca]);
+    if (t) return conversas.filter((c) => (c.chat_nome ?? c.chat_id).toLowerCase().includes(t));
+    if (visao.tipo === "arquivadas") return conversas.filter((c) => org.arquivada(c.chat_id));
+    const ativas = conversas.filter((c) => !org.arquivada(c.chat_id));
+    return visao.tipo === "pasta" ? ativas.filter((c) => org.pastaDe(c.chat_id) === visao.id) : ativas;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversas, busca, visao, org.arquivada, org.pastaDe]);
+  useEffect(() => {
+    if (visao.tipo === "pasta" && !org.pastas.some((p) => p.id === visao.id)) setVisao({ tipo: "tudo" });
+  }, [org.pastas, visao]);
+  const novaPasta = async (chatId?: string) => {
+    const nome = await pedirTexto("Nome da pasta (ex.: Família, Condomínio, Ofertas)");
+    if (!nome?.trim()) return;
+    const id = await org.criarPasta(nome);
+    if (id && chatId) void org.moverParaPasta(chatId, id);
+    if (id && !chatId) setVisao({ tipo: "pasta", id });
+  };
+  const naoLidasDa = (pastaId: string) => conversas.filter((c) => org.pastaDe(c.chat_id) === pastaId && !org.arquivada(c.chat_id)
+    && !c.ultima_de_mim && (!vistas[c.chat_id] || vistas[c.chat_id] < c.ultima_em)).length;
+  const menuDaConversa = (c: Conversa) => {
+    const arq = org.arquivada(c.chat_id);
+    const pastaAtual = org.pastaDe(c.chat_id);
+    return (
+      <DropdownMenu open={menuDe === c.chat_id} onOpenChange={(a) => setMenuDe(a ? c.chat_id : null)}>
+        <DropdownMenuTrigger asChild>
+          <button type="button" aria-label="Opções da conversa" onClick={(e) => e.stopPropagation()}
+            className={cn("rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground",
+              menuDe === c.chat_id ? "opacity-100" : "opacity-0 group-hover:opacity-100")}>
+            <ChevronDown className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()} className="w-52">
+          <DropdownMenuItem onSelect={() => void org.arquivar(c.chat_id, !arq)}>
+            {arq ? <><ArchiveRestore className="mr-2 h-4 w-4" />Desarquivar</> : <><Archive className="mr-2 h-4 w-4" />Arquivar conversa</>}
+          </DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger><Folder className="mr-2 h-4 w-4" />Mover para pasta</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-48">
+              {org.pastas.map((p) => (
+                <DropdownMenuItem key={p.id} onSelect={() => void org.moverParaPasta(c.chat_id, p.id)} className={cn(pastaAtual === p.id && "font-semibold")}>
+                  {p.nome}{pastaAtual === p.id ? " ✓" : ""}
+                </DropdownMenuItem>
+              ))}
+              {org.pastas.length > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuItem onSelect={() => void novaPasta(c.chat_id)}><FolderPlus className="mr-2 h-4 w-4" />Nova pasta…</DropdownMenuItem>
+              {pastaAtual && <DropdownMenuItem onSelect={() => void org.moverParaPasta(c.chat_id, null)}><X className="mr-2 h-4 w-4" />Tirar da pasta</DropdownMenuItem>}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
+  const pastaAtiva = visao.tipo === "pasta" ? org.pastas.find((p) => p.id === visao.id) : null;
 
   const lista = (
     <div className="flex h-full flex-col">
@@ -238,19 +300,58 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
         <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquisar ou começar uma nova conversa"
           className={cn("w-full rounded-lg bg-muted pl-8 pr-2 outline-none focus:ring-1 focus:ring-emerald-500/40", tela ? "h-9 text-[13px]" : "h-8 text-[12px]")} />
       </div>
+      {visao.tipo === "arquivadas" ? (
+        <button type="button" onClick={() => setVisao({ tipo: "tudo" })}
+          className="mx-3 mb-1 flex items-center gap-2 rounded-md px-1 py-1.5 text-left text-[13px] font-semibold hover:bg-muted/70">
+          <ArrowLeft className="h-4 w-4" /> Arquivadas
+        </button>
+      ) : (
+        <div className="mx-3 mb-1.5 flex flex-wrap items-center gap-1.5">
+          {[{ id: null as string | null, nome: "Tudo" }, ...org.pastas].map((p) => {
+            const ativa = p.id ? visao.tipo === "pasta" && visao.id === p.id : visao.tipo === "tudo";
+            const n = p.id ? naoLidasDa(p.id) : 0;
+            return (
+              <button key={p.id ?? "tudo"} type="button" onClick={() => setVisao(p.id ? { tipo: "pasta", id: p.id } : { tipo: "tudo" })}
+                className={cn("rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+                  ativa ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "border-border text-muted-foreground hover:text-foreground")}>
+                {p.nome}{n > 0 && <span className="ml-1 rounded-full bg-emerald-500 px-1.5 text-[10px] font-semibold text-white">{n}</span>}
+              </button>
+            );
+          })}
+          <button type="button" onClick={() => void novaPasta()} title="Nova pasta"
+            className="flex h-[26px] w-[26px] items-center justify-center rounded-full border border-dashed text-muted-foreground hover:text-foreground"><Plus className="h-3.5 w-3.5" /></button>
+          {pastaAtiva && (
+            <span className="ml-auto flex gap-0.5">
+              <button type="button" title="Renomear pasta" onClick={async () => { const n = await pedirTexto("Novo nome da pasta", pastaAtiva.nome); if (n) void org.renomearPasta(pastaAtiva.id, n); }}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+              <button type="button" title="Apagar pasta (as conversas voltam para Tudo)" onClick={async () => { if (await confirmar(`Apagar a pasta "${pastaAtiva.nome}"? As conversas dela voltam para Tudo.`, { botao: "Apagar pasta", destrutivo: true })) void org.apagarPasta(pastaAtiva.id); }}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-rose-600"><Trash2 className="h-3.5 w-3.5" /></button>
+            </span>
+          )}
+        </div>
+      )}
+      {visao.tipo === "tudo" && !busca.trim() && qtdArquivadas > 0 && (
+        <button type="button" onClick={() => setVisao({ tipo: "arquivadas" })}
+          className="flex items-center gap-3 px-4 py-2 text-left text-[13px] text-muted-foreground hover:bg-muted/70">
+          <Archive className="h-4 w-4 text-emerald-600" /><span className="flex-1 font-medium text-foreground">Arquivadas</span><span className="text-[12px]">{qtdArquivadas}</span>
+        </button>
+      )}
       {carregando ? (
         <div className="flex justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
       ) : filtradas.length === 0 ? (
         <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-          {conversas.length ? "Nenhuma conversa com esse nome." : "Nenhuma mensagem ainda. Elas chegam pelo WhatsApp conectado no Mac."}
+          {busca.trim() ? "Nenhuma conversa com esse nome." : visao.tipo === "pasta" ? "Pasta vazia. Para pôr uma conversa aqui: setinha da conversa (ou botão direito) › Mover para pasta."
+            : visao.tipo === "arquivadas" ? "Nenhuma conversa arquivada." : conversas.length ? "Todas as conversas estão arquivadas." : "Nenhuma mensagem ainda. Elas chegam pelo WhatsApp conectado no Mac."}
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           {filtradas.map((c) => {
             const naoLida = !c.ultima_de_mim && (!vistas[c.chat_id] || vistas[c.chat_id] < c.ultima_em);
             return (
-              <button key={c.chat_id} type="button" onClick={() => { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }}
-                className={cn("flex w-full items-center text-left hover:bg-muted/70", tela ? "gap-3 px-3 py-2.5" : "gap-2.5 border-b border-border/60 px-3 py-2",
+              <div key={c.chat_id} role="button" tabIndex={0} onClick={() => { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { setAberta(c); marcarVista(c.chat_id, c.ultima_em); } }}
+                onContextMenu={(e) => { e.preventDefault(); setMenuDe(c.chat_id); }}
+                className={cn("group flex w-full cursor-pointer items-center text-left hover:bg-muted/70", tela ? "gap-3 px-3 py-2.5" : "gap-2.5 border-b border-border/60 px-3 py-2",
                   aberta?.chat_id === c.chat_id && "bg-muted")}>
                 <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} tamanho={tela ? "h-12 w-12" : undefined} />
                 <span className={cn("min-w-0 flex-1", tela && "border-b border-border/50 pb-2.5")}>
@@ -259,6 +360,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
                   <span className="flex items-baseline gap-2">
                     <span className={cn("min-w-0 flex-1 truncate", tela ? "text-[15px]" : "text-[13px]", naoLida ? "font-semibold" : "font-medium")}>{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
                     <span className={cn("shrink-0 text-[10.5px]", naoLida ? "font-semibold text-emerald-600" : "text-muted-foreground")}>{horaCurta(c.ultima_em)}</span>
+                    {menuDaConversa(c)}
                   </span>
                   <span className="flex items-center gap-2">
                     <span className={cn("flex min-w-0 flex-1 items-center gap-1 truncate text-muted-foreground", tela ? "text-[13.5px]" : "text-[11.5px]")}>
@@ -281,7 +383,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
                       {etiquetas?.(c)}
                   </span>
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>
