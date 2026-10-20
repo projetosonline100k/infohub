@@ -58,6 +58,7 @@ import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
 import { type Lua } from "./OrbitaAtlas";
 import { mostrarAviso, onAvisoClicado } from "@/lib/desktop/notificacao";
+import { useMotorBloqueador } from "@/hooks/useBloqueador";
 import { CartaoWhatsapp } from "./CartaoWhatsapp";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
@@ -1542,6 +1543,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
 
   // 20/10: "em vez de esferas, prefiro uma notificação normal" — cada aviso novo vira notificação
   // do Mac (uma vez só por aviso; os já avisados ficam guardados para não repetir ao recarregar).
+  // Bloqueador (20/10): quem liga/desliga o bloqueio nativo é a janela do Atlas (sempre aberta no Mac).
+  useMotorBloqueador(variant === "window");
   const idsLuas = luas.map((l) => l.id).join("|");
   // Clique no aviso (outra janela): faz a ação daquele aviso aqui, na janela do Atlas.
   const luasRef = useRef(luas);

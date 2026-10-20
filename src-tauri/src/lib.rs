@@ -28,6 +28,8 @@ mod danilo;
 mod ditado;
 #[cfg(target_os = "macos")]
 mod escrita;
+#[cfg(target_os = "macos")]
+mod bloqueador;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -54,10 +56,13 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     let builder = builder
         .manage(focus_monitor::FocusMonitorState::default())
+        .manage(bloqueador::BloqueadorState::default())
         .manage(voz::VozState::default())
         .manage(creator::CreatorState::default())
         .invoke_handler(tauri::generate_handler![
             focus_monitor::start_focus_monitor,
+            bloqueador::bloqueador_ligar,
+            bloqueador::bloqueador_desligar,
             focus_monitor::stop_focus_monitor,
             focus_monitor::check_accessibility_trusted,
             focus_monitor::open_accessibility_settings,

@@ -3,6 +3,7 @@ import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/auth/AuthProvider";
 import { Card } from "@/components/ui/card";
+import { Bloqueador } from "@/components/produtividade/Bloqueador";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatarTempo } from "@/lib/utils";
 import { buscarHistorico, OPCOES_BLOQUEIO, type FiltroHistorico, type RelatorioDiario } from "@/lib/productivity/DailyReportService";
@@ -59,6 +60,7 @@ export default function Produtividade() {
         <TabsList>
           <TabsTrigger value="relatorios">Relatórios</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
+          <TabsTrigger value="bloqueador">Bloqueador</TabsTrigger>
         </TabsList>
 
         <TabsContent value="relatorios" className="space-y-4 pt-4">
@@ -142,6 +144,10 @@ export default function Produtividade() {
               )}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="bloqueador" className="pt-4">
+          <Bloqueador />
         </TabsContent>
 
         <TabsContent value="performance" className="pt-4">
