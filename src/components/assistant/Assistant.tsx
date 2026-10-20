@@ -57,7 +57,7 @@ import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { quemDoAviso, useParaRevisar } from "@/hooks/useParaRevisar";
 import { type Lua } from "./OrbitaAtlas";
-import { notificarMac } from "@/lib/desktop/notificacao";
+import { mostrarAviso, onAvisoClicado } from "@/lib/desktop/notificacao";
 import { CartaoWhatsapp } from "./CartaoWhatsapp";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
 import { useShirley } from "@/hooks/useShirley";
@@ -1543,6 +1543,18 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // 20/10: "em vez de esferas, prefiro uma notificação normal" — cada aviso novo vira notificação
   // do Mac (uma vez só por aviso; os já avisados ficam guardados para não repetir ao recarregar).
   const idsLuas = luas.map((l) => l.id).join("|");
+  // Clique no aviso (outra janela): faz a ação daquele aviso aqui, na janela do Atlas.
+  const luasRef = useRef(luas);
+  luasRef.current = luas;
+  useEffect(() => {
+    if (variant !== "window") return;
+    let desligar = () => {};
+    void onAvisoClicado((id) => {
+      const l = luasRef.current.find((x) => x.id === id);
+      if (l) { setLuasVistas((v) => [...v, l.id]); l.acao(); }
+    }).then((f) => { desligar = f; });
+    return () => desligar();
+  }, [variant]);
   useEffect(() => {
     if (variant !== "window" || !luas.length) return;
     let avisados: string[] = [];
@@ -1550,7 +1562,8 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     const novas = luas.filter((l) => !avisados.includes(l.id));
     if (!novas.length) return;
     for (const l of novas) {
-      void notificarMac(l.titulo, [l.porque, l.trecho ? `“${l.trecho}”` : ""].filter(Boolean).join("\n"));
+      void mostrarAviso({ id: l.id, tipo: l.cor, titulo: l.titulo.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ""),
+        quem: l.porque, corpo: l.trecho ? `“${l.trecho}”` : undefined });
     }
     try { localStorage.setItem("atlas:notificados", JSON.stringify([...avisados, ...novas.map((l) => l.id)].slice(-300))); } catch { /* sem storage */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps

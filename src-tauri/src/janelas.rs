@@ -30,3 +30,43 @@ pub async fn destacar_aba(app: AppHandle, caminho: String, titulo: String, x: Op
     })
 }
 
+
+// Aviso do Atlas no canto de cima da tela (20/10: "notificação mais bonita, com o símbolo
+// do Infopro e do Atlas; WhatsApp verde"): janelinha transparente, sem foco, acima de tudo.
+// `vaga` empilha vários avisos um embaixo do outro. A página /aviso desenha e se fecha sozinha.
+pub const AVISO_LARGURA: f64 = 380.0;
+pub const AVISO_ALTURA: f64 = 112.0;
+
+#[tauri::command]
+pub async fn mostrar_aviso(app: AppHandle, rota: String, vaga: u32) -> Result<(), String> {
+    let rotulo = format!("aviso-{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
+    let (mut x, mut y) = (40.0, 40.0);
+    if let Ok(Some(monitor)) = app.primary_monitor() {
+        let escala = monitor.scale_factor();
+        let area = monitor.work_area();
+        let pos = area.position.to_logical::<f64>(escala);
+        let tam = area.size.to_logical::<f64>(escala);
+        x = pos.x + tam.width - AVISO_LARGURA - 8.0;
+        y = pos.y + 8.0 + f64::from(vaga) * (AVISO_ALTURA - 6.0);
+    }
+    let mut janela = WebviewWindowBuilder::new(&app, &rotulo, WebviewUrl::App(rota.trim_start_matches('/').into()))
+        .title("Atlas")
+        .inner_size(AVISO_LARGURA, AVISO_ALTURA)
+        .position(x, y)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .resizable(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible_on_all_workspaces(true)
+        .focused(false);
+    #[cfg(target_os = "macos")]
+    {
+        janela = janela.accept_first_mouse(true);
+    }
+    janela.build().map(|_| ()).map_err(|erro| {
+        log::error!("mostrar_aviso falhou: {erro}");
+        erro.to_string()
+    })
+}

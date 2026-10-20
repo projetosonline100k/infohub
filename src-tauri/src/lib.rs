@@ -71,6 +71,7 @@ pub fn run() {
             lembretes::lembrete_marcar,
             lembretes::lembretes_sincronizar,
             janelas::destacar_aba,
+            janelas::mostrar_aviso,
             voz::voz_falar,
             voz::voz_parar,
             voz::voz_listar,
