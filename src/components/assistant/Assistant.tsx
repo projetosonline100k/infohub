@@ -1129,7 +1129,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // painel aberto (item 6 do pedido).
   const temBalaoVisivel = !!(
     alarmeAtlas.atual || dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
-    priorityOneNudge.mostrar || !!paraRevisar.atual || !!shirley.atual || !!luaAberta || !!mensagens.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
+    priorityOneNudge.mostrar || (variant !== "window" && (!!paraRevisar.atual || !!luaAberta || !!mensagens.atual)) || !!shirley.atual || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
   );
   const janelaModo: JarvisWindowMode = open ? "panel" : temBalaoVisivel ? "notification" : "orb";
@@ -1326,7 +1326,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       onFalar={() => void handleCobrancaFalar()}
       onOutraCoisa={() => void handleCobrancaOutraCoisa()}
     />
-  ) : luaAberta ? (
+  ) : variant !== "window" && luaAberta ? (
     <JarvisNotificationCard
       fala
       titulo={luaAberta.titulo}
@@ -1342,7 +1342,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       </span>
       {luaAberta.trecho && <span className="mt-1 line-clamp-3 block">“{luaAberta.trecho}”</span>}
     </JarvisNotificationCard>
-  ) : mensagens.atual ? (
+  ) : variant !== "window" && mensagens.atual ? (
     <CartaoWhatsapp
       chatId={mensagens.atual.chatId} chatNome={mensagens.atual.chatNome} nome={mensagens.atual.nome} grupo={mensagens.atual.grupo}
       tomFaixa="nova"
@@ -1375,7 +1375,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
           : [{ label: `Daqui a ${ADIAR_MIN[shirley.atual.humor]} min${shirley.atual.outros ? ` (todos, +${shirley.atual.outros})` : ""}`, onClick: () => shirley.adiarTodos(ADIAR_MIN[shirley.atual!.humor]) }]),
       ]}
     />
-  ) : paraRevisar.atual ? (
+  ) : variant !== "window" && paraRevisar.atual ? (
     <JarvisNotificationCard
       fala
       titulo={`${paraRevisar.atual.tipo === "resposta" ? "💬" : "📬"} ${paraRevisar.atual.titulo}`}
@@ -1571,6 +1571,16 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     try { localStorage.setItem("atlas:notificados", JSON.stringify([...avisados, ...novas.map((l) => l.id)].slice(-300))); } catch { /* sem storage */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsLuas, variant]);
+
+  // 20/10 (Davi: "como vai ter as notificações em cima, pode tirar essa"): no Mac, entrega para
+  // revisar e mensagem nova não viram mais balão na orbe — o aviso do canto já mostrou; aqui só
+  // tira da fila (a entrega fica em "adiados", como no "Depois"). A cobrança da Shirley continua no balão.
+  useEffect(() => {
+    if (variant !== "window") return;
+    if (paraRevisar.atual) paraRevisar.dispensar();
+    if (mensagens.atual) mensagens.dispensar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant, paraRevisar.atual?.id, mensagens.atual?.chatId, mensagens.atual?.quando]);
 
   // Com balão: padding de 38px (o mesmo recuo da orbe sozinha, centrada em 140×140), para as luas
   // caberem em volta dela sem sair da janela; com o painel continua p-6 (TAMANHO do painel conta com ele).
