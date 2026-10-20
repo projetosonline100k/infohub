@@ -25,7 +25,9 @@ sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
-PASTA = Path.home() / ".infopro-hub" / "whatsapp"
+# Mais de um número (20/10/2026): cada um tem a sua pasta (config, mídia, log) e o seu WAHA. O
+# segundo receptor roda com WHATSAPP_PASTA=~/.infopro-hub/whatsapp-pessoal (config com "conta": "pessoal").
+PASTA = Path(os.environ.get("WHATSAPP_PASTA") or Path.home() / ".infopro-hub" / "whatsapp").expanduser()
 AUDIOS = PASTA / "audios"  # pasta antiga (só pra migrar)
 AUDIOS.mkdir(parents=True, exist_ok=True)
 MIDIA = PASTA / "midia"
@@ -33,6 +35,17 @@ MIDIA.mkdir(parents=True, exist_ok=True)
 CONFIG = json.loads((PASTA / "config.json").read_text())
 WAHA = CONFIG.get("waha_url", "http://localhost:3000")
 SESSAO = CONFIG.get("sessao", "default")
+CONTA = CONFIG.get("conta", "principal")
+
+
+def pasta_midia(conta):
+    """Mídia de cada número: o principal em ~/.infopro-hub/whatsapp/midia, os outros na pasta deles."""
+    return Path.home() / ".infopro-hub" / ("whatsapp" if conta == "principal" else f"whatsapp-{conta}") / "midia"
+
+
+def id_da_conta(id_msg):
+    """O id do WhatsApp pode se repetir entre números (o mesmo grupo nos dois): o 2º número prefixa."""
+    return id_msg if CONTA == "principal" else f"{CONTA}:{id_msg}"
 MODELO = "mlx-community/whisper-large-v3-turbo"
 _trava_log = threading.Lock()
 
@@ -142,20 +155,21 @@ def guardar(p):
     tipo = tipo_da_mensagem(p)
     ts = p.get("timestamp") or time.time()
     media = p.get("media") or {}
+    mid = id_da_conta(p["id"])
     c = connect()
     try:
         q = c.cursor()
         q.execute(
             """INSERT INTO public.whatsapp_mensagens
                  (id, user_id, chat_id, chat_nome, eh_grupo, autor_id, autor_nome, de_mim, tipo, texto,
-                  midia_tipo, transcricao_status, responde_a, enviada_em)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s))
+                  midia_tipo, transcricao_status, responde_a, enviada_em, conta)
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s), %s)
                ON CONFLICT (id) DO NOTHING""",
-            (p["id"], dono(), chat_id, nome_do_chat(chat_id), eh_grupo, autor, autor_nome, de_mim, tipo,
+            (mid, dono(), chat_id, nome_do_chat(chat_id), eh_grupo, autor, autor_nome, de_mim, tipo,
              p.get("body") or None, media.get("mimetype"),
              # Áudio antigo do histórico vem sem arquivo: fica sem transcrição.
              "pendente" if tipo == "audio" and media.get("url") else None,
-             ((p.get("replyTo") or {}).get("id")), ts),
+             ((p.get("replyTo") or {}).get("id")), ts, CONTA),
         )
         nova = q.rowcount == 1
         c.commit()
@@ -165,10 +179,10 @@ def guardar(p):
     # guarda no Mac (o Jarvis mostra/toca pelo endereço /midia deste receptor).
     if nova and media.get("url") and tipo in TIPOS_COM_ARQUIVO:
         # Vídeo no grupo do Danilo vai inteiro para a pasta "Para o Danilo" (o limite de 64 MB é só da conversa).
-        if de_mim and eh_grupo and grupo_do_danilo(nome_do_chat(chat_id)) and (media.get("mimetype") or "").startswith("video/"):
-            threading.Thread(target=mandar_pro_danilo, args=(p["id"], media, tipo, ts), daemon=True).start()
+        if CONTA == "principal" and de_mim and eh_grupo and grupo_do_danilo(nome_do_chat(chat_id)) and (media.get("mimetype") or "").startswith("video/"):
+            threading.Thread(target=mandar_pro_danilo, args=(mid, media, tipo, ts), daemon=True).start()
             return
-        baixar_midia(p["id"], media, tipo)
+        baixar_midia(mid, media, tipo)
 
 
 TIPOS_COM_ARQUIVO = {"audio", "imagem", "video", "figurinha", "documento"}
@@ -334,7 +348,8 @@ def transcritor():
             c = connect()
             try:
                 q = c.cursor()
-                q.execute("""SELECT id, midia_arquivo FROM public.whatsapp_mensagens
+                # Um só Whisper no Mac (8 GB): o receptor principal transcreve os áudios de todos os números.
+                q.execute("""SELECT id, midia_arquivo, conta FROM public.whatsapp_mensagens
                              WHERE transcricao_status IN ('pendente', 'transcrevendo') AND midia_arquivo IS NOT NULL
                              ORDER BY enviada_em DESC""")
                 fila = q.fetchall()
@@ -343,8 +358,8 @@ def transcritor():
         except Exception as e:
             log("transcrição: banco fora, tento de novo em 1 min —", repr(e)[:150])
             continue
-        for id_msg, nome in fila:
-            arq = MIDIA / nome
+        for id_msg, nome, conta in fila:
+            arq = pasta_midia(conta) / nome
             if not arq.exists():
                 try:
                     marcar(id_msg, "erro")
@@ -446,7 +461,8 @@ class Webhook(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    threading.Thread(target=transcritor, daemon=True).start()
+    if CONFIG.get("transcrever", CONTA == "principal"):
+        threading.Thread(target=transcritor, daemon=True).start()
     porta = int(CONFIG.get("porta", 3101))
     log("receptor iniciado na porta", porta)
     ThreadingHTTPServer(("0.0.0.0", porta), Webhook).serve_forever()

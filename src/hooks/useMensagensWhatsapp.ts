@@ -27,6 +27,8 @@ export function useMensagensWhatsapp(meuId: string | undefined, ativo: boolean) 
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "whatsapp_mensagens", filter: `user_id=eq.${meuId}` }, (ev) => {
         const m = ev.new as Linha;
         if (!m?.chat_id) return;
+        // Só o número principal (o dos clientes) avisa no Atlas; o pessoal do Davi não (20/10).
+        if (((m as unknown as { conta?: string }).conta ?? "principal") !== "principal") return;
         // Respondeu (pelo celular ou pelo Mac): o aviso daquela conversa sai.
         if (m.de_mim) { setFila((xs) => xs.filter((x) => x.chatId !== m.chat_id)); return; }
         if (m.eh_grupo && !ehGrupoDeCliente(m.chat_nome)) return;

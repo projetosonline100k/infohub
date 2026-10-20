@@ -95,7 +95,8 @@ function BotaoCopiar({ texto }: { texto: string }) {
 // "Abrir conversa" de cada card abre a conversa daquela pessoa do lado.
 type ModoWhatsapp = "painel" | "conversas" | "dividido";
 
-export function AssistantWhatsappTab() {
+/** `conta`: qual número (20/10). O "pessoal" do Davi mostra só as conversas (o painel é dos clientes). */
+export function AssistantWhatsappTab({ conta = "principal" }: { conta?: string } = {}) {
   const etiquetas = useEtiquetas();
   const [modo, setModo] = useState<ModoWhatsapp>(() => ler<ModoWhatsapp>("jarvis:whatsapp-modo", "painel"));
   const [pedido, setPedido] = useState<{ nome: string; when: string; n: number } | null>(null);
@@ -111,6 +112,13 @@ export function AssistantWhatsappTab() {
       ))}
     </div>
   );
+  if (conta !== "principal") {
+    return (
+      <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
+        <div className="min-h-0 flex-1"><WhatsappConversas conta={conta} /></div>
+      </div>
+    );
+  }
   if (modo === "dividido") {
     return (
       <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col pt-2">
@@ -479,7 +487,7 @@ function useEquipeWhatsapp() {
   const [equipe, setEquipe] = useState<string[]>([]);
   useEffect(() => {
     const desde = new Date(Date.now() - 21 * 86_400_000).toISOString();
-    void supabase.from("whatsapp_mensagens").select("chat_id, autor_nome").eq("eh_grupo", true).eq("de_mim", false)
+    void (supabase as unknown as import("@supabase/supabase-js").SupabaseClient).from("whatsapp_mensagens").select("chat_id, autor_nome").eq("conta", "principal").eq("eh_grupo", true).eq("de_mim", false)
       .gte("enviada_em", desde).not("autor_nome", "is", null).limit(4000)
       .then(({ data }) => {
         const grupos = new Map<string, Set<string>>();

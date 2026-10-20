@@ -57,7 +57,7 @@ else:
 # Espera os áudios pendentes (o receptor transcreve um por vez).
 for _ in range(60):
     q.execute("""SELECT count(*) FROM public.whatsapp_mensagens
-                 WHERE user_id = %s AND enviada_em >= %s AND transcricao_status IN ('pendente', 'transcrevendo')""", (uid, desde))
+                 WHERE user_id = %s AND conta = 'principal' AND enviada_em >= %s AND transcricao_status IN ('pendente', 'transcrevendo')""", (uid, desde))
     if q.fetchone()[0] == 0:
         break
     c.commit()
@@ -66,7 +66,8 @@ for _ in range(60):
 q.execute("""SELECT chat_id, chat_nome, eh_grupo, de_mim, autor_nome, autor_id, tipo, texto, transcricao,
                     transcricao_status, enviada_em
              FROM public.whatsapp_mensagens
-             WHERE user_id = %s AND enviada_em >= %s AND (%s::text IS NULL OR chat_nome ILIKE '%%' || %s || '%%')
+             -- Só o número da Shirley (CS): o pessoal do Davi (conta 'pessoal', 20/10) não entra no painel.
+             WHERE user_id = %s AND conta = 'principal' AND enviada_em >= %s AND (%s::text IS NULL OR chat_nome ILIKE '%%' || %s || '%%')
              ORDER BY enviada_em""", (uid, desde, chat, chat))
 linhas = q.fetchall()
 c.close()

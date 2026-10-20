@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { AtalhoWhatsapp } from "@/components/layout/AtalhoWhatsapp";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
@@ -68,6 +69,7 @@ export const DashboardLayout = () => {
   return (
     <div className="flex h-svh w-full flex-col overflow-hidden">
       <WorkspaceTabs onNavigate={navigate} />
+      <AtalhoWhatsapp clienteId={clienteRotaId} />
       <SidebarProvider className="min-h-0 min-w-0 flex-1">
         {/* min-w-0 em toda a cadeia: sem isso este item de flex estica até a
             largura da página e é cortado pela janela, e o <main> nunca rola. */}

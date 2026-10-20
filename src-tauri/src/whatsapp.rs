@@ -6,9 +6,15 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-fn config() -> Result<serde_json::Value, String> {
+/// `conta`: qual número (20/10/2026, Davi conectou o pessoal). "principal" (ou nada) = o de sempre,
+/// em ~/.infopro-hub/whatsapp; os outros ficam em ~/.infopro-hub/whatsapp-<conta>, cada um com o seu WAHA.
+fn config(conta: Option<&str>) -> Result<serde_json::Value, String> {
+    let pasta = match conta.map(|c| c.chars().filter(|x| x.is_ascii_alphanumeric()).collect::<String>()) {
+        Some(c) if !c.is_empty() && c != "principal" => format!(".infopro-hub/whatsapp-{c}/config.json"),
+        _ => ".infopro-hub/whatsapp/config.json".to_string(),
+    };
     let caminho = std::env::var_os("HOME")
-        .map(|h| std::path::PathBuf::from(h).join(".infopro-hub/whatsapp/config.json"))
+        .map(|h| std::path::PathBuf::from(h).join(pasta))
         .ok_or("HOME não encontrado")?;
     let texto = std::fs::read_to_string(caminho).map_err(|_| "O WhatsApp não está configurado neste Mac.".to_string())?;
     serde_json::from_str(&texto).map_err(|e| e.to_string())
@@ -26,19 +32,19 @@ fn registrar(linha: &str) {
 }
 
 #[tauri::command]
-pub async fn whatsapp_enviar(chat_id: String, texto: String) -> Result<serde_json::Value, String> {
-    registrar(&format!("pedido chat={chat_id} tamanho={}", texto.len()));
-    let resultado = enviar(chat_id, texto).await;
+pub async fn whatsapp_enviar(chat_id: String, texto: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+    registrar(&format!("pedido chat={chat_id} tamanho={} conta={}", texto.len(), conta.as_deref().unwrap_or("principal")));
+    let resultado = enviar(chat_id, texto, conta).await;
     registrar(&match &resultado { Ok(_) => "ok".to_string(), Err(e) => format!("erro: {e}") });
     resultado
 }
 
-async fn enviar(chat_id: String, texto: String) -> Result<serde_json::Value, String> {
+async fn enviar(chat_id: String, texto: String, conta: Option<String>) -> Result<serde_json::Value, String> {
     let texto = texto.trim().to_string();
     if texto.is_empty() || chat_id.trim().is_empty() {
         return Err("Mensagem vazia".into());
     }
-    let cfg = config()?;
+    let cfg = config(conta.as_deref())?;
     let corpo = serde_json::json!({
         "session": cfg["sessao"].as_str().unwrap_or("default"),
         "chatId": chat_id,
@@ -50,12 +56,12 @@ async fn enviar(chat_id: String, texto: String) -> Result<serde_json::Value, Str
 /// Áudio gravado no Jarvis (microfone): vai como mensagem de voz. O WAHA
 /// converte pro formato do WhatsApp (convert: true).
 #[tauri::command]
-pub async fn whatsapp_enviar_audio(chat_id: String, base64: String, mimetype: String) -> Result<serde_json::Value, String> {
+pub async fn whatsapp_enviar_audio(chat_id: String, base64: String, mimetype: String, conta: Option<String>) -> Result<serde_json::Value, String> {
     registrar(&format!("pedido de audio chat={chat_id} tamanho={}", base64.len()));
     if base64.is_empty() || chat_id.trim().is_empty() {
         return Err("Áudio vazio".into());
     }
-    let cfg = config()?;
+    let cfg = config(conta.as_deref())?;
     let corpo = serde_json::json!({
         "session": cfg["sessao"].as_str().unwrap_or("default"),
         "chatId": chat_id,
@@ -70,8 +76,8 @@ pub async fn whatsapp_enviar_audio(chat_id: String, base64: String, mimetype: St
 /// Endereço das fotos/vídeos/áudios guardados no Mac (servidos pelo
 /// receptor): o Jarvis monta `<base><arquivo>?k=<chave>`.
 #[tauri::command]
-pub fn whatsapp_midia_base() -> Result<serde_json::Value, String> {
-    let cfg = config()?;
+pub fn whatsapp_midia_base(conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
     let porta = cfg["porta"].as_u64().unwrap_or(3101);
     Ok(serde_json::json!({
         "base": format!("http://localhost:{porta}/midia/"),

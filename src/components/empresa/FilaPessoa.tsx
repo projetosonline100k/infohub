@@ -159,6 +159,13 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   const ehPedro = !!membro?.eh_ia && membro.nome.trim().toLowerCase() === "pedro";
   // CS (Shirley, Core, 16/10): "eu clico nela e aparece o WhatsApp" — o mesmo WhatsApp do Atlas.
   const ehCs = !!membro?.eh_ia && (membro.nome.trim().toLowerCase() === "shirley" || /sucesso do cliente|\bcs\b/i.test(membro.funcao ?? ""));
+  // Qual WhatsApp este projeto mostra (20/10: o Davi Queiroz mostra o número pessoal dele).
+  const [contaWhatsapp, setContaWhatsapp] = useState("principal");
+  useEffect(() => {
+    if (!ehCs || !clienteId) return;
+    void (supabase as unknown as import("@supabase/supabase-js").SupabaseClient).from("clientes").select("whatsapp_conta").eq("id", clienteId).maybeSingle()
+      .then(({ data }) => setContaWhatsapp((data as { whatsapp_conta?: string | null } | null)?.whatsapp_conta || "principal"));
+  }, [ehCs, clienteId]);
   useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
@@ -321,9 +328,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
             {ehPedro && <QuadroPedro clienteId={clienteId} />}
             {ehCs && (
               <section className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">WhatsApp dos clientes</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{contaWhatsapp === "principal" ? "WhatsApp dos clientes" : "Seu WhatsApp pessoal"}</p>
                 <div className="h-[80vh] overflow-hidden rounded-xl border bg-card p-4">
-                  <div className="h-full overflow-y-auto"><AssistantWhatsappTab /></div>
+                  <div className="h-full overflow-y-auto"><AssistantWhatsappTab key={contaWhatsapp} conta={contaWhatsapp} /></div>
                 </div>
               </section>
             )}

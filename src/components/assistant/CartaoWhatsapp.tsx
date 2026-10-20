@@ -26,7 +26,7 @@ export function CartaoWhatsapp({ chatId, chatNome, nome, grupo, faixa, tomFaixa 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   useEffect(() => {
     let vivo = true;
-    void supabase.from("whatsapp_mensagens").select("id, de_mim, autor_nome, tipo, texto, transcricao, enviada_em")
+    void (supabase as unknown as import("@supabase/supabase-js").SupabaseClient).from("whatsapp_mensagens").select("id, de_mim, autor_nome, tipo, texto, transcricao, enviada_em").eq("conta", "principal")
       .eq("chat_id", chatId).order("enviada_em", { ascending: false }).limit(3)
       .then(({ data }) => { if (vivo) setMsgs(((data || []) as Msg[]).reverse()); });
     return () => { vivo = false; };

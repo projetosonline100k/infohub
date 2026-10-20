@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AlertCircle, ArrowLeft, CheckCheck, Clock3, FileText, Loader2, Mic, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
@@ -37,27 +38,36 @@ interface Mensagem {
 
 // Fotos/vídeos/áudios ficam no Mac e o receptor do WhatsApp entrega pro
 // Atlas (só no app do Mac). Endereço + chave vêm do comando whatsapp_midia_base.
-let midiaBase: Promise<{ base: string; chave: string } | null> | null = null;
+// Qual número (20/10/2026): "principal" (o da Shirley da Core) ou "pessoal" (o do Davi, no Davi Queiroz).
+export const ContaWhatsapp = createContext("principal");
+const midiaBases = new Map<string, Promise<{ base: string; chave: string } | null>>();
+function midiaBaseDe(conta: string) {
+  if (!midiaBases.has(conta)) {
+    midiaBases.set(conta, import("@tauri-apps/api/core")
+      .then(({ invoke }) => invoke<{ base: string; chave: string }>("whatsapp_midia_base", { conta })).catch(() => null));
+  }
+  return midiaBases.get(conta)!;
+}
 function useMidiaUrl() {
+  const conta = useContext(ContaWhatsapp);
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
   useEffect(() => {
     if (!isDesktop()) return;
-    midiaBase ??= import("@tauri-apps/api/core").then(({ invoke }) => invoke<{ base: string; chave: string }>("whatsapp_midia_base")).catch(() => null);
-    void midiaBase.then(setCfg);
-  }, []);
+    void midiaBaseDe(conta).then(setCfg);
+  }, [conta]);
   return useCallback((arquivo?: string | null) => (cfg && arquivo ? `${cfg.base}${encodeURIComponent(arquivo)}?k=${cfg.chave}` : null), [cfg]);
 }
 
 // Foto de perfil da pessoa ou do grupo (16/10), pelo receptor do WhatsApp (/foto/<chat_id>);
 // sem foto (ou fora do app do Mac), a bolinha com a inicial / o ícone de grupo de sempre.
 export function FotoChat({ chatId, nome, grupo, tamanho = "h-9 w-9" }: { chatId: string; nome: string | null; grupo: boolean; tamanho?: string }) {
+  const conta = useContext(ContaWhatsapp);
   const [cfg, setCfg] = useState<{ base: string; chave: string } | null>(null);
   const [falhou, setFalhou] = useState(false);
   useEffect(() => {
     if (!isDesktop()) return;
-    midiaBase ??= import("@tauri-apps/api/core").then(({ invoke }) => invoke<{ base: string; chave: string }>("whatsapp_midia_base")).catch(() => null);
-    void midiaBase.then(setCfg);
-  }, []);
+    void midiaBaseDe(conta).then(setCfg);
+  }, [conta]);
   const src = cfg && !falhou ? `${cfg.base.replace(/\/midia\/$/, "/foto/")}${encodeURIComponent(chatId)}?k=${cfg.chave}` : null;
   return (
     <span className={cn("relative flex shrink-0 items-center justify-center overflow-hidden rounded-full text-[12px] font-semibold text-white", tamanho, grupo ? "bg-teal-600" : "bg-emerald-500")}>
@@ -108,45 +118,56 @@ function acharConversa(conversas: Conversa[], nome: string, when: string): Conve
 
 /** `info`: coluna ao lado da conversa aberta com o que se sabe daquele grupo ou pessoa (19/10, Davi:
  *  "ao clicar no grupo aparecem as informações dele, focado neles; não precisa abrir do lado"). */
-export function WhatsappConversas({ pedido, info, etiquetas }: {
+type PropsConversas = {
+  /** Qual número: "principal" (padrão) ou "pessoal". */
+  conta?: string;
   pedido?: { nome: string; when: string; n: number } | null;
   info?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean }) => React.ReactNode;
   /** Etiquetas ao lado do nome na lista (Precisa responder, Risco de churn…). */
   etiquetas?: (c: { chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string; ultima_de_mim: boolean; ultima_texto: string | null; ultima_tipo: string; ultima_autor: string | null }) => React.ReactNode;
-} = {}) {
+};
+export function WhatsappConversas(props: PropsConversas = {}) {
+  return <ContaWhatsapp.Provider value={props.conta ?? "principal"}><ListaConversas {...props} /></ContaWhatsapp.Provider>;
+}
+
+function ListaConversas({ pedido, info, etiquetas }: PropsConversas) {
+  const conta = useContext(ContaWhatsapp);
+  const chaveAberta = conta === "principal" ? CHAVE_ABERTA : `${CHAVE_ABERTA}:${conta}`;
   const [conversas, setConversas] = useState<Conversa[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   // A conversa aberta continua aberta ao sair e voltar (fechar o Atlas,
   // trocar de guia ou de "Painel"/"Conversas").
   const [aberta, setAbertaEstado] = useState<Conversa | null>(() => {
-    try { return JSON.parse(localStorage.getItem(CHAVE_ABERTA) || "null"); } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(chaveAberta) || "null"); } catch { return null; }
   });
   const setAberta = (c: Conversa | null) => {
     setAbertaEstado(c);
-    try { if (c) localStorage.setItem(CHAVE_ABERTA, JSON.stringify(c)); else localStorage.removeItem(CHAVE_ABERTA); } catch { /* sem storage */ }
+    try { if (c) localStorage.setItem(chaveAberta, JSON.stringify(c)); else localStorage.removeItem(chaveAberta); } catch { /* sem storage */ }
   };
   const [vistas, setVistas] = useState(lerVistas);
 
   const carregarConversas = useCallback(async () => {
-    const { data } = await supabase.rpc("whatsapp_conversas");
+    const { data } = await (supabase as unknown as SupabaseClient).rpc("whatsapp_conversas", { p_conta: conta });
     setConversas(((data || []) as Conversa[]).sort((a, b) => b.ultima_em.localeCompare(a.ultima_em)));
     setCarregando(false);
-  }, []);
+  }, [conta]);
 
   useEffect(() => { void carregarConversas(); }, [carregarConversas]);
 
   // Ao vivo: qualquer mensagem nova (ou transcrição pronta) atualiza a lista.
   const [novidade, setNovidade] = useState<Mensagem | null>(null);
   useEffect(() => {
-    const canal = supabase.channel("jarvis-whatsapp-conversas")
+    const canal = supabase.channel(`jarvis-whatsapp-conversas-${conta}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_mensagens" }, (ev) => {
+        const de = (ev.new as { conta?: string } | null)?.conta;
+        if (de && de !== conta) return;   // mensagem do outro número
         void carregarConversas();
         if (ev.new && (ev.new as Mensagem).id) setNovidade(ev.new as Mensagem);
       })
       .subscribe();
     return () => { void supabase.removeChannel(canal); };
-  }, [carregarConversas]);
+  }, [carregarConversas, conta]);
 
   const marcarVista = useCallback((chatId: string, quando: string) => {
     setVistas((v) => {
@@ -236,6 +257,7 @@ export function WhatsappConversas({ pedido, info, etiquetas }: {
 function Conversa({ conversa, novidade, onVoltar, onVista }: {
   conversa: Conversa; novidade: Mensagem | null; onVoltar: () => void; onVista: (chatId: string, quando: string) => void;
 }) {
+  const conta = useContext(ContaWhatsapp);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [carregando, setCarregando] = useState(true);
   // Rascunho por conversa (sobrevive a fechar o Atlas) e erro visível aqui
@@ -302,9 +324,9 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
       if (p.tipo === "audio" && p.audio) {
-        await invoke("whatsapp_enviar_audio", { chatId: conversa.chat_id, base64: await paraBase64(p.audio), mimetype: p.audio.type.split(";")[0] });
+        await invoke("whatsapp_enviar_audio", { chatId: conversa.chat_id, base64: await paraBase64(p.audio), mimetype: p.audio.type.split(";")[0], conta });
       } else {
-        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto });
+        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto, conta });
       }
       mudarPendente(p.id, { estado: "enviada" });
     } catch (e) {
@@ -326,16 +348,16 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
 
   useEffect(() => {
     let cancelado = false;
-    void supabase.from("whatsapp_mensagens")
+    void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens")
       .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo")
-      .eq("chat_id", conversa.chat_id).order("enviada_em", { ascending: false }).limit(200)
+      .eq("chat_id", conversa.chat_id).eq("conta", conta).order("enviada_em", { ascending: false }).limit(200)
       .then(({ data }) => {
         if (cancelado) return;
         setMensagens(((data || []) as Mensagem[]).reverse());
         setCarregando(false);
       });
     return () => { cancelado = true; };
-  }, [conversa.chat_id]);
+  }, [conversa.chat_id, conta]);
 
   // Mensagem nova (ou transcrição pronta) desta conversa, ao vivo.
   useEffect(() => {
