@@ -182,7 +182,11 @@ def guardar(p):
         if CONTA == "principal" and de_mim and eh_grupo and grupo_do_danilo(nome_do_chat(chat_id)) and (media.get("mimetype") or "").startswith("video/"):
             threading.Thread(target=mandar_pro_danilo, args=(mid, media, tipo, ts), daemon=True).start()
             return
-        baixar_midia(mid, media, tipo)
+        # 20/10 (Davi: "o WhatsApp baixa todas as imagens, queria que não baixasse"): por padrão só o
+        # áudio (para transcrever); foto, vídeo, figurinha e documento ficam no celular. Dá para
+        # voltar a baixar algum tipo com "baixar": ["audio", "imagem", …] no config.json da conta.
+        if tipo in set(CONFIG.get("baixar", ["audio"])):
+            baixar_midia(mid, media, tipo)
 
 
 TIPOS_COM_ARQUIVO = {"audio", "imagem", "video", "figurinha", "documento"}
