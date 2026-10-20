@@ -332,6 +332,36 @@ def migrar_audios_antigos():
         c.close()
 
 
+class _TravaPesada:
+    """Um trabalho pesado por vez no Mac de 8 GB (20/10/2026: o Whisper daqui e o do Danilo juntos
+    passavam de 9 GB e cada áudio levava 5 min): a mesma trava de arquivo do Danilo (danilo.pesado)."""
+    def __enter__(self):
+        import fcntl
+        caminho = Path.home() / ".infopro-hub" / "danilo" / "pesado.lock"
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        self.f = open(caminho, "w")
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *_):
+        import fcntl
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
+def _soltar_modelo(mlx_whisper):
+    """Tira o Whisper da memória (~2–4 GB) quando a fila acaba; carrega de novo no próximo áudio."""
+    import gc
+    try:
+        mlx_whisper.transcribe.ModelHolder.model = None
+        mlx_whisper.transcribe.ModelHolder.model_path = None
+        gc.collect()
+        import mlx.core as mx
+        mx.clear_cache()
+    except Exception as e:
+        log("transcrição: não consegui soltar o modelo —", repr(e)[:120])
+
+
 def transcritor():
     """Um áudio por vez (o Mac do Davi tem 8 GB). O modelo carrega no
     primeiro áudio e fica na memória. O arquivo fica guardado (pra ouvir)."""
@@ -358,28 +388,36 @@ def transcritor():
         except Exception as e:
             log("transcrição: banco fora, tento de novo em 1 min —", repr(e)[:150])
             continue
-        for id_msg, nome, conta in fila:
-            arq = pasta_midia(conta) / nome
-            if not arq.exists():
-                try:
-                    marcar(id_msg, "erro")
-                except Exception:
-                    pass
-                continue
+        if not fila:
+            continue
+        with _TravaPesada():
+            _transcrever_fila(mlx_whisper, fila)
+        _soltar_modelo(mlx_whisper)
+
+
+def _transcrever_fila(mlx_whisper, fila):
+    for id_msg, nome, conta in fila:
+        arq = pasta_midia(conta) / nome
+        if not arq.exists():
             try:
-                marcar(id_msg, "transcrevendo")
-                inicio = time.time()
-                # Português fixo: áudio curto fazia o Whisper "adivinhar" outro idioma
-                # (um "teste, teste" virou "Tæk, tæk" em 13/10).
-                r = mlx_whisper.transcribe(str(arq), path_or_hf_repo=MODELO, verbose=None, language="pt")
-                marcar(id_msg, "pronta", (r.get("text") or "").strip() or "(áudio sem fala)")
-                log("audio transcrito em", f"{time.time() - inicio:.1f}s")
-            except Exception as e:
-                log("audio: erro", repr(e)[:200])
-                try:
-                    marcar(id_msg, "erro")
-                except Exception:   # banco fora: fica 'transcrevendo' e a próxima volta tenta de novo
-                    pass
+                marcar(id_msg, "erro")
+            except Exception:
+                pass
+            continue
+        try:
+            marcar(id_msg, "transcrevendo")
+            inicio = time.time()
+            # Português fixo: áudio curto fazia o Whisper "adivinhar" outro idioma
+            # (um "teste, teste" virou "Tæk, tæk" em 13/10).
+            r = mlx_whisper.transcribe(str(arq), path_or_hf_repo=MODELO, verbose=None, language="pt")
+            marcar(id_msg, "pronta", (r.get("text") or "").strip() or "(áudio sem fala)")
+            log("audio transcrito em", f"{time.time() - inicio:.1f}s")
+        except Exception as e:
+            log("audio: erro", repr(e)[:200])
+            try:
+                marcar(id_msg, "erro")
+            except Exception:   # banco fora: fica 'transcrevendo' e a próxima volta tenta de novo
+                pass
 
 
 # ------------------------------------------------------------ webhook
