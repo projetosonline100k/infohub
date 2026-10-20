@@ -49,7 +49,7 @@ import { falar } from "@/lib/desktop/voz";
 import { isDesktop } from "@/lib/platform";
 import { AssistantCobrancaCard } from "./AssistantCobrancaCard";
 import { pedirTexto } from "@/components/DialogosGlobais";
-import { onClienteAtualMudou, onAbrirEncerrarDia, onAtalhoJ } from "@/lib/desktop/events";
+import { onClienteAtualMudou, onAbrirEncerrarDia, onAtalhoJ, emitAbrirWhatsapp } from "@/lib/desktop/events";
 import { checkAccessibilityTrusted, openAccessibilitySettings } from "@/lib/desktop/focusMonitor";
 import { dispararConfete } from "@/lib/assistant/confetti";
 import { playConclusaoSound } from "@/lib/assistant/sound";
@@ -1507,6 +1507,12 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     abrirNoAppPrincipal(!a.clienteId ? "/atividades"
       : a.tipo === "resposta" && a.membroId ? `/clientes/${a.clienteId}?conversa=${a.membroId}` : `/clientes/${a.clienteId}`);
   };
+  // Aviso de WhatsApp clicado (20/10: "vá para o WhatsApp mesmo"): no Mac abre o WhatsApp grande na
+  // janela principal, já na conversa; na web continua no painel do Atlas.
+  const irProWhatsapp = () => {
+    if (variant === "window") { void openMainWindow(); void emitAbrirWhatsapp(); return; }
+    setAba("whatsapp"); void abrirPainel();
+  };
   // Só o que acabou de chegar (20 min) e ainda não foi clicado: a lua aparece quando alguém manda algo e some depois.
   const [luasVistas, setLuasVistas] = useState<string[]>([]);
   const recente = (quando: string) => Date.now() - new Date(quando).getTime() < 20 * 60_000;
@@ -1516,7 +1522,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       id: `w-${m.chatId}-${m.quando}`, nome: "Shirley", ehIa: true, cor: "whatsapp",
       dica: `WhatsApp: ${m.nome}`, titulo: `💬 ${m.nome} mandou mensagem`, porque: "WhatsApp, agora",
       trecho: m.texto, acaoRotulo: "Responder",
-      acao: () => { mensagens.dispensar(m.chatId); prepararConversaAberta(m); setAba("whatsapp"); void abrirPainel(); },
+      acao: () => { mensagens.dispensar(m.chatId); prepararConversaAberta(m); irProWhatsapp(); },
       onClick: () => {},
     })),
     ...[...shirley.novas, ...(shirley.atual && !shirley.novas.some((n) => n.chatId === shirley.atual!.chatId) ? [shirley.atual] : [])].map((w): Lua => ({
@@ -1525,7 +1531,10 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
       titulo: w.motivo === "insatisfeito" ? `🚨 ${w.nome} pode estar insatisfeito` : `📱 ${w.nome} mandou mensagem`,
       porque: `WhatsApp, há ${tempoEsperando(Math.max(1, w.minutos))}`,
       trecho: w.trecho, acaoRotulo: "Abrir WhatsApp",
-      acao: () => { setAba("whatsapp"); void abrirPainel(); },
+      acao: () => {
+        prepararConversaAberta({ chatId: w.chatId, chatNome: w.chatNome ?? null, nome: w.nome, grupo: !!w.grupo, autor: null, texto: w.trecho, quando: w.ultimaEm, quantas: 1 });
+        irProWhatsapp();
+      },
       onClick: () => {},
     })),
     ...[...paraRevisar.adiados, ...(paraRevisar.atual ? [paraRevisar.atual] : [])].filter((a) => recente(a.quando)).map((a): Lua => ({

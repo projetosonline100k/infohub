@@ -123,3 +123,27 @@ export async function onAtalhoJ(aoApertar: () => void, aoSoltar: () => void): Pr
     return () => {};
   }
 }
+
+// Clique no aviso de WhatsApp (20/10: "ao clicar, vá para o WhatsApp mesmo"): a janela
+// principal vem pra frente e abre o WhatsApp grande (⌘⌥W) já na conversa.
+const EVENTO_ABRIR_WHATSAPP = "abrir-whatsapp";
+
+export async function emitAbrirWhatsapp(): Promise<void> {
+  if (!isDesktop()) return;
+  try {
+    const { emit } = await import("@tauri-apps/api/event");
+    await emit(EVENTO_ABRIR_WHATSAPP, {});
+  } catch { /* ignora */ }
+}
+
+export async function onAbrirWhatsapp(handler: () => void): Promise<() => void> {
+  if (!isDesktop()) return () => {};
+  try {
+    const { listen } = await import("@tauri-apps/api/event");
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    if (getCurrentWindow().label !== "main") return () => {};
+    return await listen(EVENTO_ABRIR_WHATSAPP, () => handler());
+  } catch {
+    return () => {};
+  }
+}
