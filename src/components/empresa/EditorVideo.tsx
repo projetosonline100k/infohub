@@ -186,10 +186,28 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (!edicao) return;
     let vivo = true;
     void (async () => {
-      const { data: ed } = await supabase.from("edicoes_video").select("atividade_id, cliente_id").eq("id", edicao.id).maybeSingle();
-      if (!ed?.atividade_id) return;
-      const { data: d } = await supabase.from("membros").select("id").eq("cliente_id", ed.cliente_id).eq("eh_ia", true).ilike("nome", "danilo").limit(1).maybeSingle();
-      if (vivo && d) setConversa({ tarefaId: ed.atividade_id, clienteId: ed.cliente_id, membroId: d.id });
+      const { data: ed } = await supabase.from("edicoes_video").select("atividade_id, cliente_id, titulo").eq("id", edicao.id).maybeSingle();
+      if (!ed) return;
+      const { data: d } = await supabase.from("membros").select("id, setor_id").eq("cliente_id", ed.cliente_id).eq("eh_ia", true).ilike("nome", "danilo").limit(1).maybeSingle();
+      if (!d) return;
+      let tarefaId = ed.atividade_id;
+      // 20/10: edição que o Danilo fez pela pasta (ex.: BRUTOS do Instalivros) chegava sem tarefa e o chat
+      // não aparecia. Sem tarefa: cria uma "Revisar edição" dele e liga — o chat é dela, e aprovar conclui.
+      if (!tarefaId) {
+        const [{ data: coluna }, { data: pasta }] = await Promise.all([
+          supabase.from("colunas_atividade").select("status_key").eq("cliente_id", ed.cliente_id).eq("eh_conclusao", false).order("ordem").limit(1).maybeSingle(),
+          supabase.from("pastas_atividade").select("id").eq("cliente_id", ed.cliente_id).is("deleted_at", null).eq("origem", "atividades").order("ordem").limit(1).maybeSingle(),
+        ]);
+        const { data: nova } = await (supabase as unknown as SupabaseClient).from("atividades").insert({
+          titulo: `Revisar edição: ${(ed.titulo ?? "vídeo").replace(/^Bruto /, "")}`, cliente_id: ed.cliente_id, pasta_id: pasta?.id ?? null,
+          data_atividade: new Date().toISOString().slice(0, 10), status: coluna?.status_key ?? "backlog", concluida: false, prioridade: "media",
+          responsavel_id: d.id, setor_id: d.setor_id, situacao: "aguardando_aprovacao", tipo: "edicao", progresso: 100,
+        }).select("id").single();
+        if (!nova) return;
+        tarefaId = (nova as { id: string }).id;
+        await supabase.from("edicoes_video").update({ atividade_id: tarefaId }).eq("id", edicao.id).is("atividade_id", null);
+      }
+      if (vivo) setConversa({ tarefaId, clienteId: ed.cliente_id, membroId: d.id });
     })();
     return () => { vivo = false; };
   }, [edicao]);
