@@ -235,10 +235,15 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     }
   };
   // Vários avisos em sequência (o check, a cópia da tarefa que repete, a coluna…) viram uma recarga só.
+  // O realtime é registrado uma vez só (quando a tela abre): chamava a carregarDados DAQUELE momento,
+  // com a lista de projetos ainda vazia — e zerava a tela a cada check até outra recarga trazer de volta
+  // (20/10, Davi: "tudo some e depois volta"). Pela ref, sempre a versão atual.
+  const carregarRef = useRef(carregarDados);
+  carregarRef.current = carregarDados;
   const recargaAgendada = useRef<number | undefined>(undefined);
   const recarregarLogo = () => {
     window.clearTimeout(recargaAgendada.current);
-    recargaAgendada.current = window.setTimeout(() => void carregarDados(), 400);
+    recargaAgendada.current = window.setTimeout(() => void carregarRef.current(), 400);
   };
 
   useEffect(() => {

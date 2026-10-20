@@ -873,6 +873,10 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
   // (fonte oficial, cobre qualquer origem) + BroadcastChannel (atalho
   // instantâneo entre abas do mesmo navegador). Sempre refaz a MESMA busca
   // já existente (carregarAtividades), sem duplicar lógica de merge.
+  // Realtime registrado uma vez: chama sempre a versão atual da busca (com os filtros de agora), não a
+  // da primeira tela (20/10: a versão velha recarregava com filtros antigos e a tela "sumia e voltava").
+  const carregarAtividadesRef = useRef(carregarAtividades);
+  carregarAtividadesRef.current = carregarAtividades;
   useEffect(() => {
     if (!user?.id) return;
     const canal = supabase
@@ -880,19 +884,19 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "atividades", filter: `user_id=eq.${user.id}` },
-        () => carregarAtividades(),
+        () => void carregarAtividadesRef.current(),
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "colunas_atividade", filter: `user_id=eq.${user.id}` },
-        () => carregarAtividades(),
+        () => void carregarAtividadesRef.current(),
       )
       .subscribe();
 
     let broadcast: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== "undefined") {
       broadcast = new BroadcastChannel("assistant-sync");
-      broadcast.onmessage = () => carregarAtividades();
+      broadcast.onmessage = () => void carregarAtividadesRef.current();
     }
 
     return () => {
