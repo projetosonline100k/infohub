@@ -203,22 +203,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
     return t ? conversas.filter((c) => (c.chat_nome ?? c.chat_id).toLowerCase().includes(t)) : conversas;
   }, [conversas, busca]);
 
-  if (aberta) {
-    const chat = <Conversa conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
-    if (!info) return chat;
-    return (
-      // Informações à esquerda e a conversa à direita (19/10, Davi).
-      <ResizablePanelGroup direction="horizontal" autoSaveId="jarvis:whatsapp-info-conversa" className="h-full">
-        <ResizablePanel defaultSize={42} minSize={22} className="min-w-0">
-          <div className="h-full overflow-y-auto px-4 pb-4">{info(aberta)}</div>
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={58} minSize={30} className="min-w-0">{chat}</ResizablePanel>
-      </ResizablePanelGroup>
-    );
-  }
-
-  return (
+  const lista = (
     <div className="flex h-full flex-col">
       <div className="relative mx-3 mb-2">
         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -237,7 +222,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
             const naoLida = !c.ultima_de_mim && (!vistas[c.chat_id] || vistas[c.chat_id] < c.ultima_em);
             return (
               <button key={c.chat_id} type="button" onClick={() => { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }}
-                className="flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2 text-left hover:bg-accent/60">
+                className={cn("flex w-full items-center gap-2.5 border-b border-border/60 px-3 py-2 text-left hover:bg-accent/60", aberta?.chat_id === c.chat_id && "bg-accent")}>
                 <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} />
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2">
@@ -263,7 +248,31 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe }: PropsConversas) {
         </div>
       )}
     </div>
-  );
+);
+
+  // 20/10 (Davi): "quando abro uma conversa, ele não fecha: fica aberto na lateral o contato" —
+  // como no WhatsApp Web, a lista continua à esquerda e a conversa abre do lado.
+  if (aberta) {
+    const chat = <Conversa key={aberta.chat_id} conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
+    return (
+      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-info-conversa" : "jarvis:whatsapp-lista-conversa"} className="h-full">
+        <ResizablePanel defaultSize={info ? 28 : 34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
+        <ResizableHandle withHandle />
+        {info && (
+          <>
+            {/* Informações à esquerda da conversa (19/10, Davi). */}
+            <ResizablePanel defaultSize={30} minSize={16} className="min-w-0">
+              <div className="h-full overflow-y-auto px-4 pb-4">{info(aberta)}</div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+          </>
+        )}
+        <ResizablePanel defaultSize={info ? 42 : 66} minSize={28} className="min-w-0">{chat}</ResizablePanel>
+      </ResizablePanelGroup>
+    );
+  }
+
+  return lista;
 }
 
 function Conversa({ conversa, novidade, onVoltar, onVista }: {
