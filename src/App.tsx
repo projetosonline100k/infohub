@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import JarvisWindow from "./pages/JarvisWindow";
+import NotasWindow from "./pages/NotasWindow";
 import Privacidade from "./pages/Privacidade";
 import InstagramConectado from "./pages/InstagramConectado";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
@@ -49,6 +50,7 @@ const App = () => (
               sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona
               pra /login: ver JarvisWindow.tsx). */}
           <Route path="/jarvis" element={<JarvisWindow />} />
+          <Route path="/notas-janela" element={<NotasWindow />} />
           
           {/* Rotas protegidas: o layout renderiza as páginas por aba
               (ver src/components/workspace/WorkspacePages.tsx). */}

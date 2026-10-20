@@ -9,9 +9,8 @@ import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
 import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
 import TaskList from "@tiptap/extension-task-list";
 import TaskItem from "@tiptap/extension-task-item";
-import { toast } from "sonner";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
-import { supabase } from "@/integrations/supabase/client";
+import { salvarNota, type LinhaNota } from "@/lib/notas/localPrimeiro";
 import { NOTA_PREFIX, conteudoDaNota, type AssistantDocumento } from "@/hooks/useAssistantDocumentos";
 
 const DEBOUNCE_MS = 800;
@@ -37,6 +36,9 @@ export function useNotaEditor(nota: AssistantDocumento | null, onSalvo?: (id: st
   const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const onSalvoRef = useRef(onSalvo);
   onSalvoRef.current = onSalvo;
+  const notaRef = useRef(nota);
+  notaRef.current = nota;
+  const [naNuvem, setNaNuvem] = useState(true);
 
   const agendarSalvamento = useCallback((novoTitulo: string, novoConteudoHtml: string) => {
     clearTimeout(timeoutRef.current);
@@ -47,20 +49,14 @@ export function useNotaEditor(nota: AssistantDocumento | null, onSalvo?: (id: st
       const tituloFinal = novoTitulo.trim() || "Nota sem título";
       const conteudoFinal = NOTA_PREFIX + novoConteudoHtml;
       const updatedAt = new Date().toISOString();
-      const { error } = await supabase
-        .from("documentos")
-        .update({ titulo: tituloFinal, conteudo: conteudoFinal, updated_at: updatedAt })
-        .eq("id", id);
+      // 20/10 (local primeiro): fica salvo no Mac na hora; a nuvem recebe por trás e, sem
+      // internet, a nota sobe sozinha quando a conexão volta (nada se perde).
+      const base = notaRef.current && notaRef.current.id === id ? notaRef.current : null;
+      onSalvoRef.current?.(id, { titulo: tituloFinal, conteudo: conteudoFinal, updated_at: updatedAt });
+      setSalvoEm(new Date());
+      const subiu = base ? await salvarNota({ ...base, titulo: tituloFinal, conteudo: conteudoFinal, updated_at: updatedAt } as LinhaNota) : false;
       setSalvando(false);
-      if (!error) {
-        setSalvoEm(new Date());
-        onSalvoRef.current?.(id, { titulo: tituloFinal, conteudo: conteudoFinal, updated_at: updatedAt });
-      } else {
-        // Antes falhava em silêncio: "Salvo há..." simplesmente parava de
-        // avançar, sem nenhum aviso de que a última edição não foi pro
-        // banco — indistinguível de "está tudo bem, só não editei mais nada".
-        toast.error("Não foi possível salvar a nota. Verifique a conexão.");
-      }
+      setNaNuvem(subiu);
     }, DEBOUNCE_MS);
   }, []);
 
@@ -107,5 +103,5 @@ export function useNotaEditor(nota: AssistantDocumento | null, onSalvo?: (id: st
     agendarSalvamento(valor, editor?.getHTML() ?? "");
   }, [agendarSalvamento, editor]);
 
-  return { editor, titulo, onTituloChange, salvando, salvoEm };
+  return { editor, titulo, onTituloChange, salvando, salvoEm, naNuvem };
 }

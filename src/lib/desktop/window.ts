@@ -345,3 +345,12 @@ export async function tamanhoMaximoNaTela(): Promise<Tamanho> {
     return TAMANHO_MAXIMO_PAINEL;
   }
 }
+
+// Janela própria de Notas (20/10): abre (ou traz pra frente) a janela "notas".
+export async function abrirJanelaNotas(focar = true): Promise<void> {
+  if (!isDesktop()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("abrir_notas", { focar });
+  } catch { /* app antigo sem a janela de Notas */ }
+}

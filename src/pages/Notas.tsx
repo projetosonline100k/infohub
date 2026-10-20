@@ -15,7 +15,7 @@ import { NotaEditorPane } from "@/components/notas/NotaEditorPane";
 // nenhuma lógica duplicada, só um layout maior e mais parecido com o
 // Notes nativo do Mac/iPhone. Altura calculada a partir do shell novo:
 // topbar (4rem) + padding vertical do <main> (1.5rem + 1.5rem) = 7rem.
-export default function Notas() {
+export default function Notas({ janela = false }: { janela?: boolean } = {}) {
   const { projetos, loadingProjetos, projetoId, setProjetoId } = useAssistantProjeto();
   const { notas, notasLixeira, loading, criarNota, atualizarNotaLocal, fixarNota, moverNotaParaPasta, duplicarNota, excluirNota, restaurarNota, excluirNotaPermanente } =
     useAssistantDocumentos(projetoId);
@@ -92,7 +92,8 @@ export default function Notas() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] divide-x divide-border overflow-hidden rounded-xl border border-border bg-card">
+    // janela: a janela própria de Notas do Mac (20/10) ocupa a tela toda, com espaço em cima para os botões da janela.
+    <div className={janela ? "flex h-screen divide-x divide-border overflow-hidden bg-card pt-9" : "flex h-[calc(100vh-7rem)] divide-x divide-border overflow-hidden rounded-xl border border-border bg-card"}>
       {/* Coluna 1: sidebar única — seletor de projeto + filtros + pastas */}
       {pastasVisiveis && <div className="w-64 shrink-0 overflow-y-auto">
         {projetos.length === 0 && !loadingProjetos ? (

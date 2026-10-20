@@ -8,6 +8,7 @@ import { GlobalSearchCommand } from "@/components/layout/GlobalSearchCommand";
 import { Assistant } from "@/components/assistant/Assistant";
 import { DesktopUpdateBanner } from "@/components/DesktopUpdateBanner";
 import { isDesktop } from "@/lib/platform";
+import { abrirJanelaNotas } from "@/lib/desktop/window";
 import { onMainNavigate, emitClienteAtualMudou } from "@/lib/desktop/events";
 import { useWorkspaceTabs, WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { WorkspacePages } from "@/components/workspace/WorkspacePages";
@@ -35,6 +36,26 @@ export const DashboardLayout = () => {
       if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       e.preventDefault();
       window.location.reload();
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
+
+  // Janela própria de Notas (20/10, Davi: "sempre que abrir o Infopro, já abrir uma parte separada,
+  // igual o Notas"): a janela principal abre a de Notas ao ligar (sem roubar o foco; se já está
+  // aberta, nada muda) e ⌘⌥N traz ela pra frente.
+  useEffect(() => {
+    if (!isDesktop()) return;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        if (getCurrentWindow().label === "main") await abrirJanelaNotas(false);
+      } catch { /* sem janela nativa */ }
+    })();
+    const tecla = (e: KeyboardEvent) => {
+      if (!e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey || e.code !== "KeyN") return;
+      e.preventDefault();
+      void abrirJanelaNotas(true);
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);

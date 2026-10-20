@@ -150,7 +150,7 @@ function FormatacaoCompacta({ editor }: { editor: Editor }) {
 // então os dois viraram blocos praticamente separados aqui dentro, embora
 // usem os mesmos dados/autosave por baixo.
 export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar, onMoverParaPasta, pastas, onRestaurar, onNotaAtualizada, compact, acaoEsquerda }: NotaEditorPaneProps) {
-  const { editor, titulo, onTituloChange, salvando, salvoEm } = useNotaEditor(nota, onNotaAtualizada);
+  const { editor, titulo, onTituloChange, salvando, salvoEm, naNuvem } = useNotaEditor(nota, onNotaAtualizada);
   const naLixeira = !!nota.deleted_at;
   const [mostrarFormatacao, setMostrarFormatacao] = useState(false);
 
@@ -224,7 +224,7 @@ export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar,
           className="mb-0.5 ml-7 w-auto shrink-0 border-none px-0 text-lg font-bold shadow-none focus-visible:ring-0"
         />
         <p className="mb-3 shrink-0 pl-7 text-xs text-muted-foreground">
-          {salvando ? "Salvando..." : salvoEm ? formatarEdicaoCompacta(salvoEm) : formatarEdicaoCompacta(new Date(nota.updated_at))}
+          {salvando ? "Salvando..." : salvoEm ? `${formatarEdicaoCompacta(salvoEm)}${naNuvem ? "" : " · salvo no Mac, sincronizando"}` : formatarEdicaoCompacta(new Date(nota.updated_at))}
         </p>
 
         {/* pl-7: espaço pras setas dos títulos recolhíveis (ficam à esquerda
@@ -310,7 +310,7 @@ export function NotaEditorPane({ nota, onVoltar, onFixar, onExcluir, onDuplicar,
         <div className="mx-auto w-full max-w-3xl pl-7">
           <p className="mb-3 text-center text-xs text-muted-foreground"
             title={`Criada em ${format(new Date(nota.created_at), "d 'de' MMM 'de' yyyy", { locale: ptBR })}`}>
-            {salvando ? "Salvando..." : format(dataEdicao, "d 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}
+            {salvando ? "Salvando..." : `${format(dataEdicao, "d 'de' MMMM 'de' yyyy 'às' HH:mm", { locale: ptBR })}${naNuvem ? "" : " · salvo no Mac, sincronizando"}`}
           </p>
           <Input
             value={titulo}

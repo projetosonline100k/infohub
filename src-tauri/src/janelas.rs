@@ -70,3 +70,34 @@ pub async fn mostrar_aviso(app: AppHandle, rota: String, vaga: u32) -> Result<()
         erro.to_string()
     })
 }
+
+// Janela própria de Notas (20/10, Davi: "sempre que abrir o Infopro, já abrir uma parte separada,
+// igual o Notas"). Uma só: se já existe, só traz pra frente. Posição/tamanho lembrados (window-state).
+#[tauri::command]
+pub async fn abrir_notas(app: AppHandle, focar: Option<bool>) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(janela) = app.get_webview_window("notas") {
+        if focar.unwrap_or(true) {
+            let _ = janela.unminimize();
+            let _ = janela.show();
+            let _ = janela.set_focus();
+        }
+        return Ok(());
+    }
+    let mut janela = WebviewWindowBuilder::new(&app, "notas", WebviewUrl::App("notas-janela".into()))
+        .title("Notas")
+        .inner_size(1100.0, 760.0)
+        .min_inner_size(520.0, 420.0)
+        .focused(focar.unwrap_or(true));
+    #[cfg(target_os = "macos")]
+    {
+        janela = janela
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 20.0));
+    }
+    janela.build().map(|_| ()).map_err(|erro| {
+        log::error!("abrir_notas falhou: {erro}");
+        erro.to_string()
+    })
+}
