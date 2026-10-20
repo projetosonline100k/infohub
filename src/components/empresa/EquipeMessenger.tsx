@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { naoLidasPorMembro } from "@/lib/empresa/notificacoes";
-import { ArrowLeft, ListTodo, MessageCircle, X } from "lucide-react";
+import { ArrowLeft, Bot, ListTodo, MessageCircle, X } from "lucide-react";
+import { AssistantConversaTab } from "@/components/assistant/tabs/AssistantConversaTab";
 import { cn } from "@/lib/utils";
 import type { MembroResumo, Sinal } from "@/lib/empresa/visaoGeral";
 import { CabecaBoneco } from "./BonecoMesa";
@@ -56,6 +57,10 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
     setParams((sp) => { const n = new URLSearchParams(sp); n.delete("conversa"); return n; }, { replace: true });
   }, [pedida, lista, setParams]);
   const atualDaConversa = conversa ? lista.find((p) => p.membro.id === conversa.membro.id) ?? conversa : null;
+  // 20/10 (Davi: "crie o chat dele"): o Atlas também na lista; a conversa é a mesma do ⌘J, atendida
+  // pelo chat do Claude Code ligado ao Atlas (ou pelo ouvinte, quando o chat está fechado).
+  const [comAtlas, setComAtlas] = useState(false);
+  const [focoAtlas, setFocoAtlas] = useState(0);
 
   if (!aberta) {
     return (
@@ -80,7 +85,16 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
     <div className="fixed bottom-3 right-3 top-24 z-40 flex w-[340px] flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl">
       {/* Cabeçalho: lista ou a pessoa da conversa */}
       <div className="flex items-center gap-2 border-b px-3 py-2.5">
-        {atualDaConversa ? (
+        {comAtlas ? (
+          <>
+            <button type="button" onClick={() => setComAtlas(false)} className="rounded-md p-1 hover:bg-muted" aria-label="Voltar para a equipe"><ArrowLeft className="h-4 w-4" /></button>
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-sky-300"><Bot className="h-5 w-5" /></span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold">Atlas</p>
+              <p className="truncate text-[11px] text-muted-foreground">Coordena a operação · fala direto com o Claude</p>
+            </div>
+          </>
+        ) : atualDaConversa ? (
           <>
             <button type="button" onClick={() => setConversa(null)} className="rounded-md p-1 hover:bg-muted" aria-label="Voltar para a equipe"><ArrowLeft className="h-4 w-4" /></button>
             <Avatar p={atualDaConversa} />
@@ -96,16 +110,29 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
             <p className="flex-1 text-sm font-semibold">Equipe</p>
           </>
         )}
-        <button type="button" onClick={() => { setAberta(false); setConversa(null); }} className="rounded-md p-1 hover:bg-muted" aria-label="Fechar"><X className="h-4 w-4" /></button>
+        <button type="button" onClick={() => { setAberta(false); setConversa(null); setComAtlas(false); }} className="rounded-md p-1 hover:bg-muted" aria-label="Fechar"><X className="h-4 w-4" /></button>
       </div>
 
-      {atualDaConversa ? (
+      {comAtlas ? (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <AssistantConversaTab foco={focoAtlas} />
+        </div>
+      ) : atualDaConversa ? (
         <div className="min-h-0 flex-1">
           <BriefingTarefa key={atualDaConversa.membro.id} messenger clienteId={clienteId} membro={atualDaConversa.membro}
             onCriarTarefa={async (t) => { const id = await criarTarefaParaMembro(clienteId, atualDaConversa.membro.id, t); onMudou(); return id; }} />
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          <button type="button" onClick={() => { setComAtlas(true); setFocoAtlas((n) => n + 1); }}
+            className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-sky-300"><Bot className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">Atlas</span>
+              <span className="block truncate text-[11px] text-muted-foreground">Coordenando a operação · fale direto com o Claude</span>
+            </span>
+            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] text-muted-foreground">IA</span>
+          </button>
           {lista.map((p) => (
             <button key={p.membro.id} type="button" onClick={() => setConversa(p)}
               className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted">
@@ -124,7 +151,7 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
               </span>
             </button>
           ))}
-          <p className="px-2 pt-2 text-[11px] text-muted-foreground">Converse com alguém: ele diz o que entendeu e, quando você confirma, vira tarefa. Com o Atlas, use a orbe (⌘J).</p>
+          <p className="px-2 pt-2 text-[11px] text-muted-foreground">Converse com alguém: ele diz o que entendeu e, quando você confirma, vira tarefa. O Atlas é o Claude: pede o que quiser no sistema.</p>
         </div>
       )}
     </div>
