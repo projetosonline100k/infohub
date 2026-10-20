@@ -24,6 +24,8 @@ export default function AvisoWindow() {
 
   useEffect(() => {
     document.documentElement.classList.add("jarvis-window");
+    document.documentElement.style.overflow = "hidden";   // nunca barra de rolagem no aviso
+    document.body.style.overflow = "hidden";
   }, []);
 
   const fechar = async () => {
@@ -49,36 +51,32 @@ export default function AvisoWindow() {
     void fechar();
   };
 
+  // 20/10 (Davi: "preciso bater o olho e entender"): só duas linhas curtas, sem rolagem.
   return (
-    <div className="flex h-screen w-screen items-start justify-end p-1.5">
+    <div className="flex h-screen w-screen items-start justify-end overflow-hidden p-1.5">
       <div
         role="button" tabIndex={0} onClick={() => void abrir()}
         onMouseEnter={() => { parado.current = true; }} onMouseLeave={() => { parado.current = false; }}
-        className={`group relative flex w-full cursor-pointer gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#0d1620]/95 p-3 pr-8 text-white shadow-2xl backdrop-blur-xl transition-all duration-300 ${saindo ? "translate-x-8 opacity-0" : "animate-in slide-in-from-right-8 fade-in-0"}`}
-        style={{ boxShadow: `0 10px 30px -8px ${brilho}, 0 0 0 1px rgba(255,255,255,0.04)` }}
+        className={`group relative flex w-full cursor-pointer items-center gap-3 overflow-hidden rounded-2xl border border-white/10 bg-[#0d1620]/95 py-2.5 pl-3.5 pr-8 text-white backdrop-blur-xl transition-all duration-300 ${saindo ? "translate-x-8 opacity-0" : "animate-in slide-in-from-right-8 fade-in-0"}`}
+        style={{ boxShadow: `0 6px 20px -6px ${brilho}` }}
+        title={rotulo}
       >
         <span className="absolute inset-y-0 left-0 w-1" style={{ background: cor }} />
-        {/* Orbe do Atlas com o selo do tipo do aviso */}
-        <span className="relative mt-0.5 ml-1 h-11 w-11 shrink-0">
-          <span className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-700 to-slate-950 shadow-[0_0_14px_rgba(34,211,238,0.55)] ring-1 ring-cyan-300/40" />
-          <span className="absolute left-[13px] top-[16px] h-[11px] w-[6px] rounded-full bg-cyan-200 shadow-[0_0_6px_rgba(165,243,252,0.9)]" />
-          <span className="absolute right-[13px] top-[16px] h-[11px] w-[6px] rounded-full bg-cyan-200 shadow-[0_0_6px_rgba(165,243,252,0.9)]" />
-          <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full ring-2 ring-[#0d1620]" style={{ background: cor }}>
-            <Icone className="h-3 w-3 text-white" strokeWidth={2.6} />
+        {/* Orbe do Atlas com o selo do tipo */}
+        <span className="relative h-9 w-9 shrink-0">
+          <span className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-700 to-slate-950 shadow-[0_0_10px_rgba(34,211,238,0.5)] ring-1 ring-cyan-300/40" />
+          <span className="absolute left-[11px] top-[13px] h-[9px] w-[5px] rounded-full bg-cyan-200 shadow-[0_0_5px_rgba(165,243,252,0.9)]" />
+          <span className="absolute right-[11px] top-[13px] h-[9px] w-[5px] rounded-full bg-cyan-200 shadow-[0_0_5px_rgba(165,243,252,0.9)]" />
+          <span className="absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full ring-2 ring-[#0d1620]" style={{ background: cor }}>
+            <Icone className="h-2.5 w-2.5 text-white" strokeWidth={2.8} />
           </span>
         </span>
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5 text-[10.5px] font-medium uppercase tracking-wide text-white/50">
-            <img src="/logo.png" alt="" className="h-3.5 w-3.5 rounded-[4px]" />
-            Infopro · Atlas
-            <span className="font-semibold normal-case tracking-normal" style={{ color: cor }}>· {rotulo}</span>
-          </span>
-          <span className="mt-0.5 block truncate text-[13.5px] font-semibold leading-snug">{p.get("t")}</span>
-          {p.get("q") && <span className="block truncate text-[11.5px] text-white/60">{p.get("q")}</span>}
-          {p.get("c") && <span className="mt-0.5 line-clamp-2 block text-[12px] leading-snug text-white/80">{p.get("c")}</span>}
+        <span className="min-w-0 flex-1 leading-tight">
+          <span className="block truncate text-[14px] font-semibold">{p.get("t")}</span>
+          {p.get("c") && <span className="mt-0.5 block truncate text-[12.5px] text-white/65">{p.get("c")}</span>}
         </span>
         <button type="button" aria-label="Fechar" onClick={(e) => { e.stopPropagation(); void fechar(); }}
-          className="absolute right-2 top-2 rounded-full p-1 text-white/40 opacity-0 transition-opacity hover:bg-white/10 hover:text-white group-hover:opacity-100">
+          className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 text-white/40 opacity-0 transition-opacity hover:bg-white/10 hover:text-white group-hover:opacity-100">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>

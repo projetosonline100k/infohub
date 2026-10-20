@@ -34,8 +34,8 @@ pub async fn destacar_aba(app: AppHandle, caminho: String, titulo: String, x: Op
 // Aviso do Atlas no canto de cima da tela (20/10: "notificação mais bonita, com o símbolo
 // do Infopro e do Atlas; WhatsApp verde"): janelinha transparente, sem foco, acima de tudo.
 // `vaga` empilha vários avisos um embaixo do outro. A página /aviso desenha e se fecha sozinha.
-pub const AVISO_LARGURA: f64 = 380.0;
-pub const AVISO_ALTURA: f64 = 112.0;
+pub const AVISO_LARGURA: f64 = 360.0;
+pub const AVISO_ALTURA: f64 = 72.0;
 
 #[tauri::command]
 pub async fn mostrar_aviso(app: AppHandle, rota: String, vaga: u32) -> Result<(), String> {

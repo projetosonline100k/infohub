@@ -1565,8 +1565,13 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     const novas = luas.filter((l) => !avisados.includes(l.id));
     if (!novas.length) return;
     for (const l of novas) {
-      void mostrarAviso({ id: l.id, tipo: l.cor, titulo: l.titulo.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, ""),
-        quem: l.porque, corpo: l.trecho ? `“${l.trecho}”` : undefined });
+      // Duas linhas para bater o olho: WhatsApp = quem mandou + o que disse; entrega = o que ficou pronto + o quê.
+      const titulo = l.titulo.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, "").replace(/\s*\(revisar\)\s*$/i, "")
+        .replace(/ (mandou mensagem|pode estar insatisfeito)$/, (m) => (m.includes("insatisfeito") ? " · insatisfeito" : ""));
+      const projeto = l.porque.split(" · ").at(-1);
+      const corpo = l.cor === "whatsapp" || l.cor === "urgente" ? l.trecho
+        : [l.trecho, projeto && projeto !== l.trecho ? projeto : null].filter(Boolean).join(" · ");
+      void mostrarAviso({ id: l.id, tipo: l.cor, titulo, corpo: corpo || l.porque });
     }
     try { localStorage.setItem("atlas:notificados", JSON.stringify([...avisados, ...novas.map((l) => l.id)].slice(-300))); } catch { /* sem storage */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
