@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { VideoDetailPanel } from "./VideoDetailPanel";
 import { InstagramInsightsPanel } from "./InstagramInsightsPanel";
+import { CorridaMeta } from "./CorridaMeta";
 import { NumerosDoPost, TopPostsPanel } from "./TopPostsPanel";
 import { InteligenciaConteudo } from "./InteligenciaConteudo";
 import type { PostInstagram } from "@/lib/instagramMetricas";
@@ -701,6 +702,8 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
 
         {/* A coluna "Pronto para postar / Em edição / Em gravação" saiu (Davi, 16/10: ocupava espaço à toa);
             quem programa agora é a Dalila, pelo "Escolher data". */}
+        <CorridaMeta clienteId={clienteId} />
+
         <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_230px]">
 
           <main className="min-w-0 overflow-hidden">
