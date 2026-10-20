@@ -9,7 +9,6 @@ import QuizPublico from "./pages/QuizPublico";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
-import AvisoWindow from "./pages/AvisoWindow";
 import JarvisWindow from "./pages/JarvisWindow";
 import Privacidade from "./pages/Privacidade";
 import InstagramConectado from "./pages/InstagramConectado";
@@ -50,7 +49,6 @@ const App = () => (
               sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona
               pra /login: ver JarvisWindow.tsx). */}
           <Route path="/jarvis" element={<JarvisWindow />} />
-          <Route path="/aviso" element={<AvisoWindow />} />
           
           {/* Rotas protegidas: o layout renderiza as páginas por aba
               (ver src/components/workspace/WorkspacePages.tsx). */}

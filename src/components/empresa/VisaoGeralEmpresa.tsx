@@ -179,7 +179,21 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   };
   const { semana, recarregar: recarregarSemana } = useSemanaEquipe(clienteId);
 
+  // 20/10: uma consulta presa deixava o Escritório girando para sempre. Agora, com erro ou
+  // passando de 25 s, a tela aparece com o que deu para carregar (e tenta de novo na próxima atualização).
   const carregar = useCallback(async () => {
+    const espera = new Promise<never>((_, nao) => setTimeout(() => nao(new Error("demorou mais de 25 s")), 25_000));
+    try {
+      await Promise.race([carregarDados(), espera]);
+    } catch (erro) {
+      console.error("Escritório: não carregou tudo", erro);
+    } finally {
+      setCarregando(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clienteId]);
+
+  async function carregarDados() {
     const [s, m, t, vv, vy] = await Promise.all([
       (supabase as unknown as SupabaseClient).from("setores").select("id, nome, descricao, cor, icone, fileira, esteira").eq("cliente_id", clienteId).order("ordem"),
       (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia, visual").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
@@ -255,8 +269,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       ...(vv.data || []).map((v) => ({ id: v.id, titulo: v.titulo, status: v.status, data_postagem: v.data_postagem, plataforma: "vertical" as const, capa: v.referencia_id ? capaDe.get(v.referencia_id) ?? null : null })),
       ...(vy.data || []).map((v) => ({ id: v.id, titulo: v.titulo, status: v.status, data_postagem: v.data_postagem, plataforma: "youtube" as const })),
     ]);
-    setCarregando(false);
-  }, [clienteId]);
+  }
 
   useEffect(() => {
     void carregar();
