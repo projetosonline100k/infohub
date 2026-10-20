@@ -191,6 +191,9 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     setChecklistPorAtividade(resumo);
   };
 
+  // "Carregando…" só na primeira vez; depois recarrega por trás (20/10, Davi: "dou o check num card,
+  // tudo some e depois volta" — o realtime do próprio check recarregava apagando a tela).
+  const jaCarregou = useRef(false);
   const carregarDados = async () => {
     if (clientes.length === 0) {
       setAtividades([]);
@@ -198,7 +201,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!jaCarregou.current) setLoading(true);
     try {
       const ids = clientes.map((c) => c.id);
       const [ativRes, colRes] = await Promise.all([
@@ -227,8 +230,15 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
       console.error("Erro ao carregar atividades dos clientes:", error);
       toast.error("Erro ao carregar atividades dos clientes");
     } finally {
+      jaCarregou.current = true;
       setLoading(false);
     }
+  };
+  // Vários avisos em sequência (o check, a cópia da tarefa que repete, a coluna…) viram uma recarga só.
+  const recargaAgendada = useRef<number | undefined>(undefined);
+  const recarregarLogo = () => {
+    window.clearTimeout(recargaAgendada.current);
+    recargaAgendada.current = window.setTimeout(() => void carregarDados(), 400);
   };
 
   useEffect(() => {
@@ -258,19 +268,19 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "atividades", filter: `user_id=eq.${user.id}` },
-        () => carregarDados(),
+        () => recarregarLogo(),
       )
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "colunas_atividade", filter: `user_id=eq.${user.id}` },
-        () => carregarDados(),
+        () => recarregarLogo(),
       )
       .subscribe();
 
     let broadcast: BroadcastChannel | null = null;
     if (typeof BroadcastChannel !== "undefined") {
       broadcast = new BroadcastChannel("assistant-sync");
-      broadcast.onmessage = () => carregarDados();
+      broadcast.onmessage = () => recarregarLogo();
     }
 
     return () => {
