@@ -7,7 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight, Building2, ClipboardList, FileText, Info, ListChecks } from "lucide-react";
+import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight, Brain, Building2, ClipboardList, FileText, Info, ListChecks } from "lucide-react";
+import { CerebroView } from "@/components/cerebro/CerebroView";
 import { iniciais } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
@@ -218,13 +219,16 @@ export default function ClienteDetalhe() {
 
   // 16/10: "Informações gerais" virou guia do Escritório e "Pesquisa" guia de Documentos. Só aparecem
   // soltas no menu para quem não tem acesso ao Conteúdo / aos Documentos.
-  const ICONE_ABA: Record<string, typeof FileText> = { informacoes: Info, pesquisa: ClipboardList, atividades: ListChecks, documentos: FileText };
+  const ICONE_ABA: Record<string, typeof FileText> = { informacoes: Info, pesquisa: ClipboardList, atividades: ListChecks, documentos: FileText, cerebro: Brain };
   const abasPrincipais = [
     { id: "informacoes", label: "Informações gerais" },
     { id: "pesquisa", label: "Pesquisa" },
     { id: "atividades", label: "Atividades" },
     { id: "documentos", label: "Documentos" },
+    // 20/10: o Cérebro (grafo da organização, inteligências e arquivos), embaixo de Documentos.
+    { id: "cerebro", label: "Cérebro" },
   ].filter((item) => (item.id === "informacoes" ? !pode("conteudo")
+    : item.id === "cerebro" ? pode("documentos")
     : item.id === "pesquisa" ? pode("pesquisa") && !pode("documentos")
     : pode(item.id as AreaEquipe)));
   // Guias no topo: Escritório | Informações gerais e Documentos | Pesquisa.
@@ -525,6 +529,7 @@ export default function ClienteDetalhe() {
               onAbrirAtividades={() => setAbaAtiva("atividades")} />
           )}
 
+          {abaAtiva === "cerebro" && pode("documentos") && <CerebroView clienteId={id!} />}
           {abaAtiva === "documentos" && pode("documentos") && (
             <DocumentosView clienteId={id!} />
           )}
