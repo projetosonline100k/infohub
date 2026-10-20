@@ -221,6 +221,15 @@ def retomar_interrompidas():
                    (roy.CLIENTE, roy_id))
         if n:
             log("retomando tarefas interrompidas:", [str(x[0]) for x in n])
+    # Ajuste pedido na tela de revisão que estava no meio quando o serviço caiu (20/10: "Quem mexeu no
+    # meu queijo" ficou 4 h em "Roy está ajustando…"): volta para 'ajuste' e o Roy refaz o pedido.
+    a = roy.db("""UPDATE public.carrosseis SET status = 'ajuste', mensagem = 'Retomando seu pedido (o Roy reiniciou no meio)…',
+                    atualizado_em = now()
+                  WHERE cliente_id = %s AND status = 'produzindo' AND feedback IS NOT NULL
+                    AND (mensagem LIKE 'Roy está ajustando%%' OR mensagem LIKE 'Roy recebeu seu pedido%%') RETURNING tema""",
+               (roy.CLIENTE,))
+    if a:
+        log("retomando ajustes interrompidos:", [x[0] for x in a])
 
 
 def atender_tarefa():
