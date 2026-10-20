@@ -459,10 +459,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       ))}
 
       {cobranca?.iniciado_em && (
-        <p className="-mt-2 flex items-center gap-1.5 truncate text-xs text-muted-foreground" title={cobranca.detalhe ?? undefined}>
+        // min-w-0 + o texto num span próprio: num flex, o texto solto não encolhe e um detalhe comprido esticava a página toda para o lado (20/10).
+        <p className="-mt-2 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={cobranca.detalhe ?? undefined}>
           <Bot className="h-3.5 w-3.5 shrink-0" />
-          Cobrança do Atlas: última rodada {format(new Date(cobranca.iniciado_em), new Date(cobranca.iniciado_em).toDateString() === new Date().toDateString() ? "'às' HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
-          {cobranca.detalhe ? ` · ${cobranca.detalhe}` : ""}
+          <span className="min-w-0 truncate">
+            Cobrança do Atlas: última rodada {format(new Date(cobranca.iniciado_em), new Date(cobranca.iniciado_em).toDateString() === new Date().toDateString() ? "'às' HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
+            {cobranca.detalhe ? ` · ${cobranca.detalhe}` : ""}
+          </span>
         </p>
       )}
 
