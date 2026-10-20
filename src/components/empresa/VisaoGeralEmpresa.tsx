@@ -482,84 +482,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </p>
       )}
 
-      {/* Mapa da operação primeiro (16/10: "coloque o escritório como primeira visualização"): cada setor é uma sala; cada pessoa, uma mesa. */}
-      <section className="rounded-xl border bg-card p-4">
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <Users className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Mapa da operação</h2>
-          <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
-          <button type="button" onClick={() => setEscritorio({ editando: null })}
-            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
-          <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
-            title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
-            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
-          <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
-              <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
-            ))}
-          </span>
-        </div>
-        {setores.length === 0 ? (
-          <div className="space-y-3 py-8 text-center">
-            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
-            <button type="button" onClick={() => setEscritorio({ editando: null })}
-              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
-          </div>
-        ) : (
-          // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-          <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
-            onReordenar={(ids, fileira) => void reordenarEscritorios(ids, fileira)}
-            onAbrirSetor={setEsteiraAberta}
-            tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
-            setores={setores.map((setor) => {
-              const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
-              return {
-                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue, fileira: setor.fileira,
-                temEsteira: ((setor as SetorResumo & { esteira?: unknown[] | null }).esteira ?? []).length > 0,
-                tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
-                pessoas: pessoas.map((estado) => {
-                  const { membro, abertas: n, atrasadas: atr, atual } = estado;
-                  const ia = trabalhoIa.get(membro.id);
-                  // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
-                  const coordenador = ehCoordenador(membro);
-                  const cs = ehCs(membro) && clientesEsperando.length > 0;
-                  const base: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
-                  // Conversando com o Davi: volta para a mesa e fica ativo (não sai para o café).
-                  const papo = conversando.get(membro.id);
-                  const sinal: Sinal = base === "parado" && papo ? "trabalhando" : base;
-                  const balao = coordenador ? "Coordenando a operação"
-                    : base === "parado" && papo ? papo
-                    : cs ? textoClientesEsperando(clientesEsperando)
-                    : ia?.problema ? "Parou com problema"
-                    : ia?.esperando ? `${ia.esperando} esperando sua revisão`
-                    : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
-                    : ia?.trabalhando && ia.atual ? ia.atual
-                    : atual?.titulo ?? ia?.atual ?? null;
-                  return {
-                    id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
-                    balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
-                  };
-                }),
-              };
-            })} />
-        )}
-      </section>
-
-      {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
-        {CARTOES.map(({ rotulo, valor, icone: Icone, cor, ir }) => (
-          <button key={rotulo} type="button" onClick={() => onIrPara(ir)}
-            className="group flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
-            <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", cor)}><Icone className="h-5 w-5" /></span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xl font-bold leading-none">{valor}</span>
-              <span className="text-xs text-muted-foreground">{rotulo}</span>
-            </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-          </button>
-        ))}
-      </div>
-
+      {/* 20/10 (Davi: "deixe ele no topo como era antes"): Precisa de você e Tarefas sendo executadas em cima. */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* 1. O que depende de mim. */}
         <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
@@ -660,6 +583,85 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           )}
         </section>
       </div>
+
+      {/* Mapa da operação: cada setor é uma sala; cada pessoa, uma mesa. */}
+      <section className="rounded-xl border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <Users className="h-5 w-5 text-primary" />
+          <h2 className="font-semibold">Mapa da operação</h2>
+          <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
+          <button type="button" onClick={() => setEscritorio({ editando: null })}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
+          <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
+            title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
+            className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+          <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+            {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
+              <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
+            ))}
+          </span>
+        </div>
+        {setores.length === 0 ? (
+          <div className="space-y-3 py-8 text-center">
+            <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
+            <button type="button" onClick={() => setEscritorio({ editando: null })}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
+          </div>
+        ) : (
+          // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
+          <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
+            onReordenar={(ids, fileira) => void reordenarEscritorios(ids, fileira)}
+            onAbrirSetor={setEsteiraAberta}
+            tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
+            setores={setores.map((setor) => {
+              const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
+              return {
+                id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue, fileira: setor.fileira,
+                temEsteira: ((setor as SetorResumo & { esteira?: unknown[] | null }).esteira ?? []).length > 0,
+                tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
+                pessoas: pessoas.map((estado) => {
+                  const { membro, abertas: n, atrasadas: atr, atual } = estado;
+                  const ia = trabalhoIa.get(membro.id);
+                  // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
+                  const coordenador = ehCoordenador(membro);
+                  const cs = ehCs(membro) && clientesEsperando.length > 0;
+                  const base: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+                  // Conversando com o Davi: volta para a mesa e fica ativo (não sai para o café).
+                  const papo = conversando.get(membro.id);
+                  const sinal: Sinal = base === "parado" && papo ? "trabalhando" : base;
+                  const balao = coordenador ? "Coordenando a operação"
+                    : base === "parado" && papo ? papo
+                    : cs ? textoClientesEsperando(clientesEsperando)
+                    : ia?.problema ? "Parou com problema"
+                    : ia?.esperando ? `${ia.esperando} esperando sua revisão`
+                    : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
+                    : ia?.trabalhando && ia.atual ? ia.atual
+                    : atual?.titulo ?? ia?.atual ?? null;
+                  return {
+                    id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
+                    balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
+                  };
+                }),
+              };
+            })} />
+        )}
+      </section>
+
+      {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        {CARTOES.map(({ rotulo, valor, icone: Icone, cor, ir }) => (
+          <button key={rotulo} type="button" onClick={() => onIrPara(ir)}
+            className="group flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
+            <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", cor)}><Icone className="h-5 w-5" /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-xl font-bold leading-none">{valor}</span>
+              <span className="text-xs text-muted-foreground">{rotulo}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+          </button>
+        ))}
+      </div>
+
 
       <KanbanEsteira clienteId={clienteId} setorId={esteiraAberta} aberto={!!esteiraAberta} onFechar={() => setEsteiraAberta(null)} />
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
