@@ -71,6 +71,22 @@ RCLONE = "/opt/homebrew/bin/rclone"
 REMOTO = "metafocando:Projeto 100k/Eu.davi"
 REMOTO_ENTRADA = f"{REMOTO}/Precisa de edição"
 REMOTO_DESTINO = f"{REMOTO}/Editado"
+# Pastas do Drive dos outros projetos (o Danilo de cada um olha a sua; sem pasta aqui, não olha o Drive).
+#   refazer_antigos: "[EDITADO]" da época do ChatGPT (sem edição registrada) entra de novo, no padrão novo.
+#   ignorar: brutos que ficam de fora (ex.: incompleto, esperando o resto).
+#   estilo: padrão de edição do projeto (servico.ESTILOS; sem estilo, o Davi escolhe o formato).
+PROJETOS_DRIVE = {
+    "e354f4be-8a8d-4c34-8f47-f85e5981b8d3": {   # Instalivros (20/10: piloto = bruto 01, padrão do reel Dd4zAcSiWmV)
+        "remoto": "metafocando:Projeto 100k/Instalivros/EDIÇÃO", "entrada": "BRUTOS", "destino": "EDITADOS",
+        "refazer_antigos": True, "ignorar": {"03-primeiro-milhao-3-livros.mp4"}, "estilo": "instalivros"},
+}
+CONFIG_DRIVE = PROJETOS_DRIVE.get(CLIENTE, {})
+if CONFIG_DRIVE:
+    REMOTO = CONFIG_DRIVE["remoto"]
+    REMOTO_ENTRADA = f"{REMOTO}/{CONFIG_DRIVE['entrada']}"
+    REMOTO_DESTINO = f"{REMOTO}/{CONFIG_DRIVE['destino']}"
+OLHA_DRIVE = PRINCIPAL or bool(CONFIG_DRIVE)
+ESTILO = CONFIG_DRIVE.get("estilo")
 
 
 class Remoto:
@@ -195,15 +211,17 @@ def novos(minutos_parado=3):
                                "AND bruto_drive IS NOT NULL AND status <> 'cancelado'", (CLIENTE,))}
     agora = datetime.now().timestamp()
     out = []
-    entradas = [(LOCAL, list(LOCAL.iterdir()))] if LOCAL.is_dir() else []
+    # A pasta Para o Danilo (Mesa) é do Eu.davi.
+    entradas = [(LOCAL, list(LOCAL.iterdir()))] if PRINCIPAL and LOCAL.is_dir() else []
     entradas.append((None, listar_remoto()))
     for pasta_, arquivos in entradas:
         for f in arquivos:
             # "[EM EDIÇÃO]" sem edição registrada = o serviço caiu no meio: pega de novo.
             orfao = f.name.startswith(EM_EDICAO) and f.name[len(EM_EDICAO):] not in registrados
-            if (pasta_ is not None and not f.is_file()) or f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not orfao):
+            antigo = CONFIG_DRIVE.get("refazer_antigos") and f.name.startswith(EDITADO) and f.name[len(EDITADO):] not in registrados
+            if (pasta_ is not None and not f.is_file()) or f.suffix.lower() not in VIDEO or f.name.startswith(".") or (f.name.startswith("[") and not (orfao or antigo)):
                 continue
-            if f.name.replace(EM_EDICAO, "") in registrados:
+            if f.name.replace(EM_EDICAO, "").replace(EDITADO, "") in registrados | CONFIG_DRIVE.get("ignorar", set()):
                 continue
             if not _local_parado(f):      # local: a cópia terminou; Drive: o envio do celular terminou
                 continue
@@ -215,7 +233,7 @@ def novos(minutos_parado=3):
                 continue
             _quebrados.pop(str(f), None)      # reenviado com o mesmo nome e agora inteiro
             out.append(f)
-    return sorted(out, key=lambda f: (f.parent != LOCAL, f.name.replace(EM_EDICAO, "")))
+    return sorted(out, key=lambda f: (f.parent != LOCAL, f.name.replace(EM_EDICAO, "").replace(EDITADO, "")))
 
 
 def guardar_editados(log=print):
@@ -359,8 +377,8 @@ def preparar(arquivo, log=print):
     remoto = isinstance(arquivo, Remoto)
     if not remoto:
         arquivo = Path(arquivo)
-    nome = arquivo.name.replace(EM_EDICAO, "")
-    marcado = f"{REMOTO_ENTRADA}/{EM_EDICAO}{nome}" if remoto else arquivo.with_name(EM_EDICAO + nome)
+    nome = arquivo.name.replace(EM_EDICAO, "").replace(EDITADO, "")   # (antigo do ChatGPT refeito: volta a [EM EDIÇÃO])
+    marcado =f"{REMOTO_ENTRADA}/{EM_EDICAO}{nome}" if remoto else arquivo.with_name(EM_EDICAO + nome)
     uid = db("SELECT user_id FROM public.clientes WHERE id = %s", (CLIENTE,))[0][0]
     # Registra antes de renomear: se o serviço cair no meio, o bruto não fica órfão.
     id_ = str(db("""INSERT INTO public.edicoes_video (cliente_id, user_id, titulo, status, mensagem, bruto_drive)
@@ -412,7 +430,7 @@ def preparar(arquivo, log=print):
             "bruto_local": str(local) if remoto else None,     # cópia baixada: apagada depois de aprovado
             "nome_final": f"{base}-{Path(nome).stem}-editado-danilo"}, ensure_ascii=False))
         musica = ACERVO / "gymnopedie-1.ogg"
-        if musica.exists():
+        if musica.exists() and not ESTILO:     # a clássica é a trilha do Eu.davi
             shutil.copyfile(musica, p / "imagens" / "musica.ogg")
         return id_
     except Exception as erro:
@@ -795,6 +813,46 @@ def conferir(id_, so_olhar=False):
     quadros(id_, tempos, video=previa, destino="_conferir.jpg")
 
 
+def registrar_dark(origem, titulo, atividade=None, nota=None):
+    """Dark feito fora de uma edição (pasta com voz.wav, legendas.json, dark_cenas.py e
+    dark.mp4) vira edição 'revisar' do projeto: aparece em Precisa de você › Revisar
+    edição com o player, igual ao lote de 19/10 (20/10: o lote de 26-31/10 ficou só
+    numa pasta da Mesa e o Davi não tinha o vídeo para aprovar). Devolve o id."""
+    import uuid
+    import dark
+    origem = Path(origem)
+    if not (origem / "dark.mp4").exists():
+        raise SystemExit(f"falta {origem}/dark.mp4 (rode dark.py render antes)")
+    titulo = titulo if titulo.lower().startswith("versão dark") else f"Versão dark: {titulo}"
+    id_ = str(uuid.uuid4())
+    p = EDICOES / id_
+    p.mkdir(parents=True)
+    for arq in ("voz.wav", "audio.wav", "legendas.json", "dark_cenas.py", "_dark_contato.jpg", "transcricao_voz.json", "fonte.json"):
+        if (origem / arq).exists():
+            shutil.copy2(origem / arq, p / arq)
+    shutil.copy2(origem / "dark.mp4", p / "final.mp4")
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(p / "final.mp4"), "-vf", "scale=540:960",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-c:a", "aac", "-b:a", "128k",
+                    "-movflags", "+faststart", str(p / "previa.mp4")], check=True)
+    dur = float(dark.duracao(p / "voz.wav"))
+    legs = json.loads((p / "legendas.json").read_text())
+    projeto = {"fonte": str(p / "voz.wav"), "duracao_fonte": round(dur, 2), "formato": "dark", "remocoes": [], "lacunas": [],
+               "midias": [], "musica": None, "zooms": [], "cor": "natural", "palavras": [],
+               "legendas": [{"id": f"l{i}", "inicio": l["ini"], "fim": l["fim"], "texto": l["texto"], "tipo": "leg"}
+                            for i, l in enumerate(legs)]}
+    (p / "projeto.json").write_text(json.dumps(projeto, ensure_ascii=False, indent=1))
+    if PRINCIPAL:
+        (p / "entrega.json").write_text(json.dumps({"destino_remoto": REMOTO_DESTINO, "nome_final": f"dark-{origem.name}-editado-danilo"},
+                                                   ensure_ascii=False))
+    uid = db("SELECT user_id FROM public.clientes WHERE id = %s", (CLIENTE,))[0][0]
+    db("""INSERT INTO public.edicoes_video (id, cliente_id, user_id, atividade_id, titulo, status, mensagem, final_drive,
+                                             duracao, versao, formato, token_envio)
+          VALUES (%s, %s, %s, %s, %s, 'revisar', %s, %s, %s, 1, 'dark', gen_random_uuid())""",
+       (id_, CLIENTE, uid, atividade, titulo, nota, str(p / "final.mp4"), round(dur, 1)))
+    sincronizar_nuvem(id_)
+    return id_
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if not a:
@@ -821,5 +879,8 @@ if __name__ == "__main__":
         conferir(a[1], so_olhar="--so-olhar" in a)
     elif cmd == "versao":
         print(*nova_versao(a[1]))
+    elif cmd == "registrar-dark":   # registrar-dark <pasta> "<título>" [--tarefa <id>] [--nota "Dark para 26/10."]
+        print(registrar_dark(a[1], a[2], a[a.index("--tarefa") + 1] if "--tarefa" in a else None,
+                             a[a.index("--nota") + 1] if "--nota" in a else None))
     else:
         raise SystemExit(__doc__)

@@ -183,6 +183,26 @@ PASSO_PAPEL = """3b. Escreva {pasta}/papel_cenas.py com as cenas do papel. Leia 
 """
 
 
+# Padrão próprio de um projeto (danilo.PROJETOS_DRIVE[...]["estilo"]): troca as instruções de mídia
+# do PROMPT_EDICAO. O motor tem os recursos (motor.py: "estilo", "tela_dividida", "raio", "alfa").
+ESTILOS = {
+    "instalivros": {
+        "topo": ("Você é o Danilo, o editor de vídeos (IA) do projeto Instalivros (Infopro Hub, cliente {cliente}). "
+                 "Está rodando em segundo plano: o Davi não vê este terminal. Nada do Eu.davi/Davi Queiroz vale aqui "
+                 "(voz, CTA, pinturas, música clássica): o manual vale só como técnica de edição.\n"),
+        "midias": """   - PADRÃO INSTALIVROS (reel Dd4zAcSiWmV, aprovado pelo Davi em 19/10; aprendizado SIGA SEMPRE): sem pinturas, sem cantos arredondados, sem música clássica, sem zoom forte.
+     * "estilo": "instalivros" e "formato": "classico" no escolhas.json (o montar leva pro projeto.json; se não levar, ponha no projeto.json).
+     * Abertura (~5 s, enquanto fala o gancho): "tela_dividida": {{"inicio": <t>, "fim": <t>}} (o apresentador desce pra metade de baixo) + em "midias" um VÍDEO de apoio ligado ao tema na metade de cima: {{"tipo":"video","arquivo":...,"inicio","fim","x":0,"y":0,"w":1080,"h":960,"raio":0}}. Vídeo livre (Wikimedia Commons, Pexels/Pixabay se der pra baixar sem login), fonte em imagens/fontes.json. Se não achar vídeo, use uma FOTO realista (tipo imagem, raio 0) no mesmo lugar.
+     * Headline em PAPEL RASGADO no meio da tela: `python3 scripts/danilo/instalivros.py papel {pasta}/imagens/headline.png "linha 1" "linha 2" "linha 3"` (fala exata do gancho, 3 linhas) e em "midias" {{"tipo":"imagem","alfa":true,"arquivo":".../headline.png","inicio","fim" (= tela dividida),"x":40,"y":960-h/2,"w":1000,"h":<o 2º número que o comando imprime>}}. Com o papel, ponha "palavras_head": 0 (sem headline amarela por cima) ou apague as legendas tipo head do projeto.json; as legendas normais só entram depois da abertura.
+     * Legendas: amarelas, pequenas, 3 a 6 palavras, no meio (o estilo já deixa menores).
+     * Livros: quando ele citar cada livro, a CAPA certa no centro embaixo da legenda e o contador em cima, os dois com os MESMOS tempos (3–5 s): capa {{"tipo":"imagem","raio":0,"x":(1080-w)/2,"y":1180,"w":420,"h":620}} e contador `python3 scripts/danilo/instalivros.py contador {pasta}/imagens/livro1.png "LIVRO 1/3"` como {{"tipo":"imagem","alfa":true,"x":(1080-w)/2,"y":1100,"w" e "h": os números que o comando imprime}}. Capa: Open Library (https://covers.openlibrary.org/b/isbn/<isbn>-L.jpg), Google Books ou a editora; edição brasileira de preferência; registre a fonte em imagens/fontes.json. Se só achar edição em outro idioma, diga no resumo. Nunca contador sem capa.
+     * Fotos de apoio: poucas (2 ou 3 no vídeo), REALISTAS, cobrindo a TELA INTEIRA 2–3 s, com a legenda por cima: {{"tipo":"imagem","raio":0,"x":0,"y":0,"w":1080,"h":1920}}. Fotos livres (Wikimedia Commons/Pexels/Unsplash), que casem com a frase; fonte em imagens/fontes.json. Nada repetido.
+     * Final: depois do CTA falado ("digite INSTALIVROS…"), o vídeo do app com fundo verde AINDA NÃO CHEGOU: termine no CTA e avise no resumo. Não invente demonstração.
+     * Sem "musica" (ou uma trilha livre bem baixa só se ajudar; diga qual e a licença). "destaques": [] (o reel de referência não tem INSTALIVROS fixo na tela).""",
+    },
+}
+
+
 def editar(arquivo, e):
     nome = arquivo.name
     log("bruto novo:", nome)
@@ -190,6 +210,11 @@ def editar(arquivo, e):
     ctx = json.loads((danilo.pasta(id_) / "contexto.json").read_text())
     titulo = (ctx.get("card") or {}).get("titulo") or nome
     no_lote(e, id_, nome, titulo)
+    if danilo.ESTILO:     # projeto com padrão próprio (ex.: Instalivros): não pergunta o formato, já edita
+        danilo.db("UPDATE public.edicoes_video SET formato = 'classico', status = 'na_fila', atualizado_em = now() WHERE id = %s",
+                  (id_,))
+        log("na fila para editar no estilo", danilo.ESTILO + ":", titulo)
+        return id_
     danilo.perguntar_formato(id_)              # o Davi escolhe: clássico ou papel animado (18/10)
     log("esperando o Davi escolher o formato:", titulo)
     return id_
@@ -204,10 +229,19 @@ def editar_no_formato(id_, e):
     formato = danilo.db("SELECT formato FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] or "classico"
     log("editando", titulo, "no formato", formato)
     danilo._msg(id_, "Danilo editando: retomadas, headline, " + ("cenas do papel…" if formato == "papel" else "pinturas…"))
-    ok, texto = rodar_claude(PROMPT_EDICAO.format(
+    estilo = ESTILOS.get(danilo.ESTILO)
+    prompt = PROMPT_EDICAO.format(
         id=id_, pasta=pasta, cliente=danilo.CLIENTE, referencia=_referencia(e),
-        formato_midias=(MIDIAS_PAPEL if formato == "papel" else MIDIAS_CLASSICO.format(id=id_)),
-        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" else "")), minutos=90,
+        formato_midias=(estilo["midias"].format(id=id_, pasta=pasta) if estilo else
+                        MIDIAS_PAPEL if formato == "papel" else MIDIAS_CLASSICO.format(id=id_)),
+        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" and not estilo else ""))
+    if estilo:
+        prompt = estilo["topo"].format(cliente=danilo.CLIENTE) + prompt.split("\n", 1)[1].replace(
+            ", imagens/musica.ogg (Gymnopédie nº 1, CC0, já aprovada)", "").replace(
+            '   - "musica": {{"arquivo": "{pasta}/imagens/musica.ogg", "volume": 0.07}}.\n'.format(pasta=pasta), "").replace(
+            '   - "enfases": 2 ou 3 tempos de frases de impacto (zoom seco).\n', "").replace(
+            '   - "destaques": se falar INSTALIVROS: [{"texto": "INSTALIVROS", "inicio": <1ª menção>}].\n', "")
+    ok, texto = rodar_claude(prompt, minutos=90,
         atividade=danilo.db("SELECT atividade_id FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] or e.get("atividade"))
     if not ok or f"PRONTO: {id_}" not in texto:
         raise RuntimeError(f"o Claude não terminou a edição: {(texto or '')[-250:]}")
@@ -402,6 +436,7 @@ O Davi te passou esta tarefa no Infopro:
 ---
 
 {drive}Para outros pedidos (ex.: refazer algo numa edição existente em ~/.infopro-hub/danilo/edicoes/<id>/), use `python3 scripts/danilo/danilo.py` (montar, conferir, ouvir, pintura…).
+Vídeo novo que você fizer (dark, por exemplo) precisa chegar ao Davi com o player para aprovar: registre cada um com `python3 scripts/danilo/danilo.py registrar-dark <pasta> "<título>" --tarefa {tarefa}` (vai para Precisa de você › Revisar edição). Deixar só numa pasta do Mac não vale: o Davi não vê.
 Não publique nada e não mande mensagem para ninguém.
 Cada passo seu aparece sozinho para o Davi na tarefa: escreva a descrição de cada comando (campo description) em português simples, dizendo o que está fazendo.
 
@@ -447,7 +482,7 @@ def atender_tarefa():
         progresso(aid, 10, "Agora: editando os brutos da pasta Precisa de edição (piloto primeiro).")
         return True
     try:
-        ok, texto = rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao, cliente=danilo.CLIENTE, projeto=_nome_projeto(),
+        ok, texto = rodar_claude(PROMPT_TAREFA.format(titulo=titulo, descricao=descricao, cliente=danilo.CLIENTE, projeto=_nome_projeto(), tarefa=aid,
                                                       drive=PROMPT_DRIVE if danilo.PRINCIPAL
                                                       else PROMPT_OUTRO_PROJETO.format(cliente=danilo.CLIENTE)),
                                  minutos=45, turnos=80, atividade=aid)
@@ -584,7 +619,7 @@ if __name__ == "__main__":
                 continue
             if atender_formato():
                 continue
-            if danilo.PRINCIPAL and time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
+            if danilo.OLHA_DRIVE and time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
                 ultima_drive = time.time()
                 if atender_drive():
                     ultima_drive = 0.0                # editou um: já olha o próximo
