@@ -33,6 +33,7 @@ import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 // Guarda qual(is) cliente(s) estavam selecionados no filtro, pra voltar
 // exatamente de onde parou ao reabrir a aba.
 const CHAVE_FILTRO = "atividades-clientes:filtro";
+const REGRA_REPETIR: Record<string, string> = { diario: "todo dia", dias_uteis: "dias úteis", semanal: "toda semana", dias: "dias escolhidos" };
 // Último modo usado na visão de todos os clientes (lista ou mapa).
 const CHAVE_MODO = "atividades-clientes:modo";
 
@@ -369,6 +370,11 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
       const { error } = await supabase.from("atividades").update({ concluida, status: novoStatus }).eq("id", id);
       if (error) throw error;
       setAtividades((prev) => prev.map((a) => (a.id === id ? { ...a, concluida, status: novoStatus } : a)));
+      // Tarefa que repete: o banco já cria a próxima (20/10, Davi: "dou check, some e volta a mesma").
+      const regra = (atual as { repetir?: string | null }).repetir;
+      if (concluida && regra) {
+        toast.success(`Feita! Ela se repete (${REGRA_REPETIR[regra] ?? "regra própria"}): a próxima já entrou na coluna do dia dela.`);
+      }
     } catch (error) {
       console.error("Erro ao atualizar atividade:", error);
       toast.error("Erro ao atualizar atividade");
