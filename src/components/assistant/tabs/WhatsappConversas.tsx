@@ -200,6 +200,32 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedido, conversas, carregando]);
 
+  // Quantas mensagens novas em cada conversa (20/10, Davi: "aparecer o número, como no WhatsApp"):
+  // as que chegaram depois da última vez que ele abriu a conversa e depois da última resposta dele.
+  const [novas, setNovas] = useState<Record<string, number>>({});
+  const chaveNovas = conversas.filter((c) => !c.ultima_de_mim && (!vistas[c.chat_id] || vistas[c.chat_id] < c.ultima_em))
+    .map((c) => `${c.chat_id}|${c.ultima_em}|${vistas[c.chat_id] ?? ""}`).join(",");
+  useEffect(() => {
+    const alvo = conversas.filter((c) => !c.ultima_de_mim && (!vistas[c.chat_id] || vistas[c.chat_id] < c.ultima_em)).slice(0, 60);
+    if (!alvo.length) { setNovas({}); return; }
+    const desde = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens").select("chat_id, de_mim, enviada_em")
+      .eq("conta", conta).in("chat_id", alvo.map((c) => c.chat_id)).gte("enviada_em", desde)
+      .order("enviada_em", { ascending: false }).limit(3000)
+      .then(({ data }) => {
+        const conta_: Record<string, number> = {};
+        const parou = new Set<string>();
+        for (const m of (data || []) as { chat_id: string; de_mim: boolean; enviada_em: string }[]) {
+          if (parou.has(m.chat_id)) continue;
+          const vista = vistas[m.chat_id];
+          if (m.de_mim || (vista && m.enviada_em <= vista)) { parou.add(m.chat_id); continue; }
+          conta_[m.chat_id] = (conta_[m.chat_id] ?? 0) + 1;
+        }
+        setNovas(conta_);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveNovas, conta]);
+
   const filtradas = useMemo(() => {
     const t = busca.trim().toLowerCase();
     return t ? conversas.filter((c) => (c.chat_nome ?? c.chat_id).toLowerCase().includes(t)) : conversas;
@@ -239,7 +265,12 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
                       {c.ultima_de_mim && <CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-500" />}
                       <span className="truncate">{resumo(c)}</span>
                     </span>
-                    {naoLida && <span className={cn("shrink-0 rounded-full bg-emerald-500", tela ? "h-[18px] min-w-[18px]" : "h-2 w-2")} aria-label="Não lida" />}
+                    {naoLida && (
+                      <span className="flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1 text-[11px] font-semibold leading-none text-white"
+                        aria-label={`${novas[c.chat_id] ?? 1} mensage${(novas[c.chat_id] ?? 1) === 1 ? "m nova" : "ns novas"}`}>
+                        {(novas[c.chat_id] ?? 0) > 99 ? "99+" : novas[c.chat_id] || ""}
+                      </span>
+                    )}
                   </span>
                   <span className="mt-1 flex flex-wrap items-center gap-1 empty:hidden">
                       {/* 19/10 (Davi): etiqueta "Mensagem nova" para o que chegou e ainda não foi aberto. */}
