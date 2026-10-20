@@ -514,6 +514,27 @@ def sincronizar():
     return False
 
 
+def reenfileirar():
+    """Ao ligar: o que ficou pela metade quando o serviço caiu/reiniciou volta pra fila
+    (20/10: um "aprovar" ficou 5 h em 'fazendo' e o Davi achou que o Danilo parou).
+    Só este serviço anda com esses pedidos e edições, então ao ligar nada está em curso."""
+    pedidos = danilo.db("""UPDATE public.edicoes_pedidos SET status = 'na_fila', atualizado_em = now(),
+                             mensagem = 'Retomado: o serviço do Danilo reiniciou no meio'
+                           WHERE status = 'fazendo' RETURNING id, tipo, edicao_id""")
+    # Edição já no formato escolhido, cortada no meio: o Claude refaz do começo.
+    edicoes = danilo.db("""UPDATE public.edicoes_video SET status = 'na_fila', atualizado_em = now(),
+                             mensagem = 'Retomando a edição (o serviço do Danilo reiniciou no meio)…'
+                           WHERE cliente_id = %s AND status = 'editando' AND formato IS NOT NULL RETURNING id""", (danilo.CLIENTE,))
+    # Bruto que estava sendo preparado (baixando/transcrevendo): a edição sai e o bruto,
+    # ainda "[EM EDIÇÃO]" e sem edição registrada, é pego de novo como órfão.
+    preparo = danilo.db("""UPDATE public.edicoes_video SET status = 'cancelado', atualizado_em = now(),
+                             mensagem = 'Refeito: o serviço do Danilo reiniciou enquanto preparava o bruto'
+                           WHERE cliente_id = %s AND status = 'editando' AND formato IS NULL RETURNING id""", (danilo.CLIENTE,))
+    for nome, linhas in (("pedidos", pedidos), ("edições", edicoes), ("preparos", preparo)):
+        if linhas:
+            log(f"retomando {len(linhas)} {nome} que ficaram pela metade:", ", ".join(str(l[0])[:8] for l in linhas))
+
+
 def laco_web():
     while True:
         try:
@@ -532,6 +553,10 @@ if __name__ == "__main__":
             pass
         sys.exit(0)
     log("serviço do Danilo iniciado")
+    try:
+        reenfileirar()
+    except Exception as erro:
+        log("não consegui retomar o que ficou pela metade:", repr(erro)[:200])
     threading.Thread(target=gravar_sinal, daemon=True).start()
     threading.Thread(target=laco_web, daemon=True).start()   # pedidos do editor web não esperam a edição automática
     ultima_drive = 0.0
