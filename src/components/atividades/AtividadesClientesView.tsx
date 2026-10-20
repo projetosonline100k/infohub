@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import { comConclusaoDaEquipe } from "@/lib/atividades/concluidaEquipe";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRecarregarAoVoltar } from "@/hooks/useRecarregarAoVoltar";
@@ -300,6 +301,9 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
 
   // Mapa: filtro por pessoa e por pasta (19/10: "todas as funções do modo atividade normal").
   const [filtroPessoa, setFiltroPessoa] = useState("todas");
+  // 20/10 (Davi: "mais um filtro, tirar os colaboradores, senão tem coisa demais"): só as minhas e as sem dono.
+  const [semEquipe, setSemEquipeEstado] = useState(() => { try { return localStorage.getItem("atividades-clientes:sem-equipe") === "1"; } catch { return false; } });
+  const setSemEquipe = (v: boolean) => { setSemEquipeEstado(v); try { localStorage.setItem("atividades-clientes:sem-equipe", v ? "1" : "0"); } catch { /* sem storage */ } };
   const [filtroPasta, setFiltroPasta] = useState("todas");
   const [pastas, setPastas] = useState<{ id: string; nome: string; cliente_id: string | null }[]>([]);
   useEffect(() => {
@@ -314,7 +318,12 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     .filter((a) => filtroPessoa === "todas" || (filtroPessoa === "ninguem"
       ? !(a.responsavel_nome || "").trim()
       : (a.responsavel_nome || "").split(",").map((n) => n.trim()).includes(filtroPessoa)))
-    .filter((a) => filtroPasta === "todas" || a.pasta_id === filtroPasta), [atividadesFiltradas, filtroPessoa, filtroPasta]);
+    .filter((a) => filtroPasta === "todas" || a.pasta_id === filtroPasta)
+    .filter((a) => {
+      if (!semEquipe) return true;
+      const nomes = (a.responsavel_nome || "").split(",").map((n) => n.trim().toLowerCase()).filter(Boolean);
+      return !nomes.length || nomes.some((n) => meusNomes.some((m) => m.toLowerCase() === n));
+    }), [atividadesFiltradas, filtroPessoa, filtroPasta, semEquipe, meusNomes]);
   const nomeCliente = (id: string | null) => clientes.find((c) => c.id === id)?.nome ?? "";
 
   // Sem filtro: só mostra cliente que realmente tem tarefa (senão a lista
@@ -586,6 +595,11 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
               <option value="ninguem">Sem responsável</option>
               {pessoasNoMapa.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
+            <button type="button" onClick={() => setSemEquipe(!semEquipe)}
+              title={semEquipe ? "Mostrar também as atividades da equipe" : "Esconder as atividades que estão com a equipe (fica só o que é seu e o que está sem dono)"}
+              className={cn("h-8 rounded-md border px-2.5 text-sm", semEquipe ? "border-primary bg-primary/10 font-medium text-foreground" : "bg-background text-muted-foreground hover:bg-muted")}>
+              {semEquipe ? "✓ Só as minhas" : "Esconder a equipe"}
+            </button>
             <select value={filtroPasta} onChange={(e) => setFiltroPasta(e.target.value)} title="Filtrar por pasta"
               className="h-8 max-w-[220px] rounded-md border bg-background px-2 text-sm">
               <option value="todas">Todas as pastas</option>
