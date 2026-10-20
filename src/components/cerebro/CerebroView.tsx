@@ -16,7 +16,7 @@ interface No {
   id: string; tipo: Tipo; nome: string; detalhe?: string; r: number;
   x: number; y: number; vx: number; vy: number; fixo?: boolean; grau: number;
 }
-interface Aresta { a: string; b: string }
+interface Aresta { a: string; b: string; extra?: boolean }   // extra: ligação que não é da árvore (arquivo → quem fez)
 
 const COR: Record<Tipo, string> = {
   projeto: "#6366f1", setor: "#3b82f6", membro: "#a855f7", inteligencia: "#f59e0b",
@@ -43,7 +43,12 @@ async function carregarGrafo(clienteId: string) {
   const novo = (id: string, tipo: Tipo, nome: string, detalhe?: string) => {
     nos.push({ id, tipo, nome, detalhe, r: RAIO[tipo], x: (Math.random() - 0.5) * 600, y: (Math.random() - 0.5) * 600, vx: 0, vy: 0, grau: 0 });
   };
-  const liga = (a: string, b: string) => arestas.push({ a, b });
+  // A 1ª ligação de cada ponto é o "pai" dele na árvore (projeto → setor → colaborador → inteligência;
+  // projeto → pasta → arquivo); as outras são conexões extras.
+  const pai = new Map<string, string>();
+  const liga = (a: string, b: string) => {
+    if (!pai.has(b)) { pai.set(b, a); arestas.push({ a, b }); } else arestas.push({ a, b, extra: true });
+  };
 
   const raiz = `p:${clienteId}`;
   novo(raiz, "projeto", (cli.data as { nome_especialista?: string } | null)?.nome_especialista ?? "Projeto");
@@ -75,17 +80,55 @@ async function carregarGrafo(clienteId: string) {
     const { data: ats } = await db.from("atividades").select("id, responsavel_id").in("id", comTarefa.slice(0, 300));
     for (const a of (ats ?? []) as { id: string; responsavel_id: string | null }[]) if (a.responsavel_id) resp.set(a.id, a.responsavel_id);
   }
+  // Arquivo sem pasta vai para um grupo próprio (no 1º anel só ficam setores e pastas).
+  const soltos = documentos.some((d) => !d.pasta_id || !pastas.some((p) => p.id === d.pasta_id));
+  if (soltos) { novo("f:soltos", "pasta", "Arquivos sem pasta"); liga(raiz, "f:soltos"); }
   for (const d of documentos) {
     novo(`d:${d.id}`, "documento", d.titulo || "Sem título");
-    liga(d.pasta_id && pastas.some((p) => p.id === d.pasta_id) ? `f:${d.pasta_id}` : raiz, `d:${d.id}`);
+    liga(d.pasta_id && pastas.some((p) => p.id === d.pasta_id) ? `f:${d.pasta_id}` : "f:soltos", `d:${d.id}`);
     const quem = d.atividade_id ? resp.get(d.atividade_id) : undefined;
     if (quem && membros.some((m) => m.id === quem)) liga(`m:${quem}`, `d:${d.id}`);
   }
   const grau = new Map<string, number>();
   for (const e of arestas) { grau.set(e.a, (grau.get(e.a) ?? 0) + 1); grau.set(e.b, (grau.get(e.b) ?? 0) + 1); }
   for (const n of nos) { n.grau = grau.get(n.id) ?? 0; n.r = RAIO[n.tipo] + Math.min(8, Math.sqrt(n.grau)); }
-  const centro = nos[0]; centro.x = 0; centro.y = 0;
+  organizarEmAneis(nos, pai);
   return { nos, arestas };
+}
+
+// 20/10 (Davi: "não gostei muito, deixa mais organizado"): em vez da física solta, anéis — o projeto
+// no centro, cada ramo numa fatia do círculo proporcional ao tamanho dele, um anel por nível.
+const ANEL = [0, 190, 360, 520, 660];
+function organizarEmAneis(nos: No[], pai: Map<string, string>) {
+  const filhos = new Map<string, string[]>();
+  for (const [f, p] of pai) (filhos.get(p) ?? filhos.set(p, []).get(p)!).push(f);
+  const porId = new Map(nos.map((n) => [n.id, n]));
+  // Ordem dos ramos: organização (setores) de um lado, arquivos (pastas e soltos) do outro.
+  const ordem: Record<Tipo, number> = { projeto: 0, setor: 1, membro: 2, cerebro: 3, inteligencia: 4, pasta: 5, documento: 6 };
+  const peso = new Map<string, number>();
+  const pesar = (id: string): number => {
+    const fs = filhos.get(id) ?? [];
+    const w = fs.length ? fs.reduce((t, f) => t + pesar(f), 0) : 1;
+    peso.set(id, Math.max(1, w));
+    return Math.max(1, w);
+  };
+  const raiz = nos[0];
+  pesar(raiz.id);
+  const colocar = (id: string, de: number, ate: number, nivel: number) => {
+    const n = porId.get(id)!;
+    const meio = (de + ate) / 2;
+    const r = ANEL[Math.min(nivel, ANEL.length - 1)] + (nivel >= ANEL.length ? (nivel - ANEL.length + 1) * 130 : 0);
+    n.x = Math.cos(meio) * r; n.y = Math.sin(meio) * r; n.vx = 0; n.vy = 0;
+    const fs = (filhos.get(id) ?? []).sort((a, b) => ordem[porId.get(a)!.tipo] - ordem[porId.get(b)!.tipo] || porId.get(a)!.nome.localeCompare(porId.get(b)!.nome));
+    const total = fs.reduce((t, f) => t + peso.get(f)!, 0) || 1;
+    let a = de;
+    for (const f of fs) {
+      const fatia = ((ate - de) * peso.get(f)!) / total;
+      colocar(f, a, a + fatia, nivel + 1);
+      a += fatia;
+    }
+  };
+  colocar(raiz.id, -Math.PI, Math.PI, 0);
 }
 
 export function CerebroView({ clienteId }: { clienteId: string }) {
@@ -115,7 +158,8 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
         (vizinhos.get(e.b) ?? vizinhos.set(e.b, new Set()).get(e.b)!).add(e.a);
       }
       grafo.current = { nos, arestas: arestas.filter((e) => porId.has(e.a) && porId.has(e.b)), porId, vizinhos };
-      energia.current = 1;
+      energia.current = 0;   // posições fixas (anéis); arrastar um ponto só move ele
+      vista.current = { x: 0, y: 0, z: 0.7 };
       setCarregando(false);
     });
     return () => { vivo = false; };
@@ -174,12 +218,22 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
     const visivel = (n: No) => !oc.has(n.tipo) || n.tipo === "projeto";
     const aceso = (n: No) => (!foco || n.id === foco || perto!.has(n.id)) && (!b || n.nome.toLowerCase().includes(b) || n.tipo === "projeto");
     ctx.lineWidth = 1 / z;
+    // Anéis de guia, bem fracos.
+    ctx.strokeStyle = "rgba(148,163,184,0.10)";
+    for (const r of ANEL.slice(1)) { ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke(); }
     for (const e of g.arestas) {
       const a = g.porId.get(e.a)!, d = g.porId.get(e.b)!;
       if (!visivel(a) || !visivel(d)) continue;
       const ligado = foco && (e.a === foco || e.b === foco);
-      ctx.strokeStyle = ligado ? "rgba(168,85,247,0.8)" : foco || b ? "rgba(148,163,184,0.08)" : "rgba(148,163,184,0.28)";
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(d.x, d.y); ctx.stroke();
+      if (e.extra && !ligado) continue;   // arquivo → quem fez: só aparece no foco
+      ctx.strokeStyle = ligado ? "rgba(168,85,247,0.8)" : foco || b ? "rgba(148,163,184,0.08)" : "rgba(148,163,184,0.35)";
+      ctx.setLineDash(e.extra ? [4 / z, 4 / z] : []);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y);
+      // Ligação da árvore em curva suave (sai radial do pai), como mapa mental.
+      if (e.extra) ctx.lineTo(d.x, d.y);
+      else { const mx = (a.x + d.x) / 2, my = (a.y + d.y) / 2; ctx.quadraticCurveTo(a.x + (mx - a.x) * 0.2 + (d.x - mx) * 0.6, a.y + (my - a.y) * 0.2 + (d.y - my) * 0.6, d.x, d.y); }
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
     const escuro = document.documentElement.classList.contains("dark");
     for (const n of g.nos) {
@@ -190,13 +244,24 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
       ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill();
       if (s?.id === n.id) { ctx.strokeStyle = escuro ? "#fff" : "#111"; ctx.lineWidth = 2 / z; ctx.stroke(); ctx.lineWidth = 1 / z; }
       // Nomes: os grandes sempre; os pequenos com zoom, no foco ou na busca.
-      const mostrar = n.tipo === "projeto" || n.tipo === "setor" || n.tipo === "membro" || n.tipo === "pasta" || z > 1.3 || (foco && on) || (b && on);
+      const mostrar = n.tipo === "projeto" || n.tipo === "setor" || n.tipo === "membro" || n.tipo === "pasta" || z > 1.1 || (foco && on) || (b && on);
       if (mostrar) {
-        ctx.font = `${n.tipo === "projeto" ? 13 : 11}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
+        ctx.font = `${n.tipo === "projeto" ? 14 : n.tipo === "setor" || n.tipo === "pasta" ? 12 : 11}px system-ui, sans-serif`;
         ctx.fillStyle = escuro ? "rgba(226,232,240,0.95)" : "rgba(30,41,59,0.95)";
         const t = n.nome.length > 42 ? `${n.nome.slice(0, 40)}…` : n.nome;
-        ctx.fillText(t, n.x, n.y + n.r + 12);
+        const raio = Math.hypot(n.x, n.y);
+        if (raio > ANEL[2] + 20) {
+          // Anel de fora: o nome sai para fora, na direção do raio (como os galhos de um mapa mental).
+          const ang = Math.atan2(n.y, n.x);
+          const esquerda = Math.cos(ang) < 0;
+          ctx.save(); ctx.translate(n.x, n.y); ctx.rotate(esquerda ? ang + Math.PI : ang);
+          ctx.textAlign = esquerda ? "right" : "left"; ctx.textBaseline = "middle";
+          ctx.fillText(t, esquerda ? -(n.r + 5) : n.r + 5, 0);
+          ctx.restore();
+        } else {
+          ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+          ctx.fillText(t, n.x, n.y + n.r + 13);
+        }
       }
     }
     ctx.globalAlpha = 1;
@@ -230,7 +295,7 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
   const aoApertar = (e: React.PointerEvent) => {
     e.currentTarget.setPointerCapture(e.pointerId);
     const no = noEm(mundo(e));
-    if (no) { no.fixo = true; energia.current = Math.max(energia.current, 0.3); }
+    if (no) no.fixo = true;
     arrasto.current = { no, ix: e.clientX, iy: e.clientY, vx: vista.current.x, vy: vista.current.y, moveu: false };
   };
   const aoMover = (e: React.PointerEvent) => {
@@ -242,7 +307,7 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
       return;
     }
     if (Math.hypot(e.clientX - a.ix, e.clientY - a.iy) > 3) a.moveu = true;
-    if (a.no) { const p = mundo(e); a.no.x = p.x; a.no.y = p.y; energia.current = Math.max(energia.current, 0.3); }
+    if (a.no) { const p = mundo(e); a.no.x = p.x; a.no.y = p.y; }
     else vista.current = { ...vista.current, x: a.vx + e.clientX - a.ix, y: a.vy + e.clientY - a.iy };
   };
   const aoSoltar = () => {
@@ -268,7 +333,7 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
     return () => c.removeEventListener("wheel", roda);
   }, [carregando]);
 
-  const centralizar = () => { vista.current = { x: 0, y: 0, z: 0.8 }; };
+  const centralizar = () => { vista.current = { x: 0, y: 0, z: 0.7 }; };
   const contagem = useMemo(() => {
     const r = new Map<Tipo, number>();
     for (const n of grafo.current?.nos ?? []) r.set(n.tipo, (r.get(n.tipo) ?? 0) + 1);
