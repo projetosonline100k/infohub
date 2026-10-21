@@ -13,7 +13,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from migration_db import connect
+from migration_db import connect, reusar_nesta_thread
 
 # 20/10/2026 (Davi: "quero que esse chat se conecte no Atlas"): enquanto um chat do Claude Code está
 # esperando aqui, ele deixa este sinal de vida; o ouvinte (jarvis-ouvinte.py) não responde a conversa
@@ -30,9 +30,15 @@ def sinal_de_vida(estado='esperando'):
 EMAIL = 'eu.daviqueiroz22@gmail.com'  # conta admin do app (src/lib/admin.ts)
 
 
+_dono = None
+
+
 def dono(q):
-    q.execute('SELECT id FROM auth.users WHERE lower(email) = %s', (EMAIL,))
-    return q.fetchone()[0]
+    global _dono
+    if _dono is None:   # 20/10: era uma consulta a cada 3 s
+        q.execute('SELECT id FROM auth.users WHERE lower(email) = %s', (EMAIL,))
+        _dono = q.fetchone()[0]
+    return _dono
 
 
 def pegar_pendentes():
@@ -74,6 +80,9 @@ def responder(id_msg, texto):
 
 
 if len(sys.argv) >= 2 and sys.argv[1] == 'esperar':
+    # 20/10: abria uma conexão nova a cada 3 s (~28 mil por dia) e ajudava a esgotar o servidor
+    # do banco (plano pequeno). Agora reaproveita uma conexão e olha a cada 5 s.
+    reusar_nesta_thread()
     while True:
         sinal_de_vida()
         try:
@@ -84,7 +93,7 @@ if len(sys.argv) >= 2 and sys.argv[1] == 'esperar':
                 sys.exit(0)
         except Exception as e:  # rede caiu etc.: tenta de novo
             print('falha ao consultar:', e, file=sys.stderr, flush=True)
-        time.sleep(3)
+        time.sleep(5)
 elif len(sys.argv) == 3 and sys.argv[1] == 'responder':
     sinal_de_vida('respondendo')
     responder(sys.argv[2], sys.stdin.read())

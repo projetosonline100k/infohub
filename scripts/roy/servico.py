@@ -32,6 +32,7 @@ AQUI = Path(__file__).resolve().parent
 RAIZ = AQUI.parents[1]
 sys.path.insert(0, str(AQUI))
 import roy  # noqa: E402
+from migration_db import reusar_nesta_thread  # noqa: E402
 import render  # noqa: E402
 
 LOG = render.BASE / "servico.log"
@@ -339,6 +340,7 @@ _iniciado_em = datetime.now(timezone.utc)
 
 
 def gravar_sinal():
+    reusar_nesta_thread()
     while True:
         try:
             roy.db("""INSERT INTO public.servicos_sinal (user_id, servico, ultimo_sinal, iniciado_em)
@@ -355,6 +357,8 @@ if __name__ == "__main__":
         while atender() or atender_tarefa():
             pass
         sys.exit(0)
+    # 20/10: uma conexão por laço, reaberta só quando cai (abrir uma por consulta pesava no banco).
+    reusar_nesta_thread()
     log("serviço do Roy iniciado")
     retomar_interrompidas()
     threading.Thread(target=gravar_sinal, daemon=True).start()
