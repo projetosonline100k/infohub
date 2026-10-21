@@ -25,6 +25,17 @@ def main():
          where i.agente = %s and i.user_id = c.user_id
            and (i.escopo = 'geral' or i.cliente_id = c.id)
          order by (i.tipo = 'aprendizado') desc, i.escopo, i.created_at""", (bool(a.saida), a.cliente, agente))
+    # Biblioteca geral (21/10): conhecimento marcado como compartilhado vale para todo funcionário de
+    # toda conta (skills de roteiro viral, quiz…). Sem repetir o que ele já tem com o mesmo nome.
+    ja = {i['nome'] for i in itens}
+    for b in consultar("""
+        select distinct on (i.nome) i.id, 'biblioteca' as escopo, i.tipo, i.nome, i.status, i.mensagem, i.caracteres, i.observacao,
+               case when %s then i.conteudo end as conteudo
+          from inteligencia_membros i
+         where i.compartilhado and i.status = 'pronto'
+         order by i.nome, i.created_at""", (bool(a.saida),)):
+        if b['nome'] not in ja:
+            itens.append(b)
     if not itens:
         print(f'{agente}: sem inteligência neste projeto ainda.')
         return
@@ -32,7 +43,7 @@ def main():
     if saida:
         saida.mkdir(parents=True, exist_ok=True)
     for n, i in enumerate(itens, 1):
-        linha = f"{n:02d}. [{'geral' if i['escopo'] == 'geral' else 'projeto'}] {i['tipo']} · {i['nome']} · {i['status']}"
+        linha = f"{n:02d}. [{i['escopo'] if i['escopo'] in ('geral', 'biblioteca') else 'projeto'}] {i['tipo']} · {i['nome']} · {i['status']}"
         linha += f" · {i['caracteres']:,} caracteres".replace(',', '.') if i['caracteres'] else ''
         if i['mensagem']:
             linha += f" · {i['mensagem']}"

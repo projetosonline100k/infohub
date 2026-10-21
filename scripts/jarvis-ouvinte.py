@@ -28,6 +28,7 @@ sem API paga). Log em ~/.infopro-hub/ouvinte/ouvinte.log.
 """
 import glob
 import json
+import re
 import os
 import subprocess
 import sys
@@ -454,9 +455,49 @@ Conversa: {bid}
 Regras: não publique, não poste e não envie nada em nome do Davi; não escreva no banco fora desses comandos; sem git. Hoje é {hoje}."""
 
 
+
+# ---------------------------------------------------------------- dono da conta (20/10)
+# Os prompts falam "Davi", mas o ouvinte atende toda conta (ex.: a do Marcelo). Para quem não é o Davi,
+# vai na frente um aviso com o nome certo e as ferramentas que valem para todos.
+_nomes_dono = {}
+FERRAMENTAS_GERAIS = (
+    "Link de vídeo (Instagram, TikTok, YouTube…): NÃO diga que não consegue abrir. Transcreva com "
+    "`python3 scripts/transcrever-link.py <link>` (≈30 s) e use o texto. Conhecimento geral da empresa "
+    "(skills de roteiro viral, CTA, intensificador, quiz…): aparece como [biblioteca] no `scripts/inteligencia/ler.py`.\n")
+
+
+def _nome_do_dono(tabela, id_):
+    try:
+        c = connect()
+        try:
+            q = c.cursor()
+            q.execute(f"SELECT u.id, u.email FROM public.{tabela} t JOIN auth.users u ON u.id = t.user_id WHERE t.id = %s", (id_,))
+            r = q.fetchone()
+        finally:
+            c.close()
+    except Exception:
+        return "Davi"
+    if not r:
+        return "Davi"
+    uid, email = str(r[0]), (r[1] or "").lower()
+    if uid not in _nomes_dono:
+        local = email.split("@")[0]
+        _nomes_dono[uid] = "Davi" if local.startswith(("eu.davi", "davi")) else (re.split(r"[._\-0-9]+", local)[0] or "o dono").capitalize()
+    return _nomes_dono[uid]
+
+
+def _com_dono(prompt, tabela, id_):
+    nome = _nome_do_dono(tabela, id_)
+    if nome == "Davi":
+        return FERRAMENTAS_GERAIS + prompt
+    return (f"IMPORTANTE: esta conta é de {nome}, não do Davi. Onde estas instruções dizem \"Davi\", entenda {nome} "
+            f"e chame-o de {nome}. Nada do perfil do Davi (voz, Instagram, CTA, aprendizados dele) vale aqui.\n"
+            + FERRAMENTAS_GERAIS + prompt)
+
+
 def _falar_como(bid, nome):
     desde = datetime.now(timezone.utc)
-    ok, texto = rodar_claude(PROMPT_PARTICIPANTE.format(bid=bid, nome=nome, nome_min=nome.lower(), hoje=f"{datetime.now():%d/%m/%Y}"), minutos=15)
+    ok, texto = rodar_claude(_com_dono(PROMPT_PARTICIPANTE.format(bid=bid, nome=nome, nome_min=nome.lower(), hoje=f"{datetime.now():%d/%m/%Y}"), "briefings", bid), minutos=15)
     if not briefing.respondeu(bid, nome, desde):
         log("briefing: participante não respondeu —", bid, nome, (texto or "")[:150])
 
@@ -471,7 +512,7 @@ def _atender_briefing(bid):
         for _, nome in antes:
             _falar_como(bid, nome)
         desde = datetime.now(timezone.utc)
-        ok, texto = rodar_claude(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), minutos=40 if modelo is PROMPT_REVISAO else 12)
+        ok, texto = rodar_claude(_com_dono(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), "briefings", bid), minutos=40 if modelo is PROMPT_REVISAO else 12)
         if not briefing.respondeu(bid, None, desde):
             motivo = texto if not ok else "terminei sem gravar a resposta."
             briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")
@@ -607,7 +648,7 @@ def _executar(aid):
                 _tentadas.discard(aid)
             log("execução:", aid, execucao.situacao(aid))
             return
-        ok, texto = rodar_claude(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), minutos=50, atividade=aid)
+        ok, texto = rodar_claude(_com_dono(PROMPT_EXECUCAO.format(aid=aid, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"), "atividades", aid), minutos=50, atividade=aid)
         if execucao.situacao(aid) == "andamento":  # o Claude não entregou nem avisou
             execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar o documento.")
             log("execução: falhou —", aid, texto[:200])
