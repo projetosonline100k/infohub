@@ -132,6 +132,8 @@ const parseDraggableId = (draggableId: string) => {
 interface PostDalila {
   id: string; tipo: "carrossel" | "reel"; titulo: string; status: string;
   quando: string; permalink: string | null; capa: string | null; video: string | null;
+  /** Carrossel: as páginas (para ver no clique, 20/10). */
+  paginas?: string[];
   /** Reel: o card de vídeo (Vertical) dele — o mesmo vídeo, então ele não aparece de novo (17/10). */
   videoId?: string | null;
 }
@@ -145,6 +147,9 @@ const STATUS_COM_DATA = ["programado", "publicando", "publicado"];
 export function CronogramaView({ clienteId }: CronogramaViewProps) {
   const [videos, setVideos] = useState<ScheduledVideo[]>([]);
   const [carrosseis, setCarrosseis] = useState<PostDalila[]>([]);
+  // 20/10 (Davi: "clicar no vídeo e abrir para ver qual é"): o card do calendário abre o reel/carrossel.
+  const [vendo, setVendo] = useState<PostDalila | null>(null);
+  const [paginaVendo, setPaginaVendo] = useState(0);
   const [posts, setPosts] = useState<PostInstagram[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>("mes");
@@ -216,7 +221,7 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
     const posts: PostDalila[] = [];
     for (const c of (cars || []) as unknown as PostDalilaBanco[]) {
       const quando = c.publicado_em ?? c.programado_para;
-      if (quando) posts.push({ id: c.id, tipo: "carrossel", titulo: `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}`, status: c.status, quando, permalink: c.permalink, capa: c.paginas?.[0] ?? null, video: null });
+      if (quando) posts.push({ id: c.id, tipo: "carrossel", titulo: `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}`, status: c.status, quando, permalink: c.permalink, capa: c.paginas?.[0] ?? null, video: null, paginas: c.paginas ?? [] });
     }
     for (const r of (reels || []) as PostDalilaBanco[]) {
       const quando = r.publicado_em ?? r.programado_para;
@@ -282,9 +287,9 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
     const publicado = c.status === "publicado";
     const quando = new Date(c.quando);
     return (
-      <button key={c.id} type="button" disabled={!c.permalink}
-        onClick={() => c.permalink && window.open(c.permalink, "_blank")}
-        title={publicado ? "Abrir o post" : "A Dalila publica sozinha neste horário"}
+      <button key={c.id} type="button"
+        onClick={() => { setPaginaVendo(0); setVendo(c); }}
+        title={c.tipo === "reel" ? "Ver o vídeo" : "Ver as páginas"}
         className={cn("flex w-full items-center gap-1.5 rounded-md border p-1 text-left text-[11px] leading-tight",
           publicado ? "border-emerald-600/40 bg-emerald-600/10 hover:bg-emerald-600/20" : "border-amber-500/50 bg-amber-500/10")}>
         {c.capa && <img src={c.capa} alt="" className="h-9 w-7 shrink-0 rounded-sm object-cover" loading="lazy" />}
@@ -742,6 +747,51 @@ export function CronogramaView({ clienteId }: CronogramaViewProps) {
             </div>
           </aside>
         </div>
+
+        {/* Ver o reel/carrossel do calendário (20/10). */}
+        <Dialog open={!!vendo} onOpenChange={(a) => { if (!a) setVendo(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="pr-6 text-base leading-snug">{vendo?.titulo}</DialogTitle>
+              {vendo && (
+                <p className="text-xs text-muted-foreground">
+                  {vendo.status === "publicado" ? "Publicado" : vendo.status === "publicando" ? "Publicando agora" : "Programado"}
+                  {" · "}{format(new Date(vendo.quando), "EEEE, d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+                </p>
+              )}
+            </DialogHeader>
+            {vendo?.tipo === "reel" ? (
+              vendo.video
+                ? <video key={vendo.id} src={vendo.video} controls autoPlay playsInline className="mx-auto max-h-[70vh] w-auto rounded-lg bg-black" />
+                : <p className="py-8 text-center text-sm text-muted-foreground">O vídeo deste reel ainda não está guardado (a Dalila prepara antes de publicar).</p>
+            ) : vendo?.paginas?.length ? (
+              <div className="space-y-2">
+                <div className="relative">
+                  <img src={vendo.paginas[paginaVendo]} alt={`Página ${paginaVendo + 1}`} className="mx-auto max-h-[65vh] w-auto rounded-lg" />
+                  {paginaVendo > 0 && (
+                    <button type="button" aria-label="Página anterior" onClick={() => setPaginaVendo((p) => p - 1)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-1.5 text-white"><ChevronLeft className="h-4 w-4" /></button>
+                  )}
+                  {paginaVendo < vendo.paginas.length - 1 && (
+                    <button type="button" aria-label="Próxima página" onClick={() => setPaginaVendo((p) => p + 1)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-1.5 text-white"><ChevronRight className="h-4 w-4" /></button>
+                  )}
+                </div>
+                <div className="flex gap-1 overflow-x-auto pb-1">
+                  {vendo.paginas.map((u, i) => (
+                    <button key={u} type="button" onClick={() => setPaginaVendo(i)}
+                      className={cn("h-14 w-11 shrink-0 overflow-hidden rounded border-2", i === paginaVendo ? "border-primary" : "border-transparent opacity-70")}>
+                      <img src={u} alt="" className="h-full w-full object-cover" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : <p className="py-8 text-center text-sm text-muted-foreground">Sem páginas guardadas para mostrar.</p>}
+            {vendo?.permalink && (
+              <Button variant="outline" size="sm" className="w-full" onClick={() => window.open(vendo.permalink!, "_blank")}>Abrir o post no Instagram</Button>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={showNewIdeaDialog} onOpenChange={setShowNewIdeaDialog}>
           <DialogContent>
