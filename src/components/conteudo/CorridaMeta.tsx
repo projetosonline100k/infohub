@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Flag, Pencil, Target } from "lucide-react";
+import { ChevronDown, ExternalLink, Flag, Lightbulb, Pencil, Target } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { corridaMeta, numeroCurto, type PontoSeguidores } from "@/lib/metaSeguidores";
+import { corridaMeta, numeroCurto, sugestoesMeta, type DiaIg, type PontoSeguidores, type PostIg } from "@/lib/metaSeguidores";
 
 // Corrida até a meta de seguidores no Cronograma (20/10, Davi: "colocar a minha meta, tipo bater
 // 100k de seguidores, e ter uma corrida até chegar, para ser visual"). Meta em clientes.meta_seguidores;
@@ -22,6 +22,9 @@ type Meta = { meta_seguidores: number | null; meta_seguidores_prazo: string | nu
 export function CorridaMeta({ clienteId }: { clienteId: string }) {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [serie, setSerie] = useState<PontoSeguidores[]>([]);
+  const [dias, setDias] = useState<DiaIg[]>([]);
+  const [posts, setPosts] = useState<PostIg[]>([]);
+  const [dicasAbertas, setDicasAbertas] = useState(() => { try { return localStorage.getItem("corrida:dicas") !== "0"; } catch { return true; } });
   const [conta, setConta] = useState<string | null>(null);
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState("");
@@ -30,15 +33,21 @@ export function CorridaMeta({ clienteId }: { clienteId: string }) {
   const carregar = useCallback(async () => {
     const [m, s] = await Promise.all([
       db.from("clientes").select("meta_seguidores, meta_seguidores_prazo, meta_seguidores_desde").eq("id", clienteId).maybeSingle(),
-      db.from("instagram_metricas_diarias").select("dia, username, seguidores").eq("cliente_id", clienteId)
+      db.from("instagram_metricas_diarias").select("dia, username, seguidores, visualizacoes").eq("cliente_id", clienteId)
         .not("seguidores", "is", null).gte("dia", new Date(Date.now() - 400 * 86_400_000).toISOString().slice(0, 10)).order("dia"),
     ]);
     setMeta((m.data as Meta | null) ?? { meta_seguidores: null, meta_seguidores_prazo: null, meta_seguidores_desde: null });
     // Projeto com mais de uma conta: a corrida é da que tem o dado mais recente.
-    const linhas = (s.data || []) as { dia: string; username: string | null; seguidores: number }[];
+    const linhas = (s.data || []) as { dia: string; username: string | null; seguidores: number; visualizacoes: number | null }[];
     const principal = linhas.at(-1)?.username ?? null;
     setConta(principal);
-    setSerie(linhas.filter((l) => l.username === principal));
+    const daConta = linhas.filter((l) => l.username === principal);
+    setSerie(daConta);
+    setDias(daConta.slice(-30));
+    const { data: ps } = await db.from("instagram_posts")
+      .select("tipo, formato, legenda, permalink, publicado_em, visualizacoes, alcance, salvamentos, compartilhamentos")
+      .eq("cliente_id", clienteId).eq("username", principal ?? "").order("publicado_em", { ascending: false }).limit(60);
+    setPosts((ps || []) as PostIg[]);
   }, [clienteId]);
 
   useEffect(() => { void carregar(); }, [carregar]);
@@ -151,6 +160,36 @@ export function CorridaMeta({ clienteId }: { clienteId: string }) {
                 extra={!c.chegou && !c.previsao ? "precisa voltar a crescer" : undefined} />
             )}
           </div>
+
+          {/* 20/10 (Davi): "o que eu posso fazer para chegar mais perto do meu objetivo" — tirado dos números do perfil. */}
+          {(() => {
+            const dicas = sugestoesMeta(c, posts, dias);
+            if (!dicas.length) return null;
+            const alternar = () => { setDicasAbertas(!dicasAbertas); try { localStorage.setItem("corrida:dicas", dicasAbertas ? "0" : "1"); } catch { /* sem storage */ } };
+            return (
+              <div className="mt-3 rounded-md border border-amber-500/25 bg-amber-500/5">
+                <button type="button" onClick={alternar} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold">
+                  <Lightbulb className="h-4 w-4 text-amber-500" /> O que fazer para chegar mais perto
+                  <ChevronDown className={cn("ml-auto h-4 w-4 text-muted-foreground transition-transform", dicasAbertas && "rotate-180")} />
+                </button>
+                {dicasAbertas && (
+                  <ol className="grid gap-2 px-3 pb-3 md:grid-cols-2">
+                    {dicas.map((d, i) => (
+                      <li key={d.id} className="rounded-md bg-background/60 p-2.5">
+                        <p className="text-[13px] font-semibold"><span className="mr-1 text-amber-500">{i + 1}.</span>{d.titulo}</p>
+                        <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{d.texto}</p>
+                        {d.links?.map((l) => (
+                          <a key={l.url} href={l.url} target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-1 truncate text-xs text-primary hover:underline">
+                            <ExternalLink className="h-3 w-3 shrink-0" /><span className="truncate">{l.rotulo}</span>
+                          </a>
+                        ))}
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            );
+          })()}
         </>
       )}
     </div>

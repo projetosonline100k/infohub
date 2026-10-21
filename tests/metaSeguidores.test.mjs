@@ -39,3 +39,20 @@ test('placas redondas no caminho e números curtos', () => {
   assert.equal(numeroCurto(100_000), '100 mil');
   assert.equal(numeroCurto(33_916), '33,9 mil');
 });
+
+test('o que fazer: alcance necessário, formato, repetir, frequência e prazo realista', async () => {
+  const { sugestoesMeta } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const c = corridaMeta(serie, 100_000, { prazo: '2026-10-30', hoje: new Date('2026-10-20T12:00:00') });
+  const dias = [
+    { dia: '2026-10-14', seguidores: 32_908, visualizacoes: 13_930 }, { dia: '2026-10-15', seguidores: 32_956, visualizacoes: 13_495 },
+    { dia: '2026-10-19', seguidores: 33_916, visualizacoes: 23_157 },
+  ];
+  const post = (tipo, v, comp, i) => ({ tipo, formato: tipo === 'REELS' ? 'VIDEO' : 'CAROUSEL_ALBUM', legenda: `Post ${i}\nresto`, permalink: `https://x/${i}`,
+    publicado_em: '2026-10-18T10:00:00Z', visualizacoes: v, alcance: v, salvamentos: 1, compartilhamentos: comp });
+  const posts = [post('REELS', 3000, 100, 1), post('REELS', 3200, 50, 2), post('REELS', 3100, 10, 3),
+    post('FEED', 1000, 2, 4), post('FEED', 1100, 1, 5), post('FEED', 1200, 0, 6)];
+  const s = sugestoesMeta(c, posts, dias, new Date('2026-10-20T12:00:00'));
+  assert.deepEqual(s.map((x) => x.id), ['alcance', 'formato', 'repetir', 'frequencia', 'prazo']);
+  assert.match(s[1].titulo, /^Reels rendem 2,8× mais$/);
+  assert.equal(s[2].links[0].url, 'https://x/1');
+});
