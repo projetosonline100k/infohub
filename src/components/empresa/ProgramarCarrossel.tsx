@@ -169,8 +169,10 @@ export function SemInstagram() {
 // publicando ou publicados) e vídeos com data de postagem.
 export interface ItemAgenda { dia: string; tipo: "carrossel" | "reel" | "video"; titulo: string; capa: string | null; publicado: boolean; hora: string | null }
 // Cada tipo ocupa o dia só para ele (pedido do Davi, 16/10): 1 carrossel e 1 reel
-// por dia, um não toma o dia do outro.
-export const ocupaDia = (tipo: "carrossel" | "reel") => (a: ItemAgenda) => a.tipo === tipo;
+// por dia, um não toma o dia do outro. Reel às 10h (dark no lugar do carrossel, 20/10)
+// também tira o dia do carrossel.
+export const ocupaDia = (tipo: "carrossel" | "reel") => (a: ItemAgenda) =>
+  a.tipo === tipo || (tipo === "carrossel" && a.tipo === "reel" && a.hora === HORA_PADRAO);
 
 export async function carregarAgenda(clienteId: string, ignorar?: string): Promise<ItemAgenda[]> {
   const [cars, vids, reels] = await Promise.all([
