@@ -466,7 +466,7 @@ export const EscritorioEmpresa = memo(function EscritorioEmpresa({ setores, onAb
         {/* Balões, nomes e o clique de cada mesa */}
         {mesas.map(({ p, x, yMesa }) => (
           <button key={p.id} type="button" disabled={!p.clicavel} onClick={() => onAbrir(p.id)}
-            title={p.clicavel ? `Ver e adicionar tarefas de ${p.nome}` : undefined}
+            title={p.clicavel ? (p.ehIa ? `Conversar com ${p.nome}` : `Ver e adicionar tarefas de ${p.nome}`) : undefined}
             className="group/mesa absolute flex -translate-x-1/2 flex-col items-center justify-between rounded-lg outline-none transition-colors enabled:hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary"
             style={{ left: pctX(x), top: pctY(yMesa - 14), height: pctY(110), width: pctX(LARGURA_MESA - 6) }}>
             {p.balao ? (

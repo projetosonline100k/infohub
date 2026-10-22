@@ -23,8 +23,10 @@ const STATUS: Record<Sinal, { cor: string; texto: string }> = {
   parado: { cor: "bg-zinc-400", texto: "Livre" },
 };
 
-export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
+export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou, pedido }: {
   clienteId: string; pessoas: PessoaChat[]; onAbrirFila: (m: MembroResumo) => void; onMudou: () => void;
+  /** 22/10 (Davi: "ao clicar no colaborador, apareça o chat dele"): abre a conversa dessa pessoa. */
+  pedido?: { membroId: string; n: number } | null;
 }) {
   const [aberta, setAberta] = useState(false);
   const [conversa, setConversa] = useState<PessoaChat | null>(null);
@@ -56,6 +58,17 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou }: {
     setConversa(p);
     setParams((sp) => { const n = new URLSearchParams(sp); n.delete("conversa"); return n; }, { replace: true });
   }, [pedida, lista, setParams]);
+  const pedidoAtendido = useRef(0);
+  useEffect(() => {
+    if (!pedido || pedido.n === pedidoAtendido.current) return;
+    const p = pessoas.find((x) => x.membro.id === pedido.membroId);
+    if (!p) return;
+    pedidoAtendido.current = pedido.n;
+    setAberta(true);
+    if (ehCoordenador(p.membro)) { setConversa(null); setComAtlas(true); setFocoAtlas((f) => f + 1); }
+    else { setComAtlas(false); setConversa(p); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido, pessoas]);
   const atualDaConversa = conversa ? lista.find((p) => p.membro.id === conversa.membro.id) ?? conversa : null;
   // 20/10 (Davi: "crie o chat dele"): o Atlas também na lista; a conversa é a mesma do ⌘J, atendida
   // pelo chat do Claude Code ligado ao Atlas (ou pelo ouvinte, quando o chat está fechado).

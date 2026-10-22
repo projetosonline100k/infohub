@@ -99,6 +99,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [tarefas, setTarefas] = useState<TarefaResumo[]>([]);
   const [videos, setVideos] = useState<VideoResumo[]>([]);
   const [membroAberto, setMembroAberto] = useState<MembroResumo | null>(null);
+  const [chatPedido, setChatPedido] = useState<{ membroId: string; n: number } | null>(null);
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -609,7 +610,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           </div>
         ) : (
           // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-          <EscritorioEmpresa onAbrir={(id) => { const m = membros.find((x) => x.id === id); if (m) setMembroAberto(m); }}
+          <EscritorioEmpresa onAbrir={(id) => {
+            // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
+            const m = membros.find((x) => x.id === id);
+            if (!m) return;
+            if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+          }}
             onReordenar={(ids, fileira) => void reordenarEscritorios(ids, fileira)}
             onAbrirSetor={setEsteiraAberta}
             tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
@@ -677,7 +683,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         onFechar={() => setCadastro(null)} onCriado={() => { setMembroAberto(null); void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
       <ProgramarReel tarefaId={agendarReelAberto} onFechar={() => { setAgendarReelAberto(null); void carregar(); }} />
-      <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} />
+      <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
         onMudou={() => { void recarregarSemana(); void carregar(); }} />
       <RevisaoEntrega clienteId={clienteId} tarefas={paraAprovar} aberto={revisaoAberta} onFechar={() => setRevisaoAberta(false)} onMudou={() => { void carregar(); }} />
