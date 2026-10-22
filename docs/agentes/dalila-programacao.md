@@ -108,6 +108,14 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
 - **Carrossel no Clássico marfim não entra mais na agenda do Davi Queiroz.**
 - Migração `20261022040000_dalila_tirar_classico_marfim`, teste `supabase/tests/dalila_sem_classico_marfim.sql`, script `scripts/apply-dalila-tirar-classico-marfim-migration.py` (aplicada em 22/10 às 10h30).
 
+## Instalivros no @instalivrosapp (22/10/2026)
+
+- O @instalivrosapp foi conectado em 22/10 às 11:32, ligado ao projeto Instalivros. Antes, a conexão dava "Unsupported request": faltava a conta ser **Testador do Instagram** no app da Meta (developers.facebook.com → Funções do app). Projeto novo = adicionar o testador primeiro.
+- **Título limpo:** `reel_titulo_limpo(titulo)` tira "Bruto 01-" do nome do arquivo e troca os hífens por espaço ("Bruto 01-4-livros-perigosos-para-manipular" → "4 livros perigosos para manipular"). Os acentos do nome do arquivo não voltam ("maos"). `reel_da_edicao` usa essa função.
+- **Conectou, programou:** o gatilho `instagram_conectado_programar` (em `instagram_conexoes`) chama `dalila_programar_pendentes(cliente)`. Reel pronto ou carrossel aprovado que esperava "Escolher data" porque o projeto não tinha Instagram entra no 1º dia livre, e a tarefa do Davi vai para a lixeira.
+- Estado em 22/10: o "Produção em 3 meses" foi programado sozinho para 22/10 às 18h. O "4 livros perigosos para manipular" foi posto pelo app em 23/10 às 18h, às 12:35, e foi mantido. O 02 e o 04 deram erro por limite do Claude e voltaram para o Mac preparar.
+- Migração `20261022050000_dalila_reel_titulo_limpo`, teste `supabase/tests/dalila_reel_titulo_limpo.sql`, script `scripts/apply-dalila-reel-titulo-limpo-migration.py`.
+
 ## Regra: nunca no perfil errado (pedido do Davi, 15/10/2026)
 
 - **Uma regra só**, a função `dalila_conexao_do_projeto(cliente)` (migração `20261015234500_dalila_instagram_regra_unica`):
