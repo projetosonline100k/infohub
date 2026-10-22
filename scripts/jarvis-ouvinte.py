@@ -467,7 +467,10 @@ FERRAMENTAS_GERAIS = (
     "O dono é MUITO visual (22/10): entrega com imagem (carrossel, arte, capa, página, thumbnail, design…) tem que MOSTRAR as "
     "imagens, nunca só descrever nem deixar numa pasta do Mac. Suba com `python3 scripts/empresa/imagens.py <id da tarefa> "
     "<pasta ou arquivos>` e cole o HTML <img> que ele imprime logo no começo do documento (seção 'O resultado'). Organize o "
-    "documento em seções curtas com <h2> (cada uma vira um slide na tela de revisão).\n")
+    "documento em seções curtas com <h2> (cada uma vira um slide na tela de revisão).\n"
+    "CARROSSEL (Instagram) que você produziu: além das imagens no documento, registre como carrossel de verdade "
+    "(o dono revisa, ajusta e aprova pra postar, igual aos do Roy): `python3 scripts/roy/registrar.py <id da tarefa> <pasta com "
+    "01.png… e conteudo.json>`. Ajuste pedido depois: refaça na mesma pasta e rode o registrar de novo.\n")
 
 
 def _nome_do_dono(tabela, id_):

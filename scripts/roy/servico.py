@@ -339,6 +339,35 @@ def atender_tarefa():
 _iniciado_em = datetime.now(timezone.utc)
 
 
+def encaminhar_ajustes_de_outros():
+    """Carrossel de outro projeto (feito pela tarefa e registrado com registrar.py, 22/10): o "Pedir ajuste"
+    da tela vira mensagem no chat da tarefa — quem atende é o funcionário do projeto (ouvinte), que refaz
+    na pasta e registra de novo. Este serviço só monta os carrosséis do Davi Queiroz."""
+    linhas = roy.db("""SELECT c.id, c.cliente_id, c.tema, c.feedback, c.atividade_roy_id, c.pasta_drive
+                         FROM public.carrosseis c
+                        WHERE c.status = 'ajuste' AND c.cliente_id <> %s AND c.atividade_roy_id IS NOT NULL
+                        ORDER BY c.atualizado_em LIMIT 5""", (roy.CLIENTE,)) or []
+    for id_, cliente, tema, feedback, aid, pasta in linhas:
+        b = roy.db("SELECT id FROM public.briefings WHERE atividade_id = %s ORDER BY atualizado_em DESC LIMIT 1", (aid,))
+        if b:
+            bid = b[0][0]
+        else:
+            m = roy.db("""SELECT id FROM public.membros WHERE cliente_id = %s AND eh_ia AND ativo
+                           ORDER BY (lower(nome) = 'roy') DESC, (funcao ILIKE '%%carross%%') DESC LIMIT 1""", (cliente,))
+            if not m:
+                continue
+            bid = roy.db("""INSERT INTO public.briefings (cliente_id, membro_id, atividade_id, status, user_id)
+                            SELECT %s, %s, %s, 'revisando', user_id FROM public.clientes WHERE id = %s RETURNING id""",
+                         (cliente, m[0][0], aid, cliente))[0][0]
+        texto = (f"Ajuste no carrossel \"{tema}\" (arquivos em {str(pasta or '').replace('local:', '')}):\n{feedback or 'refazer'}\n\n"
+                 f"Refaça só o que foi pedido nessa pasta e registre de novo: python3 scripts/roy/registrar.py {aid} <pasta>")
+        roy.db("""INSERT INTO public.briefing_mensagens (briefing_id, cliente_id, papel, texto, status, user_id)
+                  SELECT %s, %s, 'davi', %s, 'enviada', user_id FROM public.clientes WHERE id = %s""", (bid, cliente, texto, cliente))
+        roy.db("UPDATE public.briefings SET status = 'revisando', atualizado_em = now() WHERE id = %s", (bid,))
+        roy.db("UPDATE public.carrosseis SET status = 'produzindo', mensagem = 'Ajustando pelo chat da tarefa…', atualizado_em = now() WHERE id = %s", (id_,))
+        log("ajuste de outro projeto encaminhado ao chat:", tema)
+
+
 def gravar_sinal():
     reusar_nesta_thread()
     while True:
@@ -365,6 +394,7 @@ if __name__ == "__main__":
     ultima_drive = 0.0
     while True:
         try:
+            encaminhar_ajustes_de_outros()
             if atender():  # ajustes primeiro: são rápidos e o Davi está esperando
                 continue
             if atender_tarefa():

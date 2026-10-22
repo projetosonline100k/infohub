@@ -26,7 +26,7 @@ sys.path.insert(0, str(RAIZ / 'scripts' / 'empresa'))
 from migration_db import connect  # noqa: E402
 from briefing import EXECUTORES, manual_do  # noqa: E402
 AJUSTE = '--- Ajuste pedido pelo Davi'   # mesmo texto de src/lib/empresa/entregas.ts
-TAGS = {'h2', 'h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'br'}
+TAGS = {'h2', 'h3', 'p', 'ul', 'ol', 'li', 'strong', 'em', 'a', 'blockquote', 'br', 'img'}
 
 
 DAVI = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f'
@@ -192,6 +192,10 @@ def limpar_html(s):
         if nome == 'a' and not m.group(1):
             href = re.search(r'href="(https?://[^"]+)"', m.group(0))
             return f'<a href="{href.group(1)}">' if href else '<a>'
+        # 22/10: imagens da entrega (scripts/empresa/imagens.py) — só por link https, sem outros atributos.
+        if nome == 'img':
+            src = re.search(r'src="(https://[^"]+)"', m.group(0))
+            return f'<img src="{src.group(1)}" alt="">' if src else ''
         return f'<{m.group(1)}{nome}>'
     return re.sub(r'<(/?)([a-zA-Z0-9]+)[^>]*>', tag, s).strip()
 
