@@ -61,7 +61,9 @@ export function useEstadoConversas(clienteId: string, atividadeIds: string[]): {
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "briefings", filter: `cliente_id=eq.${clienteId}` }, logo)
       .subscribe();
     window.addEventListener("conversa-lida", logo);
-    return () => { window.clearTimeout(espera); void supabase.removeChannel(canal); window.removeEventListener("conversa-lida", logo); };
+    // 22/10: o aviso do banco às vezes se perde e a tela ficava em "ajustando" com a versão pronta — confere a cada 15 s também.
+    const t = window.setInterval(() => void carregarRef.current(), 15_000);
+    return () => { window.clearTimeout(espera); window.clearInterval(t); void supabase.removeChannel(canal); window.removeEventListener("conversa-lida", logo); };
   }, [clienteId]);
   return { estados, agora };
 }
