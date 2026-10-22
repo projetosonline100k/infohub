@@ -13,7 +13,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
-import { EscritorioEmpresa } from "./EscritorioEmpresa";
+import { EscritorioAberto } from "./EscritorioAberto";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { EscolherFormato } from "./EscolherFormato";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
@@ -527,13 +527,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           ) : (
             // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-            <EscritorioEmpresa onAbrir={(id) => {
+            <EscritorioAberto onAbrir={(id) => {
               // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
               const m = membros.find((x) => x.id === id);
               if (!m) return;
               if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
             }}
-              onReordenar={(ids, fileira) => void reordenarEscritorios(ids, fileira)}
               onAbrirSetor={setEsteiraAberta}
               tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
               setores={setores.map((setor) => {
@@ -563,6 +562,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                     return {
                       id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
                       balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
+                      conversando: !!papo && !coordenador, setorTarefa: atual?.setor_id ?? null,
                     };
                   }),
                 };

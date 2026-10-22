@@ -14,6 +14,10 @@ import { ehNomeCoordenador } from "@/lib/empresa/visaoGeral";
 export interface PessoaNaSala {
   id: string; nome: string; ehIa: boolean; sinal: Sinal; corSinal: string; rotuloSinal: string;
   balao: string | null; tarefas: number; atrasadas: number; clicavel: boolean;
+  /** Escritório aberto (22/10): conversando com o Davi agora (vai para a mesa de reunião). */
+  conversando?: boolean;
+  /** Escritório aberto: setor da tarefa que está fazendo (anda até aquela área). */
+  setorTarefa?: string | null;
 }
 
 const LARGURA_MESA = 120;
@@ -29,7 +33,7 @@ function quadrosPernas(sinal: 1 | -1) {
   }
   return q.join("");
 }
-const ESTILO_SALA = `
+export const ESTILO_SALA = `
 .esc svg *{transform-box:fill-box}
 .esc-passeio{animation:esc-passeio var(--dur) linear infinite;animation-delay:var(--atraso)}
 @keyframes esc-passeio{0%,6%{transform:translate(var(--de),var(--de-y))}30%,60%{transform:translate(var(--cafe),var(--cafe-y))}84%,100%{transform:translate(var(--de),var(--de-y))}}
@@ -94,7 +98,7 @@ function BonecoAndando({ v }: { v: Visual }) {
   );
 }
 
-function Planta({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+export function Planta({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   return (
     <g transform={`translate(${x} ${y}) scale(${s})`}>
       <path d="M-9 0 L9 0 L7 16 L-7 16 Z" fill="#f1f5f9" stroke="#cbd5e1" />
@@ -160,7 +164,7 @@ function VidroFrente({ x0, x1, yTopo, yBase, porta }: { x0: number; x1: number; 
   );
 }
 
-function Cafe({ x, y }: { x: number; y: number }) {
+export function Cafe({ x, y }: { x: number; y: number }) {
   return (
     <g transform={`translate(${x - 39} ${y})`}>
       <rect width="78" height="58" rx="3" fill="#cbd5e1" />
