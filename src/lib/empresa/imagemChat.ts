@@ -37,8 +37,12 @@ async function paraPng(arquivo: Blob): Promise<Blob> {
 export async function subirImagemChat(original: File): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error("sem login");
+  // Lê os bytes antes (arquivo que chega vazio dá "No content provided" no Storage).
+  const bytes = await original.arrayBuffer();
+  if (!bytes.byteLength) throw new Error("a imagem chegou vazia — tente de novo ou copie o print (⌘⌃⇧4) e cole com ⌘V");
+  const lida = new Blob([bytes], { type: original.type });
   const precisaConverter = !ACEITOS.includes(original.type) || original.size > 8 * 1024 * 1024;
-  const arquivo: Blob = precisaConverter ? await paraPng(original) : original;
+  const arquivo: Blob = precisaConverter ? await paraPng(lida) : lida;
   const tipo = precisaConverter ? "image/png" : original.type;
   const ext = tipo.split("/")[1].replace("jpeg", "jpg");
   const caminho = `chat/${u.user.id}/${crypto.randomUUID()}.${ext}`;

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PREFIXO_IMAGEM, imagensDoEvento, subirImagemChat } from "@/lib/empresa/imagemChat";
+import { receberImagensSoltas } from "@/lib/desktop/soltarImagem";
 
 // Colar (⌘V) ou arrastar print no chat dos funcionários (22/10). As imagens sobem na hora e ficam
 // esperando o envio, em miniatura em cima do campo; ao enviar, entram como linhas "🖼️ <link>".
@@ -21,7 +22,13 @@ export function useImagensChat() {
     }
     return true;
   };
+  // No app do Mac quem recebe o arrasto é a janela (lib/desktop/soltarImagem); aqui só se inscreve.
+  const [el, setEl] = useState<HTMLElement | null>(null);
+  const subirRef = useRef(subir);
+  subirRef.current = subir;
+  useEffect(() => (el ? receberImagensSoltas(el, setArrastando, (fs) => { void subirRef.current(fs); }) : undefined), [el]);
   const props = {
+    ref: setEl,
     onPaste: (e: React.ClipboardEvent) => { const fs = imagensDoEvento(e.clipboardData); if (fs.length) { e.preventDefault(); void subir(fs); } },
     // Qualquer arrasto de arquivo (no app do Mac o tipo da imagem às vezes só aparece ao soltar).
     onDragOver: (e: React.DragEvent) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setArrastando(true); } },

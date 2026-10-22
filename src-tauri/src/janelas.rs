@@ -108,3 +108,20 @@ pub async fn abrir_notas(app: AppHandle, focar: Option<bool>) -> Result<(), Stri
         erro.to_string()
     })
 }
+
+/// Lê a imagem que o Davi soltou no chat dos funcionários (22/10). O print arrastado do Mac vem de
+/// uma pasta temporária que a página não consegue ler (chegava vazio: "No content provided"); o app
+/// lê o arquivo e entrega os bytes. Só imagem e até 30 MB.
+#[tauri::command]
+pub fn ler_imagem_solta(caminho: String) -> Result<tauri::ipc::Response, String> {
+    let minusculo = caminho.to_lowercase();
+    let ok = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff", ".heic", ".bmp"].iter().any(|e| minusculo.ends_with(e));
+    if !ok {
+        return Err("Só dá para soltar imagem no chat.".into());
+    }
+    let tamanho = std::fs::metadata(&caminho).map_err(|e| format!("Não achei o arquivo: {e}"))?.len();
+    if tamanho > 30 * 1024 * 1024 {
+        return Err("A imagem passa de 30 MB.".into());
+    }
+    std::fs::read(&caminho).map(tauri::ipc::Response::new).map_err(|e| format!("Não consegui ler a imagem: {e}"))
+}

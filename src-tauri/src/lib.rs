@@ -78,6 +78,7 @@ pub fn run() {
             janelas::destacar_aba,
             janelas::mostrar_aviso,
             janelas::abrir_notas,
+            janelas::ler_imagem_solta,
             voz::voz_falar,
             voz::voz_parar,
             voz::voz_listar,
