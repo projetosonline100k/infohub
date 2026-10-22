@@ -1,4 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Maximize2, Minus, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ehNomeCoordenador } from "@/lib/empresa/visaoGeral";
 import { cabeloDe, cabeloTras, visualDe, ESTILO, type Visual } from "./BonecoMesa";
@@ -17,13 +18,13 @@ import type { PessoaNaSala, SetorNoEscritorio } from "./EscritorioEmpresa";
 // Vista de frente, de cima (22/10, Davi: "está meio na vertical, deixe normal"): x na horizontal, y
 // entrando na tela (encurtado) e um leve desvio para a esquerda, que mostra a lateral direita dos móveis.
 const AX = 46, BX = -12, CY = 35, HZ = 38;  // x → tela, desvio de y em x, y → tela, altura de 1 unidade em z
-const GY = 18;                              // fundo → frente (o comprimento em x depende dos setores)
-const PAREDE_Z = 3.3;
+const GY = 18.6;                            // fundo → frente (o comprimento em x depende dos setores)
+const PAREDE_Z = 3.75;
 const OX = GY * -BX + 30, OY = PAREDE_Z * HZ + 24;
 const ALT = GY * CY + OY + 34;
 const P = (x: number, y: number, z = 0) => ({ sx: x * AX + y * BX + OX, sy: y * CY - z * HZ + OY });
 const pts = (...ps: { sx: number; sy: number }[]) => ps.map((p) => `${p.sx.toFixed(1)},${p.sy.toFixed(1)}`).join(" ");
-const ESCALA = 0.95;                      // tamanho dos bonecos
+const ESCALA = 1.15;                      // tamanho dos bonecos
 // Ordem de desenho: quem está mais à frente (y maior) por cima.
 const pr = (x: number, y: number) => y + x * 0.001;
 
@@ -42,7 +43,7 @@ function caixa({ x, y, z = 0, w, d, h, topo, esq, dir, borda = "rgba(0,0,0,.12)"
 const noChao = (x: number, y: number, w: number, d: number, z = 0) => pts(P(x, y, z), P(x + w, y, z), P(x + w, y + d, z), P(x, y + d, z));
 const naParedeX = (y: number, z: number, comp: number, alt: number) => pts(P(0.02, y, z), P(0.02, y + comp, z), P(0.02, y + comp, z + alt), P(0.02, y, z + alt));
 const naParedeY = (x: number, z: number, comp: number, alt: number) => pts(P(x, 0.02, z), P(x + comp, 0.02, z), P(x + comp, 0.02, z + alt), P(x, 0.02, z + alt));
-function sombra(x: number, y: number, w: number, d: number, o = 0.16) {
+function sombra(x: number, y: number, w: number, d: number, o = 0.24) {
   return <polygon points={pts(P(x - 0.1, y - 0.1), P(x + w + 0.25, y - 0.1), P(x + w + 0.25, y + d + 0.25), P(x - 0.1, y + d + 0.25))} fill="#000" opacity={o} />;
 }
 function elipsePiso(x: number, y: number, r: number, cor: string, z = 0, o = 1) {
@@ -125,7 +126,7 @@ function planta(x: number, y: number, s = 1): Item {
     <g>
       {elipsePiso(x + 0.3, y + 0.3, 0.45, "#000", 0, 0.15)}
       {caixa({ x, y, w: 0.6, d: 0.6, h: 0.5, topo: "#57534e", esq: "#e7e5e4", dir: "#c8c2bd" })}
-      <g transform={`translate(${c.sx} ${c.sy}) scale(${s})`}>
+      <g transform={`translate(${c.sx} ${c.sy}) scale(${s * 1.3})`}>
         <path d="M0 0 C-22 -12,-26 -34,-8 -48 C-4 -30,-2 -14,0 0" fill="#15803d" />
         <path d="M0 0 C20 -10,28 -32,12 -50 C6 -32,3 -14,0 0" fill="#22c55e" />
         <path d="M0 0 C-6 -20,0 -44,3 -62 C9 -44,7 -20,0 0" fill="#16a34a" />
@@ -322,8 +323,8 @@ function Robo() {
   );
 }
 function Sinal({ sinal }: { sinal: PessoaNaSala["sinal"] }) {
-  if (sinal === "esperando") return <g transform="translate(18 -84)"><circle r="9" fill="#f59e0b" stroke="#fff" strokeWidth="2" /><text y="4.5" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">!</text></g>;
-  if (sinal === "problema") return <g transform="translate(18 -84)" className="animate-pulse"><circle r="9" fill="#ef4444" stroke="#fff" strokeWidth="2" /><text y="4.5" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">!</text></g>;
+  if (sinal === "esperando") return <g transform={`translate(${18 * ESCALA} ${-90 * ESCALA})`}><circle r="9" fill="#f59e0b" stroke="#fff" strokeWidth="2" /><text y="4.5" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">!</text></g>;
+  if (sinal === "problema") return <g transform={`translate(${18 * ESCALA} ${-90 * ESCALA})`} className="animate-pulse"><circle r="9" fill="#ef4444" stroke="#fff" strokeWidth="2" /><text y="4.5" textAnchor="middle" fontSize="13" fontWeight="800" fill="#fff">!</text></g>;
   return null;
 }
 
@@ -395,8 +396,11 @@ function montarPlanta(qtd: Map<string, number>): Planta {
   const totais = faixas.map((ms) => ms.reduce((t, m) => t + larguras(m), 0) + VAO * (ms.length - 1) + 0.6);
   const gx = Math.max(18, Math.ceil(Math.max(...totais)));
   faixas.forEach((ms, f) => {
-    // A sobra da faixa vira corredor entre os ambientes (nada esticado).
-    const sobra = (gx - totais[f]) / Math.max(1, ms.length - 1);
+    // Sobra grande na faixa vira um cantinho (estante, poltronas, plantas) em vez de chão vazio;
+    // sobra pequena vira corredor entre os ambientes.
+    const resto = gx - totais[f];
+    if (resto >= 2.6) ms.push({ chave: `canto${f}`, rotulo: "", faixa: f as 0 | 1 | 2, fixo: resto - VAO, tapete: "#d9c9ad", borda: "#bba886" });
+    const sobra = resto >= 2.6 ? 0 : resto / Math.max(1, ms.length - 1);
     let x = 0.3;
     for (const m of ms) {
       const w = larguras(m);
@@ -493,6 +497,48 @@ export const EscritorioIso = memo(function EscritorioIso({ setores, onAbrir, for
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chavePlanta]);
   const LARG = plan.gx * AX + GY * -BX + 60;
+
+  // Câmera (22/10, Davi: "viewport menor + mundo maior + câmera próxima + navegar pelo escritório"):
+  // o escritório é desenhado grande e a janela mostra uma parte; arrasta (ou rola) para andar e o zoom
+  // vai de "ver tudo" a bem perto. O zoom fica salvo neste computador.
+  const vp = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(() => { try { return Number(localStorage.getItem("escritorio-zoom")) || 1.05; } catch { return 1.05; } });
+  const [larguraVp, setLarguraVp] = useState(900);
+  useEffect(() => {
+    const el = vp.current; if (!el) return;
+    const ro = new ResizeObserver(() => setLarguraVp(el.clientWidth));
+    ro.observe(el); setLarguraVp(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const caber = Math.min(1, larguraVp / LARG);
+  const z = Math.max(caber, Math.min(1.6, zoom));
+  const mudarZoom = (novo: number) => {
+    const el = vp.current;
+    const cx = el ? (el.scrollLeft + el.clientWidth / 2) / (LARG * z) : 0.5, cy = el ? (el.scrollTop + el.clientHeight / 2) / (ALT * z) : 0.5;
+    const n = Math.max(caber, Math.min(1.6, novo));
+    setZoom(n); try { localStorage.setItem("escritorio-zoom", String(n)); } catch { /* sem armazenamento */ }
+    centro.current = { cx, cy };
+  };
+  const centro = useRef<{ cx: number; cy: number } | null>({ cx: 0.5, cy: 0.45 });
+  useLayoutEffect(() => {
+    const el = vp.current, c = centro.current; if (!el || !c) return;
+    el.scrollLeft = c.cx * LARG * z - el.clientWidth / 2; el.scrollTop = c.cy * ALT * z - el.clientHeight / 2;
+    centro.current = null;
+  }, [z, LARG]);
+  // Arrastar para andar (só depois de mexer uns pixels, para o clique nos funcionários continuar valendo).
+  const arrasto = useRef<{ x: number; y: number; l: number; t: number; mexeu: boolean } | null>(null);
+  const aoApertar = (e: React.PointerEvent) => {
+    if (e.button !== 0 || !vp.current) return;
+    arrasto.current = { x: e.clientX, y: e.clientY, l: vp.current.scrollLeft, t: vp.current.scrollTop, mexeu: false };
+  };
+  const aoMover = (e: React.PointerEvent) => {
+    const a = arrasto.current, el = vp.current; if (!a || !el) return;
+    const dx = e.clientX - a.x, dy = e.clientY - a.y;
+    if (!a.mexeu && Math.hypot(dx, dy) < 5) return;
+    if (!a.mexeu) { a.mexeu = true; el.setPointerCapture(e.pointerId); }
+    el.scrollLeft = a.l - dx; el.scrollTop = a.t - dy;
+  };
+  const aoSoltar = () => { const a = arrasto.current; window.setTimeout(() => { if (arrasto.current === a) arrasto.current = null; }, 0); };
 
   const vagaAntes = useRef<Map<string, number>>(new Map());
   const geo = useMemo(() => {
@@ -633,6 +679,15 @@ export const EscritorioIso = memo(function EscritorioIso({ setores, onAbrir, for
   add(planta(reu.x0 + 0.15, 17.0, 0.8), planta(reu.x0 + reu.w - 0.75, 17.0, 0.8));
   // Sucesso / Sales: estações de atendimento, com divisória baixa entre os dois.
   if (suc && sal) add(divisoria(sal.x0 - VAO / 2, 13.3, 17.6));
+  // Cantinhos (a sobra de cada faixa): estante, poltronas com mesinha, luminária e plantas.
+  for (const a of plan.amb.values()) {
+    if (!a.chave.startsWith("canto")) continue;
+    const y0 = FAIXA[a.faixa].y0, fundo = a.faixa === 0 ? 0.3 : y0 + 0.2;
+    add(planta(a.x0 + 0.1, FAIXA[a.faixa].y1 - 0.8, 1.1));
+    if (a.w >= 2.2) add(estante(a.x0 + 0.3, fundo, Math.min(2.6, a.w - 0.6), "x", 1.6));
+    if (a.w >= 3.2) add(sofa(a.x0 + 0.6, y0 + 2.2, 0.6, "#0f766e", "#115e59"), sofa(a.x0 + 2.2, y0 + 2.2, 0.6, "#0f766e", "#115e59"), mesaRedonda(a.x0 + 1.7, y0 + 3.5, 0.45, ESCURA, 0.5));
+    if (a.w >= 4.2) add(planta(a.x0 + a.w - 0.75, fundo + 0.1, 1.2), luminaria(a.x0 + a.w - 0.4, y0 + 3.2));
+  }
 
   // Estações (só as da equipe) e quem está sentado.
   for (const a of plan.amb.values()) {
@@ -688,22 +743,23 @@ export const EscritorioIso = memo(function EscritorioIso({ setores, onAbrir, for
   if (dir && dir.w > 4.4) janelas.push([dir.x0 + 3.0, Math.min(2.6, dir.w - 4.6)]);
   janelas.push([cx + 0.6, 3.8]);
   if (copa.w > 7) janelas.push([cx + 6.9, copa.w - 7.2]);
-  const rotulosAmb = [
-    { a: copa, t: "Copa" }, { a: reu, t: "Reunião" }, { a: col, t: "Colaborativa" }, { a: des, t: "Descanso" },
-  ];
   const setorDoAmb = new Map<string, SetorNoEscritorio>();
   for (const s of setores) { const a = ambDoSetor.get(s.id); if (a) setorDoAmb.set(a, s); }
 
   return (
-    <div className="w-full overflow-x-auto overscroll-x-contain rounded-xl">
-      <div className="esc relative min-w-[820px] overflow-hidden rounded-xl border border-black/10 bg-[radial-gradient(ellipse_at_50%_30%,#3b4a63_0%,#1e293b_55%,#0f172a_100%)]" style={{ aspectRatio: `${LARG} / ${ALT}` }}>
-        <svg viewBox={`0 0 ${LARG} ${ALT}`} className="absolute inset-0 h-full w-full">
+    <div className="relative w-full overflow-hidden rounded-xl border border-black/10 bg-[radial-gradient(ellipse_at_50%_30%,#3b4a63_0%,#1e293b_55%,#0f172a_100%)]">
+      <div ref={vp} className={cn("flex h-[min(72vh,760px)] overflow-auto overscroll-contain [scrollbar-width:thin]", arrasto.current?.mexeu ? "cursor-grabbing" : "cursor-grab")}
+        onPointerDown={aoApertar} onPointerMove={aoMover} onPointerUp={aoSoltar} onPointerCancel={aoSoltar}
+        onClickCapture={(e) => { if (arrasto.current?.mexeu) { e.stopPropagation(); e.preventDefault(); arrasto.current = null; } }}>
+      <div className="esc relative m-auto shrink-0" style={{ width: LARG * z, height: ALT * z }}>
+        <svg viewBox={`0 0 ${LARG} ${ALT}`} className="absolute inset-0 h-full w-full select-none">
           <style>{ESTILO + ESTILO_ISO}</style>
           <defs>
-            <radialGradient id="iso-luz"><stop offset="0" stopColor="#fff4d6" stopOpacity=".55" /><stop offset="1" stopColor="#fff4d6" stopOpacity="0" /></radialGradient>
+            <radialGradient id="iso-luz"><stop offset="0" stopColor="#ffe9b8" stopOpacity=".7" /><stop offset="1" stopColor="#fff4d6" stopOpacity="0" /></radialGradient>
             <linearGradient id="iso-ceu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#60a5fa" /><stop offset=".7" stopColor="#bfdbfe" /><stop offset="1" stopColor="#e0f2fe" /></linearGradient>
             <linearGradient id="iso-fundo" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#000" stopOpacity=".06" /><stop offset=".5" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".1" /></linearGradient>
             <linearGradient id="iso-parede" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f5efe6" /><stop offset="1" stopColor="#e4dbcd" /></linearGradient>
+            <linearGradient id="iso-rodape" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#000" stopOpacity=".22" /><stop offset="1" stopColor="#000" stopOpacity="0" /></linearGradient>
             <clipPath id="iso-piso"><polygon points={noChao(0, 0, GX, GY)} /></clipPath>
           </defs>
           {/* Laje */}
@@ -726,8 +782,30 @@ export const EscritorioIso = memo(function EscritorioIso({ setores, onAbrir, for
           {[CORR1, CORR2].map((y) => <polygon key={`c${y}`} points={noChao(0, y - 0.75, GX, 1.5)} fill="#f2e2c2" opacity=".55" />)}
           {[...plan.amb.values()].map((a) => { const f = FAIXA[a.faixa]; return <polygon key={`pz${a.chave}`} points={noChao(a.x0 + 0.1, f.y0 + 0.1, a.w - 0.2, f.y1 - f.y0 - 0.2)} fill={a.tapete} stroke={a.borda} strokeWidth="3" opacity=".8" />; })}
           <polygon points={noChao(0, 0, GX, GY)} fill="url(#iso-fundo)" />
+          <polygon points={noChao(0, 0, GX, 0.9)} fill="url(#iso-rodape)" /><polygon points={pts(P(0, 0), P(0.7, 0), P(0.7, GY), P(0, GY))} fill="#000" opacity=".07" />
           {/* Luz das janelas e das luminárias */}
           <g clipPath="url(#iso-piso)">{[...plan.amb.values()].map((a) => { const f = FAIXA[a.faixa]; const c = P(a.x0 + a.w / 2, (f.y0 + f.y1) / 2); return <ellipse key={`l${a.chave}`} cx={c.sx} cy={c.sy} rx={a.w * AX * 0.55} ry={(f.y1 - f.y0) * CY * 0.6} fill="url(#iso-luz)" />; })}</g>
+          {/* Nome de cada ambiente pintado no chão, na entrada (clica para abrir a esteira, quando tem) */}
+          {[...plan.amb.values()].filter((a) => a.rotulo).map((a) => {
+            const s = setorDoAmb.get(a.chave);
+            if (a.tipo && !s) return null;
+            // Fundo: letreiro na parede, em cima do ambiente. Meio e frente: pintado no corredor, logo acima.
+            const naParede = a.faixa === 0;
+            const c = naParede ? P(a.x0 + 0.35, 0.02, 3.25) : P(a.x0 + 0.35, FAIXA[a.faixa].y0 - 0.32);
+            const nome = `${(s?.nome ?? a.rotulo).toUpperCase()}${s && s.tarefas > 0 ? `  · ${s.tarefas}` : ""}`;
+            // Cabe na largura do ambiente (setor estreito ganha letra menor).
+            const fs = Math.max(10, Math.min(19, (a.w * AX - (s ? 34 : 10)) / (nome.length * 0.86)));
+            return (
+              <g key={`nm${a.chave}`} transform={naParede ? `translate(${c.sx} ${c.sy})` : `matrix(1 0 ${BX / AX} ${CY / AX} ${c.sx} ${c.sy})`} onClick={() => s?.temEsteira && onAbrirSetor?.(s.id)}
+                style={{ cursor: s?.temEsteira ? "pointer" : undefined }}>
+                {s && <rect x="0" y={-fs * 0.78} width={fs * 0.72} height={fs * 0.72} rx="3" fill={s.corPlaca} opacity=".85" />}
+                <text x={s ? fs * 1.15 : 0} y="0" fontSize={fs} fontWeight="800" letterSpacing={fs * 0.12} fill={s ? "#3f3428" : "#6b5d4b"} opacity={s ? 0.75 : 0.5}>
+                  {nome}
+                  {s && <title>{s.temEsteira ? "Abrir a esteira do setor" : `${s.tarefas} tarefa(s)`}</title>}
+                </text>
+              </g>
+            );
+          })}
           {/* TV na parede: moldura e aparador */}
           <polygon points={naParedeY(TV_X - 0.15, TV_Z0 - 0.12, TV_W + 0.3, TV_H + 0.24)} fill="#0b1220" stroke="#1e293b" strokeWidth="3" />
           {caixa({ x: TV_X + 0.4, y: 0.1, w: TV_W - 0.8, d: 0.45, h: 0.45, topo: "#7a5536", esq: "#6a4a2f", dir: "#4b311c" })}
@@ -746,21 +824,6 @@ export const EscritorioIso = memo(function EscritorioIso({ setores, onAbrir, for
         {tv && (
           <div className="absolute overflow-hidden rounded-[2px]" style={{ left: pct(tvA.sx, LARG), top: pct(tvA.sy, ALT), width: pct(TV_W * AX, LARG), height: pct(TV_H * HZ, ALT) }}>{tv}</div>
         )}
-
-        {/* Nome do setor: discreto, no canto do ambiente (clica para abrir a esteira, quando tem) */}
-        {[...setorDoAmb.entries()].map(([chave, s]) => { const a = plan.amb.get(chave)!; const c = P(a.x0 + 0.3, FAIXA[a.faixa].y1 + 0.3, 0); return (
-          <button key={s.id} type="button" onClick={() => s.temEsteira && onAbrirSetor?.(s.id)}
-            className={cn("absolute z-10 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap rounded-full bg-white/75 px-2 py-0.5 text-slate-700 shadow-sm ring-1 ring-black/5 backdrop-blur-sm",
-              s.temEsteira ? "hover:bg-white" : "cursor-default")}
-            style={{ left: pct(c.sx, LARG), top: pct(c.sy, ALT) }} title={s.tarefas > 0 ? `${s.tarefas} tarefa(s)` : undefined}>
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.corPlaca }} />
-            <span className="text-[9.5px] font-semibold uppercase tracking-wider">{s.nome}</span>
-          </button>
-        ); })}
-        {rotulosAmb.map(({ a, t }) => { const c = P(a.x0 + 0.3, FAIXA[a.faixa].y1 + 0.3, 0); return (
-          <span key={t} className="pointer-events-none absolute -translate-y-1/2 whitespace-nowrap rounded-full bg-white/55 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-slate-600"
-            style={{ left: pct(c.sx, LARG), top: pct(c.sy, ALT) }}>{t}</span>
-        ); })}
 
         {/* Nome de cada um; o balão (o que está fazendo) só no hover ou quando precisa de você */}
         {geo.pessoas.map((p) => {
@@ -787,6 +850,14 @@ export const EscritorioIso = memo(function EscritorioIso({ setores, onAbrir, for
             </button>
           );
         })}
+      </div>
+      </div>
+      <div className="absolute bottom-3 right-3 z-40 flex items-center gap-0.5 rounded-full bg-white/90 p-0.5 shadow-lg ring-1 ring-black/10 backdrop-blur">
+        <button type="button" onClick={() => mudarZoom(z - 0.2)} disabled={z <= caber + 0.01} className="rounded-full p-1.5 text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label="Afastar"><Minus className="h-3.5 w-3.5" /></button>
+        <button type="button" onClick={() => mudarZoom(z + 0.2)} disabled={z >= 1.59} className="rounded-full p-1.5 text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label="Aproximar"><Plus className="h-3.5 w-3.5" /></button>
+        <button type="button" onClick={() => mudarZoom(z <= caber + 0.01 ? 1.05 : caber)} className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100" title="Ver o escritório inteiro / voltar para perto">
+          <Maximize2 className="h-3 w-3" />{z <= caber + 0.01 ? "Aproximar" : "Ver tudo"}
+        </button>
       </div>
     </div>
   );
