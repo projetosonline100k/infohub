@@ -490,6 +490,20 @@ def _nome_do_dono(tabela, id_):
     return _nomes_dono[uid]
 
 
+def _atividade_do_briefing(bid):
+    try:
+        c = connect()
+        try:
+            q = c.cursor()
+            q.execute("SELECT atividade_id FROM public.briefings WHERE id = %s", (bid,))
+            r = q.fetchone()
+            return str(r[0]) if r and r[0] else None
+        finally:
+            c.close()
+    except Exception:
+        return None
+
+
 def _com_dono(prompt, tabela, id_):
     nome = _nome_do_dono(tabela, id_)
     if nome == "Davi":
@@ -516,7 +530,9 @@ def _atender_briefing(bid):
         for _, nome in antes:
             _falar_como(bid, nome)
         desde = datetime.now(timezone.utc)
-        ok, texto = rodar_claude(_com_dono(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), "briefings", bid), minutos=40 if modelo is PROMPT_REVISAO else 12)
+        # 22/10: na revisão (ajuste pedido no chat), cada passo e imagem vai para a tarefa — o "Ao vivo" mostra.
+        ok, texto = rodar_claude(_com_dono(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), "briefings", bid), minutos=40 if modelo is PROMPT_REVISAO else 12,
+                                 atividade=_atividade_do_briefing(bid) if modelo is PROMPT_REVISAO else None)
         if not briefing.respondeu(bid, None, desde):
             motivo = texto if not ok else "terminei sem gravar a resposta."
             briefing.responder(bid, f"⚠️ Não consegui responder agora: {motivo[:200]}")

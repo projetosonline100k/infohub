@@ -85,6 +85,36 @@ class Gravador:
             except Exception:  # rede caiu: tenta de novo na próxima volta (os passos ficam na fila)
                 pass
 
+    # Imagem que ele criou ou conferiu (22/10, Davi: "quero ver a operação mesmo, a imagem do que está
+    # sendo feito"): sobe uma miniatura (720 px) e vira um passo com a foto. No máximo 1 a cada 12 s, 40 por tarefa.
+    _ultima_img = 0.0
+    _imgs = 0
+
+    def imagem(self, caminho, verbo):
+        import time
+        arq = Path(caminho)
+        if not arq.is_file() or arq.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.webp'):
+            return
+        agora = time.time()
+        if agora - self._ultima_img < 12 or self._imgs >= 40:
+            return
+        self._ultima_img, self._imgs = agora, self._imgs + 1
+
+        def subir():
+            try:
+                import imagens
+                with tempfile.TemporaryDirectory() as tmp:
+                    mini = Path(tmp) / 'mini.jpg'
+                    subprocess.run(['sips', '-Z', '720', '-s', 'format', 'jpeg', str(arq), '--out', str(mini)],
+                                   capture_output=True, timeout=30)
+                    if not mini.exists():
+                        return
+                    url = imagens.subir(self.atividade, [mini])[0]
+                self.anotar({'tipo': 'imagem', 'texto': f"{verbo} {arq.name}", 'url': url})
+            except Exception:   # sem rede/Storage: segue sem a foto
+                pass
+        threading.Thread(target=subir, daemon=True).start()
+
     def fechar(self):
         self.fim.set()
         try:
@@ -127,6 +157,9 @@ def rodar(cmd, minutos, cwd=None, env=None, atividade=None):
                         passo = passo_de(bloco)
                         if passo:
                             gravador.anotar(passo)
+                        if bloco.get('type') == 'tool_use' and bloco.get('name') in ('Read', 'Write'):
+                            ent = bloco.get('input') or {}
+                            gravador.imagem(ent.get('file_path') or '', 'Conferindo' if bloco.get('name') == 'Read' else 'Criou')
                 elif ev.get('type') == 'result':
                     final = ev
             p.wait()

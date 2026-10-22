@@ -14,6 +14,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
 import { EscritorioAberto } from "./EscritorioAberto";
+import { AoVivoTarefa, type AlvoAoVivo } from "./AoVivoTarefa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { EscolherFormato } from "./EscolherFormato";
 import { RevisaoCarrossel } from "./RevisaoCarrossel";
@@ -100,6 +101,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [videos, setVideos] = useState<VideoResumo[]>([]);
   const [membroAberto, setMembroAberto] = useState<MembroResumo | null>(null);
   const [chatPedido, setChatPedido] = useState<{ membroId: string; n: number } | null>(null);
+  // 22/10: clicar numa tarefa sendo executada abre o "Ao vivo" dela (não a ficha da pessoa).
+  const [aoVivo, setAoVivo] = useState<AlvoAoVivo | null>(null);
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -629,7 +632,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           ) : (
             <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
               {carrosseis.some(emProducao) && (
-                <LinhaAcao icone={GalleryHorizontal} onClick={() => { const r = membros.find((m) => /^roy$/i.test(m.nome)); if (r) setMembroAberto(r); }}
+                <LinhaAcao icone={GalleryHorizontal} onClick={() => {
+                  const c = carrosseis.find(emProducao);
+                  const lote = c ? (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id : null;
+                  if (c && lote) setAoVivo({ atividadeId: lote, titulo: `Criando: ${c.tema}`, nome: "Roy", ehIa: true, detalhe: c.mensagem });
+                  else { const r = membros.find((m) => /^roy$/i.test(m.nome)); if (r) setMembroAberto(r); }
+                }}
                   titulo={`Roy criando ${carrosseis.filter(emProducao).length} ${carrosseis.filter(emProducao).length === 1 ? "carrossel" : "carrosséis"}`}
                   detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")}
                   progresso={(() => { const m = carrosseis.filter(emProducao).map((c) => (c.mensagem ?? "").match(/(\d{1,3})\s*%/)).find(Boolean); return m ? Number(m[1]) : null; })()} />
@@ -639,21 +647,28 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                   titulo={`Pedro implementando: ${x.titulo}`} detalhe={`${x.progresso ?? 5}%${x.agora ? ` · ${x.agora}` : ""}`} progresso={x.progresso ?? 5} />
               ))}
               {edicoesAjustando.map((e) => (
-                <LinhaAcao key={`aj-${e.id}`} icone={Scissors} onClick={() => setEdicaoAberta(e)}
+                <LinhaAcao key={`aj-${e.id}`} icone={Scissors}
+                  onClick={() => setAoVivo({ atividadeId: atividadeDaEdicao(e)!, titulo: `Ajustando: ${e.titulo}`, nome: "Danilo", ehIa: true, detalhe: agoraConversa.get(atividadeDaEdicao(e) ?? "") })}
                   titulo={`Danilo ajustando: ${e.titulo}`} detalhe={agoraConversa.get(atividadeDaEdicao(e) ?? "") ?? "lendo o seu pedido…"} progresso={null} />
               ))}
               {carrosseisAjustando.map((c) => (
-                <LinhaAcao key={`aj-${c.id}`} icone={GalleryHorizontal} onClick={() => setCarrosselAberto(c)}
+                <LinhaAcao key={`aj-${c.id}`} icone={GalleryHorizontal}
+                  onClick={() => { const lote = (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id; if (lote) setAoVivo({ atividadeId: lote, titulo: `Ajustando: ${c.tema}`, nome: "Roy", ehIa: true }); else setCarrosselAberto(c); }}
                   titulo={`Roy ajustando: ${c.tema}`}
                   detalhe={agoraConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ?? "") ?? "lendo o seu pedido…"} progresso={null} />
               ))}
               {edicoesRodando.map((e) => (
-                <LinhaAcao key={e.id} icone={Scissors} onClick={() => { const d = membros.find((m) => /^danilo$/i.test(m.nome)); if (d) setMembroAberto(d); }}
+                <LinhaAcao key={e.id} icone={Scissors} onClick={() => {
+                  const aid = atividadeDaEdicao(e);
+                  if (aid) setAoVivo({ atividadeId: aid, titulo: `Editando: ${e.titulo}`, nome: "Danilo", ehIa: true, detalhe: e.mensagem });
+                  else { const d = membros.find((m) => /^danilo$/i.test(m.nome)); if (d) setMembroAberto(d); }
+                }}
                   titulo={`Danilo editando: ${e.titulo}`} detalhe={e.mensagem ?? e.status}
                   progresso={(() => { const m = (e.mensagem ?? "").match(/(\d{1,3})\s*%/); return m ? Number(m[1]) : null; })()} />
               ))}
               {executando.map(({ tarefa: t, membro: m, agora }) => (
-                <button key={t.id} type="button" onClick={() => setMembroAberto(m)}
+                <button key={t.id} type="button"
+                  onClick={() => (agora && m.eh_ia ? setAoVivo({ atividadeId: t.id, titulo: t.titulo, nome: m.nome, ehIa: m.eh_ia, progresso: t.progresso ?? null }) : setMembroAberto(m))}
                   className="flex w-full items-center gap-2.5 rounded-lg border bg-background p-2 text-left transition-colors hover:border-primary/40">
                   <span className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-sky-100 dark:bg-slate-700"><CabecaBoneco nome={m.nome} ehIa={m.eh_ia} className="h-full w-full" /></span>
                   <span className="min-w-0 flex-1">
@@ -716,6 +731,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         onFechar={() => setCadastro(null)} onCriado={() => { setMembroAberto(null); void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
       <ProgramarReel tarefaId={agendarReelAberto} onFechar={() => { setAgendarReelAberto(null); void carregar(); }} />
+      <AoVivoTarefa alvo={aoVivo} onFechar={() => setAoVivo(null)} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
         onMudou={() => { void recarregarSemana(); void carregar(); }} />
