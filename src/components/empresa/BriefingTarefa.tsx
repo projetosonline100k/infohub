@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { LINHA_IMAGEM } from "@/lib/empresa/imagemChat";
+import { useImagensChat } from "@/hooks/useImagensChat";
 import {
   ROTULO_CONSIGO, descricaoDaTarefa, esperandoResposta, prazoValido, segundosEsperando, trabalhaSozinho,
   type MensagemBriefing, type Proposta,
@@ -41,9 +43,19 @@ const paraBase64 = (blob: Blob) => new Promise<string>((ok, erro) => {
 export function TextoMensagem({ texto }: { texto: string }) {
   const linhas = texto.split("\n");
   const anexos = linhas.map((l) => l.match(LINHA_ANEXO)?.[1]).filter((x): x is string => !!x);
-  const corpo = linhas.filter((l) => !LINHA_ANEXO.test(l)).join("\n").trimEnd();
+  const imagens = linhas.map((l) => l.trim().match(LINHA_IMAGEM)?.[1]).filter((x): x is string => !!x);
+  const corpo = linhas.filter((l) => !LINHA_ANEXO.test(l) && !LINHA_IMAGEM.test(l.trim())).join("\n").trimEnd();
   return (
     <>
+      {imagens.length > 0 && (
+        <span className="mb-1.5 flex flex-wrap gap-1">
+          {imagens.map((u) => (
+            <a key={u} href={u} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-black/10">
+              <img src={u} alt="Imagem enviada" className="max-h-48 max-w-[220px] object-contain" loading="lazy" />
+            </a>
+          ))}
+        </span>
+      )}
       {corpo}
       {anexos.length > 0 && (
         <span className="mt-1.5 flex flex-wrap gap-1">
@@ -65,6 +77,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const [proposta, setProposta] = useState<Proposta | null>(null);
   const [mensagens, setMensagens] = useState<MensagemBriefing[]>([]);
   const [texto, setTexto] = useState("");
+  const fotos = useImagensChat();
   const [enviando, setEnviando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
@@ -116,9 +129,9 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
 
   const enviar = async (falado?: string) => {
     const digitado = falado ?? texto.trim();
-    if (!digitado || enviando) return;
+    if ((!digitado && !fotos.imagens.length) || enviando || fotos.subindo) return;
     const usados = falado ? [] : anexos.filter((a) => digitado.includes(`@${a.titulo}`));
-    const valor = usados.length ? `${digitado}\n\n${usados.map((a) => `📎 Para ler: "${a.titulo}" (documento ${a.id})`).join("\n")}` : digitado;
+    const valor = fotos.comImagens(usados.length ? `${digitado}\n\n${usados.map((a) => `📎 Para ler: "${a.titulo}" (documento ${a.id})`).join("\n")}` : digitado);
     setEnviando(true);
     try {
       let id = briefingId;
@@ -131,6 +144,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
       const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: valor });
       if (error) throw error;
       if (!falado) { setTexto(""); setAnexos([]); setMencao(null); }
+      fotos.limpar();
       setAgora(Date.now());
       await carregar(id);
     } catch {
@@ -305,7 +319,9 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
         </div>
       )}
 
-      <form className="relative flex items-end gap-1.5" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+      <fotos.Pendentes />
+      <form className={cn("relative flex items-end gap-1.5 rounded-lg", fotos.arrastando && "bg-primary/10 ring-2 ring-primary")} {...fotos.props}
+        onSubmit={(e) => { e.preventDefault(); void enviar(); }} title="Cole (⌘V) ou arraste um print aqui">
         {mencao && (
           <div className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg">
             <p className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground"><AtSign className="h-3 w-3" />Documento para {membro.nome} ler</p>
@@ -335,7 +351,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
             if (mencao && e.key === "Escape") { e.preventDefault(); setMencao(null); return; }
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey || (messenger && !e.shiftKey))) { e.preventDefault(); void enviar(); }
           }} />
-        {isDesktop() && !texto.trim() ? (
+        {isDesktop() && !texto.trim() && !fotos.imagens.length ? (
           <Button type="button" size="icon" variant={gravando != null ? "destructive" : "outline"} className="h-9 shrink-0 gap-1 px-2"
             style={{ width: gravando != null ? "auto" : undefined }}
             disabled={transcrevendo || enviando} onClick={() => void gravarOuParar()}
@@ -345,7 +361,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
               : <Mic className="h-4 w-4" />}
           </Button>
         ) : (
-          <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!texto.trim() || enviando} title="Enviar (⌘ Enter)">
+          <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !fotos.imagens.length) || enviando || fotos.subindo > 0} title="Enviar (⌘ Enter)">
             {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         )}

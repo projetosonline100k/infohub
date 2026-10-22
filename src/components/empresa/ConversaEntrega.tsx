@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useImagensChat } from "@/hooks/useImagensChat";
 import { duracaoCurta, esperandoResposta, segundosEsperando, type MensagemBriefing } from "@/lib/empresa/briefing";
 import { cn } from "@/lib/utils";
 import { TextoMensagem } from "./BriefingTarefa";
@@ -44,6 +45,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const [participantes, setParticipantes] = useState<string[]>([]);
   const [chamando, setChamando] = useState(false);
   const [texto, setTexto] = useState("");
+  const fotos = useImagensChat();
   const [enviando, setEnviando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
   const fimRef = useRef<HTMLDivElement>(null);
@@ -135,8 +137,8 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   useEffect(() => { fimRef.current?.scrollIntoView({ block: "nearest" }); }, [mensagens.length, esperando]);
 
   const enviar = async () => {
-    const valor = texto.trim();
-    if (!valor || enviando) return;
+    const valor = fotos.comImagens(texto.trim());
+    if (!valor || enviando || fotos.subindo) return;
     setEnviando(true);
     try {
       const id = await garantirConversa();
@@ -144,6 +146,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
       if (error) throw error;
       onEnviou?.();
       setTexto("");
+      fotos.limpar();
       setAgora(Date.now());
       await carregar(id);
     } catch {
@@ -214,11 +217,13 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
         )}
         <div ref={fimRef} />
       </div>
-      <form className="flex items-end gap-1.5 border-t p-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+      <fotos.Pendentes />
+      <form className={cn("flex items-end gap-1.5 border-t p-2", fotos.arrastando && "bg-primary/10 ring-2 ring-inset ring-primary")} {...fotos.props}
+        onSubmit={(e) => { e.preventDefault(); void enviar(); }} title="Cole (⌘V) ou arraste um print aqui">
         <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2} className="min-h-0 text-sm"
           placeholder={emGrupo ? "Fale com o grupo… (Enter envia)" : `Fale com ${nome}… (Enter envia)`}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} />
-        <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={!texto.trim() || enviando}>
+        <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !fotos.imagens.length) || enviando || fotos.subindo > 0}>
           {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </form>

@@ -470,7 +470,9 @@ FERRAMENTAS_GERAIS = (
     "documento em seções curtas com <h2> (cada uma vira um slide na tela de revisão).\n"
     "CARROSSEL (Instagram) que você produziu: além das imagens no documento, registre como carrossel de verdade "
     "(o dono revisa, ajusta e aprova pra postar, igual aos do Roy): `python3 scripts/roy/registrar.py <id da tarefa> <pasta com "
-    "01.png… e conteudo.json>`. Ajuste pedido depois: refaça na mesma pasta e rode o registrar de novo.\n")
+    "01.png… e conteudo.json>`. Ajuste pedido depois: refaça na mesma pasta e rode o registrar de novo.\n"
+    "IMAGEM NA MENSAGEM (linha \"🖼️ <link>\"): é um print que o dono colou para te mostrar algo. SEMPRE olhe antes de "
+    "responder: `curl -s -o /tmp/print-$RANDOM.png <link>` e abra o arquivo com a ferramenta Read. Diga o que viu nele.\n")
 
 
 def _nome_do_dono(tabela, id_):
