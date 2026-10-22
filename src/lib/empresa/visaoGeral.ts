@@ -274,7 +274,8 @@ export function trabalhoDasIas(
       trabalhando: agora.length,
       esperando: itens.filter((i) => i.status === "revisar").length,
       problema: itens.filter((i) => i.status === "erro").length,
-      atual: agora[0] ? `${verbo}: ${agora[0].nome}` : undefined,
+      // "Ajustando · …" (pedido do chat em andamento, 22/10) já vem com o verbo certo.
+      atual: agora[0] ? (agora[0].nome.startsWith("Ajustando") ? agora[0].nome : `${verbo}: ${agora[0].nome}`) : undefined,
     });
   };
   contar("roy", carrosseis.map((c) => ({ status: c.status, nome: c.tema })), ["produzindo", "ajuste"], "Criando carrossel");

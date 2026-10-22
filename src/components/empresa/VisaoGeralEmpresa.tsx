@@ -320,7 +320,18 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     ...carrosseisProgramados.map((item) => ({ tipo: "carrossel" as const, item })),
     ...reelsProgramados.map((item) => ({ tipo: "reel" as const, item })),
   ].sort((a, b) => (a.item.programado_para ?? "").localeCompare(b.item.programado_para ?? "")), [carrosseisProgramados, reelsProgramados]);
-  const trabalhoIa = useMemo(() => trabalhoDasIas(membros, carrosseis, edicoes, melhorias), [membros, carrosseis, edicoes, melhorias]);
+  // 22/10 (Davi: "o Danilo diz que está esperando a revisão, mas está ajustando"): entrega em que ele
+  // trabalha no pedido do chat conta como trabalho dele (com o passo do chat), não como "esperando você".
+  const idsAjustando = new Set([...edicoesAjustando.map((e) => e.id), ...carrosseisAjustando.map((c) => c.id)]);
+  const chaveAjustando = [...idsAjustando].sort().join(",") + [...agoraConversa.values()].join("|");
+  const trabalhoIa = useMemo(() => trabalhoDasIas(membros,
+    carrosseis.map((c) => (idsAjustando.has(c.id) ? { ...c, status: "produzindo",
+      tema: `Ajustando · ${agoraConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ?? "") ?? c.tema}` } : c)),
+    edicoes.map((e) => (idsAjustando.has(e.id) ? { ...e, status: "editando",
+      titulo: `Ajustando · ${agoraConversa.get(atividadeDaEdicao(e) ?? "") ?? e.titulo}` } : e)),
+    melhorias),
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  [membros, carrosseis, edicoes, melhorias, chaveAjustando]);
 
   if (carregando) {
     return <div className="flex h-64 items-center justify-center text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>;
