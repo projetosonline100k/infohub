@@ -13,7 +13,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
-import { EscritorioAberto } from "./EscritorioAberto";
+import { EscritorioIso } from "./EscritorioIso";
 import { AoVivoTarefa, type AlvoAoVivo } from "./AoVivoTarefa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { EscolherFormato } from "./EscolherFormato";
@@ -530,7 +530,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           ) : (
             // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-            <EscritorioAberto onAbrir={(id) => {
+            <EscritorioIso onAbrir={(id) => {
               // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
               const m = membros.find((x) => x.id === id);
               if (!m) return;
