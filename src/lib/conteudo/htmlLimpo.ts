@@ -1,7 +1,7 @@
 // HTML dos documentos entregues pelos funcionários (h2, h3, p, listas, links…)
 // pronto pra mostrar: mantém só marcações de texto e links http(s); o resto
 // vira texto. Usa o DOMParser do navegador.
-const PERMITIDAS = new Set(["H2", "H3", "H4", "P", "UL", "OL", "LI", "STRONG", "B", "EM", "I", "A", "BLOCKQUOTE", "BR"]);
+const PERMITIDAS = new Set(["H2", "H3", "H4", "P", "UL", "OL", "LI", "STRONG", "B", "EM", "I", "A", "BLOCKQUOTE", "BR", "IMG"]);
 
 export function htmlLimpo(html: string): string {
   const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
@@ -13,6 +13,11 @@ export function htmlLimpo(html: string): string {
     if (!PERMITIDAS.has(el.tagName)) return filhos;
     const tag = el.tagName.toLowerCase();
     if (tag === "br") return "<br>";
+    // 22/10: imagens das entregas (scripts/empresa/imagens.py), só por link https.
+    if (tag === "img") {
+      const src = el.getAttribute("src") ?? "";
+      return /^https:\/\//i.test(src) ? `<img src="${src.replace(/"/g, "&quot;")}" alt="${(el.getAttribute("alt") ?? "").replace(/"/g, "&quot;")}" loading="lazy">` : "";
+    }
     if (tag === "a") {
       const href = el.getAttribute("href") ?? "";
       return /^https?:\/\//i.test(href) ? `<a href="${href.replace(/"/g, "&quot;")}" target="_blank" rel="noreferrer">${filhos}</a>` : filhos;

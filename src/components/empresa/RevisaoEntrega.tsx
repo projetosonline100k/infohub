@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { htmlLimpo } from "@/lib/conteudo/htmlLimpo";
+import { SlidesDoDocumento } from "./SlidesDoDocumento";
 import { aprovarEntrega } from "@/lib/empresa/entregas";
 import { aprovarEPassarParaRoy, pareceEsbocoDeQuiz } from "@/lib/quiz/passarParaRoy";
 import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
@@ -37,9 +38,15 @@ const ESTILO_REVISAO = `
 export interface TarefaParaRevisar { id: string; titulo: string }
 interface Doc { id: string; titulo: string; conteudo: string | null; updated_at: string }
 
+const CHAVE_MODO_DOC = "entrega:modo-doc";
+
 export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }: {
   clienteId: string; tarefas: TarefaParaRevisar[]; aberto: boolean; onFechar: () => void; onMudou: () => void;
 }) {
+  const [modoDoc, setModoDoc] = useState<"slides" | "documento">(() => {
+    try { return localStorage.getItem(CHAVE_MODO_DOC) === "documento" ? "documento" : "slides"; } catch { return "slides"; }
+  });
+  const mudarModoDoc = (m: "slides" | "documento") => { setModoDoc(m); try { localStorage.setItem(CHAVE_MODO_DOC, m); } catch { /* sem storage */ } };
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
@@ -189,9 +196,21 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 ) : docs.map((d) => (
                   <div key={d.id} className="mb-6 last:mb-0">
                     <p className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <FileText className="h-3.5 w-3.5" />{d.titulo} · {format(new Date(d.updated_at), "d MMM, HH:mm", { locale: ptBR })}
+                      <FileText className="h-3.5 w-3.5" /><span className="min-w-0 flex-1 truncate">{d.titulo} · {format(new Date(d.updated_at), "d MMM, HH:mm", { locale: ptBR })}</span>
+                      {/* 22/10 (Davi: "sou bem visual"): a entrega abre em slides; o texto corrido fica em "Documento". */}
+                      <span className="flex shrink-0 rounded-md bg-muted p-0.5 text-[11px] font-medium">
+                        {(["slides", "documento"] as const).map((m) => (
+                          <button key={m} type="button" onClick={() => mudarModoDoc(m)}
+                            className={modoDoc === m ? "rounded bg-background px-2 py-0.5 text-foreground shadow-sm" : "px-2 py-0.5 text-muted-foreground hover:text-foreground"}>
+                            {m === "slides" ? "Slides" : "Documento"}
+                          </button>
+                        ))}
+                      </span>
                     </p>
-                    {mudancas[d.id] ? (
+                    {modoDoc === "slides" ? (
+                      <SlidesDoDocumento html={d.conteudo ?? ""}
+                        mudou={(mudancas[d.id] ?? []).filter((b) => b.tipo === "novo").map((b) => b.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 50))} />
+                    ) : mudancas[d.id] ? (
                       <article className="prose prose-sm max-w-none break-words dark:prose-invert prose-headings:mt-5 prose-a:text-primary">
                         {mudancas[d.id].map((b, k, todos) => {
                           const primeira = b.tipo !== "igual" && !marcouPrimeira;

@@ -463,7 +463,11 @@ _nomes_dono = {}
 FERRAMENTAS_GERAIS = (
     "Link de vídeo (Instagram, TikTok, YouTube…): NÃO diga que não consegue abrir. Transcreva com "
     "`python3 scripts/transcrever-link.py <link>` (≈30 s) e use o texto. Conhecimento geral da empresa "
-    "(skills de roteiro viral, CTA, intensificador, quiz…): aparece como [biblioteca] no `scripts/inteligencia/ler.py`.\n")
+    "(skills de roteiro viral, CTA, intensificador, quiz…): aparece como [biblioteca] no `scripts/inteligencia/ler.py`.\n"
+    "O dono é MUITO visual (22/10): entrega com imagem (carrossel, arte, capa, página, thumbnail, design…) tem que MOSTRAR as "
+    "imagens, nunca só descrever nem deixar numa pasta do Mac. Suba com `python3 scripts/empresa/imagens.py <id da tarefa> "
+    "<pasta ou arquivos>` e cole o HTML <img> que ele imprime logo no começo do documento (seção 'O resultado'). Organize o "
+    "documento em seções curtas com <h2> (cada uma vira um slide na tela de revisão).\n")
 
 
 def _nome_do_dono(tabela, id_):
