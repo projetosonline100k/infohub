@@ -100,6 +100,14 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
   - Não tem problema: o gatilho do banco cria a tarefa dela.
   - Vale tirar o `!eh_ia` / `NOT eh_ia` numa sessão do Roy.
 
+## Fora o modelo antigo (pedido do Davi, 22/10/2026)
+
+"Aqueles carrosséis que você programou para hoje às 14 horas, eu não quero mais eles, agora são nos novos modelos ... pode passar para o Roy refazer."
+- **018, 019, 020 e 021** (Clássico marfim) saíram da agenda e foram para `ajuste`, com o pedido escrito "Refazer no estilo Caderno preto": o serviço do Roy refaz um por vez e manda para a revisão do Davi. Aprovados, a Dalila programa sozinha no 1º dia livre às 14h.
+- O Caderno preto subiu, 1 por dia às 14h: 22/10 024, 23/10 026, 24/10 023, 25/10 022, 26/10 028, 27/10 027.
+- **Carrossel no Clássico marfim não entra mais na agenda do Davi Queiroz.**
+- Migração `20261022040000_dalila_tirar_classico_marfim`, teste `supabase/tests/dalila_sem_classico_marfim.sql`, script `scripts/apply-dalila-tirar-classico-marfim-migration.py` (aplicada em 22/10 às 10h30).
+
 ## Regra: nunca no perfil errado (pedido do Davi, 15/10/2026)
 
 - **Uma regra só**, a função `dalila_conexao_do_projeto(cliente)` (migração `20261015234500_dalila_instagram_regra_unica`):
