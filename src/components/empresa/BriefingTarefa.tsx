@@ -254,7 +254,8 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const esperou = segundosEsperando(mensagens, agora);
 
   return (
-    <div className={messenger ? "flex h-full min-h-0 flex-col gap-2 p-3" : "space-y-2 rounded-lg border p-3"}>
+    <div className={cn("relative", messenger ? "flex h-full min-h-0 flex-col gap-2 p-3" : "space-y-2 rounded-lg border p-3")} {...fotos.props}>
+      <fotos.Soltar />
       <div className="flex items-center gap-2">
         {!messenger && <MessageSquare className="h-4 w-4 text-sky-500" />}
         {!messenger && <p className="text-sm font-semibold">Nova tarefa: converse com {membro.nome}</p>}
@@ -320,7 +321,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
       )}
 
       <fotos.Pendentes />
-      <form className={cn("relative flex items-end gap-1.5 rounded-lg", fotos.arrastando && "bg-primary/10 ring-2 ring-primary")} {...fotos.props}
+      <form className="relative flex items-end gap-1.5 rounded-lg"
         onSubmit={(e) => { e.preventDefault(); void enviar(); }} title="Cole (⌘V) ou arraste um print aqui">
         {mencao && (
           <div className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg">

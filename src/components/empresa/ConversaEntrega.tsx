@@ -161,7 +161,8 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const pegou = mensagens[mensagens.length - 1]?.status === "lida";
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-lg border bg-card">
+    <div className="relative flex h-full min-h-0 flex-col rounded-lg border bg-card" {...fotos.props}>
+      <fotos.Soltar />
       <div className="relative flex items-center gap-1.5 border-b px-3 py-2">
         <MessageCircle className="h-4 w-4 shrink-0 text-primary" />
         <p className="min-w-0 flex-1 truncate text-sm font-semibold">
@@ -218,7 +219,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
         <div ref={fimRef} />
       </div>
       <fotos.Pendentes />
-      <form className={cn("flex items-end gap-1.5 border-t p-2", fotos.arrastando && "bg-primary/10 ring-2 ring-inset ring-primary")} {...fotos.props}
+      <form className="flex items-end gap-1.5 border-t p-2"
         onSubmit={(e) => { e.preventDefault(); void enviar(); }} title="Cole (⌘V) ou arraste um print aqui">
         <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2} className="min-h-0 text-sm"
           placeholder={emGrupo ? "Fale com o grupo… (Enter envia)" : `Fale com ${nome}… (Enter envia)`}

@@ -8,7 +8,10 @@ export const LINHA_IMAGEM = /^🖼️\s+(https:\/\/\S+)$/u;
 
 export function imagensDoEvento(dados: DataTransfer | null): File[] {
   if (!dados) return [];
-  return [...dados.files].filter((f) => f.type.startsWith("image/"));
+  const arquivos = [...dados.files].filter((f) => f.type.startsWith("image/"));
+  if (arquivos.length) return arquivos;
+  // Print copiado (⌘⌃⇧4) às vezes só vem em items.
+  return [...dados.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
 }
 
 export async function subirImagemChat(arquivo: File): Promise<string> {
