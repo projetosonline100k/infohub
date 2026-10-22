@@ -197,3 +197,9 @@ html.jarvis-window #root {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Barra de andamento sem % conhecido (Tarefas sendo executadas, 22/10): um trecho correndo de um lado ao outro. */
+@keyframes barra-correndo {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
+}

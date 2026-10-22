@@ -631,24 +631,26 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
               {carrosseis.some(emProducao) && (
                 <LinhaAcao icone={GalleryHorizontal} onClick={() => { const r = membros.find((m) => /^roy$/i.test(m.nome)); if (r) setMembroAberto(r); }}
                   titulo={`Roy criando ${carrosseis.filter(emProducao).length} ${carrosseis.filter(emProducao).length === 1 ? "carrossel" : "carrosséis"}`}
-                  detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")} />
+                  detalhe={carrosseis.filter(emProducao).map((c) => c.mensagem ?? c.tema).slice(0, 2).join(" · ")}
+                  progresso={(() => { const m = carrosseis.filter(emProducao).map((c) => (c.mensagem ?? "").match(/(\d{1,3})\s*%/)).find(Boolean); return m ? Number(m[1]) : null; })()} />
               )}
               {melhorias.map((x) => (
                 <LinhaAcao key={x.id} icone={Rocket} onClick={() => { const p = membros.find((m) => /^pedro$/i.test(m.nome)); if (p) setMembroAberto(p); }}
-                  titulo={`Pedro implementando: ${x.titulo}`} detalhe={`${x.progresso ?? 5}%${x.agora ? ` · ${x.agora}` : ""}`} />
+                  titulo={`Pedro implementando: ${x.titulo}`} detalhe={`${x.progresso ?? 5}%${x.agora ? ` · ${x.agora}` : ""}`} progresso={x.progresso ?? 5} />
               ))}
               {edicoesAjustando.map((e) => (
                 <LinhaAcao key={`aj-${e.id}`} icone={Scissors} onClick={() => setEdicaoAberta(e)}
-                  titulo={`Danilo ajustando: ${e.titulo}`} detalhe={agoraConversa.get(atividadeDaEdicao(e) ?? "") ?? "lendo o seu pedido…"} />
+                  titulo={`Danilo ajustando: ${e.titulo}`} detalhe={agoraConversa.get(atividadeDaEdicao(e) ?? "") ?? "lendo o seu pedido…"} progresso={null} />
               ))}
               {carrosseisAjustando.map((c) => (
                 <LinhaAcao key={`aj-${c.id}`} icone={GalleryHorizontal} onClick={() => setCarrosselAberto(c)}
                   titulo={`Roy ajustando: ${c.tema}`}
-                  detalhe={agoraConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ?? "") ?? "lendo o seu pedido…"} />
+                  detalhe={agoraConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ?? "") ?? "lendo o seu pedido…"} progresso={null} />
               ))}
               {edicoesRodando.map((e) => (
                 <LinhaAcao key={e.id} icone={Scissors} onClick={() => { const d = membros.find((m) => /^danilo$/i.test(m.nome)); if (d) setMembroAberto(d); }}
-                  titulo={`Danilo editando: ${e.titulo}`} detalhe={e.mensagem ?? e.status} />
+                  titulo={`Danilo editando: ${e.titulo}`} detalhe={e.mensagem ?? e.status}
+                  progresso={(() => { const m = (e.mensagem ?? "").match(/(\d{1,3})\s*%/); return m ? Number(m[1]) : null; })()} />
               ))}
               {executando.map(({ tarefa: t, membro: m, agora }) => (
                 <button key={t.id} type="button" onClick={() => setMembroAberto(m)}
@@ -667,8 +669,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                       )}
                     </span>
                     <span className="block truncate text-sm">{t.titulo}</span>
-                    {agora && t.progresso != null && t.progresso > 0 && (
-                      <span className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-emerald-500" style={{ width: `${t.progresso}%` }} /></span>
+                    {agora && (
+                      <span className="mt-1 block h-1.5 overflow-hidden rounded-full bg-muted">
+                        {t.progresso != null && t.progresso > 0
+                          ? <span className="block h-full rounded-full bg-emerald-500 transition-[width] duration-700" style={{ width: `${t.progresso}%` }} />
+                          : <span className="block h-full w-1/3 animate-[barra-correndo_1.6s_ease-in-out_infinite] rounded-full bg-emerald-500/70" />}
+                      </span>
                     )}
                   </span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -786,8 +792,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   );
 }
 
-function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancelar, conversa, quem }: {
+function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancelar, conversa, quem, progresso }: {
   icone: typeof Crown; titulo: string; detalhe?: string; atrasada?: boolean; onClick: () => void;
+  // Barra de andamento (22/10, Davi): número = %; null = trabalhando sem % conhecido (barra correndo).
+  progresso?: number | null;
   // Estado do chat da entrega: "Roy pensando…" (Davi mandou, sem resposta) ou "Mensagem nova".
   conversa?: EstadoConversa; quem?: string;
   // Cancelar a entrega (não vai seguir): aparece um × ao passar o mouse.
@@ -804,6 +812,13 @@ function LinhaAcao({ icone: Icone, titulo, detalhe, atrasada, onClick, onCancela
             {conversa === "nova" && <span className="shrink-0 rounded-full bg-emerald-500 px-2 py-0.5 text-[11px] font-semibold text-white">Mensagem nova</span>}
           </span>
           {detalhe && <span className={cn("block truncate text-xs", atrasada ? "text-rose-500" : "text-muted-foreground")}>{detalhe}</span>}
+          {progresso !== undefined && (
+            <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-muted">
+              {progresso === null
+                ? <span className="block h-full w-1/3 animate-[barra-correndo_1.6s_ease-in-out_infinite] rounded-full bg-emerald-500/70" />
+                : <span className="block h-full rounded-full bg-emerald-500 transition-[width] duration-700" style={{ width: `${Math.max(3, Math.min(100, progresso))}%` }} />}
+            </span>
+          )}
         </span>
         <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground", onCancelar && "group-hover/linha:opacity-0")} />
       </button>
