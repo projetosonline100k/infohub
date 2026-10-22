@@ -2,41 +2,239 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ehNomeCoordenador } from "@/lib/empresa/visaoGeral";
 import { BonecoMesa, ESTILO, cabeloDe, cabeloTras, visualDe, type Visual } from "./BonecoMesa";
-import { Cafe, ESTILO_SALA, Planta, type PessoaNaSala, type SetorNoEscritorio } from "./EscritorioEmpresa";
+import { ESTILO_SALA, Planta, type PessoaNaSala, type SetorNoEscritorio } from "./EscritorioEmpresa";
 
-// Escritório aberto (22/10, Davi: "deixar de parecer funcionários presos em salas e virar um escritório
-// aberto e vivo, como um jogo de gerenciamento"). Os setores viram ZONAS (tapete na cor, placa, plantas),
-// com corredores entre elas; não há mesa fixa: cada zona tem estações e quem trabalha senta numa livre.
-// A posição de cada um vem do estado REAL (nada aleatório):
-//   trabalhando / esperando você / problema → sentado numa estação da zona da tarefa (setor da tarefa;
-//     sem setor, a zona dele). Tarefa de outro setor = ele vai trabalhar lá;
-//   conversando com você → mesa de reunião (e o Davi vai junto);
-//   livre → copa (café) ou sofá; à noite, cochila na estação da própria zona.
-// Mudou o estado → anda do lugar antigo até o novo (o balão diz para onde está indo).
+// Escritório de verdade, visto de cima (22/10, Davi: "um único escritório contínuo, como The Sims /
+// tycoon; os setores existem DENTRO dele, sem caixas coloridas; 25–30% livre para circular").
+// Planta fixa (1600 × 980): parede do fundo com janelas e o "Nosso resultado"; três faixas de ambientes
+// separadas por corredores largos:
+//   DIRETORIA (sala de vidro) · sofá de frente para a TV · COPA
+//   MARKETING (ilha) · área colaborativa (mesa comprida) · AUDIOVISUAL (estações de edição)
+//   LAB. VIRAL (ilha) · sala de REUNIÃO (vidro) · SUCESSO DO CLIENTE · SALES
+// Os setores do projeto ocupam esses ambientes pelo nome; setor sem ambiente próprio pega um livre.
+// Não há mesa fixa: cada ambiente tem estações e quem vai trabalhar senta numa livre. A posição de cada
+// um vem do estado REAL (trabalhando → estação do setor da tarefa; conversando com o Davi → reunião,
+// e o Davi vai junto; livre → copa ou sofá; noite → cochilando na estação da área dele) e, quando muda,
+// ele anda pelos corredores até o lugar novo.
 
-const W_EST = 120;          // largura de uma estação
-const H_ZONA = 196;         // altura de uma zona (tapete)
-const GAP = 64;             // corredor entre zonas
-const TOPO = 150;           // onde começa o piso (parede do fundo em cima)
-const MARGEM = 34;
-const LOUNGE = 330;         // coluna da copa, reunião e sofá
-const MESA_Y = 54;          // topo da estação dentro da zona
-const PES_MESA = 142;       // pés de quem chega na estação (relativo ao topo da zona)
-const VEL = 140;            // unidades por segundo andando
+const W = 1600;
+const H = 980;
+const PAREDE = 138;
+const CORREDORES = [356, 640];          // faixas livres de circulação (y)
+const PASSAGENS = [560, 1040];          // passagens verticais entre as colunas (x)
+const VEL = 105;
+const TV = { x: 640, y: 12, w: 320, h: 118 };
+
+type Pt = { x: number; y: number };
+interface Ambiente {
+  chave: string; rotulo: string; placa: Pt;
+  estacoes: Pt[];                 // topo do quadro da estação (104 × 92), x = centro
+  monitores?: boolean;            // estação de edição (dois monitores)
+}
+// Os ambientes de trabalho, na ordem em que um setor sem nome conhecido ocupa o que sobrar.
+const AMBIENTES: Ambiente[] = [
+  { chave: "diretoria", rotulo: "Diretoria", placa: { x: 54, y: 156 }, estacoes: [{ x: 196, y: 214 }, { x: 346, y: 214 }] },
+  { chave: "marketing", rotulo: "Marketing", placa: { x: 54, y: 400 },
+    estacoes: [{ x: 128, y: 446 }, { x: 246, y: 446 }, { x: 128, y: 532 }, { x: 246, y: 532 }, { x: 364, y: 532 }] },
+  { chave: "audiovisual", rotulo: "Audiovisual", placa: { x: 1094, y: 400 }, monitores: true,
+    estacoes: [{ x: 1150, y: 446 }, { x: 1290, y: 446 }, { x: 1150, y: 532 }, { x: 1290, y: 532 }] },
+  { chave: "viral", rotulo: "Laboratório de Viral", placa: { x: 54, y: 684 },
+    estacoes: [{ x: 128, y: 730 }, { x: 246, y: 730 }, { x: 128, y: 818 }, { x: 246, y: 818 }, { x: 364, y: 818 }] },
+  { chave: "sucesso", rotulo: "Sucesso do Cliente", placa: { x: 1094, y: 684 }, estacoes: [{ x: 1150, y: 736 }, { x: 1150, y: 826 }] },
+  { chave: "sales", rotulo: "Sales", placa: { x: 1330, y: 684 }, estacoes: [{ x: 1400, y: 736 }, { x: 1520, y: 736 }, { x: 1400, y: 826 }] },
+];
+const PALAVRAS: Record<string, RegExp> = {
+  diretoria: /diretoria|dire[cç][aã]o|ceo|s[oó]cio/i,
+  marketing: /marketing|mkt|grow|tr[aá]fego|conte[uú]do/i,
+  audiovisual: /audiovisual|v[ií]deo|edi[cç][aã]o|est[uú]dio|design/i,
+  viral: /viral|lab|roteiro|copy/i,
+  sucesso: /sucesso|cliente|suporte|\bcs\b|atendimento/i,
+  sales: /sales|venda|comercial|closer|sdr/i,
+};
+// Mesa colaborativa (quem não coube na área) e os lugares de quem está livre ou em reunião.
+const COLABORATIVA: Pt[] = [{ x: 690, y: 446 }, { x: 800, y: 446 }, { x: 910, y: 446 }];
+const REUNIAO_C = { x: 800, y: 790 };
+const VAGAS_REUNIAO: (Pt & { virado: 1 | -1 })[] = [
+  { x: 706, y: 800, virado: 1 }, { x: 894, y: 800, virado: -1 }, { x: 740, y: 866, virado: 1 }, { x: 860, y: 866, virado: -1 },
+  { x: 740, y: 752, virado: 1 }, { x: 860, y: 752, virado: -1 },
+];
+const VAGAS_LIVRE: (Pt & { onde: string; sentado?: boolean; xicara?: boolean })[] = [
+  { x: 1340, y: 318, onde: "Copa", xicara: true }, { x: 1400, y: 318, onde: "Copa", xicara: true },
+  { x: 740, y: 300, onde: "Descanso", sentado: true }, { x: 800, y: 300, onde: "Descanso", sentado: true },
+  { x: 860, y: 300, onde: "Descanso", sentado: true }, { x: 1530, y: 318, onde: "Copa", xicara: true },
+  { x: 1236, y: 318, onde: "Copa", xicara: true },
+];
 
 const ehRobo = (p: PessoaNaSala) => p.ehIa && ehNomeCoordenador(p.nome);
 const ehNoite = () => { const h = new Date().getHours(); return h >= 22 || h < 7; };
 const ehDavi = (p: PessoaNaSala) => !p.ehIa && /^davi\b/i.test(p.nome);
+const somaId = (id: string) => [...id].reduce((t, c) => t + c.charCodeAt(0), 0);
 
 type Lugar =
-  | { tipo: "mesa"; zona: string; est: number; x: number; y: number; pes: { x: number; y: number }; onde: string }
-  | { tipo: "pe"; x: number; y: number; xicara?: boolean; onde: string; virado?: 1 | -1; sentado?: boolean };
+  | { tipo: "mesa"; amb: string; est: number; x: number; y: number; pes: Pt; onde: string }
+  | { tipo: "pe"; x: number; y: number; onde: string; virado?: 1 | -1; sentado?: boolean; xicara?: boolean };
 
-// Boneco de pé: parado (com ou sem xícara) ou andando (pernas e gingado). Pés em 0,0.
+// ---------------------------------------------------------------- móveis e decoração
+function Sombra({ x, y, w, h, o = 0.12 }: { x: number; y: number; w: number; h: number; o?: number }) {
+  return <ellipse cx={x} cy={y} rx={w / 2} ry={h / 2} fill="#000" opacity={o} />;
+}
+function Monitores({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x="-4" y="22" width="8" height="10" fill="#475569" />
+      <rect x="-24" y="-6" width="48" height="30" rx="3" fill="#0f172a" stroke="#334155" strokeWidth="1.5" />
+      <rect x="-21" y="-3" width="42" height="24" rx="1.5" fill="#1e3a8a" />
+      <path d="M-18 14 h10 M-6 14 h6 M2 14 h14" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M-18 8 h22" stroke="#a78bfa" strokeWidth="2.5" strokeLinecap="round" />
+    </g>
+  );
+}
+function Estante({ x, y, w = 110 }: { x: number; y: number; w?: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={w / 2} y={74} w={w + 10} h={8} />
+      <rect width={w} height="70" rx="3" fill="#8b5e34" />
+      {[8, 30, 52].map((yy) => <rect key={yy} x="5" y={yy} width={w - 10} height="3" fill="#6b4423" />)}
+      {[0, 1, 2].flatMap((r) => Array.from({ length: Math.floor((w - 14) / 9) }, (_, k) => (
+        <rect key={`${r}-${k}`} x={8 + k * 9} y={r * 22 + 12 - (k % 3)} width="6" height={14 + (k % 3)} rx="1"
+          fill={["#ef4444", "#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#f97316"][(k + r) % 6]} opacity={k % 4 === 3 ? 0 : 0.9} />
+      )))}
+    </g>
+  );
+}
+function Quadro({ x, y, w = 120 }: { x: number; y: number; w?: number }) {
+  const notas: [string, number, number][] = [["#fde047", 10, 10], ["#86efac", 38, 14], ["#f9a8d4", 66, 8], ["#93c5fd", 18, 36], ["#fdba74", 52, 38], ["#fde047", 84, 32]];
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={w / 2} y={100} w={w} h={8} />
+      <rect width={w} height="62" rx="3" fill="#f8fafc" stroke="#94a3b8" strokeWidth="2" />
+      {notas.map(([c, xx, yy], k) => <rect key={k} x={xx} y={yy} width="20" height="16" rx="1.5" fill={c} transform={`rotate(${k % 2 ? 3 : -3} ${xx + 10} ${yy + 8})`} />)}
+      <rect x={w / 2 - 20} y="62" width="4" height="34" fill="#94a3b8" /><rect x={w / 2 + 16} y="62" width="4" height="34" fill="#94a3b8" />
+    </g>
+  );
+}
+function VidroFrente({ x0, x1, y }: { x0: number; x1: number; y: number }) {
+  const n = Math.max(2, Math.floor((x1 - x0) / 80));
+  return (
+    <g>
+      <rect x={x0} y={y - 32} width={x1 - x0} height="32" fill="#bfe3ff" opacity=".28" />
+      <rect x={x0} y={y - 34} width={x1 - x0} height="3" fill="#94a3b8" /><rect x={x0} y={y - 2} width={x1 - x0} height="3.5" fill="#94a3b8" />
+      {Array.from({ length: n + 1 }, (_, k) => <rect key={k} x={x0 + ((x1 - x0) * k) / n - 1} y={y - 34} width="2" height="34" fill="#a5b4c6" />)}
+      <path d={`M${x0 + 14} ${y - 6} l12 -22`} stroke="#fff" strokeWidth="1.4" opacity=".7" />
+    </g>
+  );
+}
+function VidroLado({ x, y0, y1 }: { x: number; y0: number; y1: number }) {
+  return (
+    <g>
+      <path d={`M${x} ${y0} L${x + 10} ${y0 + 8} L${x + 10} ${y1 + 8} L${x} ${y1} Z`} fill="#bfe3ff" opacity=".38" />
+      <path d={`M${x} ${y0} V${y1}`} stroke="#94a3b8" strokeWidth="2" /><path d={`M${x + 10} ${y0 + 8} V${y1 + 8}`} stroke="#cbd5e1" strokeWidth="1.2" />
+      <path d={`M${x + 2} ${y0 + 30} l6 10 M${x + 2} ${y0 + 52} l6 6`} stroke="#fff" strokeWidth="1.4" opacity=".8" />
+    </g>
+  );
+}
+function SofaGrande({ x, y, cor = "#475569" }: { x: number; y: number; cor?: string }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={0} y={52} w={250} h={16} />
+      <rect x="-105" y="-14" width="210" height="38" rx="12" fill={cor} />
+    </g>
+  );
+}
+function SofaFrente({ x, y, cor = "#334155" }: { x: number; y: number; cor?: string }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x="-105" y="16" width="210" height="32" rx="10" fill={cor} />
+      <rect x="-118" y="2" width="20" height="46" rx="8" fill="#2b3647" /><rect x="98" y="2" width="20" height="46" rx="8" fill="#2b3647" />
+      <rect x="-80" y="8" width="26" height="14" rx="5" fill="#f59e0b" opacity=".9" /><rect x="54" y="8" width="26" height="14" rx="5" fill="#38bdf8" opacity=".8" />
+    </g>
+  );
+}
+function MesaComprida({ x, y, w }: { x: number; y: number; w: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={w / 2} y={74} w={w + 40} h={20} />
+      {Array.from({ length: Math.floor(w / 70) }, (_, k) => <rect key={k} x={24 + k * 70} y="22" width="34" height="30" rx="9" fill="#64748b" />)}
+      <rect x="0" y="46" width={w} height="14" rx="5" fill="#e7d3ad" />
+      <rect x="6" y="60" width={w - 12} height="10" rx="3" fill="#cfb48a" />
+      <rect x={w / 2 - 28} y="38" width="22" height="10" rx="2" fill="#e2e8f0" stroke="#94a3b8" strokeWidth=".8" />
+      <circle cx={w / 2 + 20} cy="42" r="5" fill="#fff" stroke="#cbd5e1" />
+    </g>
+  );
+}
+function MesaRedonda({ x, y, r = 54 }: { x: number; y: number; r?: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={0} y={r * 0.62} w={r * 2.4} h={r * 0.6} />
+      {[-0.8, -0.3, 0.3, 0.8].map((f) => <rect key={f} x={f * r - 14} y={-r * 0.62} width="28" height="24" rx="8" fill="#64748b" />)}
+      <ellipse cx="0" cy="6" rx={r} ry={r * 0.38} fill="#a16207" />
+      <ellipse cx="0" cy="0" rx={r} ry={r * 0.38} fill="#ca8a04" />
+      <rect x="-5" y={r * 0.3} width="10" height={r * 0.36} fill="#78350f" />
+      <rect x="-16" y="-8" width="20" height="11" rx="2" fill="#e2e8f0" stroke="#94a3b8" strokeWidth=".8" />
+      <circle cx="22" cy="-2" r="4.5" fill="#fff" stroke="#cbd5e1" />
+    </g>
+  );
+}
+function BalcaoCopa({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={170} y={70} w={360} h={12} />
+      <rect x="0" y="0" width="340" height="62" rx="4" fill="#cbd5e1" />
+      <rect x="0" y="-6" width="340" height="9" rx="3" fill="#94a3b8" />
+      {[10, 92, 174].map((xx) => <rect key={xx} x={xx} y="10" width="72" height="44" rx="3" fill="#e2e8f0" stroke="#b6c2d1" />)}
+      <rect x="22" y="-38" width="30" height="34" rx="4" fill="#1f2937" /><circle cx="44" cy="-30" r="2" fill="#ef4444" />
+      <path className="esc-fumaca" d="M34 -42 q-3 -5 0 -9 q3 -4 0 -8" stroke="#cbd5e1" strokeWidth="1.6" fill="none" strokeLinecap="round" />
+      <rect x="66" y="-20" width="30" height="16" rx="3" fill="#a16207" />
+      {[70, 78, 86].map((xx) => <rect key={xx} x={xx} y="-28" width="6" height="8" rx="1" fill="#fff" stroke="#cbd5e1" strokeWidth=".5" />)}
+      <rect x="262" y="-70" width="40" height="132" rx="4" fill="#e5e7eb" stroke="#9ca3af" /><rect x="266" y="-30" width="3" height="20" rx="1.5" fill="#9ca3af" />
+      <g transform="translate(320 -6)"><rect x="-9" y="20" width="18" height="40" rx="3" fill="#e2e8f0" stroke="#94a3b8" /><rect x="-7" y="0" width="14" height="22" rx="5" fill="#93c5fd" opacity=".85" /></g>
+    </g>
+  );
+}
+function MesaBistro({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={0} y={34} w={70} h={12} />
+      <ellipse cx="0" cy="0" rx="26" ry="10" fill="#f8fafc" stroke="#cbd5e1" />
+      <rect x="-2.5" y="8" width="5" height="26" fill="#64748b" />
+      <rect x="-6" y="-8" width="6" height="7" rx="1" fill="#fff" stroke="#cbd5e1" strokeWidth=".6" />
+    </g>
+  );
+}
+function Banco({ x, y }: { x: number; y: number }) {
+  return <g transform={`translate(${x} ${y})`}><ellipse cx="0" cy="0" rx="11" ry="4.5" fill="#334155" /><rect x="-1.5" y="2" width="3" height="18" fill="#64748b" /><Sombra x={0} y={21} w={20} h={4} /></g>;
+}
+function Tapete({ x, y, w, h, cor }: { x: number; y: number; w: number; h: number; cor: string }) {
+  return <rect x={x} y={y} width={w} height={h} rx={Math.min(18, h / 2.4)} fill={cor} opacity=".5" />;
+}
+function Luminaria({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <ellipse cx="0" cy="70" rx="46" ry="16" fill="#fde68a" opacity=".16" />
+      <Sombra x={0} y={64} w={26} h={6} />
+      <rect x="-1.5" y="0" width="3" height="62" fill="#475569" />
+      <path d="M-14 0 h28 l-6 -16 h-16 Z" fill="#fde68a" stroke="#eab308" strokeWidth=".8" />
+    </g>
+  );
+}
+function Camera({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`}>
+      <Sombra x={0} y={64} w={46} h={8} />
+      <path d="M-20 62 L0 22 L20 62 M0 22 V62" stroke="#334155" strokeWidth="3" fill="none" />
+      <rect x="-14" y="6" width="28" height="18" rx="3" fill="#0f172a" /><circle cx="14" cy="15" r="6" fill="#1e293b" stroke="#475569" />
+    </g>
+  );
+}
+function FundoVerde({ x, y }: { x: number; y: number }) {
+  return <g transform={`translate(${x} ${y})`}><Sombra x={36} y={128} w={90} h={10} /><rect x="0" y="0" width="72" height="124" rx="4" fill="#22c55e" opacity=".9" /><rect x="0" y="0" width="72" height="8" rx="3" fill="#15803d" /></g>;
+}
+
+// ---------------------------------------------------------------- bonecos de pé / andando
 function BonecoDePe({ v, andando, xicara }: { v: Visual; andando?: boolean; xicara?: boolean }) {
   return (
     <g className={andando ? "ea-andando" : undefined}>
-      <ellipse cx="0" cy="1" rx="11" ry="2.6" fill="#000" opacity=".15" />
+      <ellipse cx="0" cy="1" rx="11" ry="2.6" fill="#000" opacity=".18" />
       <g className="ea-corpo">
         <g className="ea-perna-e"><rect x="-6.5" y="-25" width="5.5" height="25" rx="2.5" fill="#334155" /><ellipse cx="-3.5" cy="0" rx="4" ry="2" fill="#1e293b" /></g>
         <g className="ea-perna-d"><rect x="1" y="-25" width="5.5" height="25" rx="2.5" fill="#3b4a5f" /><ellipse cx="4" cy="0" rx="4" ry="2" fill="#1e293b" /></g>
@@ -75,32 +273,6 @@ const ESTILO_ABERTO = `
 @media (prefers-reduced-motion:reduce){.ea-mover,.ea-rotulo{transition:none}.esc *{animation:none!important}}
 `;
 
-// Sofá, bebedouro, mesa de reunião redonda e tapetes.
-// Sofá em duas partes: o encosto atrás de quem senta e o assento/braços na frente (cobre as pernas).
-function SofaEncosto({ x, y }: { x: number; y: number }) {
-  return <g transform={`translate(${x - 75} ${y})`}><rect x="0" y="-14" width="150" height="40" rx="10" fill="#475569" /></g>;
-}
-function SofaAssento({ x, y }: { x: number; y: number }) {
-  return (
-    <g transform={`translate(${x - 75} ${y})`}>
-      <rect x="0" y="18" width="150" height="30" rx="9" fill="#334155" />
-      <rect x="-10" y="4" width="16" height="44" rx="7" fill="#2b3647" /><rect x="144" y="4" width="16" height="44" rx="7" fill="#2b3647" />
-    </g>
-  );
-}
-function MesaReuniao({ x, y }: { x: number; y: number }) {
-  return (
-    <g transform={`translate(${x} ${y})`}>
-      <ellipse cx="0" cy="34" rx="104" ry="40" fill="#0ea5e9" opacity=".08" />
-      <ellipse cx="0" cy="8" rx="62" ry="22" fill="#a16207" />
-      <ellipse cx="0" cy="4" rx="62" ry="22" fill="#ca8a04" />
-      <rect x="-5" y="20" width="10" height="20" fill="#78350f" />
-      <rect x="-14" y="-6" width="18" height="11" rx="2" fill="#e2e8f0" stroke="#94a3b8" strokeWidth=".8" />
-      <circle cx="22" cy="2" r="4" fill="#fff" stroke="#cbd5e1" />
-    </g>
-  );
-}
-
 export const EscritorioAberto = memo(function EscritorioAberto({ setores, onAbrir, forcarNoite, tv, onAbrirSetor }: {
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean;
   tv?: React.ReactNode; onAbrirSetor?: (id: string) => void;
@@ -109,94 +281,78 @@ export const EscritorioAberto = memo(function EscritorioAberto({ setores, onAbri
   const noite = forcarNoite ?? noiteAgora;
   useEffect(() => { const t = window.setInterval(() => setNoite(ehNoite()), 60_000); return () => window.clearInterval(t); }, []);
 
-  // ---------------------------------------------------------------- planta do escritório
   const geo = useMemo(() => {
-    const filDe = (s: SetorNoEscritorio) => (s.fileira === 0 || s.fileira === 1 ? s.fileira : /diretoria/i.test(s.nome) ? 0 : 1);
+    // Cada setor do projeto ocupa um ambiente: pelo nome; quem não casar pega o primeiro livre.
+    const ambDoSetor = new Map<string, Ambiente>();
+    const usados = new Set<string>();
+    for (const s of setores) {
+      const a = AMBIENTES.find((x) => !usados.has(x.chave) && PALAVRAS[x.chave].test(s.nome));
+      if (a) { ambDoSetor.set(s.id, a); usados.add(a.chave); }
+    }
+    for (const s of setores) {
+      if (ambDoSetor.has(s.id)) continue;
+      const a = AMBIENTES.find((x) => !usados.has(x.chave));
+      if (a) { ambDoSetor.set(s.id, a); usados.add(a.chave); }
+    }
     const pessoas = setores.flatMap((s) => s.pessoas.map((p) => ({ p, setor: s.id })));
-    const existe = new Set(setores.map((s) => s.id));
-    // Onde cada um precisa estar agora.
-    const conversa = pessoas.filter(({ p }) => p.conversando && !noite);
-    const alguemConversando = conversa.length > 0;
-    const zonaDe = new Map<string, string>();      // pessoa → zona onde trabalha (estação)
-    const livres: PessoaNaSala[] = [];
-    const reuniao: PessoaNaSala[] = [];
-    for (const { p, setor } of pessoas) {
-      if (!noite && (p.conversando || (alguemConversando && ehDavi(p)))) { reuniao.push(p); continue; }
-      if (noite || ehRobo(p) || p.sinal !== "parado") {
-        zonaDe.set(p.id, p.setorTarefa && existe.has(p.setorTarefa) && !noite ? p.setorTarefa : setor);
-        continue;
-      }
-      livres.push(p);
-    }
-    // Estações por zona: o tamanho da equipe dela (mínimo 2) ou quem está trabalhando lá, o que for maior.
-    const zonas = setores.map((s) => {
-      const aqui = [...zonaDe.entries()].filter(([, z]) => z === s.id).length;
-      return { s, fil: filDe(s), est: Math.max(2, s.pessoas.length, aqui) };
-    });
-    const fileiras = [0, 1].map((f) => zonas.filter((z) => z.fil === f)).filter((f) => f.length);
-    const largFila = (f: typeof zonas) => f.reduce((t, z) => t + z.est * W_EST + 40 + GAP, 0) - GAP;
-    const larguraTrabalho = Math.max(760, ...fileiras.map(largFila)) + MARGEM * 2;
-    const W = larguraTrabalho + LOUNGE;
-    const H = Math.max(TOPO + fileiras.length * (H_ZONA + GAP) + 20, 700);
-    const caixas = fileiras.flatMap((f, r) => {
-      let x = MARGEM + (larguraTrabalho - MARGEM * 2 - largFila(f)) / 2;
-      return f.map((z) => {
-        const largura = z.est * W_EST + 40;
-        const c = { ...z, r, x0: x, y0: TOPO + 18 + r * (H_ZONA + GAP), largura };
-        x += largura + GAP;
-        return c;
-      });
-    });
-    // Senta cada um numa estação: quem é da zona fica com "a sua" (mesma posição de sempre), visitante pega a livre.
+    const alguemConversando = !noite && pessoas.some(({ p }) => p.conversando);
     const lugar = new Map<string, Lugar>();
-    for (const c of caixas) {
-      const ocupada = new Set<number>();
-      const daqui = [...zonaDe.entries()].filter(([, z]) => z === c.s.id).map(([id]) => id);
-      const ordem = [...daqui].sort((a, b) => {
-        const ia = c.s.pessoas.findIndex((p) => p.id === a), ib = c.s.pessoas.findIndex((p) => p.id === b);
-        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-      });
-      for (const id of ordem) {
-        const ideal = c.s.pessoas.findIndex((p) => p.id === id);
-        let est = ideal >= 0 && !ocupada.has(ideal) ? ideal : 0;
-        while (ocupada.has(est)) est++;
-        ocupada.add(est);
-        const x = c.x0 + 20 + est * W_EST + W_EST / 2;
-        lugar.set(id, { tipo: "mesa", zona: c.s.id, est, x, y: c.y0 + MESA_Y, pes: { x, y: c.y0 + PES_MESA }, onde: c.s.nome });
+    const ocupadas = new Map<string, Set<number>>();
+    const colab = new Set<number>();
+    const reuniao: PessoaNaSala[] = [];
+    const livres: PessoaNaSala[] = [];
+    const nomeDoSetor = (id: string) => setores.find((s) => s.id === id)?.nome ?? "";
+    const sentar = (p: PessoaNaSala, setorId: string, setorDele: string) => {
+      const a = ambDoSetor.get(setorId) ?? ambDoSetor.get(setorDele);
+      if (a) {
+        const usadas = ocupadas.get(a.chave) ?? new Set<number>();
+        // A "de costume" (pela ordem na equipe) se estiver livre; senão a primeira livre.
+        const ideal = setores.find((s) => s.id === setorDele)?.pessoas.findIndex((x) => x.id === p.id) ?? -1;
+        let est = setorId === setorDele && ideal >= 0 && ideal < a.estacoes.length && !usadas.has(ideal) ? ideal : -1;
+        if (est < 0) est = a.estacoes.findIndex((_, k) => !usadas.has(k));
+        if (est >= 0) {
+          usadas.add(est); ocupadas.set(a.chave, usadas);
+          const e = a.estacoes[est];
+          lugar.set(p.id, { tipo: "mesa", amb: a.chave, est, x: e.x, y: e.y, pes: { x: e.x, y: e.y + 96 }, onde: nomeDoSetor(setorId) || a.rotulo });
+          return;
+        }
       }
-    }
-    // Lounge: café (de pé, com xícara), sofá e mesa de reunião.
-    const L = larguraTrabalho;
-    const cafe = { x: L + 92, y: TOPO + 40 };
-    const reuniaoC = { x: L + LOUNGE / 2, y: TOPO + 250 };
-    const sofa = { x: L + LOUNGE / 2, y: H - 150 };
-    const vagasCafe = [0, 1, 2].map((k) => ({ x: cafe.x - 50 + k * 62, y: cafe.y + 122 }));
-    const vagasSofa = [0, 1, 2].map((k) => ({ x: sofa.x - 50 + k * 50, y: sofa.y + 40 }));
-    const vagasReuniao = [-78, 78, -44, 44, -100, 100, 0].map((dx, k) => ({ x: reuniaoC.x + dx, y: reuniaoC.y + (k < 2 ? 10 : k < 4 ? 46 : k < 6 ? -22 : 56), virado: (dx > 0 ? -1 : 1) as 1 | -1 }));
-    reuniao.forEach((p, k) => {
-      const v = vagasReuniao[k % vagasReuniao.length];
-      lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, onde: "Reunião", virado: v.virado });
+      // Sem estação livre na área: senta na mesa colaborativa.
+      const k = COLABORATIVA.findIndex((_, i) => !colab.has(i));
+      if (k >= 0) {
+        colab.add(k);
+        const e = COLABORATIVA[k];
+        lugar.set(p.id, { tipo: "mesa", amb: "colab", est: k, x: e.x, y: e.y, pes: { x: e.x, y: e.y + 96 }, onde: "Área colaborativa" });
+      }
+    };
+    const trabalhando = pessoas.filter(({ p }) => {
+      if (!noite && (p.conversando || (alguemConversando && ehDavi(p)))) { reuniao.push(p); return false; }
+      if (noite || ehRobo(p) || p.sinal !== "parado") return true;
+      livres.push(p); return false;
     });
-    // Cada um tem o "seu" lugar no descanso (pelo id), para ninguém trocar de lugar só porque outro saiu.
-    const vagas = [...vagasCafe.map((v) => ({ ...v, cafe: true })), ...vagasSofa.map((v) => ({ ...v, cafe: false }))];
-    const usadas = new Set<number>();
+    const zonaDe = (p: PessoaNaSala, setor: string) => (!noite && p.setorTarefa && ambDoSetor.has(p.setorTarefa) ? p.setorTarefa : setor);
+    // Primeiro quem é da área (fica no lugar de costume), depois quem veio de outra área.
+    for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) === setor)) sentar(p, setor, setor);
+    for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) !== setor)) sentar(p, zonaDe(p, setor), setor);
+    reuniao.forEach((p, k) => { const v = VAGAS_REUNIAO[k % VAGAS_REUNIAO.length]; lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, onde: "Reunião", virado: v.virado }); });
+    // Livre: cada um com o "seu" lugar na copa ou no sofá (pelo id), sem trocar só porque outro saiu.
+    const vagasUsadas = new Set<number>();
     [...livres].sort((a, b) => a.id.localeCompare(b.id)).forEach((p) => {
-      let k = [...p.id].reduce((t, c) => t + c.charCodeAt(0), 0) % vagas.length;
-      for (let n = 0; usadas.has(k) && n < vagas.length; n++) k = (k + 1) % vagas.length;
-      usadas.add(k);
-      const v = vagas[k];
-      lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, xicara: v.cafe, onde: v.cafe ? "Copa" : "Descanso", sentado: !v.cafe });
+      let k = somaId(p.id) % VAGAS_LIVRE.length;
+      for (let n = 0; vagasUsadas.has(k) && n < VAGAS_LIVRE.length; n++) k = (k + 1) % VAGAS_LIVRE.length;
+      vagasUsadas.add(k);
+      const v = VAGAS_LIVRE[k];
+      lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, onde: v.onde, sentado: v.sentado, xicara: v.xicara });
     });
-    // Corredores: a faixa entre as fileiras de zonas (e acima da primeira); o lounge tem o corredor vertical em L.
-    const corredores = [TOPO + 8, ...fileiras.map((_, r) => TOPO + 18 + r * (H_ZONA + GAP) + H_ZONA + GAP / 2)];
-    return { W, H, L, caixas, lugar, cafe, reuniaoC, sofa, corredores, pessoas: pessoas.map((x) => x.p) };
+    const ambientesUsados = [...ambDoSetor.entries()].map(([id, a]) => ({ a, s: setores.find((x) => x.id === id)! }));
+    return { lugar, ambientesUsados, pessoas: pessoas.map((x) => x.p) };
   }, [setores, noite]);
 
   // ---------------------------------------------------------------- andar quando o lugar muda
-  type Andando = { de: { x: number; y: number }; para: { x: number; y: number }; dur: number; chave: number; pontos: { x: number; y: number }[] };
+  type Andando = { dur: number; chave: number; pontos: Pt[] };
   const [andando, setAndando] = useState<Record<string, Andando>>({});
   const antes = useRef<Map<string, string>>(new Map());
-  const pesAntes = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const pesAntes = useRef<Map<string, Pt>>(new Map());
   const timers = useRef<number[]>([]);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
   useEffect(() => {
@@ -205,121 +361,168 @@ export const EscritorioAberto = memo(function EscritorioAberto({ setores, onAbri
       const l = geo.lugar.get(p.id);
       if (!l || ehRobo(p)) continue;
       const pes = l.tipo === "mesa" ? l.pes : { x: l.x, y: l.y };
-      const chaveLugar = l.tipo === "mesa" ? `m-${l.zona}-${l.est}` : `p-${l.onde}-${l.x}`;
+      const chave = l.tipo === "mesa" ? `m-${l.amb}-${l.est}` : `p-${l.onde}-${l.x}`;
       const anterior = antes.current.get(p.id);
       const de = pesAntes.current.get(p.id);
-      if (anterior && anterior !== chaveLugar && de) {
-        // Pelo corredor: sai da zona até a faixa mais perto, anda por ela e entra no destino.
-        const yc = geo.corredores.reduce((m, y) => (Math.abs(y - (de.y + pes.y) / 2) < Math.abs(m - (de.y + pes.y) / 2) ? y : m), geo.corredores[0]);
-        const pontos = Math.abs(de.y - pes.y) < 4 && Math.abs(de.x - pes.x) < 4 ? [de, pes] : [de, { x: de.x, y: yc }, { x: pes.x, y: yc }, pes];
+      if (anterior && anterior !== chave && de) {
+        // Vai até o corredor mais perto (pela passagem entre as colunas, se precisar), anda por ele e entra no destino.
+        const meio = (de.y + pes.y) / 2;
+        const yc = CORREDORES.reduce((m, y) => (Math.abs(y - meio) < Math.abs(m - meio) ? y : m), CORREDORES[0]);
+        const ate = (q: Pt): Pt[] => {
+          if (Math.abs(q.y - yc) < 110) return [{ x: q.x, y: yc }];
+          const xp = PASSAGENS.reduce((m, x) => (Math.abs(x - q.x) < Math.abs(m - q.x) ? x : m), PASSAGENS[0]);
+          const yLivre = q.y + (yc > q.y ? 18 : -18);
+          return [{ x: q.x, y: yLivre }, { x: xp, y: yLivre }, { x: xp, y: yc }];
+        };
+        const pontos = [de, ...ate(de), ...ate(pes).reverse(), pes];
         const total = pontos.slice(1).reduce((t, q, k) => t + Math.hypot(q.x - pontos[k].x, q.y - pontos[k].y), 0);
-        const durTotal = Math.min(12, Math.max(1.6, total / VEL));
-        novos[p.id] = { de, para: pes, dur: durTotal, chave: Date.now(), pontos };
-        timers.current.push(window.setTimeout(() => setAndando((a) => { const n = { ...a }; delete n[p.id]; return n; }), durTotal * 1000 + 80));
+        const dur = Math.min(14, Math.max(1.6, total / VEL));
+        novos[p.id] = { dur, chave: Date.now(), pontos };
+        timers.current.push(window.setTimeout(() => setAndando((a) => { const n = { ...a }; delete n[p.id]; return n; }), dur * 1000 + 80));
       }
-      antes.current.set(p.id, chaveLugar);
+      antes.current.set(p.id, chave);
       pesAntes.current.set(p.id, pes);
     }
     if (Object.keys(novos).length) setAndando((a) => ({ ...a, ...novos }));
   }, [geo]);
 
-  const { W, H, L, caixas, lugar, cafe, reuniaoC, sofa } = geo;
+  const { lugar } = geo;
   const pctX = (x: number) => `${(x / W) * 100}%`;
   const pctY = (y: number) => `${(y / H) * 100}%`;
-  const tvW = 300, tvH = 120, tvX = L / 2 - tvW / 2, tvY = 12;
+  const quemNaMesa = (amb: string, est: number) => geo.pessoas.find((q) => { const l = lugar.get(q.id); return l?.tipo === "mesa" && l.amb === amb && l.est === est && !andando[q.id]; });
+  const estacao = (amb: string, est: number, e: Pt, monitores?: boolean) => {
+    const p = quemNaMesa(amb, est);
+    return (
+      <g key={`${amb}-${est}`}>
+        <Sombra x={e.x} y={e.y + 94} w={110} h={12} o={0.16} />
+        {p
+          ? <BonecoMesa nome={p.nome} ehIa={p.ehIa} sinal={p.sinal} descansando={!noite && p.sinal === "parado"} x={e.x - 52} y={e.y} width={104} height={92} />
+          : <BonecoMesa nome="" ehIa={false} sinal="parado" vazio x={e.x - 52} y={e.y} width={104} height={92} />}
+        {monitores && <Monitores x={e.x + 54} y={e.y + 44} />}
+      </g>
+    );
+  };
+  const dePe = (p: PessoaNaSala) => {
+    const l = lugar.get(p.id);
+    if (!l || l.tipo !== "pe" || andando[p.id]) return null;
+    return (
+      <g key={`pe-${p.id}`} transform={`translate(${l.x} ${l.y}) scale(${l.virado ?? 1} 1)`}>
+        <BonecoDePe v={visualDe(p.nome)} xicara={l.xicara} />
+      </g>
+    );
+  };
+  const sentadosNoSofa = geo.pessoas.filter((p) => { const l = lugar.get(p.id); return l?.tipo === "pe" && l.sentado; });
+  const deResto = geo.pessoas.filter((p) => { const l = lugar.get(p.id); return l?.tipo === "pe" && !l.sentado; });
+  const usado = (chave: string) => geo.ambientesUsados.some((u) => u.a.chave === chave);
 
   return (
     <div className="w-full overflow-x-auto overscroll-x-contain rounded-xl">
-      <div className="esc relative min-w-[880px] overflow-hidden rounded-xl border border-black/5" style={{ aspectRatio: `${W} / ${H}` }}>
+      <div className="esc relative min-w-[900px] overflow-hidden rounded-xl border border-black/10 shadow-inner" style={{ aspectRatio: `${W} / ${H}` }}>
         <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" aria-hidden="true">
           <style>{ESTILO + ESTILO_SALA + ESTILO_ABERTO}</style>
           <defs>
             <linearGradient id="ea-ceu" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#bae6fd" /><stop offset="1" stopColor="#e0f2fe" /></linearGradient>
-            <pattern id="ea-piso" width="60" height="14" patternUnits="userSpaceOnUse">
-              <rect width="60" height="14" fill="#ead6b2" /><path d="M0 13.5 H60 M30 0 V14" stroke="#dcc196" strokeWidth="1" />
+            <pattern id="ea-piso" width="96" height="24" patternUnits="userSpaceOnUse">
+              <rect width="96" height="24" fill="#e8d2ab" /><path d="M0 23.5 H96 M48 0 V24" stroke="#d9bd8f" strokeWidth="1" />
+              <path d="M24 0 V12 M72 12 V24" stroke="#e0c79c" strokeWidth=".8" />
             </pattern>
+            <radialGradient id="ea-luz"><stop offset="0" stopColor="#fff7e6" stopOpacity=".7" /><stop offset="1" stopColor="#fff7e6" stopOpacity="0" /></radialGradient>
+            <linearGradient id="ea-vinheta" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#000" stopOpacity=".08" /><stop offset=".22" stopColor="#000" stopOpacity="0" /><stop offset=".86" stopColor="#000" stopOpacity="0" /><stop offset="1" stopColor="#000" stopOpacity=".12" /></linearGradient>
           </defs>
-          {/* Parede do fundo com janelas, e o piso aberto */}
-          <rect width={W} height={TOPO} fill="#eef2f7" />
-          <rect y={TOPO - 6} width={W} height="6" fill="#d9e0ea" />
-          <rect y={TOPO} width={W} height={H - TOPO} fill="url(#ea-piso)" />
-          {Array.from({ length: Math.floor(W / 210) }, (_, k) => 40 + k * 210).filter((x) => x + 70 < tvX - 10 || x > tvX + tvW + 10).map((x) => (
-            <g key={x} transform={`translate(${x} 34)`}>
-              <rect width="70" height="62" rx="4" fill="url(#ea-ceu)" stroke="#94a3b8" strokeWidth="3" />
-              <path d="M35 0 V62 M0 31 H70" stroke="#94a3b8" strokeWidth="2" />
-              <ellipse cx="18" cy="15" rx="8" ry="3.5" fill="#fff" opacity=".9" />
+
+          {/* Piso contínuo e parede do fundo com janelas */}
+          <rect width={W} height={H} fill="url(#ea-piso)" />
+          <rect width={W} height={PAREDE} fill="#eef1f5" />
+          <rect y={PAREDE - 8} width={W} height="8" fill="#d5dbe4" />
+          <rect y={PAREDE} width={W} height="10" fill="#000" opacity=".06" />
+          {[70, 250, 430, 1020, 1430].map((x) => (
+            <g key={x} transform={`translate(${x} 26)`}>
+              <rect width="120" height="84" rx="4" fill="url(#ea-ceu)" stroke="#94a3b8" strokeWidth="3" />
+              <path d="M60 0 V84 M0 42 H120" stroke="#94a3b8" strokeWidth="2" />
+              <ellipse cx="30" cy="20" rx="12" ry="4.5" fill="#fff" opacity=".9" /><ellipse cx="88" cy="58" rx="9" ry="3.5" fill="#fff" opacity=".7" />
             </g>
           ))}
-          {/* Moldura do "Nosso resultado" (a tela é HTML por cima) */}
-          <rect x={tvX - 6} y={tvY - 6} width={tvW + 12} height={tvH + 12} rx="5" fill="#0f172a" stroke="#334155" strokeWidth="1.5" />
-
-          {/* Zonas: tapete na cor do setor (sem paredes), plantas nos cantos */}
-          {caixas.map((c) => (
-            <g key={c.s.id}>
-              <rect x={c.x0} y={c.y0} width={c.largura} height={H_ZONA} rx="18" fill={c.s.corPlaca} opacity=".13" />
-              <rect x={c.x0} y={c.y0} width={c.largura} height={H_ZONA} rx="18" fill="none" stroke={c.s.corPlaca} strokeOpacity=".35" strokeWidth="2" strokeDasharray="10 8" />
-              <Planta x={c.x0 + 14} y={c.y0 + H_ZONA - 26} s={0.6} />
-              <Planta x={c.x0 + c.largura - 14} y={c.y0 + H_ZONA - 26} s={0.6} />
-            </g>
+          {/* Luz das janelas e das luminárias no chão */}
+          {[[140, 210, 230], [470, 210, 200], [1250, 230, 240], [800, 520, 300], [270, 520, 260], [1300, 520, 270], [270, 800, 260], [800, 800, 240], [1330, 800, 260]].map(([x, y, r], k) => (
+            <circle key={k} cx={x} cy={y} r={r} fill="url(#ea-luz)" />
           ))}
+          {/* Corredores: piso mais claro, sem móveis */}
+          {CORREDORES.map((y) => <rect key={y} x="0" y={y - 28} width={W} height="56" fill="#f4e6c9" opacity=".6" />)}
+          {PASSAGENS.map((x) => <rect key={x} x={x - 34} y={PAREDE} width="68" height={H - PAREDE} fill="#f4e6c9" opacity=".4" />)}
 
-          {/* Lounge: copa com café, mesa de reunião e sofá — separados do trabalho por um corredor */}
-          <rect x={L - 8} y={TOPO} width="10" height={H - TOPO} fill="#dcc196" opacity=".45" />
-          <Cafe x={cafe.x} y={cafe.y} />
-          <g transform={`translate(${cafe.x + 120} ${cafe.y - 6})`}>
-            <rect x="-9" y="20" width="18" height="34" rx="3" fill="#e2e8f0" stroke="#94a3b8" />
-            <rect x="-7" y="0" width="14" height="22" rx="5" fill="#93c5fd" opacity=".85" />
-          </g>
-          <MesaReuniao x={reuniaoC.x} y={reuniaoC.y} />
-          <SofaEncosto x={sofa.x} y={sofa.y} />
-          <Planta x={W - 20} y={H - 40} s={0.95} />
-          <Planta x={L + 18} y={H - 40} s={0.8} />
+          {/* ---- Faixa de cima: Diretoria (sala de vidro) · sofá de frente para a TV · Copa ---- */}
+          <Tapete x={80} y={250} w={400} h={70} cor="#cbd5e1" />
+          <Estante x={40} y={154} w={96} />
+          <Luminaria x={470} y={164} />
+          <Planta x={36} y={316} s={0.8} />
+          <rect x={TV.x - 8} y={TV.y - 8} width={TV.w + 16} height={TV.h + 16} rx="6" fill="#0f172a" stroke="#334155" strokeWidth="2" />
+          <rect x={TV.x + 40} y={PAREDE + 2} width={TV.w - 80} height="14" rx="3" fill="#8b5e34" />
+          <Planta x={TV.x - 30} y={PAREDE + 24} s={0.8} /><Planta x={TV.x + TV.w + 30} y={PAREDE + 24} s={0.8} />
+          <Tapete x={660} y={262} w={280} h={64} cor="#d6c4a3" />
+          <SofaGrande x={800} y={262} />
+          <BalcaoCopa x={1180} y={164} />
+          {[1300, 1360, 1420].map((x) => <Banco key={x} x={x} y={262} />)}
+          <MesaBistro x={1530} y={268} />
 
-          {/* Estações: vazias ou com quem está trabalhando ali (sentado) */}
-          {caixas.flatMap((c) => Array.from({ length: c.est }, (_, est) => {
-            const x = c.x0 + 20 + est * W_EST + W_EST / 2;
-            const p = geo.pessoas.find((q) => { const l = lugar.get(q.id); return l?.tipo === "mesa" && l.zona === c.s.id && l.est === est; });
-            const chegou = p && !andando[p.id];
-            return chegou
-              ? <BonecoMesa key={`${c.s.id}-${est}`} nome={p.nome} ehIa={p.ehIa} sinal={p.sinal} descansando={!noite && p.sinal === "parado"} x={x - 52} y={c.y0 + MESA_Y} width={104} height={92} />
-              : <BonecoMesa key={`${c.s.id}-${est}`} nome="" ehIa={false} sinal="parado" vazio x={x - 52} y={c.y0 + MESA_Y} width={104} height={92} />;
-          }))}
+          {/* ---- Faixa do meio: Marketing (ilha) · área colaborativa · Audiovisual (edição) ---- */}
+          <Tapete x={70} y={434} w={350} h={196} cor="#d9c7a6" />
+          {usado("marketing") && <Quadro x={410} y={420} w={120} />}
+          <Planta x={40} y={612} s={0.85} /><Planta x={520} y={612} s={0.8} />
+          <rect x={640} y={402} width="150" height="58" rx="4" fill="#f8fafc" stroke="#94a3b8" strokeWidth="2" />
+          <path d="M656 418 h60 M656 430 h96 M656 442 h40" stroke="#60a5fa" strokeWidth="3" strokeLinecap="round" />
+          <Tapete x={630} y={548} w={340} h={44} cor="#cbd5e1" />
+          <MesaComprida x={640} y={492} w={320} />
+          <Planta x={990} y={470} s={0.75} />
+          <Tapete x={1100} y={434} w={300} h={196} cor="#c8d3e0" />
+          <FundoVerde x={1440} y={420} /><Camera x={1500} y={540} />
+          <Planta x={1080} y={612} s={0.85} /><Planta x={1580} y={612} s={0.85} />
 
-          {/* De pé: na copa, no sofá e na reunião */}
-          {geo.pessoas.map((p) => {
-            const l = lugar.get(p.id);
-            if (!l || l.tipo !== "pe" || andando[p.id]) return null;
-            return (
-              <g key={`pe-${p.id}`} transform={`translate(${l.x} ${l.y}) scale(${l.virado ?? 1} 1)`}>
-                <BonecoDePe v={visualDe(p.nome)} xicara={l.xicara} />
-              </g>
-            );
-          })}
+          {/* ---- Faixa de baixo: Lab. de Viral · sala de reunião (vidro) · Sucesso do cliente · Sales ---- */}
+          <Tapete x={70} y={718} w={350} h={196} cor="#d9c7a6" />
+          {usado("viral") && <Quadro x={410} y={704} w={120} />}
+          <Planta x={40} y={910} s={0.9} /><Planta x={520} y={910} s={0.85} />
+          <Tapete x={650} y={740} w={300} h={150} cor="#cbd5e1" />
+          <MesaRedonda x={REUNIAO_C.x} y={REUNIAO_C.y} r={74} />
+          <VidroLado x={608} y0={700} y1={918} /><VidroLado x={984} y0={700} y1={918} />
+          <VidroFrente x0={608} x1={994} y={936} />
+          <Tapete x={1100} y={720} w={160} h={196} cor="#d9c7a6" />
+          <Tapete x={1350} y={720} w={230} h={196} cor="#d9c7a6" />
+          <Planta x={1286} y={910} s={0.85} /><Planta x={1586} y={924} s={0.9} />
 
-          <SofaAssento x={sofa.x} y={sofa.y} />
+          {/* Estações de trabalho (vazias ou com quem está trabalhando ali) */}
+          {AMBIENTES.flatMap((a) => (usado(a.chave) ? a.estacoes : []).map((e, k) => estacao(a.chave, k, e, a.monitores)))}
+          {COLABORATIVA.map((e, k) => (quemNaMesa("colab", k) ? estacao("colab", k, e) : null))}
+          {/* Mesa executiva da Diretoria e o vidro na frente da sala (depois das estações, como na vida real) */}
+          <VidroLado x={528} y0={152} y1={330} />
+          <VidroFrente x0={24} x1={538} y={346} />
 
-          {/* Andando: do lugar antigo até o novo */}
+          {/* De pé (copa, reunião) e sentados no sofá — o assento do sofá cobre as pernas */}
+          {deResto.map(dePe)}
+          {sentadosNoSofa.map(dePe)}
+          <SofaFrente x={800} y={262} />
+
+          {/* Andando pelos corredores */}
           {Object.entries(andando).map(([id, a]) => {
             const p = geo.pessoas.find((q) => q.id === id);
-            if (!p) return null;
-            return <Caminhante key={`${id}-${a.chave}`} a={a} v={visualDe(p.nome)} />;
+            return p ? <Caminhante key={`${id}-${a.chave}`} a={a} v={visualDe(p.nome)} /> : null;
           })}
+          <rect width={W} height={H} fill="url(#ea-vinheta)" pointerEvents="none" />
         </svg>
 
-        {/* "Nosso resultado" na parede (HTML por cima) */}
-        {tv && <div className="absolute" style={{ left: pctX(tvX), top: pctY(tvY), width: pctX(tvW), height: pctY(tvH) }}>{tv}</div>}
+        {/* "Nosso resultado": a tela da TV na parede */}
+        {tv && <div className="absolute overflow-hidden rounded-sm" style={{ left: pctX(TV.x), top: pctY(TV.y), width: pctX(TV.w), height: pctY(TV.h) }}>{tv}</div>}
 
-        {/* Placas das zonas */}
-        {caixas.map((c) => (
-          <button key={c.s.id} type="button" onClick={() => c.s.temEsteira && onAbrirSetor?.(c.s.id)}
-            className={cn("absolute flex items-center gap-1.5 rounded-md bg-white/95 px-2 py-1 shadow-sm", c.s.temEsteira ? "hover:ring-2 hover:ring-primary/40" : "cursor-default")}
-            style={{ left: pctX(c.x0 + 10), top: pctY(c.y0 + 8) }} title={c.s.temEsteira ? "Abrir a esteira (kanban do time)" : undefined}>
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: c.s.corPlaca }} />
-            <span className="text-[11px] font-bold uppercase tracking-wide text-slate-800">{c.s.nome}</span>
-            <span className="text-[10px] text-slate-500">{c.s.tarefas} {c.s.tarefas === 1 ? "tarefa" : "tarefas"}{c.s.atrasadas > 0 && <b className="text-rose-500"> · {c.s.atrasadas} atrasada{c.s.atrasadas > 1 ? "s" : ""}</b>}</span>
+        {/* Placas pequenas dos setores e dos ambientes comuns */}
+        {geo.ambientesUsados.map(({ a, s }) => (
+          <button key={s.id} type="button" onClick={() => s.temEsteira && onAbrirSetor?.(s.id)}
+            className={cn("absolute flex items-center gap-1.5 rounded-md bg-slate-900/85 px-2 py-1 text-white shadow-md", s.temEsteira ? "hover:ring-2 hover:ring-primary/60" : "cursor-default")}
+            style={{ left: pctX(a.placa.x), top: pctY(a.placa.y) }} title={s.temEsteira ? "Abrir a esteira (kanban do time)" : undefined}>
+            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: s.corPlaca }} />
+            <span className="text-[10.5px] font-bold uppercase tracking-wide">{s.nome}</span>
+            {s.tarefas > 0 && <span className="text-[10px] text-white/70">· {s.tarefas}{s.atrasadas > 0 && <b className="text-rose-300"> ({s.atrasadas}!)</b>}</span>}
           </button>
         ))}
-        {[{ x: cafe.x - 30, y: cafe.y - 50, t: "☕ Copa" }, { x: reuniaoC.x - 40, y: reuniaoC.y - 70, t: "Reunião" }, { x: sofa.x - 26, y: sofa.y - 30, t: "Descanso" }].map((r) => (
+        {[{ x: 1196, y: 112, t: "☕ Copa" }, { x: 760, y: 676, t: "Reunião" }, { x: 806, y: 404, t: "Colaborativa" }].map((r) => (
           <span key={r.t} className="pointer-events-none absolute rounded-md bg-white/85 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600 shadow-sm"
             style={{ left: pctX(r.x), top: pctY(r.y) }}>{r.t}</span>
         ))}
@@ -329,21 +532,20 @@ export const EscritorioAberto = memo(function EscritorioAberto({ setores, onAbri
           const l = lugar.get(p.id);
           if (!l) return null;
           const a = andando[p.id];
-          const topo = l.tipo === "mesa" ? { x: l.x, y: l.y - 14 } : { x: l.x, y: l.y - 104 };
+          const topo = l.tipo === "mesa" ? { x: l.x, y: l.y - 14 } : { x: l.x, y: l.y - (l.sentado ? 96 : 104) };
           const balao = a ? `Indo para ${l.onde}` : p.balao;
           return (
             <button key={`r-${p.id}`} type="button" disabled={!p.clicavel} onClick={() => onAbrir(p.id)}
               title={p.clicavel ? (p.ehIa ? `Conversar com ${p.nome}` : `Ver e adicionar tarefas de ${p.nome}`) : undefined}
-              className="ea-rotulo group/mesa absolute flex -translate-x-1/2 flex-col items-center justify-between rounded-lg outline-none transition-colors enabled:hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary"
-              style={{ left: pctX(topo.x), top: pctY(topo.y), height: pctY(l.tipo === "mesa" ? 110 : 108), width: pctX(l.tipo === "mesa" ? W_EST - 8 : 86), ["--ea-dur" as string]: a ? `${a.dur}s` : "0s" }}>
+              className="ea-rotulo absolute flex -translate-x-1/2 flex-col items-center justify-between rounded-lg outline-none transition-colors enabled:hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-primary"
+              style={{ left: pctX(topo.x), top: pctY(topo.y), height: pctY(l.tipo === "mesa" ? 110 : 108), width: pctX(l.tipo === "mesa" ? 112 : 92), ["--ea-dur" as string]: a ? `${a.dur}s` : "0s" }}>
               {balao ? (
                 <span className={cn("line-clamp-2 max-w-full rounded-md border bg-white/95 px-1.5 py-0.5 text-center text-[10px] font-medium leading-tight text-slate-800 shadow-sm",
                   a && "border-sky-300 italic", p.sinal === "esperando" && !a && "border-amber-400", p.sinal === "problema" && "border-rose-400")}>{balao}</span>
               ) : <span />}
-              <span className="flex max-w-full items-center gap-1 rounded-full bg-slate-900/80 px-2 py-0.5 text-[10.5px] font-semibold text-white shadow">
+              <span className="flex max-w-full items-center gap-1 rounded-full bg-slate-900/85 px-2 py-0.5 text-[10.5px] font-semibold text-white shadow">
                 <span className={cn("h-2 w-2 shrink-0 rounded-full", p.corSinal)} title={p.rotuloSinal} />
                 <span className="truncate">{p.nome}</span>
-                {p.clicavel && p.tarefas > 0 && <span className="shrink-0 font-normal text-white/70">· {p.tarefas}{p.atrasadas > 0 && <b className="text-rose-300"> ({p.atrasadas}!)</b>}</span>}
               </span>
             </button>
           );
@@ -353,9 +555,8 @@ export const EscritorioAberto = memo(function EscritorioAberto({ setores, onAbri
   );
 });
 
-// Anda em linha reta do ponto de partida até o destino (vira para o lado em que vai).
-function Caminhante({ a, v }: { a: { pontos: { x: number; y: number }[]; dur: number }; v: Visual }) {
-  // Segue os pontos (saída da zona → corredor → destino), cada trecho no tempo proporcional ao tamanho.
+// Anda pelos pontos (estação → corredor → passagem → destino), cada trecho no tempo do tamanho dele.
+function Caminhante({ a, v }: { a: { pontos: Pt[]; dur: number }; v: Visual }) {
   const [k, setK] = useState(0);
   const trechos = a.pontos.slice(1).map((q, i) => Math.hypot(q.x - a.pontos[i].x, q.y - a.pontos[i].y));
   const total = trechos.reduce((t, d) => t + d, 0) || 1;
