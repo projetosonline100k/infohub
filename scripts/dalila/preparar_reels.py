@@ -187,7 +187,9 @@ def preparar(reel):
     tamanho = comprimir(final, saida, segundos)
     log(rid, f"comprimido: {tamanho / 1048576:.1f} MB, {segundos:.0f}s")
     url, chave = chaves_publicas()
-    caminho = f"{reel['cliente_id']}/{rid}/{reel['token_envio']}/reel-v{tentativa}.mp4"
+    # Nome novo a cada envio (22/10): tentativa que caiu no meio deixava o arquivo lá e a próxima dava
+    # 409 Duplicate; a chave da Dalila só cria arquivo (reel-v<número>.mp4), não sobrescreve.
+    caminho = f"{reel['cliente_id']}/{rid}/{reel['token_envio']}/reel-v{tentativa}{int(time.time())}.mp4"
     publico = enviar(url, chave, caminho, saida)
     legenda = reel["legenda"] or sugerir_legenda(reel)
     db("""UPDATE public.reels SET video_url = %s, video_caminho = %s, video_bytes = %s, duracao = %s, legenda = %s,
