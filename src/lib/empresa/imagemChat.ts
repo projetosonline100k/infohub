@@ -11,15 +11,38 @@ export function imagensDoEvento(dados: DataTransfer | null): File[] {
   const arquivos = [...dados.files].filter((f) => f.type.startsWith("image/"));
   if (arquivos.length) return arquivos;
   // Print copiado (⌘⌃⇧4) às vezes só vem em items.
-  return [...dados.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
+  const deItens = [...dados.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
+  if (deItens.length) return deItens;
+  // Arquivo arrastado sem tipo (acontece no app do Mac): vale pela extensão.
+  return [...dados.files].filter((f) => !f.type && /\.(png|jpe?g|webp|gif|tiff?|heic|bmp)$/i.test(f.name));
 }
 
-export async function subirImagemChat(arquivo: File): Promise<string> {
+// O print do Mac às vezes vem como TIFF (ou sem tipo) e o Storage só aceita png/jpg/webp/gif (22/10:
+// "Não consegui subir a imagem"). Converte para PNG no navegador; imagem enorme é reduzida.
+const ACEITOS = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const MAX_LADO = 2400;
+async function paraPng(arquivo: Blob): Promise<Blob> {
+  const url = URL.createObjectURL(arquivo);
+  try {
+    const img = new Image();
+    await new Promise<void>((ok, erro) => { img.onload = () => ok(); img.onerror = () => erro(new Error("formato de imagem não reconhecido")); img.src = url; });
+    const k = Math.min(1, MAX_LADO / Math.max(img.naturalWidth, img.naturalHeight));
+    const tela = document.createElement("canvas");
+    tela.width = Math.round(img.naturalWidth * k); tela.height = Math.round(img.naturalHeight * k);
+    tela.getContext("2d")!.drawImage(img, 0, 0, tela.width, tela.height);
+    return await new Promise<Blob>((ok, erro) => tela.toBlob((b) => (b ? ok(b) : erro(new Error("não deu para converter a imagem"))), "image/png"));
+  } finally { URL.revokeObjectURL(url); }
+}
+
+export async function subirImagemChat(original: File): Promise<string> {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) throw new Error("sem login");
-  const ext = (arquivo.type.split("/")[1] || "png").replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "png";
+  const precisaConverter = !ACEITOS.includes(original.type) || original.size > 8 * 1024 * 1024;
+  const arquivo: Blob = precisaConverter ? await paraPng(original) : original;
+  const tipo = precisaConverter ? "image/png" : original.type;
+  const ext = tipo.split("/")[1].replace("jpeg", "jpg");
   const caminho = `chat/${u.user.id}/${crypto.randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from("entregas").upload(caminho, arquivo, { contentType: arquivo.type, upsert: false });
+  const { error } = await supabase.storage.from("entregas").upload(caminho, arquivo, { contentType: tipo, upsert: false });
   if (error) throw error;
   return supabase.storage.from("entregas").getPublicUrl(caminho).data.publicUrl;
 }

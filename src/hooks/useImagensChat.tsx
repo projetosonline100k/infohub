@@ -16,7 +16,7 @@ export function useImagensChat() {
     setSubindo((n) => n + arquivos.length);
     for (const a of arquivos) {
       try { const url = await subirImagemChat(a); setImagens((xs) => [...xs, url]); }
-      catch { toast.error("Não consegui subir a imagem"); }
+      catch (e) { console.error("imagem do chat", e); toast.error("Não consegui subir a imagem", { description: e instanceof Error ? e.message : String(e) }); }
       finally { setSubindo((n) => n - 1); }
     }
     return true;
