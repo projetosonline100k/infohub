@@ -21,28 +21,33 @@ export function carrosselDaConversa(atividadeId: string): string | null {
   try { return localStorage.getItem(chaveDaVez(atividadeId)); } catch { return null; }
 }
 
-export function useEstadoConversas(clienteId: string, atividadeIds: string[]): Map<string, EstadoConversa> {
+// 22/10 (Davi: "diz que está pensando, mas ele está ajustando; tudo precisa conversar"): junto do estado,
+// o que ele está fazendo agora (briefings.proposta.agora, o mesmo texto do chat).
+export function useEstadoConversas(clienteId: string, atividadeIds: string[]): { estados: Map<string, EstadoConversa>; agora: Map<string, string> } {
   const [estados, setEstados] = useState<Map<string, EstadoConversa>>(new Map());
+  const [agora, setAgora] = useState<Map<string, string>>(new Map());
   const chave = [...new Set(atividadeIds)].sort().join(",");
   const carregar = useCallback(async () => {
     const ids = chave ? chave.split(",") : [];
     if (!ids.length) { setEstados(new Map()); return; }
-    const { data: bs } = await db.from("briefings").select("id, atividade_id").eq("cliente_id", clienteId)
+    const { data: bs } = await db.from("briefings").select("id, atividade_id, proposta").eq("cliente_id", clienteId)
       .eq("status", "revisando").in("atividade_id", ids);
-    const briefings = (bs || []) as { id: string; atividade_id: string }[];
-    if (!briefings.length) { setEstados(new Map()); return; }
+    const briefings = (bs || []) as { id: string; atividade_id: string; proposta: { agora?: string } | null }[];
+    if (!briefings.length) { setEstados(new Map()); setAgora(new Map()); return; }
     const { data: ms } = await db.from("briefing_mensagens").select("briefing_id, papel, criada_em")
       .in("briefing_id", briefings.map((b) => b.id)).order("criada_em", { ascending: false }).limit(1000);
     const ultima = new Map<string, { papel: string; criada_em: string }>();
     for (const m of (ms || []) as { briefing_id: string; papel: string; criada_em: string }[]) if (!ultima.has(m.briefing_id)) ultima.set(m.briefing_id, m);
     const r = new Map<string, EstadoConversa>();
+    const ag = new Map<string, string>();
     for (const b of briefings) {
       const u = ultima.get(b.id);
       if (!u) continue;
-      if (u.papel === "davi") r.set(b.atividade_id, "pensando");
+      if (u.papel === "davi") { r.set(b.atividade_id, "pensando"); if (b.proposta?.agora) ag.set(b.atividade_id, b.proposta.agora); }
       else if (u.criada_em > conversaLidaEm(b.id)) r.set(b.atividade_id, "nova");
     }
     setEstados(r);
+    setAgora(ag);
   }, [clienteId, chave]);
   const carregarRef = useRef(carregar);
   carregarRef.current = carregar;
@@ -53,9 +58,10 @@ export function useEstadoConversas(clienteId: string, atividadeIds: string[]): M
     const logo = () => { window.clearTimeout(espera); espera = window.setTimeout(() => void carregarRef.current(), 300); };
     const canal = supabase.channel(`estado-conversas-${clienteId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "briefing_mensagens", filter: `cliente_id=eq.${clienteId}` }, logo)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "briefings", filter: `cliente_id=eq.${clienteId}` }, logo)
       .subscribe();
     window.addEventListener("conversa-lida", logo);
     return () => { window.clearTimeout(espera); void supabase.removeChannel(canal); window.removeEventListener("conversa-lida", logo); };
   }, [clienteId]);
-  return estados;
+  return { estados, agora };
 }

@@ -291,7 +291,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // Edição de vídeo (Danilo) também: aparece em "Revisar edição", que abre o editor — mas só quando
   // existe a edição ligada à tarefa (19/10: a versão dark saiu fora do editor e a tarefa sumia de tudo).
   // Chats das entregas (carrossel do Roy e edição do Danilo): "pensando…" / "Mensagem nova" na linha.
-  const estadosConversa = useEstadoConversas(clienteId, [
+  const { estados: estadosConversa, agora: agoraConversa } = useEstadoConversas(clienteId, [
     ...carrosseis.map((c) => (c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id).filter((x): x is string => !!x),
     ...edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter((x): x is string => !!x),
   ]);
@@ -304,6 +304,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       ?? carrosseis.find((x) => (x as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id === lote)?.id;
     return daVez === c.id ? estado : undefined;
   };
+  const atividadeDaEdicao = (e: EdicaoResumo) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id ?? null;
+  const trabalhandoNoPedido = (atividadeId: string | null) => !!atividadeId && estadosConversa.get(atividadeId) === "pensando";
+  const edicoesAjustando = edicoes.filter((e) => (e.status === "revisar" || e.status === "erro") && trabalhandoNoPedido(atividadeDaEdicao(e)));
+  const carrosseisAjustando = carrosseis.filter((c) => precisaRevisar(c) && estadoDoCarrossel(c) === "pensando");
   const tarefasComEdicao = useMemo(() => new Set(edicoes.map((e) => (e as EdicaoResumo & { atividade_id?: string | null }).atividade_id).filter(Boolean)), [edicoes]);
   const precisa = useMemo(() => precisaDeVoce(contaId, videos, membros, tarefas.filter((t) => !tarefasComCarrossel.has(t.id)
     && !(t.tipo === "edicao" && t.situacao === "aguardando_aprovacao" && tarefasComEdicao.has(t.id))), hoje),
@@ -391,7 +395,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         onClick={() => setFormatoAberto(e)}
         onCancelar={() => void cancelar(`a edição "${e.titulo}"`, () => cancelarEdicao(e.id))} />,
     })),
-    ...edicoes.filter((e) => e.status === "revisar" || e.status === "erro").map((e) => ({
+    // Enquanto o Danilo/Roy trabalha no seu pedido do chat, a entrega sai daqui e vai para "Tarefas sendo executadas".
+    ...edicoes.filter((e) => (e.status === "revisar" || e.status === "erro") && !trabalhandoNoPedido(atividadeDaEdicao(e))).map((e) => ({
       chave: `ed-${e.id}`, categoria: "video" as Categoria,
       no: <LinhaAcao icone={Video} titulo={`${e.status === "erro" ? "Edição com problema" : "Revisar edição"}: ${e.titulo}`}
         detalhe={e.status === "erro" ? e.mensagem ?? "erro" : `Danilo terminou · versão ${e.versao}${e.duracao ? ` · ${Math.round(e.duracao)}s` : ""}`}
@@ -399,7 +404,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         conversa={(e as EdicaoResumo & { atividade_id?: string | null }).atividade_id ? estadosConversa.get((e as EdicaoResumo & { atividade_id?: string | null }).atividade_id!) : undefined} quem="Danilo"
         onCancelar={() => void cancelar(`a edição "${e.titulo}"`, () => cancelarEdicao(e.id))} />,
     })),
-    ...carrosseis.filter(precisaRevisar).map((c) => {
+    ...carrosseis.filter((c) => precisaRevisar(c) && !(estadoDoCarrossel(c) === "pensando")).map((c) => {
       const l = linhaPrecisa(c);
       return { chave: `car-${c.id}`, categoria: "carrossel" as Categoria,
         no: <LinhaAcao icone={GalleryHorizontal} titulo={l.titulo} detalhe={l.detalhe} atrasada={l.problema} onClick={() => setCarrosselAberto(c)}
@@ -605,10 +610,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             <Bot className="h-5 w-5 text-emerald-500" />
             <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Tarefas sendo executadas</h2>
             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-              {executando.filter((l) => l.agora).length + carrosseis.filter(emProducao).length + edicoesRodando.length + melhorias.length} agora · {executando.filter((l) => !l.agora).length} na fila
+              {executando.filter((l) => l.agora).length + carrosseis.filter(emProducao).length + edicoesRodando.length + melhorias.length + edicoesAjustando.length + carrosseisAjustando.length} agora · {executando.filter((l) => !l.agora).length} na fila
             </span>
           </div>
-          {executando.length === 0 && !carrosseis.some(emProducao) && edicoesRodando.length === 0 && melhorias.length === 0 ? (
+          {executando.length === 0 && !carrosseis.some(emProducao) && edicoesRodando.length === 0 && melhorias.length === 0 && edicoesAjustando.length === 0 && carrosseisAjustando.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">A equipe não está tocando nada agora. Passe tarefas pela conversa com cada um.</p>
           ) : (
             <div className="min-h-0 space-y-1.5 overflow-y-auto pr-1">
@@ -620,6 +625,15 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
               {melhorias.map((x) => (
                 <LinhaAcao key={x.id} icone={Rocket} onClick={() => { const p = membros.find((m) => /^pedro$/i.test(m.nome)); if (p) setMembroAberto(p); }}
                   titulo={`Pedro implementando: ${x.titulo}`} detalhe={`${x.progresso ?? 5}%${x.agora ? ` · ${x.agora}` : ""}`} />
+              ))}
+              {edicoesAjustando.map((e) => (
+                <LinhaAcao key={`aj-${e.id}`} icone={Scissors} onClick={() => setEdicaoAberta(e)}
+                  titulo={`Danilo ajustando: ${e.titulo}`} detalhe={agoraConversa.get(atividadeDaEdicao(e) ?? "") ?? "lendo o seu pedido…"} />
+              ))}
+              {carrosseisAjustando.map((c) => (
+                <LinhaAcao key={`aj-${c.id}`} icone={GalleryHorizontal} onClick={() => setCarrosselAberto(c)}
+                  titulo={`Roy ajustando: ${c.tema}`}
+                  detalhe={agoraConversa.get((c as CarrosselResumo & { atividade_roy_id?: string | null }).atividade_roy_id ?? "") ?? "lendo o seu pedido…"} />
               ))}
               {edicoesRodando.map((e) => (
                 <LinhaAcao key={e.id} icone={Scissors} onClick={() => { const d = membros.find((m) => /^danilo$/i.test(m.nome)); if (d) setMembroAberto(d); }}
