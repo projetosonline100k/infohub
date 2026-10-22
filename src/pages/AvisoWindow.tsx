@@ -33,7 +33,7 @@ export default function AvisoWindow() {
     setTimeout(async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        await getCurrentWindow().close();
+        await getCurrentWindow().destroy();   // close() às vezes não fechava (22/10)
       } catch { /* web */ }
     }, 220);
   };

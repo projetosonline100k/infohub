@@ -123,7 +123,14 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou, pedi
             <p className="flex-1 text-sm font-semibold">Equipe</p>
           </>
         )}
-        <button type="button" onClick={() => { setAberta(false); setConversa(null); setComAtlas(false); }} className="rounded-md p-1 hover:bg-muted" aria-label="Fechar"><X className="h-4 w-4" /></button>
+        <button type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (pedido) pedidoAtendido.current = pedido.n;   // pedido antigo não reabre
+            if (pedida) atendida.current = pedida;
+            setAberta(false); setConversa(null); setComAtlas(false);
+          }}
+          className="relative z-10 rounded-md p-1 hover:bg-muted" aria-label="Fechar"><X className="h-4 w-4" /></button>
       </div>
 
       {comAtlas ? (

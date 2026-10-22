@@ -65,10 +65,17 @@ pub async fn mostrar_aviso(app: AppHandle, rota: String, vaga: u32) -> Result<()
     {
         janela = janela.accept_first_mouse(true);
     }
-    janela.build().map(|_| ()).map_err(|erro| {
+    let criada = janela.build().map_err(|erro| {
         log::error!("mostrar_aviso falhou: {erro}");
         erro.to_string()
-    })
+    })?;
+    // 22/10: um aviso que a página não conseguiu fechar ficou invisível no canto, por cima do X do chat
+    // da equipe, segurando os cliques. Garantia: o próprio app fecha a janelinha depois de 20 s.
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(20));
+        let _ = criada.destroy();
+    });
+    Ok(())
 }
 
 // Janela própria de Notas (20/10, Davi: "sempre que abrir o Infopro, já abrir uma parte separada,
