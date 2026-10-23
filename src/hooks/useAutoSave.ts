@@ -11,10 +11,13 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingContentRef = useRef<string | null>(null);
+  // 24/10 (Davi: "fico clicando em outros documentos e acesso a info dos outros"): o salvamento leva o id do
+  // documento que estava na tela quando o texto foi escrito. Antes, um salvamento atrasado ia para o
+  // documento selecionado "agora" e gravava o texto de um documento por cima do outro.
+  const pendingContentRef = useRef<{ content: string; id: string } | null>(null);
 
-  const save = useCallback(async (content: string) => {
-    if (!documentoId) return;
+  const save = useCallback(async (content: string, id: string = documentoId) => {
+    if (!id) return;
 
     setSaving(true);
     const { data, error } = await supabase
@@ -23,7 +26,7 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
         conteudo: content,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", documentoId)
+      .eq("id", id)
       // O editor de texto não pode sobrescrever uma lousa/caderno aberto
       // por uma guia antiga ou um link de compartilhamento de pasta.
       .or("conteudo.is.null,and(conteudo.not.like.__CANVASMENTAL_V1__%,conteudo.not.like.__CADERNO_V1__%)")
@@ -37,34 +40,38 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
     setSaving(false);
   }, [documentoId]);
 
-  const debouncedSave = useCallback((content: string) => {
-    pendingContentRef.current = content;
+  const debouncedSave = useCallback((content: string, id: string = documentoId) => {
+    // Mudou de documento com um salvamento pendente: o do anterior vai na hora, para o documento dele.
+    const pendente = pendingContentRef.current;
+    if (pendente && pendente.id !== id) void save(pendente.content, pendente.id);
+    pendingContentRef.current = { content, id };
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
     timeoutRef.current = setTimeout(() => {
-      if (pendingContentRef.current !== null) {
-        save(pendingContentRef.current);
+      const p = pendingContentRef.current;
+      if (p !== null) {
+        save(p.content, p.id);
         pendingContentRef.current = null;
       }
     }, debounceMs);
-  }, [save, debounceMs]);
+  }, [save, debounceMs, documentoId]);
 
   // Salva na hora e cancela o debounce pendente. Crucial ao trocar de guia:
   // sem isso, o conteúdo do documento ANTERIOR ficava esquecido em
   // pendingContentRef e, ao trocar de novo, esse cleanup abaixo (disparado
   // pela troca de "save" quando o documentoId muda) reenviava o texto do
   // documento antigo por cima do documento novo.
-  const saveNow = useCallback((content: string) => {
+  const saveNow = useCallback((content: string, id: string = documentoId) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
     }
     pendingContentRef.current = null;
-    return save(content);
-  }, [save]);
+    return save(content, id);
+  }, [save, documentoId]);
 
   // Cleanup on unmount (ou ao trocar de documento, já que "save" muda de
   // identidade com o documentoId): só reenvia se sobrou algo pendente de
@@ -74,8 +81,9 @@ export function useAutoSave({ documentoId, debounceMs = 1000 }: UseAutoSaveOptio
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         // Save any pending content before unmount
-        if (pendingContentRef.current !== null) {
-          save(pendingContentRef.current);
+        const p = pendingContentRef.current;
+        if (p !== null) {
+          save(p.content, p.id);
           pendingContentRef.current = null;
         }
       }

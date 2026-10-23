@@ -54,6 +54,11 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   // guia depois disso é instantâneo (o cabeçalho e a barra lateral não saem
   // do lugar, só o conteúdo troca).
   const primeiraCargaRef = useRef(true);
+  // 24/10: id do documento cujo texto está de fato no editor (o salvamento vai para ele) e se está trocando
+  // de documento agora (carregar o texto novo não é "editar" e não salva).
+  const idNoEditorRef = useRef<string | null>(null);
+  const carregandoRef = useRef(false);
+  const pedidoCargaRef = useRef(0);
   const tituloFocadoRef = useRef(false);
   // Histórico que sobrevive a sair do documento e voltar (localStorage). O
   // Tiptap já desfaz palavra a palavra dentro da sessão atual — isso aqui só
@@ -107,6 +112,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     ],
     content: "",
     onUpdate: ({ editor }) => {
+      if (carregandoRef.current || !idNoEditorRef.current) return;
       const html = editor.getHTML();
       if (suprimirRegistroRef.current) {
         suprimirRegistroRef.current = false;
@@ -117,7 +123,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         historico.registrar(conteudoAoAbrirRef.current);
         jaRegistrouSessaoRef.current = true;
       }
-      debouncedSave(html);
+      debouncedSave(html, idNoEditorRef.current);
     },
     editorProps: {
       handleKeyDown: (_view, event) => {
@@ -131,7 +137,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
           editor.commands.setContent(proximo, { emitUpdate: false });
           conteudoAoAbrirRef.current = proximo;
           jaRegistrouSessaoRef.current = false;
-          void saveNow(proximo);
+          if (idNoEditorRef.current) void saveNow(proximo, idNoEditorRef.current);
           return true;
         }
         if (editor.can().undo()) return false;
@@ -141,7 +147,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         editor.commands.setContent(anterior, { emitUpdate: false });
         conteudoAoAbrirRef.current = anterior;
         jaRegistrouSessaoRef.current = false;
-        void saveNow(anterior);
+        if (idNoEditorRef.current) void saveNow(anterior, idNoEditorRef.current);
         return true;
       },
     },
@@ -169,12 +175,16 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   // Carrega o documento atual (troca de guia dispara de novo, com outro id).
   useEffect(() => {
     async function loadDocument() {
+      const pedido = ++pedidoCargaRef.current;
+      carregandoRef.current = true;
       setLoading(true);
       const { data, error } = await supabase
         .from("documentos")
         .select("*")
         .eq("id", docAtualId)
         .maybeSingle();
+      // Clicou em outro documento antes desse chegar: ignora a resposta atrasada.
+      if (pedido !== pedidoCargaRef.current) return;
 
       if (data && !error) {
         setTitulo(data.titulo || "Documento sem título");
@@ -183,10 +193,11 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         conteudoAoAbrirRef.current = data.conteudo || "";
         jaRegistrouSessaoRef.current = false;
         if (editor) {
-          suprimirRegistroRef.current = true;
-          editor.commands.setContent(data.conteudo || "");
+          editor.commands.setContent(data.conteudo || "", { emitUpdate: false });
+          idNoEditorRef.current = docAtualId;
         }
       }
+      carregandoRef.current = false;
       setLoading(false);
       primeiraCargaRef.current = false;
     }
@@ -205,8 +216,11 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
 
   const trocarDocumento = (novoId: string) => {
     if (novoId !== docAtualId) {
-      // Salva o que está na tela antes de trocar, sem esperar o debounce.
-      if (editor) saveNow(editor.getHTML());
+      // Salva o que está na tela antes de trocar, sem esperar o debounce — no documento que está na tela
+      // (se ainda estava carregando, não há nada novo para salvar).
+      if (editor && idNoEditorRef.current && !carregandoRef.current) void saveNow(editor.getHTML(), idNoEditorRef.current);
+      carregandoRef.current = true;
+      idNoEditorRef.current = null;
       setDocAtualId(novoId);
     }
     // No celular a barra lateral é uma gaveta por cima do documento — some
