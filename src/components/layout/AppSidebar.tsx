@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, Clapperboard, FileText, Folder, FolderOpen,
+  Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
   Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, type LucideIcon,
 } from "lucide-react";
@@ -67,7 +67,9 @@ const SECOES: { secao: string; titulo: string; icone: LucideIcon }[] = [
   { secao: "documentos", titulo: "Documentos", icone: FileText },
   { secao: "cerebro", titulo: "Cérebro", icone: Brain },
 ];
-const SECOES_CONTEUDO: { secao: string; titulo: string; icone: LucideIcon }[] = [
+// 24/10 (Davi): dentro do Escritório, os mesmos itens das abas de cima, na mesma ordem.
+const SECOES_ESCRITORIO: { secao: string; titulo: string; icone: LucideIcon }[] = [
+  { secao: "informacoes", titulo: "Informações gerais", icone: Info },
   { secao: "conteudo:vertical", titulo: "Vertical", icone: Video },
   { secao: "conteudo:youtube", titulo: "Youtube", icone: Youtube },
   { secao: "conteudo:brainstorm", titulo: "Brainstorm", icone: Lightbulb },
@@ -75,7 +77,6 @@ const SECOES_CONTEUDO: { secao: string; titulo: string; icone: LucideIcon }[] = 
   { secao: "conteudo:conhecimento", titulo: "Fonte de conhecimento", icone: BookOpen },
   { secao: "conteudo:quiz", titulo: "Quiz", icone: HelpCircle },
   { secao: "conteudo:whatsapp", titulo: "WhatsApp", icone: MessageCircle },
-  { secao: "informacoes", titulo: "Informações gerais", icone: Info },
 ];
 
 interface ClienteMenu { id: string; nome_especialista: string; arquivado: boolean | null }
@@ -90,7 +91,8 @@ function noDoProjeto(c: ClienteMenu): No {
   return {
     chave: `projeto:${c.id}`, titulo: c.nome_especialista, icone: Folder, ir: base,
     ativoSe: (caminho) => caminho === base,
-    filhos: [...SECOES.map(secao), { chave: `${c.id}:conteudo`, titulo: "Conteúdo", icone: Clapperboard, filhos: SECOES_CONTEUDO.map(secao) }],
+    // O Escritório é uma pasta (clicar abre o Escritório; a setinha mostra as abas dele).
+    filhos: SECOES.map((s) => (s.secao === "conteudo:visao-geral" ? { ...secao(s), filhos: SECOES_ESCRITORIO.map(secao) } : secao(s))),
   };
 }
 
