@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, Clapperboard, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, type LucideIcon,
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, type LucideIcon,
 } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,6 +25,28 @@ interface No {
   filhos?: No[];
   /** quando o item está aberto na tela */
   ativoSe?: (caminho: string, busca: URLSearchParams) => boolean;
+  /** filhos carregados só quando a pasta abre (ex.: os documentos de um projeto) */
+  carregar?: () => Promise<No[]>;
+}
+
+// Documentos do projeto (23/10, Davi: "tudo que tem subcategorias na lateral — os documentos, e dentro
+// deles os documentos"): pastas → documentos; os sem pasta ficam soltos. Abre com ?documento=<id>.
+async function documentosDoProjeto(clienteId: string): Promise<No[]> {
+  const [pastas, docs] = await Promise.all([
+    supabase.from("pastas_atividade").select("id, nome").eq("cliente_id", clienteId).eq("origem", "documentos").is("deleted_at", null).order("ordem"),
+    supabase.from("documentos").select("id, titulo, pasta_id, tipo, fixado").eq("cliente_id", clienteId).is("deleted_at", null).order("fixado", { ascending: false }).order("titulo"),
+  ]);
+  const base = `/clientes/${clienteId}`;
+  const noDoc = (d: { id: string; titulo: string | null; tipo: string | null }): No => ({
+    chave: `doc:${d.id}`, titulo: d.titulo || "Sem título", icone: d.tipo === "mapa" ? Workflow : d.tipo === "caderno" ? BookOpen : FileText,
+    ir: `${base}?documento=${d.id}`, ativoSe: (caminho, busca) => caminho === base && busca.get("documento") === d.id,
+  });
+  const lista = (docs.data ?? []) as { id: string; titulo: string | null; pasta_id: string | null; tipo: string | null }[];
+  const idsPastas = new Set((pastas.data ?? []).map((p) => p.id));
+  return [
+    ...(pastas.data ?? []).map((p) => ({ chave: `pasta-doc:${p.id}`, titulo: p.nome, icone: Folder, filhos: lista.filter((d) => d.pasta_id === p.id).map(noDoc) })),
+    ...lista.filter((d) => !d.pasta_id || !idsPastas.has(d.pasta_id)).map(noDoc),
+  ];
 }
 
 // Seções de um projeto (as mesmas da página do projeto).
@@ -51,7 +73,8 @@ function noDoProjeto(c: ClienteMenu): No {
   const base = `/clientes/${c.id}`;
   const secao = (s: { secao: string; titulo: string; icone: LucideIcon }): No => ({
     chave: `${c.id}:${s.secao}`, titulo: s.titulo, icone: s.icone, ir: `${base}?secao=${s.secao}`,
-    ativoSe: (caminho, busca) => caminho === base && busca.get("secao") === s.secao,
+    ativoSe: (caminho, busca) => caminho === base && busca.get("secao") === s.secao && !busca.get("documento"),
+    ...(s.secao === "documentos" ? { carregar: () => documentosDoProjeto(c.id) } : {}),
   });
   return {
     chave: `projeto:${c.id}`, titulo: c.nome_especialista, icone: Folder, ir: base,
@@ -74,6 +97,12 @@ export function AppSidebar() {
   const recolhida = state === "collapsed";
   const [abertos, setAbertos] = useState<Set<string>>(lerAbertos);
   const [clientes, setClientes] = useState<ClienteMenu[]>([]);
+  const [carregados, setCarregados] = useState<Record<string, No[] | "carregando">>({});
+  const carregarFilhos = (no: No) => {
+    if (!no.carregar || carregados[no.chave]) return;
+    setCarregados((c) => ({ ...c, [no.chave]: "carregando" }));
+    no.carregar().then((f) => setCarregados((c) => ({ ...c, [no.chave]: f }))).catch(() => setCarregados((c) => { const n = { ...c }; delete n[no.chave]; return n; }));
+  };
 
   // Projetos que o usuário enxerga (a RLS já filtra); recarrega quando a janela volta ao foco.
   useEffect(() => {
@@ -123,6 +152,29 @@ export function AppSidebar() {
     return itens;
   }, [clientes, user?.email]);
 
+  // Pastas abertas que carregam os filhos sob demanda (documentos): carrega depois do desenho.
+  useEffect(() => {
+    const visitar = (nos: No[]) => nos.forEach((n) => {
+      if (!abertos.has(n.chave)) return;
+      if (n.carregar) { carregarFilhos(n); const f = carregados[n.chave]; if (Array.isArray(f)) visitar(f); }
+      else if (n.filhos) visitar(n.filhos);
+    });
+    visitar(arvore);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abertos, arvore, carregados]);
+
+  // Documento aberto: abre também a pasta dele (quando os documentos já carregaram).
+  useEffect(() => {
+    const doc = new URLSearchParams(location.search).get("documento");
+    if (!doc) return;
+    for (const filhos of Object.values(carregados)) {
+      if (!Array.isArray(filhos)) continue;
+      const pasta = filhos.find((f) => f.filhos?.some((d) => d.chave === `doc:${doc}`));
+      if (pasta && !abertos.has(pasta.chave)) alternar(pasta.chave, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.search, carregados]);
+
   const busca = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const ativo = (n: No) => (n.ativoSe ? n.ativoSe(location.pathname, busca)
     : n.ir ? (n.ir.includes("?") ? `${location.pathname}${location.search}` === n.ir : location.pathname === n.ir || location.pathname.startsWith(`${n.ir}/`)) : false);
@@ -132,10 +184,10 @@ export function AppSidebar() {
     if (!m) return;
     const c = clientes.find((x) => x.id === m[1]);
     if (!c) return;
-    const precisa = ["projetos", ...(c.arquivado ? ["arquivados"] : []), `projeto:${c.id}`];
+    const precisa = ["projetos", ...(c.arquivado ? ["arquivados"] : []), `projeto:${c.id}`, ...(location.search.includes("documento=") ? [`${c.id}:documentos`] : [])];
     if (precisa.some((k) => !abertos.has(k))) precisa.forEach((k) => alternar(k, true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, clientes]);
+  }, [location.pathname, location.search, clientes]);
 
   const ir = (destino: string, titulo: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -144,8 +196,10 @@ export function AppSidebar() {
   };
 
   const Linha = ({ no, nivel }: { no: No; nivel: number }) => {
-    const temFilhos = !!no.filhos?.length;
     const aberto = abertos.has(no.chave);
+    const lazy = carregados[no.chave];
+    const filhos = no.carregar ? (Array.isArray(lazy) ? lazy : []) : no.filhos ?? [];
+    const temFilhos = !!no.carregar || filhos.length > 0;
     const eAtivo = ativo(no);
     const Icone = temFilhos && no.icone === Folder ? (aberto ? FolderOpen : Folder) : no.icone;
     return (
@@ -163,11 +217,17 @@ export function AppSidebar() {
             <span className="truncate">{no.titulo}</span>
           </a>
         </div>
-        {temFilhos && aberto && (
+        {aberto && lazy === "carregando" && (
+          <div className="flex h-6 items-center gap-1.5 text-[11.5px] text-sidebar-foreground/50" style={{ paddingLeft: 30 + nivel * 12 }}><Loader2 className="h-3 w-3 animate-spin" />Carregando…</div>
+        )}
+        {aberto && no.carregar && Array.isArray(lazy) && lazy.length === 0 && (
+          <div className="h-6 text-[11.5px] leading-6 text-sidebar-foreground/40" style={{ paddingLeft: 30 + nivel * 12 }}>Vazio</div>
+        )}
+        {temFilhos && aberto && filhos.length > 0 && (
           // Linha-guia vertical (como no Obsidian) ligando os filhos à pasta.
           <ul className="relative">
             <span className="pointer-events-none absolute bottom-1 top-0 w-px bg-sidebar-border" style={{ left: 13 + nivel * 12 }} />
-            {no.filhos!.map((f) => <Linha key={f.chave} no={f} nivel={nivel + 1} />)}
+            {filhos.map((f) => <Linha key={f.chave} no={f} nivel={nivel + 1} />)}
           </ul>
         )}
       </li>
