@@ -13,6 +13,7 @@
 # processo sai sozinho pra devolver a memória (o Mac do Davi tem 8 GB).
 import json
 import os
+import re
 import select
 import sys
 import tempfile
@@ -78,6 +79,45 @@ def ensinar_views_instagram():
         return info
 
     InstagramIE._extract_product = extrair
+
+
+def views_instagram(url, perfil):
+    """Views do reel direto da API do app do Instagram, logado na conta reserva (23/10: o yt-dlp
+    passou a falhar ao pedir as views — "Failed to parse JSON" — e elas vinham vazias)."""
+    codigo = re.search(r"instagram\.com/(?:[^/]+/)?(?:reels?|p|tv)/([A-Za-z0-9_-]+)", url or "")
+    if not codigo or not perfil:
+        return None
+    try:
+        import requests
+        from yt_dlp.cookies import extract_cookies_from_browser
+        alfabeto = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        pk = 0
+        for ch in codigo.group(1)[:11]:
+            pk = pk * 64 + alfabeto.index(ch)
+        sessao = requests.Session()
+        for c in extract_cookies_from_browser("chrome", perfil):
+            if "instagram.com" in c.domain:
+                sessao.cookies.set(c.name, c.value, domain=c.domain)
+        r = sessao.get(f"https://i.instagram.com/api/v1/media/{pk}/info/", timeout=20, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36",
+            "X-IG-App-ID": "936619743392459", "X-Requested-With": "XMLHttpRequest", "Referer": "https://www.instagram.com/"})
+        if r.status_code != 200 or not r.text.startswith("{"):
+            print(f"views instagram: HTTP {r.status_code}", file=sys.stderr, flush=True)
+            return None
+        item = (r.json().get("items") or [{}])[0]
+        return item.get("play_count") or item.get("ig_play_count") or item.get("view_count")
+    except Exception as e:
+        print(f"views instagram: {e}", file=sys.stderr, flush=True)
+        return None
+
+
+def com_views(info, url):
+    """Completa as views do Instagram quando o yt-dlp não trouxe."""
+    if isinstance(info, dict) and not (info.get("view_count") or info.get("play_count")):
+        v = views_instagram(url, perfil_instagram(url))
+        if v:
+            info["view_count"] = v
+    return info
 
 
 def baixar_capa(info):
@@ -263,7 +303,14 @@ def transcrever(url, ffmpeg, modo="preciso"):
             with _y.YoutubeDL(opcoes) as ydl:
                 info = ydl.extract_info(url, download=False) or {}
         except Exception as e:
-            return {"erro": f"Não consegui abrir o post: {str(e)[:200]}"}
+            if not perfil:
+                return {"erro": f"Não consegui abrir o post: {str(e)[:200]}"}
+            try:  # logado falhou: a capa vem deslogado, as views pela API (com_views)
+                with _y.YoutubeDL({k: v for k, v in opcoes.items() if k != "cookiesfrombrowser"}) as ydl:
+                    info = ydl.extract_info(url, download=False) or {}
+            except Exception as e2:
+                return {"erro": f"Não consegui abrir o post: {str(e2)[:200]}"}
+        com_views(info, url)
         return {"texto": "", "capa": baixar_capa(info), "visualizacoes": info.get("view_count")}
     with tempfile.TemporaryDirectory(prefix="jarvis-creator-") as pasta:
         opcoes = {
@@ -276,7 +323,7 @@ def transcrever(url, ffmpeg, modo="preciso"):
             "ffmpeg_location": ffmpeg,
         }
         try:
-            info = baixar(url, opcoes)
+            info = com_views(baixar(url, opcoes), url)
         except Exception as e:  # link privado, removido, pedindo login…
             msg = str(e)
             if "Sign in" in msg or "login" in msg.lower():
