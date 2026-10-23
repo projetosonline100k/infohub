@@ -18,6 +18,7 @@ import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
+import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { confirmar } from "@/components/DialogosGlobais";
 
 interface Cliente {
@@ -77,6 +78,7 @@ export default function ClienteDetalhe() {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   // Continua avisando que o Davi está no projeto (a bolinha de presença saiu junto com o menu interno).
   usePresencaProjeto(id);
+  const { openTab } = useWorkspaceTabs();
 
   // ?secao=<aba>[:<guia>] (barra lateral em árvore, 23/10): abre a seção pedida e o endereço acompanha
   // quando a aba muda aqui dentro (assim a árvore marca o item certo).
@@ -265,7 +267,16 @@ export default function ClienteDetalhe() {
             <div className="sticky top-0 z-30 -mx-6 mb-4 bg-background/95 px-6 py-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
             <div className="inline-flex max-w-full overflow-x-auto rounded-lg bg-muted p-0.5 text-sm font-medium">
               {guiasTopo.map((g) => (
-                <button key={g.id} type="button" onClick={g.ir}
+                <button key={g.id} type="button" title="⌘+clique: abrir numa guia nova"
+                  onClick={(e) => {
+                    // ⌘+clique (24/10, Davi): esta aba do projeto numa guia nova.
+                    if (e.metaKey || e.ctrlKey) {
+                      const secao = g.id === "informacoes" || g.id === "documentos" || g.id === "pesquisa" ? g.id : `conteudo:${g.id}`;
+                      openTab(`/clientes/${id}?secao=${secao}`, `${cliente?.nome_especialista ?? "Projeto"} · ${g.label}`, { nova: true });
+                      return;
+                    }
+                    g.ir();
+                  }}
                   className={`rounded-md px-3 py-1 transition-colors ${g.ativa ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
                   {g.label}
                 </button>

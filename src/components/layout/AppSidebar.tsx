@@ -216,7 +216,8 @@ export function AppSidebar() {
 
   const ir = (destino: string, titulo: string, e: React.MouseEvent) => {
     e.preventDefault();
-    if (e.metaKey) openTab(destino, titulo);
+    // ⌘+clique (24/10, Davi): sempre numa guia nova, mesmo que o item já esteja aberto em outra.
+    if (e.metaKey || e.ctrlKey) { openTab(destino, titulo, { nova: true }); return; }
     navigate(destino);
   };
 

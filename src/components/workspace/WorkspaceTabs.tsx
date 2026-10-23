@@ -19,7 +19,8 @@ export interface WorkspaceTab {
 interface WorkspaceTabsContextValue {
   tabs: WorkspaceTab[];
   activeId: string;
-  openTab: (path: string, title?: string) => void;
+  /** `nova`: sempre cria outra guia (⌘+clique), mesmo que já exista uma nesse endereço */
+  openTab: (path: string, title?: string, opcoes?: { nova?: boolean }) => void;
   syncPath: (path: string, title?: string) => void;
   closeTab: (id: string) => void;
   reorderTabs: (fromId: string, toId: string) => void;
@@ -79,9 +80,9 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
   const activeIdRef = useRef(activeId);
   const setActiveId = useCallback((id: string) => { activeIdRef.current = id; setActiveIdState(id); }, []);
 
-  const openTab = useCallback((path: string, title = titleForPath(path)) => {
+  const openTab = useCallback((path: string, title = titleForPath(path), opcoes?: { nova?: boolean }) => {
     setTabs((current) => {
-      const existing = current.find((tab) => tab.path === path);
+      const existing = opcoes?.nova ? undefined : current.find((tab) => tab.path === path);
       if (existing) {
         setActiveId(existing.id);
         return current;
