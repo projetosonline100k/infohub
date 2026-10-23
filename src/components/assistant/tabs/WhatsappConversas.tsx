@@ -9,6 +9,7 @@ import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { ehComODavi, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { AudioMensagem } from "./AudioMensagem";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent,
   DropdownMenuSubTrigger, DropdownMenuTrigger,
@@ -39,7 +40,7 @@ function Situacao({ estado }: { estado: "enviando" | "enviada" | "erro" }) {
 
 interface Mensagem {
   id: string; chat_id: string; chat_nome: string | null; eh_grupo: boolean; de_mim: boolean; autor_nome: string | null;
-  tipo: string; texto: string | null; transcricao: string | null; transcricao_status: string | null; enviada_em: string;
+  autor_id?: string | null; tipo: string; texto: string | null; transcricao: string | null; transcricao_status: string | null; enviada_em: string;
   midia_arquivo?: string | null;
 }
 
@@ -529,7 +530,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   useEffect(() => {
     let cancelado = false;
     void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens")
-      .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo")
+      .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, autor_id, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo")
       .eq("chat_id", conversa.chat_id).eq("conta", conta).order("enviada_em", { ascending: false }).limit(200)
       .then(({ data }) => {
         if (cancelado) return;
@@ -587,21 +588,28 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
       <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[#efeae2] px-2.5 py-2 dark:bg-[#0b141a]">
         {carregando ? (
           <div className="flex justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
-        ) : mensagens.map((m) => {
+        ) : mensagens.map((m, i) => {
           const dia = format(new Date(m.enviada_em), "EEEE, dd/MM", { locale: ptBR });
           const separador = dia !== diaAnterior;
           diaAnterior = dia;
+          // Grupo (24/10, Davi): a foto de quem mandou ao lado, na 1ª mensagem de uma sequência da mesma pessoa.
+          const anterior = mensagens[i - 1];
+          const comFoto = m.eh_grupo && !m.de_mim;
+          const primeiraDaSequencia = comFoto && (separador || !anterior || anterior.de_mim || anterior.autor_id !== m.autor_id);
           return (
             <div key={m.id}>
               {separador && <div className="my-2 text-center"><span className="rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground shadow-sm">{dia}</span></div>}
-              <div className={cn("flex", m.de_mim ? "justify-end" : "justify-start")}>
+              <div className={cn("flex", m.de_mim ? "justify-end" : "justify-start", comFoto && "items-start gap-1.5", primeiraDaSequencia && i > 0 && "mt-1.5")}>
+                {comFoto && (primeiraDaSequencia && m.autor_id
+                  ? <FotoChat chatId={m.autor_id} nome={m.autor_nome} grupo={false} tamanho="h-7 w-7" />
+                  : <span className="w-7 shrink-0" aria-hidden />)}
                 <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
                   m.de_mim ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]")}>
-                  {m.eh_grupo && !m.de_mim && <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome ?? "?"}</p>}
+                  {primeiraDaSequencia && <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome || m.autor_id?.split("@")[0] || "?"}</p>}
                   {m.tipo === "audio" ? (
                     <div className="space-y-1">
                       {urlDe(m.midia_arquivo) ? (
-                        <audio controls preload="none" src={urlDe(m.midia_arquivo)!} className="h-8 w-56 max-w-full" />
+                        <AudioMensagem url={urlDe(m.midia_arquivo)!} deMim={m.de_mim} />
                       ) : (
                         <span className="inline-flex items-center gap-0.5 text-[10.5px] font-medium text-muted-foreground"><Mic className="h-3 w-3" />Áudio{m.transcricao_status == null ? " (antigo, não guardado)" : ""}</span>
                       )}
