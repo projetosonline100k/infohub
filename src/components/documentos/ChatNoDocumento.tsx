@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -613,8 +614,10 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             onSalvar={(l) => salvarCerebros(l as CerebroEscrita[])} />
         </div>
       )}
-      <aside
-        className="fixed inset-y-0 right-0 z-50 flex flex-col border-l bg-background shadow-2xl"
+      {/* No body (portal): dentro do app, um ancestral com transform prendia o "fixed" na área da página
+          e sobrava uma faixa branca à direita (24/10). */}
+      {createPortal(<aside
+        className="fixed inset-y-0 right-0 z-50 flex flex-col border-l bg-background text-foreground shadow-2xl"
         style={{ width: LARGURA_PAINEL }}
         onKeyDown={(e) => e.stopPropagation()}
       >
@@ -761,11 +764,11 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
               placeholder={placeholder}
               className="max-h-40 min-h-[44px] w-full resize-none bg-transparent px-3 pt-3 text-sm outline-none placeholder:text-muted-foreground"
             />
-            <div className="flex items-center gap-1.5 px-2 pb-2">
-              <div className="flex rounded-full border p-0.5 text-[11px]">
+            <div className="flex flex-wrap items-center gap-1.5 px-2 pb-2">
+              <div className="flex shrink-0 rounded-full border p-0.5 text-[11px]">
                 {([["documento", "No documento"], ["chat", "Só no chat"]] as const).map(([v, rotulo]) => (
                   <button key={v} type="button" disabled={escrevendo} onClick={() => setDestino(v)}
-                    className={cn("rounded-full px-2 py-0.5", destino === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+                    className={cn("whitespace-nowrap rounded-full px-2 py-0.5", destino === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
                     {rotulo}
                   </button>
                 ))}
@@ -825,7 +828,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             </div>
           </div>
         </div>
-      </aside>
+      </aside>, document.body)}
     </>
   );
 }
