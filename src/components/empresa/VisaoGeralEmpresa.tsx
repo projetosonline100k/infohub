@@ -509,16 +509,21 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     };
   });
 
-  // Escritório virtual 3D (protótipo): quem é do Audiovisual, com a tarefa atual e o progresso reais.
+  // Escritório virtual 3D: toda a equipe (quem é do Audiovisual, Marketing ou Diretoria aparece na sala dela;
+  // todos aparecem nas tarefas), com a tarefa atual e o progresso reais.
   const dados3d = (() => {
-    const av = setoresDoMapa.find((x) => /audiovisual|v[ií]deo|edi[cç][aã]o|est[uú]dio/i.test(x.nome));
-    const funcionarios: Funcionario3D[] = (av?.pessoas ?? []).map((p) => {
-      const atual = estados.find((e) => e.membro.id === p.id)?.atual ?? null;
-      return {
-        id: p.id, nome: p.nome, ehIa: p.ehIa, sinal: p.sinal, rotuloSinal: p.rotuloSinal, agora: p.balao, clicavel: p.clicavel,
-        tarefa: atual ? { id: atual.id, titulo: atual.titulo, progresso: atual.progresso ?? null, minutosRestantes: minutosRestantes(atual) } : null,
-      };
-    });
+    const salaDe = (nome: string): Funcionario3D["sala"] =>
+      /audiovisual|v[ií]deo|edi[cç][aã]o|est[uú]dio/i.test(nome) ? "audiovisual" : /marketing|mkt|tr[aá]fego|conte[uú]do/i.test(nome) ? "marketing" : /diretoria|dire[cç][aã]o/i.test(nome) ? "diretoria" : null;
+    const funcionarios: Funcionario3D[] = setoresDoMapa.flatMap((setor) => setor.pessoas
+      // O Davi é quem anda pelo escritório; o Atlas é a orbe da Diretoria.
+      .filter((p) => !(!p.ehIa && /^davi\b/i.test(p.nome)) && !(p.ehIa && /^(atlas|jarvis)\b/i.test(p.nome)))
+      .map((p) => {
+        const atual = estados.find((e) => e.membro.id === p.id)?.atual ?? null;
+        return {
+          id: p.id, nome: p.nome, ehIa: p.ehIa, sinal: p.sinal, rotuloSinal: p.rotuloSinal, agora: p.balao, clicavel: p.clicavel, sala: salaDe(setor.nome),
+          tarefa: atual ? { id: atual.id, titulo: atual.titulo, progresso: atual.progresso ?? null, minutosRestantes: minutosRestantes(atual) } : null,
+        };
+      }));
     const r = semana?.resultado;
     const resultado: Resultado3D | null = r ? {
       concluidas: r.concluidas, publicados: r.publicados, faltam: r.abertasSemana, atrasadas: r.atrasadas,

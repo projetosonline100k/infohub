@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { visualDe, type Visual } from "@/components/empresa/BonecoMesa";
-import { ALTURA_PAREDE, ESTACOES, PECAS, SALAS, type Peca, type Vec2 } from "./cenario";
+import { ALTURA_PAREDE, ESTACOES, PAREDES, PECAS, PORTAS, SALAS, type Estacao, type Parede, type Peca, type Porta, type Vec2 } from "./cenario";
 import { texturaAlerta, texturaCanvas, texturaEtiqueta, texturaPiso, texturaPlaca, texturaResultado, texturaRosto, texturaTelaEdicao, texturaTelaMetricas } from "./texturas";
 
 // Peças voxel: tudo é bloco (caixas), com madeira, vidro, telas que brilham e luz quente.
@@ -32,18 +32,6 @@ function Tela({ p, t, textura, rot = 0 }: { p: V3; t: [number, number]; textura:
 const MADEIRA = "#9a6b45", MADEIRA_ESCURA = "#5e3f26", GRAFITE = "#1f2430";
 
 // ---------------------------------------------------------------- salas: piso, paredes, teto
-interface Parede { de: Vec2; ate: Vec2; vaos?: [number, number][]; janelas?: [number, number][] }
-// Vãos medidos ao longo da parede (do "de" para o "ate").
-const PAREDES: Parede[] = [
-  { de: [-2, 0], ate: [-2, -18], vaos: [[6.5, 9.5]] },            // corredor, esquerda (vidro do Marketing)
-  { de: [2, 0], ate: [2, -18], vaos: [[6.4, 9.6]] },              // corredor, direita (porta do Audiovisual)
-  { de: [-2, -18], ate: [2, -18], vaos: [[0.8, 3.2]] },           // fundo (vidro da Diretoria)
-  { de: [-2, 0], ate: [2, 0], vaos: [[0.9, 3.1]] },               // entrada
-  { de: [2, -14], ate: [14, -14] },                               // Audiovisual, fundo
-  { de: [2, -2], ate: [14, -2] },                                 // Audiovisual, frente
-  { de: [14, -14], ate: [14, -2], janelas: [[1.5, 4.5], [7.5, 10.5]] },
-];
-
 function ParedeBlocos({ parede }: { parede: Parede }) {
   const [x0, z0] = parede.de, [x1, z1] = parede.ate;
   const comp = Math.hypot(x1 - x0, z1 - z0), ang = Math.atan2(x1 - x0, z1 - z0);
@@ -144,16 +132,25 @@ function Estante() {
   );
 }
 
-function EstacaoEdicao({ variante, ligado }: { variante: number; ligado: boolean }) {
+function EstacaoMesa({ variante, ligado, tipo }: { variante: number; ligado: boolean; tipo: Estacao["tipo"] }) {
   const telaA = useMemo(() => texturaTelaEdicao(variante), [variante]);
   const telaB = useMemo(() => (variante % 2 ? texturaTelaMetricas(variante) : texturaTelaEdicao(variante + 1)), [variante]);
   return (
     <group>
-      {/* mesa */}
-      <Bloco p={[0, 0.74, 0]} t={[1.7, 0.07, 0.85]} cor={MADEIRA} rugoso={0.6} />
+      {/* mesa (a da Diretoria é maior e escura) */}
+      <Bloco p={[0, 0.74, 0]} t={[tipo === "executiva" ? 2.0 : 1.7, 0.07, 0.85]} cor={tipo === "executiva" ? MADEIRA_ESCURA : MADEIRA} rugoso={0.6} />
       {[[-0.78, -0.36], [0.78, -0.36], [-0.78, 0.36], [0.78, 0.36]].map(([x, z], k) => <Bloco key={k} p={[x, 0.36, z]} t={[0.07, 0.72, 0.07]} cor={GRAFITE} />)}
-      {/* dois monitores (tela virada para quem senta, em +z) */}
-      {[-0.38, 0.38].map((x, k) => (
+      {/* edição: dois monitores; criativa/executiva: notebook (tela virada para quem senta, em +z) */}
+      {tipo !== "edicao" && (
+        <group position={[0, 0.78, -0.02]}>
+          <Bloco p={[0, 0, 0]} t={[0.5, 0.025, 0.34]} cor="#cbd5e1" sombra={false} />
+          <group position={[0, 0.01, -0.16]} rotation={[-0.25, 0, 0]}>
+            <Bloco p={[0, 0.16, 0]} t={[0.5, 0.32, 0.02]} cor="#94a3b8" />
+            {ligado ? <Tela p={[0, 0.16, 0.012]} t={[0.46, 0.28]} textura={variante % 2 ? telaB : telaA} /> : null}
+          </group>
+        </group>
+      )}
+      {tipo === "edicao" && [-0.38, 0.38].map((x, k) => (
         <group key={k} position={[x, 0, -0.22]} rotation={[0, x < 0 ? 0.12 : -0.12, 0]}>
           <Bloco p={[0, 0.86, 0]} t={[0.08, 0.2, 0.08]} cor={GRAFITE} />
           <Bloco p={[0, 1.13, 0]} t={[0.7, 0.42, 0.05]} cor="#0b0d12" />
@@ -161,15 +158,15 @@ function EstacaoEdicao({ variante, ligado }: { variante: number; ligado: boolean
         </group>
       ))}
       {/* teclado, mouse, caneca */}
-      <Bloco p={[0, 0.79, 0.14]} t={[0.5, 0.025, 0.16]} cor="#d1d5db" sombra={false} />
+      {tipo === "edicao" && <Bloco p={[0, 0.79, 0.14]} t={[0.5, 0.025, 0.16]} cor="#d1d5db" sombra={false} />}
       <Bloco p={[0.38, 0.79, 0.16]} t={[0.07, 0.03, 0.1]} cor="#d1d5db" sombra={false} />
       <Bloco p={[-0.68, 0.83, 0.18]} t={[0.1, 0.12, 0.1]} cor={["#f97316", "#38bdf8", "#f472b6", "#a3e635"][variante % 4]} sombra={false} />
       {/* cadeira (atrás da mesa, em +z) */}
       <group position={[0, 0, 0.78]}>
         <Bloco p={[0, 0.22, 0]} t={[0.08, 0.44, 0.08]} cor={GRAFITE} />
         <Bloco p={[0, 0.03, 0]} t={[0.55, 0.05, 0.55]} cor={GRAFITE} />
-        <Bloco p={[0, 0.47, 0]} t={[0.55, 0.09, 0.55]} cor="#334155" />
-        <Bloco p={[0, 0.85, 0.27]} t={[0.55, 0.7, 0.09]} cor="#334155" />
+        <Bloco p={[0, 0.47, 0]} t={[0.55, 0.09, 0.55]} cor={tipo === "executiva" ? "#3f2a1d" : "#334155"} />
+        <Bloco p={[0, 0.85, 0.27]} t={[0.55, tipo === "executiva" ? 0.9 : 0.7, 0.09]} cor={tipo === "executiva" ? "#3f2a1d" : "#334155"} />
       </group>
     </group>
   );
@@ -257,6 +254,41 @@ function LuminariaTeto() {
   );
 }
 
+// Porta de vidro que desliza para o lado quando abre (E perto dela ou clique na mira).
+function PortaDeslizante({ porta, aberta }: { porta: Porta; aberta: boolean }) {
+  const folha = useRef<THREE.Group>(null);
+  useFrame((_, dt) => {
+    if (!folha.current) return;
+    const alvo = aberta ? porta.largura * 0.92 : 0;
+    folha.current.position.x += (alvo - folha.current.position.x) * Math.min(1, dt * 6);
+  });
+  const giro = porta.eixo === "x" ? 0 : Math.PI / 2;
+  return (
+    <group position={[porta.centro[0], 0, porta.centro[1]]} rotation={[0, giro, 0]} userData={{ interativo: { tipo: "porta", id: porta.id } }}>
+      <group ref={folha}><PortaVidro tam={[porta.largura, 2.6]} /></group>
+    </group>
+  );
+}
+
+export function Portas({ abertas }: { abertas: Set<string> }) {
+  return <group>{PORTAS.map((p) => <PortaDeslizante key={p.id} porta={p} aberta={abertas.has(p.id)} />)}</group>;
+}
+
+function OrbeAtlas() {
+  const esfera = useRef<THREE.Group>(null);
+  useFrame(({ clock }) => { if (esfera.current) { esfera.current.position.y = 1.55 + Math.sin(clock.elapsedTime * 1.6) * 0.06; esfera.current.rotation.y = clock.elapsedTime * 0.8; } });
+  return (
+    <group>
+      <Bloco p={[0, 0.06, 0]} t={[1.1, 0.12, 1.1]} cor="#0e3a47" emissivo="#22d3ee" intensidade={0.35} />
+      <mesh position={[0, 0.8, 0]}><cylinderGeometry args={[0.06, 0.32, 1.4, 6, 1, true]} /><meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={0.8} transparent opacity={0.25} side={THREE.DoubleSide} toneMapped={false} /></mesh>
+      <group ref={esfera}>
+        <mesh><icosahedronGeometry args={[0.3, 1]} /><meshStandardMaterial color="#cffafe" emissive="#67e8f9" emissiveIntensity={1.6} flatShading toneMapped={false} /></mesh>
+        <mesh rotation={[1.2, 0, 0]}><torusGeometry args={[0.46, 0.015, 6, 32]} /><meshStandardMaterial color="#67e8f9" emissive="#67e8f9" emissiveIntensity={1.4} toneMapped={false} /></mesh>
+      </group>
+    </group>
+  );
+}
+
 function PortaVidro({ tam }: { tam: Vec2 }) {
   return (
     <group position={[0, tam[1] / 2, 0]}>
@@ -285,20 +317,24 @@ function Banco() {
   return <group><Bloco p={[0, 0.42, 0]} t={[1.3, 0.08, 0.45]} cor={MADEIRA} /><Bloco p={[-0.55, 0.2, 0]} t={[0.08, 0.4, 0.4]} cor={GRAFITE} /><Bloco p={[0.55, 0.2, 0]} t={[0.08, 0.4, 0.4]} cor={GRAFITE} /></group>;
 }
 
-export function Pecas({ ligadas, resultado }: { ligadas: Set<number>; resultado: Parameters<typeof texturaResultado>[0] }) {
+export function Pecas({ ligadas, resultado }: { ligadas: Set<string>; resultado: Parameters<typeof texturaResultado>[0] }) {
   return (
     <group>
-      {PECAS.map((p) => <PecaNoLugar key={p.id} peca={p} ligadas={ligadas} resultado={resultado} />)}
+      {PECAS.map((p) => <PecaNoLugar key={p.id} peca={p} resultado={resultado} />)}
+      {ESTACOES.map((e, k) => (
+        <group key={e.id} position={[e.pos[0], 0, e.pos[1]]} rotation={[0, (e.giro * Math.PI) / 180, 0]}>
+          <EstacaoMesa variante={k} ligado={ligadas.has(e.id)} tipo={e.tipo} />
+        </group>
+      ))}
     </group>
   );
 }
 
-function PecaNoLugar({ peca: p, ligadas, resultado }: { peca: Peca; ligadas: Set<number>; resultado: Parameters<typeof texturaResultado>[0] }) {
+function PecaNoLugar({ peca: p, resultado }: { peca: Peca; resultado: Parameters<typeof texturaResultado>[0] }) {
   const pos: V3 = [p.pos[0], p.y ?? 0, p.pos[1]];
   const rot: V3 = [0, ((p.giro ?? 0) * Math.PI) / 180, 0];
   const conteudo = (() => {
     switch (p.tipo) {
-      case "estacao_edicao": { const k = ESTACOES.findIndex(([x, z]) => x === p.pos[0] && z === p.pos[1]); return <EstacaoEdicao variante={k} ligado={ligadas.has(k)} />; }
       case "planta": return <Planta />;
       case "planta_grande": return <Planta grande />;
       case "estante": return <Estante />;
@@ -312,7 +348,7 @@ function PecaNoLugar({ peca: p, ligadas, resultado }: { peca: Peca; ligadas: Set
       case "tv_resultado": return <TvResultado tam={p.tam ?? [2.4, 1.35]} resultado={resultado} />;
       case "neon": return <Neon texto={p.texto ?? ""} cor={p.cor ?? "#38bdf8"} tam={p.tam ?? [2, 0.5]} />;
       case "placa_direcao": return <PlacaDirecao texto={p.texto ?? ""} cor={p.cor ?? "#f59e0b"} tam={p.tam ?? [3, 0.5]} />;
-      case "porta_vidro": return <PortaVidro tam={p.tam ?? [2.4, 2.4]} />;
+      case "orbe": return <OrbeAtlas />;
       case "banco": return <Banco />;
       default: return null;
     }
@@ -322,8 +358,8 @@ function PecaNoLugar({ peca: p, ligadas, resultado }: { peca: Peca; ligadas: Set
 
 // ---------------------------------------------------------------- funcionários voxel
 export type Pose = "digitando" | "sentado" | "lendo" | "em_pe";
-export function Personagem({ nome, pose, corStatus, alerta, posicao, giro = 0 }: {
-  nome: string; pose: Pose; corStatus: string; alerta?: string | null; posicao: V3; giro?: number;
+export function Personagem({ id, nome, pose, corStatus, alerta, posicao, giro = 0 }: {
+  id: string; nome: string; pose: Pose; corStatus: string; alerta?: string | null; posicao: V3; giro?: number;
 }) {
   const v: Visual = visualDe(nome);
   const rosto = useMemo(() => texturaRosto(v.pele, v.corCabelo, !!v.barba, !!v.oculos), [v.pele, v.corCabelo, v.barba, v.oculos]);
@@ -355,7 +391,7 @@ export function Personagem({ nome, pose, corStatus, alerta, posicao, giro = 0 }:
     return [pele, pele, cabelo, pele, cabelo, frente];
   }, [v.pele, v.corCabelo, rosto]);
   return (
-    <group position={posicao} rotation={[0, giro, 0]}>
+    <group position={posicao} rotation={[0, giro, 0]} userData={{ interativo: { tipo: "pessoa", id } }}>
       {/* pernas */}
       {[-0.12, 0.12].map((x) => sentado ? (
         <group key={x}>
