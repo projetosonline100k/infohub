@@ -112,6 +112,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [mundo3d, setMundo3d] = useState(false);
   // Escritório em pixel art: só no modo de desenvolvimento (sprites gratuitos, uso não comercial) e se os sprites carregarem.
   const [pixelFalhou, setPixelFalhou] = useState(false);
+  // 24/10 (Davi): no escritório em pixel art, "Precisa de você" e "Em andamento" ficam num bloco só, com abas.
+  const [abaCentral, setAbaCentral] = useState<"precisa" | "andamento">("precisa");
   const usarPixel = import.meta.env.DEV && !pixelFalhou;
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
@@ -539,9 +541,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
   // "Precisa de você" e "Em andamento" (antes "Tarefas sendo executadas"): na coluna da direita do mapa antigo
   // ou no painel da direita do escritório em pixel art.
-  const colunaAcoes = (
-    <>
-        {/* 1. O que depende de mim. */}
+  const secaoPrecisa = (
+        /* 1. O que depende de mim. */
         <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
           <div className="mb-3 flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-rose-500" />
@@ -585,8 +586,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           )}
         </section>
-
-        {/* 2. O que a equipe está tocando sem mim (15/10: "Tarefas sendo executadas"; 24/10: "Em andamento"). */}
+  );
+  const nAndamento = executando.length + (carrosseis.some(emProducao) ? 1 : 0) + edicoesRodando.length + melhorias.length + edicoesAjustando.length + carrosseisAjustando.length;
+  const secaoAndamento = (
+        /* 2. O que a equipe está tocando sem mim (15/10: "Tarefas sendo executadas"; 24/10: "Em andamento"). */
         <section className="flex max-h-[460px] flex-col rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
           <div className="mb-3 flex items-center gap-2">
             <Bot className="h-5 w-5 text-emerald-500" />
@@ -666,7 +669,23 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           )}
         </section>
-    </>
+  );
+  const colunaAcoes = <>{secaoPrecisa}{secaoAndamento}</>;
+  // Escritório em pixel art: um bloco só, e o Davi troca a aba.
+  const centralComAbas = (
+    <div className="space-y-2">
+      <div className="flex gap-1 rounded-lg border border-white/10 bg-[#121a2b] p-1">
+        {([["precisa", "Precisa de você", linhasPrecisa.length, "bg-rose-500"], ["andamento", "Em andamento", nAndamento, "bg-emerald-500"]] as const).map(([chave, rotulo, n, cor]) => (
+          <button key={chave} type="button" onClick={() => setAbaCentral(chave)}
+            className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold transition-colors",
+              abaCentral === chave ? "bg-white/10 text-white" : "text-white/55 hover:text-white")}>
+            {rotulo}
+            <span className={cn("rounded-full px-1.5 text-[10px] font-bold text-white", n ? cor : "bg-white/15")}>{n}</span>
+          </button>
+        ))}
+      </div>
+      {abaCentral === "precisa" ? secaoPrecisa : secaoAndamento}
+    </div>
   );
 
   return (
@@ -722,7 +741,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
                 <button type="button" onClick={() => setCadastro({ editando: null })}
                   className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Funcionário</button>
               </div>
-              {colunaAcoes}
+              {centralComAbas}
             </>} />
         </Suspense>
       ) : (
