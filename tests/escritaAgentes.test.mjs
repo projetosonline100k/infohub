@@ -95,3 +95,8 @@ test('no chat ele sabe que não tem ferramentas e recebe a hora de agora', () =>
   assert.match(p, /NÃO tem ferramentas aqui/);
   assert.match(p, /Agora é sexta-feira, 24 de outubro de 2026 16:40/);
 });
+
+test('o mapa da inteligência do funcionário entra no pedido, logo depois do manual', () => {
+  const p = montarPedido({ agente: { ...junior, mapa: 'MAPA DA INTELIGÊNCIA DE JUNIOR — siga cada pilar:\n1. Headline' }, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'x', proximaHeadline: 1 });
+  assert.match(p, /SEU MANUAL:\nEscreve roteiros\.\n\nMAPA DA INTELIGÊNCIA DE JUNIOR/);
+});

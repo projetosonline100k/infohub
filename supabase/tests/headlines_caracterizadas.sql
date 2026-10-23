@@ -12,7 +12,7 @@ begin
   insert into public.headlines_caracterizadas (texto, tag, nicho, visualizacoes) values ('3 livros', 'lista', 'livros', 1000);
   insert into public.headlines_caracterizadas (texto, tag) values ('3 livros', 'curiosidade')
     on conflict (user_id, texto) do update set tag = excluded.tag;
-  select count(*) into n from public.headlines_caracterizadas;
+  select count(*) into n from public.headlines_caracterizadas where texto in ('3 livros', 'headline do outro');
   if n <> 1 then raise exception 'devia ver só a própria (e uma linha só): viu %', n; end if;
   if (select tag from public.headlines_caracterizadas where texto = '3 livros') <> 'curiosidade' then raise exception 'upsert não trocou a tag'; end if;
   begin

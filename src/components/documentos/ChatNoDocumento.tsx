@@ -3,8 +3,10 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, AtSign, BookOpen, Check, FileText, History, Loader2, MessageSquare, Plus, Quote, Search, Settings2, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, BookOpen, Network, Check, FileText, History, Loader2, MessageSquare, Plus, Quote, Search, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
+import { MapaInteligenciaView } from "@/components/empresa/MapaInteligenciaView";
+import { lerMapa, mapaParaTexto } from "@/lib/conteudo/mapaInteligencia";
 import { CerebroEsteira, CriteriosEtapa } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,7 +31,7 @@ import {
 const db = supabase as unknown as SupabaseClient;
 
 interface Etapa { nome: string; membro_id: string; criterios?: string | string[]; formatos?: FormatoEscrita[] }
-interface Membro { id: string; nome: string; funcao: string | null; manual: string | null; visual: { pele?: string; camisa?: string } | null }
+interface Membro { id: string; nome: string; funcao: string | null; manual: string | null; visual: { pele?: string; camisa?: string } | null; mapa_inteligencia?: unknown }
 interface SkillItem { id: string; agente: string; nome: string; caracteres: number | null }
 interface Escritorio { id: string; nome: string; cliente_id: string; esteira: Etapa[]; cerebros: CerebroEscrita[] }
 
@@ -52,7 +54,7 @@ function useEscritorio(clienteId: string | null, ativo: boolean) {
       const s = lista.find((x) => x.cliente_id === clienteId) ?? lista[0];
       if (!s) return;
       const ids = s.esteira.map((e) => e.membro_id);
-      const { data: ms } = await db.from("membros").select("id, nome, funcao, manual, visual").in("id", ids);
+      const { data: ms } = await db.from("membros").select("id, nome, funcao, manual, visual, mapa_inteligencia").in("id", ids);
       const mapa = Object.fromEntries(((ms ?? []) as Membro[]).map((m) => [m.id, m]));
       const agentes = Object.values(mapa).map((m) => m.nome.trim().toLowerCase());
       const { data: sk } = await db.from("inteligencia_membros").select("id, agente, nome, caracteres")
@@ -63,7 +65,7 @@ function useEscritorio(clienteId: string | null, ativo: boolean) {
       setSkills((sk ?? []) as SkillItem[]);
     })();
   }, [ativo, clienteId, esc]);
-  return { esc, membros, skills, setEsc };
+  return { esc, membros, skills, setEsc, setMembros };
 }
 
 // ---------------------------------------------------------------- Claude no Mac, ao vivo
@@ -386,7 +388,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const campo = useRef<HTMLTextAreaElement>(null);
   const rodando = useRef<Set<string>>(new Set());   // escritas em andamento (o "gerar todos" roda 2 de cada vez)
   const parou = useRef(false);
-  const { esc, membros, skills, setEsc } = useEscritorio(clienteId, aberto);
+  const { esc, membros, skills, setEsc, setMembros } = useEscritorio(clienteId, aberto);
+  // 24/10: o mapa da inteligência de cada um (abre pelo ícone ao lado do nome).
+  const [mapaDe, setMapaDe] = useState<Membro | null>(null);
   // 19/10 (Davi: "aqui mesmo, quero conseguir subir mais cérebros"): a mesma tela de cérebro da esteira.
   const [cerebrosAbertos, setCerebrosAbertos] = useState(false);
   // 19/10 (Davi: "preciso conseguir mudar as configurações do Elias e dos outros, hoje só ativo ou
@@ -529,6 +533,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         const agente: AgenteEscrita | null = m && etapa ? {
           etapa: etapa.nome, nome: m.nome, funcao: m.funcao, manual: m.manual,
           aprendizados: await aprendizados(m.nome.trim().toLowerCase()), criterios: etapa.criterios, formatos: etapa.formatos,
+          mapa: mapaParaTexto(lerMapa(m.mapa_inteligencia), m.nome),
         } : null;
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
@@ -617,6 +622,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         const agente: AgenteEscrita | null = m && etapa ? {
           etapa: etapa.nome, nome: m.nome, funcao: m.funcao, manual: m.manual,
           aprendizados: await aprendizados(m.nome.trim().toLowerCase()), criterios: etapa.criterios, formatos: etapa.formatos,
+          mapa: mapaParaTexto(lerMapa(m.mapa_inteligencia), m.nome),
         } : null;
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
@@ -762,6 +768,8 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             onFechar={() => setConfigDe(null)} onMudar={(patch) => salvarEtapa(configDe, patch as Partial<Etapa>)} />
         </div>
       )}
+      <MapaInteligenciaView membro={mapaDe} aberto={!!mapaDe} onFechar={() => setMapaDe(null)}
+        onSalvo={(mapa) => { if (mapaDe) setMembros((l) => ({ ...l, [mapaDe.id]: { ...l[mapaDe.id], mapa_inteligencia: mapa } })); }} />
       {cerebrosAbertos && esc && (
         <div className="fixed inset-0 z-[70]" onKeyDown={(e) => e.stopPropagation()}>
           <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]}
@@ -926,6 +934,10 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
                   <button type="button" onClick={() => setConfigDe(e.i)} title={`Configurar ${e.membro!.nome} (${e.nome}): critérios, formatos e skills`}
                     className="-ml-0.5 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
                     <Settings2 className="h-3 w-3" />
+                  </button>
+                  <button type="button" onClick={() => setMapaDe(e.membro!)} title={`Mapa da inteligência do ${e.membro!.nome}`}
+                    className="-ml-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <Network className="h-3 w-3" />
                   </button>
                 </span>
               );

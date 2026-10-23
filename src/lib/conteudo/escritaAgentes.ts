@@ -18,6 +18,8 @@ export interface AgenteEscrita {
   aprendizados?: string | null;
   criterios?: string | string[] | null;
   formatos?: FormatoEscrita[] | null;
+  /** mapa da inteligência já em texto (mapaInteligencia.mapaParaTexto) */
+  mapa?: string | null;
 }
 
 export interface Conversa { pedido: string; resposta: string }
@@ -71,6 +73,7 @@ export function montarPedido(d: DadosPedido): string {
     partes.push(`Você é ${a.nome}${a.funcao ? `, ${a.funcao}` : ""}${d.escritorio ? ` do escritório "${d.escritorio}"` : ""}. `
       + `Sua parte na esteira é: ${a.etapa}. ${onde}`);
     if (a.manual?.trim()) partes.push(`SEU MANUAL:\n${a.manual.trim()}`);
+    if (a.mapa?.trim()) partes.push(a.mapa.trim());
     if (a.aprendizados?.trim()) partes.push(`APRENDIZADOS COM O DAVI (correções que ele já fez):\n${a.aprendizados.trim()}`);
   } else {
     partes.push(conversa ? `Você é o Claude. ${onde}` : "Você é o Claude escrevendo direto no documento do Davi, onde está o cursor dele.");

@@ -69,6 +69,7 @@ async function pacoteParaIa(t: TarefaFila): Promise<string> {
   ].filter(Boolean).join("\n");
 }
 import { cn } from "@/lib/utils";
+import { MapaInteligenciaView } from "./MapaInteligenciaView";
 
 // Fila de uma pessoa da empresa (clique no mapa da operação): ver o que ela
 // tem, mudar a situação e adicionar tarefa. A tarefa é uma atividade comum
@@ -127,6 +128,8 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   onMudou: () => void;
 }) {
   const [tarefas, setTarefas] = useState<TarefaFila[]>([]);
+  // 24/10: mapa da inteligência do funcionário de IA (o que ele segue em cada pedido).
+  const [mapaAberto, setMapaAberto] = useState(false);
   const ia = !!membro && ehIaOperaria(membro);
   const [linkIa, setLinkIa] = useState("");
   useEffect(() => { setLinkIa(membro?.link_ia ?? ""); }, [membro]);
@@ -289,13 +292,17 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   const feitasHoje = tarefas.filter((t) => t.concluida);
 
   return (
-    <Dialog open={!!membro} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
+    <>
+    <MapaInteligenciaView membro={mapaAberto ? membro : null} aberto={mapaAberto} onFechar={() => setMapaAberto(false)} />
+    {/* Com o mapa aberto, a ficha sai da frente (o diálogo prenderia o foco e os cliques fora dele). */}
+    <Dialog open={!!membro && !mapaAberto} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
       <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehCs ? "max-h-[96vh] w-[97vw] max-w-[97vw]" : ehPedro ? "max-w-6xl" : "max-w-xl")}>
         {membro && (
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">{membro.nome}
                 {onEditar && <button type="button" onClick={onEditar} className="rounded-md border px-2 py-0.5 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground">Editar cadastro</button>}
+                {membro.eh_ia && <button type="button" onClick={() => setMapaAberto(true)} className="rounded-md border px-2 py-0.5 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground">Mapa da inteligência</button>}
               </DialogTitle>
               <DialogDescription>{[membro.funcao, setorNome].filter(Boolean).join(" · ")}</DialogDescription>
             </DialogHeader>
@@ -442,6 +449,7 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }
 
