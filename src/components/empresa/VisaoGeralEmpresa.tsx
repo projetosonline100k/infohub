@@ -110,7 +110,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // 22/10: clicar numa tarefa sendo executada abre o "Ao vivo" dela (não a ficha da pessoa).
   const [aoVivo, setAoVivo] = useState<AlvoAoVivo | null>(null);
   const [mundo3d, setMundo3d] = useState(false);
-  const [mundoPixel, setMundoPixel] = useState(false);
+  // Escritório em pixel art: só no modo de desenvolvimento (sprites gratuitos, uso não comercial) e se os sprites carregarem.
+  const [pixelFalhou, setPixelFalhou] = useState(false);
+  const usarPixel = import.meta.env.DEV && !pixelFalhou;
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -535,92 +537,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     return { funcionarios, resultado };
   })();
 
-  return (
-    <div className="space-y-5 p-4 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Escritório</h1>
-          <p className="text-sm text-muted-foreground">Toda a operação de conteúdo do projeto em um só lugar.</p>
-        </div>
-        <CanalYoutube clienteId={clienteId} />
-      </header>
-
-      {offlineDesde && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div>
-            <p className="font-semibold text-amber-700 dark:text-amber-300">
-              Equipe de IAs sem conexão desde {format(offlineDesde, offlineDesde.toDateString() === new Date().toDateString() ? "HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
-            </p>
-            <p className="text-muted-foreground">As tarefas das IAs ficam paradas até voltar. Confira se o Mac está ligado, acordado e com internet: quando a conexão volta, elas voltam sozinhas.</p>
-          </div>
-        </div>
-      )}
-
-      {paradas.map(({ nome, desde }) => (
-        <div key={nome} className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
-          <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-          <div>
-            <p className="font-semibold text-amber-700 dark:text-amber-300">
-              {nome} parado desde {format(desde, desde.toDateString() === new Date().toDateString() ? "HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
-            </p>
-            <p className="text-muted-foreground">O serviço do {nome} não dá sinal há mais de 3 min: as tarefas dele ficam paradas. Normalmente ele volta sozinho; se o aviso continuar, peça para reiniciar o serviço do {nome}.</p>
-          </div>
-        </div>
-      ))}
-
-      {/* 22/10 (Davi): escritório à esquerda; "Precisa de você" e "Tarefas sendo executadas" à direita,
-          um em cima do outro. Em tela estreita, a coluna da direita desce para baixo do mapa. */}
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
-        {/* Mapa da operação: cada setor é uma sala; cada pessoa, uma mesa. */}
-        <section className="min-w-0 rounded-xl border bg-card p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold">Mapa da operação</h2>
-            <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
-            <button type="button" onClick={() => setEscritorio({ editando: null })}
-              className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
-            <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
-              title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
-              className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
-            <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-              {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
-                <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
-              ))}
-            </span>
-          </div>
-          {setores.length === 0 ? (
-            <div className="space-y-3 py-8 text-center">
-              <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
-              <button type="button" onClick={() => setEscritorio({ editando: null })}
-                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
-            </div>
-          ) : (
-            // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-            <div className={cn("relative", mundo3d && "invisible")}>
-            <button type="button" onClick={() => setMundo3d(true)} title="Entrar no escritório em 3D (protótipo: corredor e Audiovisual)"
-              className="absolute bottom-[3%] left-[2%] z-30 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
-              <Box className="h-3.5 w-3.5 text-sky-300" />Entrar no escritório 3D
-            </button>
-            {import.meta.env.DEV && (
-              <button type="button" onClick={() => setMundoPixel(true)} title="Protótipo em pixel art (só no modo de desenvolvimento)"
-                className="absolute bottom-[3%] left-[2%] z-30 ml-44 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
-                <Box className="h-3.5 w-3.5 text-amber-300" />Pixel art (protótipo)
-              </button>
-            )}
-            <EscritorioSalas arrumacao={arrumacao} onSalvarArrumacao={salvarArrumacao} onAbrir={(id) => {
-              // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
-              const m = membros.find((x) => x.id === id);
-              if (!m) return;
-              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
-            }}
-              onAbrirSetor={setEsteiraAberta}
-              tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
-              setores={setoresDoMapa} />
-            </div>
-          )}
-        </section>
-        <div className="flex min-w-0 flex-col gap-4">
+  // "Precisa de você" e "Tarefas sendo executadas": na coluna da direita do mapa antigo ou dentro do escritório em pixel art.
+  const colunaAcoes = (
+    <>
         {/* 1. O que depende de mim. */}
         <section className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
           <div className="mb-3 flex items-center gap-2">
@@ -746,8 +665,116 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           )}
         </section>
+    </>
+  );
+
+  return (
+    <div className="space-y-5 p-4 sm:p-6">
+      <header className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Escritório</h1>
+          <p className="text-sm text-muted-foreground">Toda a operação de conteúdo do projeto em um só lugar.</p>
+        </div>
+        <CanalYoutube clienteId={clienteId} />
+      </header>
+
+      {offlineDesde && (
+        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-semibold text-amber-700 dark:text-amber-300">
+              Equipe de IAs sem conexão desde {format(offlineDesde, offlineDesde.toDateString() === new Date().toDateString() ? "HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
+            </p>
+            <p className="text-muted-foreground">As tarefas das IAs ficam paradas até voltar. Confira se o Mac está ligado, acordado e com internet: quando a conexão volta, elas voltam sozinhas.</p>
+          </div>
+        </div>
+      )}
+
+      {paradas.map(({ nome, desde }) => (
+        <div key={nome} className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+          <WifiOff className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div>
+            <p className="font-semibold text-amber-700 dark:text-amber-300">
+              {nome} parado desde {format(desde, desde.toDateString() === new Date().toDateString() ? "HH:mm" : "dd/MM 'às' HH:mm", { locale: ptBR })}
+            </p>
+            <p className="text-muted-foreground">O serviço do {nome} não dá sinal há mais de 3 min: as tarefas dele ficam paradas. Normalmente ele volta sozinho; se o aviso continuar, peça para reiniciar o serviço do {nome}.</p>
+          </div>
+        </div>
+      ))}
+
+      {usarPixel && setores.length > 0 ? (
+        // 24/10 (Davi): o escritório em pixel art é o Escritório da página; "Precisa de você" e
+        // "Tarefas sendo executadas" ficam dentro dele, na coluna da esquerda.
+        <Suspense fallback={<div className="flex h-[calc(100svh-140px)] min-h-[560px] items-center justify-center rounded-xl bg-[#0b1120] text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>}>
+          <EscritorioPixel funcionarios={dados3d.funcionarios} setores={setoresDoMapa} resultado={dados3d.resultado}
+            onFalhou={() => setPixelFalhou(true)}
+            onConversar={(id) => {
+              const m = membros.find((x) => x.id === id);
+              if (!m) return;
+              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+            }}
+            onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })}
+            lateral={<>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setEscritorio({ editando: null })}
+                  className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
+                <button type="button" onClick={() => setCadastro({ editando: null })}
+                  className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+              </div>
+              {colunaAcoes}
+            </>} />
+        </Suspense>
+      ) : (
+      // 22/10 (Davi): escritório à esquerda; "Precisa de você" e "Tarefas sendo executadas" à direita,
+      // um em cima do outro. Em tela estreita, a coluna da direita desce para baixo do mapa.
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_420px]">
+        {/* Mapa da operação: cada setor é uma sala; cada pessoa, uma mesa. */}
+        <section className="min-w-0 rounded-xl border bg-card p-4">
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <Users className="h-5 w-5 text-primary" />
+            <h2 className="font-semibold">Mapa da operação</h2>
+            <span className="text-xs text-muted-foreground">quem está fazendo o quê, agora</span>
+            <button type="button" onClick={() => setEscritorio({ editando: null })}
+              className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted"><Plus className="h-3.5 w-3.5" />Escritório</button>
+            <button type="button" onClick={() => setCadastro({ editando: null })} disabled={setores.length === 0}
+              title={setores.length === 0 ? "Crie um escritório primeiro" : "Criar um funcionário"}
+              className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium hover:bg-muted disabled:opacity-40"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+            <span className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+              {(["trabalhando", "esperando", "problema", "parado"] as Sinal[]).map((k) => (
+                <span key={k} className="flex items-center gap-1"><span className={cn("h-2 w-2 rounded-full", SINAIS[k].cor)} />{SINAIS[k].rotulo}</span>
+              ))}
+            </span>
+          </div>
+          {setores.length === 0 ? (
+            <div className="space-y-3 py-8 text-center">
+              <p className="text-sm text-muted-foreground">A empresa deste projeto ainda não tem ninguém. Monte em dois passos: <b>1.</b> crie os escritórios (ex.: Diretoria, Marketing); <b>2.</b> crie os funcionários de cada um.</p>
+              <button type="button" onClick={() => setEscritorio({ editando: null })}
+                className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"><Plus className="h-4 w-4" />1. Criar o primeiro escritório</button>
+            </div>
+          ) : (
+            // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
+            <div className={cn("relative", mundo3d && "invisible")}>
+            <button type="button" onClick={() => setMundo3d(true)} title="Entrar no escritório em 3D (protótipo: corredor e Audiovisual)"
+              className="absolute bottom-[3%] left-[2%] z-30 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
+              <Box className="h-3.5 w-3.5 text-sky-300" />Entrar no escritório 3D
+            </button>
+            <EscritorioSalas arrumacao={arrumacao} onSalvarArrumacao={salvarArrumacao} onAbrir={(id) => {
+              // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
+              const m = membros.find((x) => x.id === id);
+              if (!m) return;
+              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+            }}
+              onAbrirSetor={setEsteiraAberta}
+              tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
+              setores={setoresDoMapa} />
+            </div>
+          )}
+        </section>
+        <div className="flex min-w-0 flex-col gap-4">
+        {colunaAcoes}
         </div>
       </div>
+      )}
 
       {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -782,17 +809,6 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       {mundo3d && (
         <Suspense fallback={<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Abrindo o escritório…</div>}>
           <EscritorioVirtual funcionarios={dados3d.funcionarios} resultado={dados3d.resultado} onSair={() => setMundo3d(false)}
-            onConversar={(id) => {
-              const m = membros.find((x) => x.id === id);
-              if (!m) return;
-              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
-            }}
-            onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })} />
-        </Suspense>
-      )}
-      {import.meta.env.DEV && mundoPixel && (
-        <Suspense fallback={null}>
-          <EscritorioPixel funcionarios={dados3d.funcionarios} setores={setoresDoMapa} resultado={dados3d.resultado} onSair={() => setMundoPixel(false)}
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
               if (!m) return;

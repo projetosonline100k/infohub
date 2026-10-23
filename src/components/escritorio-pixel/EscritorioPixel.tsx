@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, CheckSquare, Eye, Loader2, LocateFixed, MessageCircle, Play, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CalendarDays, CheckSquare, Eye, Loader2, LocateFixed, MessageCircle, Play, Users } from "lucide-react";
 import { addDays, format, isToday, isTomorrow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -8,9 +8,9 @@ import type { Funcionario3D, Resultado3D } from "@/components/escritorio3d/Escri
 import { criarMundo, type EstadoPixel, type ModoCamera, type MundoPixel, type PessoaPixel } from "./motor";
 import { montarCena, salaDoSetor } from "./cena";
 
-// Escritório em pixel art (24/10: cena fixa copiada da imagem de referência do Davi).
-// O PixiJS desenha o mapa; o React cuida do painel da direita. Ocupa a área da página, entre a barra
-// lateral do app e o painel. Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial.
+// Escritório em pixel art (24/10: cena fixa copiada da imagem de referência do Davi). É o Escritório da página:
+// coluna da esquerda (o que precisa do Davi e o que está em execução), o mapa no meio (PixiJS) e o painel da
+// referência à direita. Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial.
 
 const COR: Record<EstadoPixel, string> = {
   trabalhando: "bg-emerald-500", esperando: "bg-amber-400", problema: "bg-rose-500", parado: "bg-slate-400", reuniao: "bg-violet-500",
@@ -40,22 +40,6 @@ const Card = ({ icone: Icone, titulo, children }: { icone: typeof Users; titulo:
   </section>
 );
 
-/** Ocupa exatamente a área do <main> do app (a barra lateral e as abas de cima continuam visíveis). */
-function useAreaDaPagina() {
-  const [area, setArea] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-  useLayoutEffect(() => {
-    const el = document.querySelector("main");
-    if (!el) return;
-    const medir = () => { const r = el.getBoundingClientRect(); setArea({ left: r.left, top: r.top, width: r.width, height: r.height }); };
-    medir();
-    const obs = new ResizeObserver(medir);
-    obs.observe(el);
-    window.addEventListener("resize", medir);
-    return () => { obs.disconnect(); window.removeEventListener("resize", medir); };
-  }, []);
-  return area;
-}
-
 /** Próximo evento da agenda do Google (7 dias); null quando não há (ou a agenda não está ligada). */
 function useProximaReuniao() {
   const [evento, setEvento] = useState<GoogleCalendarEvent | null | undefined>(undefined);
@@ -77,17 +61,19 @@ function useProximaReuniao() {
   return evento;
 }
 
-export default function EscritorioPixel({ setores, funcionarios, resultado, onSair, onConversar, onAbrirTarefa }: {
+export default function EscritorioPixel({ setores, funcionarios, resultado, lateral, onFalhou, onConversar, onAbrirTarefa }: {
   setores: { id: string; nome: string }[];
   funcionarios: (Funcionario3D & { setorId?: string | null })[];
   resultado: Resultado3D | null;
-  onSair: () => void;
+  /** coluna da esquerda, dentro do escritório */
+  lateral?: ReactNode;
+  /** os sprites não carregaram (a página volta para o mapa antigo) */
+  onFalhou?: () => void;
   onConversar: (id: string) => void;
   onAbrirTarefa: (f: Funcionario3D) => void;
 }) {
   const caixa = useRef<HTMLDivElement>(null);
   const mundo = useRef<MundoPixel | null>(null);
-  const area = useAreaDaPagina();
   const reuniao = useProximaReuniao();
   const [pronto, setPronto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -112,19 +98,21 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, onSa
       setPronto(true);
     }).catch((e) => {
       console.error(e);
-      if (!cancelado) setErro("Não consegui carregar os sprites. Eles ficam em public/escritorio-pixel (só no computador do Davi, fora do git).");
+      if (!cancelado) { setErro("Não consegui carregar os sprites (public/escritorio-pixel, só no computador do Davi)."); onFalhou?.(); }
     });
     return () => { cancelado = true; criado?.destruir(); mundo.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cria o mundo uma vez só
   }, [cena]);
 
   useEffect(() => { if (pronto) mundo.current?.atualizar(pessoas, resultado); }, [pronto, pessoas, resultado]);
   useEffect(() => { mundo.current?.selecionar(selecionado); }, [pronto, selecionado]);
   useEffect(() => { mundo.current?.camera(camera); }, [pronto, camera]);
   useEffect(() => {
-    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") { if (selecionado) setSelecionado(null); else onSair(); } };
+    if (!selecionado) return;
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") setSelecionado(null); };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
-  }, [selecionado, onSair]);
+  }, [selecionado]);
 
   // Card "Tarefa atual": quem está selecionado; sem seleção, quem está mais adiantado numa tarefa.
   const emFoco = funcionarios.find((f) => f.id === selecionado)
@@ -137,24 +125,28 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, onSa
   };
 
   return (
-    <div className="fixed z-[40] flex bg-[#0b1120] text-white"
-      style={area ? { left: area.left, top: area.top, width: area.width, height: area.height } : { inset: 0 }}>
+    <div className="flex h-[calc(100svh-140px)] min-h-[560px] overflow-hidden rounded-xl border border-white/10 bg-[#0b1120] text-white">
+      {lateral && (
+        // Força o tema escuro nesta coluna (fica dentro do escritório, que é escuro).
+        <div className="dark flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-white/10 bg-[#0b1120] p-2.5 text-foreground">
+          {lateral}
+        </div>
+      )}
       <div className="relative min-w-0 flex-1">
         <div ref={caixa} className="absolute inset-0" />
         {!pronto && !erro && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>
         )}
         {erro && <div className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-rose-300">{erro}</div>}
-        <p className="pointer-events-none absolute bottom-1.5 left-2 text-[10px] text-white/35">Setas ou WASD andam · E conversa · Z alterna a câmera · Esc sai · sprites gratuitos LimeZu (uso não comercial)</p>
+        <p className="pointer-events-none absolute bottom-1.5 left-2 text-[10px] text-white/35">Clique no mapa e use as setas ou WASD · E conversa · Z alterna a câmera · sprites gratuitos LimeZu (uso não comercial)</p>
       </div>
 
-      <aside className="flex w-[264px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
+      <aside className="flex w-[248px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={() => setCamera((c) => (c === "geral" ? "seguir" : "geral"))}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-white/10 bg-[#121a2b] px-2 py-1.5 text-[11px] font-semibold hover:bg-[#18233a]">
             {camera === "geral" ? <><LocateFixed className="h-3.5 w-3.5" />Seguir meu boneco</> : <><Eye className="h-3.5 w-3.5" />Visão geral</>}
           </button>
-          <button type="button" onClick={onSair} className="rounded-md border border-white/10 bg-[#121a2b] p-1.5 text-white/60 hover:text-white" title="Sair (Esc)"><X className="h-3.5 w-3.5" /></button>
         </div>
 
         <Card icone={CheckSquare} titulo="Tarefa atual">

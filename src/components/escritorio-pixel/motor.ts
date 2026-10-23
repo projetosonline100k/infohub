@@ -370,8 +370,12 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     ArrowUp: "cima", KeyW: "cima", ArrowDown: "baixo", KeyS: "baixo", ArrowLeft: "esq", KeyA: "esq", ArrowRight: "dir", KeyD: "dir",
   };
   let modoCamera: ModoCamera = "geral";
+  // As teclas só mexem o boneco depois de clicar no mapa (a página continua rolando com as setas).
+  let ativo = false;
+  const aoTocar = (e: PointerEvent) => { ativo = el.contains(e.target as Node); if (!ativo) teclas.clear(); };
+  document.addEventListener("pointerdown", aoTocar, true);
   const aoApertar = (e: KeyboardEvent) => {
-    if (ehCampoDeTexto(e.target) || e.metaKey || e.ctrlKey) return;
+    if (!ativo || ehCampoDeTexto(e.target) || e.metaKey || e.ctrlKey) return;
     if (MAPA_TECLAS[e.code]) {
       e.preventDefault();
       teclas.add(e.code);
@@ -555,6 +559,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     },
     destruir() {
       destruido = true;
+      document.removeEventListener("pointerdown", aoTocar, true);
       window.removeEventListener("keydown", aoApertar);
       window.removeEventListener("keyup", aoSoltar);
       window.removeEventListener("blur", aoSairDaJanela);
