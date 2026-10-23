@@ -3,13 +3,15 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, Clapperboard, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, type LucideIcon,
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, type LucideIcon,
 } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { ehAdmin } from "@/lib/admin";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 
 // Barra lateral em árvore, no jeito do Obsidian (23/10, Davi: "clicar no item e ter subcategorias, com as
@@ -27,6 +29,8 @@ interface No {
   ativoSe?: (caminho: string, busca: URLSearchParams) => boolean;
   /** filhos carregados só quando a pasta abre (ex.: os documentos de um projeto) */
   carregar?: () => Promise<No[]>;
+  /** pasta de documentos: o + cria documento ou pasta dentro dela (24/10) */
+  criar?: { clienteId: string; pastaId: string | null };
 }
 
 // Documentos do projeto (23/10, Davi: "tudo que tem subcategorias na lateral — os documentos, e dentro
@@ -47,7 +51,7 @@ async function documentosDoProjeto(clienteId: string): Promise<No[]> {
   // 24/10: pasta dentro de pasta; mãe apagada (ou de fora) = pasta de cima.
   const mae = (p: { parent_id: string | null }) => (p.parent_id && idsPastas.has(p.parent_id) ? p.parent_id : null);
   const noPasta = (p: { id: string; nome: string }, fundo = 0): No => ({
-    chave: `pasta-doc:${p.id}`, titulo: p.nome, icone: Folder,
+    chave: `pasta-doc:${p.id}`, titulo: p.nome, icone: Folder, criar: { clienteId, pastaId: p.id },
     filhos: [...(fundo < 10 ? todas.filter((f) => mae(f) === p.id).map((f) => noPasta(f, fundo + 1)) : []), ...lista.filter((d) => d.pasta_id === p.id).map(noDoc)],
   });
   return [
@@ -81,7 +85,7 @@ function noDoProjeto(c: ClienteMenu): No {
   const secao = (s: { secao: string; titulo: string; icone: LucideIcon }): No => ({
     chave: `${c.id}:${s.secao}`, titulo: s.titulo, icone: s.icone, ir: `${base}?secao=${s.secao}`,
     ativoSe: (caminho, busca) => caminho === base && busca.get("secao") === s.secao && !busca.get("documento"),
-    ...(s.secao === "documentos" ? { carregar: () => documentosDoProjeto(c.id) } : {}),
+    ...(s.secao === "documentos" ? { carregar: () => documentosDoProjeto(c.id), criar: { clienteId: c.id, pastaId: null } } : {}),
   });
   return {
     chave: `projeto:${c.id}`, titulo: c.nome_especialista, icone: Folder, ir: base,
@@ -216,6 +220,25 @@ export function AppSidebar() {
     navigate(destino);
   };
 
+  // + numa pasta de documentos (24/10, Davi): cria um documento (e abre) ou uma pasta dentro dela.
+  const novoDocumento = async ({ clienteId, pastaId }: { clienteId: string; pastaId: string | null }, chavePasta: string) => {
+    const { data, error } = await supabase.from("documentos")
+      .insert({ cliente_id: clienteId, pasta_id: pastaId, titulo: "Documento sem título" }).select("id").single();
+    if (error || !data) { toast.error("Não consegui criar o documento"); return; }
+    alternar(chavePasta, true);
+    window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId } }));
+    navigate(`/clientes/${clienteId}?documento=${data.id}`);
+  };
+  const novaPasta = async ({ clienteId, pastaId }: { clienteId: string; pastaId: string | null }, chavePasta: string) => {
+    const nome = window.prompt(pastaId ? "Nome da nova pasta (dentro desta):" : "Nome da nova pasta:")?.trim();
+    if (!nome) return;
+    const { error } = await supabase.from("pastas_atividade")
+      .insert({ cliente_id: clienteId, nome, origem: "documentos", ordem: 999, parent_id: pastaId });
+    if (error) { toast.error("Não consegui criar a pasta"); return; }
+    alternar(chavePasta, true);
+    window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId } }));
+  };
+
   const Linha = ({ no, nivel }: { no: No; nivel: number }) => {
     const aberto = abertos.has(no.chave);
     const lazy = carregados[no.chave];
@@ -237,6 +260,20 @@ export function AppSidebar() {
             <Icone className={cn("h-3.5 w-3.5 shrink-0", eAtivo ? "text-primary" : no.icone === Folder ? "text-sky-400/80" : "text-sidebar-foreground/60")} />
             <span className="truncate">{no.titulo}</span>
           </a>
+          {no.criar && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label={`Criar em ${no.titulo}`} title="Novo documento ou pasta aqui"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/60 opacity-0 hover:bg-sidebar-accent hover:text-sidebar-foreground focus:opacity-100 group-hover/linha:opacity-100 data-[state=open]:opacity-100">
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                <DropdownMenuItem onClick={() => void novoDocumento(no.criar!, no.chave)}><FileText className="mr-2 h-4 w-4" />Novo documento</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void novaPasta(no.criar!, no.chave)}><FolderPlus className="mr-2 h-4 w-4" />Nova pasta {no.criar.pastaId ? "aqui dentro" : ""}</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
         {aberto && lazy === "carregando" && (
           <div className="flex h-6 items-center gap-1.5 text-[11.5px] text-sidebar-foreground/50" style={{ paddingLeft: 30 + nivel * 12 }}><Loader2 className="h-3 w-3 animate-spin" />Carregando…</div>
