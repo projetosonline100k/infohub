@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, CheckSquare, Eye, Loader2, LocateFixed, MessageCircle, Play, Users } from "lucide-react";
-import { addDays, format, isToday, isTomorrow } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import { CheckSquare, Eye, Loader2, LocateFixed, MessageCircle, Play, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { chamarGoogleCalendar, type GoogleCalendarEvent } from "@/lib/googleCalendar";
 import type { Funcionario3D, Resultado3D } from "@/components/escritorio3d/EscritorioVirtual";
 import { criarMundo, type EstadoPixel, type ModoCamera, type MundoPixel, type PessoaPixel } from "./motor";
 import { montarCena, salaDoSetor } from "./cena";
@@ -12,9 +9,6 @@ import { montarCena, salaDoSetor } from "./cena";
 // o mapa (PixiJS) ocupa quase tudo e o painel da direita tem a tarefa atual, a próxima reunião, o que precisa
 // do Davi e o que está em andamento (24/10: no lugar de "Funcionários online"). Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial.
 
-const COR: Record<EstadoPixel, string> = {
-  trabalhando: "bg-emerald-500", esperando: "bg-amber-400", problema: "bg-rose-500", parado: "bg-slate-400", reuniao: "bg-violet-500",
-};
 const ROTULO: Record<EstadoPixel, string> = {
   trabalhando: "Trabalhando", esperando: "Esperando você", problema: "Com problema", parado: "Sem tarefa", reuniao: "Em reunião",
 };
@@ -36,27 +30,6 @@ const Card = ({ icone: Icone, titulo, children }: { icone: typeof Users; titulo:
   </section>
 );
 
-/** Próximo evento da agenda do Google (7 dias); null quando não há (ou a agenda não está ligada). */
-function useProximaReuniao() {
-  const [evento, setEvento] = useState<GoogleCalendarEvent | null | undefined>(undefined);
-  useEffect(() => {
-    let cancelado = false;
-    const agora = new Date();
-    chamarGoogleCalendar<{ events: GoogleCalendarEvent[] }>({
-      action: "events", calendarIds: ["primary"], timeMin: agora.toISOString(), timeMax: addDays(agora, 7).toISOString(),
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    }).then((r) => {
-      if (cancelado) return;
-      const futuros = r.events
-        .filter((e) => e.status !== "cancelled" && e.start.dateTime && new Date(e.start.dateTime) >= agora)
-        .sort((a, b) => +new Date(a.start.dateTime!) - +new Date(b.start.dateTime!));
-      setEvento(futuros.find((e) => /reuni|call|meet|alinhamento/i.test(e.summary ?? "")) ?? futuros[0] ?? null);
-    }).catch(() => { if (!cancelado) setEvento(null); });
-    return () => { cancelado = true; };
-  }, []);
-  return evento;
-}
-
 export default function EscritorioPixel({ setores, funcionarios, resultado, lateral, onFalhou, onConversar, onAbrirTarefa }: {
   setores: { id: string; nome: string }[];
   funcionarios: (Funcionario3D & { setorId?: string | null })[];
@@ -70,7 +43,6 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
 }) {
   const caixa = useRef<HTMLDivElement>(null);
   const mundo = useRef<MundoPixel | null>(null);
-  const reuniao = useProximaReuniao();
   const [pronto, setPronto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
@@ -122,15 +94,9 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
     return () => window.removeEventListener("keydown", tecla);
   }, [selecionado]);
 
-  // Card "Tarefa atual": quem está selecionado; sem seleção, quem está mais adiantado numa tarefa.
-  const emFoco = funcionarios.find((f) => f.id === selecionado)
-    ?? [...funcionarios].filter((f) => f.tarefa && f.sinal === "trabalhando").sort((a, b) => (b.tarefa?.progresso ?? -1) - (a.tarefa?.progresso ?? -1))[0]
-    ?? null;
+  // 24/10 (Davi): sem cards fixos de tarefa e reunião; o card do funcionário só aparece quando ele é clicado (ou E).
+  const emFoco = funcionarios.find((f) => f.id === selecionado) ?? null;
   const setorDe = (f: { setorId?: string | null }) => nomeSetor.get(f.setorId ?? "") ?? "Sem setor";
-  const quando = (e: GoogleCalendarEvent) => {
-    const d = new Date(e.start.dateTime!);
-    return `${isToday(d) ? "Hoje" : isTomorrow(d) ? "Amanhã" : format(d, "EEE dd/MM", { locale: ptBR })} · ${format(d, "HH:mm")}`;
-  };
 
   return (
     <div className="flex overflow-hidden rounded-xl border border-white/10 bg-[#0b1120] text-white" style={{ height: altura }}>
@@ -150,8 +116,9 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
           </button>
         </div>
 
-        <Card icone={CheckSquare} titulo="Tarefa atual">
-          {emFoco ? (
+        {emFoco && (
+        <Card icone={CheckSquare} titulo={emFoco.nome}>
+          {(
             <div>
               <div className="flex items-center gap-2">
                 <Avatar nome={emFoco.nome} />
@@ -173,21 +140,10 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
                   className="flex flex-1 items-center justify-center gap-1 rounded-md bg-sky-600 px-2 py-1 text-[11px] font-medium hover:bg-sky-500 disabled:opacity-40"><MessageCircle className="h-3 w-3" />Conversar</button>
               </div>
             </div>
-          ) : <p className="text-[11px] text-white/55">Ninguém com tarefa agora.</p>}
+          )}
         </Card>
+        )}
 
-        <Card icone={CalendarDays} titulo="Próxima reunião">
-          {reuniao === undefined ? <p className="text-[11px] text-white/45">Carregando a agenda…</p>
-            : reuniao ? (
-              <div className="flex items-center gap-2">
-                <Avatar nome={reuniao.summary ?? "R"} />
-                <div className="min-w-0">
-                  <p className="truncate text-[12px] font-semibold">{reuniao.summary ?? "Reunião"}</p>
-                  <p className="text-[11px] text-white/55">{quando(reuniao)}</p>
-                </div>
-              </div>
-            ) : <p className="text-[11px] text-white/45">Nada marcado nos próximos 7 dias.</p>}
-        </Card>
 
         {lateral}
 
