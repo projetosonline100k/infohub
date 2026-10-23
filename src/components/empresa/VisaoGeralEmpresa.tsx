@@ -13,7 +13,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
-import { EscritorioSalas } from "./EscritorioSalas";
+import { EscritorioSalas, type CelulaEscritorio } from "./EscritorioSalas";
 import { AoVivoTarefa, type AlvoAoVivo } from "./AoVivoTarefa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
 import { EscolherFormato } from "./EscolherFormato";
@@ -179,6 +179,21 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     if (data) setCadastro({ editando: data as MembroParaEditar });
   };
   const { semana, recarregar: recarregarSemana } = useSemanaEquipe(clienteId);
+  // Arrumação das salas do Mapa da Operação (23/10: apagar e trocar salas de lugar), salva no projeto.
+  const [arrumacao, setArrumacao] = useState<CelulaEscritorio[] | null>(null);
+  useEffect(() => {
+    let vivo = true;
+    void (supabase as unknown as SupabaseClient).from("clientes").select("escritorio_layout").eq("id", clienteId).maybeSingle()
+      .then(({ data }) => { if (vivo) setArrumacao((data?.escritorio_layout as { celulas?: CelulaEscritorio[] } | null)?.celulas ?? null); });
+    return () => { vivo = false; };
+  }, [clienteId]);
+  const salvarArrumacao = useCallback(async (celulas: CelulaEscritorio[] | null) => {
+    const { error } = await (supabase as unknown as SupabaseClient).from("clientes")
+      .update({ escritorio_layout: celulas ? { celulas } : null }).eq("id", clienteId);
+    if (error) { toast.error("Não consegui salvar a arrumação", { description: error.message }); throw error; }
+    setArrumacao(celulas);
+    toast.success(celulas ? "Arrumação salva" : "Voltou à arrumação padrão");
+  }, [clienteId]);
 
   // 20/10: uma consulta presa deixava o Escritório girando para sempre. Agora, com erro ou
   // passando de 25 s, a tela aparece com o que deu para carregar (e tenta de novo na próxima atualização).
@@ -516,7 +531,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           ) : (
             // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-            <EscritorioSalas onAbrir={(id) => {
+            <EscritorioSalas arrumacao={arrumacao} onSalvarArrumacao={salvarArrumacao} onAbrir={(id) => {
               // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
               const m = membros.find((x) => x.id === id);
               if (!m) return;

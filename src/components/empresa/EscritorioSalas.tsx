@@ -355,7 +355,9 @@ const ESTILO_ISO = `
 
 
 // ---------------------------------------------------------------- planta: 3 × 3 salas
-// Na tela: (0,0) em cima, (2,0) à direita, (0,2) à esquerda, (2,2) embaixo (a entrada).
+// Na tela: célula 0 (0,0) em cima, 2 (2,0) à direita, 6 (0,2) à esquerda, 8 (2,2) embaixo (a entrada).
+// 23/10 (Davi: "quero ter a opção de apagar um espaço, encaixar de forma diferente"): o que fica em cada
+// célula vem da arrumação salva no projeto (clientes.escritorio_layout); sem ela, a arrumação padrão.
 type Pt = { x: number; y: number };
 type TipoEstacao = "executiva" | "criativa" | "edicao" | "lab" | "atendimento";
 interface Sala { chave: string; rotulo: string; cx: number; cy: number; tipo?: TipoEstacao; tapete: string; borda: string }
@@ -370,28 +372,19 @@ const SALAS: Sala[] = [
   { chave: "reuniao", rotulo: "Sala de reunião", cx: 2, cy: 1, tapete: "rgba(148,163,184,.18)", borda: "rgba(203,213,225,.45)" },
   { chave: "copa", rotulo: "Copa", cx: 2, cy: 2, tapete: "rgba(251,191,36,.12)", borda: "rgba(251,191,36,.4)" },
 ];
+const DESCANSO: Sala = { chave: "descanso", rotulo: "Descanso", cx: 0, cy: 0, tapete: "rgba(20,184,166,.14)", borda: "rgba(45,212,191,.4)" };
 const SETORIAIS = SALAS.filter((s) => s.tipo);
 const PALAVRAS: Record<string, RegExp> = {
   diretoria: /diretoria|dire[cç][aã]o|ceo|s[oó]cio/i, marketing: /marketing|mkt|grow|tr[aá]fego|conte[uú]do/i,
   audiovisual: /audiovisual|v[ií]deo|edi[cç][aã]o|est[uú]dio|design/i, viral: /viral|lab|roteiro|copy/i,
   sucesso: /sucesso|cliente|suporte|\bcs\b|atendimento/i, sales: /sales|venda|comercial|closer|sdr/i,
 };
-const origem = (s: Sala) => ({ x0: s.cx * R, y0: s.cy * R });
 const SALA = Object.fromEntries(SALAS.map((s) => [s.chave, s])) as Record<string, Sala>;
+const celulaDe = (s: Sala) => s.cy * N + s.cx;
+const origemDa = (i: number) => ({ x0: (i % N) * R, y0: Math.floor(i / N) * R });
 // Mesas dentro da sala (canto de trás da mesa); só as da equipe aparecem.
 const MESAS: Pt[] = [{ x: 0.8, y: 1.4 }, { x: 3.5, y: 1.4 }, { x: 0.8, y: 3.25 }, { x: 3.5, y: 3.25 }, { x: 0.8, y: 4.9 }, { x: 3.5, y: 4.9 }];
 const MESAS_EXEC: Pt[] = [{ x: 0.9, y: 2.3 }, { x: 3.4, y: 2.3 }, { x: 0.9, y: 4.3 }];
-// Recepção: duas mesas livres para quem sobra de um setor.
-const { x0: RX, y0: RY } = origem(SALA.recepcao);
-const AVULSAS: Pt[] = [{ x: RX + 0.5, y: RY + 4.7 }, { x: RX + 3.9, y: RY + 4.7 }];
-const ORBE = { x: RX + 3, y: RY + 2.8 };
-const { x0: MX, y0: MY } = origem(SALA.reuniao);
-const MESA_REUNIAO = { x: MX + 1.3, y: MY + 2.4, w: 3.4, d: 1.2 };
-const VAGAS_REUNIAO: (Pt & { cadeira: boolean })[] = [
-  ...[1.9, 3.0, 4.1].map((x) => ({ x: MX + x, y: MY + 2.05, cadeira: true })),
-  ...[1.9, 3.0, 4.1].map((x) => ({ x: MX + x, y: MY + 4.05, cadeira: false })),
-];
-const { x0: CX, y0: CYY } = origem(SALA.copa);
 const VEL = 2.6;
 const CICLO_BALAO = 24, MOSTRA_BALAO = 6;   // segundos: o balão aparece 6 s a cada 24 s
 
@@ -403,8 +396,13 @@ const centroDaSala = (q: Pt): Pt => ({ x: Math.floor(Math.min(G - 0.01, Math.max
 
 type Lugar = { tipo: "mesa" | "pe" | "orbe"; x: number; y: number; z: number; onde: string; amb?: string; est?: number; xicara?: boolean; lendo?: boolean };
 
+/** O que pode ficar numa célula: "setor:<id>", "recepcao", "reuniao", "copa", "descanso" ou "vazio" (espaço apagado). */
+export type CelulaEscritorio = string;
+
 // Parede de 1 unidade (ao longo de x, no y fixo; ou ao longo de y, no x fixo), com porta ou janela.
-function parede(eixo: "x" | "y", a: number, fixo: number, abertura?: "porta" | "janela"): Item {
+// sobre: o que vai pintado na parede (a placa da sala); cada pedaço desenha só o seu trecho, para a
+// placa ficar na mesma profundidade da parede e nunca passar por cima de quem está sentado na frente.
+function parede(eixo: "x" | "y", a: number, fixo: number, abertura?: "porta" | "janela", sobre?: React.ReactNode): Item {
   const esp = 0.12;
   const corpo = eixo === "x"
     ? caixa({ x: a, y: fixo - esp / 2, w: 1, d: esp, h: PAREDE, topo: "#2c221b", esq: "#ece5d8", dir: "#d9d0c0", borda: "rgba(0,0,0,.08)" })
@@ -419,14 +417,15 @@ function parede(eixo: "x" | "y", a: number, fixo: number, abertura?: "porta" | "
       <polygon points={face(0, 1, 0, 0.09)} fill="#3b2f26" opacity=".55" />
       {abertura === "porta" && <><polygon points={face(0.15, 0.85, 0, 1.12)} fill="#2a2420" /><polygon points={face(0.7, 0.76, 0.5, 0.58)} fill="#d6c7a8" /></>}
       {abertura === "janela" && <><polygon points={face(0.08, 0.92, 0.75, 1.32)} fill="#9cc9e8" /><polygon points={face(0.08, 0.92, 1.24, 1.32)} fill="#d7ecf8" opacity=".8" /><polygon points={face(0.48, 0.52, 0.75, 1.32)} fill="#5b6b78" /></>}
+      {sobre && <><clipPath id={`cp-${eixo}-${a}-${fixo}`}><polygon points={face(-0.002, 1.002, 0, PAREDE)} /></clipPath><g clipPath={`url(#cp-${eixo}-${a}-${fixo})`}>{sobre}</g></>}
     </g>
   ) };
 }
 
-function Orbe() {
+function Orbe({ x, y }: Pt) {
   // Holograma do Atlas na recepção: base hexagonal, feixe de luz e a esfera com anéis.
-  const b = P(ORBE.x, ORBE.y), t = P(ORBE.x, ORBE.y, 1.55);
-  const hex = (r: number, z: number) => pts(...Array.from({ length: 6 }, (_, k) => { const a = (Math.PI / 3) * k; return P(ORBE.x + r * Math.cos(a), ORBE.y + r * Math.sin(a), z); }));
+  const b = P(x, y), t = P(x, y, 1.55);
+  const hex = (r: number, z: number) => pts(...Array.from({ length: 6 }, (_, k) => { const a = (Math.PI / 3) * k; return P(x + r * Math.cos(a), y + r * Math.sin(a), z); }));
   return (
     <g className="orbe">
       <polygon points={hex(1.35, 0)} fill="rgba(34,211,238,.18)" stroke="#22d3ee" strokeWidth="2" />
@@ -454,8 +453,50 @@ function luzAnel(x: number, y: number): Item {
   ) };
 }
 
-export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir, forcarNoite, tv, onAbrirSetor }: {
+// Placa com o nome da sala pintada na parede do fundo dela, acima da porta (em perspectiva).
+function placaNaParede(x0: number, y0: number, nome: string, cor: string, extra: string, onClick?: () => void) {
+  const c = P(x0 + R / 2 - 0.5, y0 + 0.07, 1.27);
+  const texto = extra ? `${nome}  ${extra}` : nome;
+  const max = R * 0.92 * (TW / 2) * 1.118;
+  const fs = Math.max(9, Math.min(14, (max - 34) / (texto.length * 0.6)));
+  const larg = Math.min(max, texto.length * fs * 0.6 + 34);
+  return (
+    <g transform={`translate(${c.sx} ${c.sy}) matrix(0.894 0.447 0 1 0 0)`} onClick={onClick} style={{ cursor: onClick ? "pointer" : undefined }}>
+      <rect x={-larg / 2} y={-fs * 0.72} width={larg} height={fs * 1.44} rx="4" fill="#16110d" stroke="rgba(255,255,255,.14)" />
+      <circle cx={-larg / 2 + 11} cy="0" r={fs * 0.26} fill={cor} />
+      <text x={-larg / 2 + 20} y={fs * 0.36} fontSize={fs} fontWeight="700" fill="#fff" letterSpacing=".2">{nome}{extra && <tspan fill="#34d399">{`  ${extra}`}</tspan>}</text>
+    </g>
+  );
+}
+
+// Arrumação padrão: as salas nos lugares de SALAS; sala de setor sem setor vira Descanso.
+function arrumacaoPadrao(salaDoSetor: Map<string, string>): CelulaEscritorio[] {
+  const celulas: CelulaEscritorio[] = Array(N * N).fill("vazio");
+  const setorDa = new Map([...salaDoSetor.entries()].map(([id, chave]) => [chave, id]));
+  for (const s of SALAS) celulas[celulaDe(s)] = s.tipo ? (setorDa.has(s.chave) ? `setor:${setorDa.get(s.chave)}` : "descanso") : s.chave;
+  return celulas;
+}
+
+// Arrumação salva, corrigida: setor que não existe mais sai; setor novo entra no primeiro Descanso ou
+// espaço vazio; a Recepção (onde fica o Atlas) não some.
+function arrumacaoValida(salva: CelulaEscritorio[] | null | undefined, salaDoSetor: Map<string, string>): CelulaEscritorio[] {
+  if (!salva || salva.length !== N * N) return arrumacaoPadrao(salaDoSetor);
+  const celulas = salva.map((c) => (c.startsWith("setor:") && !salaDoSetor.has(c.slice(6)) ? "descanso" : c));
+  for (const id of salaDoSetor.keys()) {
+    if (celulas.includes(`setor:${id}`)) continue;
+    const livre = celulas.findIndex((c) => c === "descanso" || c === "vazio");
+    if (livre >= 0) celulas[livre] = `setor:${id}`;
+  }
+  if (!celulas.includes("recepcao")) { const livre = celulas.findIndex((c) => c === "descanso" || c === "vazio"); celulas[livre >= 0 ? livre : 4] = "recepcao"; }
+  return celulas;
+}
+
+export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir, forcarNoite, tv, onAbrirSetor, arrumacao, onSalvarArrumacao }: {
   setores: SetorNoEscritorio[]; onAbrir: (id: string) => void; forcarNoite?: boolean; tv?: React.ReactNode; onAbrirSetor?: (id: string) => void;
+  /** Arrumação salva do projeto (9 células); sem ela, a padrão. */
+  arrumacao?: CelulaEscritorio[] | null;
+  /** Salva a arrumação nova (null = voltar à padrão). Sem isso, o botão de arrumar não aparece. */
+  onSalvarArrumacao?: (celulas: CelulaEscritorio[] | null) => Promise<void> | void;
 }) {
   const [noiteAgora, setNoite] = useState(ehNoite);
   const noite = forcarNoite ?? noiteAgora;
@@ -467,7 +508,7 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
   useEffect(() => { const t = window.setInterval(() => setSegundo(Math.floor(Date.now() / 1000)), 1000); return () => window.clearInterval(t); }, []);
   const balaoNaVez = (id: string) => (segundo + somaId(id) * 7) % CICLO_BALAO < MOSTRA_BALAO;
 
-  // Qual sala é de qual setor (pelo nome; o que sobra vai para a primeira sala de setor livre).
+  // Aparência (tipo de mesa, cor do tapete) de cada setor: pelo nome; o que sobra pega uma livre.
   const salaDoSetor = useMemo(() => {
     const m = new Map<string, string>();
     const usadas = new Set<string>();
@@ -475,11 +516,38 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
     for (const s of setores) { if (m.has(s.id)) continue; const a = SETORIAIS.find((x) => !usadas.has(x.chave)); if (a) { m.set(s.id, a.chave); usadas.add(a.chave); } }
     return m;
   }, [setores]);
-  const setorDaSala = useMemo(() => { const m = new Map<string, SetorNoEscritorio>(); for (const s of setores) { const k = salaDoSetor.get(s.id); if (k) m.set(k, s); } return m; }, [setores, salaDoSetor]);
-  const mesasDe = (chave: string) => {
-    const sala = SALA[chave]; const { x0, y0 } = origem(sala);
-    const n = Math.max(1, setorDaSala.get(chave)?.pessoas.length ?? 0);
-    return (sala.tipo === "executiva" ? MESAS_EXEC : MESAS).slice(0, n).map((m) => ({ x: x0 + m.x, y: y0 + m.y }));
+
+  // ---------------------------------------------------------------- arrumação (o que fica em cada célula)
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState<CelulaEscritorio[] | null>(null);
+  const [movendo, setMovendo] = useState<number | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const salva = useMemo(() => arrumacaoValida(arrumacao, salaDoSetor), [arrumacao, salaDoSetor]);
+  const celulas = editando && rascunho ? rascunho : salva;
+  const setorPorId = useMemo(() => new Map(setores.map((s) => [s.id, s])), [setores]);
+  const aparencia = (c: CelulaEscritorio): Sala | null => {
+    if (c === "vazio") return null;
+    if (c === "descanso") return DESCANSO;
+    if (c.startsWith("setor:")) return SALA[salaDoSetor.get(c.slice(6)) ?? ""] ?? DESCANSO;
+    return SALA[c] ?? null;
+  };
+  const celulaDoSetor = (id: string) => celulas.indexOf(`setor:${id}`);
+  const recepcao = origemDa(Math.max(0, celulas.indexOf("recepcao")));
+  const ORBE = { x: recepcao.x0 + 3, y: recepcao.y0 + 2.8 };
+  const AVULSAS: Pt[] = [{ x: recepcao.x0 + 0.5, y: recepcao.y0 + 4.7 }, { x: recepcao.x0 + 3.9, y: recepcao.y0 + 4.7 }];
+  const iReuniao = celulas.indexOf("reuniao");
+  const reuniaoSala = iReuniao >= 0 ? origemDa(iReuniao) : null;
+  const MESA_REUNIAO = reuniaoSala ? { x: reuniaoSala.x0 + 1.3, y: reuniaoSala.y0 + 2.4, w: 3.4, d: 1.2 } : null;
+  // Sem sala de reunião: a conversa acontece em pé, em volta da orbe.
+  const VAGAS_REUNIAO: (Pt & { cadeira: boolean })[] = reuniaoSala
+    ? [...[1.9, 3.0, 4.1].map((x) => ({ x: reuniaoSala.x0 + x, y: reuniaoSala.y0 + 2.05, cadeira: true })), ...[1.9, 3.0, 4.1].map((x) => ({ x: reuniaoSala.x0 + x, y: reuniaoSala.y0 + 4.05, cadeira: false }))]
+    : Array.from({ length: 6 }, (_, k) => ({ x: ORBE.x + 1.9 * Math.cos((Math.PI / 3) * k + 0.5), y: ORBE.y + 1.9 * Math.sin((Math.PI / 3) * k + 0.5), cadeira: false }));
+  const mesasDe = (setorId: string) => {
+    const i = celulaDoSetor(setorId);
+    if (i < 0) return [];
+    const { x0, y0 } = origemDa(i), sala = aparencia(`setor:${setorId}`);
+    const n = Math.max(1, setorPorId.get(setorId)?.pessoas.length ?? 0);
+    return (sala?.tipo === "executiva" ? MESAS_EXEC : MESAS).slice(0, n).map((m) => ({ x: x0 + m.x, y: y0 + m.y }));
   };
 
   const geo = useMemo(() => {
@@ -491,16 +559,17 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
     const reuniao: PessoaNaSala[] = [];
     const nomeDe = (id: string) => setores.find((s) => s.id === id)?.nome ?? "";
     const sentar = (p: PessoaNaSala, setorId: string, setorDele: string) => {
-      const chave = salaDoSetor.get(setorId) ?? salaDoSetor.get(setorDele);
-      if (chave) {
-        const mesas = mesasDe(chave), comp = SALA[chave].tipo === "executiva" ? 1.9 : 1.6;
-        const usadas = ocupadas.get(chave) ?? new Set<number>();
+      for (const id of [setorId, setorDele]) {
+        const mesas = mesasDe(id);
+        if (!mesas.length) continue;
+        const comp = aparencia(`setor:${id}`)?.tipo === "executiva" ? 1.9 : 1.6;
+        const usadas = ocupadas.get(id) ?? new Set<number>();
         const ideal = setores.find((s) => s.id === setorDele)?.pessoas.findIndex((x) => x.id === p.id) ?? -1;
-        let est = setorId === setorDele && ideal >= 0 && ideal < mesas.length && !usadas.has(ideal) ? ideal : -1;
+        let est = id === setorDele && ideal >= 0 && ideal < mesas.length && !usadas.has(ideal) ? ideal : -1;
         if (est < 0) est = mesas.findIndex((_, k) => !usadas.has(k));
         if (est >= 0) {
-          usadas.add(est); ocupadas.set(chave, usadas);
-          lugar.set(p.id, { tipo: "mesa", x: mesas[est].x + comp / 2, y: mesas[est].y - 0.28, z: 0.4, amb: chave, est, onde: nomeDe(setorId) || SALA[chave].rotulo }); return;
+          usadas.add(est); ocupadas.set(id, usadas);
+          lugar.set(p.id, { tipo: "mesa", x: mesas[est].x + comp / 2, y: mesas[est].y - 0.28, z: 0.4, amb: `setor:${id}`, est, onde: nomeDe(id) }); return;
         }
       }
       const k = AVULSAS.findIndex((_, i) => !avulsas.has(i));
@@ -512,17 +581,17 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
       // 23/10 (Davi): sem tarefa, fica na própria mesa lendo (não vai mais para a copa).
       return true;
     });
-    const zonaDe = (p: PessoaNaSala, setor: string) => (!noite && p.setorTarefa && salaDoSetor.has(p.setorTarefa) ? p.setorTarefa : setor);
+    const zonaDe = (p: PessoaNaSala, setor: string) => (!noite && p.setorTarefa && celulaDoSetor(p.setorTarefa) >= 0 ? p.setorTarefa : setor);
     for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) === setor)) {
       sentar(p, setor, setor);
       const l = lugar.get(p.id);
       if (l && !noite && p.sinal === "parado") l.lendo = true;
     }
     for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) !== setor)) sentar(p, zonaDe(p, setor), setor);
-    reuniao.forEach((p, k) => { const v = VAGAS_REUNIAO[k % VAGAS_REUNIAO.length]; lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, z: 0.4, onde: "Reunião", est: k }); });
+    reuniao.forEach((p, k) => { const v = VAGAS_REUNIAO[k % VAGAS_REUNIAO.length]; lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, z: v.cadeira ? 0.4 : reuniaoSala ? 0.38 : 0, onde: "Reunião", est: k }); });
     return { lugar, pessoas: pessoas.map((x) => x.p) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setores, noite, salaDoSetor, setorDaSala]);
+  }, [setores, noite, salaDoSetor, celulas.join("|")]);
 
   // ---------------------------------------------------------------- andar quando o lugar muda
   type Andando = { dur: number; chave: number; pontos: Pt[] };
@@ -538,7 +607,8 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
       if (!l || l.tipo === "orbe") continue;
       const chave = `${l.tipo}-${l.amb ?? l.onde}-${l.est ?? l.x}`;
       const de = ondeEstava.current.get(p.id);
-      if (antes.current.get(p.id) && antes.current.get(p.id) !== chave && de) {
+      // Na edição do escritório ninguém anda: as salas mudam de lugar e cada um aparece na sua.
+      if (!editando && antes.current.get(p.id) && antes.current.get(p.id) !== chave && de && (de.x !== l.x || de.y !== l.y)) {
         // Sai pelo meio da própria sala, passa pelo meio da sala de destino e senta.
         const a = centroDaSala(de), b = centroDaSala(l);
         const pontos = [de, a, ...(a.x === b.x && a.y === b.y ? [] : [{ x: b.x, y: a.y }, b]), { x: l.x, y: l.y }];
@@ -551,83 +621,88 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
       ondeEstava.current.set(p.id, { x: l.x, y: l.y });
     }
     if (Object.keys(novos).length) setAndando((x) => ({ ...x, ...novos }));
-  }, [geo]);
+  }, [geo, editando]);
   const ocupante = (amb: string, est: number) => geo.pessoas.find((q) => { const l = geo.lugar.get(q.id); return l?.amb === amb && l.est === est && !andando[q.id]; });
 
   // ---------------------------------------------------------------- cena
   const itens: Item[] = [];
   const add = (...xs: (Item | Item[])[]) => xs.forEach((x) => (Array.isArray(x) ? itens.push(...x) : itens.push(x)));
 
-  // Paredes: cada sala tem a de trás e a da esquerda; por fora, janelas; por dentro, uma porta no meio.
-  for (const s of SALAS) {
-    const { x0, y0 } = origem(s);
-    for (let i = 0; i < R; i++) {
-      add(parede("x", x0 + i, y0, y0 === 0 ? (i === 1 || i === 4 ? "janela" : undefined) : i === 2 ? "porta" : undefined));
-      add(parede("y", y0 + i, x0, x0 === 0 ? (i === 1 || i === 4 ? "janela" : undefined) : i === 3 ? "porta" : undefined));
+  celulas.forEach((c, i) => {
+    if (c === "vazio") return;   // espaço apagado: só o piso
+    const { x0, y0 } = origemDa(i);
+    // Paredes: a de trás e a da esquerda; por fora, janelas; por dentro, uma porta no meio.
+    const sala = aparencia(c)!;
+    const setor = c.startsWith("setor:") ? setorPorId.get(c.slice(6)) : undefined;
+    // Nome da sala pintado na parede do fundo (clica para abrir a esteira do setor).
+    const placa = placaNaParede(x0, y0, setor?.nome ?? sala.rotulo, setor?.corPlaca ?? (c === "recepcao" ? "#22d3ee" : "#94a3b8"),
+      setor && setor.tarefas > 0 ? `✓ ${setor.tarefas}` : "", setor?.temEsteira && onAbrirSetor && !editando ? () => onAbrirSetor(setor.id) : undefined);
+    for (let k = 0; k < R; k++) {
+      add(parede("x", x0 + k, y0, y0 === 0 ? (k === 1 || k === 4 ? "janela" : undefined) : k === 2 ? "porta" : undefined, placa));
+      add(parede("y", y0 + k, x0, x0 === 0 ? (k === 1 || k === 4 ? "janela" : undefined) : k === 3 ? "porta" : undefined));
     }
-  }
-  // Mobília de cada sala de setor (as mesas são só as da equipe) e o que é próprio do setor.
-  for (const s of SETORIAIS) {
-    const { x0, y0 } = origem(s);
-    const setor = setorDaSala.get(s.chave);
-    if (!setor) {
-      // Sala sem setor vira um cantinho de descanso.
-      add(sofa(x0 + 1.2, y0 + 2.2, 2.6, "#475569", "#334155"), mesaRedonda(x0 + 2.5, y0 + 4.1, 0.5, ESCURA, 0.45), planta(x0 + 0.3, y0 + 0.4, 1), planta(x0 + R - 0.9, y0 + R - 1, 1));
-      continue;
-    }
-    const exec = s.tipo === "executiva", comp = exec ? 1.9 : 1.6, madeira = exec ? ESCURA : s.tipo === "edicao" || s.tipo === "lab" ? BRANCA : CLARA;
-    mesasDe(s.chave).forEach((m, k) => {
-      const quem = ocupante(s.chave, k), ligado = !!quem && quem.sinal !== "parado";
-      add(cadeira(m.x + comp / 2 - 0.4, m.y - 0.65, exec ? "#3f2a1d" : "#334155"));
-      const base = mesa(m.x, m.y, comp, madeira, 0.8);
-      add({ ...base, el: (
+
+    if (setor) {
+      // Sala de setor: só as mesas da equipe, com o que é próprio do setor.
+      const exec = sala.tipo === "executiva", comp = exec ? 1.9 : 1.6, madeira = exec ? ESCURA : sala.tipo === "edicao" || sala.tipo === "lab" ? BRANCA : CLARA;
+      mesasDe(setor.id).forEach((m, k) => {
+        const quem = ocupante(c, k), ligado = !!quem && quem.sinal !== "parado";
+        add(cadeira(m.x + comp / 2 - 0.4, m.y - 0.65, exec ? "#3f2a1d" : "#334155"));
+        const base = mesa(m.x, m.y, comp, madeira, 0.8);
+        add({ ...base, el: (
+          <g>
+            {base.el}
+            {sala.tipo === "edicao" ? <>{monitor(m.x + 0.1, m.y + 0.02, 0.7, ligado)}{monitor(m.x + 0.85, m.y + 0.02, 0.7, ligado)}</>
+              : sala.tipo === "lab" ? monitor(m.x + 0.45, m.y + 0.02, 0.75, ligado)
+              : notebook(m.x + comp / 2 - 0.3, m.y + 0.1, ligado)}
+            {sala.tipo === "atendimento" && headset(m.x + 0.25, m.y + 0.45)}
+            {exec && papeis(m.x + 0.15, m.y + 0.35)}
+          </g>
+        ) });
+      });
+      add(planta(x0 + 0.25, y0 + R - 0.85, 0.9));
+      if (exec) add(estante(x0 + 0.3, y0 + 0.2, 1.6, "x", 1.0), planta(x0 + R - 0.85, y0 + R - 1.0, 1));
+      if (sala.chave === "marketing") add(quadroBranco(x0 + 3.4, y0 + 0.25, 2.2));
+      if (sala.chave === "audiovisual") add(luzAnel(x0 + R - 0.8, y0 + R - 1.4), tripe(x0 + R - 1.7, y0 + R - 0.8));
+      if (sala.chave === "viral") add({ chave: `painel-lab-${i}`, prof: pr(x0 + 3.4, y0 + 0.4), el: (
         <g>
-          {base.el}
-          {s.tipo === "edicao" ? <>{monitor(m.x + 0.1, m.y + 0.02, 0.7, ligado)}{monitor(m.x + 0.85, m.y + 0.02, 0.7, ligado)}</>
-            : s.tipo === "lab" ? monitor(m.x + 0.45, m.y + 0.02, 0.75, ligado)
-            : notebook(m.x + comp / 2 - 0.3, m.y + 0.1, ligado)}
-          {s.tipo === "atendimento" && headset(m.x + 0.25, m.y + 0.45)}
-          {exec && papeis(m.x + 0.15, m.y + 0.35)}
+          {caixa({ x: x0 + 3.4, y: y0 + 0.25, w: 2.2, d: 0.06, h: 0.6, z: 0.5, topo: "#1e293b", esq: "#0f172a", dir: "#020617" })}
+          <polyline points={pts(P(x0 + 3.6, y0 + 0.32, 0.75), P(x0 + 4.1, y0 + 0.32, 0.9), P(x0 + 4.6, y0 + 0.32, 0.82), P(x0 + 5.0, y0 + 0.32, 1.0), P(x0 + 5.4, y0 + 0.32, 1.05))} stroke="#34d399" strokeWidth="2.2" fill="none" />
         </g>
       ) });
-    });
-    add(planta(x0 + 0.25, y0 + R - 0.85, 0.9));
-    if (exec) add(estante(x0 + 0.3, y0 + 0.2, 2.4, "x", 1.35), planta(x0 + R - 0.85, y0 + 0.3, 1));
-    if (s.chave === "marketing") add(quadroBranco(x0 + 3.0, y0 + 0.25, 2.2));
-    if (s.chave === "audiovisual") add(luzAnel(x0 + R - 0.8, y0 + R - 1.4), tripe(x0 + R - 1.7, y0 + R - 0.8));
-    if (s.chave === "viral") add({ chave: "painel-lab", prof: pr(x0 + 3, y0 + 0.4), el: (
-      <g>
-        {caixa({ x: x0 + 3.0, y: y0 + 0.25, w: 2.2, d: 0.06, h: 0.95, z: 0.55, topo: "#1e293b", esq: "#0f172a", dir: "#020617" })}
-        <polyline points={pts(P(x0 + 3.2, y0 + 0.32, 0.85), P(x0 + 3.7, y0 + 0.32, 1.05), P(x0 + 4.2, y0 + 0.32, 0.95), P(x0 + 4.6, y0 + 0.32, 1.3), P(x0 + 5.0, y0 + 0.32, 1.38))} stroke="#34d399" strokeWidth="2.2" fill="none" />
-      </g>
-    ) });
-  }
-  // Recepção: a orbe do Atlas, duas mesas livres e plantas.
-  AVULSAS.forEach((m, k) => {
-    add(cadeira(m.x + 0.4, m.y - 0.65, "#334155"));
-    const base = mesa(m.x, m.y, 1.6, CLARA, 0.8);
-    add({ ...base, el: <g>{base.el}{notebook(m.x + 0.5, m.y + 0.1, !!ocupante("avulsa", k))}</g> });
+    } else if (c === "recepcao") {
+      // Recepção: a orbe do Atlas, duas mesas livres e plantas.
+      AVULSAS.forEach((m, k) => {
+        add(cadeira(m.x + 0.4, m.y - 0.65, "#334155"));
+        const base = mesa(m.x, m.y, 1.6, CLARA, 0.8);
+        add({ ...base, el: <g>{base.el}{notebook(m.x + 0.5, m.y + 0.1, !!ocupante("avulsa", k))}</g> });
+      });
+      add(planta(x0 + 0.3, y0 + R - 1.6, 1.1), planta(x0 + R - 0.9, y0 + R - 1.6, 1.1));
+      add({ chave: "orbe", prof: pr(ORBE.x, ORBE.y) + 0.6, el: <Orbe x={ORBE.x} y={ORBE.y} /> });
+    } else if (c === "reuniao" && MESA_REUNIAO) {
+      // Sala de reunião: mesa comprida, cadeiras de um lado, pufes do outro, tela na parede.
+      add(mesa(MESA_REUNIAO.x, MESA_REUNIAO.y, MESA_REUNIAO.w, ESCURA, MESA_REUNIAO.d));
+      VAGAS_REUNIAO.forEach((v) => add(v.cadeira ? cadeira(v.x - 0.4, v.y - 0.45, "#475569") : pufe(v.x, v.y + 0.05, "#94a3b8")));
+      add(planta(x0 + 0.3, y0 + R - 0.9, 0.9));
+    } else if (c === "copa") {
+      // Copa: balcão com café, geladeira, banquetas, sofá e mesinha.
+      add({ chave: `balcao-${i}`, prof: pr(x0 + 0.4, y0 + 1.1), el: (
+        <g>
+          {sombra(x0 + 0.4, y0 + 0.25, 3.6, 0.85)}
+          {caixa({ x: x0 + 0.4, y: y0 + 0.25, w: 3.6, d: 0.85, h: 0.95, topo: "#f1f5f9", esq: "#8b6a4a", dir: "#6f5235" })}
+          {caixa({ x: x0 + 0.7, y: y0 + 0.35, z: 0.95, w: 0.5, d: 0.42, h: 0.55, topo: "#334155", esq: "#1f2937", dir: "#111827" })}
+          {caneca(x0 + 1.5, y0 + 0.65)}{caneca(x0 + 2.9, y0 + 0.7, "#fecaca")}
+          {(() => { const f = P(x0 + 0.95, y0 + 0.55, 1.55); return <path className="esc-fumaca" d={`M${f.sx} ${f.sy} q-3 -6 0 -11 q3 -5 0 -10`} stroke="#cbd5e1" strokeWidth="1.8" fill="none" />; })()}
+        </g>
+      ) });
+      add({ chave: `geladeira-${i}`, prof: pr(x0 + 4.3, y0 + 1.0), el: <g>{sombra(x0 + 4.3, y0 + 0.25, 0.8, 0.75)}{caixa({ x: x0 + 4.3, y: y0 + 0.25, w: 0.8, d: 0.75, h: 1.9, topo: "#f8fafc", esq: "#eef2f6", dir: "#cbd5e1" })}</g> });
+      [1.1, 2.3, 3.4].forEach((x) => add(banqueta(x0 + x, y0 + 1.75)));
+      add(sofa(x0 + 0.7, y0 + 3.5, 2.9, "#0f766e", "#115e59"), mesaRedonda(x0 + 4.85, y0 + 3.7, 0.5, BRANCA, 0.95), banqueta(x0 + 4.3, y0 + 3.75), banqueta(x0 + 5.4, y0 + 3.75), planta(x0 + R - 0.8, y0 + R - 0.9, 1));
+    } else {
+      // Descanso: sofá, mesinha e plantas.
+      add(sofa(x0 + 1.2, y0 + 2.2, 2.6, "#475569", "#334155"), mesaRedonda(x0 + 2.5, y0 + 4.1, 0.5, ESCURA, 0.45), planta(x0 + 0.3, y0 + R - 1, 1), planta(x0 + R - 0.9, y0 + R - 1, 1));
+    }
   });
-  add(planta(RX + 0.3, RY + 0.4, 1.1), planta(RX + R - 0.9, RY + 0.4, 1.1));
-  add({ chave: "orbe", prof: pr(ORBE.x, ORBE.y) + 0.6, el: <Orbe /> });
-  // Sala de reunião: mesa comprida, cadeiras de um lado, pufes do outro, tela na parede.
-  add(mesa(MESA_REUNIAO.x, MESA_REUNIAO.y, MESA_REUNIAO.w, ESCURA, MESA_REUNIAO.d));
-  VAGAS_REUNIAO.forEach((v) => add(v.cadeira ? cadeira(v.x - 0.4, v.y - 0.45, "#475569") : pufe(v.x, v.y + 0.05, "#94a3b8")));
-  add({ chave: "tela-reuniao", prof: pr(MX + 1.6, MY + 0.3), el: caixa({ x: MX + 1.6, y: MY + 0.2, z: 0.55, w: 2.8, d: 0.06, h: 0.85, topo: "#0f172a", esq: "#1e293b", dir: "#020617" }) });
-  add(planta(MX + 0.3, MY + R - 0.9, 0.9));
-  // Copa: balcão com café, geladeira, banquetas, sofá e mesinha.
-  add({ chave: "balcao", prof: pr(CX + 0.4, CYY + 1.1), el: (
-    <g>
-      {sombra(CX + 0.4, CYY + 0.25, 3.6, 0.85)}
-      {caixa({ x: CX + 0.4, y: CYY + 0.25, w: 3.6, d: 0.85, h: 0.95, topo: "#f1f5f9", esq: "#8b6a4a", dir: "#6f5235" })}
-      {caixa({ x: CX + 0.7, y: CYY + 0.35, z: 0.95, w: 0.5, d: 0.42, h: 0.55, topo: "#334155", esq: "#1f2937", dir: "#111827" })}
-      {caneca(CX + 1.5, CYY + 0.65)}{caneca(CX + 2.9, CYY + 0.7, "#fecaca")}
-      {(() => { const c = P(CX + 0.95, CYY + 0.55, 1.55); return <path className="esc-fumaca" d={`M${c.sx} ${c.sy} q-3 -6 0 -11 q3 -5 0 -10`} stroke="#cbd5e1" strokeWidth="1.8" fill="none" />; })()}
-    </g>
-  ) });
-  add({ chave: "geladeira", prof: pr(CX + 4.3, CYY + 1.0), el: <g>{sombra(CX + 4.3, CYY + 0.25, 0.8, 0.75)}{caixa({ x: CX + 4.3, y: CYY + 0.25, w: 0.8, d: 0.75, h: 1.9, topo: "#f8fafc", esq: "#eef2f6", dir: "#cbd5e1" })}</g> });
-  [1.1, 2.3, 3.4].forEach((x) => add(banqueta(CX + x, CYY + 1.75)));
-  add(sofa(CX + 0.7, CYY + 3.5, 2.9, "#0f766e", "#115e59"), mesaRedonda(CX + 4.85, CYY + 3.7, 0.5, BRANCA, 0.95), banqueta(CX + 4.3, CYY + 3.75), banqueta(CX + 5.4, CYY + 3.75), planta(CX + R - 0.8, CYY + 0.3, 1));
 
   // Pessoas paradas no lugar (quem anda vai por cima, no fim)
   for (const p of geo.pessoas) {
@@ -636,7 +711,7 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
     const c = P(l.x, l.y, l.z);
     add({ chave: `p-${p.id}`, prof: pr(l.x, l.y) + 0.05, el: (
       <g transform={`translate(${c.sx} ${c.sy})`} onMouseEnter={() => setFoco(p.id)} onMouseLeave={() => setFoco((f) => (f === p.id ? null : f))}
-        onClick={() => p.clicavel && onAbrir(p.id)} style={{ cursor: p.clicavel ? "pointer" : undefined }}>
+        onClick={() => p.clicavel && !editando && onAbrir(p.id)} style={{ cursor: p.clicavel && !editando ? "pointer" : undefined }}>
         <g className={l.tipo === "mesa" && p.sinal === "trabalhando" ? "ea-digita" : undefined}>
           <Pessoa v={visualDe(p.nome)} sentado={l.z > 0} xicara={l.xicara} lendo={l.lendo} />
         </g>
@@ -652,6 +727,27 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
   const etiqueta = (l: Lugar) => (l.tipo === "orbe" ? P(l.x, l.y + 1.1) : l.tipo === "mesa" ? P(l.x, l.y + 1.15) : P(l.x, l.y + 0.35));
   const entrada = P(G, G);
   const piso = (x0: number, y0: number, w: number, d: number) => pts(P(x0, y0), P(x0 + w, y0), P(x0 + w, y0 + d), P(x0, y0 + d));
+
+  // ---------------------------------------------------------------- edição da arrumação
+  const nomeDaCelula = (c: CelulaEscritorio) => (c.startsWith("setor:") ? setorPorId.get(c.slice(6))?.nome ?? "Setor" : aparencia(c)?.rotulo ?? "Espaço vazio");
+  const podeApagar = (c: CelulaEscritorio) => {
+    if (c === "recepcao") return "A recepção é onde fica o Atlas";
+    if (c.startsWith("setor:") && (setorPorId.get(c.slice(6))?.pessoas.length ?? 0) > 0) return "Esse setor tem gente; mova a sala em vez de apagar";
+    return null;
+  };
+  const faltando = ["reuniao", "copa"].filter((k) => !celulas.includes(k));
+  const mudar = (fn: (cs: CelulaEscritorio[]) => CelulaEscritorio[]) => setRascunho((r) => fn([...(r ?? salva)]));
+  const tocarCelula = (i: number) => {
+    if (movendo === null) return;
+    if (movendo !== i) mudar((cs) => { [cs[movendo], cs[i]] = [cs[i], cs[movendo]]; return cs; });
+    setMovendo(null);
+  };
+  const sair = () => { setEditando(false); setRascunho(null); setMovendo(null); };
+  const salvar = async (valor: CelulaEscritorio[] | null) => {
+    if (!onSalvarArrumacao) return;
+    setSalvando(true);
+    try { await onSalvarArrumacao(valor); sair(); } finally { setSalvando(false); }
+  };
 
   return (
     <div className="w-full overflow-hidden rounded-xl border border-black/10 bg-[radial-gradient(ellipse_at_50%_40%,#4a3a2e_0%,#2a211b_60%,#1a1411_100%)]">
@@ -669,14 +765,18 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
           {/* Piso de madeira e o tapete de cada sala */}
           <polygon points={piso(0, 0, G, G)} fill="#5a4535" />
           {Array.from({ length: G * 2 }, (_, j) => <line key={`t${j}`} x1={P(0, j / 2).sx} y1={P(0, j / 2).sy} x2={P(G, j / 2).sx} y2={P(G, j / 2).sy} stroke="#4c3a2c" strokeWidth=".8" />)}
-          {SALAS.map((s) => { const { x0, y0 } = origem(s); const c = P(x0 + R / 2, y0 + R / 2); return (
-            <g key={`piso-${s.chave}`}>
-              <ellipse cx={c.sx} cy={c.sy} rx={R * TW * 0.42} ry={R * TH * 0.42} fill="url(#sala-luz)" />
-              <polygon points={piso(x0 + 0.7, y0 + 0.9, R - 1.4, R - 1.6)} fill={s.tapete} stroke={s.borda} strokeWidth="1.5" />
-            </g>
-          ); })}
+          {celulas.map((c, i) => {
+            const sala = aparencia(c); const { x0, y0 } = origemDa(i); const m = P(x0 + R / 2, y0 + R / 2);
+            if (!sala) return editando ? <polygon key={`piso-${i}`} points={piso(x0 + 0.3, y0 + 0.3, R - 0.6, R - 0.6)} fill="none" stroke="rgba(255,255,255,.25)" strokeWidth="2" strokeDasharray="8 6" /> : null;
+            return (
+              <g key={`piso-${i}`}>
+                <ellipse cx={m.sx} cy={m.sy} rx={R * TW * 0.42} ry={R * TH * 0.42} fill="url(#sala-luz)" />
+                <polygon points={piso(x0 + 0.7, y0 + 0.9, R - 1.4, R - 1.6)} fill={sala.tapete} stroke={sala.borda} strokeWidth="1.5" />
+              </g>
+            );
+          })}
           {/* Tudo com volume, do fundo para a frente */}
-          {itens.map((i) => <g key={i.chave}>{i.el}</g>)}
+          {itens.map((it) => <g key={it.chave}>{it.el}</g>)}
           {Object.entries(andando).map(([id, a]) => {
             const p = geo.pessoas.find((q) => q.id === id);
             return p ? <Caminhante key={`${id}-${a.chave}`} a={a} v={visualDe(p.nome)} nome={p.nome} destino={geo.lugar.get(id)?.onde ?? ""} /> : null;
@@ -685,25 +785,8 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
           {noite && <rect width={LARG} height={ALT} fill="#0b1026" opacity=".42" pointerEvents="none" />}
         </svg>
 
-        {/* Placa de cada sala, no canto de cima (clica para abrir a esteira do setor) */}
-        {SALAS.map((s) => {
-          const setor = setorDaSala.get(s.chave);
-          if (s.tipo && !setor) return null;
-          const { x0, y0 } = origem(s); const c = P(x0 + 0.1, y0 + 0.1, PAREDE + 0.35);
-          return (
-            <button key={`pl-${s.chave}`} type="button" onClick={() => setor?.temEsteira && onAbrirSetor?.(setor.id)}
-              className={cn("absolute z-10 flex -translate-x-1/2 -translate-y-full flex-col items-center rounded-lg border border-white/10 bg-[#171310]/90 px-2.5 py-1 text-white shadow-lg", setor?.temEsteira ? "hover:border-white/30" : "cursor-default")}
-              style={{ left: pct(c.sx, LARG), top: pct(c.sy, ALT) }}>
-              <span className="flex items-center gap-1.5 whitespace-nowrap text-[10.5px] font-semibold">
-                <span className="h-2 w-2 rounded-full" style={{ background: setor?.corPlaca ?? (s.chave === "recepcao" ? "#22d3ee" : "#94a3b8") }} />{setor?.nome ?? s.rotulo}
-              </span>
-              {setor && setor.tarefas > 0 && <span className="text-[9px] font-semibold text-emerald-400">✓ {setor.tarefas}</span>}
-            </button>
-          );
-        })}
-
         {/* Etiqueta com o nome embaixo de cada um; o balão (o que está fazendo) no hover ou quando precisa de você */}
-        {geo.pessoas.map((p) => {
+        {!editando && geo.pessoas.map((p) => {
           const l = geo.lugar.get(p.id);
           if (!l || andando[p.id]) return null;
           const e = etiqueta(l), cabeca = P(l.x, l.y, l.z);
@@ -727,6 +810,50 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
             </div>
           );
         })}
+
+        {/* Arrumar o escritório: mover (trocar de lugar) e apagar salas; o espaço vazio recebe Copa, Reunião ou Descanso */}
+        {editando && celulas.map((c, i) => {
+          const { x0, y0 } = origemDa(i); const m = P(x0 + R / 2, y0 + R / 2, 0.6);
+          const bloqueio = podeApagar(c);
+          const alvo = movendo !== null && movendo !== i;
+          return (
+            <div key={`ed-${i}`} className={cn("absolute z-40 flex w-[17%] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 rounded-xl border p-2 text-center text-white shadow-xl backdrop-blur",
+              movendo === i ? "border-sky-400 bg-sky-950/90" : alvo ? "cursor-pointer border-emerald-400/70 bg-emerald-950/85 hover:bg-emerald-900/90" : "border-white/15 bg-[#171310]/90")}
+              style={{ left: pct(m.sx, LARG), top: pct(m.sy, ALT) }} onClick={() => alvo && tocarCelula(i)}>
+              <span className="w-full truncate text-[11px] font-semibold">{nomeDaCelula(c)}</span>
+              {alvo ? <span className="text-[10px] text-emerald-300">Trocar para cá</span>
+                : movendo === i ? (
+                  <button type="button" onClick={() => setMovendo(null)} className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] hover:bg-white/20">Cancelar</button>
+                ) : c === "vazio" ? (
+                  <div className="flex flex-wrap justify-center gap-1">
+                    {[...faltando, "descanso"].map((k) => (
+                      <button key={k} type="button" onClick={() => mudar((cs) => { cs[i] = k; return cs; })} className="rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] hover:bg-white/20">+ {SALA[k]?.rotulo ?? "Descanso"}</button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex gap-1">
+                    <button type="button" onClick={() => setMovendo(i)} className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] hover:bg-white/20">Mover</button>
+                    <button type="button" disabled={!!bloqueio} title={bloqueio ?? "Apagar este espaço"} onClick={() => mudar((cs) => { cs[i] = "vazio"; return cs; })}
+                      className="rounded-md bg-rose-500/20 px-2 py-0.5 text-[10px] text-rose-200 hover:bg-rose-500/35 disabled:cursor-not-allowed disabled:opacity-40">Apagar</button>
+                  </div>
+                )}
+            </div>
+          );
+        })}
+        {onSalvarArrumacao && (
+          <div className="absolute left-[2%] top-[3%] z-40 flex items-center gap-1.5">
+            {editando ? (
+              <>
+                <button type="button" disabled={salvando} onClick={() => void salvar(celulas)} className="rounded-lg bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-white shadow hover:bg-emerald-600 disabled:opacity-60">{salvando ? "Salvando…" : "Salvar arrumação"}</button>
+                <button type="button" disabled={salvando} onClick={sair} className="rounded-lg bg-white/10 px-3 py-1.5 text-[11px] text-white hover:bg-white/20">Cancelar</button>
+                <button type="button" disabled={salvando} onClick={() => void salvar(null)} className="rounded-lg px-2 py-1.5 text-[11px] text-white/70 hover:text-white">Voltar ao padrão</button>
+                <span className="hidden text-[10.5px] text-white/60 xl:inline">{movendo !== null ? "Clique na sala para onde quer mover" : "Mova ou apague as salas"}</span>
+              </>
+            ) : (
+              <button type="button" onClick={() => { setRascunho([...salva]); setEditando(true); }} className="rounded-lg border border-white/10 bg-[#171310]/80 px-2.5 py-1 text-[11px] text-white/85 shadow hover:bg-[#171310] hover:text-white">Arrumar salas</button>
+            )}
+          </div>
+        )}
 
         {/* Painel "Hoje" e a TV do Nosso resultado nos cantos */}
         <div className="absolute bottom-[3%] right-[2%] z-20 w-[19%] min-w-[150px] rounded-xl border border-white/10 bg-[#171310]/90 p-2 text-white shadow-xl">
