@@ -18,10 +18,6 @@ const COR: Record<EstadoPixel, string> = {
 const ROTULO: Record<EstadoPixel, string> = {
   trabalhando: "Trabalhando", esperando: "Esperando você", problema: "Com problema", parado: "Sem tarefa", reuniao: "Em reunião",
 };
-const LEGENDA: [string, string][] = [
-  ["bg-sky-400", "Você"], ["bg-emerald-500", "Funcionário trabalhando"], ["bg-violet-500", "Reunião"],
-  ["bg-amber-400", "Tarefa esperando você"], ["bg-rose-500", "Problema"], ["bg-slate-400", "Sem tarefa"],
-];
 const CORES_AVATAR = ["bg-amber-600", "bg-sky-600", "bg-emerald-600", "bg-rose-600", "bg-violet-600", "bg-orange-600"];
 
 function Avatar({ nome, className }: { nome: string; className?: string }) {
@@ -80,6 +76,18 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [camera, setCamera] = useState<ModoCamera>("geral");
   const cena = useMemo(() => montarCena(), []);
+  // 24/10 (Davi): sem faixa vazia em cima e embaixo do mapa: a altura do bloco segue o formato do mapa.
+  const colunaMapa = useRef<HTMLDivElement>(null);
+  const [altura, setAltura] = useState(640);
+  useEffect(() => {
+    const el = colunaMapa.current;
+    if (!el) return;
+    const medir = () => setAltura(Math.max(480, Math.round(el.clientWidth * cena.altura / cena.largura)));
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [cena]);
 
   const nomeSetor = useMemo(() => new Map(setores.map((s) => [s.id, s.nome])), [setores]);
   // Cada pessoa vai para a sala do setor dela (pelo nome do setor); setor sem sala trabalha na Área Colaborativa.
@@ -125,14 +133,13 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
   };
 
   return (
-    <div className="flex h-[calc(100svh-110px)] min-h-[600px] overflow-hidden rounded-xl border border-white/10 bg-[#0b1120] text-white">
-      <div className="relative min-w-0 flex-1">
+    <div className="flex overflow-hidden rounded-xl border border-white/10 bg-[#0b1120] text-white" style={{ height: altura }}>
+      <div ref={colunaMapa} className="relative min-w-0 flex-1">
         <div ref={caixa} className="absolute inset-0" />
         {!pronto && !erro && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>
         )}
         {erro && <div className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-rose-300">{erro}</div>}
-        <p className="pointer-events-none absolute bottom-1.5 left-2 text-[10px] text-white/35">Clique no mapa e use as setas ou WASD · E conversa · Z alterna a câmera · sprites gratuitos LimeZu (uso não comercial)</p>
       </div>
 
       <aside className="dark flex w-[320px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
@@ -184,13 +191,6 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
 
         {lateral}
 
-        <Card icone={Eye} titulo="Legenda">
-          <ul className="grid grid-cols-1 gap-1">
-            {LEGENDA.map(([cor, rotulo]) => (
-              <li key={rotulo} className="flex items-center gap-2 text-[11px] text-white/75"><span className={cn("h-2 w-2 rounded-full", cor)} />{rotulo}</li>
-            ))}
-          </ul>
-        </Card>
       </aside>
     </div>
   );

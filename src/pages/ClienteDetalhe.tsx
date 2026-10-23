@@ -6,10 +6,8 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { ArrowLeft, Plus, Edit, Trash, ChevronDown, ChevronLeft, ChevronRight, Brain, Building2, ClipboardList, FileText, Info, ListChecks } from "lucide-react";
+import { Plus, Edit, Trash } from "lucide-react";
 import { CerebroView } from "@/components/cerebro/CerebroView";
-import { iniciais } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
 import { PesquisaList } from "@/components/pesquisa/PesquisaList";
@@ -19,7 +17,6 @@ import { DocumentQuickAccess } from "@/components/documentos/DocumentQuickAccess
 import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
-import { PresencaOnlineDot } from "@/components/PresencaOnlineDot";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
 import { confirmar } from "@/components/DialogosGlobais";
 
@@ -66,14 +63,6 @@ export default function ClienteDetalhe() {
   const [avisoPermissoes, setAvisoPermissoes] = useState("");
   const requisicaoAtual = useRef(0);
   const [abaAtiva, setAbaAtiva] = useState(() => lerAbaProjeto(id).aba ?? "atividades");
-  // 20/10 (Davi): a barra lateral do projeto lembra se ficou fechada ao sair e voltar (vale para todos os projetos).
-  const [sidebarRecolhida, setSidebarRecolhidaEstado] = useState(() => {
-    try { return localStorage.getItem("projeto:barra-recolhida") === "1"; } catch { return false; }
-  });
-  const setSidebarRecolhida = (v: boolean) => {
-    setSidebarRecolhidaEstado(v);
-    try { localStorage.setItem("projeto:barra-recolhida", v ? "1" : "0"); } catch { /* sem storage */ }
-  };
   const [subAbaConteudo, setSubAbaConteudo] = useState(() => lerAbaProjeto(id).sub ?? "visao-geral");
   // Lembra a seção aberta de cada projeto pra reabrir igual (fechar e abrir o app).
   // (Ao trocar de projeto na mesma guia não grava: a seção ainda é a do anterior.)
@@ -86,7 +75,8 @@ export default function ClienteDetalhe() {
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
-  const { pessoasOnline } = usePresencaProjeto(id);
+  // Continua avisando que o Davi está no projeto (a bolinha de presença saiu junto com o menu interno).
+  usePresencaProjeto(id);
 
   // ?secao=<aba>[:<guia>] (barra lateral em árvore, 23/10): abre a seção pedida e o endereço acompanha
   // quando a aba muda aqui dentro (assim a árvore marca o item certo).
@@ -242,20 +232,6 @@ export default function ClienteDetalhe() {
 
   const pode = (area: AreaEquipe) => acesso.permissoes[area].acessar;
 
-  // 16/10: "Informações gerais" virou guia do Escritório e "Pesquisa" guia de Documentos. Só aparecem
-  // soltas no menu para quem não tem acesso ao Conteúdo / aos Documentos.
-  const ICONE_ABA: Record<string, typeof FileText> = { informacoes: Info, pesquisa: ClipboardList, atividades: ListChecks, documentos: FileText, cerebro: Brain };
-  const abasPrincipais = [
-    { id: "informacoes", label: "Informações gerais" },
-    { id: "pesquisa", label: "Pesquisa" },
-    { id: "atividades", label: "Atividades" },
-    { id: "documentos", label: "Documentos" },
-    // 20/10: o Cérebro (grafo da organização, inteligências e arquivos), embaixo de Documentos.
-    { id: "cerebro", label: "Cérebro" },
-  ].filter((item) => (item.id === "informacoes" ? !pode("conteudo")
-    : item.id === "cerebro" ? pode("documentos")
-    : item.id === "pesquisa" ? pode("pesquisa") && !pode("documentos")
-    : pode(item.id as AreaEquipe)));
   // Guias no topo: Escritório | Informações gerais e Documentos | Pesquisa.
   const guiasTopo: { id: string; label: string; ativa: boolean; ir: () => void }[] =
     (abaAtiva === "informacoes" || (abaAtiva === "conteudo" && GUIAS_ESCRITORIO.includes(subAbaConteudo))) && pode("conteudo")
@@ -274,142 +250,9 @@ export default function ClienteDetalhe() {
           { id: "pesquisa", label: "Pesquisa", ativa: abaAtiva === "pesquisa", ir: () => setAbaAtiva("pesquisa") },
         ]
         : [];
-  // 16/10: "Visão geral" virou "Escritório" e Vertical/Youtube/Brainstorm/Cronograma viraram guias do "Creator".
-  const abasConteudo = [
-    { id: "visao-geral", label: "Escritório" },
-    { id: "conhecimento", label: "Fonte de conhecimento" },
-    { id: "quiz", label: "Quiz" },
-  ];
-
   return (
     <div className="flex h-screen">
-      {/* Sidebar interno */}
-      <div className={`${sidebarRecolhida ? "w-14" : "w-52"} shrink-0 border-r border-border bg-background p-4 transition-all`}>
-        {sidebarRecolhida ? (
-          <div className="flex flex-col items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/clientes")}
-              title="Voltar"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarRecolhida(false)}
-              title="Expandir menu"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-            <Avatar className="h-8 w-8" title={cliente.nome_especialista}>
-              <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
-                {iniciais(cliente.nome_especialista)}
-              </AvatarFallback>
-            </Avatar>
-            {/* 19/10 (Davi): "mesmo minimizada, que apareçam os ícones para eu clicar". */}
-            <div className="mt-2 flex flex-col items-center gap-1 border-t pt-3">
-              {[
-                ...(pode("conteudo") ? [{ id: "escritorio", label: "Escritório", Icone: Building2,
-                  ativo: (abaAtiva === "conteudo" && GUIAS_ESCRITORIO.includes(subAbaConteudo)) || abaAtiva === "informacoes",
-                  ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo("visao-geral"); } }] : []),
-                ...abasPrincipais.map((item) => ({
-                  id: item.id, label: item.label, Icone: ICONE_ABA[item.id] ?? FileText,
-                  ativo: abaAtiva === item.id || (item.id === "documentos" && abaAtiva === "pesquisa"),
-                  ir: () => setAbaAtiva(item.id),
-                })),
-              ].map(({ id: idAba, label, Icone, ativo, ir }) => (
-                <Button key={idAba} variant="ghost" size="icon" onClick={ir} title={label} aria-label={label}
-                  className={ativo ? "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground" : ""}>
-                  <Icone className="h-4 w-4" />
-                </Button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="mb-3 flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => navigate("/clientes")}
-                className="flex-1 justify-start gap-2"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Voltar
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSidebarRecolhida(true)}
-                title="Recolher menu"
-                className="h-9 w-9"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Nome do cliente, sempre visível em cima do menu pra identificar
-                de cara em qual cliente você está. */}
-            <div className="mb-4 flex items-center gap-2 px-1">
-              <Avatar className="h-9 w-9 flex-shrink-0">
-                <AvatarFallback className="bg-primary/10 text-primary font-semibold text-sm">
-                  {iniciais(cliente.nome_especialista)}
-                </AvatarFallback>
-              </Avatar>
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-foreground text-sm truncate">
-                  {cliente.nome_especialista}
-                </p>
-                {cliente.nicho && (
-                  <p className="text-xs text-muted-foreground truncate">{cliente.nicho}</p>
-                )}
-              </div>
-              <PresencaOnlineDot pessoas={pessoasOnline} />
-            </div>
-
-            <div className="space-y-1">
-              {/* 16/10: Escritório em primeiro, acima de Atividades (sem o antigo grupo "Conteúdo"). */}
-              {pode("conteudo") && abasConteudo.filter((item) => item.id === "visao-geral").map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setAbaAtiva("conteudo");
-                    setSubAbaConteudo(item.id);
-                  }}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    (abaAtiva === "conteudo" && (subAbaConteudo === item.id || (item.id === "visao-geral" && GUIAS_ESCRITORIO.includes(subAbaConteudo))))
-                      || (item.id === "visao-geral" && abaAtiva === "informacoes")
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-              {abasPrincipais.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setAbaAtiva(item.id)}
-                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                    abaAtiva === item.id || (item.id === "documentos" && abaAtiva === "pesquisa")
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-
-
-            </div>
-          </>
-        )}
-      </div>
-
+      {/* 24/10 (Davi): sai o menu interno do projeto (Voltar, ícones das abas): repetia a barra lateral em árvore. */}
       {pode("documentos") && <div className="fixed bottom-4 left-4 z-20"><DocumentQuickAccess key={id} clienteId={id!} /></div>}
 
       {/* Área de conteúdo */}

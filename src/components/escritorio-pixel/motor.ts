@@ -460,9 +460,8 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   const ajustarTextos = () => { const r = resolucaoTexto(); for (const tx of textos) if (tx.resolution !== r) tx.resolution = r; };
   const escalaGeral = () => {
     const bruta = Math.min(app.screen.width / (atual.largura * TILE), app.screen.height / (atual.altura * TILE));
-    // 24/10: o mapa ocupa todo o espaço entre a barra lateral e o painel (pedido do Davi), mesmo que o pixel
-    // fique levemente desigual; passos de 1/8 evitam borrar o texto a cada pixel de redimensionamento.
-    return Math.max(0.5, Math.floor(bruta * 0.99 * 8) / 8);
+    // 24/10: o mapa ocupa todo o espaço do bloco (pedido do Davi), mesmo que o pixel fique levemente desigual.
+    return Math.max(0.5, bruta);
   };
   const posicionarCamera = () => {
     const w = app.screen.width, h = app.screen.height;
@@ -479,6 +478,9 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     posicionarCamera();
   }
   app.renderer.on("resize", ajustar);
+  // O Pixi só acompanha o tamanho da janela; o bloco também muda de altura sozinho (segue o formato do mapa).
+  const observador = new ResizeObserver(() => app.resize());
+  observador.observe(el);
 
   // Movimento: 4 direções, tile a tile.
   const VELOCIDADE = 3.2; // tiles por segundo
@@ -559,6 +561,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     },
     destruir() {
       destruido = true;
+      observador.disconnect();
       document.removeEventListener("pointerdown", aoTocar, true);
       window.removeEventListener("keydown", aoApertar);
       window.removeEventListener("keyup", aoSoltar);
