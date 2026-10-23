@@ -27,3 +27,20 @@ begin
   reset role;
 end $$;
 ROLLBACK;
+
+-- O título da conversa é gravado pelo dono (todas as trocas da conversa).
+BEGIN;
+do $$
+declare eu uuid := (select id from auth.users order by created_at limit 1);
+declare c uuid := gen_random_uuid();
+declare n int;
+begin
+  perform set_config('request.jwt.claims', json_build_object('sub', eu, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.conversas_documento (conversa, chave, pedido) values (c, 'doc-a', 'oi'), (c, 'doc-b', 'continuando em outro documento');
+  update public.conversas_documento set titulo = 'Teste de título' where conversa = c;
+  get diagnostics n = row_count;
+  if n <> 2 then raise exception 'devia titular as 2 trocas (titulou %)', n; end if;
+  reset role;
+end $$;
+ROLLBACK;

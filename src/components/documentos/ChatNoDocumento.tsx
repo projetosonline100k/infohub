@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, AtSign, BookOpen, Check, FileText, History, Loader2, MessageSquare, Plus, Quote, Settings2, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, BookOpen, Check, FileText, History, Loader2, MessageSquare, Plus, Quote, Search, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { CerebroEsteira, CriteriosEtapa } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
@@ -211,8 +211,15 @@ interface Turno extends Conversa {
 interface Citado { id: string; titulo: string }
 interface LinhaConversa {
   id: string; conversa: string; pedido: string; resposta: string; passos: Passo[] | null; selecao: string | null;
-  citados: Citado[] | null; erro: string | null; inserido: boolean; created_at: string;
+  citados: Citado[] | null; erro: string | null; inserido: boolean; created_at: string; titulo?: string | null;
 }
+/** Uma conversa na lista (como os "Recentes" do Claude). */
+interface ItemConversa { id: string; titulo: string; chave: string; onde: string; quando: string; trocas: number }
+const COLUNAS_CONVERSA = "id, conversa, pedido, resposta, passos, selecao, citados, erro, inserido, created_at, titulo";
+
+/** Chamada de ferramenta escrita como texto (este chat não tem ferramentas): some da resposta. */
+const semFerramentas = (t: string) => t.replace(/<(function_calls|invoke)[\s\S]*?(<\/\1>|$)/g, "").trim();
+const AVISO_FERRAMENTA = "(Ele tentou usar uma ferramenta, que não existe neste chat. Pergunte de outro jeito.)";
 
 /** HTML do documento (TipTap) em texto, um bloco por linha. */
 function htmlParaTexto(html: string) {
@@ -232,26 +239,46 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const chaveConversa = `docchat:conversa:${chave ?? "sem"}`;   // onde a 1ª versão guardava (neste Mac)
   const [turnos, setTurnos] = useState<Turno[]>([]);
   const [conversaId, setConversaId] = useState<string>(() => crypto.randomUUID());
-  const [linhas, setLinhas] = useState<LinhaConversa[]>([]);   // todas as trocas deste documento (para o histórico)
+  const [tituloConversa, setTituloConversa] = useState<string | null>(null);
+  const conversaAtual = useRef(conversaId);
+  useEffect(() => { conversaAtual.current = conversaId; }, [conversaId]);
   const paraTurno = (l: LinhaConversa): Turno => ({
-    id: l.id, pedido: l.pedido, resposta: l.resposta, passos: l.passos ?? [], selecao: l.selecao, citados: l.citados ?? [],
-    erro: l.erro ?? undefined, inserido: l.inserido,
+    id: l.id, pedido: l.pedido, resposta: semFerramentas(l.resposta) || (l.resposta ? AVISO_FERRAMENTA : ""),
+    passos: (l.passos ?? []).map((p) => ({ ...p, texto: semFerramentas(p.texto) || AVISO_FERRAMENTA })),
+    selecao: l.selecao, citados: l.citados ?? [], erro: l.erro ?? undefined, inserido: l.inserido,
   });
-  const salvarTroca = async (t: Turno, conversa: string) => {
+  const mostrar = (lista: LinhaConversa[], id: string) => {
+    setConversaId(id);
+    setTurnos(lista.map(paraTurno));
+    setTituloConversa(lista.find((l) => l.titulo)?.titulo ?? null);
+  };
+  const salvarTroca = async (t: Turno, conversa: string, primeira: boolean) => {
     if (!chave) return;
     const { error } = await db.from("conversas_documento").insert({
       id: t.id, conversa, chave, cliente_id: clienteId, pedido: t.pedido, resposta: t.resposta, passos: t.passos,
-      selecao: t.selecao ?? null, citados: t.citados ?? [], erro: t.erro ?? null,
+      selecao: t.selecao ?? null, citados: t.citados ?? [], erro: t.erro ?? null, titulo: primeira ? null : tituloConversa,
     });
     if (error) { toast.error("Não consegui salvar a conversa"); return; }
-    setLinhas((l) => [...l, { id: t.id, conversa, pedido: t.pedido, resposta: t.resposta, passos: t.passos, selecao: t.selecao ?? null,
-      citados: t.citados ?? [], erro: t.erro ?? null, inserido: false, created_at: new Date().toISOString() }]);
+    if (primeira && t.resposta) void gerarTitulo(conversa, t.pedido, t.resposta);
+  };
+  /** Depois da primeira resposta, a IA dá um título curto para a conversa (como no Claude). */
+  const gerarTitulo = async (conversa: string, pedido: string, resposta: string) => {
+    try {
+      const bruto = await escreverComClaude(crypto.randomUUID(), [
+        "Dê um título curto para esta conversa: de 2 a 5 palavras, em português do Brasil, sem aspas e sem ponto final.",
+        `Pedido: ${pedido.slice(0, 500)}`, `Resposta: ${resposta.slice(0, 800)}`, "Responda só com o título.",
+      ].join("\n"), "haiku", () => undefined);
+      const titulo = semFerramentas(bruto).split("\n")[0].replace(/^["'“”]+|["'“”.]+$/g, "").trim().slice(0, 60);
+      if (!titulo) return;
+      await db.from("conversas_documento").update({ titulo }).eq("conversa", conversa);
+      if (conversaAtual.current === conversa) setTituloConversa(titulo);
+    } catch { /* sem título: a lista mostra a primeira pergunta */ }
   };
   useEffect(() => {
     if (!aberto || !chave) return;
     let cancelado = false;
     void (async () => {
-      const { data } = await db.from("conversas_documento").select("id, conversa, pedido, resposta, passos, selecao, citados, erro, inserido, created_at")
+      const { data } = await db.from("conversas_documento").select(COLUNAS_CONVERSA)
         .eq("chave", chave).order("created_at", { ascending: true }).limit(1000);
       let lista = (data ?? []) as LinhaConversa[];
       // A conversa que estava guardada neste Mac (1ª versão) vai para o banco uma vez só.
@@ -267,22 +294,47 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         }
       }
       if (cancelado) return;
-      setLinhas(lista);
       // Abre na última conversa deste documento.
       const ultima = lista[lista.length - 1]?.conversa;
-      if (ultima) { setConversaId(ultima); setTurnos(lista.filter((l) => l.conversa === ultima).map(paraTurno)); }
-      else { setConversaId(crypto.randomUUID()); setTurnos([]); }
+      if (ultima) mostrar(lista.filter((l) => l.conversa === ultima), ultima);
+      else { setConversaId(crypto.randomUUID()); setTurnos([]); setTituloConversa(null); }
     })();
     return () => { cancelado = true; };
   }, [aberto, chave]); // eslint-disable-line react-hooks/exhaustive-deps
-  const conversasAnteriores = useMemo(() => {
-    const porConversa = new Map<string, LinhaConversa[]>();
-    for (const l of linhas) porConversa.set(l.conversa, [...(porConversa.get(l.conversa) ?? []), l]);
-    return [...porConversa.entries()].map(([id, ls]) => ({ id, titulo: ls[0].pedido, quando: ls[ls.length - 1].created_at, trocas: ls.length }))
-      .sort((a, b) => b.quando.localeCompare(a.quando));
-  }, [linhas]);
-  const abrirConversa = (id: string) => { setConversaId(id); setTurnos(linhas.filter((l) => l.conversa === id).map(paraTurno)); };
-  const novaConversa = () => { setConversaId(crypto.randomUUID()); setTurnos([]); setCitados([]); };
+
+  // Lista de conversas (todas, de qualquer documento), como os "Recentes" do Claude.
+  const [listaAberta, setListaAberta] = useState(false);
+  const [itens, setItens] = useState<ItemConversa[] | null>(null);
+  const [buscaConversa, setBuscaConversa] = useState("");
+  useEffect(() => {
+    if (!listaAberta) return;
+    let cancelado = false;
+    void (async () => {
+      const { data } = await db.from("conversas_documento").select("conversa, chave, pedido, titulo, created_at")
+        .order("created_at", { ascending: false }).limit(3000);
+      const linhas = (data ?? []) as { conversa: string; chave: string; pedido: string; titulo: string | null; created_at: string }[];
+      const porConversa = new Map<string, typeof linhas>();
+      for (const l of linhas) porConversa.set(l.conversa, [...(porConversa.get(l.conversa) ?? []), l]);
+      const ids = [...new Set(linhas.map((l) => l.chave).filter((c) => /^[0-9a-f-]{36}$/i.test(c)))];
+      const { data: docs } = ids.length ? await db.from("documentos").select("id, titulo").in("id", ids) : { data: [] };
+      const nomeDoc = new Map(((docs ?? []) as { id: string; titulo: string }[]).map((d) => [d.id, d.titulo]));
+      if (cancelado) return;
+      setItens([...porConversa.entries()].map(([id, ls]) => {
+        const primeira = ls[ls.length - 1];   // vieram da mais nova para a mais velha
+        return {
+          id, titulo: ls.find((l) => l.titulo)?.titulo || primeira.pedido, chave: primeira.chave, quando: ls[0].created_at, trocas: ls.length,
+          onde: primeira.chave.startsWith("video:") ? "Roteiro de vídeo" : nomeDoc.get(primeira.chave) ?? "Documento",
+        };
+      }));
+    })();
+    return () => { cancelado = true; };
+  }, [listaAberta]);
+  const abrirConversa = async (id: string) => {
+    const { data } = await db.from("conversas_documento").select(COLUNAS_CONVERSA).eq("conversa", id).order("created_at", { ascending: true });
+    mostrar((data ?? []) as LinhaConversa[], id);
+    setListaAberta(false);
+  };
+  const novaConversa = () => { setConversaId(crypto.randomUUID()); setTurnos([]); setCitados([]); setTituloConversa(null); setListaAberta(false); };
 
   // @ no campo: procura um documento e o cita (o texto dele vai junto no pedido).
   const [citados, setCitados] = useState<Citado[]>([]);
@@ -539,6 +591,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const historico = turnos.filter((t) => !t.erro && !t.rodando).map((t) => ({ pedido: t.pedido, resposta: t.resposta }));
     const idTurno = crypto.randomUUID();
     const conversa = conversaId;
+    const primeira = turnos.length === 0;
     // Só os citados que ainda estão no texto (o Davi pode ter apagado o @Título).
     const citadosAgora = citados.filter((c) => pedido.includes(`@${c.titulo}`));
     setCitados([]);
@@ -577,8 +630,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           atualizar({ passos: passos.map((p) => ({ ...p })), resposta: total });
         });
         // Sem ferramentas aqui: se mesmo assim ele escrever uma chamada de ferramenta, ela não aparece como resposta.
-        passo.texto = resposta.replace(/<(function_calls|invoke)[\s\S]*?(<\/\1>|$)/g, "").trim()
-          || "(Ele tentou usar uma ferramenta, que não existe neste chat. Pergunte de outro jeito.)";
+        passo.texto = semFerramentas(resposta) || AVISO_FERRAMENTA;
         anterior = { quem, texto: passo.texto };
       } catch (e) {
         erro = parou.current ? undefined : (e instanceof Error ? e.message : String(e));
@@ -591,7 +643,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const feitos = passos.filter((p) => p.texto);
     const final = { passos: feitos, resposta: feitos[feitos.length - 1]?.texto ?? "", erro, rodando: false };
     atualizar(final);
-    void salvarTroca({ id: idTurno, pedido: pedido || "(fazer a sua parte)", selecao, citados: citadosAgora, ...final }, conversa);
+    void salvarTroca({ id: idTurno, pedido: pedido || "(fazer a sua parte)", selecao, citados: citadosAgora, ...final }, conversa, primeira);
     requestAnimationFrame(() => campo.current?.focus());
   };
 
@@ -728,36 +780,57 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <Sparkles className="h-4 w-4 text-primary" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"}</p>
-            <p className="text-[11px] text-muted-foreground">Responde aqui; você insere no documento se quiser</p>
+            <p className="truncate text-sm font-semibold">{listaAberta ? "Conversas" : tituloConversa ?? turnos[0]?.pedido ?? "Nova conversa"}</p>
+            <p className="truncate text-[11px] text-muted-foreground">
+              {listaAberta ? "Todas as suas conversas, de qualquer documento" : `${escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"} · @ cita um documento`}
+            </p>
           </div>
-          {chave && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button type="button" disabled={escrevendo} title="Conversas anteriores deste documento"
-                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><History className="h-4 w-4" /></button>
-              </PopoverTrigger>
-              <PopoverContent className="z-[60] w-80 p-1" align="end">
-                <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Conversas deste documento</p>
-                <div className="max-h-80 overflow-y-auto">
-                  {conversasAnteriores.map((c) => (
-                    <button key={c.id} type="button" onClick={() => abrirConversa(c.id)}
-                      className={cn("block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted", c.id === conversaId && "bg-muted")}>
-                      <span className="block truncate">{c.titulo}</span>
-                      <span className="text-[11px] text-muted-foreground">{new Date(c.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · {c.trocas} {c.trocas === 1 ? "troca" : "trocas"}</span>
-                    </button>
-                  ))}
-                  {!conversasAnteriores.length && <p className="px-2 py-3 text-sm text-muted-foreground">Nenhuma conversa salva ainda.</p>}
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
-          <button type="button" onClick={novaConversa} disabled={escrevendo || !turnos.length} title="Nova conversa (a anterior fica no histórico)"
+          <button type="button" onClick={() => setListaAberta((v) => !v)} disabled={escrevendo} title="Conversas"
+            className={cn("rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30", listaAberta && "bg-muted text-foreground")}><History className="h-4 w-4" /></button>
+          <button type="button" onClick={novaConversa} disabled={escrevendo || (!turnos.length && !listaAberta)} title="Nova conversa (a anterior fica na lista)"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><Plus className="h-4 w-4" /></button>
           <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }} title="Fechar (⌘I); o que estiver escrevendo continua"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
 
+        {listaAberta ? (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="space-y-2 border-b p-3">
+              <button type="button" onClick={novaConversa}
+                className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"><Plus className="h-4 w-4" />Nova conversa</button>
+              <label className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5">
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                <input value={buscaConversa} onChange={(e) => setBuscaConversa(e.target.value)} placeholder="Buscar conversas"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+              </label>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {itens === null ? <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : (() => {
+                const termo = buscaConversa.trim().toLowerCase();
+                const filtrados = itens.filter((i) => !termo || i.titulo.toLowerCase().includes(termo) || i.onde.toLowerCase().includes(termo));
+                const grupos: [string, ItemConversa[]][] = [
+                  ["Neste documento", filtrados.filter((i) => i.chave === chave)],
+                  ["Recentes", filtrados.filter((i) => i.chave !== chave)],
+                ];
+                if (!filtrados.length) return <p className="p-3 text-sm text-muted-foreground">{termo ? "Nenhuma conversa com isso." : "Nenhuma conversa ainda."}</p>;
+                return grupos.filter(([, l]) => l.length).map(([rotulo, l]) => (
+                  <div key={rotulo} className="mb-3">
+                    <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{rotulo}</p>
+                    {l.map((i) => (
+                      <button key={i.id} type="button" onClick={() => void abrirConversa(i.id)}
+                        className={cn("block w-full rounded-lg px-2 py-1.5 text-left hover:bg-muted", i.id === conversaId && "bg-muted")}>
+                        <span className="block truncate text-sm">{i.titulo}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {i.chave !== chave && `${i.onde} · `}{new Date(i.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        ) : (<>
         {/* A conversa. */}
         <div ref={listaConversa} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
           {!turnos.length && (
@@ -967,6 +1040,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             </div>
           </div>
         </div>
+        </>)}
       </aside>, document.body)}
     </>
   );
