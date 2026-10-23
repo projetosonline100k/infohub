@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, BookOpen, Check, Loader2, Quote, Settings2, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, Check, FileText, Loader2, MessageSquare, Plus, Quote, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { CerebroEsteira, CriteriosEtapa } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
@@ -22,6 +22,8 @@ import {
 // (headline), o Junior (roteiros) e o Elias (revisão); selecionando Junior e Elias é um trabalho
 // só". Cada um usa o mesmo contexto da esteira do escritório (critérios, formatos, skills, cérebro).
 // O Claude roda no Mac (comando claude_escrever, src-tauri/src/escrita.rs) e o texto entra ao vivo.
+// 24/10 (Davi): o ⌘I abre um painel de chat na lateral direita (como o Claude no Chrome): a conversa fica
+// ali (o que cada um escreveu no documento e as notas deles) e dá para responder só no chat e inserir depois.
 const db = supabase as unknown as SupabaseClient;
 
 interface Etapa { nome: string; membro_id: string; criterios?: string | string[]; formatos?: FormatoEscrita[] }
@@ -196,20 +198,30 @@ async function transcricaoDaReferencia(link: string): Promise<string | null> {
   }
 }
 
-interface Turno extends Conversa { erro?: string }
+type Destino = "documento" | "chat";
+interface Passo { quem: string; etapa: string; texto: string; notas: string; revisao: boolean }
+interface Turno extends Conversa {
+  id: string; erro?: string; selecao?: string | null; destino: Destino; quem?: string;
+  passos: Passo[]; rodando?: boolean; inserido?: boolean;
+}
+const LARGURA_PAINEL = 400;
 interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" | "revisando" }
 
 /** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
 export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; clienteId: string | null; chave?: string | null }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState("");
-  const [turnos, setTurnos] = useState<Turno[]>([]);
+  const chaveConversa = `docchat:conversa:${chave ?? "sem"}`;
+  const [turnos, setTurnosEstado] = useState<Turno[]>(() => ler<Turno[]>(chaveConversa, []).map((t) => ({ ...t, rodando: false })));
+  useEffect(() => setTurnosEstado(ler<Turno[]>(chaveConversa, []).map((t) => ({ ...t, rodando: false }))), [chaveConversa]);
+  const setTurnos = (f: (l: Turno[]) => Turno[]) => setTurnosEstado((l) => { const n = f(l).slice(-30); gravar(chaveConversa, n); return n; });
+  const [destino, setDestino] = useState<Destino>(() => ler("docchat:destino", "documento"));
+  const listaConversa = useRef<HTMLDivElement>(null);
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   const [escolhidos, setEscolhidos] = useState<string[]>(() => ler("docchat:agentes", []));   // membro_id
   const [skillsOff, setSkillsOff] = useState<string[]>(() => ler("docchat:skillsOff", []));    // nome da skill
   const [para, setPara] = useState<string>(() => ler("docchat:para", ""));
   const [modelo, setModelo] = useState<string>(() => ler("docchat:modelo", "sonnet"));
-  const [posicao, setPosicao] = useState<{ left: number; width: number; bottom: number } | null>(null);
   const chaveRev = `docchat:rev:${chave ?? "sem"}`;
   const [revisoes, setRevisoes] = useState<Revisao[]>(() => ler(chaveRev, []));
   useEffect(() => setRevisoes(ler(chaveRev, [])), [chaveRev]);
@@ -257,14 +269,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   useEffect(() => gravar("docchat:skillsOff", skillsOff), [skillsOff]);
   useEffect(() => gravar("docchat:para", para), [para]);
   useEffect(() => gravar("docchat:modelo", modelo), [modelo]);
-
-  // A barra ocupa o rodapé da coluna do documento (a área que rola), com fundo próprio.
-  const medir = useCallback(() => {
-    let el = editor.view.dom.parentElement;
-    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
-    const r = (el ?? editor.view.dom).getBoundingClientRect();
-    setPosicao({ left: r.left, width: r.width, bottom: Math.max(0, window.innerHeight - r.bottom) });
-  }, [editor]);
+  useEffect(() => gravar("docchat:destino", destino), [destino]);
 
   // ⌘I abre e fecha (o itálico continua no botão da barra de ferramentas).
   useEffect(() => {
@@ -278,13 +283,19 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     return () => window.removeEventListener("keydown", aoTeclar, true);
   }, []);
 
+  // Painel aberto: o app encolhe para o painel não ficar por cima do documento.
   useEffect(() => {
     if (!aberto) return;
-    medir();
     requestAnimationFrame(() => campo.current?.focus());
-    window.addEventListener("resize", medir);
-    return () => window.removeEventListener("resize", medir);
-  }, [aberto, medir]);
+    const antes = document.body.style.paddingRight;
+    document.body.style.paddingRight = `${LARGURA_PAINEL}px`;
+    return () => { document.body.style.paddingRight = antes; };
+  }, [aberto]);
+  // A conversa desce sozinha quando chega texto novo.
+  useEffect(() => {
+    const el = listaConversa.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [turnos, aberto]);
 
   // Campo cresce com o texto (até 6 linhas).
   useEffect(() => {
@@ -330,14 +341,17 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const trabalhar = async (o: {
     regiao: Regiao; selecao: string | null; documento: string; pedido: string; proximaHeadline: number;
     fila: (typeof escolhidasOrdem[number] | null)[]; aoAndar?: (a: Andamento) => void;
+    aoPasso?: (passos: Passo[]) => void;   // o que cada um escreveu (aparece na conversa do painel)
     jaSeguida?: boolean;   // o "gerar todos" já acompanha a região desde o começo (seguir duas vezes andava o dobro)
     numero?: number;       // ROTEIRO NN deste texto (guardado na revisão)
-  }): Promise<{ texto: string; erro?: string }> => {
+  }): Promise<{ texto: string; erro?: string; passos: Passo[] }> => {
     const { regiao, selecao, documento, pedido, proximaHeadline, fila } = o;
     const andar = o.aoAndar ?? setAndamento;
     const largar = o.jaSeguida ? () => undefined : seguirRegiao(editor, regiao);
     const blocos: { quem: string; texto: string }[] = [];
     let anterior: { quem: string; texto: string } | null = null;
+    const passos: Passo[] = [];
+    const avisar = () => o.aoPasso?.(passos.map((p) => ({ ...p })));
     let erro: string | undefined;
     let fixado = false;
     const juntar = () => blocos.map((b) => b.texto).filter((t) => t.trim()).join("\n");
@@ -383,21 +397,30 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou, numero: o.numero }]);
             if (!trocou) toast.info(`${quem} terminou a revisão. Como o texto foi mexido, deixei o seu; clique em On para ver a versão de ${quem}.`);
           }
+          passos.push({ quem, etapa: etapa?.nome ?? "", texto: final || antes, notas, revisao: true });
+          avisar();
           anterior = { quem, texto: final || antes };
           continue;
         }
 
         const bloco = { quem, texto: "" };
         blocos.push(bloco);
+        const passo: Passo = { quem, etapa: etapa?.nome ?? "", texto: "", notas: "", revisao: false };
+        passos.push(passo);
         let ultimo = 0;
         const bruto = await escreverComClaude(id, prompt, modelo, (total) => {
           const { texto: t } = separarNotas(total);
           bloco.texto = t;
+          passo.texto = t;
           if (t) andar({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
-          if (Date.now() - ultimo > 80) { ultimo = Date.now(); pintar(); }
+          if (Date.now() - ultimo > 80) { ultimo = Date.now(); pintar(); avisar(); }
         });
         rodando.current.delete(id);
-        bloco.texto = separarNotas(bruto).texto;
+        const separado = separarNotas(bruto);
+        bloco.texto = separado.texto;
+        passo.texto = separado.texto;
+        passo.notas = separado.notas;
+        avisar();
         pintar();
         anterior = { quem, texto: bloco.texto };
       }
@@ -408,12 +431,12 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
       fixar();
       largar();
     }
-    return { texto: anterior?.texto ?? juntar(), erro };
+    return { texto: anterior?.texto ?? juntar(), erro, passos };
   };
 
   const enviar = async () => {
     if (rodando.current.size || lote) return;
-    if (!isDesktop()) { toast.info("O modo chat escreve com o Claude do Mac: abra o documento no app Infopro Hub."); return; }
+    if (!isDesktop()) { toast.info("O chat do documento usa o Claude do Mac: abra o documento no app Infopro Hub."); return; }
     const pedido = texto.trim();
     const fila = escolhidasOrdem.length ? escolhidasOrdem : [null];
     if (!pedido && !escolhidasOrdem.length) return;
@@ -422,11 +445,64 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const { regiao, selecao, cursor } = regiaoInicial(editor);
     const doc = editor.state.doc;
     const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
-    const { texto: resposta, erro } = await trabalhar({ regiao, selecao, documento, pedido, proximaHeadline: proximoNumeroHeadline(editor.getHTML()), fila });
-    if (erro) toast.error(`Não deu para escrever: ${erro}`);
+    const historico = turnos.filter((t) => !t.erro && !t.rodando).map((t) => ({ pedido: t.pedido, resposta: t.resposta }));
+    const idTurno = crypto.randomUUID();
+    const quem = escolhidasOrdem[0]?.membro?.nome ?? "Claude";
+    setTurnos((l) => [...l, { id: idTurno, pedido: pedido || "(fazer a sua parte)", resposta: "", selecao, destino, quem, passos: [], rodando: true }]);
+    const atualizar = (patch: Partial<Turno>) => setTurnos((l) => l.map((t) => (t.id === idTurno ? { ...t, ...patch } : t)));
+
+    if (destino === "chat") {
+      // Só no chat: responde no painel (com o primeiro escolhido, se houver); o Davi insere se quiser.
+      const etapa = escolhidasOrdem[0] ?? null;
+      const m = etapa?.membro;
+      setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "pensando" });
+      const id = crypto.randomUUID();
+      rodando.current.add(id);
+      let erro: string | undefined;
+      try {
+        const agente: AgenteEscrita | null = m && etapa ? {
+          etapa: etapa.nome, nome: m.nome, funcao: m.funcao, manual: m.manual,
+          aprendizados: await aprendizados(m.nome.trim().toLowerCase()), criterios: etapa.criterios, formatos: etapa.formatos,
+        } : null;
+        const prompt = montarPedido({
+          escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
+          documento, selecao, historico, pedido, proximaHeadline: proximoNumeroHeadline(editor.getHTML()), modo: "conversa",
+        });
+        const resposta = await escreverComClaude(id, prompt, modelo, (total) => {
+          setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
+          atualizar({ resposta: total });
+        });
+        atualizar({ resposta: resposta.trim() });
+      } catch (e) {
+        erro = parou.current ? undefined : (e instanceof Error ? e.message : String(e));
+      } finally {
+        rodando.current.delete(id);
+      }
+      setAndamento(null);
+      atualizar({ erro, rodando: false });
+      requestAnimationFrame(() => campo.current?.focus());
+      return;
+    }
+
+    const r = await trabalhar({ regiao, selecao, documento, pedido, proximaHeadline: proximoNumeroHeadline(editor.getHTML()), fila,
+      aoPasso: (passos) => atualizar({ passos }) });
+    if (r.erro) toast.error(`Não deu para escrever: ${r.erro}`);
     setAndamento(null);
-    setTurnos((l) => [...l, { pedido: pedido || "(fazer a sua parte)", resposta, erro }].slice(-12));
+    atualizar({ resposta: r.texto, erro: r.erro, passos: r.passos, rodando: false });
     requestAnimationFrame(() => campo.current?.focus());
+  };
+
+  /** Resposta do chat: entra onde está o cursor (ou no lugar do que estiver selecionado). */
+  const inserir = (t: Turno) => {
+    // A pergunta do fim ("Aplico no roteiro completo?") é para o Davi, não entra no documento.
+    const partes = t.resposta.trim().split(/\n\s*\n/);
+    if (partes.length > 1 && partes[partes.length - 1].trim().endsWith("?")) partes.pop();
+    const textoFinal = partes.join("\n\n").trim();
+    if (!textoFinal) return;
+    const { regiao } = regiaoInicial(editor);
+    trocarRegiao(editor, regiao, textoFinal, true);
+    setTurnos((l) => l.map((x) => (x.id === t.id ? { ...x, inserido: true } : x)));
+    editor.commands.focus();
   };
 
   /** Tira do documento todo texto que veio das revisões (versão que estiver no ar) e as revisões. */
@@ -518,7 +594,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const escrevendo = !!andamento || !!lote;
   const placeholder = escolhidasOrdem.length
     ? `Pedir para ${escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}… (vazio = fazer a sua parte com o que está no documento)`
-    : "Pedir ao Claude… ele escreve onde está o cursor";
+    : destino === "documento" ? "Pedir ao Claude… ele escreve onde está o cursor" : "Conversar com o Claude sobre o documento…";
 
   return (
     <>
@@ -537,161 +613,219 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             onSalvar={(l) => salvarCerebros(l as CerebroEscrita[])} />
         </div>
       )}
-      <div style={{ height: 160 }} aria-hidden />
-      <div
-        className="fixed z-50 border-t bg-background px-4 pb-3 pt-2"
-        style={posicao ? { left: posicao.left, width: posicao.width, bottom: posicao.bottom } : { left: 0, right: 0, bottom: 0 }}
+      <aside
+        className="fixed inset-y-0 right-0 z-50 flex flex-col border-l bg-background shadow-2xl"
+        style={{ width: LARGURA_PAINEL }}
         onKeyDown={(e) => e.stopPropagation()}
       >
-       <div className="mx-auto max-w-[780px] rounded-2xl border bg-card shadow-lg">
-        <div className="flex flex-wrap items-center gap-1.5 px-3 pt-3">
-          {etapas.map((e) => {
-            const on = escolhidos.includes(e.membro_id);
-            return (
-              <span key={e.membro_id} className="flex items-center">
-              <button
-                type="button"
-                disabled={escrevendo}
-                onClick={() => alternar(e.membro_id)}
-                className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors",
-                  on ? "border-primary bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-muted")}
-                title={on ? `Tirar ${e.membro!.nome}` : `Chamar ${e.membro!.nome} (${e.nome})`}
-              >
-                <span className="grid h-5 w-5 place-items-center rounded-full text-[10px] font-semibold text-white"
-                  style={{ background: e.membro!.visual?.camisa ?? "#3b6fd8" }}>
-                  {e.membro!.nome.slice(0, 1)}
+        {/* Cabeçalho: quem está no chat, nova conversa e fechar. */}
+        <div className="flex items-center gap-2 border-b px-4 py-3">
+          <Sparkles className="h-4 w-4 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"}</p>
+            <p className="text-[11px] text-muted-foreground">{destino === "documento" ? "Escreve no documento, onde está o cursor" : "Responde aqui; você insere se quiser"}</p>
+          </div>
+          <button type="button" onClick={() => setTurnos(() => [])} disabled={escrevendo || !turnos.length} title="Nova conversa"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><Plus className="h-4 w-4" /></button>
+          <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }} title="Fechar (⌘I); o que estiver escrevendo continua"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+        </div>
+
+        {/* A conversa. */}
+        <div ref={listaConversa} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
+          {!turnos.length && (
+            <div className="space-y-2 pt-6 text-center text-sm text-muted-foreground">
+              <MessageSquare className="mx-auto h-6 w-6 opacity-60" />
+              <p>Peça ao Claude, ou chame o Junior, o Elias e os outros embaixo.</p>
+              <p className="text-xs"><b>No documento</b>: escreve onde está o cursor. <b>Só no chat</b>: responde aqui e você insere se gostar.</p>
+            </div>
+          )}
+          {turnos.map((t) => (
+            <div key={t.id} className="space-y-2">
+              <div className="ml-8 rounded-2xl rounded-br-sm bg-muted px-3 py-2 text-sm">
+                {t.selecao && <p className="mb-1 line-clamp-2 border-l-2 pl-2 text-xs italic text-muted-foreground">{t.selecao}</p>}
+                <p className="whitespace-pre-wrap">{t.pedido}</p>
+              </div>
+              {t.destino === "chat" ? (
+                <div className="space-y-2 text-sm">
+                  <p className="text-[11px] font-semibold text-muted-foreground">{t.quem ?? "Claude"}</p>
+                  {t.resposta ? <p className="whitespace-pre-wrap font-serif text-[15px] leading-relaxed">{t.resposta}</p>
+                    : t.rodando && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />pensando…</p>}
+                  {!t.rodando && t.resposta && (
+                    <button type="button" onClick={() => inserir(t)}
+                      className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted">
+                      <FileText className="h-3.5 w-3.5" />{t.inserido ? "Inserir de novo" : "Inserir no documento"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {t.passos.map((p, k) => (
+                    <div key={k} className="rounded-lg border bg-card p-2.5 text-sm">
+                      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
+                        <FileText className="h-3.5 w-3.5" />
+                        {p.quem}{p.etapa ? ` · ${p.etapa}` : ""} {p.revisao ? "revisou no documento (On/Off ao lado do texto)" : t.rodando && k === t.passos.length - 1 ? "escrevendo no documento…" : "escreveu no documento"}
+                      </p>
+                      {p.texto && <p className="line-clamp-6 whitespace-pre-wrap text-xs text-foreground/80">{p.texto}</p>}
+                      {p.notas && <p className="mt-2 whitespace-pre-wrap border-t pt-2 text-xs text-muted-foreground">{p.notas}</p>}
+                    </div>
+                  ))}
+                  {t.rodando && !t.passos.length && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />lendo critérios e skills…</p>}
+                </div>
+              )}
+              {t.erro && <p className="rounded-md bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-600 dark:text-rose-300">Não deu: {t.erro}</p>}
+            </div>
+          ))}
+          {andamento && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {andamento.fase === "pensando" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />}
+              <span><b className="font-medium text-foreground">{andamento.quem}</b>{andamento.etapa ? ` (${andamento.etapa})` : ""} {andamento.fase === "pensando" ? "lendo critérios e skills…" : andamento.fase === "revisando" ? "revisando por trás…" : destino === "chat" ? "respondendo…" : "escrevendo no documento…"}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Rodapé: avisos, trecho selecionado, quem chamar e o campo. */}
+        <div className="space-y-2 border-t p-3">
+          {!lote && revisoes.length >= 2 && (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+              <span className="flex-1">{revisoes.length} textos gerados neste documento.</span>
+              <button type="button" onClick={apagarGerados} className="rounded-md border px-2 py-0.5 hover:bg-muted">Apagar os textos gerados</button>
+            </div>
+          )}
+          {(vazios.length >= 2 || lote) && (
+            <div className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
+              {lote ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <span className="flex-1">Gerando roteiros: <b>{lote.feitos} de {lote.total}</b>{lote.agora.length ? ` · agora: ${lote.agora.join(", ")}` : ""}</span>
+                  <button type="button" onClick={parar} className="rounded-md border px-2 py-0.5 hover:bg-muted">Parar</button>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 text-primary" />
+                  <span className="flex-1">{vazios.length} roteiros sem texto{cerebro ? ` · para ${cerebro.nome}` : ""}</span>
+                  <button type="button" onClick={() => void gerarTodos()} className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90">
+                    Gerar todos ({vazios.length})
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            {etapas.map((e) => {
+              const on = escolhidos.includes(e.membro_id);
+              return (
+                <span key={e.membro_id} className="flex items-center">
+                  <button
+                    type="button"
+                    disabled={escrevendo}
+                    onClick={() => alternar(e.membro_id)}
+                    className={cn("flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs transition-colors",
+                      on ? "border-primary bg-primary/15 text-foreground" : "text-muted-foreground hover:bg-muted")}
+                    title={on ? `Tirar ${e.membro!.nome}` : `Chamar ${e.membro!.nome} (${e.nome})`}
+                  >
+                    <span className="grid h-4 w-4 place-items-center rounded-full text-[9px] font-semibold text-white"
+                      style={{ background: e.membro!.visual?.camisa ?? "#3b6fd8" }}>
+                      {e.membro!.nome.slice(0, 1)}
+                    </span>
+                    {e.membro!.nome}
+                    {on && <Check className="h-3 w-3" />}
+                  </button>
+                  <button type="button" onClick={() => setConfigDe(e.i)} title={`Configurar ${e.membro!.nome} (${e.nome}): critérios, formatos e skills`}
+                    className="-ml-0.5 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <Settings2 className="h-3 w-3" />
+                  </button>
                 </span>
-                {e.membro!.nome} <span className="opacity-60">· {e.nome}</span>
-                {on && <Check className="h-3 w-3" />}
-              </button>
-              <button type="button" onClick={() => setConfigDe(e.i)} title={`Configurar ${e.membro!.nome}: critérios, formatos e skills`}
-                className="-ml-1 rounded-full p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
-                <Settings2 className="h-3.5 w-3.5" />
-              </button>
-              </span>
-            );
-          })}
+              );
+            })}
+          </div>
 
-          <Popover>
-            <PopoverTrigger asChild>
-              <button type="button" className="flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted">
-                <BookOpen className="h-3.5 w-3.5" /> Skills {skillsAtivas.length}/{skillsVisiveis.length}
-              </button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80 p-2" align="start">
-              <div className="px-2 pb-1 text-xs text-muted-foreground">
-                {agentesSkills ? `Skills de ${escolhidasOrdem.map((e) => e.membro!.nome).join(" e ")}` : "Suas skills"} (desmarque para deixar de fora)
-              </div>
-              <div className="max-h-72 overflow-y-auto">
-                {skillsVisiveis.map((s) => {
-                  const on = !skillsOff.includes(s.nome);
-                  return (
-                    <label key={s.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-                      <input type="checkbox" checked={on}
-                        onChange={() => setSkillsOff((l) => (on ? [...l, s.nome] : l.filter((x) => x !== s.nome)))} />
-                      <span className="flex-1 truncate">{nomeSkill(s.nome)}</span>
-                      {s.caracteres ? <span className="text-[10px] text-muted-foreground">{Math.round(s.caracteres / 1000)}k</span> : null}
-                    </label>
-                  );
-                })}
-                {!skillsVisiveis.length && <div className="px-2 py-3 text-sm text-muted-foreground">Nenhuma skill carregada.</div>}
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          {esc && (
-            <select value={cerebro?.id ?? "nenhum"} disabled={escrevendo}
-              onChange={(e) => { if (e.target.value === "__cerebros") setCerebrosAbertos(true); else setPara(e.target.value); }}
-              className="rounded-full border bg-transparent px-2 py-1 text-xs text-muted-foreground" title="Cérebro: para quem é o texto">
-              {esc.cerebros.map((c) => <option key={c.id} value={c.id}>🧠 Para: {c.nome}</option>)}
-              <option value="nenhum">🧠 Sem cérebro</option>
-              <option value="__cerebros">＋ Novo cérebro / editar…</option>
-            </select>
+          {selecionado && (
+            <div className="flex items-start gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">
+              <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="line-clamp-2 flex-1 italic">{selecionado}</span>
+            </div>
           )}
 
-          <select value={modelo} onChange={(e) => setModelo(e.target.value)} disabled={escrevendo}
-            className="ml-auto rounded-full border bg-transparent px-2 py-1 text-xs text-muted-foreground">
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="haiku">Haiku (rápido)</option>
-          </select>
-          <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }}
-            className="rounded-full p-1 text-muted-foreground hover:bg-muted" title="Fechar (⌘I); o que estiver escrevendo continua">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {!lote && revisoes.length >= 2 && (
-          <div className="mx-3 mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <span className="flex-1">{revisoes.length} textos gerados neste documento.</span>
-            <button type="button" onClick={apagarGerados} className="rounded-md border px-2 py-0.5 hover:bg-muted">Apagar os textos gerados</button>
-          </div>
-        )}
-        {(vazios.length >= 2 || lote) && (
-          <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs">
-            {lote ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                <span className="flex-1">Gerando roteiros: <b>{lote.feitos} de {lote.total}</b> prontos{lote.agora.length ? ` · agora: ${lote.agora.join(", ")}` : ""}</span>
-                <button type="button" onClick={parar} className="rounded-md border px-2 py-0.5 hover:bg-muted">Parar</button>
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span className="flex-1">{vazios.length} roteiros ainda sem texto neste documento{cerebro ? ` · para ${cerebro.nome}` : ""}</span>
-                <button type="button" onClick={() => void gerarTodos()} className="rounded-md bg-primary px-2.5 py-1 font-medium text-primary-foreground hover:opacity-90">
-                  Gerar todos ({vazios.length})
+          <div className="rounded-2xl border bg-card shadow-sm">
+            <textarea
+              ref={campo}
+              rows={1}
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void enviar(); }
+                else if (e.key === "Escape") { e.preventDefault(); if (escrevendo) parar(); else { setAberto(false); editor.commands.focus(); } }
+              }}
+              placeholder={placeholder}
+              className="max-h-40 min-h-[44px] w-full resize-none bg-transparent px-3 pt-3 text-sm outline-none placeholder:text-muted-foreground"
+            />
+            <div className="flex items-center gap-1.5 px-2 pb-2">
+              <div className="flex rounded-full border p-0.5 text-[11px]">
+                {([["documento", "No documento"], ["chat", "Só no chat"]] as const).map(([v, rotulo]) => (
+                  <button key={v} type="button" disabled={escrevendo} onClick={() => setDestino(v)}
+                    className={cn("rounded-full px-2 py-0.5", destino === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button type="button" title="Skills" className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted">
+                    <BookOpen className="h-3 w-3" /> {skillsAtivas.length}/{skillsVisiveis.length}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-2" align="start">
+                  <div className="px-2 pb-1 text-xs text-muted-foreground">
+                    {agentesSkills ? `Skills de ${escolhidasOrdem.map((e) => e.membro!.nome).join(" e ")}` : "Suas skills"} (desmarque para deixar de fora)
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    {skillsVisiveis.map((sk) => {
+                      const on = !skillsOff.includes(sk.nome);
+                      return (
+                        <label key={sk.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                          <input type="checkbox" checked={on}
+                            onChange={() => setSkillsOff((l) => (on ? [...l, sk.nome] : l.filter((x) => x !== sk.nome)))} />
+                          <span className="flex-1 truncate">{nomeSkill(sk.nome)}</span>
+                          {sk.caracteres ? <span className="text-[10px] text-muted-foreground">{Math.round(sk.caracteres / 1000)}k</span> : null}
+                        </label>
+                      );
+                    })}
+                    {!skillsVisiveis.length && <div className="px-2 py-3 text-sm text-muted-foreground">Nenhuma skill carregada.</div>}
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {esc && (
+                <select value={cerebro?.id ?? "nenhum"} disabled={escrevendo}
+                  onChange={(e) => { if (e.target.value === "__cerebros") setCerebrosAbertos(true); else setPara(e.target.value); }}
+                  className="min-w-0 max-w-[110px] truncate rounded-full border bg-transparent px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Cérebro: para quem é o texto">
+                  {esc.cerebros.map((c) => <option key={c.id} value={c.id}>🧠 {c.nome}</option>)}
+                  <option value="nenhum">🧠 Sem cérebro</option>
+                  <option value="__cerebros">＋ Novo cérebro / editar…</option>
+                </select>
+              )}
+              <select value={modelo} onChange={(e) => setModelo(e.target.value)} disabled={escrevendo}
+                className="ml-auto rounded-full border bg-transparent px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                <option value="sonnet">Sonnet</option>
+                <option value="opus">Opus</option>
+                <option value="haiku">Haiku</option>
+              </select>
+              {escrevendo ? (
+                <button type="button" onClick={parar} title="Parar (Esc)"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-foreground text-background">
+                  <Square className="h-3 w-3 fill-current" />
                 </button>
-              </>
-            )}
+              ) : (
+                <button type="button" onClick={() => void enviar()} disabled={!texto.trim() && !escolhidasOrdem.length} title="Enviar (Enter)"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40">
+                  <ArrowUp className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
-        )}
-        {selecionado && (
-          <div className="mx-3 mt-2 flex items-start gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-            <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span className="line-clamp-2 flex-1 italic">{selecionado}</span>
-          </div>
-        )}
-        <div className="flex items-end gap-2 p-3">
-          <textarea
-            ref={campo}
-            rows={1}
-            value={texto}
-            onChange={(e) => setTexto(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void enviar(); }
-              else if (e.key === "Escape") { e.preventDefault(); if (escrevendo) parar(); else { setAberto(false); editor.commands.focus(); } }
-            }}
-            placeholder={placeholder}
-            className="max-h-40 min-h-[40px] flex-1 resize-none bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
-          />
-          {escrevendo ? (
-            <button type="button" onClick={parar} title="Parar (Esc)"
-              className="grid h-9 w-9 place-items-center rounded-full bg-foreground text-background">
-              <Square className="h-3.5 w-3.5 fill-current" />
-            </button>
-          ) : (
-            <button type="button" onClick={() => void enviar()} disabled={!texto.trim() && !escolhidasOrdem.length} title="Enviar (Enter)"
-              className="grid h-9 w-9 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40">
-              <ArrowUp className="h-4 w-4" />
-            </button>
-          )}
         </div>
-
-        {andamento && (
-          <div className="flex items-center gap-2 border-t px-4 py-2 text-xs text-muted-foreground">
-            {andamento.fase === "pensando" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />}
-            <span>
-              <span className="font-medium text-foreground">{andamento.quem}</span>
-              {andamento.etapa ? ` (${andamento.etapa})` : ""} {andamento.fase === "pensando" ? "lendo critérios e skills…" : andamento.fase === "revisando" ? "revisando por trás (pode continuar mexendo; no fim entra o On/Off)…" : "escrevendo no documento…"}
-            </span>
-            {escolhidasOrdem.length > 1 && (
-              <span className="ml-auto">{escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}</span>
-            )}
-          </div>
-        )}
-       </div>
-      </div>
+      </aside>
     </>
   );
 }

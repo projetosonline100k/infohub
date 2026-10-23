@@ -71,3 +71,14 @@ test('revisão: linha de origem, linha removida e comentário', () => {
   assert.equal(r.linhas[2].nota, 'tirei a sobra');
   assert.deepEqual(r.removidas, [{ depoisDe: 1, texto: 'Sobra' }]);
 });
+
+test('modo conversa (painel do ⌘I): responde no chat, sem escrever no documento nem notas escondidas', () => {
+  const p = montarPedido({ agente: junior, skills: [], cerebro: null, documento: 'abc\n[CURSOR]', pedido: 'melhora o gancho', proximaHeadline: 1, modo: 'conversa' });
+  assert.match(p, /Você conversa com o Davi num chat ao lado do documento/);
+  assert.match(p, /\[CURSOR\] é onde está o cursor do Davi/);
+  assert.match(p, /Responda direto ao Davi/);
+  assert.doesNotMatch(p, /Escreva SOMENTE o texto que entra no documento/);
+  assert.ok(!p.includes(MARCA_NOTAS));
+  const claude = montarPedido({ agente: null, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'oi', proximaHeadline: 1, modo: 'conversa' });
+  assert.match(claude, /^Você é o Claude\. Você conversa com o Davi/);
+});
