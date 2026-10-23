@@ -275,7 +275,7 @@ function divisoria(x: number, y0: number, y1: number): Item {
 }
 
 // ---------------------------------------------------------------- personagens
-function Pessoa({ v, andando, sentado, xicara }: { v: Visual; andando?: boolean; sentado?: boolean; xicara?: boolean }) {
+function Pessoa({ v, andando, sentado, xicara, lendo }: { v: Visual; andando?: boolean; sentado?: boolean; xicara?: boolean; lendo?: boolean }) {
   return (
     <g className={andando ? "ea-andando" : undefined} transform={`scale(${ESCALA})`}>
       <ellipse cx="0" cy="1" rx="12" ry="4" fill="#000" opacity=".2" />
@@ -292,7 +292,7 @@ function Pessoa({ v, andando, sentado, xicara }: { v: Visual; andando?: boolean;
           <rect x="10" y="-49" width="5" height="21" rx="2.5" fill={v.camisa} /><circle cx="12.5" cy="-27" r="2.6" fill={v.pele} />
           {xicara && <g><rect x="10" y="-28" width="6" height="5.5" rx="1.2" fill="#fff" stroke="#cbd5e1" strokeWidth=".6" /></g>}
         </g>
-        <g transform="translate(-60 -99)">
+        <g transform={lendo ? "translate(-60 -97) rotate(6 60 40)" : "translate(-60 -99)"}>
           {cabeloTras(v)}
           <circle cx="46.8" cy="41.5" r="2.6" fill={v.pele} /><circle cx="73.2" cy="41.5" r="2.6" fill={v.pele} />
           <circle cx="60" cy="39.5" r="13.2" fill={v.pele} />
@@ -306,6 +306,18 @@ function Pessoa({ v, andando, sentado, xicara }: { v: Visual; andando?: boolean;
     </g>
   );
 }
+// Livro aberto nas mãos (quem está sem tarefa fica lendo na mesa). Desenhado depois da mesa, por cima
+// do notebook/monitor, na altura das mãos do boneco.
+function Livro() {
+  return (
+    <g transform={`scale(${ESCALA})`}><g className="ea-lendo" transform="translate(0 -12)">
+      <path d="M-13 -36 L-1 -33 L-1 -21 L-13 -24 Z" fill="#f8fafc" stroke="#b45309" strokeWidth="1.2" />
+      <path d="M13 -36 L1 -33 L1 -21 L13 -24 Z" fill="#f1f5f9" stroke="#b45309" strokeWidth="1.2" />
+      <path d="M-10 -31 l6 1.5 M-10 -28 l6 1.5 M4 -29.5 l6 -1.5 M4 -26.5 l6 -1.5" stroke="#94a3b8" strokeWidth=".8" />
+    </g></g>
+  );
+}
+
 function Robo() {
   return (
     <g transform={`scale(${ESCALA})`}><g className="ea-flutua">
@@ -380,13 +392,6 @@ const VAGAS_REUNIAO: (Pt & { cadeira: boolean })[] = [
   ...[1.9, 3.0, 4.1].map((x) => ({ x: MX + x, y: MY + 4.05, cadeira: false })),
 ];
 const { x0: CX, y0: CYY } = origem(SALA.copa);
-type Vaga = Pt & { onde: string; z: number; xicara?: boolean };
-const VAGAS_LIVRE: Vaga[] = [
-  { x: CX + 1.1, y: CYY + 1.75, onde: "Copa", z: 0.72, xicara: true }, { x: CX + 2.3, y: CYY + 1.75, onde: "Copa", z: 0.72, xicara: true },
-  { x: CX + 1.2, y: CYY + 4.3, onde: "Copa", z: 0.3 }, { x: CX + 2.3, y: CYY + 4.3, onde: "Copa", z: 0.3 },
-  { x: CX + 4.3, y: CYY + 3.75, onde: "Copa", z: 0.72, xicara: true }, { x: CX + 5.4, y: CYY + 3.75, onde: "Copa", z: 0.72, xicara: true },
-  { x: CX + 3.4, y: CYY + 1.75, onde: "Copa", z: 0.72, xicara: true }, { x: CX + 3.4, y: CYY + 4.3, onde: "Copa", z: 0.3 },
-];
 const VEL = 2.6;
 const CICLO_BALAO = 24, MOSTRA_BALAO = 6;   // segundos: o balão aparece 6 s a cada 24 s
 
@@ -396,7 +401,7 @@ const ehDavi = (p: PessoaNaSala) => !p.ehIa && /^davi\b/i.test(p.nome);
 const somaId = (id: string) => [...id].reduce((t, c) => t + c.charCodeAt(0), 0);
 const centroDaSala = (q: Pt): Pt => ({ x: Math.floor(Math.min(G - 0.01, Math.max(0, q.x)) / R) * R + R / 2, y: Math.floor(Math.min(G - 0.01, Math.max(0, q.y)) / R) * R + R / 2 });
 
-type Lugar = { tipo: "mesa" | "pe" | "orbe"; x: number; y: number; z: number; onde: string; amb?: string; est?: number; xicara?: boolean };
+type Lugar = { tipo: "mesa" | "pe" | "orbe"; x: number; y: number; z: number; onde: string; amb?: string; est?: number; xicara?: boolean; lendo?: boolean };
 
 // Parede de 1 unidade (ao longo de x, no y fixo; ou ao longo de y, no x fixo), com porta ou janela.
 function parede(eixo: "x" | "y", a: number, fixo: number, abertura?: "porta" | "janela"): Item {
@@ -477,14 +482,13 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
     return (sala.tipo === "executiva" ? MESAS_EXEC : MESAS).slice(0, n).map((m) => ({ x: x0 + m.x, y: y0 + m.y }));
   };
 
-  const vagaAntes = useRef<Map<string, number>>(new Map());
   const geo = useMemo(() => {
     const pessoas = setores.flatMap((s) => s.pessoas.map((p) => ({ p, setor: s.id })));
     const alguemConversando = !noite && pessoas.some(({ p }) => p.conversando);
     const lugar = new Map<string, Lugar>();
     const ocupadas = new Map<string, Set<number>>();
     const avulsas = new Set<number>();
-    const reuniao: PessoaNaSala[] = [], livres: PessoaNaSala[] = [];
+    const reuniao: PessoaNaSala[] = [];
     const nomeDe = (id: string) => setores.find((s) => s.id === id)?.nome ?? "";
     const sentar = (p: PessoaNaSala, setorId: string, setorDele: string) => {
       const chave = salaDoSetor.get(setorId) ?? salaDoSetor.get(setorDele);
@@ -505,25 +509,17 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
     const trabalhando = pessoas.filter(({ p }) => {
       if (ehRobo(p)) { lugar.set(p.id, { tipo: "orbe", x: ORBE.x, y: ORBE.y, z: 1.55, onde: "Recepção" }); return false; }
       if (!noite && (p.conversando || (alguemConversando && ehDavi(p)))) { reuniao.push(p); return false; }
-      if (noite || p.sinal !== "parado") return true;
-      livres.push(p); return false;
+      // 23/10 (Davi): sem tarefa, fica na própria mesa lendo (não vai mais para a copa).
+      return true;
     });
     const zonaDe = (p: PessoaNaSala, setor: string) => (!noite && p.setorTarefa && salaDoSetor.has(p.setorTarefa) ? p.setorTarefa : setor);
-    for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) === setor)) sentar(p, setor, setor);
+    for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) === setor)) {
+      sentar(p, setor, setor);
+      const l = lugar.get(p.id);
+      if (l && !noite && p.sinal === "parado") l.lendo = true;
+    }
     for (const { p, setor } of trabalhando.filter(({ p, setor }) => zonaDe(p, setor) !== setor)) sentar(p, zonaDe(p, setor), setor);
     reuniao.forEach((p, k) => { const v = VAGAS_REUNIAO[k % VAGAS_REUNIAO.length]; lugar.set(p.id, { tipo: "pe", x: v.x, y: v.y, z: 0.4, onde: "Reunião", est: k }); });
-    // Quem já estava descansando fica onde estava (ninguém troca de lugar só porque outro saiu).
-    const vagasUsadas = new Set<number>();
-    const ordem = [...livres].sort((a, b) => a.id.localeCompare(b.id));
-    const vagaNova = new Map<string, number>();
-    ordem.forEach((p) => { const k = vagaAntes.current.get(p.id); if (k != null && !vagasUsadas.has(k)) { vagasUsadas.add(k); vagaNova.set(p.id, k); } });
-    ordem.filter((p) => !vagaNova.has(p.id)).forEach((p) => {
-      let k = somaId(p.id) % VAGAS_LIVRE.length;
-      for (let n = 0; vagasUsadas.has(k) && n < VAGAS_LIVRE.length; n++) k = (k + 1) % VAGAS_LIVRE.length;
-      vagasUsadas.add(k); vagaNova.set(p.id, k);
-    });
-    for (const [id, k] of vagaNova) { const v = VAGAS_LIVRE[k]; lugar.set(id, { tipo: "pe", x: v.x, y: v.y, z: v.z, onde: v.onde, xicara: v.xicara, est: k }); }
-    vagaAntes.current = vagaNova;
     return { lugar, pessoas: pessoas.map((x) => x.p) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setores, noite, salaDoSetor, setorDaSala]);
@@ -642,12 +638,13 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
       <g transform={`translate(${c.sx} ${c.sy})`} onMouseEnter={() => setFoco(p.id)} onMouseLeave={() => setFoco((f) => (f === p.id ? null : f))}
         onClick={() => p.clicavel && onAbrir(p.id)} style={{ cursor: p.clicavel ? "pointer" : undefined }}>
         <g className={l.tipo === "mesa" && p.sinal === "trabalhando" ? "ea-digita" : undefined}>
-          <Pessoa v={visualDe(p.nome)} sentado={l.z > 0} xicara={l.xicara} />
+          <Pessoa v={visualDe(p.nome)} sentado={l.z > 0} xicara={l.xicara} lendo={l.lendo} />
         </g>
         <Sinal sinal={p.sinal} />
         {noite && l.tipo === "mesa" && <text x="10" y="-60" fontSize="12" fill="#94a3b8" fontWeight="700">z z</text>}
       </g>
     ) });
+    if (l.lendo) add({ chave: `livro-${p.id}`, prof: pr(l.x, l.y) + 0.45, el: <g transform={`translate(${c.sx} ${c.sy})`} pointerEvents="none"><Livro /></g> });
   }
   itens.sort((a, b) => a.prof - b.prof);
 
@@ -752,6 +749,8 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
 const ESTILO_SALAS = `
 .orbe-anel{transform-box:fill-box;transform-origin:center;animation:orbe-gira 6s linear infinite}
 @keyframes orbe-gira{to{transform:rotate(360deg)}}
+.ea-lendo{transform-box:fill-box;transform-origin:center bottom;animation:ea-pagina 7s ease-in-out infinite}
+@keyframes ea-pagina{0%,88%,100%{transform:rotate(0)}92%{transform:rotate(-4deg)}96%{transform:rotate(3deg)}}
 .orbe{animation:orbe-pulsa 3s ease-in-out infinite alternate}
 @keyframes orbe-pulsa{from{opacity:.9}to{opacity:1}}
 `;
