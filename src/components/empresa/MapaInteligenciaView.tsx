@@ -7,6 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { isDesktop } from "@/lib/platform";
 import { cn } from "@/lib/utils";
 import { CORES_PILAR, MODELO_ROTEIRO, lerMapa, type MapaInteligencia, type PilarMapa } from "@/lib/conteudo/mapaInteligencia";
+import { PainelNoMapa, type MembroMapa, type OrigemPilar } from "./PainelNoMapa";
 
 // Mapa da inteligência de um funcionário (24/10, Davi: "quero a inteligência de cada carinha: cadastrar as
 // informações e visualizar em mapa mental"; depois: "já era para aparecer as info aí, as skills, tudo").
@@ -21,7 +22,8 @@ const FOLHA = { w: 220, h: 40, passo: 50, distancia: 320 };
 const COLUNA_X = { esq: 470, dir: 1130 };
 const MAX_ITENS_AUTO = 8;
 
-type Pilar = PilarMapa & { auto?: boolean };
+/** Pilar do cadastro: `origem` diz o que o clique abre; `refs[k]` é o id do item k (ex.: a skill). */
+type Pilar = PilarMapa & { auto?: boolean; origem?: OrigemPilar; refs?: (string | undefined)[] };
 
 interface Etapa { nome: string; membro_id: string; criterios?: string | string[] | null; formatos?: { nome?: string; texto?: string }[] | null }
 
@@ -41,33 +43,40 @@ function Texto({ valor, editar, onMudar, className, placeholder, multilinha }: {
 const linhas = (t: string | null | undefined) => (t ?? "").split(/\n+/).map((l) => l.replace(/^[-•*\d.)\s]+/, "").trim()).filter(Boolean);
 const curto = (t: string, n = 70) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
 
-/** Pilares "do cadastro": o que o funcionário já usa em cada pedido (manual, etapas, skills, aprendizados). */
-async function pilaresDoCadastro(membroId: string): Promise<Pilar[]> {
-  const { data: m } = await db.from("membros").select("nome, manual, cliente_id").eq("id", membroId).maybeSingle();
-  const membro = m as { nome: string; manual: string | null; cliente_id: string | null } | null;
-  if (!membro) return [];
+/** Pilares "do cadastro": o que o funcionário já usa em cada pedido (manual, etapas, skills, documentos, aprendizados). */
+async function pilaresDoCadastro(membroId: string): Promise<{ pilares: Pilar[]; membro: MembroMapa | null }> {
+  const { data: m } = await db.from("membros").select("id, nome, funcao, manual, cliente_id, setor_id, conta_id, eh_ia").eq("id", membroId).maybeSingle();
+  const membro = m as MembroMapa | null;
+  if (!membro) return { pilares: [], membro: null };
   const agente = membro.nome.trim().toLowerCase();
   const [setores, intel] = await Promise.all([
-    membro.cliente_id ? db.from("setores").select("nome, esteira").eq("cliente_id", membro.cliente_id) : Promise.resolve({ data: [] }),
-    db.from("inteligencia_membros").select("nome, tipo, conteudo").eq("agente", agente).eq("status", "pronto")
-      .or(`escopo.eq.geral${membro.cliente_id ? `,cliente_id.eq.${membro.cliente_id}` : ""}`),
+    membro.cliente_id ? db.from("setores").select("id, nome, esteira").eq("cliente_id", membro.cliente_id) : Promise.resolve({ data: [] }),
+    db.from("inteligencia_membros").select("id, nome, tipo, conteudo, status").eq("agente", agente)
+      .or(`escopo.eq.geral${membro.cliente_id ? `,cliente_id.eq.${membro.cliente_id}` : ""}`).order("nome"),
   ]);
   const pilares: Pilar[] = [];
-  if (linhas(membro.manual).length) pilares.push({ titulo: "Manual", descricao: "Como ele trabalha (cadastro do funcionário)", itens: linhas(membro.manual).map((l) => curto(l)), auto: true });
-  for (const s of (setores.data ?? []) as { nome: string; esteira: Etapa[] | null }[]) {
+  const manual = linhas(membro.manual);
+  pilares.push({ titulo: "Manual", descricao: "Como ele trabalha (cadastro do funcionário)", itens: manual.length ? manual.map((l) => curto(l)) : ["(vazio) clique para escrever"], auto: true, origem: { tipo: "manual" } });
+  for (const s of (setores.data ?? []) as { id: string; nome: string; esteira: Etapa[] | null }[]) {
     for (const e of (Array.isArray(s.esteira) ? s.esteira : []).filter((x) => x.membro_id === membroId)) {
       const crit = Array.isArray(e.criterios) ? e.criterios.map(String) : linhas(e.criterios as string | null);
-      if (crit.length) pilares.push({ titulo: `Critérios · ${e.nome}`, descricao: `O que ele confere em ${e.nome} (${s.nome})`, itens: crit.map((c) => curto(c)), auto: true });
+      pilares.push({ titulo: `Critérios · ${e.nome}`, descricao: `O que ele confere em ${e.nome} (${s.nome})`, itens: crit.length ? crit.map((c) => curto(c)) : ["(nenhum) clique para adicionar"],
+        auto: true, origem: { tipo: "etapa", setorId: s.id, etapa: e.nome, campo: "criterios" } });
       const formatos = (e.formatos ?? []).filter((f) => (f.texto ?? "").trim() || (f.nome ?? "").trim());
-      if (formatos.length) pilares.push({ titulo: `Formatos · ${e.nome}`, descricao: "Estruturas de referência que ele segue", itens: formatos.map((f, i) => f.nome?.trim() || `Formato ${i + 1}`), auto: true });
+      pilares.push({ titulo: `Formatos · ${e.nome}`, descricao: "Estruturas de referência que ele segue", itens: formatos.length ? formatos.map((f, i) => f.nome?.trim() || `Formato ${i + 1}`) : ["(nenhum) clique para adicionar"],
+        auto: true, origem: { tipo: "etapa", setorId: s.id, etapa: e.nome, campo: "formatos" } });
     }
   }
-  const lista = (intel.data ?? []) as { nome: string; tipo: string | null; conteudo: string | null }[];
-  const skills = [...new Set(lista.filter((i) => i.nome.startsWith("Skill:")).map((i) => i.nome.replace(/^Skill:\s*/, "")))];
-  if (skills.length) pilares.push({ titulo: "Skills", descricao: "Métodos que ele segue em cada pedido", itens: skills, auto: true });
-  const aprendizados = lista.filter((i) => i.tipo === "aprendizado").flatMap((i) => linhas(i.conteudo)).map((l) => curto(l));
-  if (aprendizados.length) pilares.push({ titulo: "Aprendizados", descricao: "Correções que você já fez com ele", itens: aprendizados, auto: true });
-  return pilares;
+  const lista = (intel.data ?? []) as { id: string; nome: string; tipo: string | null; conteudo: string | null; status: string | null }[];
+  const skills = lista.filter((i) => i.nome.startsWith("Skill:") && i.status === "pronto");
+  pilares.push({ titulo: "Skills", descricao: "Métodos que ele segue em cada pedido (clique para abrir)", itens: skills.length ? skills.map((i) => i.nome.replace(/^Skill:\s*/, "")) : ["(nenhuma) clique para criar"],
+    refs: skills.map((i) => i.id), auto: true, origem: { tipo: "skills" } });
+  const docs = lista.filter((i) => !i.nome.startsWith("Skill:") && i.tipo !== "aprendizado");
+  pilares.push({ titulo: "Documentos", descricao: "PDFs, vídeos, textos e links que ele estudou", itens: docs.length ? docs.map((i) => curto(i.nome, 40) + (i.status !== "pronto" ? " · na fila" : "")) : ["Subir PDF, vídeo, texto ou link"],
+    auto: true, origem: { tipo: "conhecimento" } });
+  const aprendizados = lista.filter((i) => i.tipo === "aprendizado" && i.status === "pronto").flatMap((i) => linhas(i.conteudo)).map((l) => curto(l));
+  if (aprendizados.length) pilares.push({ titulo: "Aprendizados", descricao: "Correções que você já fez com ele", itens: aprendizados, auto: true, origem: { tipo: "aprendizados" } });
+  return { pilares, membro };
 }
 
 export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
@@ -78,6 +87,13 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
 }) {
   const [mapa, setMapa] = useState<MapaInteligencia | null>(null);
   const [doCadastro, setDoCadastro] = useState<Pilar[]>([]);
+  const [membroMapa, setMembroMapa] = useState<MembroMapa | null>(null);
+  const [noAberto, setNoAberto] = useState<OrigemPilar | null>(null);
+  const recarregarCadastro = async () => {
+    if (!membro) return;
+    const r = await pilaresDoCadastro(membro.id);
+    setDoCadastro(r.pilares); setMembroMapa(r.membro);
+  };
   const [editar, setEditar] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [mudou, setMudou] = useState(false);
@@ -86,14 +102,14 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
 
   useEffect(() => {
     if (!aberto || !membro) return;
-    setMapa(null); setDoCadastro([]); setEditar(false); setMudou(false);
+    setMapa(null); setDoCadastro([]); setEditar(false); setMudou(false); setNoAberto(null);
     void (async () => {
       const [{ data }, cadastro] = await Promise.all([
         db.from("membros").select("mapa_inteligencia").eq("id", membro.id).maybeSingle(),
         pilaresDoCadastro(membro.id),
       ]);
       setMapa(lerMapa((data as { mapa_inteligencia?: unknown } | null)?.mapa_inteligencia) ?? { pilares: [] });
-      setDoCadastro(cadastro);
+      setDoCadastro(cadastro.pilares); setMembroMapa(cadastro.membro);
     })();
   }, [aberto, membro]);
 
@@ -108,7 +124,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
   // Os pilares do Davi primeiro (numerados), depois os do cadastro; divididos entre os dois lados do centro.
   const todos: Pilar[] = useMemo(() => [
     ...(mapa?.pilares ?? []),
-    ...doCadastro.map((p) => ({ ...p, itens: p.itens.slice(0, MAX_ITENS_AUTO).concat(p.itens.length > MAX_ITENS_AUTO ? [`+ ${p.itens.length - MAX_ITENS_AUTO} outros`] : []) })),
+    ...doCadastro.map((p) => ({ ...p, itens: p.itens.slice(0, MAX_ITENS_AUTO).concat(p.itens.length > MAX_ITENS_AUTO ? [`+ ${p.itens.length - MAX_ITENS_AUTO} outros (clique)`] : []) })),
   ], [mapa, doCadastro]);
   const layout = useMemo(() => {
     const altura = (p: Pilar) => Math.max(PILAR.h + 30, p.itens.length * FOLHA.passo + (editar && !p.auto ? 40 : 0) + (p.exemplo !== undefined ? 90 : 0) + 20);
@@ -152,7 +168,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
 
   return createPortal(
     // Acima da barra de abas do app (z-100); no app do Mac, o cabeçalho deixa o lugar dos botões da janela.
-    <div className="fixed inset-0 z-[150] flex flex-col bg-[#0a0f1a] text-white" onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") fechar(); }}>
+    <div className="fixed inset-0 z-[150] flex flex-col bg-[#0a0f1a] text-white" onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { if (noAberto) setNoAberto(null); else fechar(); } }}>
       <div className={cn("flex items-center gap-2 border-b border-white/10 px-4 py-2.5", isDesktop() && "pl-24 pt-3")}>
         <Sparkles className="h-4 w-4 text-sky-300" />
         <p className="text-sm font-semibold">Inteligência do {membro.nome}</p>
@@ -217,7 +233,9 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
               const y0 = l.y - ((p.itens.length - 1) * FOLHA.passo) / 2;
               return (
                 <div key={i}>
-                  <div className="absolute rounded-2xl border-2 bg-[#0f1625] p-3 shadow-xl"
+                  <div className={cn("absolute rounded-2xl border-2 bg-[#0f1625] p-3 shadow-xl", !ed && "cursor-pointer transition-transform hover:scale-[1.02]")}
+                    onClick={() => { if (p.origem) setNoAberto(p.origem); else if (!editar) setEditar(true); }}
+                    title={p.origem ? "Clique para abrir e editar" : editar ? undefined : "Clique para editar"}
                     style={{ left: l.x - PILAR.w / 2, top: l.y - PILAR.h / 2, width: PILAR.w, minHeight: PILAR.h, borderColor: cor, borderStyle: p.auto ? "dashed" : "solid", boxShadow: p.auto ? undefined : `0 0 24px ${cor}33` }}>
                     {p.auto
                       ? <span className="absolute -top-2.5 left-3 rounded-full bg-slate-600 px-2 text-[10px] font-semibold uppercase tracking-wide">do cadastro</span>
@@ -239,7 +257,12 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
                   </div>
 
                   {p.itens.map((it, k) => (
-                    <div key={k} className="absolute flex items-center gap-1 rounded-lg border-2 bg-[#0f1625] px-3 text-[13px]"
+                    <div key={k} className={cn("absolute flex items-center gap-1 rounded-lg border-2 bg-[#0f1625] px-3 text-[13px]", !ed && "cursor-pointer hover:bg-white/5")}
+                      onClick={() => {
+                        if (p.origem?.tipo === "skills") setNoAberto({ tipo: "skills", abrir: p.refs?.[k] });
+                        else if (p.origem) setNoAberto(p.origem);
+                        else if (!editar) setEditar(true);
+                      }}
                       style={{ left: xFolha - FOLHA.w / 2, top: y0 + k * FOLHA.passo - FOLHA.h / 2, width: FOLHA.w, height: FOLHA.h, borderColor: `${cor}aa`, borderStyle: p.auto ? "dashed" : "solid" }}
                       title={it}>
                       <Texto valor={it} editar={ed} onMudar={(v) => mudarPilar(i, { itens: p.itens.map((x, j) => (j === k ? v : x)) })} className="flex-1 truncate" placeholder="item" />
@@ -271,12 +294,10 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
               );
             })}
 
-            {!todos.length && (
-              <p className="absolute w-full text-center text-sm text-white/50" style={{ top: centro.y + CENTRO.h / 2 + 30 }}>
-                Ele ainda não tem nada cadastrado. Clique em <b>Editar</b> e comece pelo modelo do roteiro ou crie os pilares.
-              </p>
-            )}
           </div>
+        )}
+        {noAberto && membroMapa && (
+          <PainelNoMapa membro={membroMapa} origem={noAberto} onFechar={() => setNoAberto(null)} onMudou={() => void recarregarCadastro()} />
         )}
       </div>
     </div>,
