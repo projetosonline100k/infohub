@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Plus, Folder } from "lucide-react";
+import { FileText, Plus, Folder, MoreHorizontal, Trash2, ExternalLink, Columns2 } from "lucide-react";
+import { toast } from "sonner";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -87,6 +89,7 @@ export function DocumentSidebar({
       .from("documentos")
       .select("id, titulo")
       .eq("pasta_id", pastaId)
+      .is("deleted_at", null)
       .order("created_at", { ascending: true })
       .then(({ data, error }) => {
         if (error) {
@@ -96,6 +99,28 @@ export function DocumentSidebar({
         setGuias(data || []);
       });
   }, [pastaId]);
+
+  // ⋯ → Mover para a lixeira (24/10, Davi): não apaga de vez; o aviso tem "Desfazer".
+  const avisarLateral = () => window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId } }));
+  const moverParaLixeira = async (guia: Guia) => {
+    const { error } = await supabase.from("documentos").update({ deleted_at: new Date().toISOString() }).eq("id", guia.id);
+    if (error) { toast.error("Não consegui mover para a lixeira"); return; }
+    const resto = guias.filter((g) => g.id !== guia.id);
+    setGuias(resto);
+    if (guia.id === documentoAtualId && resto.length) onTrocarDocumento(resto[0].id);
+    avisarLateral();
+    toast.success(`"${guia.titulo || "Sem título"}" foi para a lixeira`, {
+      action: {
+        label: "Desfazer",
+        onClick: async () => {
+          const { error: erro } = await supabase.from("documentos").update({ deleted_at: null }).eq("id", guia.id);
+          if (erro) { toast.error("Não consegui desfazer"); return; }
+          setGuias((l) => (l.some((g) => g.id === guia.id) ? l : [...l, guia]));
+          avisarLateral();
+        },
+      },
+    });
+  };
 
   const criarGuia = async () => {
     if (!pastaId) return;
@@ -156,7 +181,8 @@ export function DocumentSidebar({
       <ScrollArea className="flex-1">
         <div className="p-2 space-y-1">
           {guias.map((guia) => (
-            <ContextMenu key={guia.id}>
+            <div key={guia.id} className="group/guia relative">
+            <ContextMenu>
               <ContextMenuTrigger asChild>
             <button
               onClick={(event) => {
@@ -172,7 +198,7 @@ export function DocumentSidebar({
               }}
               title="Clique para abrir · ⌘+clique ou botão direito: nova guia / tela dividida"
               className={cn(
-                "w-full text-left p-2 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
+                "w-full text-left p-2 pr-8 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
                 guia.id === documentoAtualId && "bg-muted font-medium"
               )}
             >
@@ -189,8 +215,32 @@ export function DocumentSidebar({
                 <ContextMenuItem onSelect={() => navigate(abrirAoLado(`${location.pathname}?documento=${guia.id}`, guia.titulo || "Documento").path)}>
                   Abrir ao lado (tela dividida)
                 </ContextMenuItem>
+                <ContextMenuItem onSelect={() => void moverParaLixeira(guia)} className="text-destructive">
+                  Mover para a lixeira
+                </ContextMenuItem>
               </ContextMenuContent>
             </ContextMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" aria-label={`Opções de ${guia.titulo || "documento"}`}
+                  className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 hover:bg-background hover:text-foreground focus:opacity-100 group-hover/guia:opacity-100 data-[state=open]:opacity-100">
+                  <MoreHorizontal className="h-4 w-4" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="z-[300] w-48">
+                <DropdownMenuItem onSelect={() => { const path = `${location.pathname}?documento=${guia.id}`; openTab(path, guia.titulo || "Documento", { nova: true }); }}>
+                  <ExternalLink className="mr-2 h-4 w-4" />Abrir em nova guia
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => navigate(abrirAoLado(`${location.pathname}?documento=${guia.id}`, guia.titulo || "Documento").path)}>
+                  <Columns2 className="mr-2 h-4 w-4" />Abrir ao lado
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={() => void moverParaLixeira(guia)} className="text-destructive focus:text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />Mover para a lixeira
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            </div>
           ))}
 
           {!pastaId && (

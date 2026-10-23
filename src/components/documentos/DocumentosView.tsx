@@ -77,6 +77,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       .select("id, titulo, tipo, created_at, updated_at, atividade_id, pasta_id")
       .eq("cliente_id", clienteId)
       .neq("tipo", "nota")
+      .is("deleted_at", null)
       .order("updated_at", { ascending: false });
 
     if (!error && data) {
