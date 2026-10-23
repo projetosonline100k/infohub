@@ -91,6 +91,8 @@ const textoClientesEsperando = (xs: AlertaShirley[]) =>
 
 // Escritório virtual 3D (23/10): só carrega quando o Davi entra nele (o 3D é pesado).
 const EscritorioVirtual = lazy(() => import("@/components/escritorio3d/EscritorioVirtual"));
+// Protótipo em pixel art: só no `npm run dev` (sprites gratuitos de licença não comercial, fora do git).
+const EscritorioPixel = lazy(() => import("@/components/escritorio-pixel/EscritorioPixel"));
 
 export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   clienteId: string;
@@ -108,6 +110,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // 22/10: clicar numa tarefa sendo executada abre o "Ao vivo" dela (não a ficha da pessoa).
   const [aoVivo, setAoVivo] = useState<AlvoAoVivo | null>(null);
   const [mundo3d, setMundo3d] = useState(false);
+  const [mundoPixel, setMundoPixel] = useState(false);
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -599,6 +602,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
               className="absolute bottom-[3%] left-[2%] z-30 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
               <Box className="h-3.5 w-3.5 text-sky-300" />Entrar no escritório 3D
             </button>
+            {import.meta.env.DEV && (
+              <button type="button" onClick={() => setMundoPixel(true)} title="Protótipo em pixel art (só no modo de desenvolvimento)"
+                className="absolute bottom-[3%] left-[2%] z-30 ml-44 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
+                <Box className="h-3.5 w-3.5 text-amber-300" />Pixel art (protótipo)
+              </button>
+            )}
             <EscritorioSalas arrumacao={arrumacao} onSalvarArrumacao={salvarArrumacao} onAbrir={(id) => {
               // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
               const m = membros.find((x) => x.id === id);
@@ -773,6 +782,17 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       {mundo3d && (
         <Suspense fallback={<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Abrindo o escritório…</div>}>
           <EscritorioVirtual funcionarios={dados3d.funcionarios} resultado={dados3d.resultado} onSair={() => setMundo3d(false)}
+            onConversar={(id) => {
+              const m = membros.find((x) => x.id === id);
+              if (!m) return;
+              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+            }}
+            onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })} />
+        </Suspense>
+      )}
+      {import.meta.env.DEV && mundoPixel && (
+        <Suspense fallback={null}>
+          <EscritorioPixel funcionarios={dados3d.funcionarios} resultado={dados3d.resultado} onSair={() => setMundoPixel(false)}
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
               if (!m) return;

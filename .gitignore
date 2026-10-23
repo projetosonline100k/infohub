@@ -38,3 +38,6 @@ src-tauri/gen/
 *.key
 *.key.pub
 .tauri-signing-key*
+
+# Assets gratuitos da LimeZu (licença NÃO comercial): só para o protótipo local, nunca no git/deploy
+public/escritorio-pixel/
