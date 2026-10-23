@@ -388,6 +388,7 @@ const VAGAS_LIVRE: Vaga[] = [
   { x: CX + 3.4, y: CYY + 1.75, onde: "Copa", z: 0.72, xicara: true }, { x: CX + 3.4, y: CYY + 4.3, onde: "Copa", z: 0.3 },
 ];
 const VEL = 2.6;
+const CICLO_BALAO = 24, MOSTRA_BALAO = 6;   // segundos: o balão aparece 6 s a cada 24 s
 
 const ehRobo = (p: PessoaNaSala) => p.ehIa && ehNomeCoordenador(p.nome);
 const ehNoite = () => { const h = new Date().getHours(); return h >= 22 || h < 7; };
@@ -455,6 +456,11 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
   const noite = forcarNoite ?? noiteAgora;
   const [foco, setFoco] = useState<string | null>(null);
   useEffect(() => { const t = window.setInterval(() => setNoite(ehNoite()), 60_000); return () => window.clearInterval(t); }, []);
+  // Balão de quem precisa de você aparece por uns segundos e some (23/10, Davi: "pode ser temporário,
+  // aparece e some"); cada um no seu tempo, para não aparecerem todos juntos. No hover aparece na hora.
+  const [segundo, setSegundo] = useState(() => Math.floor(Date.now() / 1000));
+  useEffect(() => { const t = window.setInterval(() => setSegundo(Math.floor(Date.now() / 1000)), 1000); return () => window.clearInterval(t); }, []);
+  const balaoNaVez = (id: string) => (segundo + somaId(id) * 7) % CICLO_BALAO < MOSTRA_BALAO;
 
   // Qual sala é de qual setor (pelo nome; o que sobra vai para a primeira sala de setor livre).
   const salaDoSetor = useMemo(() => {
@@ -705,11 +711,11 @@ export const EscritorioSalas = memo(function EscritorioSalas({ setores, onAbrir,
           if (!l || andando[p.id]) return null;
           const e = etiqueta(l), cabeca = P(l.x, l.y, l.z);
           const importante = p.sinal === "esperando" || p.sinal === "problema";
-          const balao = (foco === p.id || importante) ? p.balao : null;
+          const balao = (foco === p.id || (importante && balaoNaVez(p.id))) ? p.balao : null;
           return (
             <div key={`r-${p.id}`}>
               {balao && (
-                <span className={cn("pointer-events-none absolute z-30 max-w-[16%] -translate-x-1/2 -translate-y-full rounded-lg border bg-white/95 px-1.5 py-0.5 text-center text-[10px] font-medium leading-tight text-slate-800 shadow-md",
+                <span className={cn("pointer-events-none absolute z-30 max-w-[16%] -translate-x-1/2 -translate-y-full rounded-lg border bg-white/95 px-1.5 py-0.5 text-center text-[10px] font-medium leading-tight text-slate-800 shadow-md animate-in fade-in-0 zoom-in-95 duration-300",
                   p.sinal === "esperando" && "border-amber-400", p.sinal === "problema" && "border-rose-400")}
                   style={{ left: pct(cabeca.sx, LARG), top: pct(cabeca.sy - (l.tipo === "orbe" ? 50 : 76 * ESCALA), ALT) }}>{balao}</span>
               )}
