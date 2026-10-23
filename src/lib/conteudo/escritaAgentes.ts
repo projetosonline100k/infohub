@@ -33,6 +33,8 @@ export interface DadosPedido {
   historico?: Conversa[];
   pedido: string;
   proximaHeadline: number;
+  /** documentos que o Davi puxou com @ no chat (24/10) */
+  citados?: { titulo: string; texto: string }[];
   /** "conversa" (24/10): responde no painel do chat, ao lado do documento, em vez de escrever nele */
   modo?: "documento" | "conversa";
 }
@@ -92,6 +94,9 @@ export function montarPedido(d: DadosPedido): string {
       + d.skills.map((s) => `<skill nome="${s.nome}">\n${s.conteudo.trim()}\n</skill>`).join("\n\n"));
   }
   partes.push(`DOCUMENTO ATUAL (contexto; [CURSOR] é onde ${conversa ? "está o cursor do Davi" : "a sua resposta entra; não repita o que já está escrito"}):\n"""\n${recortarDocumento(d.documento)}\n"""`);
+  for (const c of (d.citados ?? []).filter((x) => x.texto.trim())) {
+    partes.push(`DOCUMENTO CITADO PELO DAVI (@${c.titulo}):\n"""\n${recortarDocumento(c.texto)}\n"""`);
+  }
   if (d.selecao?.trim()) partes.push(`TRECHO SELECIONADO PELO DAVI (é sobre ele o pedido; a sua resposta entra no lugar dele):\n"""\n${d.selecao.trim()}\n"""`);
   if (d.anterior?.texto.trim()) {
     partes.push(`O QUE ${d.anterior.quem.toUpperCase()} ACABOU DE ENTREGAR (${a && ehRevisao(a.etapa) ? "revise isto: a sua versão substitui a dele" : "parta disto"}):\n"""\n${d.anterior.texto.trim()}\n"""`);

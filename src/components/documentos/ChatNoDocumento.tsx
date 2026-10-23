@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, BookOpen, Check, FileText, Loader2, MessageSquare, Plus, Quote, Settings2, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, BookOpen, Check, FileText, History, Loader2, MessageSquare, Plus, Quote, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { CerebroEsteira, CriteriosEtapa } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
@@ -205,6 +205,20 @@ interface Turno extends Conversa {
   id: string; erro?: string; selecao?: string | null;
   /** cada um que respondeu (Junior, depois Elias…); a resposta do turno é a do último */
   passos: Passo[]; rodando?: boolean; inserido?: boolean;
+  /** documentos puxados com @ */
+  citados?: Citado[];
+}
+interface Citado { id: string; titulo: string }
+interface LinhaConversa {
+  id: string; conversa: string; pedido: string; resposta: string; passos: Passo[] | null; selecao: string | null;
+  citados: Citado[] | null; erro: string | null; inserido: boolean; created_at: string;
+}
+
+/** HTML do documento (TipTap) em texto, um bloco por linha. */
+function htmlParaTexto(html: string) {
+  const limpo = html.replace(/^__NOTA_RAPIDA_V1__/, "").replace(/<\/(p|h[1-6]|li|blockquote|div)>|<br\s*\/?>/gi, "$&\n");
+  const doc = new DOMParser().parseFromString(limpo, "text/html");
+  return (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
 }
 const LARGURA_PAINEL = 400;
 interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" | "revisando" }
@@ -213,14 +227,99 @@ interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevend
 export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; clienteId: string | null; chave?: string | null }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState("");
-  const chaveConversa = `docchat:conversa:${chave ?? "sem"}`;
-  // Conversa salva neste Mac (localStorage), por documento; a primeira versão guardava também os turnos
-  // "escrito no documento" (sem passos de chat): esses ficam de fora.
-  const lerConversa = () => ler<Turno[]>(chaveConversa, []).filter((t) => !("destino" in t) || (t as { destino?: string }).destino === "chat")
-    .map((t) => ({ ...t, passos: (t.passos ?? []).filter((p) => p.texto), rodando: false }));
-  const [turnos, setTurnosEstado] = useState<Turno[]>(lerConversa);
-  useEffect(() => setTurnosEstado(lerConversa()), [chaveConversa]); // eslint-disable-line react-hooks/exhaustive-deps
-  const setTurnos = (f: (l: Turno[]) => Turno[]) => setTurnosEstado((l) => { const n = f(l).slice(-30); gravar(chaveConversa, n); return n; });
+  // 24/10 (Davi: "quero que fiquem salvos, a ideia é virar um super cérebro"): as conversas ficam no banco
+  // (conversas_documento, só o dono vê), agrupadas por conversa; o + começa outra sem apagar a anterior.
+  const chaveConversa = `docchat:conversa:${chave ?? "sem"}`;   // onde a 1ª versão guardava (neste Mac)
+  const [turnos, setTurnos] = useState<Turno[]>([]);
+  const [conversaId, setConversaId] = useState<string>(() => crypto.randomUUID());
+  const [linhas, setLinhas] = useState<LinhaConversa[]>([]);   // todas as trocas deste documento (para o histórico)
+  const paraTurno = (l: LinhaConversa): Turno => ({
+    id: l.id, pedido: l.pedido, resposta: l.resposta, passos: l.passos ?? [], selecao: l.selecao, citados: l.citados ?? [],
+    erro: l.erro ?? undefined, inserido: l.inserido,
+  });
+  const salvarTroca = async (t: Turno, conversa: string) => {
+    if (!chave) return;
+    const { error } = await db.from("conversas_documento").insert({
+      id: t.id, conversa, chave, cliente_id: clienteId, pedido: t.pedido, resposta: t.resposta, passos: t.passos,
+      selecao: t.selecao ?? null, citados: t.citados ?? [], erro: t.erro ?? null,
+    });
+    if (error) { toast.error("Não consegui salvar a conversa"); return; }
+    setLinhas((l) => [...l, { id: t.id, conversa, pedido: t.pedido, resposta: t.resposta, passos: t.passos, selecao: t.selecao ?? null,
+      citados: t.citados ?? [], erro: t.erro ?? null, inserido: false, created_at: new Date().toISOString() }]);
+  };
+  useEffect(() => {
+    if (!aberto || !chave) return;
+    let cancelado = false;
+    void (async () => {
+      const { data } = await db.from("conversas_documento").select("id, conversa, pedido, resposta, passos, selecao, citados, erro, inserido, created_at")
+        .eq("chave", chave).order("created_at", { ascending: true }).limit(1000);
+      let lista = (data ?? []) as LinhaConversa[];
+      // A conversa que estava guardada neste Mac (1ª versão) vai para o banco uma vez só.
+      const locais = ler<(Turno & { destino?: string })[]>(chaveConversa, []).filter((t) => (!t.destino || t.destino === "chat") && t.resposta);
+      if (!lista.length && locais.length) {
+        const conversa = crypto.randomUUID();
+        const novas = locais.map((t) => ({ id: crypto.randomUUID(), conversa, chave, cliente_id: clienteId, pedido: t.pedido, resposta: t.resposta,
+          passos: (t.passos ?? []).filter((p) => p.texto), selecao: t.selecao ?? null, citados: [], erro: t.erro ?? null }));
+        const { error } = await db.from("conversas_documento").insert(novas);
+        if (!error) {
+          try { localStorage.removeItem(chaveConversa); } catch { /* sem storage */ }
+          lista = novas.map((n) => ({ ...n, inserido: false, created_at: new Date().toISOString() }));
+        }
+      }
+      if (cancelado) return;
+      setLinhas(lista);
+      // Abre na última conversa deste documento.
+      const ultima = lista[lista.length - 1]?.conversa;
+      if (ultima) { setConversaId(ultima); setTurnos(lista.filter((l) => l.conversa === ultima).map(paraTurno)); }
+      else { setConversaId(crypto.randomUUID()); setTurnos([]); }
+    })();
+    return () => { cancelado = true; };
+  }, [aberto, chave]); // eslint-disable-line react-hooks/exhaustive-deps
+  const conversasAnteriores = useMemo(() => {
+    const porConversa = new Map<string, LinhaConversa[]>();
+    for (const l of linhas) porConversa.set(l.conversa, [...(porConversa.get(l.conversa) ?? []), l]);
+    return [...porConversa.entries()].map(([id, ls]) => ({ id, titulo: ls[0].pedido, quando: ls[ls.length - 1].created_at, trocas: ls.length }))
+      .sort((a, b) => b.quando.localeCompare(a.quando));
+  }, [linhas]);
+  const abrirConversa = (id: string) => { setConversaId(id); setTurnos(linhas.filter((l) => l.conversa === id).map(paraTurno)); };
+  const novaConversa = () => { setConversaId(crypto.randomUUID()); setTurnos([]); setCitados([]); };
+
+  // @ no campo: procura um documento e o cita (o texto dele vai junto no pedido).
+  const [citados, setCitados] = useState<Citado[]>([]);
+  const [mencao, setMencao] = useState<{ consulta: string; inicio: number; fim: number } | null>(null);
+  const [achados, setAchados] = useState<(Citado & { tipo: string | null })[]>([]);
+  const [indiceAchado, setIndiceAchado] = useState(0);
+  useEffect(() => {
+    if (!mencao) { setAchados([]); return; }
+    const t = window.setTimeout(async () => {
+      let q = db.from("documentos").select("id, titulo, tipo").is("deleted_at", null).in("tipo", ["documento", "nota"])
+        .order("updated_at", { ascending: false }).limit(8);
+      if (mencao.consulta) q = q.ilike("titulo", `%${mencao.consulta.replace(/[%_]/g, "")}%`);
+      const { data } = await q;
+      setAchados((data ?? []) as (Citado & { tipo: string | null })[]);
+      setIndiceAchado(0);
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [mencao?.consulta]); // eslint-disable-line react-hooks/exhaustive-deps
+  const olharMencao = (valor: string, caret: number) => {
+    const antes = valor.slice(0, caret);
+    const m = antes.match(/(?:^|\s)@([^\s@]{0,40})$/);
+    setMencao(m ? { consulta: m[1], inicio: caret - m[1].length - 1, fim: caret } : null);
+  };
+  const citar = (d: Citado) => {
+    if (!mencao) return;
+    const novo = `${texto.slice(0, mencao.inicio)}@${d.titulo} ${texto.slice(mencao.fim)}`;
+    setTexto(novo);
+    setCitados((l) => (l.some((x) => x.id === d.id) ? l : [...l, { id: d.id, titulo: d.titulo }]));
+    setMencao(null);
+    const pos = mencao.inicio + d.titulo.length + 2;
+    requestAnimationFrame(() => { campo.current?.focus(); campo.current?.setSelectionRange(pos, pos); });
+  };
+  const textoDosCitados = async (lista: Citado[]) => {
+    if (!lista.length) return [];
+    const { data } = await db.from("documentos").select("id, titulo, conteudo").in("id", lista.map((c) => c.id));
+    return ((data ?? []) as { titulo: string; conteudo: string | null }[]).map((d) => ({ titulo: d.titulo, texto: htmlParaTexto(d.conteudo ?? "") }));
+  };
   const listaConversa = useRef<HTMLDivElement>(null);
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   const [escolhidos, setEscolhidos] = useState<string[]>(() => ler("docchat:agentes", []));   // membro_id
@@ -439,7 +538,13 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
     const historico = turnos.filter((t) => !t.erro && !t.rodando).map((t) => ({ pedido: t.pedido, resposta: t.resposta }));
     const idTurno = crypto.randomUUID();
-    setTurnos((l) => [...l, { id: idTurno, pedido: pedido || "(fazer a sua parte)", resposta: "", selecao, passos: [], rodando: true }]);
+    const conversa = conversaId;
+    // Só os citados que ainda estão no texto (o Davi pode ter apagado o @Título).
+    const citadosAgora = citados.filter((c) => pedido.includes(`@${c.titulo}`));
+    setCitados([]);
+    setMencao(null);
+    const docsCitados = await textoDosCitados(citadosAgora);
+    setTurnos((l) => [...l, { id: idTurno, pedido: pedido || "(fazer a sua parte)", resposta: "", selecao, passos: [], rodando: true, citados: citadosAgora }]);
     const atualizar = (patch: Partial<Turno>) => setTurnos((l) => l.map((t) => (t.id === idTurno ? { ...t, ...patch } : t)));
 
     // Cada escolhido responde em sequência no chat (o Elias revisa o que o Junior acabou de entregar).
@@ -462,7 +567,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         } : null;
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
-          documento, selecao: anterior ? null : selecao, anterior, historico, pedido,
+          documento, selecao: anterior ? null : selecao, anterior, historico, pedido, citados: docsCitados,
           proximaHeadline: proximoNumeroHeadline(editor.getHTML()), modo: "conversa",
         });
         const resposta = await escreverComClaude(id, prompt, modelo, (total) => {
@@ -481,7 +586,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     }
     setAndamento(null);
     const feitos = passos.filter((p) => p.texto);
-    atualizar({ passos: feitos, resposta: feitos[feitos.length - 1]?.texto ?? "", erro, rodando: false });
+    const final = { passos: feitos, resposta: feitos[feitos.length - 1]?.texto ?? "", erro, rodando: false };
+    atualizar(final);
+    void salvarTroca({ id: idTurno, pedido: pedido || "(fazer a sua parte)", selecao, citados: citadosAgora, ...final }, conversa);
     requestAnimationFrame(() => campo.current?.focus());
   };
 
@@ -495,6 +602,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const { regiao } = regiaoInicial(editor);
     trocarRegiao(editor, regiao, textoFinal, true);
     setTurnos((l) => l.map((x) => (x.id === t.id ? { ...x, inserido: true } : x)));
+    if (chave) void db.from("conversas_documento").update({ inserido: true }).eq("id", t.id);
     editor.commands.focus();
   };
 
@@ -587,7 +695,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const escrevendo = !!andamento || !!lote;
   const placeholder = escolhidasOrdem.length
     ? `Pedir para ${escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}… (vazio = fazer a sua parte com o que está no documento)`
-    : "Conversar com o Claude sobre o documento…";
+    : "Conversar com o Claude… (@ cita um documento)";
 
   return (
     <>
@@ -620,7 +728,28 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             <p className="truncate text-sm font-semibold">{escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"}</p>
             <p className="text-[11px] text-muted-foreground">Responde aqui; você insere no documento se quiser</p>
           </div>
-          <button type="button" onClick={() => setTurnos(() => [])} disabled={escrevendo || !turnos.length} title="Nova conversa"
+          {chave && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button type="button" disabled={escrevendo} title="Conversas anteriores deste documento"
+                  className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><History className="h-4 w-4" /></button>
+              </PopoverTrigger>
+              <PopoverContent className="z-[60] w-80 p-1" align="end">
+                <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Conversas deste documento</p>
+                <div className="max-h-80 overflow-y-auto">
+                  {conversasAnteriores.map((c) => (
+                    <button key={c.id} type="button" onClick={() => abrirConversa(c.id)}
+                      className={cn("block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-muted", c.id === conversaId && "bg-muted")}>
+                      <span className="block truncate">{c.titulo}</span>
+                      <span className="text-[11px] text-muted-foreground">{new Date(c.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · {c.trocas} {c.trocas === 1 ? "troca" : "trocas"}</span>
+                    </button>
+                  ))}
+                  {!conversasAnteriores.length && <p className="px-2 py-3 text-sm text-muted-foreground">Nenhuma conversa salva ainda.</p>}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <button type="button" onClick={novaConversa} disabled={escrevendo || !turnos.length} title="Nova conversa (a anterior fica no histórico)"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><Plus className="h-4 w-4" /></button>
           <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }} title="Fechar (⌘I); o que estiver escrevendo continua"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
@@ -639,6 +768,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             <div key={t.id} className="space-y-2">
               <div className="ml-8 rounded-2xl rounded-br-sm bg-muted px-3 py-2 text-sm">
                 {t.selecao && <p className="mb-1 line-clamp-2 border-l-2 pl-2 text-xs italic text-muted-foreground">{t.selecao}</p>}
+                {!!t.citados?.length && (
+                  <p className="mb-1 flex flex-wrap gap-1">{t.citados.map((c) => <span key={c.id} className="rounded bg-primary/15 px-1.5 text-[11px] text-primary">@{c.titulo}</span>)}</p>
+                )}
                 <p className="whitespace-pre-wrap">{t.pedido}</p>
               </div>
               <div className="space-y-3 text-sm">
@@ -731,13 +863,45 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             </div>
           )}
 
-          <div className="rounded-2xl border bg-card shadow-sm">
+          <div className="relative rounded-2xl border bg-card shadow-sm">
+            {mencao && (
+              <div className="absolute inset-x-0 bottom-full mb-1 overflow-hidden rounded-xl border bg-popover shadow-lg">
+                <p className="flex items-center gap-1 px-3 pt-2 text-[11px] text-muted-foreground"><AtSign className="h-3 w-3" />Citar um documento</p>
+                {achados.map((d, k) => (
+                  <button key={d.id} type="button" onMouseDown={(e) => { e.preventDefault(); citar(d); }}
+                    className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm", k === indiceAchado ? "bg-muted" : "hover:bg-muted")}>
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{d.titulo}</span>
+                    {d.tipo === "nota" && <span className="ml-auto text-[10px] text-muted-foreground">nota</span>}
+                  </button>
+                ))}
+                {!achados.length && <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum documento com esse nome.</p>}
+              </div>
+            )}
+            {!!citados.length && (
+              <div className="flex flex-wrap gap-1 px-3 pt-2">
+                {citados.map((c) => (
+                  <span key={c.id} className="flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] text-primary">
+                    <FileText className="h-3 w-3" />{c.titulo}
+                    <button type="button" onClick={() => setCitados((l) => l.filter((x) => x.id !== c.id))} title="Tirar" className="hover:text-foreground"><X className="h-3 w-3" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
             <textarea
               ref={campo}
               rows={1}
               value={texto}
-              onChange={(e) => setTexto(e.target.value)}
+              onChange={(e) => { setTexto(e.target.value); olharMencao(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
               onKeyDown={(e) => {
+                if (mencao && achados.length && ["ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) {
+                  e.preventDefault();
+                  if (e.key === "ArrowDown") setIndiceAchado((i) => (i + 1) % achados.length);
+                  else if (e.key === "ArrowUp") setIndiceAchado((i) => (i - 1 + achados.length) % achados.length);
+                  else citar(achados[indiceAchado]);
+                  return;
+                }
+                if (mencao && e.key === "Escape") { e.preventDefault(); setMencao(null); return; }
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void enviar(); }
                 else if (e.key === "Escape") { e.preventDefault(); if (escrevendo) parar(); else { setAberto(false); editor.commands.focus(); } }
               }}

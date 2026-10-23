@@ -82,3 +82,10 @@ test('modo conversa (painel do ⌘I): responde no chat, sem escrever no document
   const claude = montarPedido({ agente: null, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'oi', proximaHeadline: 1, modo: 'conversa' });
   assert.match(claude, /^Você é o Claude\. Você conversa com o Davi/);
 });
+
+test('documentos citados com @ entram no pedido (vazios ficam de fora)', () => {
+  const p = montarPedido({ agente: null, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'compara', proximaHeadline: 1, modo: 'conversa',
+    citados: [{ titulo: 'Reunião com o Elias', texto: 'decidimos 3 vídeos' }, { titulo: 'Vazio', texto: '  ' }] });
+  assert.match(p, /DOCUMENTO CITADO PELO DAVI \(@Reunião com o Elias\):\n"""\ndecidimos 3 vídeos\n"""/);
+  assert.doesNotMatch(p, /@Vazio/);
+});
