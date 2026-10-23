@@ -397,7 +397,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
   // como no WhatsApp Web, a lista continua à esquerda e a conversa abre do lado.
   if (tela && !aberta) {
     return (
-      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-info-conversa" : "jarvis:whatsapp-lista-conversa"} className="h-full">
+      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-vazia-info" : "jarvis:whatsapp-lista-conversa"} className="h-full">
         <ResizablePanel defaultSize={34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
         <ResizableHandle />
         <ResizablePanel defaultSize={66} minSize={28} className="min-w-0">
@@ -414,19 +414,19 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
   if (aberta) {
     const chat = <Conversa key={aberta.chat_id} conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
     return (
-      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-info-conversa" : "jarvis:whatsapp-lista-conversa"} className="h-full">
-        <ResizablePanel defaultSize={info ? 28 : 34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
+      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-conversa-info" : "jarvis:whatsapp-lista-conversa"} className="h-full">
+        <ResizablePanel defaultSize={info ? 26 : 34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
         <ResizableHandle withHandle />
+        <ResizablePanel defaultSize={info ? 46 : 66} minSize={28} className="min-w-0">{chat}</ResizablePanel>
         {info && (
           <>
-            {/* Informações à esquerda da conversa (19/10, Davi). */}
-            <ResizablePanel defaultSize={30} minSize={16} className="min-w-0">
+            {/* Informações à direita da conversa (24/10, Davi: "a mensagem no meio e a inteligência no lado direito"). */}
+            <ResizableHandle withHandle />
+            <ResizablePanel defaultSize={28} minSize={16} className="min-w-0">
               <div className="h-full overflow-y-auto px-4 pb-4">{info(aberta)}</div>
             </ResizablePanel>
-            <ResizableHandle withHandle />
           </>
         )}
-        <ResizablePanel defaultSize={info ? 42 : 66} minSize={28} className="min-w-0">{chat}</ResizablePanel>
       </ResizablePanelGroup>
     );
   }
