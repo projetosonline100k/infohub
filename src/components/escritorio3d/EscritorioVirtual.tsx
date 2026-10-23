@@ -1,6 +1,5 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { PointerLockControls } from "@react-three/drei";
 import * as THREE from "three";
 import { Clock, MessageCircle, MousePointer2, PlayCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -79,8 +78,8 @@ function Jogador({ ativo, posicao, perto, lugares, funcionarios, inicio }: {
     if (ativo) {
       if (k.KeyW || k.ArrowUp) { mx += frente.x; mz += frente.z; }
       if (k.KeyS || k.ArrowDown) { mx -= frente.x; mz -= frente.z; }
-      if (k.KeyD || k.ArrowRight) { mx += direita.x; mz += direita.z; }
-      if (k.KeyA || k.ArrowLeft) { mx -= direita.x; mz -= direita.z; }
+      if (k.KeyD) { mx += direita.x; mz += direita.z; }
+      if (k.KeyA) { mx -= direita.x; mz -= direita.z; }
     }
     const len = Math.hypot(mx, mz);
     if (len > 0) {
@@ -101,6 +100,35 @@ function Jogador({ ativo, posicao, perto, lugares, funcionarios, inicio }: {
       if (d < dist && (dx * frente.x + dz * frente.z) / (d || 1) > 0.2) { melhor = f.id; dist = d; }
     }
     if (melhor !== ultimoPerto.current) { ultimoPerto.current = melhor; perto(melhor); }
+  });
+  return null;
+}
+
+// Olhar em volta (23/10: no app do Mac o "travar o mouse" do navegador não funciona — o clique em
+// "Entrar" não fazia nada). Mouse travado quando dá; senão, olha arrastando o mouse ou com ← →.
+function Olhar({ ativo, canvas }: { ativo: boolean; canvas: HTMLCanvasElement | null }) {
+  const { camera } = useThree();
+  const teclas = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    if (!canvas) return;
+    const mover = (e: MouseEvent) => {
+      if (!ativo) return;
+      const travado = document.pointerLockElement === canvas;
+      if (!travado && !(e.buttons & 1)) return;
+      const k = travado ? 0.0022 : 0.0042;
+      camera.rotation.order = "YXZ";
+      camera.rotation.y -= e.movementX * k;
+      camera.rotation.x = Math.max(-1.25, Math.min(1.25, camera.rotation.x - e.movementY * k));
+    };
+    const baixo = (e: KeyboardEvent) => { teclas.current[e.code] = true; };
+    const cima = (e: KeyboardEvent) => { teclas.current[e.code] = false; };
+    window.addEventListener("mousemove", mover); window.addEventListener("keydown", baixo); window.addEventListener("keyup", cima);
+    return () => { window.removeEventListener("mousemove", mover); window.removeEventListener("keydown", baixo); window.removeEventListener("keyup", cima); };
+  }, [ativo, canvas, camera]);
+  useFrame((_, dt) => {
+    if (!ativo) return;
+    const giro = (teclas.current.ArrowLeft ? 1 : 0) - (teclas.current.ArrowRight ? 1 : 0);
+    if (giro) { camera.rotation.order = "YXZ"; camera.rotation.y += giro * 1.9 * Math.min(dt, 0.05); }
   });
   return null;
 }
@@ -153,8 +181,22 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
   onConversar: (id: string) => void;
   onAbrirTarefa?: (f: Funcionario3D) => void;
 }) {
-  const controles = useRef<{ lock: () => void; unlock: () => void } | null>(null);
-  const [travado, setTravado] = useState(false);
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [dentro, setDentro] = useState(!!semTelaDeEntrada);   // entrou no escritório
+  const [travado, setTravado] = useState(false);               // mouse preso (quando o sistema deixa)
+  useEffect(() => {
+    const mudou = () => {
+      const preso = !!canvas && document.pointerLockElement === canvas;
+      setTravado((antes) => { if (antes && !preso) setDentro(false); return preso; });   // Esc soltou o mouse: volta à tela de entrada
+    };
+    document.addEventListener("pointerlockchange", mudou);
+    return () => document.removeEventListener("pointerlockchange", mudou);
+  }, [canvas]);
+  const entrar = useCallback(() => {
+    setDentro(true);
+    try { const r = canvas?.requestPointerLock() as unknown as Promise<void> | undefined; r?.catch?.(() => { /* sem trava: olha arrastando */ }); } catch { /* idem */ }
+  }, [canvas]);
+  const soltar = () => { if (document.pointerLockElement) document.exitPointerLock(); };
   const [pertoDe, setPertoDe] = useState<string | null>(null);
   const [aberto, setAberto] = useState<Funcionario3D | null>(null);
   const posicao = useRef({ x: INICIO.x, z: INICIO.z, yaw: 0 });
@@ -165,20 +207,20 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
   const perto = funcionarios.find((f) => f.id === pertoDe) ?? null;
   const precisam = funcionarios.filter((f) => f.sinal === "esperando" || f.sinal === "problema");
 
-  const abrir = useCallback((f: Funcionario3D) => { setAberto(f); controles.current?.unlock(); }, []);
+  const abrir = useCallback((f: Funcionario3D) => { setAberto(f); if (document.pointerLockElement) document.exitPointerLock(); }, []);
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
-      if (e.code === "KeyE" && (travado || semTelaDeEntrada) && perto) { e.preventDefault(); abrir(perto); }
-      if (e.code === "Escape" && aberto) setAberto(null);
+      if (e.code === "KeyE" && dentro && perto && !aberto) { e.preventDefault(); abrir(perto); }
+      if (e.code === "Escape") { if (aberto) setAberto(null); else if (dentro && !travado && !semTelaDeEntrada) setDentro(false); }
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
-  }, [travado, perto, aberto, abrir, semTelaDeEntrada]);
+  }, [dentro, travado, perto, aberto, abrir, semTelaDeEntrada]);
 
   return (
     <div className="fixed inset-0 z-[60] select-none bg-black">
       <Canvas shadows dpr={[1, 1.75]} camera={{ fov: 72, near: 0.05, far: 80 }} gl={{ antialias: true }}
-        onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05; }}>
+        onCreated={({ gl }) => { gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05; setCanvas(gl.domElement); }}>
         <Suspense fallback={null}>
           <Luzes />
           <Salas />
@@ -188,13 +230,13 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
             return <Personagem key={f.id} nome={f.nome} pose={l.pose} corStatus={COR_SINAL[f.sinal]}
               alerta={f.sinal === "esperando" ? "#f59e0b" : f.sinal === "problema" ? "#ef4444" : null} posicao={[l.x, 0, l.z]} giro={l.giro} />;
           })}
-          <Jogador ativo={(travado || !!semTelaDeEntrada) && !aberto} inicio={inicio} posicao={posicao} perto={setPertoDe} lugares={lugares} funcionarios={funcionarios} />
-          <PointerLockControls ref={controles as never} selector="#mundo3d-sem-clique-automatico" onLock={() => setTravado(true)} onUnlock={() => setTravado(false)} />
+          <Jogador ativo={dentro && !aberto} inicio={inicio} posicao={posicao} perto={setPertoDe} lugares={lugares} funcionarios={funcionarios} />
+          <Olhar ativo={dentro && !aberto} canvas={canvas} />
         </Suspense>
       </Canvas>
 
       {/* HUD mínimo: mira, minimapa, quem precisa de você, dica de controles */}
-      {travado && <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/90 shadow-[0_0_0_2px_rgba(0,0,0,.45)]" />}
+      {dentro && <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/90 shadow-[0_0_0_2px_rgba(0,0,0,.45)]" />}
       <div className="pointer-events-none absolute right-4 top-4 flex flex-col items-end gap-2">
         <Minimapa pos={posMapa} lugares={lugares} funcionarios={funcionarios} />
         {precisam.length > 0 && (
@@ -205,26 +247,26 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
       </div>
       <div className="absolute left-4 top-4 flex items-center gap-2">
         <span className="rounded-lg bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white/90 backdrop-blur">Escritório virtual · protótipo</span>
-        <button type="button" onClick={onSair} className="rounded-lg bg-black/55 px-2.5 py-1 text-[11px] text-white/80 backdrop-blur hover:bg-black/75 hover:text-white">Sair</button>
+        <button type="button" onClick={() => { soltar(); onSair(); }} className="rounded-lg bg-black/55 px-2.5 py-1 text-[11px] text-white/80 backdrop-blur hover:bg-black/75 hover:text-white">Sair</button>
       </div>
-      {travado && (
+      {dentro && (
         <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg bg-black/45 px-2.5 py-1.5 text-[10.5px] text-white/75 backdrop-blur">
-          <b className="text-white">W A S D</b> andar · <b className="text-white">Shift</b> correr · <b className="text-white">Mouse</b> olhar · <b className="text-white">E</b> interagir · <b className="text-white">Esc</b> soltar o mouse
+          <b className="text-white">W A S D</b> andar · <b className="text-white">Shift</b> correr · <b className="text-white">{travado ? "Mouse" : "Arraste o mouse ou ← →"}</b> olhar · <b className="text-white">E</b> interagir · <b className="text-white">Esc</b> {travado ? "soltar o mouse" : "pausar"}
         </div>
       )}
-      {(travado || semTelaDeEntrada) && perto && !aberto && (
+      {dentro && perto && !aberto && (
         <div className="pointer-events-none absolute left-1/2 top-[58%] -translate-x-1/2 rounded-lg border border-white/15 bg-black/70 px-3 py-1.5 text-sm text-white shadow-xl backdrop-blur">
           <kbd className="mr-1.5 rounded bg-white px-1.5 py-0.5 text-xs font-bold text-black">E</kbd>Conversar com {perto.nome}
         </div>
       )}
 
       {/* Antes de entrar / mouse solto */}
-      {!travado && !aberto && !semTelaDeEntrada && (
+      {!dentro && !aberto && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/45 backdrop-blur-[2px]">
           <div className="flex flex-col items-center gap-3 text-center text-white">
             <p className="text-2xl font-bold">Escritório virtual</p>
             <p className="max-w-sm text-sm text-white/70">Entrada, corredor e Audiovisual (protótipo). Ande até o Danilo e aperte <b>E</b>.</p>
-            <button type="button" onClick={() => controles.current?.lock()} className="mt-1 flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-black shadow-lg hover:bg-white/90">
+            <button type="button" onClick={entrar} className="mt-1 flex items-center gap-2 rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-black shadow-lg hover:bg-white/90">
               <MousePointer2 className="h-4 w-4" />Clique para entrar
             </button>
             <button type="button" onClick={onSair} className="text-xs text-white/60 hover:text-white">Voltar para o mapa</button>
@@ -273,7 +315,7 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
                   <PlayCircle className="h-4 w-4" />Ver ao vivo
                 </button>
               )}
-              <button type="button" onClick={() => { setAberto(null); controles.current?.lock(); }} className={cn("ml-auto rounded-lg px-3 py-2 text-sm text-white/70 hover:text-white")}>Voltar ao escritório</button>
+              <button type="button" onClick={() => { setAberto(null); entrar(); }} className={cn("ml-auto rounded-lg px-3 py-2 text-sm text-white/70 hover:text-white")}>Voltar ao escritório</button>
             </div>
           </div>
         </div>
