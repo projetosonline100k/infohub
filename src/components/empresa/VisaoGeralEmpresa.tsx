@@ -523,7 +523,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       .map((p) => {
         const atual = estados.find((e) => e.membro.id === p.id)?.atual ?? null;
         return {
-          id: p.id, nome: p.nome, ehIa: p.ehIa, sinal: p.sinal, rotuloSinal: p.rotuloSinal, agora: p.balao, clicavel: p.clicavel, sala: salaDe(setor.nome),
+          id: p.id, nome: p.nome, ehIa: p.ehIa, sinal: p.sinal, rotuloSinal: p.rotuloSinal, agora: p.balao, clicavel: p.clicavel, sala: salaDe(setor.nome), setorId: setor.id,
           tarefa: atual ? { id: atual.id, titulo: atual.titulo, progresso: atual.progresso ?? null, minutosRestantes: minutosRestantes(atual) } : null,
         };
       }));
@@ -792,7 +792,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       )}
       {import.meta.env.DEV && mundoPixel && (
         <Suspense fallback={null}>
-          <EscritorioPixel funcionarios={dados3d.funcionarios} resultado={dados3d.resultado} onSair={() => setMundoPixel(false)}
+          <EscritorioPixel clienteId={clienteId} funcionarios={dados3d.funcionarios}
+            setores={setoresDoMapa.map((st) => ({ id: st.id, nome: st.nome, cor: st.corPlaca, pessoas: dados3d.funcionarios.filter((f) => f.setorId === st.id).length }))} resultado={dados3d.resultado} onSair={() => setMundoPixel(false)}
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
               if (!m) return;

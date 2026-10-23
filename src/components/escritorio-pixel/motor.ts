@@ -1,10 +1,8 @@
 import { AnimatedSprite, Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TextureStyle } from "pixi.js";
-import {
-  ALTURA, CHEGADA, ESTACOES, LARGURA, MOVEIS, PAREDES, PISOS, SALAS, TELA_RESULTADO, TILE,
-  caminho, montarAndavel, montarGrade, type Estacao, type Recorte, type SalaId, type TipoEstacao,
-} from "./mapa";
+import { PAREDES, PISOS, TILE, caminho, type Estacao, type Recorte, type TipoEstacao } from "./mapa";
+import { ALTURA, LARGURA, type Planta } from "./planta";
 
-// Motor do mapa em pixel art (PixiJS 8). O React só passa as pessoas e recebe os cliques.
+// Motor do mapa em pixel art (PixiJS 8). O React passa a planta e as pessoas e recebe os cliques.
 
 const BASE = "/escritorio-pixel";
 const MODELOS = ["Adam", "Alex", "Amelia", "Bob"] as const;
@@ -14,13 +12,14 @@ const DIR = { dir: 0, cima: 1, esq: 2, baixo: 3 } as const;
 type Direcao = keyof typeof DIR;
 
 export type EstadoPixel = "trabalhando" | "esperando" | "problema" | "parado" | "reuniao";
+export type ModoCamera = "geral" | "seguir";
 
 export interface PessoaPixel {
   id: string;
   nome: string;
   estado: EstadoPixel;
-  /** sala de trabalho; sem sala própria no protótipo, trabalha na mesa de reunião da Área Colaborativa */
-  sala: SalaId | null;
+  /** setor da pessoa: trabalha numa mesa da sala dele; setor fora do mapa trabalha na mesa de reunião */
+  setorId: string | null;
   /** texto do balão (aparece no hover/seleção) */
   agora?: string | null;
 }
@@ -54,19 +53,32 @@ function modeloDe(id: string): Modelo {
 }
 
 function tipoDesejado(p: PessoaPixel): TipoEstacao[] {
-  if (p.estado === "reuniao") return ["reuniao", "espera"];
-  if (p.estado === "trabalhando" || p.estado === "problema") return p.sala === "audiovisual" ? ["mesa", "reuniao", "espera"] : ["reuniao", "espera"];
-  if (p.estado === "esperando") return ["espera", "sofa"];
+  if (p.estado === "reuniao") return ["reuniao", "espera", "sofa"];
+  if (p.estado === "trabalhando" || p.estado === "problema") return ["mesa", "reuniao", "espera", "sofa"];
+  if (p.estado === "esperando") return ["espera", "sofa", "copa"];
   return ["sofa", "copa", "espera"];
 }
 
 export interface MundoPixel {
+  definirPlanta(planta: Planta): void;
   atualizar(pessoas: PessoaPixel[], resultado: ResultadoPixel | null): void;
   selecionar(id: string | null): void;
+  /** modo de montar: mostra os 9 espaços e o clique escolhe um */
+  editar(ativo: boolean, espacoSelecionado: number | null): void;
+  camera(modo: ModoCamera): void;
   destruir(): void;
 }
 
-export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) => void): Promise<MundoPixel> {
+export interface Avisos {
+  aoClicar: (id: string | null) => void;
+  aoClicarEspaco: (indice: number) => void;
+  aoMudarCamera: (modo: ModoCamera) => void;
+}
+
+const ehCampoDeTexto = (alvo: EventTarget | null) =>
+  alvo instanceof HTMLElement && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName));
+
+export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta): Promise<MundoPixel> {
   TextureStyle.defaultOptions.scaleMode = "nearest";
   const app = new Application();
   await app.init({ resizeTo: el, background: "#17151f", antialias: false, roundPixels: true, resolution: window.devicePixelRatio || 1, autoDensity: true });
@@ -103,102 +115,125 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
   const cena = new Container();
   cena.sortableChildren = true;
   const topo = new Container();
-  mundo.addChild(chao, cena, topo);
-  const textos: Text[] = [];
+  const camadaEdicao = new Container();
+  mundo.addChild(chao, cena, topo, camadaEdicao);
+  let escala = 1;
+  const textos = new Set<Text>();
   const texto = (t: string, tamanho: number, cor = 0xffffff, peso: "400" | "700" | "800" = "700") => {
     const tx = new Text({ text: t, style: { fontFamily: "ui-monospace, Menlo, monospace", fontSize: tamanho, fill: cor, fontWeight: peso } });
-    textos.push(tx);
+    textos.add(tx);
+    tx.resolution = resolucaoTexto();
     return tx;
   };
-
-  // Fundo, pisos e paredes.
-  const grade = montarGrade();
-  const andavel = montarAndavel(grade);
-  for (let y = 0; y < ALTURA; y++) {
-    for (let x = 0; x < LARGURA; x++) {
-      const c = grade[y][x];
-      if (!c) continue;
-      let t: Texture;
-      if ("piso" in c) {
-        const p = PISOS[c.piso];
-        t = tile(p.c + (x % p.w), p.l + (y % p.h));
-      } else {
-        t = tile(c.ponta === "e" ? 0 : c.ponta === "d" ? 2 : 1, PAREDES[c.parede] + c.linha);
-      }
-      const s = new Sprite(t);
-      s.position.set(x * TILE, y * TILE);
-      chao.addChild(s);
+  const limpar = (c: Container) => {
+    for (const filho of c.removeChildren()) {
+      filho.children?.forEach((f) => { if (f instanceof Text) textos.delete(f); });
+      if (filho instanceof Text) textos.delete(filho);
+      filho.destroy({ children: true });
     }
-  }
-  // Sombra no pé das paredes.
-  const sombras = new Graphics();
-  for (let y = 1; y < ALTURA; y++) for (let x = 0; x < LARGURA; x++) {
-    const c = grade[y][x], cima = grade[y - 1][x];
-    if (c && "piso" in c && cima && "parede" in cima) sombras.rect(x * TILE, y * TILE, TILE, 3);
-  }
-  sombras.fill({ color: 0x000000, alpha: 0.18 });
-  chao.addChild(sombras);
+  };
 
-  for (const m of MOVEIS) {
-    const s = new Sprite(recorte(m.r));
-    s.position.set(m.x * TILE, m.y * TILE);
-    if (m.chao) { chao.addChild(s); continue; }
-    s.zIndex = m.parede ? -1 : (m.y + m.r[3]) * TILE;
-    cena.addChild(s);
-  }
+  let atual = planta;
+  let ultimoResultado: ResultadoPixel | null = null;
+  let tela: Container | null = null;
+  // Móveis, placas e a tela ficam na cena (ordenados pela altura junto com as pessoas).
+  let estaticos: Container[] = [];
 
-  // Placas com o nome de cada sala (na parede).
-  for (const sala of SALAS) {
-    if (sala.id === "corredor") continue;
-    const placa = new Container();
-    const tx = texto(sala.nome.toUpperCase(), 5, 0xffffff, "800");
-    const fundo = new Graphics().roundRect(-3, -2, tx.width + 6, tx.height + 3, 1.5).fill(0x1c1917).stroke({ color: Number.parseInt(sala.cor.slice(1), 16), width: 0.8 });
-    placa.addChild(fundo, tx);
-    const px = sala.id === "colaborativa" ? 14.2 : sala.id === "audiovisual" ? 26.6 : 12.4;
-    placa.position.set(px * TILE, (sala.y0 - 2) * TILE + 3);
-    if (sala.id === "colaborativa") placa.position.y = (sala.y0 - 2) * TILE + 2;
-    cena.addChild(placa);
-    placa.zIndex = -0.5;
-  }
-
-  // Tela "Nosso Resultado".
-  const tela = new Container();
-  tela.position.set(TELA_RESULTADO.x * TILE, TELA_RESULTADO.y * TILE);
-  tela.zIndex = -0.5;
-  cena.addChild(tela);
-  const desenharTela = (r: ResultadoPixel | null) => {
-    for (const filho of tela.removeChildren()) {
-      if (filho instanceof Text) textos.splice(textos.indexOf(filho), 1);
-      filho.destroy();
-    }
-    const w = TELA_RESULTADO.w * TILE, h = TELA_RESULTADO.h * TILE;
+  const desenharTela = () => {
+    if (!tela || !atual.tela) return;
+    limpar(tela);
+    const r = ultimoResultado;
+    const w = atual.tela.w * TILE, h = atual.tela.h * TILE;
     tela.addChild(new Graphics().rect(0, 0, w, h).fill(0x0b1220).stroke({ color: 0x1f2937, width: 2 }));
-    const titulo = texto("NOSSO RESULTADO", 4.5, 0xfbbf24, "800");
-    titulo.position.set(4, 2.5);
+    const titulo = texto("NOSSO RESULTADO", 5.5, 0xfbbf24, "800");
+    titulo.position.set(5, 3);
     tela.addChild(titulo);
     const caixas = r ? [
       [String(r.concluidas), "entregues", 0xffffff], [String(r.publicados), "posts", 0xffffff],
-      [String(r.faltam), r.atrasadas ? `${r.atrasadas} atras.` : "faltam", r.atrasadas ? 0xfca5a5 : 0xffffff],
+      [String(r.faltam), r.atrasadas ? `${r.atrasadas} atrasadas` : "faltam", r.atrasadas ? 0xfca5a5 : 0xffffff],
     ] as const : [];
+    const larg = (w - 10) / 3;
     caixas.forEach(([valor, rotulo, cor], i) => {
-      const x = 4 + i * ((w - 8) / 3);
-      tela.addChild(new Graphics().roundRect(x, 10, (w - 8) / 3 - 2, h - 13, 1.5).fill(0x16233a));
-      const v = texto(valor, 7, cor, "800"); v.position.set(x + 2.5, 11); tela.addChild(v);
-      const rt = texto(rotulo, 3.5, 0x94a3b8, "700"); rt.position.set(x + 2.5, 20.5); tela.addChild(rt);
+      const x = 5 + i * larg;
+      tela!.addChild(new Graphics().roundRect(x, 13, larg - 3, h - 17, 2).fill(0x16233a));
+      const v = texto(valor, 11, cor, "800"); v.position.set(x + 4, 14); tela!.addChild(v);
+      const rt = texto(rotulo, 4.5, 0x94a3b8, "700"); rt.position.set(x + 4, 29); tela!.addChild(rt);
     });
-    if (!r) { const t = texto("carregando…", 4, 0x94a3b8); t.position.set(4, 14); tela.addChild(t); }
-    ajustarTextos();
+    if (!r) { const t = texto("carregando…", 5, 0x94a3b8); t.position.set(5, 18); tela.addChild(t); }
+  };
+
+  const montarCenario = () => {
+    limpar(chao);
+    for (const s of estaticos) { s.children.forEach((f) => { if (f instanceof Text) textos.delete(f); }); s.destroy({ children: true }); }
+    estaticos = [];
+    const { grade } = atual;
+    for (let y = 0; y < ALTURA; y++) {
+      for (let x = 0; x < LARGURA; x++) {
+        const c = grade[y][x];
+        if (!c) continue;
+        let t: Texture;
+        if ("piso" in c) {
+          const p = PISOS[c.piso];
+          t = tile(p.c + (x % p.w), p.l + (y % p.h));
+        } else {
+          t = tile(c.ponta === "e" ? 0 : c.ponta === "d" ? 2 : 1, PAREDES[c.parede].l + c.linha);
+        }
+        const s = new Sprite(t);
+        s.position.set(x * TILE, y * TILE);
+        chao.addChild(s);
+      }
+    }
+    // Sombra no pé das paredes.
+    const sombras = new Graphics();
+    for (let y = 1; y < ALTURA; y++) for (let x = 0; x < LARGURA; x++) {
+      const c = grade[y][x], cima = grade[y - 1][x];
+      if (c && "piso" in c && cima && "parede" in cima) sombras.rect(x * TILE, y * TILE, TILE, 3);
+    }
+    sombras.fill({ color: 0x000000, alpha: 0.18 });
+    chao.addChild(sombras);
+
+    for (const m of atual.moveis) {
+      const s = new Sprite(recorte(m.r));
+      s.position.set(m.x * TILE, m.y * TILE);
+      if (m.chao) { chao.addChild(s); continue; }
+      s.zIndex = m.parede ? -1 : (m.y + m.r[3]) * TILE;
+      cena.addChild(s);
+      estaticos.push(s);
+    }
+    // Placas com o nome de cada sala (na parede).
+    for (const p of atual.placas) {
+      const placa = new Container();
+      const tx = texto(p.texto, 5, 0xffffff, "800");
+      const fundo = new Graphics().roundRect(-3, -2, tx.width + 6, tx.height + 3, 1.5).fill(0x1c1917).stroke({ color: Number.parseInt(p.cor.slice(1), 16), width: 0.8 });
+      placa.addChild(fundo, tx);
+      placa.position.set(Math.round(p.x * TILE - tx.width / 2), p.y * TILE + 3);
+      placa.zIndex = -0.5;
+      cena.addChild(placa);
+      estaticos.push(placa);
+    }
+    tela = null;
+    if (atual.tela) {
+      tela = new Container();
+      tela.position.set(atual.tela.x * TILE, atual.tela.y * TILE);
+      tela.zIndex = -0.5;
+      cena.addChild(tela);
+      estaticos.push(tela);
+      desenharTela();
+    }
   };
 
   // Pessoas.
   const bonecos = new Map<string, Boneco>();
   let selecionado: string | null = null;
   let emCima: string | null = null;
+  let perto: string | null = null;
 
   const criarEtiqueta = (b: Boneco) => {
-    for (const filho of b.etiqueta.removeChildren()) { if (filho instanceof Text) textos.splice(textos.indexOf(filho), 1); filho.destroy(); }
+    limpar(b.etiqueta);
     const nome = texto(b.p.nome.split(" ")[0], 5, 0xffffff, "800");
-    const agora = b.p.agora ? texto(b.p.agora.length > 34 ? `${b.p.agora.slice(0, 33)}…` : b.p.agora, 3.8, 0xd6d3d1, "400") : null;
+    const dica = b.p.id === perto && b.p.id !== selecionado ? "E para conversar" : null;
+    const linha2 = dica ?? (b.p.agora ? (b.p.agora.length > 34 ? `${b.p.agora.slice(0, 33)}…` : b.p.agora) : null);
+    const agora = linha2 ? texto(linha2, 3.8, dica ? 0xfde68a : 0xd6d3d1, "400") : null;
     const w = Math.max(nome.width, agora?.width ?? 0) + 8;
     const h = nome.height + (agora ? agora.height + 1 : 0) + 3;
     const fundo = new Graphics().roundRect(-w / 2, -h, w, h, 2).fill({ color: 0x0f0d0b, alpha: 0.9 });
@@ -206,11 +241,10 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
     nome.position.set(-w / 2 + 6, -h + 1);
     b.etiqueta.addChild(fundo, nome);
     if (agora) { agora.position.set(-w / 2 + 4, -h + nome.height + 1.5); b.etiqueta.addChild(agora); }
-    ajustarTextos();
   };
 
   const criarAlerta = (b: Boneco) => {
-    b.alerta.removeChildren().forEach((f) => f.destroy());
+    limpar(b.alerta);
     const precisa = b.corpo.visible && (b.p.estado === "problema" || b.p.estado === "esperando");
     b.alerta.visible = precisa;
     if (!precisa) return;
@@ -223,12 +257,10 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
   };
 
   const atualizarVisual = (b: Boneco) => {
-    const ativo = b.corpo.visible && (b.p.id === selecionado || b.p.id === emCima);
+    const ativo = b.corpo.visible && (b.p.id === selecionado || b.p.id === emCima || b.p.id === perto);
     b.etiqueta.visible = ativo;
     b.anel.visible = b.p.id === selecionado;
   };
-
-  const pixel = (b: Boneco) => ({ x: (b.x + 0.5) * TILE, y: (b.y + 1) * TILE - 1 });
 
   const definirPose = (b: Boneco, pose: string, direcao: Direcao) => {
     const chave = pose === "sentado-dir" ? `${b.modelo}:sentado:dir`
@@ -245,7 +277,7 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
   };
 
   const posicionar = (b: Boneco) => {
-    const { x, y } = pixel(b);
+    const x = (b.x + 0.5) * TILE, y = (b.y + 1) * TILE - 1;
     const sentadoNoSofa = !b.rota.length && b.estacao?.pose === "sofa" && Math.abs(b.x - b.estacao.x) < 0.01 && Math.abs(b.y - b.estacao.y) < 0.01;
     const dy = sentadoNoSofa ? -5 : 0;
     b.corpo.position.set(x, y + dy);
@@ -257,30 +289,138 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
     b.alerta.position.set(x, y + dy - alto - 5);
   };
 
-  const ocupadas = () => new Set([...bonecos.values()].map((b) => b.estacao?.id).filter(Boolean) as string[]);
-
   const escolherEstacao = (b: Boneco) => {
     const tipos = tipoDesejado(b.p);
-    if (b.estacao && tipos[0] === b.estacao.tipo) return b.estacao;
-    const livres = ocupadas();
-    if (b.estacao) livres.delete(b.estacao.id);
+    const serve = (e: Estacao, tipo: TipoEstacao) => e.tipo === tipo && (tipo !== "mesa" || e.setorId === b.p.setorId);
+    if (b.estacao && atual.estacoes.includes(b.estacao) && serve(b.estacao, tipos[0])) return b.estacao;
+    const ocupadas = new Set([...bonecos.values()].filter((o) => o !== b).map((o) => o.estacao?.id).filter(Boolean) as string[]);
     for (const tipo of tipos) {
-      // Mesa: primeiro a da própria sala.
-      const opcoes = ESTACOES.filter((e) => e.tipo === tipo && !livres.has(e.id));
-      if (opcoes.length) return opcoes[0];
+      const livre = atual.estacoes.find((e) => serve(e, tipo) && !ocupadas.has(e.id));
+      if (livre) return livre;
     }
     return null;
   };
 
+  const andavelEm = (x: number, y: number) => !!atual.andavel[Math.floor(y)]?.[Math.floor(x)];
+
   const mandarPara = (b: Boneco, estacao: Estacao | null) => {
     b.estacao = estacao;
-    const alvo = estacao ?? { x: CHEGADA.x, y: CHEGADA.y - 2 };
-    b.rota = caminho(andavel, { x: Math.round(b.x), y: Math.round(b.y) }, alvo);
+    const alvo = estacao ?? { x: atual.chegada.x, y: atual.chegada.y - 1 };
+    const de = { x: Math.round(b.x), y: Math.round(b.y) };
+    b.rota = caminho(atual.andavel, de, alvo);
+    // Sem caminho (a sala mudou de lugar por baixo dele): aparece direto no lugar novo.
+    if (!b.rota.length && (de.x !== alvo.x || de.y !== alvo.y)) { b.x = alvo.x; b.y = alvo.y; }
+  };
+
+  // O boneco do Davi: anda com as setas/WASD; E conversa com quem está perto.
+  const jogador = (() => {
+    const corpo = new AnimatedSprite(quadros.get("Adam:parado:cima")!);
+    const b: Boneco = {
+      p: { id: "__voce", nome: "Você", estado: "trabalhando", setorId: null }, modelo: "Adam", corpo,
+      anel: new Graphics().ellipse(0, 0, 7, 3).fill({ color: 0x38bdf8, alpha: 0.35 }).stroke({ color: 0x38bdf8, width: 1 }),
+      etiqueta: new Container(), alerta: new Container(), x: atual.chegada.x, y: atual.chegada.y - 1, rota: [], estacao: null, direcao: "cima", pose: "", espera: 0,
+    };
+    const tx = texto("VOCÊ", 4, 0x0b1220, "800");
+    b.etiqueta.addChild(new Graphics().roundRect(-tx.width / 2 - 2.5, -tx.height - 1, tx.width + 5, tx.height + 1.5, 2).fill(0x7dd3fc), tx);
+    tx.position.set(-tx.width / 2, -tx.height - 0.5);
+    cena.addChild(b.anel, corpo);
+    topo.addChild(b.etiqueta);
+    definirPose(b, "parado", "cima");
+    return b;
+  })();
+  const teclas = new Set<string>();
+  const MAPA_TECLAS: Record<string, Direcao> = {
+    ArrowUp: "cima", KeyW: "cima", ArrowDown: "baixo", KeyS: "baixo", ArrowLeft: "esq", KeyA: "esq", ArrowRight: "dir", KeyD: "dir",
+  };
+  let modoCamera: ModoCamera = "geral";
+  let editando = false;
+  const aoApertar = (e: KeyboardEvent) => {
+    if (ehCampoDeTexto(e.target) || e.metaKey || e.ctrlKey) return;
+    if (MAPA_TECLAS[e.code]) {
+      e.preventDefault();
+      teclas.add(e.code);
+      if (modoCamera === "geral" && !editando) { modoCamera = "seguir"; avisos.aoMudarCamera(modoCamera); ajustar(); }
+    } else if (e.code === "KeyE" && perto) {
+      avisos.aoClicar(perto);
+    } else if (e.code === "KeyZ") {
+      modoCamera = modoCamera === "geral" ? "seguir" : "geral";
+      avisos.aoMudarCamera(modoCamera);
+      ajustar();
+    }
+  };
+  const aoSoltar = (e: KeyboardEvent) => teclas.delete(e.code);
+  const aoSairDaJanela = () => teclas.clear();
+  window.addEventListener("keydown", aoApertar);
+  window.addEventListener("keyup", aoSoltar);
+  window.addEventListener("blur", aoSairDaJanela);
+
+  const moverJogador = (dt: number) => {
+    let dx = 0, dy = 0;
+    for (const k of teclas) {
+      const d = MAPA_TECLAS[k];
+      if (d === "cima") dy -= 1; else if (d === "baixo") dy += 1; else if (d === "esq") dx -= 1; else if (d === "dir") dx += 1;
+    }
+    const b = jogador;
+    if (!dx && !dy) { definirPose(b, "parado", b.direcao); return; }
+    b.direcao = dx && Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? "dir" : "esq") : (dy > 0 ? "baixo" : "cima");
+    const passo = 4.5 * dt / Math.hypot(dx, dy);
+    // Pé do boneco: centro do tile, perto da base; testa as duas pontas do pé.
+    const livre = (x: number, y: number) => {
+      const px = x + 0.5, py = y + 0.85;
+      return andavelEm(px - 0.3, py) && andavelEm(px + 0.3, py) && andavelEm(px - 0.3, py - 0.25) && andavelEm(px + 0.3, py - 0.25);
+    };
+    if (dx && livre(b.x + dx * passo, b.y)) b.x += dx * passo;
+    if (dy && livre(b.x, b.y + dy * passo)) b.y += dy * passo;
+    definirPose(b, "andar", b.direcao);
+  };
+
+  const verificarPerto = () => {
+    let melhor: string | null = null, menor = 1.8;
+    for (const b of bonecos.values()) {
+      if (!b.corpo.visible) continue;
+      const d = Math.hypot(b.x - jogador.x, b.y - jogador.y);
+      if (d < menor) { menor = d; melhor = b.p.id; }
+    }
+    if (melhor === perto) return;
+    const antes = perto;
+    perto = melhor;
+    for (const id of [antes, melhor]) {
+      const b = id ? bonecos.get(id) : null;
+      if (b) { criarEtiqueta(b); atualizarVisual(b); }
+    }
+  };
+
+  // Modo de montar: os 9 espaços aparecem com borda e nome; o clique escolhe um.
+  let espacoSelecionado: number | null = null;
+  const desenharEdicao = () => {
+    limpar(camadaEdicao);
+    camadaEdicao.visible = editando;
+    if (!editando) return;
+    for (const e of atual.espacos) {
+      const sel = e.indice === espacoSelecionado;
+      const x = e.x0 * TILE - 2, y = e.y0 * TILE - 2, w = (e.x1 - e.x0 + 1) * TILE + 4, h = (e.y1 - e.y0 + 1) * TILE + 4;
+      const g = new Graphics().rect(x, y, w, h).fill({ color: sel ? 0x38bdf8 : 0x000000, alpha: sel ? 0.22 : 0.25 })
+        .stroke({ color: sel ? 0x38bdf8 : 0xffffff, width: sel ? 2 : 1, alpha: sel ? 1 : 0.5 });
+      const tx = texto(e.nome === "Vazio" ? "+ montar sala" : e.nome, 8, 0xffffff, "800");
+      tx.anchor.set(0.5);
+      tx.position.set(x + w / 2, y + h / 2);
+      const fundo = new Graphics().roundRect(x + w / 2 - tx.width / 2 - 5, y + h / 2 - tx.height / 2 - 3, tx.width + 10, tx.height + 6, 3).fill({ color: 0x0f0d0b, alpha: 0.85 });
+      camadaEdicao.addChild(g, fundo, tx);
+    }
   };
 
   app.stage.eventMode = "static";
   app.stage.hitArea = app.screen;
-  app.stage.on("pointertap", (e) => { if (e.target === app.stage) aoClicar(null); });
+  app.stage.on("pointertap", (e) => {
+    if (editando) {
+      const p = mundo.toLocal(e.global);
+      const tx = p.x / TILE, ty = p.y / TILE;
+      const achado = atual.espacos.find((s) => tx >= s.x0 && tx <= s.x1 + 1 && ty >= s.y0 && ty <= s.y1 + 1);
+      if (achado) avisos.aoClicarEspaco(achado.indice);
+      return;
+    }
+    if (e.target === app.stage) avisos.aoClicar(null);
+  });
 
   const novoBoneco = (p: PessoaPixel, atraso: number): Boneco => {
     const modelo = modeloDe(p.id);
@@ -289,9 +429,9 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
     corpo.cursor = "pointer";
     const b: Boneco = {
       p, modelo, corpo, anel: new Graphics().ellipse(0, 0, 7, 3).stroke({ color: 0xfacc15, width: 1.2 }).fill({ color: 0xfacc15, alpha: 0.18 }),
-      etiqueta: new Container(), alerta: new Container(), x: CHEGADA.x, y: CHEGADA.y, rota: [], estacao: null, direcao: "cima", pose: "", espera: atraso,
+      etiqueta: new Container(), alerta: new Container(), x: atual.chegada.x, y: atual.chegada.y, rota: [], estacao: null, direcao: "cima", pose: "", espera: atraso,
     };
-    corpo.on("pointertap", (e) => { e.stopPropagation(); aoClicar(p.id); });
+    corpo.on("pointertap", (e) => { if (editando) return; e.stopPropagation(); avisos.aoClicar(p.id); });
     corpo.on("pointerover", () => { emCima = b.p.id; atualizarVisual(b); });
     corpo.on("pointerout", () => { if (emCima === b.p.id) emCima = null; atualizarVisual(b); });
     corpo.visible = atraso <= 0;
@@ -303,10 +443,36 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
     return b;
   };
 
+  // Câmera: visão geral (o escritório inteiro) ou seguindo o seu boneco, mais de perto.
+  function resolucaoTexto() { return Math.max(2, escala * (window.devicePixelRatio || 1) * 1.5); }
+  const ajustarTextos = () => { const r = resolucaoTexto(); for (const tx of textos) if (tx.resolution !== r) tx.resolution = r; };
+  const escalaGeral = () => {
+    const bruta = Math.min(app.screen.width / (LARGURA * TILE), app.screen.height / (ALTURA * TILE));
+    return bruta >= 1 ? Math.max(1, Math.floor(bruta * 2) / 2) : bruta;
+  };
+  const posicionarCamera = () => {
+    const w = app.screen.width, h = app.screen.height;
+    const lw = LARGURA * TILE * escala, lh = ALTURA * TILE * escala;
+    if (modoCamera === "geral") { mundo.position.set(Math.round((w - lw) / 2), Math.round((h - lh) / 2)); return; }
+    const cx = (jogador.x + 0.5) * TILE * escala, cy = (jogador.y + 0.5) * TILE * escala;
+    const px = lw <= w ? (w - lw) / 2 : Math.min(0, Math.max(w - lw, w / 2 - cx));
+    const py = lh <= h ? (h - lh) / 2 : Math.min(0, Math.max(h - lh, h / 2 - cy));
+    mundo.position.set(Math.round(px), Math.round(py));
+  };
+  function ajustar() {
+    const nova = modoCamera === "geral" ? escalaGeral() : Math.max(2, Math.round(escalaGeral() * 2.5 * 2) / 2);
+    if (nova !== escala) { escala = nova; mundo.scale.set(escala); ajustarTextos(); }
+    posicionarCamera();
+  }
+  app.renderer.on("resize", ajustar);
+
   // Movimento: 4 direções, tile a tile.
   const VELOCIDADE = 3.2; // tiles por segundo
   app.ticker.add((t) => {
     const dt = Math.min(t.deltaMS, 100) / 1000;
+    if (!editando) moverJogador(dt);
+    posicionar(jogador);
+    jogador.etiqueta.position.set((jogador.x + 0.5) * TILE, (jogador.y + 1) * TILE - 27);
     for (const b of bonecos.values()) {
       if (b.espera > 0) {
         b.espera -= dt;
@@ -333,35 +499,32 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
       }
       posicionar(b);
     }
+    verificarPerto();
+    if (modoCamera === "seguir") posicionarCamera();
   });
 
-  // Escala inteira (ou de meio em meio) para o pixel não borrar; centraliza o mapa.
-  let escala = 1;
-  function ajustarTextos() {
-    const r = escala * (window.devicePixelRatio || 1) * 1.5;
-    for (const tx of textos) if (tx.resolution !== r) tx.resolution = r;
-  }
-  const ajustar = () => {
-    const w = app.screen.width, h = app.screen.height;
-    const bruta = Math.min(w / (LARGURA * TILE), h / (ALTURA * TILE));
-    escala = bruta >= 1 ? Math.max(1, Math.floor(bruta * 2) / 2) : bruta;
-    mundo.scale.set(escala);
-    mundo.position.set(Math.round((w - LARGURA * TILE * escala) / 2), Math.round((h - ALTURA * TILE * escala) / 2));
-    ajustarTextos();
-  };
-  app.renderer.on("resize", ajustar);
+  montarCenario();
   ajustar();
-  desenharTela(null);
 
   let destruido = false;
   return {
+    definirPlanta(p) {
+      if (destruido || p === atual) return;
+      atual = p;
+      montarCenario();
+      // Quem estava num lugar que não existe mais procura outro; o seu boneco volta para a entrada se ficou na parede.
+      for (const b of bonecos.values()) if (b.espera <= 0) mandarPara(b, escolherEstacao(b));
+      if (!andavelEm(jogador.x + 0.5, jogador.y + 0.85)) { jogador.x = atual.chegada.x; jogador.y = atual.chegada.y - 1; }
+      desenharEdicao();
+    },
     atualizar(pessoas, resultado) {
       if (destruido) return;
-      desenharTela(resultado);
+      if (resultado !== ultimoResultado) { ultimoResultado = resultado; desenharTela(); }
       const ids = new Set(pessoas.map((p) => p.id));
       for (const [id, b] of bonecos) {
         if (ids.has(id)) continue;
-        b.corpo.destroy(); b.anel.destroy(); b.etiqueta.destroy({ children: true }); b.alerta.destroy({ children: true });
+        limpar(b.etiqueta); limpar(b.alerta);
+        b.corpo.destroy(); b.anel.destroy(); b.etiqueta.destroy(); b.alerta.destroy();
         bonecos.delete(id);
       }
       let novos = 0;
@@ -369,10 +532,10 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
         const b = bonecos.get(p.id);
         if (!b) {
           // Chegam um por um pela porta de vidro e andam até o lugar.
-          bonecos.set(p.id, novoBoneco(p, 0.3 + novos++ * 1.1));
+          bonecos.set(p.id, novoBoneco(p, 0.3 + novos++ * 0.9));
           continue;
         }
-        const mudou = b.p.estado !== p.estado || b.p.sala !== p.sala;
+        const mudou = b.p.estado !== p.estado || b.p.setorId !== p.setorId;
         const textoMudou = b.p.agora !== p.agora || b.p.nome !== p.nome || b.p.estado !== p.estado;
         b.p = p;
         if (textoMudou) { criarEtiqueta(b); criarAlerta(b); }
@@ -382,10 +545,25 @@ export async function criarMundo(el: HTMLElement, aoClicar: (id: string | null) 
     },
     selecionar(id) {
       selecionado = id;
-      for (const b of bonecos.values()) atualizarVisual(b);
+      for (const b of bonecos.values()) { criarEtiqueta(b); atualizarVisual(b); }
+    },
+    editar(ativo, indice) {
+      editando = ativo;
+      espacoSelecionado = indice;
+      teclas.clear();
+      if (ativo && modoCamera !== "geral") { modoCamera = "geral"; avisos.aoMudarCamera(modoCamera); ajustar(); }
+      desenharEdicao();
+    },
+    camera(modo) {
+      if (modo === modoCamera) return;
+      modoCamera = modo;
+      ajustar();
     },
     destruir() {
       destruido = true;
+      window.removeEventListener("keydown", aoApertar);
+      window.removeEventListener("keyup", aoSoltar);
+      window.removeEventListener("blur", aoSairDaJanela);
       app.destroy({ removeView: true }, { children: true, texture: false, textureSource: false });
     },
   };

@@ -22,6 +22,8 @@ export interface Funcionario3D {
   rotuloSinal: string;
   /** sala onde trabalha (setor); sem sala, não aparece no mundo (só nas tarefas) */
   sala?: SalaId | null;
+  /** setor do funcionário (o mapa em pixel art põe cada setor numa sala) */
+  setorId?: string | null;
   agora?: string | null;
   tarefa?: { id: string; titulo: string; progresso: number | null; minutosRestantes: number | null } | null;
   clicavel?: boolean;
