@@ -35,6 +35,8 @@ export interface DadosPedido {
   proximaHeadline: number;
   /** documentos que o Davi puxou com @ no chat (24/10) */
   citados?: { titulo: string; texto: string }[];
+  /** data e hora de agora, por extenso (no chat, o Claude não tem relógio nem ferramentas) */
+  agora?: string;
   /** "conversa" (24/10): responde no painel do chat, ao lado do documento, em vez de escrever nele */
   modo?: "documento" | "conversa";
 }
@@ -112,7 +114,9 @@ export function montarPedido(d: DadosPedido): string {
       "- Responda direto ao Davi, em português do Brasil, como num chat. Sem markdown pesado: nada de #, ** ou tabelas.",
       "- Se ele pedir um texto (headline, roteiro, trecho), entregue o texto pronto, uma frase ou parágrafo por linha, sem comentário no meio.",
       "- Se fizer sentido, termine com uma pergunta curta (ex.: se ele quer que aplique no roteiro completo).",
-    ].join("\n"));
+      "- Você NÃO tem ferramentas aqui: não rode comandos, não pesquise na internet e nunca escreva chamadas de ferramenta (<invoke>, <function_calls>). Responda só com o que sabe e com o contexto acima.",
+      d.agora ? `- Agora é ${d.agora} (horário do Davi).` : "",
+    ].filter(Boolean).join("\n"));
     return partes.join("\n\n");
   }
   partes.push(["COMO RESPONDER:",

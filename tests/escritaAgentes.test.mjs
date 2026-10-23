@@ -89,3 +89,9 @@ test('documentos citados com @ entram no pedido (vazios ficam de fora)', () => {
   assert.match(p, /DOCUMENTO CITADO PELO DAVI \(@Reunião com o Elias\):\n"""\ndecidimos 3 vídeos\n"""/);
   assert.doesNotMatch(p, /@Vazio/);
 });
+
+test('no chat ele sabe que não tem ferramentas e recebe a hora de agora', () => {
+  const p = montarPedido({ agente: null, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'que horas são?', proximaHeadline: 1, modo: 'conversa', agora: 'sexta-feira, 24 de outubro de 2026 16:40' });
+  assert.match(p, /NÃO tem ferramentas aqui/);
+  assert.match(p, /Agora é sexta-feira, 24 de outubro de 2026 16:40/);
+});

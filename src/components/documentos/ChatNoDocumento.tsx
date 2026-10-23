@@ -568,6 +568,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
           documento, selecao: anterior ? null : selecao, anterior, historico, pedido, citados: docsCitados,
+          agora: new Date().toLocaleString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }),
           proximaHeadline: proximoNumeroHeadline(editor.getHTML()), modo: "conversa",
         });
         const resposta = await escreverComClaude(id, prompt, modelo, (total) => {
@@ -575,7 +576,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           passo.texto = total;
           atualizar({ passos: passos.map((p) => ({ ...p })), resposta: total });
         });
-        passo.texto = resposta.trim();
+        // Sem ferramentas aqui: se mesmo assim ele escrever uma chamada de ferramenta, ela não aparece como resposta.
+        passo.texto = resposta.replace(/<(function_calls|invoke)[\s\S]*?(<\/\1>|$)/g, "").trim()
+          || "(Ele tentou usar uma ferramenta, que não existe neste chat. Pergunte de outro jeito.)";
         anterior = { quem, texto: passo.texto };
       } catch (e) {
         erro = parou.current ? undefined : (e instanceof Error ? e.message : String(e));
