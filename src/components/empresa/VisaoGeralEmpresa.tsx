@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { carrosselDaConversa, useEstadoConversas, type EstadoConversa } from "@/hooks/useEstadoConversas";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertTriangle, Bot, CalendarClock, CalendarDays, Camera, CheckCircle2, ChevronRight, Clapperboard, Crown,
-  FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Rocket, Scissors, Users, Video, WifiOff, Youtube,
+  Box, FileText, GalleryHorizontal, Instagram, Lightbulb, Loader2, Plus, Rocket, Scissors, Users, Video, WifiOff, Youtube,
 } from "lucide-react";
+import type { Funcionario3D, Resultado3D } from "@/components/escritorio3d/EscritorioVirtual";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -88,6 +89,9 @@ const ehCs = (m: { nome: string; funcao?: string | null; eh_ia?: boolean }) =>
 const textoClientesEsperando = (xs: AlertaShirley[]) =>
   `${xs.length} cliente${xs.length > 1 ? "s" : ""} esperando resposta: ${xs.slice(0, 3).map((x) => x.nome.split(" ")[0]).join(", ")}${xs.length > 3 ? "…" : ""}`;
 
+// Escritório virtual 3D (23/10): só carrega quando o Davi entra nele (o 3D é pesado).
+const EscritorioVirtual = lazy(() => import("@/components/escritorio3d/EscritorioVirtual"));
+
 export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   clienteId: string;
   onIrPara: (subAba: string) => void;
@@ -103,6 +107,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [chatPedido, setChatPedido] = useState<{ membroId: string; n: number } | null>(null);
   // 22/10: clicar numa tarefa sendo executada abre o "Ao vivo" dela (não a ficha da pessoa).
   const [aoVivo, setAoVivo] = useState<AlvoAoVivo | null>(null);
+  const [mundo3d, setMundo3d] = useState(false);
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -469,6 +474,59 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     }),
   ];
 
+  // Setores com as pessoas e o estado de cada uma: o mesmo para o mapa e para o escritório 3D.
+  // (o protótipo 3D mostra o Audiovisual; ver dados3d abaixo)
+  const setoresDoMapa = setores.map((setor) => {
+    const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
+    return {
+      id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue, fileira: setor.fileira,
+      temEsteira: ((setor as SetorResumo & { esteira?: unknown[] | null }).esteira ?? []).length > 0,
+      tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
+      pessoas: pessoas.map((estado) => {
+        const { membro, abertas: n, atrasadas: atr, atual } = estado;
+        const ia = trabalhoIa.get(membro.id);
+        // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
+        const coordenador = ehCoordenador(membro);
+        const cs = ehCs(membro) && clientesEsperando.length > 0;
+        const base: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
+        // Conversando com o Davi: volta para a mesa e fica ativo (não sai para o café).
+        const papo = conversando.get(membro.id);
+        const sinal: Sinal = base === "parado" && papo ? "trabalhando" : base;
+        const balao = coordenador ? "Coordenando a operação"
+          : base === "parado" && papo ? papo
+          : cs ? textoClientesEsperando(clientesEsperando)
+          : ia?.problema ? "Parou com problema"
+          : ia?.esperando ? `${ia.esperando} esperando sua revisão`
+          : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
+          : ia?.trabalhando && ia.atual ? ia.atual
+          : atual?.titulo ?? ia?.atual ?? null;
+        return {
+          id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
+          balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
+          conversando: !!papo && !coordenador, setorTarefa: atual?.setor_id ?? null,
+        };
+      }),
+    };
+  });
+
+  // Escritório virtual 3D (protótipo): quem é do Audiovisual, com a tarefa atual e o progresso reais.
+  const dados3d = (() => {
+    const av = setoresDoMapa.find((x) => /audiovisual|v[ií]deo|edi[cç][aã]o|est[uú]dio/i.test(x.nome));
+    const funcionarios: Funcionario3D[] = (av?.pessoas ?? []).map((p) => {
+      const atual = estados.find((e) => e.membro.id === p.id)?.atual ?? null;
+      return {
+        id: p.id, nome: p.nome, ehIa: p.ehIa, sinal: p.sinal, rotuloSinal: p.rotuloSinal, agora: p.balao, clicavel: p.clicavel,
+        tarefa: atual ? { id: atual.id, titulo: atual.titulo, progresso: atual.progresso ?? null, minutosRestantes: minutosRestantes(atual) } : null,
+      };
+    });
+    const r = semana?.resultado;
+    const resultado: Resultado3D | null = r ? {
+      concluidas: r.concluidas, publicados: r.publicados, faltam: r.abertasSemana, atrasadas: r.atrasadas,
+      destaque: [...r.porPessoa].sort((a, b) => b.feitas - a.feitas)[0]?.nome ?? "",
+    } : null;
+    return { funcionarios, resultado };
+  })();
+
   return (
     <div className="space-y-5 p-4 sm:p-6">
       <header className="flex flex-wrap items-start justify-between gap-2">
@@ -531,6 +589,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           ) : (
             // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
+            <div className="relative">
+            <button type="button" onClick={() => setMundo3d(true)} title="Entrar no escritório em 3D (protótipo: corredor e Audiovisual)"
+              className="absolute bottom-[3%] left-[2%] z-30 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
+              <Box className="h-3.5 w-3.5 text-sky-300" />Entrar no escritório 3D
+            </button>
             <EscritorioSalas arrumacao={arrumacao} onSalvarArrumacao={salvarArrumacao} onAbrir={(id) => {
               // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
               const m = membros.find((x) => x.id === id);
@@ -539,38 +602,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             }}
               onAbrirSetor={setEsteiraAberta}
               tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
-              setores={setores.map((setor) => {
-                const pessoas = estados.filter((e) => e.membro.setor_id === setor.id);
-                return {
-                  id: setor.id, nome: setor.nome, corPlaca: COR_PLACA[setor.cor ?? ""] ?? COR_PLACA.blue, fileira: setor.fileira,
-                  temEsteira: ((setor as SetorResumo & { esteira?: unknown[] | null }).esteira ?? []).length > 0,
-                  tarefas: pessoas.reduce((s, p) => s + p.abertas, 0), atrasadas: pessoas.reduce((s, p) => s + p.atrasadas, 0),
-                  pessoas: pessoas.map((estado) => {
-                    const { membro, abertas: n, atrasadas: atr, atual } = estado;
-                    const ia = trabalhoIa.get(membro.id);
-                    // O Atlas coordena (sem fila própria); as outras IAs têm tarefas como qualquer pessoa.
-                    const coordenador = ehCoordenador(membro);
-                    const cs = ehCs(membro) && clientesEsperando.length > 0;
-                    const base: Sinal = coordenador ? "trabalhando" : cs ? "esperando" : sinalDoMembro(estado, tarefas, ia);
-                    // Conversando com o Davi: volta para a mesa e fica ativo (não sai para o café).
-                    const papo = conversando.get(membro.id);
-                    const sinal: Sinal = base === "parado" && papo ? "trabalhando" : base;
-                    const balao = coordenador ? "Coordenando a operação"
-                      : base === "parado" && papo ? papo
-                      : cs ? textoClientesEsperando(clientesEsperando)
-                      : ia?.problema ? "Parou com problema"
-                      : ia?.esperando ? `${ia.esperando} esperando sua revisão`
-                      : atual && postProgramado(atual) ? `Post programado: ${atual.titulo.replace(/^Programar carrossel:\s*/i, "")}`
-                      : ia?.trabalhando && ia.atual ? ia.atual
-                      : atual?.titulo ?? ia?.atual ?? null;
-                    return {
-                      id: membro.id, nome: membro.nome, ehIa: membro.eh_ia, sinal, corSinal: SINAIS[sinal].cor, rotuloSinal: SINAIS[sinal].rotulo,
-                      balao, tarefas: n + (cs ? clientesEsperando.length : 0), atrasadas: atr, clicavel: !coordenador,
-                      conversando: !!papo && !coordenador, setorTarefa: atual?.setor_id ?? null,
-                    };
-                  }),
-                };
-              })} />
+              setores={setoresDoMapa} />
+            </div>
           )}
         </section>
         <div className="flex min-w-0 flex-col gap-4">
@@ -732,6 +765,17 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         onFechar={() => setCadastro(null)} onCriado={() => { setMembroAberto(null); void carregar(); }} />
       <ProgramarCarrossel tarefaId={agendarAberto} onFechar={() => { setAgendarAberto(null); void carregar(); }} />
       <ProgramarReel tarefaId={agendarReelAberto} onFechar={() => { setAgendarReelAberto(null); void carregar(); }} />
+      {mundo3d && (
+        <Suspense fallback={<div className="fixed inset-0 z-[60] flex items-center justify-center bg-black text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Abrindo o escritório…</div>}>
+          <EscritorioVirtual funcionarios={dados3d.funcionarios} resultado={dados3d.resultado} onSair={() => setMundo3d(false)}
+            onConversar={(id) => {
+              const m = membros.find((x) => x.id === id);
+              if (!m) return;
+              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+            }}
+            onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })} />
+        </Suspense>
+      )}
       <AoVivoTarefa alvo={aoVivo} onFechar={() => setAoVivo(null)} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
