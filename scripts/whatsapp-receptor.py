@@ -228,6 +228,41 @@ def foto_do_chat(chat_id):
             return arq if arq.is_file() else None
 
 
+_nomes = {}
+_trava_nomes = threading.Lock()
+def nome_do_contato(contato_id):
+    """Nome de quem foi marcado com @ (24/10: "esse @ que é marcado, preciso que mostre quem é"). O @ das
+    contas novas é um id interno (@lid): o WAHA traduz para o número; o nome vem do contato (ou do nome
+    que a pessoa usa no WhatsApp). Guarda na memória por 1 dia."""
+    numero = "".join(ch for ch in contato_id.split("@")[0] if ch.isdigit())
+    if not numero:
+        return None
+    agora = time.time()
+    with _trava_nomes:
+        if numero in _nomes and agora - _nomes[numero][1] < 86400:
+            return _nomes[numero][0]
+    resposta = {"nome": None, "eu": False}
+    try:
+        me = waha_get("/api/sessions/default/me")
+        meus = {"".join(ch for ch in str(me.get(k) or "").split("@")[0] if ch.isdigit()) for k in ("id", "lid", "jid")}
+        if numero in meus:
+            resposta = {"nome": me.get("pushName") or "Você", "eu": True}
+        else:
+            pn = None
+            try:
+                pn = waha_get(f"/api/default/lids/{numero}@lid").get("pn")
+            except Exception:
+                pass
+            alvo = pn or f"{numero}@c.us"
+            c = waha_get("/api/contacts?" + urllib.parse.urlencode({"contactId": alvo, "session": "default"}))
+            resposta["nome"] = c.get("name") or c.get("pushname") or c.get("shortName") or None
+    except Exception as e:
+        log("contato: erro", numero, repr(e)[:150])
+    with _trava_nomes:
+        _nomes[numero] = (resposta, agora)
+    return resposta
+
+
 def nome_seguro(id_msg, mime):
     base = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_msg)[-120:]
     return base + EXTENSOES.get((mime or "").split(";")[0].strip(), ".bin")
@@ -445,8 +480,17 @@ class Webhook(BaseHTTPRequestHandler):
         player de vídeo/áudio do app pede pedaços)."""
         url = urllib.parse.urlparse(self.path)
         consulta = urllib.parse.parse_qs(url.query)
-        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/")):
+        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/", "/contato/")):
             self.send_response(403); self.end_headers(); return
+        if url.path.startswith("/contato/"):
+            dados = json.dumps(nome_do_contato(urllib.parse.unquote(url.path[len("/contato/"):])) or {"nome": None}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(dados)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(dados)
+            return
         if url.path.startswith("/foto/"):
             arq = foto_do_chat(urllib.parse.unquote(url.path[len("/foto/"):]))
             if not arq:

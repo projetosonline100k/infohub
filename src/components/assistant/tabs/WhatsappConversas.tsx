@@ -66,6 +66,33 @@ function useMidiaUrl() {
   return useCallback((arquivo?: string | null) => (cfg && arquivo ? `${cfg.base}${encodeURIComponent(arquivo)}?k=${cfg.chave}` : null), [cfg]);
 }
 
+// @ marcado na mensagem (24/10, Davi: "esse @ que é marcado, preciso que mostre quem é"): o WhatsApp manda
+// o id da pessoa (nas contas novas, um id interno @lid); o receptor do Mac traduz em nome (/contato/<id>).
+const nomesMencao = new Map<string, Promise<{ nome: string | null; eu?: boolean } | null>>();
+function Mencao({ numero, nomeDoGrupo }: { numero: string; nomeDoGrupo?: string }) {
+  const conta = useContext(ContaWhatsapp);
+  const [r, setR] = useState<{ nome: string | null; eu?: boolean } | null>(null);
+  useEffect(() => {
+    if (!isDesktop()) return;
+    const chave = `${conta}:${numero}`;
+    if (!nomesMencao.has(chave)) {
+      nomesMencao.set(chave, midiaBaseDe(conta).then((cfg) => (cfg
+        ? fetch(`${cfg.base.replace(/\/midia\/$/, "/contato/")}${numero}?k=${cfg.chave}`).then((x) => x.json()).catch(() => null)
+        : null)));
+    }
+    let vivo = true;
+    void nomesMencao.get(chave)!.then((v) => { if (vivo) setR(v); });
+    return () => { vivo = false; };
+  }, [conta, numero]);
+  const nome = r?.eu ? "Você" : r?.nome || nomeDoGrupo || numero;
+  return <span className="font-semibold text-sky-600 dark:text-sky-400" title={r?.eu ? "Você" : numero}>@{nome}</span>;
+}
+function TextoComMencoes({ texto, nomes }: { texto: string; nomes: Map<string, string> }) {
+  const partes = texto.split(/(@\d{8,})/g);
+  if (partes.length === 1) return <>{texto}</>;
+  return <>{partes.map((p, i) => (/^@\d{8,}$/.test(p) ? <Mencao key={i} numero={p.slice(1)} nomeDoGrupo={nomes.get(p.slice(1))} /> : p))}</>;
+}
+
 // Foto de perfil da pessoa ou do grupo (16/10), pelo receptor do WhatsApp (/foto/<chat_id>);
 // sem foto (ou fora do app do Mac), a bolinha com a inicial / o ícone de grupo de sempre.
 export function FotoChat({ chatId, nome, grupo, tamanho = "h-9 w-9" }: { chatId: string; nome: string | null; grupo: boolean; tamanho?: string }) {
@@ -571,6 +598,8 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     if (aindaPendentes.length !== pendentes.length) setPendentes(aindaPendentes);
   }, [aindaPendentes.length, pendentes.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Nome de cada número que já falou nesta conversa (para o @ quando o WhatsApp não souber o nome).
+  const nomesDoChat = new Map(mensagens.filter((x) => x.autor_id && x.autor_nome).map((x) => [x.autor_id!.split("@")[0], x.autor_nome!]));
   let diaAnterior = "";
   return (
     <div className="flex h-full flex-col">
@@ -621,19 +650,19 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                       <button type="button" onClick={() => setAmpliada(urlDe(m.midia_arquivo))} className="block overflow-hidden rounded-md" aria-label="Ver foto">
                         <img src={urlDe(m.midia_arquivo)!} alt="" loading="lazy" className={cn("object-cover", m.tipo === "figurinha" ? "h-24 w-24" : "max-h-64 w-56 max-w-full")} />
                       </button>
-                      {m.texto && <p className="whitespace-pre-wrap break-words">{m.texto}</p>}
+                      {m.texto && <p className="whitespace-pre-wrap break-words"><TextoComMencoes texto={m.texto} nomes={nomesDoChat} /></p>}
                     </div>
                   ) : m.tipo === "video" && urlDe(m.midia_arquivo) ? (
                     <div className="space-y-1">
                       <video controls preload="metadata" src={urlDe(m.midia_arquivo)!} className="max-h-64 w-56 max-w-full rounded-md bg-black" />
-                      {m.texto && <p className="whitespace-pre-wrap break-words">{m.texto}</p>}
+                      {m.texto && <p className="whitespace-pre-wrap break-words"><TextoComMencoes texto={m.texto} nomes={nomesDoChat} /></p>}
                     </div>
                   ) : m.tipo === "documento" && urlDe(m.midia_arquivo) ? (
                     <a href={urlDe(m.midia_arquivo)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
                       <FileText className="h-3.5 w-3.5" />{m.texto || "Documento"}
                     </a>
                   ) : m.tipo === "texto" ? (
-                    <p className="whitespace-pre-wrap break-words">{m.texto}</p>
+                    <p className="whitespace-pre-wrap break-words">{m.texto && <TextoComMencoes texto={m.texto} nomes={nomesDoChat} />}</p>
                   ) : (
                     <p><span className="text-muted-foreground">{ROTULO_TIPO[m.tipo] ?? "Mensagem"}{m.midia_arquivo === null && m.tipo !== "outro" ? " (abra no celular)" : ""}</span>{m.texto ? ` ${m.texto}` : ""}</p>
                   )}
