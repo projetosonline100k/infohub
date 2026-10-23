@@ -63,8 +63,15 @@ export default function ClienteDetalhe() {
   const [erroCliente, setErroCliente] = useState("");
   const [avisoPermissoes, setAvisoPermissoes] = useState("");
   const requisicaoAtual = useRef(0);
-  const [abaAtiva, setAbaAtiva] = useState(() => lerAbaProjeto(id).aba ?? "atividades");
-  const [subAbaConteudo, setSubAbaConteudo] = useState(() => lerAbaProjeto(id).sub ?? "visao-geral");
+  // 24/10 (Davi: "clico no item da lateral e não vai"): começa pela seção do endereço (?secao=) e só sem ela
+  // pela última aberta neste projeto. Antes começava pela última e, no primeiro instante, reescrevia o
+  // endereço com ela — o item clicado ficava marcado na lateral, mas a tela voltava para a seção antiga.
+  const secaoInicial = (() => {
+    const [aba, sub] = (searchParams.get("secao") ?? "").split(":");
+    return aba ? { aba, sub: sub || undefined } : lerAbaProjeto(id);
+  })();
+  const [abaAtiva, setAbaAtiva] = useState(() => secaoInicial.aba ?? "atividades");
+  const [subAbaConteudo, setSubAbaConteudo] = useState(() => secaoInicial.sub ?? lerAbaProjeto(id).sub ?? "visao-geral");
   // Lembra a seção aberta de cada projeto pra reabrir igual (fechar e abrir o app).
   // (Ao trocar de projeto na mesma guia não grava: a seção ainda é a do anterior.)
   const idDaAba = useRef(id);
