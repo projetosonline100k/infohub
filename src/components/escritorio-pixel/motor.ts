@@ -377,7 +377,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     if (MAPA_TECLAS[e.code]) {
       e.preventDefault();
       teclas.add(e.code);
-      if (modoCamera === "geral") { modoCamera = "seguir"; avisos.aoMudarCamera(modoCamera); ajustar(); }
+      // 24/10 (Davi): andar não aproxima a câmera; ver de perto só com Z ou o botão "Seguir meu boneco".
     } else if (e.code === "KeyE" && perto) {
       avisos.aoClicar(perto);
     } else if (e.code === "KeyZ") {
