@@ -5,11 +5,14 @@ import { PAREDES, PISOS, S, type Celula, type Estacao, type Movel, type Parede, 
 // ou nada (vira passagem).
 
 export const LIMITES = { colunas: [1, 4], fileiras: [1, 3] } as const;
-const W = 12; // largura do chão de cada sala (tiles)
-const H = 7; // altura do chão de cada sala
+// 24/10: compactado (Davi achou espaçado demais): salas 11 × 6, corredor de 2 tiles, margem de 1.
+// Cada sala tem a passagem no lado direito (colunas 9 e 10), onde ficam as portas de cima e de baixo.
+const W = 11; // largura do chão de cada sala (tiles)
+const H = 6; // altura do chão de cada sala
 const PASSO_X = W + 1; // 1 coluna de divisória entre salas
-const PASSO_Y = 2 + H + 2 + 3; // parede + chão + parede do corredor + corredor
-const X0 = 2;
+const PASSO_Y = 2 + H + 2 + 2; // parede + chão + parede do corredor + corredor
+const X0 = 1;
+const PORTA = 9; // coluna (dentro da sala) onde começa a porta de 2 tiles
 
 export type SalaComum = "colaborativa" | "copa" | "resultado";
 export type Conteudo = { tipo: "setor"; setorId: string } | { tipo: SalaComum } | { tipo: "vazio" };
@@ -129,8 +132,8 @@ export function nomeDoConteudo(c: Conteudo, setores: SetorPixel[]) {
 export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta {
   const { colunas: COLUNAS, fileiras: FILEIRAS } = arrumacao;
   const LARGURA = X0 * 2 + COLUNAS * W + (COLUNAS - 1);
-  const Y_ENTRADA = 1 + FILEIRAS * PASSO_Y + 2;
-  const ALTURA = Y_ENTRADA + 4 + 3;
+  const Y_ENTRADA = FILEIRAS * PASSO_Y + 2;
+  const ALTURA = Y_ENTRADA + 3 + 2;
   const grade: Celula[][] = Array.from({ length: ALTURA }, () => Array<Celula>(LARGURA).fill(null));
   const moveis: Movel[] = [];
   const estacoes: Estacao[] = [];
@@ -139,7 +142,7 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
   let tela: Planta["tela"] = null;
 
   const chao = (x0: number, x1: number, y0: number, y1: number, piso: Piso) => {
-    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) grade[y][x] = { piso };
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) if (grade[y]) grade[y][x] = { piso };
   };
   const parede = (x0: number, x1: number, y: number, tipo: Parede) => {
     for (let x = x0; x <= x1; x++) for (const linha of [0, 1] as const) {
@@ -150,21 +153,20 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
   const estacao = (id: string, tipo: TipoEstacao, x: number, y: number, pose: Pose, setorId?: string) =>
     estacoes.push({ id, tipo, x, y, pose, setorId });
 
-  // Corredores (um embaixo de cada fileira), de ponta a ponta.
+  // Corredores estreitos (um embaixo de cada fileira), de ponta a ponta.
   const xFim = LARGURA - X0 - 1;
   for (let f = 0; f < FILEIRAS; f++) {
-    const yc = 1 + f * PASSO_Y + 2 + H + 2;
+    const yc = f * PASSO_Y + 2 + H + 2;
     parede(X0, xFim, yc - 2, "madeira");
-    chao(X0, xFim, yc, yc + 2, "ladrilho");
-    movel(S.plantaPequena, X0, yc - 1, { bloqueia: [0, 1, 1, 1] });
-    movel(S.plantaPequena, xFim, yc - 1, { bloqueia: [0, 1, 1, 1] });
-    [S.quadroA, S.quadroB, S.quadroC, S.quadroA].slice(0, COLUNAS).forEach((q, k) => movel(q, X0 + 2 + k * 13, yc - 2, { parede: true }));
+    chao(X0, xFim, yc, yc + 1, "ladrilho");
+    [S.quadroA, S.quadroB, S.quadroC, S.quadroA].slice(0, COLUNAS).forEach((q, k) => movel(q, X0 + 3 + k * PASSO_X, yc - 2, { parede: true }));
+    [S.quadroC, S.quadroA, S.quadroB, S.quadroC].slice(0, COLUNAS).forEach((q, k) => movel(q, X0 + 6 + k * PASSO_X, yc - 2, { parede: true }));
   }
 
   for (let i = 0; i < COLUNAS * FILEIRAS; i++) {
     const e: Espaco = arrumacao.espacos[i] ?? { conteudo: { tipo: "vazio" } };
     const col = i % COLUNAS, fil = Math.floor(i / COLUNAS);
-    const x0 = X0 + col * PASSO_X, y0 = 1 + fil * PASSO_Y + 2;
+    const x0 = X0 + col * PASSO_X, y0 = fil * PASSO_Y + 2;
     const x1 = x0 + W - 1, y1 = y0 + H - 1;
     const { piso, parede: tipoParede } = estiloDoEspaco(e, setores);
     const c = e.conteudo;
@@ -172,50 +174,70 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
     const nome = nomeDoConteudo(c, setores);
     const cor = setor?.cor ?? (c.tipo === "colaborativa" ? "#f59e0b" : c.tipo === "copa" ? "#34d399" : c.tipo === "resultado" ? "#fbbf24" : "#a3a3a3");
     espacos.push({ indice: i, x0, y0: y0 - 2, x1, y1, nome, cor });
+    const X = (dx: number) => x0 + dx, Y = (dy: number) => y0 + dy;
 
     if (c.tipo === "vazio") {
-      // Espaço livre: vira passagem aberta entre os corredores (sem paredes).
-      chao(x0, x1, y0 - 2, y1, piso);
-      chao(x0, x1, y1 + 1, y1 + 2, piso);
+      // Espaço livre: área verde aberta entre os corredores (plantas e bancos, sem paredes).
+      chao(x0, x1, y0 - 2, y1 + 2, piso);
+      movel(S.plantaGrande, X(0), Y(-2), { bloqueia: [0, 2, 2, 1] });
+      movel(S.palmeira, X(9), Y(-2), { bloqueia: [0, 2, 2, 1] });
+      movel(S.tapeteVerde, X(4), Y(1), { chao: true });
+      movel(S.banco, X(4), Y(1)); movel(S.banco, X(6), Y(1));
+      movel(S.plantaPequena, X(2), Y(3), { bloqueia: [0, 1, 1, 1] });
+      movel(S.plantaPequena, X(8), Y(3), { bloqueia: [0, 1, 1, 1] });
+      movel(S.plantaGrande, X(4), Y(3), { bloqueia: [0, 2, 2, 1] });
+      estacao(`espera-${i}-0`, "espera", X(4), Y(1), "em-pe-baixo");
+      estacao(`espera-${i}-1`, "espera", X(6), Y(1), "em-pe-baixo");
       continue;
     }
     parede(x0, x1, y0 - 2, tipoParede);
     chao(x0, x1, y0, y1, piso);
-    // Portas: para o corredor de baixo e, a partir da 2ª fileira, para o de cima.
-    chao(x0 + 5, x0 + 6, y1 + 1, y1 + 2, piso);
-    if (fil > 0) chao(x0 + 5, x0 + 6, y0 - 2, y0 - 1, piso);
-    if (c.tipo !== "resultado") placas.push({ texto: nome.toUpperCase(), x: x0 + W / 2, y: y0 - 2, cor });
-    const X = (dx: number) => x0 + dx, Y = (dy: number) => y0 + dy;
+    // Portas na passagem da direita: para o corredor de baixo e, a partir da 2ª fileira, para o de cima.
+    chao(X(PORTA), X(PORTA + 1), y1 + 1, y1 + 2, piso);
+    if (fil > 0) chao(X(PORTA), X(PORTA + 1), y0 - 2, y0 - 1, piso);
+    if (c.tipo !== "resultado") placas.push({ texto: nome.toUpperCase(), x: x0 + 4.5, y: y0 - 2, cor });
 
     if (c.tipo === "setor") {
-      // Mesas conforme o número de pessoas do setor (1 a 6).
+      // Mesas conforme o número de pessoas do setor (1 a 6), coladas: 3 por fileira.
       const n = Math.max(1, Math.min(6, setor?.pessoas ?? 1));
-      const lugares: [number, number][] = [[1, 1], [5, 1], [9, 1], [1, 4], [5, 4], [9, 4]];
+      const lugares: [number, number][] = [[0, 1], [3, 1], [6, 1], [0, 4], [3, 4], [6, 4]];
       const mesas = [S.mesaPc1, S.mesaPc2, S.mesaPc3];
       lugares.slice(0, n).forEach(([dx, dy], k) => {
         movel(S.cadeiraDir, X(dx), Y(dy - 1));
         movel(mesas[k % 3], X(dx + 1), Y(dy), { bloqueia: [0, 0, 2, 2] });
         estacao(`mesa-${i}-${k}`, "mesa", X(dx), Y(dy), "sentado-dir", c.setorId);
       });
-      movel(S.janela, X(1), Y(-2), { parede: true });
-      movel(S.janela2, X(9), Y(-2), { parede: true });
+      movel(S.janela, X(0), Y(-2), { parede: true });
+      // Onde sobram mesas, entram móveis (o setor nunca fica com piso vazio).
+      if (n <= 3) {
+        movel(S.tapete, X(1), Y(3), { chao: true });
+        movel(S.sofaCinza, X(1), Y(4), { bloqueia: [0, 0, 3, 1] });
+        movel(S.plantaPequena, X(5), Y(4), { bloqueia: [0, 1, 1, 1] });
+        movel(S.estanteMetal, X(6), Y(3), { bloqueia: [0, 2, 2, 1] });
+      } else if (n < 6) {
+        movel(S.plantaGrande, X(6), Y(3), { bloqueia: [0, 2, 2, 1] });
+      }
       if (/audiovisual|v[ií]deo|edi[cç]|est[uú]dio/i.test(nome)) {
-        movel(S.luzVermelha, X(0), Y(4), { bloqueia: [0, 2, 1, 1] });
-        movel(S.estanteMetal, X(3), Y(-2), { bloqueia: [0, 2, 2, 1] });
-        if (n < 6) movel(S.luzAzul, X(11), Y(4), { bloqueia: [0, 2, 1, 1] });
+        movel(S.estanteMetal, X(3), Y(-2), { parede: true });
+        movel(S.luzVermelha, X(10), Y(0), { bloqueia: [0, 2, 1, 1] });
+        movel(S.luzAzul, X(10), Y(3), { bloqueia: [0, 2, 1, 1] });
       } else if (/diretoria|dire[cç]/i.test(nome)) {
-        movel(S.estanteLivros, X(3), Y(-1), { bloqueia: [0, 1, 2, 1] });
-        if (n < 6) movel(S.palmeira, X(10), Y(4), { bloqueia: [0, 2, 2, 1] });
+        movel(S.estanteLivros, X(3), Y(-2), { parede: true });
+        movel(S.mapaMundi, X(6), Y(-2), { parede: true });
+        movel(S.palmeira, X(9), Y(3), { bloqueia: [1, 2, 1, 1] });
       } else if (/marketing|mkt|conte[uú]do/i.test(nome)) {
         movel(S.lousa, X(3), Y(-2), { parede: true });
-        if (n < 6) movel(S.plantaGrande, X(10), Y(4), { bloqueia: [0, 2, 2, 1] });
+        movel(S.quadroBranco, X(6), Y(-2), { parede: true });
+        movel(S.plantaGrande, X(9), Y(3), { bloqueia: [1, 2, 1, 1] });
       } else {
         movel(S.quadro, X(3), Y(-2), { parede: true });
-        if (n < 6) movel(S.plantaPequena, X(11), Y(5), { bloqueia: [0, 1, 1, 1] });
+        movel(S.janela2, X(6), Y(-2), { parede: true });
+        movel(S.plantaPequena, X(10), Y(3), { bloqueia: [0, 1, 1, 1] });
       }
+      if (fil === 0 && !/audiovisual|v[ií]deo|edi[cç]|est[uú]dio/i.test(nome)) movel(S.plantaPequena, X(10), Y(-1), { bloqueia: [0, 1, 1, 1] });
     } else if (c.tipo === "colaborativa") {
       movel(S.lousa, X(1), Y(-2), { parede: true });
-      movel(S.janela, X(9), Y(-2), { parede: true });
+      movel(S.janela, X(6), Y(-2), { parede: true });
       movel(S.mesaReuniao, X(1), Y(2), { bloqueia: [1, 0, 2, 3] });
       movel(S.cadeiraDir, X(1), Y(1)); movel(S.cadeiraDir, X(1), Y(3));
       movel(S.cadeiraEsq, X(4), Y(1)); movel(S.cadeiraEsq, X(4), Y(3));
@@ -223,13 +245,14 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
       estacao(`reuniao-${i}-1`, "reuniao", X(4), Y(2), "sentado-esq");
       estacao(`reuniao-${i}-2`, "reuniao", X(1), Y(4), "sentado-dir");
       estacao(`reuniao-${i}-3`, "reuniao", X(4), Y(4), "sentado-esq");
-      movel(S.sofaCinza, X(7), Y(0), { bloqueia: [0, 0, 3, 1] });
-      for (let k = 0; k < 3; k++) estacao(`sofa-${i}-${k}`, "sofa", X(7 + k), Y(1), "sofa");
-      movel(S.tapete, X(7), Y(2), { chao: true });
-      movel(S.mesinha, X(7), Y(3), { bloqueia: [0, 0, 3, 2] });
-      movel(S.plantaPequena, X(11), Y(0), { bloqueia: [0, 1, 1, 1] });
-      movel(S.plantaPequena, X(0), Y(5), { bloqueia: [0, 1, 1, 1] });
-      ([[6, 5], [8, 5], [10, 5], [3, 6], [11, 3], [5, 3]] as const).forEach(([dx, dy], k) =>
+      movel(S.sofaCinza, X(6), Y(0), { bloqueia: [0, 0, 3, 1] });
+      for (let k = 0; k < 3; k++) estacao(`sofa-${i}-${k}`, "sofa", X(6 + k), Y(1), "sofa");
+      movel(S.tapete, X(6), Y(2), { chao: true });
+      movel(S.mesinha, X(6), Y(3), { bloqueia: [0, 0, 3, 2] });
+      movel(S.plantaPequena, X(0), Y(-1), { bloqueia: [0, 1, 1, 1] });
+      if (fil === 0) movel(S.plantaPequena, X(10), Y(-1), { bloqueia: [0, 1, 1, 1] });
+      movel(S.plantaPequena, X(0), Y(4), { bloqueia: [0, 1, 1, 1] });
+      ([[5, 2], [5, 5], [7, 5], [9, 2], [10, 4], [3, 5]] as const).forEach(([dx, dy], k) =>
         estacao(`espera-${i}-${k}`, "espera", X(dx), Y(dy), "em-pe-baixo"));
     } else if (c.tipo === "copa") {
       movel(S.janela2, X(6), Y(-2), { parede: true });
@@ -237,51 +260,54 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
       movel(S.armarioCozinha, X(1), Y(-1), { bloqueia: [0, 1, 4, 1] });
       estacao(`copa-${i}-0`, "copa", X(1), Y(1), "em-pe-cima");
       estacao(`copa-${i}-1`, "copa", X(3), Y(1), "em-pe-cima");
-      movel(S.sofaMarrom, X(8), Y(0), { bloqueia: [0, 0, 3, 1] });
-      for (let k = 0; k < 3; k++) estacao(`sofa-${i}-${k}`, "sofa", X(8 + k), Y(1), "sofa");
-      movel(S.tapeteVerde, X(1), Y(4), { chao: true });
-      movel(S.mesinha, X(1), Y(4), { bloqueia: [0, 0, 3, 2] });
-      movel(S.banco, X(0), Y(5)); movel(S.banco, X(4), Y(5));
-      estacao(`copa-${i}-2`, "copa", X(0), Y(5), "em-pe-baixo");
-      estacao(`copa-${i}-3`, "copa", X(4), Y(5), "em-pe-baixo");
-      movel(S.plantaGrande, X(10), Y(4), { bloqueia: [0, 2, 2, 1] });
+      movel(S.sofaMarrom, X(6), Y(0), { bloqueia: [0, 0, 3, 1] });
+      for (let k = 0; k < 3; k++) estacao(`sofa-${i}-${k}`, "sofa", X(6 + k), Y(1), "sofa");
+      movel(S.tapeteVerde, X(1), Y(3), { chao: true });
+      movel(S.mesinha, X(1), Y(3), { bloqueia: [0, 0, 3, 2] });
+      movel(S.banco, X(0), Y(4)); movel(S.banco, X(4), Y(4));
+      estacao(`copa-${i}-2`, "copa", X(0), Y(4), "em-pe-baixo");
+      estacao(`copa-${i}-3`, "copa", X(4), Y(4), "em-pe-baixo");
+      movel(S.plantaGrande, X(6), Y(3), { bloqueia: [0, 2, 2, 1] });
+      if (fil === 0) movel(S.plantaPequena, X(10), Y(-1), { bloqueia: [0, 1, 1, 1] });
     } else if (c.tipo === "resultado") {
-      tela = { x: x0 + 1.5, y: y0 - 1.8, w: 9, h: 3.2 };
-      for (const dy of [3, 5]) for (const dx of [2, 4, 7, 9]) {
-        movel(dy === 3 ? S.banco : S.bancoEscuro, X(dx), Y(dy));
+      tela = { x: x0 + 0.5, y: y0 - 1.8, w: 8.5, h: 3.2 };
+      for (const dy of [2, 4]) for (const dx of [1, 3, 5, 7]) {
+        movel(dy === 2 ? S.banco : S.bancoEscuro, X(dx), Y(dy));
         estacao(`espera-${i}-${dx}-${dy}`, "espera", X(dx), Y(dy), "em-pe-cima");
       }
-      movel(S.plantaPequena, X(0), Y(0), { bloqueia: [0, 1, 1, 1] });
-      movel(S.plantaPequena, X(11), Y(0), { bloqueia: [0, 1, 1, 1] });
-      movel(S.globo, X(11), Y(5), { bloqueia: [0, 1, 1, 1] });
+      if (fil === 0) movel(S.plantaPequena, X(10), Y(-1), { bloqueia: [0, 1, 1, 1] });
+      movel(S.globo, X(10), Y(3), { bloqueia: [0, 1, 1, 1] });
     }
   }
 
   // Divisórias entre salas vizinhas: porta no meio da altura.
   for (let fil = 0; fil < FILEIRAS; fil++) for (let col = 0; col < COLUNAS - 1; col++) {
-    const x = X0 + col * PASSO_X + W, y0 = 1 + fil * PASSO_Y + 2;
-    const esq = grade[y0 + 3][x - 1], dir = grade[y0 + 3][x + 1];
+    const x = X0 + col * PASSO_X + W, y0 = fil * PASSO_Y + 2;
+    const esq = grade[y0 + 2][x - 1], dir = grade[y0 + 2][x + 1];
     const piso = esq && "piso" in esq ? esq.piso : dir && "piso" in dir ? dir.piso : "ladrilho";
     const vazio = (k: number) => (arrumacao.espacos[k]?.conteudo.tipo ?? "vazio") === "vazio";
-    // Dois espaços vazios lado a lado viram uma passagem só (sem divisória no meio).
+    // Dois espaços vazios lado a lado viram uma área só (sem divisória no meio).
     if (vazio(fil * COLUNAS + col) && vazio(fil * COLUNAS + col + 1)) chao(x, x, y0 - 2, y0 + H + 1, piso);
-    else chao(x, x, y0 + 3, y0 + 4, piso);
+    else chao(x, x, y0 + 2, y0 + 3, piso);
   }
 
-  // Entrada, embaixo no centro: porta de vidro, recepção e sofá de espera.
+  // Entrada, embaixo no centro: porta de vidro, recepção e sofá de espera; jardim dos dois lados.
   const xe0 = Math.floor((LARGURA - (W - 2)) / 2), xe1 = xe0 + W - 3;
   parede(xe0, xe1, Y_ENTRADA - 2, "madeira");
-  chao(xe0, xe1, Y_ENTRADA, Y_ENTRADA + 3, "espinha");
+  chao(xe0, xe1, Y_ENTRADA, Y_ENTRADA + 2, "espinha");
   const xm = Math.floor((xe0 + xe1) / 2) - 1;
   chao(xm, xm + 3, Y_ENTRADA - 2, Y_ENTRADA - 1, "espinha");
   placas.push({ texto: "ENTRADA", x: xe0 + 2.5, y: Y_ENTRADA - 2, cor: "#34d399" });
-  movel(S.balcao, xe0 + 1, Y_ENTRADA, { bloqueia: [0, 0, 2, 2] });
-  movel(S.sofaClaro, xe1 - 3, Y_ENTRADA, { bloqueia: [0, 0, 3, 1] });
-  movel(S.plantaPequena, xe0, Y_ENTRADA + 2, { bloqueia: [0, 1, 1, 1] });
-  movel(S.plantaPequena, xe1, Y_ENTRADA + 2, { bloqueia: [0, 1, 1, 1] });
-  movel(S.tapeteAzul, xm + 1, Y_ENTRADA + 3, { chao: true });
-  movel(S.portaVidro, xm, Y_ENTRADA + 4);
-  const chegada = { x: xm + 1, y: Y_ENTRADA + 3 };
+  movel(S.balcao, xe0, Y_ENTRADA, { bloqueia: [0, 0, 2, 2] });
+  movel(S.sofaClaro, xe1 - 2, Y_ENTRADA, { bloqueia: [0, 0, 3, 1] });
+  movel(S.plantaPequena, xe1, Y_ENTRADA + 1, { bloqueia: [0, 1, 1, 1] });
+  movel(S.tapeteAzul, xm + 1, Y_ENTRADA + 2, { chao: true });
+  movel(S.portaVidro, xm, Y_ENTRADA + 3);
+  for (let x = X0; x <= xFim - 1; x += 3) {
+    if (x + 2 >= xe0 && x <= xe1) continue;
+    movel(x % 2 ? S.plantaGrande : S.palmeira, x, Y_ENTRADA - 0.5);
+  }
+  const chegada = { x: xm + 1, y: Y_ENTRADA + 2 };
 
   // Onde dá para andar: chão sem móvel que bloqueia.
   const andavel = grade.map((linha) => linha.map((c) => !!c && "piso" in c));

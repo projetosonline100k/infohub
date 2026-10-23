@@ -448,7 +448,9 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   const ajustarTextos = () => { const r = resolucaoTexto(); for (const tx of textos) if (tx.resolution !== r) tx.resolution = r; };
   const escalaGeral = () => {
     const bruta = Math.min(app.screen.width / (atual.largura * TILE), app.screen.height / (atual.altura * TILE));
-    return bruta >= 1 ? Math.max(1, Math.floor(bruta * 2) / 2) : bruta;
+    // Escala em passos de 1/2 (pixel inteiro); na tela Retina, de 1/4 para o mapa ocupar mais a tela.
+    const passos = (window.devicePixelRatio || 1) >= 2 ? 4 : 2;
+    return bruta >= 1 ? Math.max(1, Math.floor(bruta * passos) / passos) : bruta;
   };
   const posicionarCamera = () => {
     const w = app.screen.width, h = app.screen.height;
