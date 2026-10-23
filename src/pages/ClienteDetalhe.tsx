@@ -42,9 +42,6 @@ interface Produto {
   ideias?: string;
 }
 
-const GUIAS_CREATOR = ["vertical", "youtube", "brainstorm", "cronograma"];
-// 16/10: o Creator (Vertical, Youtube, Brainstorm, Cronograma) virou guias dentro do Escritório.
-const GUIAS_ESCRITORIO = ["visao-geral", ...GUIAS_CREATOR, "conhecimento", "quiz", "whatsapp"];
 const lerAbaProjeto = (id?: string): { aba?: string; sub?: string } => {
   if (!id) return {};
   try { return JSON.parse(localStorage.getItem(`projeto-aba:${id}`) || "{}"); } catch { return {}; }
@@ -242,23 +239,15 @@ export default function ClienteDetalhe() {
   const pode = (area: AreaEquipe) => acesso.permissoes[area].acessar;
 
   // Guias no topo: Escritório | Informações gerais e Documentos | Pesquisa.
+  // 24/10 (Davi): as abas do Escritório (Escritório, Informações gerais, Vertical…) saíram do topo — estão na
+  // barra lateral, dentro da pasta Escritório. Fica só Documentos | Pesquisa (a Pesquisa não está na lateral).
   const guiasTopo: { id: string; label: string; ativa: boolean; ir: () => void }[] =
-    (abaAtiva === "informacoes" || (abaAtiva === "conteudo" && GUIAS_ESCRITORIO.includes(subAbaConteudo))) && pode("conteudo")
+    (abaAtiva === "documentos" || abaAtiva === "pesquisa") && pode("documentos") && pode("pesquisa")
       ? [
-        { id: "visao-geral", label: "Escritório" }, { id: "informacoes", label: "Informações gerais" },
-        { id: "vertical", label: "Vertical" }, { id: "youtube", label: "Youtube" },
-        { id: "brainstorm", label: "Brainstorm" }, { id: "cronograma", label: "Cronograma" },
-        { id: "conhecimento", label: "Fonte de conhecimento" }, { id: "quiz", label: "Quiz" },
-        { id: "whatsapp", label: "WhatsApp" },
-      ].map((g) => g.id === "informacoes"
-        ? { ...g, ativa: abaAtiva === "informacoes", ir: () => setAbaAtiva("informacoes") }
-        : { ...g, ativa: abaAtiva === "conteudo" && subAbaConteudo === g.id, ir: () => { setAbaAtiva("conteudo"); setSubAbaConteudo(g.id); } })
-      : (abaAtiva === "documentos" || abaAtiva === "pesquisa") && pode("documentos") && pode("pesquisa")
-        ? [
-          { id: "documentos", label: "Documentos", ativa: abaAtiva === "documentos", ir: () => setAbaAtiva("documentos") },
-          { id: "pesquisa", label: "Pesquisa", ativa: abaAtiva === "pesquisa", ir: () => setAbaAtiva("pesquisa") },
-        ]
-        : [];
+        { id: "documentos", label: "Documentos", ativa: abaAtiva === "documentos", ir: () => setAbaAtiva("documentos") },
+        { id: "pesquisa", label: "Pesquisa", ativa: abaAtiva === "pesquisa", ir: () => setAbaAtiva("pesquisa") },
+      ]
+      : [];
   return (
     <div className="flex h-screen">
       {/* 24/10 (Davi): sai o menu interno do projeto (Voltar, ícones das abas): repetia a barra lateral em árvore. */}
