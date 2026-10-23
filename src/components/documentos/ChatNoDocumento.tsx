@@ -22,9 +22,10 @@ import {
 // escrever, tipo o Claude; embaixo aparece a parte para conversar; além das skills aparecem o Leo
 // (headline), o Junior (roteiros) e o Elias (revisão); selecionando Junior e Elias é um trabalho
 // só". Cada um usa o mesmo contexto da esteira do escritório (critérios, formatos, skills, cérebro).
-// O Claude roda no Mac (comando claude_escrever, src-tauri/src/escrita.rs) e o texto entra ao vivo.
-// 24/10 (Davi): o ⌘I abre um painel de chat na lateral direita (como o Claude no Chrome): a conversa fica
-// ali (o que cada um escreveu no documento e as notas deles) e dá para responder só no chat e inserir depois.
+// O Claude roda no Mac (comando claude_escrever, src-tauri/src/escrita.rs).
+// 24/10 (Davi): o ⌘I abre um painel de chat na lateral direita (como o Claude no Chrome). As respostas ficam
+// só no chat (com Junior → Elias, cada um responde em sequência) e o Davi insere no documento se quiser.
+// O "Gerar todos" continua escrevendo os roteiros direto no documento.
 const db = supabase as unknown as SupabaseClient;
 
 interface Etapa { nome: string; membro_id: string; criterios?: string | string[]; formatos?: FormatoEscrita[] }
@@ -199,10 +200,10 @@ async function transcricaoDaReferencia(link: string): Promise<string | null> {
   }
 }
 
-type Destino = "documento" | "chat";
-interface Passo { quem: string; etapa: string; texto: string; notas: string; revisao: boolean }
+interface Passo { quem: string; etapa: string; texto: string }
 interface Turno extends Conversa {
-  id: string; erro?: string; selecao?: string | null; destino: Destino; quem?: string;
+  id: string; erro?: string; selecao?: string | null;
+  /** cada um que respondeu (Junior, depois Elias…); a resposta do turno é a do último */
   passos: Passo[]; rodando?: boolean; inserido?: boolean;
 }
 const LARGURA_PAINEL = 400;
@@ -213,10 +214,13 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useState("");
   const chaveConversa = `docchat:conversa:${chave ?? "sem"}`;
-  const [turnos, setTurnosEstado] = useState<Turno[]>(() => ler<Turno[]>(chaveConversa, []).map((t) => ({ ...t, rodando: false })));
-  useEffect(() => setTurnosEstado(ler<Turno[]>(chaveConversa, []).map((t) => ({ ...t, rodando: false }))), [chaveConversa]);
+  // Conversa salva neste Mac (localStorage), por documento; a primeira versão guardava também os turnos
+  // "escrito no documento" (sem passos de chat): esses ficam de fora.
+  const lerConversa = () => ler<Turno[]>(chaveConversa, []).filter((t) => !("destino" in t) || (t as { destino?: string }).destino === "chat")
+    .map((t) => ({ ...t, passos: (t.passos ?? []).filter((p) => p.texto), rodando: false }));
+  const [turnos, setTurnosEstado] = useState<Turno[]>(lerConversa);
+  useEffect(() => setTurnosEstado(lerConversa()), [chaveConversa]); // eslint-disable-line react-hooks/exhaustive-deps
   const setTurnos = (f: (l: Turno[]) => Turno[]) => setTurnosEstado((l) => { const n = f(l).slice(-30); gravar(chaveConversa, n); return n; });
-  const [destino, setDestino] = useState<Destino>(() => ler("docchat:destino", "documento"));
   const listaConversa = useRef<HTMLDivElement>(null);
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   const [escolhidos, setEscolhidos] = useState<string[]>(() => ler("docchat:agentes", []));   // membro_id
@@ -270,7 +274,6 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   useEffect(() => gravar("docchat:skillsOff", skillsOff), [skillsOff]);
   useEffect(() => gravar("docchat:para", para), [para]);
   useEffect(() => gravar("docchat:modelo", modelo), [modelo]);
-  useEffect(() => gravar("docchat:destino", destino), [destino]);
 
   // ⌘I abre e fecha (o itálico continua no botão da barra de ferramentas).
   useEffect(() => {
@@ -342,17 +345,14 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const trabalhar = async (o: {
     regiao: Regiao; selecao: string | null; documento: string; pedido: string; proximaHeadline: number;
     fila: (typeof escolhidasOrdem[number] | null)[]; aoAndar?: (a: Andamento) => void;
-    aoPasso?: (passos: Passo[]) => void;   // o que cada um escreveu (aparece na conversa do painel)
     jaSeguida?: boolean;   // o "gerar todos" já acompanha a região desde o começo (seguir duas vezes andava o dobro)
     numero?: number;       // ROTEIRO NN deste texto (guardado na revisão)
-  }): Promise<{ texto: string; erro?: string; passos: Passo[] }> => {
+  }): Promise<{ texto: string; erro?: string }> => {
     const { regiao, selecao, documento, pedido, proximaHeadline, fila } = o;
     const andar = o.aoAndar ?? setAndamento;
     const largar = o.jaSeguida ? () => undefined : seguirRegiao(editor, regiao);
     const blocos: { quem: string; texto: string }[] = [];
     let anterior: { quem: string; texto: string } | null = null;
-    const passos: Passo[] = [];
-    const avisar = () => o.aoPasso?.(passos.map((p) => ({ ...p })));
     let erro: string | undefined;
     let fixado = false;
     const juntar = () => blocos.map((b) => b.texto).filter((t) => t.trim()).join("\n");
@@ -398,30 +398,21 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             guardarRevisoes((l) => [...l, { ...montarRevisao(id, quem, antes, final, notas, alinhar), ativa: trocou, numero: o.numero }]);
             if (!trocou) toast.info(`${quem} terminou a revisão. Como o texto foi mexido, deixei o seu; clique em On para ver a versão de ${quem}.`);
           }
-          passos.push({ quem, etapa: etapa?.nome ?? "", texto: final || antes, notas, revisao: true });
-          avisar();
           anterior = { quem, texto: final || antes };
           continue;
         }
 
         const bloco = { quem, texto: "" };
         blocos.push(bloco);
-        const passo: Passo = { quem, etapa: etapa?.nome ?? "", texto: "", notas: "", revisao: false };
-        passos.push(passo);
         let ultimo = 0;
         const bruto = await escreverComClaude(id, prompt, modelo, (total) => {
           const { texto: t } = separarNotas(total);
           bloco.texto = t;
-          passo.texto = t;
           if (t) andar({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
-          if (Date.now() - ultimo > 80) { ultimo = Date.now(); pintar(); avisar(); }
+          if (Date.now() - ultimo > 80) { ultimo = Date.now(); pintar(); }
         });
         rodando.current.delete(id);
-        const separado = separarNotas(bruto);
-        bloco.texto = separado.texto;
-        passo.texto = separado.texto;
-        passo.notas = separado.notas;
-        avisar();
+        bloco.texto = separarNotas(bruto).texto;
         pintar();
         anterior = { quem, texto: bloco.texto };
       }
@@ -432,7 +423,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
       fixar();
       largar();
     }
-    return { texto: anterior?.texto ?? juntar(), erro, passos };
+    return { texto: anterior?.texto ?? juntar(), erro };
   };
 
   const enviar = async () => {
@@ -448,18 +439,22 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const documento = `${doc.textBetween(0, cursor, "\n")}\n[CURSOR]\n${doc.textBetween(regiao.to, doc.content.size, "\n")}`;
     const historico = turnos.filter((t) => !t.erro && !t.rodando).map((t) => ({ pedido: t.pedido, resposta: t.resposta }));
     const idTurno = crypto.randomUUID();
-    const quem = escolhidasOrdem[0]?.membro?.nome ?? "Claude";
-    setTurnos((l) => [...l, { id: idTurno, pedido: pedido || "(fazer a sua parte)", resposta: "", selecao, destino, quem, passos: [], rodando: true }]);
+    setTurnos((l) => [...l, { id: idTurno, pedido: pedido || "(fazer a sua parte)", resposta: "", selecao, passos: [], rodando: true }]);
     const atualizar = (patch: Partial<Turno>) => setTurnos((l) => l.map((t) => (t.id === idTurno ? { ...t, ...patch } : t)));
 
-    if (destino === "chat") {
-      // Só no chat: responde no painel (com o primeiro escolhido, se houver); o Davi insere se quiser.
-      const etapa = escolhidasOrdem[0] ?? null;
+    // Cada escolhido responde em sequência no chat (o Elias revisa o que o Junior acabou de entregar).
+    const passos: Passo[] = [];
+    let anterior: { quem: string; texto: string } | null = null;
+    let erro: string | undefined;
+    for (const etapa of fila) {
+      if (parou.current) break;
       const m = etapa?.membro;
+      const quem = m?.nome ?? "Claude";
       setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "pensando" });
       const id = crypto.randomUUID();
       rodando.current.add(id);
-      let erro: string | undefined;
+      const passo: Passo = { quem, etapa: etapa?.nome ?? "", texto: "" };
+      passos.push(passo);
       try {
         const agente: AgenteEscrita | null = m && etapa ? {
           etapa: etapa.nome, nome: m.nome, funcao: m.funcao, manual: m.manual,
@@ -467,29 +462,26 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         } : null;
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
-          documento, selecao, historico, pedido, proximaHeadline: proximoNumeroHeadline(editor.getHTML()), modo: "conversa",
+          documento, selecao: anterior ? null : selecao, anterior, historico, pedido,
+          proximaHeadline: proximoNumeroHeadline(editor.getHTML()), modo: "conversa",
         });
         const resposta = await escreverComClaude(id, prompt, modelo, (total) => {
           setAndamento({ quem, etapa: etapa?.nome ?? "", fase: "escrevendo" });
-          atualizar({ resposta: total });
+          passo.texto = total;
+          atualizar({ passos: passos.map((p) => ({ ...p })), resposta: total });
         });
-        atualizar({ resposta: resposta.trim() });
+        passo.texto = resposta.trim();
+        anterior = { quem, texto: passo.texto };
       } catch (e) {
         erro = parou.current ? undefined : (e instanceof Error ? e.message : String(e));
+        break;
       } finally {
         rodando.current.delete(id);
       }
-      setAndamento(null);
-      atualizar({ erro, rodando: false });
-      requestAnimationFrame(() => campo.current?.focus());
-      return;
     }
-
-    const r = await trabalhar({ regiao, selecao, documento, pedido, proximaHeadline: proximoNumeroHeadline(editor.getHTML()), fila,
-      aoPasso: (passos) => atualizar({ passos }) });
-    if (r.erro) toast.error(`Não deu para escrever: ${r.erro}`);
     setAndamento(null);
-    atualizar({ resposta: r.texto, erro: r.erro, passos: r.passos, rodando: false });
+    const feitos = passos.filter((p) => p.texto);
+    atualizar({ passos: feitos, resposta: feitos[feitos.length - 1]?.texto ?? "", erro, rodando: false });
     requestAnimationFrame(() => campo.current?.focus());
   };
 
@@ -595,7 +587,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   const escrevendo = !!andamento || !!lote;
   const placeholder = escolhidasOrdem.length
     ? `Pedir para ${escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}… (vazio = fazer a sua parte com o que está no documento)`
-    : destino === "documento" ? "Pedir ao Claude… ele escreve onde está o cursor" : "Conversar com o Claude sobre o documento…";
+    : "Conversar com o Claude sobre o documento…";
 
   return (
     <>
@@ -626,7 +618,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           <Sparkles className="h-4 w-4 text-primary" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"}</p>
-            <p className="text-[11px] text-muted-foreground">{destino === "documento" ? "Escreve no documento, onde está o cursor" : "Responde aqui; você insere se quiser"}</p>
+            <p className="text-[11px] text-muted-foreground">Responde aqui; você insere no documento se quiser</p>
           </div>
           <button type="button" onClick={() => setTurnos(() => [])} disabled={escrevendo || !turnos.length} title="Nova conversa"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><Plus className="h-4 w-4" /></button>
@@ -640,7 +632,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
             <div className="space-y-2 pt-6 text-center text-sm text-muted-foreground">
               <MessageSquare className="mx-auto h-6 w-6 opacity-60" />
               <p>Peça ao Claude, ou chame o Junior, o Elias e os outros embaixo.</p>
-              <p className="text-xs"><b>No documento</b>: escreve onde está o cursor. <b>Só no chat</b>: responde aqui e você insere se gostar.</p>
+              <p className="text-xs">A resposta fica aqui; o botão <b>Inserir no documento</b> põe onde está o cursor.</p>
             </div>
           )}
           {turnos.map((t) => (
@@ -649,40 +641,28 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
                 {t.selecao && <p className="mb-1 line-clamp-2 border-l-2 pl-2 text-xs italic text-muted-foreground">{t.selecao}</p>}
                 <p className="whitespace-pre-wrap">{t.pedido}</p>
               </div>
-              {t.destino === "chat" ? (
-                <div className="space-y-2 text-sm">
-                  <p className="text-[11px] font-semibold text-muted-foreground">{t.quem ?? "Claude"}</p>
-                  {t.resposta ? <p className="whitespace-pre-wrap font-serif text-[15px] leading-relaxed">{t.resposta}</p>
-                    : t.rodando && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />pensando…</p>}
-                  {!t.rodando && t.resposta && (
-                    <button type="button" onClick={() => inserir(t)}
-                      className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted">
-                      <FileText className="h-3.5 w-3.5" />{t.inserido ? "Inserir de novo" : "Inserir no documento"}
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {t.passos.map((p, k) => (
-                    <div key={k} className="rounded-lg border bg-card p-2.5 text-sm">
-                      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground">
-                        <FileText className="h-3.5 w-3.5" />
-                        {p.quem}{p.etapa ? ` · ${p.etapa}` : ""} {p.revisao ? "revisou no documento (On/Off ao lado do texto)" : t.rodando && k === t.passos.length - 1 ? "escrevendo no documento…" : "escreveu no documento"}
-                      </p>
-                      {p.texto && <p className="line-clamp-6 whitespace-pre-wrap text-xs text-foreground/80">{p.texto}</p>}
-                      {p.notas && <p className="mt-2 whitespace-pre-wrap border-t pt-2 text-xs text-muted-foreground">{p.notas}</p>}
-                    </div>
-                  ))}
-                  {t.rodando && !t.passos.length && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />lendo critérios e skills…</p>}
-                </div>
-              )}
+              <div className="space-y-3 text-sm">
+                {(t.passos.length ? t.passos : [{ quem: "Claude", etapa: "", texto: t.resposta }]).map((p, k) => (
+                  <div key={k} className="space-y-1">
+                    <p className="text-[11px] font-semibold text-muted-foreground">{p.quem}{p.etapa ? ` · ${p.etapa}` : ""}</p>
+                    {p.texto && <p className="whitespace-pre-wrap font-serif text-[15px] leading-relaxed">{p.texto}</p>}
+                  </div>
+                ))}
+                {t.rodando && !t.resposta && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />pensando…</p>}
+                {!t.rodando && t.resposta && (
+                  <button type="button" onClick={() => inserir(t)}
+                    className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted">
+                    <FileText className="h-3.5 w-3.5" />{t.inserido ? "Inserir de novo" : "Inserir no documento"}
+                  </button>
+                )}
+              </div>
               {t.erro && <p className="rounded-md bg-rose-500/10 px-2.5 py-1.5 text-xs text-rose-600 dark:text-rose-300">Não deu: {t.erro}</p>}
             </div>
           ))}
           {andamento && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               {andamento.fase === "pensando" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 animate-pulse text-primary" />}
-              <span><b className="font-medium text-foreground">{andamento.quem}</b>{andamento.etapa ? ` (${andamento.etapa})` : ""} {andamento.fase === "pensando" ? "lendo critérios e skills…" : andamento.fase === "revisando" ? "revisando por trás…" : destino === "chat" ? "respondendo…" : "escrevendo no documento…"}</span>
+              <span><b className="font-medium text-foreground">{andamento.quem}</b>{andamento.etapa ? ` (${andamento.etapa})` : ""} {andamento.fase === "pensando" ? "lendo critérios e skills…" : andamento.fase === "revisando" ? "revisando por trás…" : "respondendo…"}</span>
             </div>
           )}
         </div>
@@ -765,14 +745,6 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
               className="max-h-40 min-h-[44px] w-full resize-none bg-transparent px-3 pt-3 text-sm outline-none placeholder:text-muted-foreground"
             />
             <div className="flex flex-wrap items-center gap-1.5 px-2 pb-2">
-              <div className="flex shrink-0 rounded-full border p-0.5 text-[11px]">
-                {([["documento", "No documento"], ["chat", "Só no chat"]] as const).map(([v, rotulo]) => (
-                  <button key={v} type="button" disabled={escrevendo} onClick={() => setDestino(v)}
-                    className={cn("whitespace-nowrap rounded-full px-2 py-0.5", destino === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-                    {rotulo}
-                  </button>
-                ))}
-              </div>
               <Popover>
                 <PopoverTrigger asChild>
                   <button type="button" title="Skills" className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-muted">
