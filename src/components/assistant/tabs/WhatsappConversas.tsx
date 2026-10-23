@@ -93,6 +93,41 @@ function TextoComMencoes({ texto, nomes }: { texto: string; nomes: Map<string, s
   return <>{partes.map((p, i) => (/^@\d{8,}$/.test(p) ? <Mencao key={i} numero={p.slice(1)} nomeDoGrupo={nomes.get(p.slice(1))} /> : p))}</>;
 }
 
+// Documento (24/10, Davi: "queria conseguir abrir isso aqui"): o receptor do Mac baixa na hora (vale para os
+// antigos), salva com o nome original em Downloads/WhatsApp (Infopro) e abre no programa do Mac.
+function DocumentoMensagem({ id, nome }: { id: string; nome: string | null }) {
+  const conta = useContext(ContaWhatsapp);
+  const [estado, setEstado] = useState<"parado" | "abrindo">("parado");
+  const [nomeArquivo, setNomeArquivo] = useState(nome);
+  const abrir = async () => {
+    if (!isDesktop()) { toast.info("Abra pelo app do Mac (o WhatsApp está conectado nele)."); return; }
+    setEstado("abrindo");
+    try {
+      const cfg = await midiaBaseDe(conta);
+      if (!cfg) throw new Error("o receptor do WhatsApp não respondeu");
+      const r = await fetch(`${cfg.base.replace(/\/midia\/$/, "/abrir/")}${encodeURIComponent(id)}?k=${cfg.chave}`).then((x) => x.json());
+      if (r.erro) throw new Error(r.erro);
+      setNomeArquivo(r.nome);
+      toast.success(`Abrindo ${r.nome} (fica em Downloads › WhatsApp (Infopro))`);
+    } catch (e) {
+      toast.error(`Não abri o documento: ${e instanceof Error ? e.message : "erro"}`);
+    } finally {
+      setEstado("parado");
+    }
+  };
+  return (
+    <button type="button" onClick={() => void abrir()} disabled={estado === "abrindo"}
+      className="flex w-60 max-w-full items-center gap-2 rounded-md bg-black/5 px-2 py-1.5 text-left hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10">
+      <FileText className="h-6 w-6 shrink-0 text-sky-500" />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[12.5px] font-medium">{nomeArquivo || "Documento"}</span>
+        <span className="text-[10.5px] opacity-70">{estado === "abrindo" ? "baixando…" : "clique para abrir"}</span>
+      </span>
+      {estado === "abrindo" && <Loader2 className="h-4 w-4 animate-spin" />}
+    </button>
+  );
+}
+
 // Foto de perfil da pessoa ou do grupo (16/10), pelo receptor do WhatsApp (/foto/<chat_id>);
 // sem foto (ou fora do app do Mac), a bolinha com a inicial / o ícone de grupo de sempre.
 export function FotoChat({ chatId, nome, grupo, tamanho = "h-9 w-9" }: { chatId: string; nome: string | null; grupo: boolean; tamanho?: string }) {
@@ -657,10 +692,8 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                       <video controls preload="metadata" src={urlDe(m.midia_arquivo)!} className="max-h-64 w-56 max-w-full rounded-md bg-black" />
                       {m.texto && <p className="whitespace-pre-wrap break-words"><TextoComMencoes texto={m.texto} nomes={nomesDoChat} /></p>}
                     </div>
-                  ) : m.tipo === "documento" && urlDe(m.midia_arquivo) ? (
-                    <a href={urlDe(m.midia_arquivo)!} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline">
-                      <FileText className="h-3.5 w-3.5" />{m.texto || "Documento"}
-                    </a>
+                  ) : m.tipo === "documento" ? (
+                    <DocumentoMensagem id={m.id} nome={m.texto} />
                   ) : m.tipo === "texto" ? (
                     <p className="whitespace-pre-wrap break-words">{m.texto && <TextoComMencoes texto={m.texto} nomes={nomesDoChat} />}</p>
                   ) : (

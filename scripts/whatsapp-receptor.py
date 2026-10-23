@@ -263,6 +263,57 @@ def nome_do_contato(contato_id):
     return resposta
 
 
+BAIXADOS = Path.home() / "Downloads" / "WhatsApp (Infopro)"
+
+def abrir_documento(id_msg):
+    """Abre no Mac um documento que veio no WhatsApp (24/10: "queria conseguir abrir isso aqui"). Por padrão
+    o receptor não baixa documento (20/10); aqui baixa na hora do clique: pede ao WAHA a mensagem com a
+    mídia (vale também para os antigos), salva com o nome original em ~/Downloads/WhatsApp (Infopro) e
+    abre no programa padrão. Também guarda em midia/ e o nome do arquivo na mensagem."""
+    prefixo = "" if CONTA == "principal" else f"{CONTA}:"
+    if prefixo and not id_msg.startswith(prefixo):
+        return {"erro": "mensagem de outro número"}
+    id_waha = id_msg[len(prefixo):]
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("SELECT chat_id FROM public.whatsapp_mensagens WHERE id = %s", (id_msg,))
+        linha = q.fetchone()
+    finally:
+        c.close()
+    if not linha:
+        return {"erro": "mensagem não encontrada"}
+    msg = waha_get(f"/api/default/chats/{urllib.parse.quote(linha[0])}/messages/{urllib.parse.quote(id_waha)}?downloadMedia=true")
+    media = msg.get("media") or {}
+    if not media.get("url"):
+        return {"erro": "o WhatsApp não tem mais esse arquivo (abra no celular)"}
+    dados = waha_get(media["url"], binario=True)
+    original = Path((media.get("filename") or "").strip()).name
+    ext = Path(original).suffix or EXTENSOES.get((media.get("mimetype") or "").split(";")[0].strip(), ".bin")
+    nome_midia = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_msg)[-120:] + ext
+    (MIDIA / nome_midia).write_bytes(dados)
+    BAIXADOS.mkdir(parents=True, exist_ok=True)
+    base = Path(original).stem if original else "Documento do WhatsApp"
+    destino = BAIXADOS / f"{base}{ext}"
+    k = 2
+    while destino.exists() and destino.read_bytes() != dados:
+        destino = BAIXADOS / f"{base} ({k}){ext}"
+        k += 1
+    if not destino.exists():
+        destino.write_bytes(dados)
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.whatsapp_mensagens SET midia_arquivo = %s, texto = coalesce(texto, %s) WHERE id = %s",
+                  (nome_midia, original or None, id_msg))
+        c.commit()
+    finally:
+        c.close()
+    import subprocess
+    subprocess.Popen(["open", str(destino)])
+    return {"ok": True, "nome": destino.name}
+
+
 def nome_seguro(id_msg, mime):
     base = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_msg)[-120:]
     return base + EXTENSOES.get((mime or "").split(";")[0].strip(), ".bin")
@@ -480,8 +531,22 @@ class Webhook(BaseHTTPRequestHandler):
         player de vídeo/áudio do app pede pedaços)."""
         url = urllib.parse.urlparse(self.path)
         consulta = urllib.parse.parse_qs(url.query)
-        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/", "/contato/")):
+        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/", "/contato/", "/abrir/")):
             self.send_response(403); self.end_headers(); return
+        if url.path.startswith("/abrir/"):
+            try:
+                resposta = abrir_documento(urllib.parse.unquote(url.path[len("/abrir/"):]))
+            except Exception as e:
+                log("abrir: erro", repr(e)[:200])
+                resposta = {"erro": "não consegui baixar o arquivo"}
+            dados = json.dumps(resposta).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(dados)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(dados)
+            return
         if url.path.startswith("/contato/"):
             dados = json.dumps(nome_do_contato(urllib.parse.unquote(url.path[len("/contato/"):])) or {"nome": None}).encode()
             self.send_response(200)
