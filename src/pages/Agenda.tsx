@@ -24,7 +24,7 @@ const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
 const eventStart = (event: GoogleCalendarEvent) => new Date(event.start.dateTime || `${event.start.date}T00:00:00`);
 const eventEnd = (event: GoogleCalendarEvent) => new Date(event.end.dateTime || `${event.end.date}T00:00:00`);
 
-export default function Agenda() {
+export default function Agenda({ janela = false }: { janela?: boolean } = {}) {
   const [anchor, setAnchor] = useState(new Date());
   // Abre na última visão usada (Mês, Semana ou Dia).
   const [view, setViewEstado] = useState<View>(() => {
@@ -208,7 +208,7 @@ export default function Agenda() {
       : format(anchor, "MMMM 'de' yyyy", { locale: ptBR });
 
   return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col gap-4">
+    <div className={cn("flex flex-col gap-4", janela ? "min-h-[calc(100vh-4rem)]" : "min-h-[calc(100vh-8rem)]")}>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold capitalize">Agenda</h1>

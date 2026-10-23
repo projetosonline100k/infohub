@@ -346,6 +346,15 @@ export async function tamanhoMaximoNaTela(): Promise<Tamanho> {
   }
 }
 
+// Janela própria da Agenda (23/10): abre (ou traz pra frente) a janela "agenda".
+export async function abrirJanelaAgenda(focar = true): Promise<void> {
+  if (!isDesktop()) return;
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("abrir_agenda", { focar });
+  } catch { /* app antigo sem a janela da Agenda */ }
+}
+
 // Janela própria de Notas (20/10): abre (ou traz pra frente) a janela "notas".
 export async function abrirJanelaNotas(focar = true): Promise<void> {
   if (!isDesktop()) return;

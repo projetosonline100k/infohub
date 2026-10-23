@@ -8,7 +8,7 @@ import { GlobalSearchCommand } from "@/components/layout/GlobalSearchCommand";
 import { Assistant } from "@/components/assistant/Assistant";
 import { DesktopUpdateBanner } from "@/components/DesktopUpdateBanner";
 import { isDesktop } from "@/lib/platform";
-import { abrirJanelaNotas } from "@/lib/desktop/window";
+import { abrirJanelaAgenda, abrirJanelaNotas } from "@/lib/desktop/window";
 import { onMainNavigate, emitClienteAtualMudou } from "@/lib/desktop/events";
 import { useWorkspaceTabs, WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { WorkspacePages } from "@/components/workspace/WorkspacePages";
@@ -49,13 +49,17 @@ export const DashboardLayout = () => {
     void (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        if (getCurrentWindow().label === "main") await abrirJanelaNotas(false);
+        if (getCurrentWindow().label === "main") {
+          await abrirJanelaNotas(false);
+          // 23/10: a Agenda também abre na própria janela, junto com o app (⌘⌥A traz pra frente).
+          await abrirJanelaAgenda(false);
+        }
       } catch { /* sem janela nativa */ }
     })();
     const tecla = (e: KeyboardEvent) => {
-      if (!e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey || e.code !== "KeyN") return;
+      if (!e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey || (e.code !== "KeyN" && e.code !== "KeyA")) return;
       e.preventDefault();
-      void abrirJanelaNotas(true);
+      void (e.code === "KeyN" ? abrirJanelaNotas(true) : abrirJanelaAgenda(true));
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);

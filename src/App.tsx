@@ -11,6 +11,7 @@ import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import JarvisWindow from "./pages/JarvisWindow";
 import NotasWindow from "./pages/NotasWindow";
+import AgendaWindow from "./pages/AgendaWindow";
 import Privacidade from "./pages/Privacidade";
 import InstagramConectado from "./pages/InstagramConectado";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
@@ -51,6 +52,7 @@ const App = () => (
               pra /login: ver JarvisWindow.tsx). */}
           <Route path="/jarvis" element={<JarvisWindow />} />
           <Route path="/notas-janela" element={<NotasWindow />} />
+          <Route path="/agenda-janela" element={<AgendaWindow />} />
           
           {/* Rotas protegidas: o layout renderiza as páginas por aba
               (ver src/components/workspace/WorkspacePages.tsx). */}

@@ -109,6 +109,37 @@ pub async fn abrir_notas(app: AppHandle, focar: Option<bool>) -> Result<(), Stri
     })
 }
 
+/// Janela própria da Agenda (23/10, Davi: "quero que a agenda seja aberta separadamente igual o notas").
+/// Uma só: se já existe, só traz pra frente. Posição/tamanho lembrados (window-state).
+#[tauri::command]
+pub async fn abrir_agenda(app: AppHandle, focar: Option<bool>) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(janela) = app.get_webview_window("agenda") {
+        if focar.unwrap_or(true) {
+            let _ = janela.unminimize();
+            let _ = janela.show();
+            let _ = janela.set_focus();
+        }
+        return Ok(());
+    }
+    let mut janela = WebviewWindowBuilder::new(&app, "agenda", WebviewUrl::App("agenda-janela".into()))
+        .title("Agenda")
+        .inner_size(1180.0, 800.0)
+        .min_inner_size(560.0, 460.0)
+        .focused(focar.unwrap_or(true));
+    #[cfg(target_os = "macos")]
+    {
+        janela = janela
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(tauri::LogicalPosition::new(16.0, 20.0));
+    }
+    janela.build().map(|_| ()).map_err(|erro| {
+        log::error!("abrir_agenda falhou: {erro}");
+        erro.to_string()
+    })
+}
+
 /// Lê a imagem que o Davi soltou no chat dos funcionários (22/10). O print arrastado do Mac vem de
 /// uma pasta temporária que a página não consegue ler (chegava vazio: "No content provided"); o app
 /// lê o arquivo e entrega os bytes. Só imagem e até 30 MB.
