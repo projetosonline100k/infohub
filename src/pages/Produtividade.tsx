@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useAuth } from "@/auth/AuthProvider";
@@ -27,7 +28,10 @@ function rotuloBloqueio(relatorio: RelatorioDiario): string | null {
 // useEffect, sem React Query) já usado em DashGeral.tsx/Admin.tsx.
 export default function Produtividade() {
   const { user } = useAuth();
-  const [abaPrincipal, setAbaPrincipal] = useState("relatorios");
+  // ?aba= (barra lateral em árvore, 23/10): abre direto na aba.
+  const [busca] = useSearchParams();
+  const [abaPrincipal, setAbaPrincipal] = useState(() => busca.get("aba") ?? "relatorios");
+  useEffect(() => { const a = busca.get("aba"); if (a) setAbaPrincipal(a); }, [busca]);
   const [filtro, setFiltro] = useState<FiltroHistorico>("7dias");
   const [relatorios, setRelatorios] = useState<RelatorioDiario[]>([]);
   const [loading, setLoading] = useState(true);

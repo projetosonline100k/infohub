@@ -99,7 +99,8 @@ export const DashboardLayout = () => {
         {/* min-w-0 em toda a cadeia: sem isso este item de flex estica até a
             largura da página e é cortado pela janela, e o <main> nunca rola. */}
         <div className="flex min-h-0 min-w-0 flex-1">
-          {!isClienteDetalhe && <AppSidebar />}
+          {/* 23/10: a barra em árvore aparece também dentro do projeto (com as seções dele). */}
+          <AppSidebar />
           {/* min-w-0/min-h-0: a área da página não estica além da janela — quem
               rola (inclusive pro lado, em janela estreita) é o <main>. */}
           <SidebarInset className="min-h-0 min-w-0">

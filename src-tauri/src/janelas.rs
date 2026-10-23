@@ -125,7 +125,7 @@ pub async fn abrir_agenda(app: AppHandle, focar: Option<bool>) -> Result<(), Str
     let mut janela = WebviewWindowBuilder::new(&app, "agenda", WebviewUrl::App("agenda-janela".into()))
         .title("Agenda")
         .inner_size(1180.0, 800.0)
-        .min_inner_size(560.0, 460.0)
+        .min_inner_size(340.0, 360.0)
         .focused(focar.unwrap_or(true));
     #[cfg(target_os = "macos")]
     {

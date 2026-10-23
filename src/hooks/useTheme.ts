@@ -27,6 +27,13 @@ export function useTheme() {
     localStorage.setItem("theme", theme);
   }, [theme]);
 
+  // Mudou em outra janela (Agenda, Notas): acompanha aqui também.
+  useEffect(() => {
+    const ouvir = (e: StorageEvent) => { if (e.key === "theme" && (e.newValue === "light" || e.newValue === "dark")) setTheme(e.newValue); };
+    window.addEventListener("storage", ouvir);
+    return () => window.removeEventListener("storage", ouvir);
+  }, []);
+
   const toggleTheme = () => {
     setTheme((prev) => (prev === "dark" ? "light" : "dark"));
   };

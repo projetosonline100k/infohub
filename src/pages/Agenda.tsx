@@ -222,7 +222,8 @@ export default function Agenda({ janela = false }: { janela?: boolean } = {}) {
         </div>
       </header>
 
-      <div className="relative flex flex-1 gap-4 overflow-hidden">
+      {/* 23/10: rola para o lado quando a semana não cabe (antes cortava, sem rolagem). */}
+      <div className="relative flex flex-1 gap-4 overflow-x-auto overflow-y-hidden">
         <aside className={cn("hidden w-56 shrink-0 rounded-xl border bg-card p-4 lg:block", !sidebarVisible && "lg:hidden")}>
           <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Meus calendarios</p>
           <div className="space-y-2">

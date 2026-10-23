@@ -88,6 +88,23 @@ export default function ClienteDetalhe() {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   const { pessoasOnline } = usePresencaProjeto(id);
 
+  // ?secao=<aba>[:<guia>] (barra lateral em árvore, 23/10): abre a seção pedida e o endereço acompanha
+  // quando a aba muda aqui dentro (assim a árvore marca o item certo).
+  const secaoPedida = searchParams.get("secao");
+  useEffect(() => {
+    if (!secaoPedida) return;
+    const [aba, sub] = secaoPedida.split(":");
+    if (aba && aba !== abaAtiva) setAbaAtiva(aba);
+    if (sub && sub !== subAbaConteudo) setSubAbaConteudo(sub);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secaoPedida]);
+  useEffect(() => {
+    const atual = abaAtiva === "conteudo" ? `conteudo:${subAbaConteudo}` : abaAtiva;
+    if (searchParams.get("secao") === atual) return;
+    setSearchParams((sp) => { const n = new URLSearchParams(sp); n.set("secao", atual); return n; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abaAtiva, subAbaConteudo]);
+
   useEffect(() => {
     if (searchParams.get("documento")) setAbaAtiva("documentos");
     // ?atividade=<id> (busca ⌘K, links das Notas): a aba Atividades abre o painel da tarefa.
@@ -121,8 +138,9 @@ export default function ClienteDetalhe() {
     const conversa = !!searchParams.get("conversa");
     // 16/10: abrir um projeto entra sempre no Escritório (salvo link para documento/atividade).
     void salva;
-    setAbaAtiva(searchParams.get("documento") ? "documentos" : searchParams.get("atividade") ? "atividades" : "conteudo");
-    if (conversa || (!searchParams.get("documento") && !searchParams.get("atividade"))) setSubAbaConteudo("visao-geral");
+    const [abaPedida, subPedida] = (searchParams.get("secao") ?? "").split(":");
+    setAbaAtiva(searchParams.get("documento") ? "documentos" : searchParams.get("atividade") ? "atividades" : abaPedida || "conteudo");
+    if (conversa || (!searchParams.get("documento") && !searchParams.get("atividade"))) setSubAbaConteudo(abaPedida ? subPedida || subAbaConteudo : "visao-geral");
 
     try {
       const clienteRes = await supabase.from("clientes").select("*").eq("id", id).maybeSingle();
