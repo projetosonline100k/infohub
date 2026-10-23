@@ -537,7 +537,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     return { funcionarios, resultado };
   })();
 
-  // "Precisa de você" e "Tarefas sendo executadas": na coluna da direita do mapa antigo ou dentro do escritório em pixel art.
+  // "Precisa de você" e "Em andamento" (antes "Tarefas sendo executadas"): na coluna da direita do mapa antigo
+  // ou no painel da direita do escritório em pixel art.
   const colunaAcoes = (
     <>
         {/* 1. O que depende de mim. */}
@@ -585,11 +586,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
           )}
         </section>
 
-        {/* 2. O que a equipe está tocando sem mim (15/10: "Tarefas sendo executadas"). */}
+        {/* 2. O que a equipe está tocando sem mim (15/10: "Tarefas sendo executadas"; 24/10: "Em andamento"). */}
         <section className="flex max-h-[460px] flex-col rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
           <div className="mb-3 flex items-center gap-2">
             <Bot className="h-5 w-5 text-emerald-500" />
-            <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Tarefas sendo executadas</h2>
+            <h2 className="font-semibold text-emerald-700 dark:text-emerald-400">Em andamento</h2>
             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
               {executando.filter((l) => l.agora).length + carrosseis.filter(emProducao).length + edicoesRodando.length + melhorias.length + edicoesAjustando.length + carrosseisAjustando.length} agora · {executando.filter((l) => !l.agora).length} na fila
             </span>
@@ -704,7 +705,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
       {usarPixel && setores.length > 0 ? (
         // 24/10 (Davi): o escritório em pixel art é o Escritório da página; "Precisa de você" e
-        // "Tarefas sendo executadas" ficam dentro dele, na coluna da esquerda.
+        // "Em andamento" ficam dentro dele, no painel da direita (no lugar de "Funcionários online").
         <Suspense fallback={<div className="flex h-[calc(100svh-140px)] min-h-[560px] items-center justify-center rounded-xl bg-[#0b1120] text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>}>
           <EscritorioPixel funcionarios={dados3d.funcionarios} setores={setoresDoMapa} resultado={dados3d.resultado}
             onFalhou={() => setPixelFalhou(true)}

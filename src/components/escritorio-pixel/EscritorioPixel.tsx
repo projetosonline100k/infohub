@@ -9,8 +9,8 @@ import { criarMundo, type EstadoPixel, type ModoCamera, type MundoPixel, type Pe
 import { montarCena, salaDoSetor } from "./cena";
 
 // Escritório em pixel art (24/10: cena fixa copiada da imagem de referência do Davi). É o Escritório da página:
-// coluna da esquerda (o que precisa do Davi e o que está em execução), o mapa no meio (PixiJS) e o painel da
-// referência à direita. Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial.
+// o mapa (PixiJS) ocupa quase tudo e o painel da direita tem a tarefa atual, a próxima reunião, o que precisa
+// do Davi e o que está em andamento (24/10: no lugar de "Funcionários online"). Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial.
 
 const COR: Record<EstadoPixel, string> = {
   trabalhando: "bg-emerald-500", esperando: "bg-amber-400", problema: "bg-rose-500", parado: "bg-slate-400", reuniao: "bg-violet-500",
@@ -65,7 +65,7 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
   setores: { id: string; nome: string }[];
   funcionarios: (Funcionario3D & { setorId?: string | null })[];
   resultado: Resultado3D | null;
-  /** coluna da esquerda, dentro do escritório */
+  /** "Precisa de você" e "Em andamento", no painel da direita */
   lateral?: ReactNode;
   /** os sprites não carregaram (a página volta para o mapa antigo) */
   onFalhou?: () => void;
@@ -125,13 +125,7 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
   };
 
   return (
-    <div className="flex h-[calc(100svh-140px)] min-h-[560px] overflow-hidden rounded-xl border border-white/10 bg-[#0b1120] text-white">
-      {lateral && (
-        // Força o tema escuro nesta coluna (fica dentro do escritório, que é escuro).
-        <div className="dark flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto border-r border-white/10 bg-[#0b1120] p-2.5 text-foreground">
-          {lateral}
-        </div>
-      )}
+    <div className="flex h-[calc(100svh-110px)] min-h-[600px] overflow-hidden rounded-xl border border-white/10 bg-[#0b1120] text-white">
       <div className="relative min-w-0 flex-1">
         <div ref={caixa} className="absolute inset-0" />
         {!pronto && !erro && (
@@ -141,7 +135,7 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
         <p className="pointer-events-none absolute bottom-1.5 left-2 text-[10px] text-white/35">Clique no mapa e use as setas ou WASD · E conversa · Z alterna a câmera · sprites gratuitos LimeZu (uso não comercial)</p>
       </div>
 
-      <aside className="flex w-[248px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
+      <aside className="dark flex w-[320px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
         <div className="flex items-center gap-1.5">
           <button type="button" onClick={() => setCamera((c) => (c === "geral" ? "seguir" : "geral"))}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-white/10 bg-[#121a2b] px-2 py-1.5 text-[11px] font-semibold hover:bg-[#18233a]">
@@ -188,23 +182,7 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
             ) : <p className="text-[11px] text-white/45">Nada marcado nos próximos 7 dias.</p>}
         </Card>
 
-        <Card icone={Users} titulo="Funcionários online">
-          <ul className="space-y-0.5">
-            <li className="flex items-center gap-2 rounded px-1 py-0.5 text-[12px]">
-              <span className="h-2 w-2 rounded-full bg-sky-400" /><span className="flex-1 font-medium">Davi</span><span className="text-[10px] text-white/45">CEO · você</span>
-            </li>
-            {funcionarios.map((f) => (
-              <li key={f.id}>
-                <button type="button" onClick={() => setSelecionado(f.id)} title={ROTULO[f.sinal]}
-                  className={cn("flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-[12px] hover:bg-white/5", selecionado === f.id && "bg-white/10")}>
-                  <span className={cn("h-2 w-2 shrink-0 rounded-full", COR[f.sinal])} />
-                  <span className="flex-1 truncate font-medium">{f.nome}</span>
-                  <span className="truncate text-[10px] text-white/45">{setorDe(f)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </Card>
+        {lateral}
 
         <Card icone={Eye} titulo="Legenda">
           <ul className="grid grid-cols-1 gap-1">
