@@ -490,7 +490,7 @@ function Resultado({ e, t, base, perfil, iPerfil, escolhas, nome, f, onSeguir, s
 
 // A oferta no fim do quiz (a página de vendas dentro do quiz).
 function Oferta({ e, perfil, iPerfil, f, suave }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; iPerfil: number; f: (s?: string) => string; suave: string }) {
-  const { cor, escuro } = useContext(QuizCtx);
+  const { cor, escuro, editar } = useContext(QuizCtx);
   const o = e.oferta!;
   const url = o.cta_url || perfil?.cta_url;
   const texto = o.cta_texto || perfil?.cta_texto || "Quero começar";
