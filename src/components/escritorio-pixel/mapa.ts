@@ -45,6 +45,11 @@ export const S = {
   balcao: [5, 55, 2, 2], portaVidro: [0, 28, 4, 2], armarioCozinha: [1, 16, 4, 2],
   banco: [4, 31, 1, 1], bancoEscuro: [4, 32, 1, 1], globo: [12, 66, 1, 2], mapaMundi: [10, 66, 2, 2],
   quadroA: [0, 72, 1, 1], quadroB: [0, 74, 1, 1], quadroC: [0, 76, 1, 1],
+  mesaSeg: [7, 33, 1, 2], mesaSegTopo: [7, 33, 1, 1], mesaSegEscura: [4, 33, 1, 2], mesaSegEscuraTopo: [4, 33, 1, 1],
+  sofaVermelho: [8, 18, 2, 2], poltrona: [10, 18, 1, 2], estanteLivros2: [5, 16, 2, 2],
+  prateleiraA: [10, 72, 2, 2], prateleiraB: [12, 72, 2, 2], prateleiraC: [14, 72, 2, 2],
+  tapeteAzulPeq: [11, 16, 2, 1], tapeteVerdePeq: [11, 18, 2, 1], tapeteVermelhoPeq: [11, 20, 2, 1], tapeteBege: [3, 42, 3, 2],
+  luminaria: [12, 56, 1, 3], abajur: [14, 53, 1, 2],
 } satisfies Record<string, Recorte>;
 
 export interface Movel {

@@ -792,8 +792,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       )}
       {import.meta.env.DEV && mundoPixel && (
         <Suspense fallback={null}>
-          <EscritorioPixel clienteId={clienteId} funcionarios={dados3d.funcionarios}
-            setores={setoresDoMapa.map((st) => ({ id: st.id, nome: st.nome, cor: st.corPlaca, pessoas: dados3d.funcionarios.filter((f) => f.setorId === st.id).length }))} resultado={dados3d.resultado} onSair={() => setMundoPixel(false)}
+          <EscritorioPixel funcionarios={dados3d.funcionarios} setores={setoresDoMapa} resultado={dados3d.resultado} onSair={() => setMundoPixel(false)}
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
               if (!m) return;

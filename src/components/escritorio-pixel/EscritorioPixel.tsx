@@ -1,31 +1,84 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Loader2, LocateFixed, MessageCircle, Minus, Pencil, Play, Plus, RotateCcw, X } from "lucide-react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays, CheckSquare, Eye, Loader2, LocateFixed, MessageCircle, Play, Users, X } from "lucide-react";
+import { addDays, format, isToday, isTomorrow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { chamarGoogleCalendar, type GoogleCalendarEvent } from "@/lib/googleCalendar";
 import type { Funcionario3D, Resultado3D } from "@/components/escritorio3d/EscritorioVirtual";
 import { criarMundo, type EstadoPixel, type ModoCamera, type MundoPixel, type PessoaPixel } from "./motor";
-import { PAREDES, PISOS, type Parede, type Piso } from "./mapa";
-import {
-  LIMITES, SALAS_COMUNS, arrumacaoPadrao, arrumacaoValida, estiloDoEspaco, gerarPlanta, nomeDoConteudo, redimensionar,
-  type Arrumacao, type Conteudo, type SalaComum, type SetorPixel,
-} from "./planta";
+import { montarCena, salaDoSetor } from "./cena";
 
-// Protótipo do escritório em pixel art (PixiJS desenha o mapa; o React cuida do painel à direita).
-// Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial e ficam fora do git.
+// Escritório em pixel art (24/10: cena fixa copiada da imagem de referência do Davi).
+// O PixiJS desenha o mapa; o React cuida do painel da direita. Ocupa a área da página, entre a barra
+// lateral do app e o painel. Só roda no `npm run dev`: os sprites gratuitos da LimeZu têm licença não comercial.
 
+const COR: Record<EstadoPixel, string> = {
+  trabalhando: "bg-emerald-500", esperando: "bg-amber-400", problema: "bg-rose-500", parado: "bg-slate-400", reuniao: "bg-violet-500",
+};
 const ROTULO: Record<EstadoPixel, string> = {
   trabalhando: "Trabalhando", esperando: "Esperando você", problema: "Com problema", parado: "Sem tarefa", reuniao: "Em reunião",
 };
-const COR: Record<EstadoPixel, string> = {
-  trabalhando: "bg-emerald-500", esperando: "bg-amber-500", problema: "bg-rose-500", parado: "bg-slate-400", reuniao: "bg-violet-400",
-};
+const LEGENDA: [string, string][] = [
+  ["bg-sky-400", "Você"], ["bg-emerald-500", "Funcionário trabalhando"], ["bg-violet-500", "Reunião"],
+  ["bg-amber-400", "Tarefa esperando você"], ["bg-rose-500", "Problema"], ["bg-slate-400", "Sem tarefa"],
+];
+const CORES_AVATAR = ["bg-amber-600", "bg-sky-600", "bg-emerald-600", "bg-rose-600", "bg-violet-600", "bg-orange-600"];
 
-const chaveArrumacao = (clienteId: string) => `escritorio-pixel:arrumacao:${clienteId}`;
-const mesmoConteudo = (a: Conteudo, b: Conteudo) =>
-  a.tipo === b.tipo && (a.tipo !== "setor" || (b.tipo === "setor" && a.setorId === b.setorId));
+function Avatar({ nome, className }: { nome: string; className?: string }) {
+  const k = [...nome].reduce((s, c) => s + c.charCodeAt(0), 0) % CORES_AVATAR.length;
+  return (
+    <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border border-black/40 text-xs font-black text-white", CORES_AVATAR[k], className)}>
+      {nome.trim()[0]?.toUpperCase() ?? "?"}
+    </span>
+  );
+}
 
-export default function EscritorioPixel({ clienteId, setores, funcionarios, resultado, onSair, onConversar, onAbrirTarefa }: {
-  clienteId: string;
-  setores: SetorPixel[];
+const Card = ({ icone: Icone, titulo, children }: { icone: typeof Users; titulo: string; children: React.ReactNode }) => (
+  <section className="rounded-lg border border-white/10 bg-[#121a2b] p-3">
+    <h3 className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold text-white/90"><Icone className="h-3.5 w-3.5 text-sky-300" />{titulo}</h3>
+    {children}
+  </section>
+);
+
+/** Ocupa exatamente a área do <main> do app (a barra lateral e as abas de cima continuam visíveis). */
+function useAreaDaPagina() {
+  const [area, setArea] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const el = document.querySelector("main");
+    if (!el) return;
+    const medir = () => { const r = el.getBoundingClientRect(); setArea({ left: r.left, top: r.top, width: r.width, height: r.height }); };
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    window.addEventListener("resize", medir);
+    return () => { obs.disconnect(); window.removeEventListener("resize", medir); };
+  }, []);
+  return area;
+}
+
+/** Próximo evento da agenda do Google (7 dias); null quando não há (ou a agenda não está ligada). */
+function useProximaReuniao() {
+  const [evento, setEvento] = useState<GoogleCalendarEvent | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelado = false;
+    const agora = new Date();
+    chamarGoogleCalendar<{ events: GoogleCalendarEvent[] }>({
+      action: "events", calendarIds: ["primary"], timeMin: agora.toISOString(), timeMax: addDays(agora, 7).toISOString(),
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }).then((r) => {
+      if (cancelado) return;
+      const futuros = r.events
+        .filter((e) => e.status !== "cancelled" && e.start.dateTime && new Date(e.start.dateTime) >= agora)
+        .sort((a, b) => +new Date(a.start.dateTime!) - +new Date(b.start.dateTime!));
+      setEvento(futuros.find((e) => /reuni|call|meet|alinhamento/i.test(e.summary ?? "")) ?? futuros[0] ?? null);
+    }).catch(() => { if (!cancelado) setEvento(null); });
+    return () => { cancelado = true; };
+  }, []);
+  return evento;
+}
+
+export default function EscritorioPixel({ setores, funcionarios, resultado, onSair, onConversar, onAbrirTarefa }: {
+  setores: { id: string; nome: string }[];
   funcionarios: (Funcionario3D & { setorId?: string | null })[];
   resultado: Resultado3D | null;
   onSair: () => void;
@@ -34,35 +87,25 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
 }) {
   const caixa = useRef<HTMLDivElement>(null);
   const mundo = useRef<MundoPixel | null>(null);
+  const area = useAreaDaPagina();
+  const reuniao = useProximaReuniao();
   const [pronto, setPronto] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
-  // Simulação local de estado (para ver o comportamento sem mexer nas tarefas de verdade).
-  const [simulado, setSimulado] = useState<Record<string, EstadoPixel>>({});
   const [camera, setCamera] = useState<ModoCamera>("geral");
-  const [editando, setEditando] = useState(false);
-  const [espaco, setEspaco] = useState<number | null>(null);
-  // Arrumação das salas: fica salva neste computador enquanto é protótipo.
-  const [arrumacao, setArrumacao] = useState<Arrumacao>(() => {
-    try {
-      const salva = arrumacaoValida(JSON.parse(localStorage.getItem(chaveArrumacao(clienteId)) ?? "null"), setores);
-      if (salva) return salva;
-    } catch { /* sem armazenamento: usa o padrão */ }
-    return arrumacaoPadrao(setores);
-  });
-  useEffect(() => { try { localStorage.setItem(chaveArrumacao(clienteId), JSON.stringify(arrumacao)); } catch { /* ignora */ } }, [arrumacao, clienteId]);
-  const planta = useMemo(() => gerarPlanta(arrumacao, setores), [arrumacao, setores]);
-  const plantaInicial = useRef(planta);
+  const cena = useMemo(() => montarCena(), []);
 
+  const nomeSetor = useMemo(() => new Map(setores.map((s) => [s.id, s.nome])), [setores]);
+  // Cada pessoa vai para a sala do setor dela (pelo nome do setor); setor sem sala trabalha na Área Colaborativa.
   const pessoas = useMemo<PessoaPixel[]>(() => funcionarios.map((f) => ({
-    id: f.id, nome: f.nome, estado: simulado[f.id] ?? f.sinal, agora: f.agora ?? null,
-    setorId: f.setorId ?? null,
-  })), [funcionarios, simulado]);
+    id: f.id, nome: f.nome, estado: f.sinal, agora: f.agora ?? null,
+    setorId: salaDoSetor(nomeSetor.get(f.setorId ?? "") ?? ""),
+  })), [funcionarios, nomeSetor]);
 
   useEffect(() => {
     let cancelado = false;
     let criado: MundoPixel | null = null;
-    criarMundo(caixa.current!, { aoClicar: setSelecionado, aoClicarEspaco: setEspaco, aoMudarCamera: setCamera }, plantaInicial.current).then((m) => {
+    criarMundo(caixa.current!, { aoClicar: setSelecionado, aoMudarCamera: setCamera }, cena).then((m) => {
       if (cancelado) { m.destruir(); return; }
       criado = m;
       mundo.current = m;
@@ -72,250 +115,112 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
       if (!cancelado) setErro("Não consegui carregar os sprites. Eles ficam em public/escritorio-pixel (só no computador do Davi, fora do git).");
     });
     return () => { cancelado = true; criado?.destruir(); mundo.current = null; };
-  }, []);
+  }, [cena]);
 
   useEffect(() => { if (pronto) mundo.current?.atualizar(pessoas, resultado); }, [pronto, pessoas, resultado]);
   useEffect(() => { mundo.current?.selecionar(selecionado); }, [pronto, selecionado]);
-  useEffect(() => { if (pronto) mundo.current?.definirPlanta(planta); }, [pronto, planta]);
-  useEffect(() => { mundo.current?.editar(editando, espaco); }, [pronto, editando, espaco]);
   useEffect(() => { mundo.current?.camera(camera); }, [pronto, camera]);
   useEffect(() => {
-    const tecla = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (editando) { if (espaco != null) setEspaco(null); else setEditando(false); } else if (selecionado) setSelecionado(null); else onSair();
-    };
+    const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") { if (selecionado) setSelecionado(null); else onSair(); } };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
-  }, [selecionado, onSair, editando, espaco]);
+  }, [selecionado, onSair]);
 
-  const escolher = (c: Conteudo) => {
-    if (espaco == null) return;
-    setArrumacao((a) => {
-      const nova = [...a.espacos];
-      const outro = c.tipo === "vazio" ? -1 : nova.findIndex((e, k) => k !== espaco && mesmoConteudo(e.conteudo, c));
-      // Já está em outro lugar: troca os dois de lugar (com piso e parede).
-      if (outro >= 0) [nova[espaco], nova[outro]] = [nova[outro], nova[espaco]];
-      else nova[espaco] = { conteudo: c };
-      return { ...a, espacos: nova };
-    });
+  // Card "Tarefa atual": quem está selecionado; sem seleção, quem está mais adiantado numa tarefa.
+  const emFoco = funcionarios.find((f) => f.id === selecionado)
+    ?? [...funcionarios].filter((f) => f.tarefa && f.sinal === "trabalhando").sort((a, b) => (b.tarefa?.progresso ?? -1) - (a.tarefa?.progresso ?? -1))[0]
+    ?? null;
+  const setorDe = (f: { setorId?: string | null }) => nomeSetor.get(f.setorId ?? "") ?? "Sem setor";
+  const quando = (e: GoogleCalendarEvent) => {
+    const d = new Date(e.start.dateTime!);
+    return `${isToday(d) ? "Hoje" : isTomorrow(d) ? "Amanhã" : format(d, "EEE dd/MM", { locale: ptBR })} · ${format(d, "HH:mm")}`;
   };
-  const estilo = (campo: "piso" | "parede", valor: Piso | Parede) => {
-    if (espaco == null) return;
-    setArrumacao((a) => ({ ...a, espacos: a.espacos.map((e, k) => (k === espaco ? { ...e, [campo]: valor } : e)) }));
-  };
-  const mudarTamanho = (campo: "colunas" | "fileiras", delta: number) => {
-    setEspaco(null);
-    setArrumacao((a) => {
-      const [min, max] = LIMITES[campo];
-      const novo = Math.min(max, Math.max(min, a[campo] + delta));
-      if (novo === a[campo]) return a;
-      return campo === "colunas" ? redimensionar(a, novo, a.fileiras) : redimensionar(a, a.colunas, novo);
-    });
-  };
-  const foraDoMapa = setores.filter((s) => !arrumacao.espacos.some((e) => e.conteudo.tipo === "setor" && e.conteudo.setorId === s.id));
-
-  const f = funcionarios.find((x) => x.id === selecionado) ?? null;
-  const p = pessoas.find((x) => x.id === selecionado) ?? null;
-  const ordem: EstadoPixel[] = ["problema", "esperando", "trabalhando", "reuniao", "parado"];
 
   return (
-    <div className="fixed inset-0 z-[60] flex bg-[#17151f] text-white">
+    <div className="fixed z-[40] flex bg-[#0b1120] text-white"
+      style={area ? { left: area.left, top: area.top, width: area.width, height: area.height } : { inset: 0 }}>
       <div className="relative min-w-0 flex-1">
         <div ref={caixa} className="absolute inset-0" />
         {!pronto && !erro && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>
         )}
         {erro && <div className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-rose-300">{erro}</div>}
-        <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/50 px-2.5 py-1 text-[11px] text-white/70">
-          {editando ? "Modo edição: mude o tamanho no painel e clique num espaço para escolher o setor ou a sala" : "Setas ou WASD andam · E conversa com quem está perto · Z alterna a câmera"}
-        </div>
-        <div className="absolute right-3 top-3 flex gap-2">
-          {!editando && (
-            <button type="button" onClick={() => setCamera((c) => (c === "geral" ? "seguir" : "geral"))}
-              className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/60 px-2.5 py-1.5 text-xs font-semibold hover:bg-black/80">
-              {camera === "geral" ? <><LocateFixed className="h-3.5 w-3.5" />Seguir meu boneco</> : <><Eye className="h-3.5 w-3.5" />Visão geral</>}
-            </button>
-          )}
-          <button type="button" onClick={() => { setEditando((v) => !v); setEspaco(null); setSelecionado(null); }}
-            className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold", editando ? "border-sky-400 bg-sky-600 hover:bg-sky-500" : "border-white/15 bg-black/60 hover:bg-black/80")}>
-            <Pencil className="h-3.5 w-3.5" />{editando ? "Sair da edição" : "Modo edição"}
-          </button>
-        </div>
-        <p className="pointer-events-none absolute bottom-2 left-3 text-[10px] text-white/35">Protótipo · sprites gratuitos da LimeZu (uso não comercial, só neste computador)</p>
+        <p className="pointer-events-none absolute bottom-1.5 left-2 text-[10px] text-white/35">Setas ou WASD andam · E conversa · Z alterna a câmera · Esc sai · sprites gratuitos LimeZu (uso não comercial)</p>
       </div>
 
-      <aside className="flex w-80 shrink-0 flex-col border-l border-white/10 bg-[#1f1c29]">
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-          <h2 className="text-sm font-semibold">Escritório</h2>
-          <button type="button" onClick={onSair} className="rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white" title="Sair (Esc)"><X className="h-4 w-4" /></button>
+      <aside className="flex w-[264px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => setCamera((c) => (c === "geral" ? "seguir" : "geral"))}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-white/10 bg-[#121a2b] px-2 py-1.5 text-[11px] font-semibold hover:bg-[#18233a]">
+            {camera === "geral" ? <><LocateFixed className="h-3.5 w-3.5" />Seguir meu boneco</> : <><Eye className="h-3.5 w-3.5" />Visão geral</>}
+          </button>
+          <button type="button" onClick={onSair} className="rounded-md border border-white/10 bg-[#121a2b] p-1.5 text-white/60 hover:text-white" title="Sair (Esc)"><X className="h-3.5 w-3.5" /></button>
         </div>
 
-        {editando ? (
-          <div className="space-y-4 overflow-y-auto p-4">
-            <div>
-              <p className="text-base font-bold">Modo edição</p>
-              <p className="mt-1 text-xs text-white/60">Escolha o tamanho do escritório e, depois, clique num espaço do mapa para dizer o que fica nele. Cada setor ganha uma mesa por pessoa (até 6).</p>
-            </div>
-            <div className="rounded-lg border border-white/10 p-3">
-              <p className="mb-2 text-[11px] uppercase tracking-wide text-white/50">Tamanho do escritório</p>
-              {([["colunas", "Salas por fileira"], ["fileiras", "Fileiras"]] as const).map(([campo, rotulo]) => (
-                <div key={campo} className="flex items-center justify-between py-1">
-                  <span className="text-sm">{rotulo}</span>
-                  <div className="flex items-center gap-2">
-                    <button type="button" aria-label={`Menos ${rotulo.toLowerCase()}`} disabled={arrumacao[campo] <= LIMITES[campo][0]} onClick={() => mudarTamanho(campo, -1)}
-                      className="rounded-md border border-white/15 p-1 hover:bg-white/10 disabled:opacity-30"><Minus className="h-3.5 w-3.5" /></button>
-                    <span className="w-4 text-center text-sm font-semibold">{arrumacao[campo]}</span>
-                    <button type="button" aria-label={`Mais ${rotulo.toLowerCase()}`} disabled={arrumacao[campo] >= LIMITES[campo][1]} onClick={() => mudarTamanho(campo, 1)}
-                      className="rounded-md border border-white/15 p-1 hover:bg-white/10 disabled:opacity-30"><Plus className="h-3.5 w-3.5" /></button>
-                  </div>
-                </div>
-              ))}
-              <p className="mt-1 text-[11px] text-white/45">{arrumacao.colunas * arrumacao.fileiras} espaços. Ao diminuir, as salas cortadas vão para os espaços vazios.</p>
-            </div>
-            {espaco == null ? (
-              <div className="rounded-lg border border-dashed border-white/20 p-3 text-sm text-white/60">Nenhum espaço escolhido. Clique numa sala do mapa.</div>
-            ) : (
-              <>
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/50">Fileira {Math.floor(espaco / arrumacao.colunas) + 1} · sala {(espaco % arrumacao.colunas) + 1}</p>
-                  <p className="text-sm font-semibold">{nomeDoConteudo(arrumacao.espacos[espaco].conteudo, setores)}</p>
-                </div>
-                <div>
-                  <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/50">Setores</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {setores.map((s) => {
-                      const c: Conteudo = { tipo: "setor", setorId: s.id };
-                      const aqui = mesmoConteudo(arrumacao.espacos[espaco].conteudo, c);
-                      const outro = !aqui && arrumacao.espacos.some((e) => mesmoConteudo(e.conteudo, c));
-                      return (
-                        <button key={s.id} type="button" onClick={() => escolher(c)} title={outro ? `${s.nome} já está em outro espaço: troca os dois de lugar` : s.nome}
-                          className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs", aqui ? "border-white/70 bg-white/15" : "border-white/15 text-white/80 hover:bg-white/10")}>
-                          <span className="h-2 w-2 rounded-full" style={{ background: s.cor }} />{s.nome}{outro && <span className="text-white/40">↔</span>}
-                        </button>
-                      );
-                    })}
-                    {!setores.length && <p className="text-xs text-white/50">Este projeto ainda não tem setores.</p>}
-                  </div>
-                </div>
-                <div>
-                  <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/50">Salas comuns</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {([...Object.keys(SALAS_COMUNS), "vazio"] as (SalaComum | "vazio")[]).map((t) => {
-                      const c = { tipo: t } as Conteudo;
-                      const aqui = mesmoConteudo(arrumacao.espacos[espaco].conteudo, c);
-                      return (
-                        <button key={t} type="button" onClick={() => escolher(c)}
-                          className={cn("rounded-full border px-2.5 py-1 text-xs", aqui ? "border-white/70 bg-white/15" : "border-white/15 text-white/80 hover:bg-white/10")}>
-                          {t === "vazio" ? "Vazio (passagem)" : SALAS_COMUNS[t]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                {arrumacao.espacos[espaco].conteudo.tipo !== "vazio" && (
-                  <>
-                    <div>
-                      <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/50">Piso</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(Object.keys(PISOS) as Piso[]).map((k) => (
-                          <button key={k} type="button" onClick={() => estilo("piso", k)} title={PISOS[k].nome}
-                            className={cn("h-7 w-7 rounded-md border-2", estiloDoEspaco(arrumacao.espacos[espaco], setores).piso === k ? "border-white" : "border-transparent")}
-                            style={{ background: PISOS[k].amostra }} />
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/50">Parede</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(Object.keys(PAREDES) as Parede[]).map((k) => (
-                          <button key={k} type="button" onClick={() => estilo("parede", k)} title={PAREDES[k].nome}
-                            className={cn("h-7 w-7 rounded-md border-2", estiloDoEspaco(arrumacao.espacos[espaco], setores).parede === k ? "border-white" : "border-transparent")}
-                            style={{ background: PAREDES[k].amostra }} />
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-            {foraDoMapa.length > 0 && (
-              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-                Fora do mapa: {foraDoMapa.map((s) => s.nome).join(", ")}. Quem é desses setores trabalha na mesa de reunião da Área Colaborativa.
-              </div>
-            )}
-            <div className="flex gap-2">
-              <button type="button" onClick={() => { setArrumacao(arrumacaoPadrao(setores)); setEspaco(null); }}
-                className="flex items-center gap-1.5 rounded-md border border-white/15 px-3 py-2 text-xs hover:bg-white/10"><RotateCcw className="h-3.5 w-3.5" />Arrumação padrão</button>
-              <button type="button" onClick={() => { setEditando(false); setEspaco(null); }}
-                className="flex-1 rounded-md bg-sky-600 px-3 py-2 text-sm font-semibold hover:bg-sky-500">Pronto</button>
-            </div>
-          </div>
-        ) : f && p ? (
-          <div className="space-y-4 overflow-y-auto p-4">
+        <Card icone={CheckSquare} titulo="Tarefa atual">
+          {emFoco ? (
             <div>
               <div className="flex items-center gap-2">
-                <p className="text-lg font-bold">{f.nome}</p>
-                {f.ehIa && <span className="rounded bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300">IA</span>}
-              </div>
-              <p className="mt-1 flex items-center gap-1.5 text-xs text-white/70"><span className={cn("h-2 w-2 rounded-full", COR[p.estado])} />{ROTULO[p.estado]}</p>
-            </div>
-            {f.agora && <p className="rounded-lg bg-white/5 p-2.5 text-sm text-white/80">{f.agora}</p>}
-            <div className="rounded-lg border border-white/10 p-3">
-              <p className="text-[11px] uppercase tracking-wide text-white/50">Tarefa atual</p>
-              {f.tarefa ? (
-                <>
-                  <p className="mt-1 text-sm font-medium">{f.tarefa.titulo}</p>
-                  {f.tarefa.progresso != null && (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round(f.tarefa.progresso)}%` }} /></div>
+                <Avatar nome={emFoco.nome} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-semibold">{emFoco.tarefa?.titulo ?? emFoco.agora ?? ROTULO[emFoco.sinal]}</p>
+                  {emFoco.tarefa?.progresso != null && (
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.round(emFoco.tarefa.progresso)}%` }} /></div>
+                      <span className="text-[10px] font-semibold">{Math.round(emFoco.tarefa.progresso)}%</span>
+                    </div>
                   )}
-                  <p className="mt-1.5 text-xs text-white/60">
-                    {f.tarefa.progresso != null ? `${Math.round(f.tarefa.progresso)}%` : "Sem progresso medido"}
-                    {f.tarefa.minutosRestantes != null && ` · faltam ~${f.tarefa.minutosRestantes} min`}
-                  </p>
-                </>
-              ) : <p className="mt-1 text-sm text-white/60">Nenhuma tarefa agora.</p>}
-            </div>
-            <div className="flex gap-2">
-              <button type="button" disabled={!f.tarefa} onClick={() => onAbrirTarefa(f)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/15 disabled:opacity-40"><Play className="h-3.5 w-3.5" />Abrir tarefa</button>
-              <button type="button" disabled={f.clicavel === false} onClick={() => onConversar(f.id)}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-md bg-sky-600 px-3 py-2 text-sm font-medium hover:bg-sky-500 disabled:opacity-40"><MessageCircle className="h-3.5 w-3.5" />Conversar</button>
-            </div>
-            <div className="border-t border-white/10 pt-3">
-              <p className="mb-2 text-[11px] uppercase tracking-wide text-white/50">Simular estado (só no protótipo)</p>
-              <div className="flex flex-wrap gap-1.5">
-                {ordem.map((e) => (
-                  <button key={e} type="button" onClick={() => setSimulado((s) => ({ ...s, [f.id]: e }))}
-                    className={cn("rounded-full border px-2 py-0.5 text-[11px]", p.estado === e ? "border-white/60 bg-white/15" : "border-white/15 text-white/70 hover:bg-white/10")}>{ROTULO[e]}</button>
-                ))}
+                </div>
+              </div>
+              <p className="mt-1.5 text-[11px] text-white/55">{emFoco.nome} · {setorDe(emFoco)}{emFoco.tarefa?.minutosRestantes != null && ` · ~${emFoco.tarefa.minutosRestantes} min`}</p>
+              <div className="mt-2 flex gap-1.5">
+                <button type="button" disabled={!emFoco.tarefa} onClick={() => onAbrirTarefa(emFoco)}
+                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/15 disabled:opacity-40"><Play className="h-3 w-3" />Abrir tarefa</button>
+                <button type="button" disabled={emFoco.clicavel === false} onClick={() => onConversar(emFoco.id)}
+                  className="flex flex-1 items-center justify-center gap-1 rounded-md bg-sky-600 px-2 py-1 text-[11px] font-medium hover:bg-sky-500 disabled:opacity-40"><MessageCircle className="h-3 w-3" />Conversar</button>
               </div>
             </div>
-            <button type="button" onClick={() => setSelecionado(null)} className="text-xs text-white/50 hover:text-white">← Ver toda a equipe</button>
-          </div>
-        ) : (
-          <div className="space-y-4 overflow-y-auto p-4">
-            {ordem.map((estado) => {
-              const grupo = pessoas.filter((x) => x.estado === estado);
-              if (!grupo.length) return null;
-              return (
-                <div key={estado}>
-                  <p className="mb-1.5 flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/50"><span className={cn("h-2 w-2 rounded-full", COR[estado])} />{ROTULO[estado]} · {grupo.length}</p>
-                  <div className="space-y-1">
-                    {grupo.map((x) => (
-                      <button key={x.id} type="button" onClick={() => setSelecionado(x.id)}
-                        className="block w-full truncate rounded-md px-2 py-1.5 text-left text-sm hover:bg-white/10">
-                        <span className="font-medium">{x.nome}</span>
-                        {x.agora && <span className="text-white/50"> · {x.agora}</span>}
-                      </button>
-                    ))}
-                  </div>
+          ) : <p className="text-[11px] text-white/55">Ninguém com tarefa agora.</p>}
+        </Card>
+
+        <Card icone={CalendarDays} titulo="Próxima reunião">
+          {reuniao === undefined ? <p className="text-[11px] text-white/45">Carregando a agenda…</p>
+            : reuniao ? (
+              <div className="flex items-center gap-2">
+                <Avatar nome={reuniao.summary ?? "R"} />
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-semibold">{reuniao.summary ?? "Reunião"}</p>
+                  <p className="text-[11px] text-white/55">{quando(reuniao)}</p>
                 </div>
-              );
-            })}
-            {!pessoas.length && <p className="text-sm text-white/60">Ninguém na equipe ainda.</p>}
-            <p className="text-[11px] leading-relaxed text-white/40">Clique num funcionário no mapa para ver a tarefa. Ande com o seu boneco (setas ou WASD) e aperte E perto de alguém para conversar. Quem trabalha fica na mesa do setor; quem espera você vai para a área comum com “!”; sem tarefa vai para o sofá ou a copa.</p>
-          </div>
-        )}
+              </div>
+            ) : <p className="text-[11px] text-white/45">Nada marcado nos próximos 7 dias.</p>}
+        </Card>
+
+        <Card icone={Users} titulo="Funcionários online">
+          <ul className="space-y-0.5">
+            <li className="flex items-center gap-2 rounded px-1 py-0.5 text-[12px]">
+              <span className="h-2 w-2 rounded-full bg-sky-400" /><span className="flex-1 font-medium">Davi</span><span className="text-[10px] text-white/45">CEO · você</span>
+            </li>
+            {funcionarios.map((f) => (
+              <li key={f.id}>
+                <button type="button" onClick={() => setSelecionado(f.id)} title={ROTULO[f.sinal]}
+                  className={cn("flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-[12px] hover:bg-white/5", selecionado === f.id && "bg-white/10")}>
+                  <span className={cn("h-2 w-2 shrink-0 rounded-full", COR[f.sinal])} />
+                  <span className="flex-1 truncate font-medium">{f.nome}</span>
+                  <span className="truncate text-[10px] text-white/45">{setorDe(f)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Card>
+
+        <Card icone={Eye} titulo="Legenda">
+          <ul className="grid grid-cols-1 gap-1">
+            {LEGENDA.map(([cor, rotulo]) => (
+              <li key={rotulo} className="flex items-center gap-2 text-[11px] text-white/75"><span className={cn("h-2 w-2 rounded-full", cor)} />{rotulo}</li>
+            ))}
+          </ul>
+        </Card>
       </aside>
     </div>
   );

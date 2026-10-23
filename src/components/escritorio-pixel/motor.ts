@@ -1,6 +1,7 @@
 import { AnimatedSprite, Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TextureStyle } from "pixi.js";
 import { PAREDES, PISOS, TILE, caminho, type Estacao, type Recorte, type TipoEstacao } from "./mapa";
-import type { Planta } from "./planta";
+import type { Planta } from "./cena";
+import { canvasDaLuz, desenharDecor } from "./decor";
 
 // Motor do mapa em pixel art (PixiJS 8). O React passa a planta e as pessoas e recebe os cliques.
 
@@ -56,22 +57,18 @@ function tipoDesejado(p: PessoaPixel): TipoEstacao[] {
   if (p.estado === "reuniao") return ["reuniao", "espera", "sofa"];
   if (p.estado === "trabalhando" || p.estado === "problema") return ["mesa", "reuniao", "espera", "sofa"];
   if (p.estado === "esperando") return ["espera", "sofa", "copa"];
-  return ["sofa", "copa", "espera"];
+  return ["copa", "sofa", "espera"];
 }
 
 export interface MundoPixel {
-  definirPlanta(planta: Planta): void;
   atualizar(pessoas: PessoaPixel[], resultado: ResultadoPixel | null): void;
   selecionar(id: string | null): void;
-  /** modo de montar: mostra os 9 espaços e o clique escolhe um */
-  editar(ativo: boolean, espacoSelecionado: number | null): void;
   camera(modo: ModoCamera): void;
   destruir(): void;
 }
 
 export interface Avisos {
   aoClicar: (id: string | null) => void;
-  aoClicarEspaco: (indice: number) => void;
   aoMudarCamera: (modo: ModoCamera) => void;
 }
 
@@ -115,8 +112,9 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   const cena = new Container();
   cena.sortableChildren = true;
   const topo = new Container();
-  const camadaEdicao = new Container();
-  mundo.addChild(chao, cena, topo, camadaEdicao);
+  // Luz quente das luminárias, somada por cima da cena (fica abaixo dos nomes e balões).
+  const iluminacao = new Container();
+  mundo.addChild(chao, cena, iluminacao, topo);
   let escala = 1;
   const textos = new Set<Text>();
   const texto = (t: string, tamanho: number, cor = 0xffffff, peso: "400" | "700" | "800" = "700") => {
@@ -133,33 +131,42 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     }
   };
 
-  let atual = planta;
+  const atual = planta;
   let ultimoResultado: ResultadoPixel | null = null;
   let tela: Container | null = null;
   // Móveis, placas e a tela ficam na cena (ordenados pela altura junto com as pessoas).
   let estaticos: Container[] = [];
 
+  // Placar "Nosso Resultado" (o maior destaque da cena, como na referência).
   const desenharTela = () => {
-    if (!tela || !atual.tela) return;
+    if (!tela) return;
     limpar(tela);
     const r = ultimoResultado;
     const w = atual.tela.w * TILE, h = atual.tela.h * TILE;
-    tela.addChild(new Graphics().rect(0, 0, w, h).fill(0x0b1220).stroke({ color: 0x1f2937, width: 2 }));
-    const titulo = texto("NOSSO RESULTADO", 5.5, 0xfbbf24, "800");
-    titulo.position.set(5, 3);
+    const g = new Graphics().roundRect(0, 0, w, h, 3).fill(0x0f172a).stroke({ color: 0x334155, width: 1.5 });
+    [3, 5, 7].forEach((b, i) => g.rect(6 + i * 2.2, 10 - b, 1.6, b).fill(0x60a5fa));
+    tela.addChild(g);
+    const titulo = texto("NOSSO RESULTADO", 5, 0xffffff, "800");
+    titulo.position.set(15, 4);
     tela.addChild(titulo);
-    const caixas = r ? [
-      [String(r.concluidas), "entregues", 0xffffff], [String(r.publicados), "posts", 0xffffff],
-      [String(r.faltam), r.atrasadas ? `${r.atrasadas} atrasadas` : "faltam", r.atrasadas ? 0xfca5a5 : 0xffffff],
-    ] as const : [];
+    const caixas = [
+      [r ? String(r.concluidas) : "–", "entregues", 0x4ade80], [r ? String(r.publicados) : "–", "posts", 0x60a5fa],
+      [r ? String(r.atrasadas) : "–", "atrasadas", 0xf472b6],
+    ] as const;
     const larg = (w - 10) / 3;
     caixas.forEach(([valor, rotulo, cor], i) => {
       const x = 5 + i * larg;
-      tela!.addChild(new Graphics().roundRect(x, 13, larg - 3, h - 17, 2).fill(0x16233a));
-      const v = texto(valor, 11, cor, "800"); v.position.set(x + 4, 14); tela!.addChild(v);
-      const rt = texto(rotulo, 4.5, 0x94a3b8, "700"); rt.position.set(x + 4, 29); tela!.addChild(rt);
+      tela!.addChild(new Graphics().roundRect(x, 14, larg - 2.5, 30, 2).fill(0x1e293b));
+      const v = texto(valor, 11, cor, "800"); v.position.set(x + 4, 15); tela!.addChild(v);
+      const rt = texto(rotulo, 4, 0xcbd5e1, "700"); rt.position.set(x + 4, 34); tela!.addChild(rt);
     });
-    if (!r) { const t = texto("carregando…", 5, 0x94a3b8); t.position.set(5, 18); tela.addChild(t); }
+    const destaque = r?.destaque || "—";
+    const linha = texto(`Destaque: ${destaque}`, 4.6, 0xffffff, "700");
+    const lw = linha.width + 16;
+    tela.addChild(new Graphics().roundRect(w / 2 - lw / 2, 49, lw, 14, 2).fill(0x1e293b)
+      .circle(w / 2 - lw / 2 + 6, 56, 3.2).fill(0xfbbf24).rect(w / 2 - lw / 2 + 4.5, 54.5, 1, 1).fill(0x1f2937).rect(w / 2 - lw / 2 + 6.5, 54.5, 1, 1).fill(0x1f2937));
+    linha.position.set(w / 2 - lw / 2 + 12, 52);
+    tela.addChild(linha);
   };
 
   const montarCenario = () => {
@@ -167,6 +174,8 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     for (const s of estaticos) { s.children.forEach((f) => { if (f instanceof Text) textos.delete(f); }); s.destroy({ children: true }); }
     estaticos = [];
     const { grade, largura: LARGURA, altura: ALTURA } = atual;
+    // Fundo do prédio (por trás das paredes e divisórias): marrom bem escuro, nada de preto.
+    chao.addChild(new Graphics().rect(0, 0, LARGURA * TILE, (ALTURA - 3) * TILE).fill(0x221913));
     for (let y = 0; y < ALTURA; y++) {
       for (let x = 0; x < LARGURA; x++) {
         const c = grade[y][x];
@@ -200,26 +209,44 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
       cena.addChild(s);
       estaticos.push(s);
     }
-    // Placas com o nome de cada sala (na parede).
+    // Desenhos (quadros, monitores, objetos, câmera, Atlas, tapete da entrada, jardim).
+    for (const dc of atual.decor) {
+      const c = desenharDecor(dc, texto);
+      if (dc.z === "chao") { chao.addChild(c); continue; }
+      c.zIndex = dc.z === "parede" ? -1 : (dc.z ?? dc.y + dc.h) * TILE;
+      cena.addChild(c);
+      estaticos.push(c);
+    }
+    // Luz quente.
+    limpar(iluminacao);
+    const texLuz = Texture.from(canvasDaLuz());
+    iluminacao.addChild(new Graphics().rect(0, 0, LARGURA * TILE, ALTURA * TILE).fill({ color: 0xffb36b, alpha: 0.07 }));
+    for (const l of atual.luzes) {
+      const sp = new Sprite(texLuz);
+      sp.anchor.set(0.5);
+      sp.position.set(l.x * TILE, l.y * TILE);
+      sp.width = sp.height = l.raio * 2 * TILE;
+      sp.alpha = Math.min(1, 0.75 * (l.forca ?? 1));
+      sp.blendMode = "add";
+      iluminacao.addChild(sp);
+    }
+    // Placas com o ícone e o nome de cada sala (na parede).
     for (const p of atual.placas) {
       const placa = new Container();
-      const tx = texto(p.texto, 5, 0xffffff, "800");
-      const fundo = new Graphics().roundRect(-3, -2, tx.width + 6, tx.height + 3, 1.5).fill(0x1c1917).stroke({ color: Number.parseInt(p.cor.slice(1), 16), width: 0.8 });
+      const tx = texto(p.texto, 5.5, 0xffffff, "800");
+      const fundo = new Graphics().roundRect(-4, -2, tx.width + 8, tx.height + 4, 2).fill({ color: 0x111827, alpha: 0.92 }).stroke({ color: Number.parseInt(p.cor.slice(1), 16), width: 0.8 });
       placa.addChild(fundo, tx);
       placa.position.set(Math.round(p.x * TILE - tx.width / 2), p.y * TILE + 3);
       placa.zIndex = -0.5;
       cena.addChild(placa);
       estaticos.push(placa);
     }
-    tela = null;
-    if (atual.tela) {
-      tela = new Container();
-      tela.position.set(atual.tela.x * TILE, atual.tela.y * TILE);
-      tela.zIndex = -0.5;
-      cena.addChild(tela);
-      estaticos.push(tela);
-      desenharTela();
-    }
+    tela = new Container();
+    tela.position.set(atual.tela.x * TILE, atual.tela.y * TILE);
+    tela.zIndex = -0.5;
+    cena.addChild(tela);
+    estaticos.push(tela);
+    desenharTela();
   };
 
   // Pessoas.
@@ -246,7 +273,16 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   const criarAlerta = (b: Boneco) => {
     limpar(b.alerta);
     const precisa = b.corpo.visible && (b.p.estado === "problema" || b.p.estado === "esperando");
-    b.alerta.visible = precisa;
+    // Balão "…" de quem está conversando: em reunião, na copa ou atendendo no sofá do Sucesso do Cliente.
+    const conversa = b.corpo.visible && !precisa && (b.p.estado === "reuniao" || b.estacao?.tipo === "copa"
+      || (b.estacao?.setorId === "sucesso" && b.estacao.pose === "sofa"));
+    b.alerta.visible = precisa || conversa;
+    if (conversa) {
+      b.alerta.addChild(new Graphics().roundRect(-6, -4, 12, 8, 2.5).fill(0xffffff).stroke({ color: 0x1f2937, width: 0.8 })
+        .poly([-2, 4, 1, 4, -2.5, 7]).fill(0xffffff)
+        .rect(-3.5, -0.5, 1.4, 1.4).fill(0x1f2937).rect(-0.7, -0.5, 1.4, 1.4).fill(0x1f2937).rect(2.1, -0.5, 1.4, 1.4).fill(0x1f2937));
+      return;
+    }
     if (!precisa) return;
     const cor = b.p.estado === "problema" ? 0xef4444 : 0xf59e0b;
     const g = new Graphics().circle(0, 0, 4.2).fill(cor).stroke({ color: 0xffffff, width: 1 });
@@ -308,8 +344,9 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     const alvo = estacao ?? { x: atual.chegada.x, y: atual.chegada.y - 1 };
     const de = { x: Math.round(b.x), y: Math.round(b.y) };
     b.rota = caminho(atual.andavel, de, alvo);
-    // Sem caminho (a sala mudou de lugar por baixo dele): aparece direto no lugar novo.
+    // Sem caminho: aparece direto no lugar.
     if (!b.rota.length && (de.x !== alvo.x || de.y !== alvo.y)) { b.x = alvo.x; b.y = alvo.y; }
+    criarAlerta(b);
   };
 
   // O boneco do Davi: anda com as setas/WASD; E conversa com quem está perto.
@@ -318,7 +355,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     const b: Boneco = {
       p: { id: "__voce", nome: "Você", estado: "trabalhando", setorId: null }, modelo: "Adam", corpo,
       anel: new Graphics().ellipse(0, 0, 7, 3).fill({ color: 0x38bdf8, alpha: 0.35 }).stroke({ color: 0x38bdf8, width: 1 }),
-      etiqueta: new Container(), alerta: new Container(), x: atual.chegada.x, y: atual.chegada.y - 1, rota: [], estacao: null, direcao: "cima", pose: "", espera: 0,
+      etiqueta: new Container(), alerta: new Container(), x: atual.inicioJogador.x, y: atual.inicioJogador.y, rota: [], estacao: null, direcao: "cima", pose: "", espera: 0,
     };
     const tx = texto("VOCÊ", 4, 0x0b1220, "800");
     b.etiqueta.addChild(new Graphics().roundRect(-tx.width / 2 - 2.5, -tx.height - 1, tx.width + 5, tx.height + 1.5, 2).fill(0x7dd3fc), tx);
@@ -333,13 +370,12 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     ArrowUp: "cima", KeyW: "cima", ArrowDown: "baixo", KeyS: "baixo", ArrowLeft: "esq", KeyA: "esq", ArrowRight: "dir", KeyD: "dir",
   };
   let modoCamera: ModoCamera = "geral";
-  let editando = false;
   const aoApertar = (e: KeyboardEvent) => {
     if (ehCampoDeTexto(e.target) || e.metaKey || e.ctrlKey) return;
     if (MAPA_TECLAS[e.code]) {
       e.preventDefault();
       teclas.add(e.code);
-      if (modoCamera === "geral" && !editando) { modoCamera = "seguir"; avisos.aoMudarCamera(modoCamera); ajustar(); }
+      if (modoCamera === "geral") { modoCamera = "seguir"; avisos.aoMudarCamera(modoCamera); ajustar(); }
     } else if (e.code === "KeyE" && perto) {
       avisos.aoClicar(perto);
     } else if (e.code === "KeyZ") {
@@ -390,37 +426,9 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     }
   };
 
-  // Modo de montar: os 9 espaços aparecem com borda e nome; o clique escolhe um.
-  let espacoSelecionado: number | null = null;
-  const desenharEdicao = () => {
-    limpar(camadaEdicao);
-    camadaEdicao.visible = editando;
-    if (!editando) return;
-    for (const e of atual.espacos) {
-      const sel = e.indice === espacoSelecionado;
-      const x = e.x0 * TILE - 2, y = e.y0 * TILE - 2, w = (e.x1 - e.x0 + 1) * TILE + 4, h = (e.y1 - e.y0 + 1) * TILE + 4;
-      const g = new Graphics().rect(x, y, w, h).fill({ color: sel ? 0x38bdf8 : 0x000000, alpha: sel ? 0.22 : 0.25 })
-        .stroke({ color: sel ? 0x38bdf8 : 0xffffff, width: sel ? 2 : 1, alpha: sel ? 1 : 0.5 });
-      const tx = texto(e.nome === "Vazio" ? "+ montar sala" : e.nome, 8, 0xffffff, "800");
-      tx.anchor.set(0.5);
-      tx.position.set(x + w / 2, y + h / 2);
-      const fundo = new Graphics().roundRect(x + w / 2 - tx.width / 2 - 5, y + h / 2 - tx.height / 2 - 3, tx.width + 10, tx.height + 6, 3).fill({ color: 0x0f0d0b, alpha: 0.85 });
-      camadaEdicao.addChild(g, fundo, tx);
-    }
-  };
-
   app.stage.eventMode = "static";
   app.stage.hitArea = app.screen;
-  app.stage.on("pointertap", (e) => {
-    if (editando) {
-      const p = mundo.toLocal(e.global);
-      const tx = p.x / TILE, ty = p.y / TILE;
-      const achado = atual.espacos.find((s) => tx >= s.x0 && tx <= s.x1 + 1 && ty >= s.y0 && ty <= s.y1 + 1);
-      if (achado) avisos.aoClicarEspaco(achado.indice);
-      return;
-    }
-    if (e.target === app.stage) avisos.aoClicar(null);
-  });
+  app.stage.on("pointertap", (e) => { if (e.target === app.stage) avisos.aoClicar(null); });
 
   const novoBoneco = (p: PessoaPixel, atraso: number): Boneco => {
     const modelo = modeloDe(p.id);
@@ -431,7 +439,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
       p, modelo, corpo, anel: new Graphics().ellipse(0, 0, 7, 3).stroke({ color: 0xfacc15, width: 1.2 }).fill({ color: 0xfacc15, alpha: 0.18 }),
       etiqueta: new Container(), alerta: new Container(), x: atual.chegada.x, y: atual.chegada.y, rota: [], estacao: null, direcao: "cima", pose: "", espera: atraso,
     };
-    corpo.on("pointertap", (e) => { if (editando) return; e.stopPropagation(); avisos.aoClicar(p.id); });
+    corpo.on("pointertap", (e) => { e.stopPropagation(); avisos.aoClicar(p.id); });
     corpo.on("pointerover", () => { emCima = b.p.id; atualizarVisual(b); });
     corpo.on("pointerout", () => { if (emCima === b.p.id) emCima = null; atualizarVisual(b); });
     corpo.visible = atraso <= 0;
@@ -448,9 +456,9 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   const ajustarTextos = () => { const r = resolucaoTexto(); for (const tx of textos) if (tx.resolution !== r) tx.resolution = r; };
   const escalaGeral = () => {
     const bruta = Math.min(app.screen.width / (atual.largura * TILE), app.screen.height / (atual.altura * TILE));
-    // Escala em passos de 1/2 (pixel inteiro); na tela Retina, de 1/4 para o mapa ocupar mais a tela.
-    const passos = (window.devicePixelRatio || 1) >= 2 ? 4 : 2;
-    return bruta >= 1 ? Math.max(1, Math.floor(bruta * passos) / passos) : bruta;
+    // 24/10: o mapa ocupa todo o espaço entre a barra lateral e o painel (pedido do Davi), mesmo que o pixel
+    // fique levemente desigual; passos de 1/8 evitam borrar o texto a cada pixel de redimensionamento.
+    return Math.max(0.5, Math.floor(bruta * 0.99 * 8) / 8);
   };
   const posicionarCamera = () => {
     const w = app.screen.width, h = app.screen.height;
@@ -472,7 +480,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   const VELOCIDADE = 3.2; // tiles por segundo
   app.ticker.add((t) => {
     const dt = Math.min(t.deltaMS, 100) / 1000;
-    if (!editando) moverJogador(dt);
+    moverJogador(dt);
     posicionar(jogador);
     jogador.etiqueta.position.set((jogador.x + 0.5) * TILE, (jogador.y + 1) * TILE - 27);
     for (const b of bonecos.values()) {
@@ -510,16 +518,6 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
 
   let destruido = false;
   return {
-    definirPlanta(p) {
-      if (destruido || p === atual) return;
-      atual = p;
-      montarCenario();
-      ajustar();
-      // Quem estava num lugar que não existe mais procura outro; o seu boneco volta para a entrada se ficou na parede.
-      for (const b of bonecos.values()) if (b.espera <= 0) mandarPara(b, escolherEstacao(b));
-      if (!andavelEm(jogador.x + 0.5, jogador.y + 0.85)) { jogador.x = atual.chegada.x; jogador.y = atual.chegada.y - 1; }
-      desenharEdicao();
-    },
     atualizar(pessoas, resultado) {
       if (destruido) return;
       if (resultado !== ultimoResultado) { ultimoResultado = resultado; desenharTela(); }
@@ -549,13 +547,6 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     selecionar(id) {
       selecionado = id;
       for (const b of bonecos.values()) { criarEtiqueta(b); atualizarVisual(b); }
-    },
-    editar(ativo, indice) {
-      editando = ativo;
-      espacoSelecionado = indice;
-      teclas.clear();
-      if (ativo && modoCamera !== "geral") { modoCamera = "geral"; avisos.aoMudarCamera(modoCamera); ajustar(); }
-      desenharEdicao();
     },
     camera(modo) {
       if (modo === modoCamera) return;
