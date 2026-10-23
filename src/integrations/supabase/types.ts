@@ -1864,6 +1864,7 @@ export type Database = {
           id: string
           nome: string
           ordem: number
+          parent_id: string | null
           origem: string
           user_id: string | null
         }
@@ -1874,6 +1875,7 @@ export type Database = {
           id?: string
           nome: string
           ordem?: number
+          parent_id?: string | null
           origem?: string
           user_id?: string | null
         }
@@ -1884,6 +1886,7 @@ export type Database = {
           id?: string
           nome?: string
           ordem?: number
+          parent_id?: string | null
           origem?: string
           user_id?: string | null
         }

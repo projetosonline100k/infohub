@@ -49,7 +49,9 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { openTab } = useWorkspaceTabs();
-  const [pastas, setPastas] = useState<{ id: string; nome: string }[]>([]);
+  // 24/10: pasta dentro de pasta (parent_id); sem mãe (ou com a mãe apagada) = pasta de cima.
+  const [pastas, setPastas] = useState<{ id: string; nome: string; parent_id: string | null }[]>([]);
+  const [dentroDe, setDentroDe] = useState("");
   const [pastaAtiva, setPastaAtiva] = useState("todas");
   const [novaPasta, setNovaPasta] = useState(false);
   const [nomePasta, setNomePasta] = useState("");
@@ -122,11 +124,26 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     }
     if (error) toast.error("Erro ao carregar documentos");
     const { data: folders, error: folderError } = await supabase.from("pastas_atividade")
-      .select("id, nome").eq("cliente_id", clienteId).eq("origem", "documentos").is("deleted_at", null).order("ordem");
+      .select("id, nome, parent_id").eq("cliente_id", clienteId).eq("origem", "documentos").is("deleted_at", null).order("ordem");
     if (folderError) toast.error("Erro ao carregar pastas");
     else setPastas(folders || []);
     setLoading(false);
+    avisarLateral();
   };
+
+  // A barra lateral (árvore) recarrega as pastas e os documentos quando algo muda aqui.
+  const avisarLateral = () => window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId } }));
+  const existe = (id: string | null) => !!id && pastas.some((p) => p.id === id);
+  const maeDe = (p: { parent_id: string | null }) => (existe(p.parent_id) ? p.parent_id : null);
+  /** Pasta e as mães dela, de cima para baixo. */
+  const caminho = (id: string) => {
+    const lista: typeof pastas = [];
+    let atual = pastas.find((p) => p.id === id);
+    while (atual && lista.length < 20) { lista.unshift(atual); atual = pastas.find((p) => p.id === maeDe(atual!)); }
+    return lista;
+  };
+  const nomeComCaminho = (id: string) => caminho(id).map((p) => p.nome).join(" › ");
+  const pastasEmOrdem = [...pastas].sort((a, b) => nomeComCaminho(a.id).localeCompare(nomeComCaminho(b.id), "pt-BR"));
 
   useEffect(() => {
     setPastaAtiva("todas");
@@ -137,16 +154,18 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
     event.preventDefault();
     if (!nomePasta.trim() || salvandoPasta) return;
     setSalvandoPasta(true);
+    const mae = dentroDe || null;
     const { data, error } = await supabase.from("pastas_atividade").insert({
-      cliente_id: clienteId, nome: nomePasta.trim(), ordem: pastas.length, origem: "documentos",
-    }).select("id, nome").single();
+      cliente_id: clienteId, nome: nomePasta.trim(), ordem: pastas.filter((p) => maeDe(p) === mae).length, origem: "documentos", parent_id: mae,
+    }).select("id, nome, parent_id").single();
     setSalvandoPasta(false);
     if (error) { toast.error("Erro ao criar pasta"); return; }
     setPastas(prev => [...prev, data]);
     setPastaAtiva(data.id);
     setNovaPasta(false);
     setNomePasta("");
-    toast.success("Pasta criada");
+    avisarLateral();
+    toast.success(mae ? `Pasta criada dentro de ${nomeComCaminho(mae)}` : "Pasta criada");
   };
 
   const moverDocumento = async (docId: string, pastaId: string | null) => {
@@ -154,6 +173,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
       .eq("id", docId).eq("cliente_id", clienteId);
     if (error) { toast.error("Erro ao mover documento"); return; }
     setDocumentos(prev => prev.map(doc => doc.id === docId ? { ...doc, pasta_id: pastaId } : doc));
+    avisarLateral();
     toast.success("Documento movido");
   };
 
@@ -184,7 +204,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
             onChange={event => void moverDocumento(doc.id, event.target.value || null)}>
             <option value="">Sem pasta</option>
             {doc.pasta_id && !pastas.some(pasta => pasta.id === doc.pasta_id) && <option value={doc.pasta_id}>Pasta indisponível</option>}
-            {pastas.map(pasta => <option key={pasta.id} value={pasta.id}>{pasta.nome}</option>)}
+            {pastasEmOrdem.map(pasta => <option key={pasta.id} value={pasta.id}>{nomeComCaminho(pasta.id)}</option>)}
           </select>
           {pastasDisponiveis.length > 0 && (
             <DropdownMenu>
@@ -202,7 +222,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
                     checked={false}
                     onCheckedChange={() => void adicionarPastaExtra(doc.id, pasta.id)}
                   >
-                    {pasta.nome}
+                    {nomeComCaminho(pasta.id)}
                   </DropdownMenuCheckboxItem>
                 ))}
               </DropdownMenuContent>
@@ -397,7 +417,7 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
           </h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline" onClick={() => setNovaPasta(true)}><FolderPlus className="mr-1 h-4 w-4" />Nova pasta</Button>
+          <Button size="sm" variant="outline" onClick={() => { setDentroDe(existe(pastaAtiva) ? pastaAtiva : ""); setNovaPasta(true); }}><FolderPlus className="mr-1 h-4 w-4" />Nova pasta</Button>
           <Button size="sm" variant="outline" onClick={criarNovoCaderno}>
             <Plus className="h-4 w-4 mr-1" />
             Novo Caderno
@@ -433,17 +453,52 @@ export function DocumentosView({ clienteId }: DocumentosViewProps) {
 
       {novaPasta && <form onSubmit={criarPasta} className="flex gap-2">
         <Input autoFocus aria-label="Nome da pasta" placeholder="Nome da pasta" value={nomePasta} onChange={event => setNomePasta(event.target.value)} />
+        <select aria-label="Dentro de qual pasta" value={dentroDe} onChange={event => setDentroDe(event.target.value)}
+          className="max-w-[260px] rounded-md border border-border bg-background px-2 text-sm">
+          <option value="">Pasta de cima (sem pasta-mãe)</option>
+          {pastasEmOrdem.map(pasta => <option key={pasta.id} value={pasta.id}>Dentro de: {nomeComCaminho(pasta.id)}</option>)}
+        </select>
         <Button type="submit" disabled={salvandoPasta || !nomePasta.trim()}>Criar pasta</Button>
         <Button type="button" variant="ghost" onClick={() => setNovaPasta(false)}>Cancelar</Button>
       </form>}
-      <div className="flex flex-wrap gap-2" aria-label="Pastas de documentos">
-        {[{ id: "todas", nome: "Todos" }, { id: "sem-pasta", nome: "Sem pasta" }, ...pastas].map(pasta =>
-          <Button key={pasta.id} variant={pastaAtiva === pasta.id ? "default" : "outline"} onClick={() => setPastaAtiva(pasta.id)}
+      {(() => {
+        const botao = (pasta: { id: string; nome: string }, ativa: boolean) => (
+          <Button key={pasta.id} variant={ativa ? "default" : "outline"} onClick={() => setPastaAtiva(pasta.id)}
             onDragOver={event => { if (pasta.id !== "todas") event.preventDefault(); }}
             onDrop={event => { event.preventDefault(); const id = event.dataTransfer.getData("application/documento-id"); if (documentos.some(doc => doc.id === id) && pasta.id !== "todas") void moverDocumento(id, pasta.id === "sem-pasta" ? null : pasta.id); }}>
             <Folder className="mr-2 h-4 w-4" />{pasta.nome}
-          </Button>)}
-      </div>
+          </Button>
+        );
+        const trilha = existe(pastaAtiva) ? caminho(pastaAtiva) : [];
+        const filhas = existe(pastaAtiva) ? pastas.filter((p) => maeDe(p) === pastaAtiva) : [];
+        return (
+          <>
+            <div className="flex flex-wrap gap-2" aria-label="Pastas de documentos">
+              {[{ id: "todas", nome: "Todos" }, { id: "sem-pasta", nome: "Sem pasta" }, ...pastas.filter((p) => !maeDe(p))].map(pasta =>
+                botao(pasta, pastaAtiva === pasta.id || trilha[0]?.id === pasta.id))}
+            </div>
+            {/* Dentro de uma pasta: o caminho até ela e as subpastas. */}
+            {trilha.length > 0 && (
+              <div className="space-y-2 rounded-lg border border-dashed p-2">
+                <div className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground" aria-label="Caminho da pasta">
+                  {trilha.map((p, k) => (
+                    <span key={p.id} className="flex items-center gap-1">
+                      {k > 0 && <span>›</span>}
+                      <button type="button" onClick={() => setPastaAtiva(p.id)} className={cn("rounded px-1 hover:text-foreground", k === trilha.length - 1 && "font-semibold text-foreground")}>{p.nome}</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex flex-wrap gap-2" aria-label="Subpastas">
+                  {filhas.map((p) => botao(p, false))}
+                  <Button size="sm" variant="ghost" onClick={() => { setDentroDe(pastaAtiva); setNovaPasta(true); }}>
+                    <FolderPlus className="mr-1 h-4 w-4" />Nova subpasta
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Search */}
       <div className="relative">

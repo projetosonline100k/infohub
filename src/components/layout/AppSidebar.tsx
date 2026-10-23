@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, Clapperboard, FileText, Folder, FolderOpen,
@@ -33,7 +33,7 @@ interface No {
 // deles os documentos"): pastas → documentos; os sem pasta ficam soltos. Abre com ?documento=<id>.
 async function documentosDoProjeto(clienteId: string): Promise<No[]> {
   const [pastas, docs] = await Promise.all([
-    supabase.from("pastas_atividade").select("id, nome").eq("cliente_id", clienteId).eq("origem", "documentos").is("deleted_at", null).order("ordem"),
+    supabase.from("pastas_atividade").select("id, nome, parent_id").eq("cliente_id", clienteId).eq("origem", "documentos").is("deleted_at", null).order("ordem"),
     supabase.from("documentos").select("id, titulo, pasta_id, tipo, fixado").eq("cliente_id", clienteId).is("deleted_at", null).order("fixado", { ascending: false }).order("titulo"),
   ]);
   const base = `/clientes/${clienteId}`;
@@ -42,9 +42,16 @@ async function documentosDoProjeto(clienteId: string): Promise<No[]> {
     ir: `${base}?documento=${d.id}`, ativoSe: (caminho, busca) => caminho === base && busca.get("documento") === d.id,
   });
   const lista = (docs.data ?? []) as { id: string; titulo: string | null; pasta_id: string | null; tipo: string | null }[];
-  const idsPastas = new Set((pastas.data ?? []).map((p) => p.id));
+  const todas = (pastas.data ?? []) as { id: string; nome: string; parent_id: string | null }[];
+  const idsPastas = new Set(todas.map((p) => p.id));
+  // 24/10: pasta dentro de pasta; mãe apagada (ou de fora) = pasta de cima.
+  const mae = (p: { parent_id: string | null }) => (p.parent_id && idsPastas.has(p.parent_id) ? p.parent_id : null);
+  const noPasta = (p: { id: string; nome: string }, fundo = 0): No => ({
+    chave: `pasta-doc:${p.id}`, titulo: p.nome, icone: Folder,
+    filhos: [...(fundo < 10 ? todas.filter((f) => mae(f) === p.id).map((f) => noPasta(f, fundo + 1)) : []), ...lista.filter((d) => d.pasta_id === p.id).map(noDoc)],
+  });
   return [
-    ...(pastas.data ?? []).map((p) => ({ chave: `pasta-doc:${p.id}`, titulo: p.nome, icone: Folder, filhos: lista.filter((d) => d.pasta_id === p.id).map(noDoc) })),
+    ...todas.filter((p) => !mae(p)).map((p) => noPasta(p)),
     ...lista.filter((d) => !d.pasta_id || !idsPastas.has(d.pasta_id)).map(noDoc),
   ];
 }
@@ -98,7 +105,21 @@ export function AppSidebar() {
   const [abertos, setAbertos] = useState<Set<string>>(lerAbertos);
   const [clientes, setClientes] = useState<ClienteMenu[]>([]);
   const [carregados, setCarregados] = useState<Record<string, No[] | "carregando">>({});
+  // Pastas e documentos criados/movidos na página (ou ao voltar para o app): busca de novo o que já foi
+  // carregado, trocando só quando chega (sem a árvore piscar).
+  const carregadores = useRef(new Map<string, () => Promise<No[]>>());
+  useEffect(() => {
+    const recarregar = () => {
+      for (const [chave, carregar] of carregadores.current) {
+        void carregar().then((f) => setCarregados((c) => ({ ...c, [chave]: f }))).catch(() => undefined);
+      }
+    };
+    window.addEventListener("documentos:mudou", recarregar);
+    window.addEventListener("focus", recarregar);
+    return () => { window.removeEventListener("documentos:mudou", recarregar); window.removeEventListener("focus", recarregar); };
+  }, []);
   const carregarFilhos = (no: No) => {
+    if (no.carregar) carregadores.current.set(no.chave, no.carregar);
     if (!no.carregar || carregados[no.chave]) return;
     setCarregados((c) => ({ ...c, [no.chave]: "carregando" }));
     no.carregar().then((f) => setCarregados((c) => ({ ...c, [no.chave]: f }))).catch(() => setCarregados((c) => { const n = { ...c }; delete n[no.chave]; return n; }));
