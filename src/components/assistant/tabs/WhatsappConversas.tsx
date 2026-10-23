@@ -243,9 +243,9 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
     if (t) return conversas.filter((c) => (c.chat_nome ?? c.chat_id).toLowerCase().includes(t));
     if (visao.tipo === "arquivadas") return conversas.filter((c) => org.arquivada(c.chat_id));
     const ativas = conversas.filter((c) => !org.arquivada(c.chat_id));
-    // 20/10 (Davi: "movi para a pasta e não sumiu daqui"): conversa numa pasta sai da lista geral.
-    return visao.tipo === "pasta" ? ativas.filter((c) => org.pastaDe(c.chat_id) === visao.id)
-      : ativas.filter((c) => !org.pastaDe(c.chat_id) || !org.pastas.some((p) => p.id === org.pastaDe(c.chat_id)));
+    // 24/10 (Davi: "o Geral precisa ser todas as mensagens"): o Geral mostra todas (menos as arquivadas),
+    // inclusive as que estão em pastas; a pasta é um atalho para ver só aquele grupo.
+    return visao.tipo === "pasta" ? ativas.filter((c) => org.pastaDe(c.chat_id) === visao.id) : ativas;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversas, busca, visao, org.arquivada, org.pastaDe, org.pastas]);
   useEffect(() => {
@@ -343,7 +343,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
       ) : filtradas.length === 0 ? (
         <p className="px-4 py-8 text-center text-xs text-muted-foreground">
           {busca.trim() ? "Nenhuma conversa com esse nome." : visao.tipo === "pasta" ? "Pasta vazia. Para pôr uma conversa aqui: setinha da conversa (ou botão direito) › Mover para pasta."
-            : visao.tipo === "arquivadas" ? "Nenhuma conversa arquivada." : conversas.length ? "Todas as conversas estão arquivadas ou em pastas." : "Nenhuma mensagem ainda. Elas chegam pelo WhatsApp conectado no Mac."}
+            : visao.tipo === "arquivadas" ? "Nenhuma conversa arquivada." : conversas.length ? "Todas as conversas estão arquivadas." : "Nenhuma mensagem ainda. Elas chegam pelo WhatsApp conectado no Mac."}
         </p>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
