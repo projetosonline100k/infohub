@@ -1,6 +1,6 @@
 import { AnimatedSprite, Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TextureStyle } from "pixi.js";
 import { PAREDES, PISOS, TILE, caminho, type Estacao, type Recorte, type TipoEstacao } from "./mapa";
-import { ALTURA, LARGURA, type Planta } from "./planta";
+import type { Planta } from "./planta";
 
 // Motor do mapa em pixel art (PixiJS 8). O React passa a planta e as pessoas e recebe os cliques.
 
@@ -166,7 +166,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     limpar(chao);
     for (const s of estaticos) { s.children.forEach((f) => { if (f instanceof Text) textos.delete(f); }); s.destroy({ children: true }); }
     estaticos = [];
-    const { grade } = atual;
+    const { grade, largura: LARGURA, altura: ALTURA } = atual;
     for (let y = 0; y < ALTURA; y++) {
       for (let x = 0; x < LARGURA; x++) {
         const c = grade[y][x];
@@ -447,12 +447,12 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
   function resolucaoTexto() { return Math.max(2, escala * (window.devicePixelRatio || 1) * 1.5); }
   const ajustarTextos = () => { const r = resolucaoTexto(); for (const tx of textos) if (tx.resolution !== r) tx.resolution = r; };
   const escalaGeral = () => {
-    const bruta = Math.min(app.screen.width / (LARGURA * TILE), app.screen.height / (ALTURA * TILE));
+    const bruta = Math.min(app.screen.width / (atual.largura * TILE), app.screen.height / (atual.altura * TILE));
     return bruta >= 1 ? Math.max(1, Math.floor(bruta * 2) / 2) : bruta;
   };
   const posicionarCamera = () => {
     const w = app.screen.width, h = app.screen.height;
-    const lw = LARGURA * TILE * escala, lh = ALTURA * TILE * escala;
+    const lw = atual.largura * TILE * escala, lh = atual.altura * TILE * escala;
     if (modoCamera === "geral") { mundo.position.set(Math.round((w - lw) / 2), Math.round((h - lh) / 2)); return; }
     const cx = (jogador.x + 0.5) * TILE * escala, cy = (jogador.y + 0.5) * TILE * escala;
     const px = lw <= w ? (w - lw) / 2 : Math.min(0, Math.max(w - lw, w / 2 - cx));
@@ -512,6 +512,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
       if (destruido || p === atual) return;
       atual = p;
       montarCenario();
+      ajustar();
       // Quem estava num lugar que não existe mais procura outro; o seu boneco volta para a entrada se ficou na parede.
       for (const b of bonecos.values()) if (b.espera <= 0) mandarPara(b, escolherEstacao(b));
       if (!andavelEm(jogador.x + 0.5, jogador.y + 0.85)) { jogador.x = atual.chegada.x; jogador.y = atual.chegada.y - 1; }

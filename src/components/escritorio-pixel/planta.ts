@@ -1,23 +1,20 @@
 import { PAREDES, PISOS, S, type Celula, type Estacao, type Movel, type Parede, type Piso, type Pose, type Recorte, type TipoEstacao } from "./mapa";
 
-// Planta do escritório: grade 3 × 3 de espaços (cima, meio e baixo), corredores entre as fileiras e a
-// Entrada embaixo, no centro. Em cada espaço o Davi põe um setor, uma sala comum ou deixa vazio (vira passagem).
+// Planta do escritório: grade de espaços (o Davi escolhe quantas colunas e fileiras no modo edição),
+// corredores entre as fileiras e a Entrada embaixo, no centro. Em cada espaço vai um setor, uma sala comum
+// ou nada (vira passagem).
 
-export const COLUNAS = 3;
-export const FILEIRAS = 3;
+export const LIMITES = { colunas: [1, 4], fileiras: [1, 3] } as const;
 const W = 12; // largura do chão de cada sala (tiles)
 const H = 7; // altura do chão de cada sala
 const PASSO_X = W + 1; // 1 coluna de divisória entre salas
 const PASSO_Y = 2 + H + 2 + 3; // parede + chão + parede do corredor + corredor
 const X0 = 2;
-export const LARGURA = X0 * 2 + COLUNAS * W + (COLUNAS - 1);
-const Y_ENTRADA = 1 + FILEIRAS * PASSO_Y + 2;
-export const ALTURA = Y_ENTRADA + 4 + 3;
 
 export type SalaComum = "colaborativa" | "copa" | "resultado";
 export type Conteudo = { tipo: "setor"; setorId: string } | { tipo: SalaComum } | { tipo: "vazio" };
 export interface Espaco { conteudo: Conteudo; piso?: Piso; parede?: Parede }
-export type Arrumacao = Espaco[];
+export interface Arrumacao { colunas: number; fileiras: number; espacos: Espaco[] }
 
 export interface SetorPixel { id: string; nome: string; cor: string; pessoas: number }
 
@@ -29,6 +26,8 @@ export interface EspacoNaPlanta { indice: number; x0: number; y0: number; x1: nu
 export interface Placa { texto: string; x: number; y: number; cor: string }
 
 export interface Planta {
+  largura: number;
+  altura: number;
   grade: Celula[][];
   andavel: boolean[][];
   moveis: Movel[];
@@ -61,7 +60,7 @@ export const estiloDoEspaco = (e: Espaco, setores: SetorPixel[]) => {
 
 /** Arrumação inicial: o layout do pedido (Diretoria – Resultado – Copa / Marketing – Colaborativa – Audiovisual / Lab – Sucesso – Sales). */
 export function arrumacaoPadrao(setores: SetorPixel[]): Arrumacao {
-  const espacos: Espaco[] = Array.from({ length: COLUNAS * FILEIRAS }, () => ({ conteudo: { tipo: "vazio" } }));
+  const espacos: Espaco[] = Array.from({ length: 9 }, () => ({ conteudo: { tipo: "vazio" } }));
   espacos[1] = { conteudo: { tipo: "resultado" } };
   espacos[2] = { conteudo: { tipo: "copa" } };
   espacos[4] = { conteudo: { tipo: "colaborativa" } };
@@ -80,19 +79,45 @@ export function arrumacaoPadrao(setores: SetorPixel[]): Arrumacao {
     if (i == null) break;
     espacos[i] = { conteudo: { tipo: "setor", setorId: s.id } };
   }
-  return espacos;
+  return { colunas: 3, fileiras: 3, espacos };
 }
 
-/** Confere uma arrumação salva: 9 espaços, setores que ainda existem, cada setor uma vez só. */
+/**
+ * Muda o tamanho do escritório. Cada sala fica no mesmo lugar quando ele ainda existe; as que caem fora
+ * do corte vão para os espaços vazios (e, sem espaço, saem do mapa).
+ */
+export function redimensionar(a: Arrumacao, colunas: number, fileiras: number): Arrumacao {
+  const espacos: Espaco[] = Array.from({ length: colunas * fileiras }, () => ({ conteudo: { tipo: "vazio" } }));
+  const sobra: Espaco[] = [];
+  a.espacos.forEach((e, i) => {
+    const col = i % a.colunas, fil = Math.floor(i / a.colunas);
+    if (col < colunas && fil < fileiras) espacos[fil * colunas + col] = e;
+    else if (e.conteudo.tipo !== "vazio") sobra.push(e);
+  });
+  for (const e of sobra) {
+    const livre = espacos.findIndex((x) => x.conteudo.tipo === "vazio");
+    if (livre < 0) break;
+    espacos[livre] = e;
+  }
+  return { colunas, fileiras, espacos };
+}
+
+/** Confere uma arrumação salva: tamanho dentro dos limites, setores que ainda existem, cada setor uma vez só. */
 export function arrumacaoValida(salva: unknown, setores: SetorPixel[]): Arrumacao | null {
-  if (!Array.isArray(salva) || salva.length !== COLUNAS * FILEIRAS) return null;
+  // A primeira versão salvava só a lista dos 9 espaços (3 × 3).
+  const obj = (Array.isArray(salva) ? { colunas: 3, fileiras: 3, espacos: salva } : salva) as Partial<Arrumacao> | null;
+  const { colunas, fileiras, espacos } = obj ?? {};
+  if (!Number.isInteger(colunas) || !Number.isInteger(fileiras) || !Array.isArray(espacos)) return null;
+  if (colunas! < LIMITES.colunas[0] || colunas! > LIMITES.colunas[1] || fileiras! < LIMITES.fileiras[0] || fileiras! > LIMITES.fileiras[1]) return null;
+  if (espacos.length !== colunas! * fileiras!) return null;
   const vistos = new Set<string>();
-  return salva.map((e: Espaco) => {
+  const lista = espacos.map((e: Espaco) => {
     const c = e?.conteudo;
     const ok = c && (c.tipo === "vazio" || c.tipo in SALAS_COMUNS || (c.tipo === "setor" && setores.some((s) => s.id === c.setorId) && !vistos.has(c.setorId)));
     if (c?.tipo === "setor" && ok) vistos.add(c.setorId);
-    return ok ? { conteudo: c, piso: e.piso, parede: e.parede } : { conteudo: { tipo: "vazio" } };
+    return ok ? { conteudo: c, piso: e.piso, parede: e.parede } : { conteudo: { tipo: "vazio" } } as Espaco;
   });
+  return { colunas: colunas!, fileiras: fileiras!, espacos: lista };
 }
 
 export function nomeDoConteudo(c: Conteudo, setores: SetorPixel[]) {
@@ -102,6 +127,10 @@ export function nomeDoConteudo(c: Conteudo, setores: SetorPixel[]) {
 }
 
 export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta {
+  const { colunas: COLUNAS, fileiras: FILEIRAS } = arrumacao;
+  const LARGURA = X0 * 2 + COLUNAS * W + (COLUNAS - 1);
+  const Y_ENTRADA = 1 + FILEIRAS * PASSO_Y + 2;
+  const ALTURA = Y_ENTRADA + 4 + 3;
   const grade: Celula[][] = Array.from({ length: ALTURA }, () => Array<Celula>(LARGURA).fill(null));
   const moveis: Movel[] = [];
   const estacoes: Estacao[] = [];
@@ -129,11 +158,11 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
     chao(X0, xFim, yc, yc + 2, "ladrilho");
     movel(S.plantaPequena, X0, yc - 1, { bloqueia: [0, 1, 1, 1] });
     movel(S.plantaPequena, xFim, yc - 1, { bloqueia: [0, 1, 1, 1] });
-    [S.quadroA, S.quadroB, S.quadroC].forEach((q, k) => movel(q, X0 + 2 + k * 13, yc - 2, { parede: true }));
+    [S.quadroA, S.quadroB, S.quadroC, S.quadroA].slice(0, COLUNAS).forEach((q, k) => movel(q, X0 + 2 + k * 13, yc - 2, { parede: true }));
   }
 
   for (let i = 0; i < COLUNAS * FILEIRAS; i++) {
-    const e = arrumacao[i] ?? { conteudo: { tipo: "vazio" } };
+    const e: Espaco = arrumacao.espacos[i] ?? { conteudo: { tipo: "vazio" } };
     const col = i % COLUNAS, fil = Math.floor(i / COLUNAS);
     const x0 = X0 + col * PASSO_X, y0 = 1 + fil * PASSO_Y + 2;
     const x1 = x0 + W - 1, y1 = y0 + H - 1;
@@ -233,14 +262,14 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
     const x = X0 + col * PASSO_X + W, y0 = 1 + fil * PASSO_Y + 2;
     const esq = grade[y0 + 3][x - 1], dir = grade[y0 + 3][x + 1];
     const piso = esq && "piso" in esq ? esq.piso : dir && "piso" in dir ? dir.piso : "ladrilho";
-    const vazio = (k: number) => (arrumacao[k]?.conteudo.tipo ?? "vazio") === "vazio";
+    const vazio = (k: number) => (arrumacao.espacos[k]?.conteudo.tipo ?? "vazio") === "vazio";
     // Dois espaços vazios lado a lado viram uma passagem só (sem divisória no meio).
     if (vazio(fil * COLUNAS + col) && vazio(fil * COLUNAS + col + 1)) chao(x, x, y0 - 2, y0 + H + 1, piso);
     else chao(x, x, y0 + 3, y0 + 4, piso);
   }
 
   // Entrada, embaixo no centro: porta de vidro, recepção e sofá de espera.
-  const xe0 = X0 + PASSO_X + 1, xe1 = xe0 + W - 3;
+  const xe0 = Math.floor((LARGURA - (W - 2)) / 2), xe1 = xe0 + W - 3;
   parede(xe0, xe1, Y_ENTRADA - 2, "madeira");
   chao(xe0, xe1, Y_ENTRADA, Y_ENTRADA + 3, "espinha");
   const xm = Math.floor((xe0 + xe1) / 2) - 1;
@@ -261,5 +290,5 @@ export function gerarPlanta(arrumacao: Arrumacao, setores: SetorPixel[]): Planta
     const [dx, dy, w, h] = m.bloqueia;
     for (let x = m.x + dx; x < m.x + dx + w; x++) for (let y = m.y + dy; y < m.y + dy + h; y++) if (andavel[y]?.[x] != null) andavel[y][x] = false;
   }
-  return { grade, andavel, moveis, estacoes, placas, tela, chegada, espacos };
+  return { largura: LARGURA, altura: ALTURA, grade, andavel, moveis, estacoes, placas, tela, chegada, espacos };
 }

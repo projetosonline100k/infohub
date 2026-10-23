@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Hammer, Loader2, LocateFixed, MessageCircle, Play, RotateCcw, X } from "lucide-react";
+import { Eye, Loader2, LocateFixed, MessageCircle, Minus, Pencil, Play, Plus, RotateCcw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Funcionario3D, Resultado3D } from "@/components/escritorio3d/EscritorioVirtual";
 import { criarMundo, type EstadoPixel, type ModoCamera, type MundoPixel, type PessoaPixel } from "./motor";
 import { PAREDES, PISOS, type Parede, type Piso } from "./mapa";
 import {
-  SALAS_COMUNS, arrumacaoPadrao, arrumacaoValida, estiloDoEspaco, gerarPlanta, nomeDoConteudo,
+  LIMITES, SALAS_COMUNS, arrumacaoPadrao, arrumacaoValida, estiloDoEspaco, gerarPlanta, nomeDoConteudo, redimensionar,
   type Arrumacao, type Conteudo, type SalaComum, type SetorPixel,
 } from "./planta";
 
@@ -91,19 +91,28 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
   const escolher = (c: Conteudo) => {
     if (espaco == null) return;
     setArrumacao((a) => {
-      const nova = [...a];
+      const nova = [...a.espacos];
       const outro = c.tipo === "vazio" ? -1 : nova.findIndex((e, k) => k !== espaco && mesmoConteudo(e.conteudo, c));
       // Já está em outro lugar: troca os dois de lugar (com piso e parede).
       if (outro >= 0) [nova[espaco], nova[outro]] = [nova[outro], nova[espaco]];
       else nova[espaco] = { conteudo: c };
-      return nova;
+      return { ...a, espacos: nova };
     });
   };
   const estilo = (campo: "piso" | "parede", valor: Piso | Parede) => {
     if (espaco == null) return;
-    setArrumacao((a) => a.map((e, k) => (k === espaco ? { ...e, [campo]: valor } : e)));
+    setArrumacao((a) => ({ ...a, espacos: a.espacos.map((e, k) => (k === espaco ? { ...e, [campo]: valor } : e)) }));
   };
-  const foraDoMapa = setores.filter((s) => !arrumacao.some((e) => e.conteudo.tipo === "setor" && e.conteudo.setorId === s.id));
+  const mudarTamanho = (campo: "colunas" | "fileiras", delta: number) => {
+    setEspaco(null);
+    setArrumacao((a) => {
+      const [min, max] = LIMITES[campo];
+      const novo = Math.min(max, Math.max(min, a[campo] + delta));
+      if (novo === a[campo]) return a;
+      return campo === "colunas" ? redimensionar(a, novo, a.fileiras) : redimensionar(a, a.colunas, novo);
+    });
+  };
+  const foraDoMapa = setores.filter((s) => !arrumacao.espacos.some((e) => e.conteudo.tipo === "setor" && e.conteudo.setorId === s.id));
 
   const f = funcionarios.find((x) => x.id === selecionado) ?? null;
   const p = pessoas.find((x) => x.id === selecionado) ?? null;
@@ -118,7 +127,7 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
         )}
         {erro && <div className="absolute inset-0 flex items-center justify-center p-8 text-center text-sm text-rose-300">{erro}</div>}
         <div className="pointer-events-none absolute left-3 top-3 rounded-md bg-black/50 px-2.5 py-1 text-[11px] text-white/70">
-          {editando ? "Clique num espaço para escolher o setor ou a sala" : "Setas ou WASD andam · E conversa com quem está perto · Z alterna a câmera"}
+          {editando ? "Modo edição: mude o tamanho no painel e clique num espaço para escolher o setor ou a sala" : "Setas ou WASD andam · E conversa com quem está perto · Z alterna a câmera"}
         </div>
         <div className="absolute right-3 top-3 flex gap-2">
           {!editando && (
@@ -129,7 +138,7 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
           )}
           <button type="button" onClick={() => { setEditando((v) => !v); setEspaco(null); setSelecionado(null); }}
             className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold", editando ? "border-sky-400 bg-sky-600 hover:bg-sky-500" : "border-white/15 bg-black/60 hover:bg-black/80")}>
-            <Hammer className="h-3.5 w-3.5" />{editando ? "Pronto" : "Montar setores"}
+            <Pencil className="h-3.5 w-3.5" />{editando ? "Sair da edição" : "Modo edição"}
           </button>
         </div>
         <p className="pointer-events-none absolute bottom-2 left-3 text-[10px] text-white/35">Protótipo · sprites gratuitos da LimeZu (uso não comercial, só neste computador)</p>
@@ -144,24 +153,40 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
         {editando ? (
           <div className="space-y-4 overflow-y-auto p-4">
             <div>
-              <p className="text-base font-bold">Montar setores</p>
-              <p className="mt-1 text-xs text-white/60">O escritório tem 9 espaços (3 em cima, 3 no meio, 3 embaixo) e a entrada embaixo, no centro. Clique num espaço no mapa e escolha o que fica nele. Cada setor ganha uma mesa por pessoa (até 6).</p>
+              <p className="text-base font-bold">Modo edição</p>
+              <p className="mt-1 text-xs text-white/60">Escolha o tamanho do escritório e, depois, clique num espaço do mapa para dizer o que fica nele. Cada setor ganha uma mesa por pessoa (até 6).</p>
+            </div>
+            <div className="rounded-lg border border-white/10 p-3">
+              <p className="mb-2 text-[11px] uppercase tracking-wide text-white/50">Tamanho do escritório</p>
+              {([["colunas", "Salas por fileira"], ["fileiras", "Fileiras"]] as const).map(([campo, rotulo]) => (
+                <div key={campo} className="flex items-center justify-between py-1">
+                  <span className="text-sm">{rotulo}</span>
+                  <div className="flex items-center gap-2">
+                    <button type="button" aria-label={`Menos ${rotulo.toLowerCase()}`} disabled={arrumacao[campo] <= LIMITES[campo][0]} onClick={() => mudarTamanho(campo, -1)}
+                      className="rounded-md border border-white/15 p-1 hover:bg-white/10 disabled:opacity-30"><Minus className="h-3.5 w-3.5" /></button>
+                    <span className="w-4 text-center text-sm font-semibold">{arrumacao[campo]}</span>
+                    <button type="button" aria-label={`Mais ${rotulo.toLowerCase()}`} disabled={arrumacao[campo] >= LIMITES[campo][1]} onClick={() => mudarTamanho(campo, 1)}
+                      className="rounded-md border border-white/15 p-1 hover:bg-white/10 disabled:opacity-30"><Plus className="h-3.5 w-3.5" /></button>
+                  </div>
+                </div>
+              ))}
+              <p className="mt-1 text-[11px] text-white/45">{arrumacao.colunas * arrumacao.fileiras} espaços. Ao diminuir, as salas cortadas vão para os espaços vazios.</p>
             </div>
             {espaco == null ? (
               <div className="rounded-lg border border-dashed border-white/20 p-3 text-sm text-white/60">Nenhum espaço escolhido. Clique numa sala do mapa.</div>
             ) : (
               <>
                 <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-[11px] uppercase tracking-wide text-white/50">Espaço {["de cima", "do meio", "de baixo"][Math.floor(espaco / 3)]} · {["esquerda", "centro", "direita"][espaco % 3]}</p>
-                  <p className="text-sm font-semibold">{nomeDoConteudo(arrumacao[espaco].conteudo, setores)}</p>
+                  <p className="text-[11px] uppercase tracking-wide text-white/50">Fileira {Math.floor(espaco / arrumacao.colunas) + 1} · sala {(espaco % arrumacao.colunas) + 1}</p>
+                  <p className="text-sm font-semibold">{nomeDoConteudo(arrumacao.espacos[espaco].conteudo, setores)}</p>
                 </div>
                 <div>
                   <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/50">Setores</p>
                   <div className="flex flex-wrap gap-1.5">
                     {setores.map((s) => {
                       const c: Conteudo = { tipo: "setor", setorId: s.id };
-                      const aqui = mesmoConteudo(arrumacao[espaco].conteudo, c);
-                      const outro = !aqui && arrumacao.some((e) => mesmoConteudo(e.conteudo, c));
+                      const aqui = mesmoConteudo(arrumacao.espacos[espaco].conteudo, c);
+                      const outro = !aqui && arrumacao.espacos.some((e) => mesmoConteudo(e.conteudo, c));
                       return (
                         <button key={s.id} type="button" onClick={() => escolher(c)} title={outro ? `${s.nome} já está em outro espaço: troca os dois de lugar` : s.nome}
                           className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs", aqui ? "border-white/70 bg-white/15" : "border-white/15 text-white/80 hover:bg-white/10")}>
@@ -177,7 +202,7 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
                   <div className="flex flex-wrap gap-1.5">
                     {([...Object.keys(SALAS_COMUNS), "vazio"] as (SalaComum | "vazio")[]).map((t) => {
                       const c = { tipo: t } as Conteudo;
-                      const aqui = mesmoConteudo(arrumacao[espaco].conteudo, c);
+                      const aqui = mesmoConteudo(arrumacao.espacos[espaco].conteudo, c);
                       return (
                         <button key={t} type="button" onClick={() => escolher(c)}
                           className={cn("rounded-full border px-2.5 py-1 text-xs", aqui ? "border-white/70 bg-white/15" : "border-white/15 text-white/80 hover:bg-white/10")}>
@@ -187,14 +212,14 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
                     })}
                   </div>
                 </div>
-                {arrumacao[espaco].conteudo.tipo !== "vazio" && (
+                {arrumacao.espacos[espaco].conteudo.tipo !== "vazio" && (
                   <>
                     <div>
                       <p className="mb-1.5 text-[11px] uppercase tracking-wide text-white/50">Piso</p>
                       <div className="flex flex-wrap gap-1.5">
                         {(Object.keys(PISOS) as Piso[]).map((k) => (
                           <button key={k} type="button" onClick={() => estilo("piso", k)} title={PISOS[k].nome}
-                            className={cn("h-7 w-7 rounded-md border-2", estiloDoEspaco(arrumacao[espaco], setores).piso === k ? "border-white" : "border-transparent")}
+                            className={cn("h-7 w-7 rounded-md border-2", estiloDoEspaco(arrumacao.espacos[espaco], setores).piso === k ? "border-white" : "border-transparent")}
                             style={{ background: PISOS[k].amostra }} />
                         ))}
                       </div>
@@ -204,7 +229,7 @@ export default function EscritorioPixel({ clienteId, setores, funcionarios, resu
                       <div className="flex flex-wrap gap-1.5">
                         {(Object.keys(PAREDES) as Parede[]).map((k) => (
                           <button key={k} type="button" onClick={() => estilo("parede", k)} title={PAREDES[k].nome}
-                            className={cn("h-7 w-7 rounded-md border-2", estiloDoEspaco(arrumacao[espaco], setores).parede === k ? "border-white" : "border-transparent")}
+                            className={cn("h-7 w-7 rounded-md border-2", estiloDoEspaco(arrumacao.espacos[espaco], setores).parede === k ? "border-white" : "border-transparent")}
                             style={{ background: PAREDES[k].amostra }} />
                         ))}
                       </div>
