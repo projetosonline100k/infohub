@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { isDesktop } from "@/lib/platform";
 import { lerSessao, salvarSessao } from "@/lib/workspace/sessao";
+import { iconeDaGuia, nomeDaSecao } from "@/lib/workspace/iconeDaGuia";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface WorkspaceTab {
@@ -444,7 +445,12 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
         className={cn("group flex h-9 min-w-28 max-w-52 cursor-default select-none touch-none items-center [-webkit-user-drag:none] gap-1 rounded-t-md border border-b-0 px-2 text-sm", active ? "bg-background font-medium text-foreground" : "border-transparent text-muted-foreground hover:bg-muted", naDivisao && !active && "bg-muted/60", sendoArrastada && "opacity-60", arrasto?.destacando && arrasto.id === tab.id && "opacity-30")}
       >
         {naDivisao && <Columns2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Na tela dividida" />}
-        <span className="min-w-0 flex-1 truncate text-left">{tab.title}</span>
+        {(() => { const Icone = iconeDaGuia(tab.path); return <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />; })()}
+        <span className="min-w-0 flex-1 truncate text-left" title={tab.title}>
+          {tab.title}
+          {/* Guias com o mesmo nome (ex.: três "Core"): mostra a seção ao lado. */}
+          {(() => { const secao = nomeDaSecao(tab.path); return secao && !tab.title.includes(secao) && tabs.filter((t) => t.title === tab.title).length > 1 ? <span className="opacity-60"> · {secao}</span> : null; })()}
+        </span>
         {canClose && <button type="button" data-fechar-aba aria-label={`Fechar aba ${tab.title}`} onClick={(event) => { event.stopPropagation(); fechar(tab); }} className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted-foreground/15 group-hover:opacity-100 focus:opacity-100"><X className="h-3.5 w-3.5" /></button>}
       </div>
         </ContextMenuTrigger>
