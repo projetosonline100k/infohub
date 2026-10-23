@@ -594,7 +594,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             </div>
           ) : (
             // O escritório inteiro: setores lado a lado, cada um com a placa na parede.
-            <div className="relative">
+            <div className={cn("relative", mundo3d && "invisible")}>
             <button type="button" onClick={() => setMundo3d(true)} title="Entrar no escritório em 3D (protótipo: corredor e Audiovisual)"
               className="absolute bottom-[3%] left-[2%] z-30 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#171310]/90 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-lg hover:bg-[#171310]">
               <Box className="h-3.5 w-3.5 text-sky-300" />Entrar no escritório 3D

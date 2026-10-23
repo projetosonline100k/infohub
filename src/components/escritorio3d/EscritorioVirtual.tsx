@@ -3,6 +3,7 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { Clock, ListTodo, MessageCircle, MousePointer2, PlayCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { prenderCursor } from "@/lib/desktop/window";
 import { ESTACOES, INICIO, OBSTACULOS, PORTAS, SALAS, assentoDa, podeEstar, type SalaId } from "./cenario";
 import { Pecas, Personagem, Portas, Salas, type Pose } from "./Mundo";
 
@@ -114,7 +115,7 @@ function Jogador({ ativo, posicao, aoAlcance, lugares, funcionarios, abertas, in
 
 // Olhar: o mouse mexe a câmera (travado quando o sistema deixa; no app do Mac, sem trava, só mexendo o
 // mouse em cima do mundo). ← → também viram. Clique: interage com o que está na mira.
-function Olhar({ ativo, canvas, aoClicar }: { ativo: boolean; canvas: HTMLCanvasElement | null; aoClicar: (a: Alvo) => void }) {
+function Olhar({ ativo, canvas, aoClicar, preso }: { ativo: boolean; canvas: HTMLCanvasElement | null; aoClicar: (a: Alvo) => void; preso: boolean }) {
   const { camera, scene } = useThree();
   const teclas = useRef<Record<string, boolean>>({});
   const raio = useMemo(() => new THREE.Raycaster(undefined, undefined, 0.1, 5), []);
@@ -122,7 +123,7 @@ function Olhar({ ativo, canvas, aoClicar }: { ativo: boolean; canvas: HTMLCanvas
     if (!canvas) return;
     const mover = (e: MouseEvent) => {
       if (!ativo) return;
-      const k = document.pointerLockElement === canvas ? 0.0022 : 0.0034;
+      const k = document.pointerLockElement === canvas || preso ? 0.0022 : 0.0034;
       camera.rotation.order = "YXZ";
       camera.rotation.y -= e.movementX * k;
       camera.rotation.x = Math.max(-1.2, Math.min(1.2, camera.rotation.x - e.movementY * k));
@@ -139,10 +140,12 @@ function Olhar({ ativo, canvas, aoClicar }: { ativo: boolean; canvas: HTMLCanvas
     };
     const baixo = (e: KeyboardEvent) => { if (!digitando(e)) teclas.current[e.code] = true; };
     const cima = (e: KeyboardEvent) => { teclas.current[e.code] = false; };
-    canvas.addEventListener("mousemove", mover); canvas.addEventListener("click", clicar);
+    // Preso pela janela: o cursor não sai do lugar, mas o movimento chega em qualquer ponto da página.
+    const alvoMover: HTMLElement | Window = preso ? window : canvas;
+    alvoMover.addEventListener("mousemove", mover as EventListener); canvas.addEventListener("click", clicar);
     window.addEventListener("keydown", baixo); window.addEventListener("keyup", cima);
-    return () => { canvas.removeEventListener("mousemove", mover); canvas.removeEventListener("click", clicar); window.removeEventListener("keydown", baixo); window.removeEventListener("keyup", cima); };
-  }, [ativo, canvas, camera, scene, raio, aoClicar]);
+    return () => { alvoMover.removeEventListener("mousemove", mover as EventListener); canvas.removeEventListener("click", clicar); window.removeEventListener("keydown", baixo); window.removeEventListener("keyup", cima); };
+  }, [ativo, canvas, camera, scene, raio, aoClicar, preso]);
   useFrame((_, dt) => {
     if (!ativo) return;
     const giro = (teclas.current.ArrowLeft ? 1 : 0) - (teclas.current.ArrowRight ? 1 : 0);
@@ -212,11 +215,20 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
     document.addEventListener("pointerlockchange", mudou);
     return () => document.removeEventListener("pointerlockchange", mudou);
   }, [canvas]);
-  const soltar = () => { if (document.pointerLockElement) document.exitPointerLock(); };
+  // Cursor preso enquanto anda; Esc solta (aí dá para clicar em qualquer coisa do Infopro).
+  const [preso, setPreso] = useState(false);   // preso pela janela do app do Mac
+  const soltar = () => {
+    if (document.pointerLockElement) document.exitPointerLock();
+    void prenderCursor(false); setPreso(false);
+  };
   const entrar = useCallback(() => {
     setDentro(true);
-    try { const r = canvas?.requestPointerLock() as unknown as Promise<void> | undefined; r?.catch?.(() => { /* sem trava: o mouse mexe a câmera assim mesmo */ }); } catch { /* idem */ }
+    void prenderCursor(true).then((ok) => {
+      if (ok) { setPreso(true); return; }
+      try { const r = canvas?.requestPointerLock() as unknown as Promise<void> | undefined; r?.catch?.(() => { /* sem trava: o mouse mexe a câmera em cima do mundo */ }); } catch { /* idem */ }
+    });
   }, [canvas]);
+  useEffect(() => () => { void prenderCursor(false); }, []);
 
   const noMundo = useMemo(() => funcionarios.filter((f) => f.sala), [funcionarios]);
   const lugares = useMemo(() => lugaresDe(noMundo), [noMundo]);
@@ -235,8 +247,12 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
     const tecla = (e: KeyboardEvent) => {
       if (digitando(e)) return;
       if (e.code === "KeyE" && dentro && !aberto && alcance) { e.preventDefault(); interagir(alcance); }
-      if (e.code === "KeyT" && dentro) { e.preventDefault(); setVerTarefas((v) => !v); }
-      if (e.code === "Escape") { if (aberto) setAberto(null); else if (verTarefas) setVerTarefas(false); else if (dentro && !travado && !semTelaDeEntrada) setDentro(false); }
+      if (e.code === "KeyT" && dentro) { e.preventDefault(); setVerTarefas((v) => { if (!v) soltar(); return !v; }); }
+      if (e.code === "Escape") {
+        if (aberto) setAberto(null);
+        else if (verTarefas) setVerTarefas(false);
+        else if (dentro && !travado && !semTelaDeEntrada) { soltar(); setDentro(false); }   // pausa e solta o mouse
+      }
     };
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
@@ -263,7 +279,7 @@ export default function EscritorioVirtual({ funcionarios, resultado, onSair, onC
               alerta={f.sinal === "esperando" ? "#f59e0b" : f.sinal === "problema" ? "#ef4444" : null} posicao={[l.x, 0, l.z]} giro={l.giro} />;
           })}
           <Jogador ativo={dentro && !aberto} inicio={inicio} posicao={posicao} aoAlcance={setAlcance} lugares={lugares} funcionarios={noMundo} abertas={abertas} />
-          <Olhar ativo={dentro && !aberto} canvas={canvas} aoClicar={interagir} />
+          <Olhar ativo={dentro && !aberto && !verTarefas} canvas={canvas} aoClicar={interagir} preso={preso} />
         </Suspense>
       </Canvas>
 

@@ -346,6 +346,19 @@ export async function tamanhoMaximoNaTela(): Promise<Tamanho> {
   }
 }
 
+// Prende/solta o cursor na janela (escritório 3D, 23/10): no app do Mac o "travar o mouse" do navegador
+// não funciona; a janela some com o cursor e o segura, e o mouse continua mexendo a câmera.
+export async function prenderCursor(prender: boolean): Promise<boolean> {
+  if (!isDesktop()) return false;
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    const janela = getCurrentWindow();
+    await janela.setCursorGrab(prender);
+    await janela.setCursorVisible(!prender);
+    return true;
+  } catch { return false; }
+}
+
 // Janela própria da Agenda (23/10): abre (ou traz pra frente) a janela "agenda".
 export async function abrirJanelaAgenda(focar = true): Promise<void> {
   if (!isDesktop()) return;
