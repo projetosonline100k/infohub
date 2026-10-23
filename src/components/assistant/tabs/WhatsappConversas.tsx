@@ -29,7 +29,7 @@ interface Conversa {
 // 19/10 (Davi): "quando mando mensagem, em vez de ficar vazio e só aparecer quando é enviada, já
 // aparece com o relógio no cantinho igual ao WhatsApp; quando enviar, os dois tracinhos". A mensagem
 // fica aqui até a de verdade chegar do WhatsApp (pelo receptor, ao vivo).
-interface Pendente { id: string; tipo: "texto" | "audio"; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob }
+interface Pendente { id: string; tipo: "texto" | "audio"; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string }
 const normTexto = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
 
 function Situacao({ estado }: { estado: "enviando" | "enviada" | "erro" }) {
@@ -582,7 +582,8 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   const enviarAudio = async () => {
     const audio = await pararGravacao();
     if (!audio || audio.size < 1000) return;
-    const p: Pendente = { id: crypto.randomUUID(), tipo: "audio", texto: "", criada: new Date().toISOString(), estado: "enviando", audio };
+    // O balão provisório já toca o áudio gravado (24/10, Davi: "não consigo ouvir meu próprio áudio").
+    const p: Pendente = { id: crypto.randomUUID(), tipo: "audio", texto: "", criada: new Date().toISOString(), estado: "enviando", audio, audioUrl: URL.createObjectURL(audio) };
     setPendentes((l) => [...l, p]);
     void mandar(p);
   };
@@ -627,7 +628,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
 
   // A pendente sai quando a de verdade (minha, mesmo texto, depois dela) chega do WhatsApp.
   const aindaPendentes = pendentes.filter((p) => !mensagens.some((m) => m.de_mim
-    && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 60_000
+    && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 5 * 60_000
     && (p.tipo === "audio" ? m.tipo === "audio" : normTexto(m.texto) === normTexto(p.texto))));
   useEffect(() => {
     if (aindaPendentes.length !== pendentes.length) setPendentes(aindaPendentes);
@@ -712,7 +713,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
             <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
               "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]", p.estado === "erro" && "ring-1 ring-rose-400")}>
               {p.tipo === "audio"
-                ? <span className="inline-flex items-center gap-1 text-[11.5px]"><Mic className="h-3 w-3" />Áudio</span>
+                ? (p.audioUrl ? <AudioMensagem url={p.audioUrl} deMim /> : <span className="inline-flex items-center gap-1 text-[11.5px]"><Mic className="h-3 w-3" />Áudio</span>)
                 : <p className="whitespace-pre-wrap break-words">{p.texto}</p>}
               <p className="mt-0.5 flex items-center justify-end gap-1 text-[9.5px] text-muted-foreground">
                 {format(new Date(p.criada), "HH:mm")}<Situacao estado={p.estado} />
