@@ -11,6 +11,8 @@ import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
+import { QuadroKanban } from "./QuadroKanban";
+import { ComandosBarra } from "./ComandosBarra";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
 import { TituloRecolhivel } from "@/lib/tiptapTituloRecolhivel";
@@ -113,6 +115,8 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         openOnClick: true,
       }),
       ...extensoesEstiloTexto,
+      QuadroKanban,   // quadro com colunas (Kanban) dentro do documento (24/10)
+      ComandosBarra,  // "/" abre o menu de blocos (24/10)
     ],
     content: "",
     onUpdate: ({ editor }) => {
