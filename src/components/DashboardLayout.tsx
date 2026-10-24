@@ -126,7 +126,8 @@ export const DashboardLayout = () => {
     <div data-sem-rolagem="" className="flex h-svh w-full flex-col overflow-hidden">
       <WorkspaceTabs onNavigate={navigate} />
       <AtalhoWhatsapp clienteId={clienteRotaId} />
-      <SidebarProvider data-sem-rolagem="" className="min-h-0 min-w-0 flex-1">
+      {/* --painel-direita: o chat do documento (⌘I) aberto à direita encolhe só a área abaixo das guias. */}
+      <SidebarProvider data-sem-rolagem="" className="min-h-0 min-w-0 flex-1 pr-[var(--painel-direita,0px)]">
         {/* min-w-0 em toda a cadeia: sem isso este item de flex estica até a
             largura da página e é cortado pela janela, e o <main> nunca rola. */}
         <div data-sem-rolagem="" className="flex min-h-0 min-w-0 flex-1">

@@ -231,6 +231,10 @@ function htmlParaTexto(html: string) {
   return (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
 }
 const LARGURA_PAINEL = 400;
+const LARGURA_MIN = 320;
+const CHAVE_LARGURA = "docchat:largura";
+const larguraMax = () => Math.max(LARGURA_MIN, Math.min(1000, Math.round(window.innerWidth * 0.65)));
+const lerLargura = () => { try { const v = Number(localStorage.getItem(CHAVE_LARGURA)); return v >= LARGURA_MIN ? Math.min(v, larguraMax()) : LARGURA_PAINEL; } catch { return LARGURA_PAINEL; } };
 interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" | "revisando" }
 
 /** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
@@ -455,14 +459,44 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     return () => window.removeEventListener("keydown", aoTeclar, true);
   }, []);
 
-  // Painel aberto: o app encolhe para o painel não ficar por cima do documento.
+  // Painel aberto: o app encolhe para o painel não ficar por cima do documento. 24/10 (Davi): a barra de guias lá em
+  // cima continua inteira (o painel começa embaixo dela) e a largura se ajusta arrastando a borda esquerda.
+  const [largura, setLargura] = useState(lerLargura);
+  const [topo, setTopo] = useState(0);
   useEffect(() => {
     if (!aberto) return;
     requestAnimationFrame(() => campo.current?.focus());
-    const antes = document.body.style.paddingRight;
-    document.body.style.paddingRight = `${LARGURA_PAINEL}px`;
-    return () => { document.body.style.paddingRight = antes; };
+    const medir = () => setTopo(Math.max(0, Math.round(document.querySelector("[data-barra-guias]")?.getBoundingClientRect().bottom ?? 0)));
+    medir();
+    window.addEventListener("resize", medir);
+    return () => window.removeEventListener("resize", medir);
   }, [aberto]);
+  useEffect(() => {
+    if (!aberto) return;
+    // Quem encolhe é a área abaixo das guias (DashboardLayout lê --painel-direita); fora do app (janela do Atlas) o body.
+    const raiz = document.documentElement;
+    const temGuias = !!document.querySelector("[data-barra-guias]");
+    raiz.style.setProperty("--painel-direita", `${largura}px`);
+    const antes = document.body.style.paddingRight;
+    if (!temGuias) document.body.style.paddingRight = `${largura}px`;
+    return () => { raiz.style.removeProperty("--painel-direita"); if (!temGuias) document.body.style.paddingRight = antes; };
+  }, [aberto, largura]);
+  const arrastarBorda = (e: React.PointerEvent) => {
+    e.preventDefault();
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "col-resize";
+    let ultima = largura;
+    const mover = (ev: PointerEvent) => { ultima = Math.min(larguraMax(), Math.max(LARGURA_MIN, window.innerWidth - ev.clientX)); setLargura(ultima); };
+    const soltar = () => {
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", soltar);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      try { localStorage.setItem(CHAVE_LARGURA, String(ultima)); } catch { /* sem storage */ }
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  };
   // A conversa desce sozinha quando chega texto novo.
   useEffect(() => {
     const el = listaConversa.current;
@@ -797,10 +831,17 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
       {/* No body (portal): dentro do app, um ancestral com transform prendia o "fixed" na área da página
           e sobrava uma faixa branca à direita (24/10). */}
       {createPortal(<aside
-        className="fixed inset-y-0 right-0 z-50 flex flex-col border-l bg-background text-foreground shadow-2xl"
-        style={{ width: LARGURA_PAINEL }}
+        className="fixed bottom-0 right-0 z-50 flex flex-col border-l bg-background text-foreground shadow-2xl"
+        style={{ width: largura, top: topo }}
         onKeyDown={(e) => e.stopPropagation()}
       >
+        {/* Borda esquerda: segure e arraste para os lados (dois cliques volta ao tamanho padrão). */}
+        <div role="separator" aria-label="Ajustar a largura do chat" title="Arraste para mudar a largura · dois cliques: tamanho padrão"
+          onPointerDown={arrastarBorda}
+          onDoubleClick={() => { setLargura(LARGURA_PAINEL); try { localStorage.setItem(CHAVE_LARGURA, String(LARGURA_PAINEL)); } catch { /* sem storage */ } }}
+          className="group absolute inset-y-0 -left-1.5 z-10 w-3 cursor-col-resize">
+          <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-transparent transition-colors group-hover:bg-primary/50" />
+        </div>
         {/* Cabeçalho: quem está no chat, nova conversa e fechar. */}
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <Sparkles className="h-4 w-4 text-primary" />
