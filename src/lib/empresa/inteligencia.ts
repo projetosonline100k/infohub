@@ -4,7 +4,8 @@
 
 export type Alcance = "geral" | "projeto";
 // "aprendizado": o que o funcionário anotou quando o Davi corrigiu (scripts/inteligencia/aprender.py).
-export type TipoInteligencia = "pdf" | "texto" | "video" | "link" | "aprendizado";
+// "pasta" (24/10): pasta de documentos ao vivo; quem lê junta o texto atual dos documentos dela (ler.py).
+export type TipoInteligencia = "pdf" | "texto" | "video" | "link" | "aprendizado" | "pasta";
 export type StatusInteligencia = "pendente" | "processando" | "pronto" | "erro";
 
 export type ItemInteligencia = {
@@ -17,6 +18,7 @@ export type ItemInteligencia = {
   observacao: string | null;
   arquivo_path: string | null;
   link: string | null;
+  pasta_id?: string | null;
   caracteres: number;
   status: StatusInteligencia;
   mensagem: string | null;
@@ -29,7 +31,7 @@ export const ALCANCES: { valor: Alcance; rotulo: string; ajuda: string }[] = [
 ];
 
 export const ROTULO_TIPO: Record<TipoInteligencia, string> = {
-  pdf: "PDF", texto: "Texto", video: "Vídeo", link: "Link", aprendizado: "Aprendido com o Davi",
+  pdf: "PDF", texto: "Texto", video: "Vídeo", link: "Link", aprendizado: "Aprendido com o Davi", pasta: "Pasta ao vivo",
 };
 
 // Mesmo funcionário em projetos diferentes = mesmo nome (o banco faz igual).

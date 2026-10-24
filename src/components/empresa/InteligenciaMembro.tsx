@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Brain, Clock, FileText, GraduationCap, Link2, Loader2, Trash2, Type, Upload, Video } from "lucide-react";
+import { FolderOpen, AlertTriangle, Brain, Clock, FileText, GraduationCap, Link2, Loader2, Trash2, Type, Upload, Video } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesInsert } from "@/integrations/supabase/types";
@@ -18,9 +18,9 @@ import { cn } from "@/lib/utils";
 // texto aqui mesmo; vídeo e link ficam "na fila" até o Mac transcrever
 // (scripts/inteligencia/processar.py). Ver docs/agentes/italo-copy.md.
 
-const CAMPOS = "id, cliente_id, agente, escopo, tipo, nome, observacao, arquivo_path, link, caracteres, status, mensagem, created_at";
+const CAMPOS = "id, cliente_id, agente, escopo, tipo, nome, observacao, arquivo_path, link, pasta_id, caracteres, status, mensagem, created_at";
 const LINK_VALIDO_DIAS = 7;
-const ICONES: Record<TipoInteligencia, typeof FileText> = { pdf: FileText, texto: Type, video: Video, link: Link2, aprendizado: GraduationCap };
+const ICONES: Record<TipoInteligencia, typeof FileText> = { pdf: FileText, texto: Type, video: Video, link: Link2, aprendizado: GraduationCap, pasta: FolderOpen };
 
 export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; membro: MembroResumo }) {
   const [itens, setItens] = useState<ItemInteligencia[]>([]);
@@ -138,6 +138,16 @@ export function InteligenciaMembro({ clienteId, membro }: { clienteId: string; m
 
   const verTrecho = async (item: ItemInteligencia) => {
     if (aberto?.id === item.id) { setAberto(null); return; }
+    if (item.tipo === "pasta" && item.pasta_id) {
+      // Pasta ao vivo: mostra quais documentos ele lê agora (a pasta e as de dentro).
+      const { data: ps } = await supabase.from("pastas_atividade").select("id, parent_id").eq("origem", "documentos").is("deleted_at", null);
+      const ids = new Set([item.pasta_id]);
+      for (let mudou = true; mudou;) { mudou = false; for (const p of (ps ?? []) as { id: string; parent_id: string | null }[]) if (p.parent_id && ids.has(p.parent_id) && !ids.has(p.id)) { ids.add(p.id); mudou = true; } }
+      const { data: ds } = await supabase.from("documentos").select("titulo").in("pasta_id", [...ids]).is("deleted_at", null).neq("tipo", "mapa").order("titulo");
+      const titulos = ((ds ?? []) as { titulo: string | null }[]).map((d) => `• ${d.titulo || "Sem título"}`);
+      setAberto({ id: item.id, texto: `Ao vivo: ele lê o texto ATUAL destes ${titulos.length} documento(s) toda vez que trabalha (documento novo na pasta entra sozinho).\n\n${titulos.join("\n")}` });
+      return;
+    }
     const { data } = await supabase.from("inteligencia_membros").select("conteudo").eq("id", item.id).maybeSingle();
     const conteudo = (data as { conteudo: string | null } | null)?.conteudo ?? "";
     setAberto({ id: item.id, texto: item.tipo === "aprendizado" ? conteudo : conteudo.slice(0, 1500) + (conteudo.length > 1500 ? "…" : "") });
@@ -235,7 +245,7 @@ function Lista({ titulo, itens, vazio, aberto, onVer, onExcluir, onAlcance, onSa
                     title={item.status === "pronto" ? "Ver um trecho" : undefined}>
                     <p className="truncate text-sm">{item.nome}</p>
                     <p className={cn("flex items-center gap-1 text-[11px]", item.status === "erro" ? "text-rose-500" : "text-muted-foreground")}>
-                      {item.status === "pronto" && tamanhoLegivel(item.caracteres)}
+                      {item.status === "pronto" && (item.tipo === "pasta" ? "pasta ao vivo · clique para ver os documentos" : tamanhoLegivel(item.caracteres))}
                       {fila && <><Clock className="h-3 w-3" />{item.status === "processando" ? "transcrevendo no Mac…" : "na fila do Mac para transcrever"}</>}
                       {item.status === "erro" && <><AlertTriangle className="h-3 w-3" />{item.mensagem || "deu erro"}</>}
                     </p>

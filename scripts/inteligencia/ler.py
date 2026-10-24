@@ -5,10 +5,30 @@
 
 Somente leitura. O agente lê os .txt antes de trabalhar."""
 import argparse
+import html
 import re
 from pathlib import Path
 
 from comum import consultar
+
+
+def texto_do_html(conteudo):
+    """HTML do documento → texto (uma linha por parágrafo/item; o quadro já vem com o texto dos cartões)."""
+    t = re.sub(r'(?i)</(p|h[1-6]|li|blockquote|div)>|<br\s*/?>', '\n', conteudo or '')
+    t = html.unescape(re.sub(r'<[^>]+>', '', t))
+    return re.sub(r'\n{3,}', '\n\n', t).strip()
+
+
+def documentos_da_pasta(pasta_id):
+    """Pasta ao vivo (24/10): o texto ATUAL de todos os documentos da pasta e das subpastas."""
+    return consultar("""
+        with recursive arvore as (
+          select id from pastas_atividade where id = %s and deleted_at is null
+          union all
+          select p.id from pastas_atividade p join arvore a on p.parent_id = a.id where p.deleted_at is null)
+        select d.titulo, d.conteudo from documentos d
+         where d.pasta_id in (select id from arvore) and d.deleted_at is null and d.tipo <> 'mapa'
+         order by d.titulo""", (pasta_id,))
 
 
 def main():
@@ -19,7 +39,7 @@ def main():
     a = p.parse_args()
     agente = a.agente.strip().lower()
     itens = consultar("""
-        select i.id, i.escopo, i.tipo, i.nome, i.status, i.mensagem, i.caracteres, i.observacao,
+        select i.id, i.escopo, i.tipo, i.nome, i.status, i.mensagem, i.caracteres, i.observacao, i.pasta_id,
                case when %s or i.tipo = 'aprendizado' then i.conteudo end as conteudo
           from inteligencia_membros i join clientes c on c.id = %s
          where i.agente = %s and i.user_id = c.user_id
@@ -42,6 +62,13 @@ def main():
     saida = Path(a.saida).expanduser() if a.saida else None
     if saida:
         saida.mkdir(parents=True, exist_ok=True)
+    for i in itens:
+        if i['tipo'] == 'pasta' and i.get('pasta_id'):
+            docs = [(d['titulo'] or 'Sem título', texto_do_html(d['conteudo'])) for d in documentos_da_pasta(i['pasta_id'])]
+            docs = [(t, x) for t, x in docs if x]
+            i['conteudo'] = '\n\n'.join(f'=== {t} ===\n{x}' for t, x in docs) if a.saida else None
+            i['caracteres'] = sum(len(x) for _, x in docs)
+            i['mensagem'] = f'ao vivo · {len(docs)} documento(s)'
     for n, i in enumerate(itens, 1):
         linha = f"{n:02d}. [{i['escopo'] if i['escopo'] in ('geral', 'biblioteca') else 'projeto'}] {i['tipo']} · {i['nome']} · {i['status']}"
         linha += f" · {i['caracteres']:,} caracteres".replace(',', '.') if i['caracteres'] else ''

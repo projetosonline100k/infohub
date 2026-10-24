@@ -3032,6 +3032,7 @@ export type Database = {
           mensagem: string | null
           nome: string
           observacao: string | null
+          pasta_id: string | null
           processado_em: string | null
           status: string
           tipo: string
@@ -3050,6 +3051,7 @@ export type Database = {
           mensagem?: string | null
           nome: string
           observacao?: string | null
+          pasta_id?: string | null
           processado_em?: string | null
           status?: string
           tipo: string
@@ -3068,6 +3070,7 @@ export type Database = {
           mensagem?: string | null
           nome?: string
           observacao?: string | null
+          pasta_id?: string | null
           processado_em?: string | null
           status?: string
           tipo?: string

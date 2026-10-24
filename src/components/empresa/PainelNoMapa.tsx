@@ -201,7 +201,7 @@ function Skills({ membro, abrirId, nova, onMudou }: { membro: MembroMapa; abrirI
   const salvar = async () => {
     if (!aberta || !aberta.nome.trim()) return;
     setSalvando(true);
-    const linha = { nome: `Skill: ${aberta.nome.trim()}`, conteudo: aberta.conteudo, caracteres: aberta.conteudo.length, status: "pronto", escopo: aberta.escopo };
+    const linha = { nome: `Skill: ${aberta.nome.trim()}`, conteudo: aberta.conteudo, status: "pronto", escopo: aberta.escopo };
     const { error } = aberta.id
       ? await db.from("inteligencia_membros").update(linha).eq("id", aberta.id)
       : await db.from("inteligencia_membros").insert({ ...linha, tipo: "texto", cliente_id: membro.cliente_id, membro_id: membro.id, agente: membro.nome.trim().toLowerCase() });
@@ -284,7 +284,7 @@ function Aprendizados({ membro, foco, onMudou }: { membro: MembroMapa; foco?: nu
       for (const a of itens) {
         const texto = montar(linhas[a.id] ?? []);
         if (texto !== (a.conteudo ?? "").trim()) {
-          const { error } = await db.from("inteligencia_membros").update({ conteudo: texto, caracteres: texto.length }).eq("id", a.id);
+          const { error } = await db.from("inteligencia_membros").update({ conteudo: texto }).eq("id", a.id);
           if (error) throw error;
         }
       }
@@ -294,7 +294,7 @@ function Aprendizados({ membro, foco, onMudou }: { membro: MembroMapa; foco?: nu
         const { error } = doProjeto
           ? await db.from("inteligencia_membros").update({ conteudo: [montar(linhas[doProjeto.id] ?? []), linha].filter(Boolean).join("\n") }).eq("id", doProjeto.id)
           : await db.from("inteligencia_membros").insert({ cliente_id: membro.cliente_id, membro_id: membro.id, agente: membro.nome.trim().toLowerCase(),
-              escopo: "projeto", tipo: "aprendizado", nome: NOME_APRENDIZADOS, observacao: "Anotado no mapa da inteligência.", conteudo: linha, caracteres: linha.length, status: "pronto" });
+              escopo: "projeto", tipo: "aprendizado", nome: NOME_APRENDIZADOS, observacao: "Anotado no mapa da inteligência.", conteudo: linha, status: "pronto" });
         if (error) throw error;
         setNovo(null);
       }
@@ -407,7 +407,7 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
     const { error } = await db.from("inteligencia_membros").insert({
       cliente_id: membro.cliente_id, membro_id: membro.id, agente: membro.nome.trim().toLowerCase(), escopo: "projeto", tipo: "texto",
       nome: `Documento: ${d.titulo || "Sem título"}`, observacao: `Conectado do documento ${d.id} (cópia do texto de ${new Date().toLocaleDateString("pt-BR")}).`,
-      conteudo: texto, caracteres: texto.length, status: "pronto",
+      conteudo: texto, status: "pronto",
     });
     return !error;
   };
@@ -425,15 +425,21 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
     ...(docs ?? []).filter((d) => d.pasta_id === id),
     ...pastas.filter((p) => p.parent_id === id).flatMap((p) => docsDaPasta(p.id)),
   ];
+  // Pasta ao vivo (24/10, Davi: "deixa conectada de verdade"): guarda só a pasta; quem lê junta o texto atual
+  // dos documentos dela e das de dentro (scripts/inteligencia/ler.py). Documento novo na pasta entra sozinho.
   const ligarPasta = async (p: PastaConectar) => {
-    const lista = docsDaPasta(p.id);
-    if (!lista.length) { toast.error("Essa pasta não tem documentos"); return; }
-    if (!window.confirm(`Conectar os ${lista.length} documento(s) da pasta "${p.nome}" ao ${membro.nome}?`)) return;
+    const total = docsDaPasta(p.id).length;
+    const agente = membro.nome.trim().toLowerCase();
     setLigando(p.id);
-    let ok = 0;
-    for (const d of lista) if (await ligarUm(d)) ok += 1;
+    const { data: ja } = await db.from("inteligencia_membros").select("id").eq("agente", agente).eq("pasta_id", p.id).limit(1);
+    if ((ja ?? []).length) { setLigando(null); toast.info(`A pasta "${p.nome}" já está conectada ao ${membro.nome}`); return; }
+    const { error } = await db.from("inteligencia_membros").insert({
+      cliente_id: membro.cliente_id, membro_id: membro.id, agente, escopo: "projeto", tipo: "pasta", pasta_id: p.id,
+      nome: `Pasta: ${p.nome}`, observacao: "Pasta ao vivo: o texto atual dos documentos dela entra toda vez que ele trabalha.", status: "pronto",
+    });
     setLigando(null);
-    toast.success(`${ok} de ${lista.length} documento(s) de "${p.nome}" conectados ao ${membro.nome}`);
+    if (error) { toast.error("Não consegui conectar a pasta"); return; }
+    toast.success(`Pasta "${p.nome}" conectada ao ${membro.nome} (${total} documento(s) agora; os novos entram sozinhos)`);
     terminou();
   };
 
@@ -462,8 +468,8 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
             <span className="min-w-0 flex-1 truncate font-medium">{p.nome}</span>
             <span className="text-[11px] tabular-nums text-foreground/45">{total}</span>
           </button>
-          {total > 0 && (
-            <button type="button" disabled={!!ligando} onClick={() => void ligarPasta(p)} title={`Conectar os ${total} documentos desta pasta`}
+          {(
+            <button type="button" disabled={!!ligando} onClick={() => void ligarPasta(p)} title="Conectar a pasta ao vivo: ele lê sempre o texto atual dos documentos dela"
               className="shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-foreground/60 opacity-0 hover:bg-foreground/10 hover:text-foreground group-hover/pasta:opacity-100 disabled:opacity-40">
               {ligando === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "conectar pasta"}
             </button>
@@ -505,7 +511,7 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
                 ) : docs.map((d) => <LinhaDoc key={d.id} d={d} />)}
               </div>
             )}
-            <p className="text-[11px] text-foreground/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo). Passe o mouse numa pasta para conectar todos os documentos dela.</p>
+            <p className="text-[11px] text-foreground/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo). Passe o mouse numa pasta e clique em "conectar pasta": fica ao vivo (ele lê sempre o texto atual, e documento novo na pasta entra sozinho).</p>
           </div>
         )}
       </div>
