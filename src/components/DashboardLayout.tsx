@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AtalhoWhatsapp } from "@/components/layout/AtalhoWhatsapp";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
@@ -24,7 +24,7 @@ export const DashboardLayout = () => {
   // O layout fica fora das rotas de página, então lê o id direto do caminho.
   const clienteRotaId = matchPath("/clientes/:id", location.pathname)?.params.id;
   const [buscaAberta, setBuscaAberta] = useState(false);
-  const { syncPath } = useWorkspaceTabs();
+  const { syncPath, tabs, activeId } = useWorkspaceTabs();
   // Alarmes da Agenda tocam em qualquer tela do app (não só na Agenda).
   useAlarmesAgenda();
 
@@ -68,6 +68,18 @@ export const DashboardLayout = () => {
   useEffect(() => {
     syncPath(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search, syncPath]);
+
+  // Guia ativada sem navegar (openTab: "Novo desenho", ⌘+clique…): o endereço ficava no da guia
+  // anterior e clicar na lateral nesse item não fazia nada, deixando outro desenho na tela (24/10).
+  // Quando a guia ativa muda, o endereço passa a ser o dela.
+  const guiaAnterior = useRef(activeId);
+  useEffect(() => {
+    if (guiaAnterior.current === activeId) return;
+    guiaAnterior.current = activeId;
+    const ativa = tabs.find((t) => t.id === activeId);
+    if (ativa && ativa.path !== `${location.pathname}${location.search}`) navigate(ativa.path);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId, tabs]);
 
   // Avisa a janela `jarvis` (desktop) qual cliente está aberto aqui na
   // `main` — cada janela tem sua própria árvore React Router, então o
