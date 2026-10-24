@@ -6,7 +6,7 @@ import { medirAudio } from "@/lib/desktop/nivelAudio";
 import { gravarPorPausas, type GravadorPorPausas } from "@/lib/desktop/gravadorPorPausas";
 import type { EstadoVoz } from "@/hooks/useAssistantVoz";
 
-// Ditado (18/10/2026, Davi): segurar ⌘ sozinho = o Atlas escuta; soltar = transcreve
+// Ditado (18/10/2026, Davi): segurar ⌥ (Option) sozinho; até 24/10 era ⌘ = o Atlas escuta; soltar = transcreve
 // (Whisper local — 19/10: em pedaços, já enquanto ele fala; gravadorPorPausas), organiza como mensagem amigável de WhatsApp (Claude rápido) e cola
 // onde o cursor estiver (WhatsApp, grupo, o chat do Infopro…). O monitor da tecla fica
 // em src-tauri/src/ditado.rs; os estados aparecem na orbe como os do modo voz.

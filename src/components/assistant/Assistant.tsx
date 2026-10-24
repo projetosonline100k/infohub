@@ -737,7 +737,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   const [luaAberta, setLuaAberta] = useState<Lua | null>(null);
   // Falar com o Claude segurando ⌥+Espaço (o atalho só chega na janela do Atlas).
   const estadoVozConversa = useAssistantVoz(variant === "window" ? user?.id : undefined);
-  // Ditado: segurar ⌘ sozinho = o Atlas escuta e cola o texto organizado (useDitado).
+  // Ditado: segurar ⌥ (Option) sozinho = o Atlas escuta e cola o texto organizado (useDitado).
   const estadoDitado = useDitado(variant === "window");
   // Alarme tocando no Atlas (useAlarmesAgenda na janela principal pede): grande, por cima de tudo.
   const alarmeAtlas = useAlarmeAtlas(variant === "window");

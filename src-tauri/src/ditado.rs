@@ -3,10 +3,12 @@
 //! em grupo, aqui mesmo, de forma organizada e inteligente".
 //!
 //! - Monitor da tecla: uma thread olha o estado do teclado a cada 30 ms (sem
-//!   permissão nenhuma: só lê as teclas apertadas). ⌘ sozinho por 0,45 s =
+//!   permissão nenhuma: só lê as teclas apertadas). ⌥ (Option) sozinho por 0,6 s =
 //!   "ditado-apertado"; soltou = "ditado-solto". Se outra tecla, outro
-//!   modificador ou o mouse entrar no meio (⌘C, ⌘Tab, ⌘+clique…), não é ditado:
+//!   modificador ou o mouse entrar no meio (⌥+letra, ⌥Espaço, ⌥+clique…), não é ditado:
 //!   "ditado-cancelado" — os atalhos continuam funcionando.
+//!   24/10 (Davi): "o atalho para ouvir deixe de ser o Command e passe a ser o Option"
+//!   (antes era ⌘ sozinho).
 //! - A janela do Atlas grava, transcreve (Whisper local, voz_transcrever) e
 //!   chama `ditado_organizar` (Claude, modelo rápido) e `ditado_colar`.
 //! - Colar: o texto vai para a área de transferência e, com a permissão de
@@ -161,8 +163,15 @@ fn cmd_fisico() -> bool {
     let flags = unsafe { CGEventSourceFlagsState(HID) };
     flags & CMD != 0 && flags & 0x18 != 0 && unsafe { CGEventSourceKeyState(HID, 55) || CGEventSourceKeyState(HID, 54) }
 }
+/// ⌥ de verdade no teclado (58 esquerda, 61 direita), com a marca do lado (0x20 esquerdo, 0x40 direito),
+/// pelo mesmo motivo do ⌘ acima: só tecla física conta.
+fn opcao_fisica() -> bool {
+    let flags = unsafe { CGEventSourceFlagsState(HID) };
+    flags & OPCAO != 0 && flags & 0x60 != 0 && unsafe { CGEventSourceKeyState(HID, 58) || CGEventSourceKeyState(HID, 61) }
+}
 const CMD: u64 = 0x0010_0000;
-const OUTROS_MODIFICADORES: u64 = 0x0002_0000 | 0x0004_0000 | 0x0008_0000; // shift, control, option
+const OPCAO: u64 = 0x0008_0000;
+const OUTROS_MODIFICADORES: u64 = 0x0002_0000 | 0x0004_0000 | CMD; // shift, control, command
 const SEGURAR: Duration = Duration::from_millis(600);
 const MAXIMO: Duration = Duration::from_secs(120);   // nenhuma gravação passa disso
 
@@ -197,7 +206,7 @@ pub const EVENTO_CANCELADO: &str = "ditado-cancelado";
 pub fn iniciar(app: AppHandle) {
     std::thread::spawn(move || {
         let mut desde: Option<Instant> = None;
-        let mut sujo = false;      // esse aperto de ⌘ virou atalho: não é ditado
+        let mut sujo = false;      // esse aperto de ⌥ virou atalho: não é ditado
         let mut gravando = false;
         let mut gravando_desde = Instant::now();
         loop {
@@ -205,9 +214,9 @@ pub fn iniciar(app: AppHandle) {
             let flags = unsafe { CGEventSourceFlagsState(HID) };
             let surdo = agora_ms() < SURDO_ATE.load(std::sync::atomic::Ordering::Relaxed);
             let estourou = gravando && gravando_desde.elapsed() >= MAXIMO;
-            if !cmd_fisico() || surdo || estourou {
+            if !opcao_fisica() || surdo || estourou {
                 if gravando {
-                    registrar("solto", if estourou { "limite de 2 min" } else if surdo { "colando" } else { "soltou o cmd" });
+                    registrar("solto", if estourou { "limite de 2 min" } else if surdo { "colando" } else { "soltou o option" });
                     retomar_midia();
                     let _ = app.emit_to("jarvis", EVENTO_SOLTO, ());
                 }
@@ -239,8 +248,8 @@ pub fn iniciar(app: AppHandle) {
             if !sujo && !gravando && desde.map_or(false, |d| d.elapsed() >= SEGURAR) {
                 gravando = true;
                 gravando_desde = Instant::now();
-                registrar("apertado", &format!("flags={flags:#x} cmd_esq={} cmd_dir={}",
-                    unsafe { CGEventSourceKeyState(HID, 55) }, unsafe { CGEventSourceKeyState(HID, 54) }));
+                registrar("apertado", &format!("flags={flags:#x} opt_esq={} opt_dir={}",
+                    unsafe { CGEventSourceKeyState(HID, 58) }, unsafe { CGEventSourceKeyState(HID, 61) }));
                 pausar_midia();
                 preaquecer_claude();   // abre o Claude enquanto o Davi fala
                 let _ = app.emit_to("jarvis", EVENTO_APERTADO, ());
@@ -423,9 +432,9 @@ pub fn ditado_colar(texto: String) -> Result<bool, String> {
     if !unsafe { AXIsProcessTrusted() } {
         return Ok(false);
     }
-    // Espera o ⌘ do Davi sair do teclado (senão o ⌘V vira outra coisa).
+    // Espera o ⌥ (e algum ⌘) do Davi sair do teclado (senão o ⌘V vira ⌥⌘V, outra coisa).
     let limite = Instant::now() + Duration::from_secs(2);
-    while cmd_fisico() && Instant::now() < limite {
+    while (opcao_fisica() || cmd_fisico()) && Instant::now() < limite {
         std::thread::sleep(Duration::from_millis(20));
     }
     SURDO_ATE.store(agora_ms() + 2500, std::sync::atomic::Ordering::Relaxed);

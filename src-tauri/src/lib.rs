@@ -122,7 +122,7 @@ pub fn run() {
                 app.manage(estado_atalho);
             }
 
-            // Ditado: segurar ⌘ sozinho = o Atlas escuta e cola o texto organizado (ditado.rs).
+            // Ditado: segurar ⌥ (Option) sozinho = o Atlas escuta e cola o texto organizado (ditado.rs).
             #[cfg(target_os = "macos")]
             ditado::iniciar(app.handle().clone());
 
