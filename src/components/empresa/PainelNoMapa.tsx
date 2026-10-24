@@ -13,17 +13,23 @@ import { cn } from "@/lib/utils";
 // (skills, aprendizados, documentos).
 const db = supabase as unknown as SupabaseClient;
 
+/** `foco`: o item clicado no mapa (índice) ou "novo" (o "+" do pilar), para o painel já abrir nele. */
+type Foco = { foco?: number | "novo" };
 export type OrigemPilar =
-  | { tipo: "manual" }
-  | { tipo: "etapa"; setorId: string; etapa: string; campo: "criterios" | "formatos" }
-  | { tipo: "skills"; abrir?: string }
-  | { tipo: "aprendizados" }
-  | { tipo: "conhecimento" };
+  | ({ tipo: "manual" } & Foco)
+  | ({ tipo: "etapa"; setorId: string; etapa: string; campo: "criterios" | "formatos" } & Foco)
+  | ({ tipo: "skills"; abrir?: string } & Foco)
+  | ({ tipo: "aprendizados" } & Foco)
+  | ({ tipo: "conhecimento" } & Foco);
 
 export interface MembroMapa extends MembroResumo { manual: string | null; cliente_id: string | null }
 
 interface Etapa { nome: string; membro_id: string; criterios?: string | string[] | null; formatos?: { nome?: string; texto?: string }[] | null }
 interface ItemIntel { id: string; nome: string; conteudo: string | null; caracteres: number | null; escopo: string; tipo: string }
+
+// O item clicado no mapa aparece no meio do painel só ao abrir (ref de callback roda a cada tecla).
+const rolados = new WeakSet<Element>();
+const rolarUmaVez = (el: Element) => { if (!rolados.has(el)) { rolados.add(el); el.scrollIntoView({ block: "center" }); } };
 
 const campo = "w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-sky-400";
 const botao = "flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-50";
@@ -41,21 +47,36 @@ export function PainelNoMapa({ membro, origem, onFechar, onMudou }: {
         <button type="button" onClick={onFechar} className="rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {origem.tipo === "manual" && <Manual membro={membro} onMudou={onMudou} />}
+        {origem.tipo === "manual" && <Manual membro={membro} foco={origem.foco} onMudou={onMudou} />}
         {origem.tipo === "etapa" && <EditarEtapa membro={membro} origem={origem} onMudou={onMudou} />}
-        {origem.tipo === "skills" && <Skills membro={membro} abrirId={origem.abrir} onMudou={onMudou} />}
-        {origem.tipo === "aprendizados" && <Aprendizados membro={membro} onMudou={onMudou} />}
+        {origem.tipo === "skills" && <Skills membro={membro} abrirId={origem.abrir} nova={origem.foco === "novo"} onMudou={onMudou} />}
+        {origem.tipo === "aprendizados" && <Aprendizados membro={membro} foco={origem.foco} onMudou={onMudou} />}
         {origem.tipo === "conhecimento" && (membro.cliente_id
-          ? <div className="dark text-foreground"><InteligenciaMembro clienteId={membro.cliente_id} membro={membro} /></div>
+          ? <Conhecimento membro={membro as MembroMapa & { cliente_id: string }} conectar={origem.foco === "novo"} onMudou={onMudou} />
           : <p className="text-sm text-white/60">Este funcionário não está num projeto.</p>)}
       </div>
     </div>
   );
 }
 
-function Manual({ membro, onMudou }: { membro: MembroMapa; onMudou: () => void }) {
-  const [texto, setTexto] = useState(membro.manual ?? "");
+function Manual({ membro, foco, onMudou }: { membro: MembroMapa; foco?: number | "novo"; onMudou: () => void }) {
+  const [texto, setTexto] = useState(() => (foco === "novo" && membro.manual?.trim() ? `${membro.manual.replace(/\s+$/, "")}\n` : membro.manual ?? ""));
   const [salvando, setSalvando] = useState(false);
+  const area = useRef<HTMLTextAreaElement>(null);
+  // Abre já na linha clicada no mapa (a k-ésima linha com texto), ou no fim para escrever uma nova.
+  useEffect(() => {
+    const el = area.current;
+    if (!el || foco === undefined) return;
+    el.focus();
+    if (foco === "novo") { el.setSelectionRange(el.value.length, el.value.length); el.scrollTop = el.scrollHeight; return; }
+    let inicio = 0, achou = -1;
+    for (const linha of el.value.split("\n")) {
+      if (linha.trim() && ++achou === foco) { el.setSelectionRange(inicio, inicio + linha.length); break; }
+      inicio += linha.length + 1;
+    }
+    el.scrollTop = Math.max(0, (el.value.slice(0, inicio).split("\n").length - 3) * 20);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const salvar = async () => {
     setSalvando(true);
     const { error } = await db.from("membros").update({ manual: texto.trim() || null }).eq("id", membro.id);
@@ -67,7 +88,7 @@ function Manual({ membro, onMudou }: { membro: MembroMapa; onMudou: () => void }
   return (
     <div className="space-y-3">
       <p className="text-xs text-white/55">Como o {membro.nome} trabalha. Uma regra por linha fica melhor no mapa.</p>
-      <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={16} className={cn(campo, "resize-y leading-relaxed")} />
+      <textarea ref={area} value={texto} onChange={(e) => setTexto(e.target.value)} rows={16} className={cn(campo, "resize-y leading-relaxed")} />
       <button type="button" onClick={() => void salvar()} disabled={salvando || texto === (membro.manual ?? "")} className={cn(botao, "bg-sky-600 hover:bg-sky-500")}>
         {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar manual
       </button>
@@ -80,6 +101,7 @@ function EditarEtapa({ membro, origem, onMudou }: { membro: MembroMapa; origem: 
   const [criterios, setCriterios] = useState<string[]>([]);
   const [formatos, setFormatos] = useState<{ nome: string; texto: string }[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [focado, setFocado] = useState<number | null>(null);
   const indice = esteira?.findIndex((e) => e.membro_id === membro.id && e.nome === origem.etapa) ?? -1;
   useEffect(() => {
     void db.from("setores").select("esteira").eq("id", origem.setorId).maybeSingle().then(({ data }) => {
@@ -87,10 +109,16 @@ function EditarEtapa({ membro, origem, onMudou }: { membro: MembroMapa; origem: 
       setEsteira(lista);
       const e = lista.find((x) => x.membro_id === membro.id && x.nome === origem.etapa);
       const c = e?.criterios;
-      setCriterios(Array.isArray(c) ? c.map(String) : (c ?? "").split(/\n+/).map((l) => l.trim()).filter(Boolean));
-      setFormatos((e?.formatos ?? []).map((f) => ({ nome: f.nome ?? "", texto: f.texto ?? "" })));
+      const crit = Array.isArray(c) ? c.map(String) : (c ?? "").split(/\n+/).map((l) => l.trim()).filter(Boolean);
+      const forms = (e?.formatos ?? []).map((f) => ({ nome: f.nome ?? "", texto: f.texto ?? "" }));
+      // O "+" do mapa já abre com um item vazio no fim; clicar num item abre focado nele.
+      if (origem.foco === "novo") { if (origem.campo === "criterios") crit.push(""); else forms.push({ nome: "", texto: "" }); }
+      setCriterios(crit);
+      setFormatos(forms);
+      const n = origem.campo === "criterios" ? crit.length : forms.length;
+      setFocado(origem.foco === "novo" ? n - 1 : typeof origem.foco === "number" ? origem.foco : null);
     });
-  }, [origem.setorId, origem.etapa, membro.id]);
+  }, [origem.setorId, origem.etapa, origem.campo, origem.foco, membro.id]);
   if (!esteira) return <Loader2 className="h-4 w-4 animate-spin text-white/50" />;
   if (indice < 0) return <p className="text-sm text-white/60">Não achei essa etapa na esteira.</p>;
   const salvar = async () => {
@@ -113,7 +141,8 @@ function EditarEtapa({ membro, origem, onMudou }: { membro: MembroMapa; origem: 
           {criterios.map((c, k) => (
             <div key={k} className="flex items-start gap-2">
               <span className="mt-1.5 w-5 text-right text-xs text-white/40">{k + 1}.</span>
-              <textarea value={c} rows={2} onChange={(e) => setCriterios((l) => l.map((x, j) => (j === k ? e.target.value : x)))} className={cn(campo, "resize-y")} />
+              <textarea value={c} rows={2} autoFocus={focado === k} ref={(el) => { if (el && focado === k) rolarUmaVez(el); }}
+                onChange={(e) => setCriterios((l) => l.map((x, j) => (j === k ? e.target.value : x)))} className={cn(campo, "resize-y", focado === k && "border-sky-400")} placeholder="Novo critério" />
               <button type="button" onClick={() => setCriterios((l) => l.filter((_, j) => j !== k))} className="mt-1 text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
@@ -123,9 +152,10 @@ function EditarEtapa({ membro, origem, onMudou }: { membro: MembroMapa; origem: 
         <>
           <p className="text-xs text-white/55">Estruturas de referência: ele escolhe a que mais combina e segue.</p>
           {formatos.map((f, k) => (
-            <div key={k} className="space-y-1.5 rounded-lg border border-white/10 p-2.5">
+            <div key={k} className={cn("space-y-1.5 rounded-lg border p-2.5", focado === k ? "border-sky-400" : "border-white/10")}
+              ref={(el) => { if (el && focado === k) rolarUmaVez(el); }}>
               <div className="flex items-center gap-2">
-                <input value={f.nome} placeholder={`Formato ${k + 1}`} onChange={(e) => setFormatos((l) => l.map((x, j) => (j === k ? { ...x, nome: e.target.value } : x)))} className={campo} />
+                <input value={f.nome} placeholder={`Formato ${k + 1}`} autoFocus={focado === k} onChange={(e) => setFormatos((l) => l.map((x, j) => (j === k ? { ...x, nome: e.target.value } : x)))} className={campo} />
                 <button type="button" onClick={() => setFormatos((l) => l.filter((_, j) => j !== k))} className="text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
               </div>
               <textarea value={f.texto} rows={6} placeholder="O formato (estrutura, exemplo)" onChange={(e) => setFormatos((l) => l.map((x, j) => (j === k ? { ...x, texto: e.target.value } : x)))} className={cn(campo, "resize-y")} />
@@ -157,9 +187,10 @@ function useItens(membro: MembroMapa, filtro: (i: ItemIntel) => boolean) {
 const ehSkill = (i: ItemIntel) => i.nome.startsWith("Skill:");
 const nomeSkill = (n: string) => n.replace(/^Skill:\s*/, "");
 
-function Skills({ membro, abrirId, onMudou }: { membro: MembroMapa; abrirId?: string; onMudou: () => void }) {
+function Skills({ membro, abrirId, nova, onMudou }: { membro: MembroMapa; abrirId?: string; nova?: boolean; onMudou: () => void }) {
   const { itens, carregar } = useItens(membro, ehSkill);
-  const [aberta, setAberta] = useState<{ id: string | null; nome: string; conteudo: string; escopo: string } | null>(null);
+  const [aberta, setAberta] = useState<{ id: string | null; nome: string; conteudo: string; escopo: string } | null>(
+    nova ? { id: null, nome: "", conteudo: "", escopo: "geral" } : null);
   const [salvando, setSalvando] = useState(false);
   const arquivo = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -229,27 +260,160 @@ function Skills({ membro, abrirId, onMudou }: { membro: MembroMapa; abrirId?: st
   );
 }
 
-function Aprendizados({ membro, onMudou }: { membro: MembroMapa; onMudou: () => void }) {
+// Aprendizados (24/10: "editar cada item, + para criar"): cada linha "- (dd/mm) regra" vira um campo; o "+" acrescenta
+// uma linha no registro do projeto (o mesmo que scripts/inteligencia/aprender.py usa).
+const NOME_APRENDIZADOS = "Aprendizados com o Davi";
+const semMarca = (l: string) => l.replace(/^[-•*\s]+/, "").replace(/^\(\d{2}\/\d{2}\)\s*/, "").trim();
+const dataDe = (l: string) => l.match(/^[-•*\s]*\((\d{2}\/\d{2})\)/)?.[1];
+
+function Aprendizados({ membro, foco, onMudou }: { membro: MembroMapa; foco?: number | "novo"; onMudou: () => void }) {
   const { itens, carregar } = useItens(membro, (i) => i.tipo === "aprendizado");
-  const apagar = async (id: string) => {
-    if (!window.confirm("Apagar este aprendizado?")) return;
-    const { error } = await db.from("inteligencia_membros").delete().eq("id", id);
-    if (error) { toast.error("Não consegui apagar"); return; }
-    void carregar(); onMudou();
+  const [linhas, setLinhas] = useState<Record<string, { data?: string; texto: string }[]>>({});
+  const [novo, setNovo] = useState(foco === "novo" ? "" : null as string | null);
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => {
+    if (!itens) return;
+    setLinhas(Object.fromEntries(itens.map((a) => [a.id, (a.conteudo ?? "").split(/\n+/).filter((l) => l.trim()).map((l) => ({ data: dataDe(l), texto: semMarca(l) }))])));
+  }, [itens]);
+  const montar = (ls: { data?: string; texto: string }[]) => ls.filter((l) => l.texto.trim()).map((l) => `- ${l.data ? `(${l.data}) ` : ""}${l.texto.trim()}`).join("\n");
+  const hoje = () => { const d = new Date(); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`; };
+  const salvar = async () => {
+    if (!itens) return;
+    setSalvando(true);
+    try {
+      for (const a of itens) {
+        const texto = montar(linhas[a.id] ?? []);
+        if (texto !== (a.conteudo ?? "").trim()) {
+          const { error } = await db.from("inteligencia_membros").update({ conteudo: texto, caracteres: texto.length }).eq("id", a.id);
+          if (error) throw error;
+        }
+      }
+      if (novo?.trim()) {
+        const linha = `- (${hoje()}) ${novo.trim()}`;
+        const doProjeto = itens.find((a) => a.escopo === "projeto") ?? itens[0];
+        const { error } = doProjeto
+          ? await db.from("inteligencia_membros").update({ conteudo: [montar(linhas[doProjeto.id] ?? []), linha].filter(Boolean).join("\n") }).eq("id", doProjeto.id)
+          : await db.from("inteligencia_membros").insert({ cliente_id: membro.cliente_id, membro_id: membro.id, agente: membro.nome.trim().toLowerCase(),
+              escopo: "projeto", tipo: "aprendizado", nome: NOME_APRENDIZADOS, observacao: "Anotado no mapa da inteligência.", conteudo: linha, caracteres: linha.length, status: "pronto" });
+        if (error) throw error;
+        setNovo(null);
+      }
+      toast.success("Aprendizados salvos");
+      void carregar(); onMudou();
+    } catch {
+      toast.error("Não consegui salvar os aprendizados");
+    } finally {
+      setSalvando(false);
+    }
   };
   if (itens === null) return <Loader2 className="h-4 w-4 animate-spin text-white/50" />;
-  if (!itens.length) return <p className="text-sm text-white/60">Nenhum aprendizado ainda. Eles aparecem quando você corrige o {membro.nome} e ele anota.</p>;
+  let n = -1;
   return (
     <div className="space-y-3">
+      <p className="text-xs text-white/55">Regras que o {membro.nome} segue sempre (aparecem no topo do que ele lê). Uma por campo.</p>
       {itens.map((a) => (
-        <div key={a.id} className="rounded-lg border border-white/10 p-3">
-          <div className="mb-1 flex items-center gap-2">
-            <p className="flex-1 truncate text-sm font-semibold">{a.nome}</p>
-            <button type="button" onClick={() => void apagar(a.id)} className="text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
-          </div>
-          <p className="whitespace-pre-wrap text-xs leading-relaxed text-white/70">{a.conteudo}</p>
+        <div key={a.id} className="space-y-2">
+          {itens.length > 1 && <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">{a.nome} · {a.escopo === "geral" ? "geral" : "projeto"}</p>}
+          {(linhas[a.id] ?? []).map((l, k) => {
+            n += 1;
+            const focado = foco === n;
+            return (
+              <div key={k} className="flex items-start gap-2">
+                <span className="mt-2 w-10 shrink-0 text-right text-[10px] text-white/40">{l.data ?? ""}</span>
+                <textarea value={l.texto} rows={2} autoFocus={focado} ref={(el) => { if (el && focado) rolarUmaVez(el); }}
+                  onChange={(e) => setLinhas((m) => ({ ...m, [a.id]: m[a.id].map((x, j) => (j === k ? { ...x, texto: e.target.value } : x)) }))}
+                  className={cn(campo, "resize-y", focado && "border-sky-400")} />
+                <button type="button" title="Tirar" onClick={() => setLinhas((m) => ({ ...m, [a.id]: m[a.id].filter((_, j) => j !== k) }))}
+                  className="mt-1.5 text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
+              </div>
+            );
+          })}
         </div>
       ))}
+      {novo !== null ? (
+        <div className="flex items-start gap-2">
+          <span className="mt-2 w-10 shrink-0 text-right text-[10px] text-sky-300">novo</span>
+          <textarea value={novo} rows={2} autoFocus onChange={(e) => setNovo(e.target.value)} placeholder="Ex.: Headline sempre com número no começo"
+            className={cn(campo, "resize-y border-sky-400")} />
+        </div>
+      ) : (
+        <button type="button" onClick={() => setNovo("")} className={cn(botao, "border border-dashed border-white/25 text-white/70 hover:text-white")}><Plus className="h-3.5 w-3.5" />Aprendizado</button>
+      )}
+      <div><button type="button" onClick={() => void salvar()} disabled={salvando} className={cn(botao, "bg-sky-600 hover:bg-sky-500")}>
+        {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar
+      </button></div>
+    </div>
+  );
+}
+
+// Documentos (24/10, Davi: "conectar algum documento"): além de subir arquivo/link (InteligenciaMembro), dá para
+// ligar um documento do app (roteiros, headlines…): o texto dele entra como conhecimento do funcionário.
+const textoDoHtml = (html: string | null) => {
+  if (!html) return "";
+  const doc = new DOMParser().parseFromString(html.replace(/<\/(p|h\d|li|blockquote)>/gi, "</$1>\n").replace(/<br\s*\/?>/gi, "\n"), "text/html");
+  return (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
+};
+
+function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cliente_id: string }; conectar?: boolean; onMudou: () => void }) {
+  const [aberto, setAberto] = useState(!!conectar);
+  const [busca, setBusca] = useState("");
+  const [docs, setDocs] = useState<{ id: string; titulo: string; cliente_id: string | null; updated_at: string }[] | null>(null);
+  const [ligando, setLigando] = useState<string | null>(null);
+  const [versao, setVersao] = useState(0);
+  useEffect(() => {
+    if (!aberto) return;
+    const t = window.setTimeout(() => {
+      let q = db.from("documentos").select("id, titulo, cliente_id, updated_at").is("deleted_at", null).order("updated_at", { ascending: false }).limit(30);
+      q = busca.trim() ? q.ilike("titulo", `%${busca.trim()}%`) : q.eq("cliente_id", membro.cliente_id);
+      void q.then(({ data }) => setDocs((data ?? []) as typeof docs));
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [aberto, busca, membro.cliente_id]);
+  const ligar = async (d: { id: string; titulo: string }) => {
+    setLigando(d.id);
+    const { data } = await db.from("documentos").select("conteudo").eq("id", d.id).maybeSingle();
+    const conteudo = (data as { conteudo: string | null } | null)?.conteudo ?? null;
+    const texto = conteudo?.startsWith("__") ? "" : textoDoHtml(conteudo);
+    if (!texto) { setLigando(null); toast.error("Esse documento está vazio (ou é um desenho)"); return; }
+    const { error } = await db.from("inteligencia_membros").insert({
+      cliente_id: membro.cliente_id, membro_id: membro.id, agente: membro.nome.trim().toLowerCase(), escopo: "projeto", tipo: "texto",
+      nome: `Documento: ${d.titulo || "Sem título"}`, observacao: `Conectado do documento ${d.id} (cópia do texto de ${new Date().toLocaleDateString("pt-BR")}).`,
+      conteudo: texto, caracteres: texto.length, status: "pronto",
+    });
+    setLigando(null);
+    if (error) { toast.error("Não consegui conectar o documento"); return; }
+    toast.success(`"${d.titulo}" conectado ao ${membro.nome}`);
+    setAberto(false); setBusca("");
+    setVersao((v) => v + 1);
+    onMudou();
+  };
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-white/10 p-3">
+        <button type="button" onClick={() => setAberto((a) => !a)} className="flex w-full items-center gap-2 text-left text-sm font-semibold">
+          <FileText className="h-4 w-4 text-sky-300" />Conectar documento do app
+          <Plus className={cn("ml-auto h-4 w-4 transition-transform", aberto && "rotate-45")} />
+        </button>
+        {aberto && (
+          <div className="mt-3 space-y-2">
+            <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar documento pelo nome (vazio = os deste projeto)" className={campo} />
+            {docs === null ? <Loader2 className="h-4 w-4 animate-spin text-white/50" /> : !docs.length ? <p className="text-xs text-white/50">Nenhum documento.</p> : (
+              <div className="max-h-64 space-y-1 overflow-y-auto">
+                {docs.map((d) => (
+                  <button key={d.id} type="button" disabled={!!ligando} onClick={() => void ligar(d)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-white/10 disabled:opacity-50">
+                    {ligando === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-white/50" />}
+                    <span className="min-w-0 flex-1 truncate">{d.titulo || "Sem título"}</span>
+                    <span className="text-[11px] text-white/40">{new Date(d.updated_at).toLocaleDateString("pt-BR")}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-[11px] text-white/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo).</p>
+          </div>
+        )}
+      </div>
+      <div className="dark text-foreground"><InteligenciaMembro key={versao} clienteId={membro.cliente_id} membro={membro} /></div>
     </div>
   );
 }

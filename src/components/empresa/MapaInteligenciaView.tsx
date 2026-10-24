@@ -23,7 +23,7 @@ const COLUNA_X = { esq: 470, dir: 1130 };
 const MAX_ITENS_AUTO = 8;
 
 /** Pilar do cadastro: `origem` diz o que o clique abre; `refs[k]` é o id do item k (ex.: a skill). */
-type Pilar = PilarMapa & { auto?: boolean; origem?: OrigemPilar; refs?: (string | undefined)[] };
+type Pilar = PilarMapa & { auto?: boolean; origem?: OrigemPilar; refs?: (string | undefined)[]; mais?: string };
 
 interface Etapa { nome: string; membro_id: string; criterios?: string | string[] | null; formatos?: { nome?: string; texto?: string }[] | null }
 
@@ -56,26 +56,26 @@ async function pilaresDoCadastro(membroId: string): Promise<{ pilares: Pilar[]; 
   ]);
   const pilares: Pilar[] = [];
   const manual = linhas(membro.manual);
-  pilares.push({ titulo: "Manual", descricao: "Como ele trabalha (cadastro do funcionário)", itens: manual.length ? manual.map((l) => curto(l)) : ["(vazio) clique para escrever"], auto: true, origem: { tipo: "manual" } });
+  pilares.push({ titulo: "Manual", descricao: "Como ele trabalha (cadastro do funcionário)", itens: manual.map((l) => curto(l)), auto: true, origem: { tipo: "manual" }, mais: "Escrever no manual" });
   for (const s of (setores.data ?? []) as { id: string; nome: string; esteira: Etapa[] | null }[]) {
     for (const e of (Array.isArray(s.esteira) ? s.esteira : []).filter((x) => x.membro_id === membroId)) {
       const crit = Array.isArray(e.criterios) ? e.criterios.map(String) : linhas(e.criterios as string | null);
-      pilares.push({ titulo: `Critérios · ${e.nome}`, descricao: `O que ele confere em ${e.nome} (${s.nome})`, itens: crit.length ? crit.map((c) => curto(c)) : ["(nenhum) clique para adicionar"],
-        auto: true, origem: { tipo: "etapa", setorId: s.id, etapa: e.nome, campo: "criterios" } });
+      pilares.push({ titulo: `Critérios · ${e.nome}`, descricao: `O que ele confere em ${e.nome} (${s.nome})`, itens: crit.map((c) => curto(c)),
+        auto: true, origem: { tipo: "etapa", setorId: s.id, etapa: e.nome, campo: "criterios" }, mais: "Novo critério" });
       const formatos = (e.formatos ?? []).filter((f) => (f.texto ?? "").trim() || (f.nome ?? "").trim());
-      pilares.push({ titulo: `Formatos · ${e.nome}`, descricao: "Estruturas de referência que ele segue", itens: formatos.length ? formatos.map((f, i) => f.nome?.trim() || `Formato ${i + 1}`) : ["(nenhum) clique para adicionar"],
-        auto: true, origem: { tipo: "etapa", setorId: s.id, etapa: e.nome, campo: "formatos" } });
+      pilares.push({ titulo: `Formatos · ${e.nome}`, descricao: "Estruturas de referência que ele segue", itens: formatos.map((f, i) => f.nome?.trim() || `Formato ${i + 1}`),
+        auto: true, origem: { tipo: "etapa", setorId: s.id, etapa: e.nome, campo: "formatos" }, mais: "Novo formato" });
     }
   }
   const lista = (intel.data ?? []) as { id: string; nome: string; tipo: string | null; conteudo: string | null; status: string | null }[];
   const skills = lista.filter((i) => i.nome.startsWith("Skill:") && i.status === "pronto");
-  pilares.push({ titulo: "Skills", descricao: "Métodos que ele segue em cada pedido (clique para abrir)", itens: skills.length ? skills.map((i) => i.nome.replace(/^Skill:\s*/, "")) : ["(nenhuma) clique para criar"],
-    refs: skills.map((i) => i.id), auto: true, origem: { tipo: "skills" } });
+  pilares.push({ titulo: "Skills", descricao: "Métodos que ele segue em cada pedido (clique para abrir)", itens: skills.map((i) => i.nome.replace(/^Skill:\s*/, "")),
+    refs: skills.map((i) => i.id), auto: true, origem: { tipo: "skills" }, mais: "Nova skill" });
   const docs = lista.filter((i) => !i.nome.startsWith("Skill:") && i.tipo !== "aprendizado");
-  pilares.push({ titulo: "Documentos", descricao: "PDFs, vídeos, textos e links que ele estudou", itens: docs.length ? docs.map((i) => curto(i.nome, 40) + (i.status !== "pronto" ? " · na fila" : "")) : ["Subir PDF, vídeo, texto ou link"],
-    auto: true, origem: { tipo: "conhecimento" } });
+  pilares.push({ titulo: "Documentos", descricao: "PDFs, vídeos, textos e links que ele estudou", itens: docs.map((i) => curto(i.nome, 40) + (i.status !== "pronto" ? " · na fila" : "")),
+    auto: true, origem: { tipo: "conhecimento" }, mais: "Conectar documento ou subir arquivo" });
   const aprendizados = lista.filter((i) => i.tipo === "aprendizado" && i.status === "pronto").flatMap((i) => linhas(i.conteudo)).map((l) => curto(l));
-  if (aprendizados.length) pilares.push({ titulo: "Aprendizados", descricao: "Correções que você já fez com ele", itens: aprendizados, auto: true, origem: { tipo: "aprendizados" } });
+  pilares.push({ titulo: "Aprendizados", descricao: "Correções que você já fez com ele", itens: aprendizados, auto: true, origem: { tipo: "aprendizados" }, mais: "Novo aprendizado" });
   return { pilares, membro };
 }
 
@@ -127,7 +127,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
     ...doCadastro.map((p) => ({ ...p, itens: p.itens.slice(0, MAX_ITENS_AUTO).concat(p.itens.length > MAX_ITENS_AUTO ? [`+ ${p.itens.length - MAX_ITENS_AUTO} outros (clique)`] : []) })),
   ], [mapa, doCadastro]);
   const layout = useMemo(() => {
-    const altura = (p: Pilar) => Math.max(PILAR.h + 30, p.itens.length * FOLHA.passo + (editar && !p.auto ? 40 : 0) + (p.exemplo !== undefined ? 90 : 0) + 20);
+    const altura = (p: Pilar) => Math.max(PILAR.h + 30, (p.itens.length + (p.mais ? 1 : 0)) * FOLHA.passo + (editar && !p.auto ? 40 : 0) + (p.exemplo !== undefined ? 90 : 0) + 20);
     const lados: number[][] = [[], []];
     const soma = [0, 0];
     todos.forEach((p, i) => { const k = soma[0] <= soma[1] ? 0 : 1; lados[k].push(i); soma[k] += altura(p); });
@@ -205,13 +205,14 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
               {todos.map((p, i) => {
                 const l = pos[i], cor = p.auto ? "#64748b" : p.cor ?? CORES_PILAR[i % CORES_PILAR.length];
                 const xFolha = l.x + l.lado * FOLHA.distancia;
-                const y0 = l.y - ((p.itens.length - 1) * FOLHA.passo) / 2;
+                const y0 = l.y - ((p.itens.length + (p.mais ? 1 : 0) - 1) * FOLHA.passo) / 2;
                 return (
                   <g key={i} stroke={cor} strokeWidth={3} fill="none" opacity={p.auto ? 0.6 : 0.85} strokeDasharray={p.auto ? "6 6" : undefined}>
                     <path d={curva(centro.x + l.lado * (CENTRO.w / 2), centro.y, l.x - l.lado * (PILAR.w / 2), l.y)} />
                     {p.itens.map((_, k) => (
                       <path key={k} strokeWidth={2} d={curva(l.x + l.lado * (PILAR.w / 2), l.y, xFolha - l.lado * (FOLHA.w / 2), y0 + k * FOLHA.passo)} />
                     ))}
+                    {p.mais && <path strokeWidth={1.5} opacity={0.5} d={curva(l.x + l.lado * (PILAR.w / 2), l.y, xFolha - l.lado * (FOLHA.w / 2), y0 + p.itens.length * FOLHA.passo)} />}
                   </g>
                 );
               })}
@@ -230,7 +231,10 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
               const l = pos[i], cor = p.auto ? "#64748b" : p.cor ?? CORES_PILAR[i % CORES_PILAR.length];
               const ed = editar && !p.auto;
               const xFolha = l.x + l.lado * FOLHA.distancia;
-              const y0 = l.y - ((p.itens.length - 1) * FOLHA.passo) / 2;
+              const y0 = l.y - ((p.itens.length + (p.mais ? 1 : 0) - 1) * FOLHA.passo) / 2;
+              // "+ N outros": abre o painel do pilar inteiro; um item: abre o painel já nele (24/10, Davi:
+              // "editar cada item, clicar em + e criar mais").
+              const extra = p.auto && p.itens.length > 0 && /^\+ \d+ outros/.test(p.itens[p.itens.length - 1]);
               return (
                 <div key={i}>
                   <div className={cn("absolute rounded-2xl border-2 bg-[#0f1625] p-3 shadow-xl", !ed && "cursor-pointer transition-transform hover:scale-[1.02]")}
@@ -260,15 +264,25 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
                     <div key={k} className={cn("absolute flex items-center gap-1 rounded-lg border-2 bg-[#0f1625] px-3 text-[13px]", !ed && "cursor-pointer hover:bg-white/5")}
                       onClick={() => {
                         if (p.origem?.tipo === "skills") setNoAberto({ tipo: "skills", abrir: p.refs?.[k] });
-                        else if (p.origem) setNoAberto(p.origem);
+                        else if (p.origem) setNoAberto(extra && k === p.itens.length - 1 ? p.origem : { ...p.origem, foco: k });
                         else if (!editar) setEditar(true);
                       }}
                       style={{ left: xFolha - FOLHA.w / 2, top: y0 + k * FOLHA.passo - FOLHA.h / 2, width: FOLHA.w, height: FOLHA.h, borderColor: `${cor}aa`, borderStyle: p.auto ? "dashed" : "solid" }}
-                      title={it}>
-                      <Texto valor={it} editar={ed} onMudar={(v) => mudarPilar(i, { itens: p.itens.map((x, j) => (j === k ? v : x)) })} className="flex-1 truncate" placeholder="item" />
+                      title={p.auto ? `${it}\n(clique para editar)` : it}>
+                      {ed
+                        ? <Texto valor={it} editar onMudar={(v) => mudarPilar(i, { itens: p.itens.map((x, j) => (j === k ? v : x)) })} className="flex-1" placeholder="item" />
+                        : <span className="min-w-0 flex-1 truncate">{it || <span className="opacity-40">item</span>}</span>}
+                      {p.auto && <Pencil className="h-3 w-3 shrink-0 text-white/30" />}
                       {ed && <button type="button" onClick={() => mudarPilar(i, { itens: p.itens.filter((_, j) => j !== k) })} className="text-white/40 hover:text-rose-400"><X className="h-3 w-3" /></button>}
                     </div>
                   ))}
+                  {p.mais && p.origem && (
+                    <button type="button" onClick={() => setNoAberto({ ...p.origem!, foco: "novo" })}
+                      className="absolute flex items-center gap-1.5 rounded-lg border-2 border-dashed border-white/20 px-3 text-[13px] text-white/60 hover:border-white/50 hover:text-white"
+                      style={{ left: xFolha - FOLHA.w / 2, top: y0 + p.itens.length * FOLHA.passo - FOLHA.h / 2, width: FOLHA.w, height: FOLHA.h }}>
+                      <Plus className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{p.mais}</span>
+                    </button>
+                  )}
                   {ed && (
                     <div className="absolute flex gap-1.5" style={{ left: xFolha - FOLHA.w / 2, top: y0 + p.itens.length * FOLHA.passo - FOLHA.h / 2, width: FOLHA.w }}>
                       <button type="button" onClick={() => mudarPilar(i, { itens: [...p.itens, ""] })}
@@ -297,7 +311,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
           </div>
         )}
         {noAberto && membroMapa && (
-          <PainelNoMapa membro={membroMapa} origem={noAberto} onFechar={() => setNoAberto(null)} onMudou={() => void recarregarCadastro()} />
+          <PainelNoMapa key={JSON.stringify(noAberto)} membro={membroMapa} origem={noAberto} onFechar={() => setNoAberto(null)} onMudou={() => void recarregarCadastro()} />
         )}
       </div>
     </div>,
