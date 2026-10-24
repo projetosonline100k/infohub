@@ -63,6 +63,7 @@ import { detectarDiaSemana } from "@/lib/diasSemana";
 import { parseResponsaveis } from "@/lib/responsaveis";
 import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
 import { criarAtividade as criarAtividadeService } from "@/lib/atividades/criarAtividade";
+import { excluirAtividade as excluirAtividadeSuave } from "@/lib/atividades/excluirAtividade";
 import { prazoPadrao, responsavelMaisComum } from "@/lib/atividades/padroesNovaTarefa";
 import { onActivityCreated } from "@/lib/desktop/events";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
@@ -1172,17 +1173,10 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
     }
   };
 
+  // Exclusão suave (deleted_at) com confirmação e Desfazer: src/lib/atividades/excluirAtividade.ts.
   const excluirAtividade = async (id: string) => {
-    try {
-      const { error } = await supabase.from("atividades").delete().eq("id", id);
-
-      if (error) throw error;
-
+    if (await excluirAtividadeSuave(id, () => void carregarAtividades())) {
       setAtividades((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Atividade excluída");
-    } catch (error) {
-      console.error("Erro ao excluir atividade:", error);
-      toast.error("Erro ao excluir atividade");
     }
   };
 

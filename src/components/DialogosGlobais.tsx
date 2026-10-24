@@ -13,7 +13,7 @@ import { buttonVariants } from "@/components/ui/button";
 // nada. Estes funcionam igual na web e no Mac, com o visual do app.
 
 type Pedido =
-  | { tipo: "confirmar"; mensagem: string; botao: string; destrutivo: boolean; responder: (ok: boolean) => void }
+  | { tipo: "confirmar"; mensagem: string; botao: string; destrutivo: boolean; descricao?: string; responder: (ok: boolean) => void }
   | { tipo: "texto"; mensagem: string; valor: string; responder: (texto: string | null) => void };
 
 let mostrar: ((pedido: Pedido) => void) | null = null;
@@ -21,11 +21,12 @@ let mostrar: ((pedido: Pedido) => void) | null = null;
 // Palavras que indicam ação destrutiva: botão vermelho e rótulo "Excluir".
 const DESTRUTIVO = /excluir|apagar|remover|perde/i;
 
-export function confirmar(mensagem: string, opcoes?: { botao?: string; destrutivo?: boolean }): Promise<boolean> {
+// `descricao` troca o "Essa ação não pode ser desfeita." (ex.: exclusão suave com Desfazer).
+export function confirmar(mensagem: string, opcoes?: { botao?: string; destrutivo?: boolean; descricao?: string }): Promise<boolean> {
   return new Promise((resolve) => {
     if (!mostrar) { resolve(window.confirm(mensagem)); return; }
     const destrutivo = opcoes?.destrutivo ?? DESTRUTIVO.test(mensagem);
-    mostrar({ tipo: "confirmar", mensagem, botao: opcoes?.botao ?? (destrutivo ? "Excluir" : "Confirmar"), destrutivo, responder: resolve });
+    mostrar({ tipo: "confirmar", mensagem, botao: opcoes?.botao ?? (destrutivo ? "Excluir" : "Confirmar"), destrutivo, descricao: opcoes?.descricao, responder: resolve });
   });
 }
 
@@ -64,8 +65,8 @@ export function DialogosGlobais() {
       <AlertDialogContent className="z-[400]">
         <AlertDialogHeader>
           <AlertDialogTitle className="text-base font-semibold leading-snug">{pedido?.mensagem}</AlertDialogTitle>
-          {pedido?.tipo === "confirmar" && pedido.destrutivo && (
-            <AlertDialogDescription>Essa ação não pode ser desfeita.</AlertDialogDescription>
+          {pedido?.tipo === "confirmar" && (pedido.descricao || pedido.destrutivo) && (
+            <AlertDialogDescription>{pedido.descricao ?? "Essa ação não pode ser desfeita."}</AlertDialogDescription>
           )}
         </AlertDialogHeader>
         {pedido?.tipo === "texto" && (

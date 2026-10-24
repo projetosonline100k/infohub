@@ -3,7 +3,7 @@ import { addDays, addMonths, format, isSameMonth, startOfMonth } from "date-fns"
 import { ptBR } from "date-fns/locale";
 import {
   AlertCircle, CalendarClock, CalendarX2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot,
-  Eye, Loader2, Maximize2, MoreHorizontal, Plus, Users,
+  Eye, Loader2, Maximize2, MoreHorizontal, Plus, Trash2, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,12 +14,13 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { filtrarPorResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { parseResponsaveis } from "@/lib/responsaveis";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
+import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import {
   chaveDia, dataLocal, diaDaColuna, diaDaTarefa, diasDeAtraso, inicioDaSemana, situacaoDaTarefa, type Situacao,
 } from "@/lib/atividades/semana";
@@ -184,12 +185,10 @@ export function SemanaView() {
     setAberta({ atividade: data as Record<string, unknown>, colunas: colunas.filter((c) => c.cliente_id === data.cliente_id) });
   };
   const excluir = async (id: string) => {
-    // Vai para a lixeira (deleted_at), não apaga de vez.
-    const { error } = await supabase.from("atividades").update({ deleted_at: new Date().toISOString() }).eq("id", id);
-    if (error) { toast.error("Não consegui excluir"); return; }
+    // Só preenche deleted_at (dá para desfazer); some na hora da lista e dos contadores.
+    if (!(await excluirAtividade(id, () => void carregar()))) return;
     setAberta(null);
-    toast.success("Tarefa movida para a lixeira");
-    void carregar();
+    setTarefas((ts) => ts.filter((x) => x.id !== id));
   };
 
   const diaNovo = foco.tipo === "dia" ? foco.chave : chaveDia(hoje);
@@ -413,6 +412,10 @@ export function SemanaView() {
                                 <DropdownMenuItem onClick={() => void adiar(t, 1)}>{t.sit === "atrasada" ? "Passar para amanhã" : "Adiar 1 dia"}</DropdownMenuItem>
                                 {t.sit === "atrasada" && <DropdownMenuItem onClick={() => void adiar(t, 0)}>Passar para hoje</DropdownMenuItem>}
                                 <DropdownMenuItem onClick={() => void adiar(t, 7)}>Próxima semana</DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => void excluir(t.id)} className="text-destructive focus:text-destructive">
+                                  <Trash2 className="mr-2 h-4 w-4" />Excluir
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </li>

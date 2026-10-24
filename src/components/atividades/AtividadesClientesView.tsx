@@ -28,6 +28,7 @@ import { AtividadesView } from "./AtividadesView";
 import { MapaAtividades } from "./MapaAtividades";
 import { TimerFinalizarDialog } from "./TimerFinalizarDialog";
 import { criarAtividade as criarAtividadeService, lerPastaAtivaSalva } from "@/lib/atividades/criarAtividade";
+import { excluirAtividade as excluirAtividadeSuave } from "@/lib/atividades/excluirAtividade";
 import { filtrarPorResponsavel, type FiltroResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 
@@ -469,15 +470,10 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     },
   };
 
+  // Exclusão suave (deleted_at) com confirmação e Desfazer: src/lib/atividades/excluirAtividade.ts.
   const excluirAtividade = async (id: string) => {
-    try {
-      const { error } = await supabase.from("atividades").delete().eq("id", id);
-      if (error) throw error;
+    if (await excluirAtividadeSuave(id, () => void carregarDados())) {
       setAtividades((prev) => prev.filter((a) => a.id !== id));
-      toast.success("Atividade excluída");
-    } catch (error) {
-      console.error("Erro ao excluir atividade:", error);
-      toast.error("Erro ao excluir atividade");
     }
   };
 
