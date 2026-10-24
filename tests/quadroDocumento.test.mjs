@@ -47,3 +47,16 @@ test("escolhe as referências que combinam com o pedido (etiqueta e coluna pesam
   assert.deepEqual(q.escolherReferencias(refs, "roteiro de mistério sobre série").map((r) => r.titulo), ["Casa de Davi"]);
   assert.deepEqual(q.escolherReferencias(refs, "escreve um roteiro"), []);
 });
+
+test("criador: vai no texto da IA, nas referências e pesa na escolha", () => {
+  const d = { colunas: [{ id: "a", titulo: "Mistério", cor: "#000", cartoes: [
+    { id: "1", texto: "Lili\nO maior veneno para os cabelos", criador: "Elias Maman" },
+    { id: "2", texto: "Outro\nOutro texto", criador: "elias maman" },
+  ] }] };
+  assert.deepEqual(q.criadoresDoQuadro(d), ["Elias Maman"]);
+  assert.match(q.textoDoQuadro(d), /- Lili \(criador: Elias Maman\): O maior veneno/);
+  const attr = JSON.stringify(d).replace(/"/g, "&quot;");
+  const refs = q.cartoesDoHtml(`<div data-dados="${attr}"></div>`, "E");
+  assert.equal(refs[0].criador, "Elias Maman");
+  assert.deepEqual(q.escolherReferencias(refs, "roteiro no estilo do Elias Maman").map((r) => r.titulo), ["Lili", "Outro"]);
+});

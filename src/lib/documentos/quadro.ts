@@ -3,7 +3,8 @@
 // Sem React aqui: usado pelo bloco do editor (components/documentos/QuadroKanban.tsx), pelo chat do documento
 // e testado em tests/quadroDocumento.test.mjs.
 
-export interface Cartao { id: string; texto: string; titulo?: string; etiquetas?: string[] }
+/** `criador`: quem fez o conteúdo de referência (24/10, Davi: "colocar o nome do criador"). */
+export interface Cartao { id: string; texto: string; titulo?: string; etiquetas?: string[]; criador?: string }
 export interface Coluna { id: string; titulo: string; cor: string; cartoes: Cartao[] }
 export interface DadosQuadro { colunas: Coluna[] }
 
@@ -49,6 +50,16 @@ export function etiquetasDoQuadro(d: DadosQuadro): string[] {
   return [...todas].filter(Boolean).sort((a, b) => a.localeCompare(b));
 }
 
+/** Os criadores usados no quadro (sugestão ao digitar e filtro), como foram escritos na 1ª vez. */
+export function criadoresDoQuadro(d: DadosQuadro): string[] {
+  const vistos = new Map<string, string>();
+  for (const col of d.colunas) for (const c of col.cartoes) {
+    const n = (c.criador ?? "").trim();
+    if (n && !vistos.has(n.toLowerCase())) vistos.set(n.toLowerCase(), n);
+  }
+  return [...vistos.values()].sort((a, b) => a.localeCompare(b));
+}
+
 /** O quadro como texto: o que a IA lê quando ele está no documento ou é citado com @. */
 export function textoDoQuadro(d: DadosQuadro): string {
   const partes = ["[QUADRO]"];
@@ -56,8 +67,9 @@ export function textoDoQuadro(d: DadosQuadro): string {
     partes.push(`[Coluna: ${col.titulo || "sem nome"}]`);
     for (const c of col.cartoes) {
       const et = (c.etiquetas ?? []).length ? ` (etiquetas: ${(c.etiquetas ?? []).join(", ")})` : "";
+      const por = (c.criador ?? "").trim() ? ` (criador: ${(c.criador ?? "").trim()})` : "";
       const corpo = corpoDoCartao(c);
-      partes.push(`- ${tituloDoCartao(c) || "sem título"}${et}${corpo ? `: ${corpo}` : ""}`);
+      partes.push(`- ${tituloDoCartao(c) || "sem título"}${por}${et}${corpo ? `: ${corpo}` : ""}`);
     }
   }
   return partes.join("\n");
@@ -65,7 +77,7 @@ export function textoDoQuadro(d: DadosQuadro): string {
 
 // ---------------------------------------------------------------- referências para o roteiro
 
-export interface Referencia { fonte: string; coluna: string; titulo: string; etiquetas: string[]; texto: string }
+export interface Referencia { fonte: string; coluna: string; titulo: string; etiquetas: string[]; texto: string; criador?: string }
 
 /** Os cartões de todos os quadros de um HTML de documento (atributo data-dados de cada quadro). */
 export function cartoesDoHtml(html: string, fonte: string): Referencia[] {
@@ -79,7 +91,8 @@ export function cartoesDoHtml(html: string, fonte: string): Referencia[] {
       for (const c of col.cartoes) {
         const texto = corpoDoCartao(c);
         if (!tituloDoCartao(c) && !texto) continue;
-        saida.push({ fonte, coluna: col.titulo, titulo: tituloDoCartao(c), etiquetas: (c.etiquetas ?? []).map(normalizarEtiqueta), texto });
+        saida.push({ fonte, coluna: col.titulo, titulo: tituloDoCartao(c), etiquetas: (c.etiquetas ?? []).map(normalizarEtiqueta), texto,
+          ...((c.criador ?? "").trim() ? { criador: (c.criador ?? "").trim() } : {}) });
       }
     }
   }
@@ -103,9 +116,11 @@ export function escolherReferencias(refs: Referencia[], pedido: string, limiteCa
   if (!palavras.length) return [];
   const pontos = refs.map((r) => {
     const et = semAcento(r.etiquetas.join(" ")), col = semAcento(r.coluna), tit = semAcento(r.titulo), txt = semAcento(r.texto);
+    const cri = semAcento(r.criador ?? "");
     let p = 0;
     for (const w of palavras) {
       if (et.includes(w)) p += 5;
+      if (cri.includes(w)) p += 5;
       if (col.includes(w)) p += 4;
       if (tit.includes(w)) p += 2;
       if (txt.includes(w)) p += 1;

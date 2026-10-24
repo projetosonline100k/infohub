@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from "@tiptap/react";
-import { ChevronUp, GripVertical, MoreHorizontal, Plus, Tag, Trash2, X } from "lucide-react";
+import { ChevronUp, GripVertical, MoreHorizontal, Plus, Tag, Trash2, UserRound, X } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import {
-  CORES_COLUNA, corpoDoCartao, etiquetasDoQuadro, lerDados, normalizarEtiqueta, novoId, quadroPadrao, textoDoQuadro, tituloDoCartao,
+  CORES_COLUNA, corpoDoCartao, criadoresDoQuadro, etiquetasDoQuadro, lerDados, normalizarEtiqueta, novoId, quadroPadrao, textoDoQuadro, tituloDoCartao,
   type Cartao, type Coluna, type DadosQuadro,
 } from "@/lib/documentos/quadro";
 
@@ -65,6 +65,31 @@ function CampoTexto({ valor, onMudar, placeholder, className, autoFocus, onEnter
   );
 }
 
+/** Criador do conteúdo (24/10): um nome por cartão, com sugestão dos que o quadro já tem. */
+function CampoCriador({ valor, existentes, onMudar }: { valor: string; existentes: string[]; onMudar: (v: string) => void }) {
+  const [foco, setFoco] = useState(false);
+  const termo = valor.trim().toLowerCase();
+  const sugestoes = existentes.filter((e) => e.toLowerCase() !== termo && (!termo || e.toLowerCase().includes(termo))).slice(0, 6);
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1 rounded border border-dashed px-1.5 py-0.5">
+        <UserRound className="h-3 w-3 shrink-0 text-muted-foreground" />
+        <input value={valor} onChange={(e) => onMudar(e.target.value)} placeholder="criador (ex.: Elias Maman)"
+          onFocus={() => setFoco(true)} onBlur={() => window.setTimeout(() => setFoco(false), 150)}
+          className="w-full bg-transparent text-[11px] outline-none placeholder:text-muted-foreground/60" />
+      </div>
+      {foco && sugestoes.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {sugestoes.map((n) => (
+            <button key={n} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onMudar(n)}
+              className="rounded border px-1.5 py-px text-[10.5px] text-muted-foreground hover:text-foreground">{n}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Campo de etiqueta: Enter ou vírgula adiciona; sugere as que o quadro já usa. */
 function NovaEtiqueta({ existentes, jaTem, onAdicionar }: { existentes: string[]; jaTem: string[]; onAdicionar: (t: string) => void }) {
   const [valor, setValor] = useState("");
@@ -91,10 +116,12 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
   const [aberto, setAberto] = useState<string | null>(null);
   const [focarCartao, setFocarCartao] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<string | null>(null);
+  const [filtroCriador, setFiltroCriador] = useState<string | null>(null);
   const [arrasto, setArrasto] = useState<{ cartao: string; de: string; para: string | null; antes: string | null } | null>(null);
   const inicio = useRef<{ x: number; y: number; cartao: string; de: string } | null>(null);
   const caixa = useRef<HTMLDivElement>(null);
   const todasEtiquetas = etiquetasDoQuadro(dados);
+  const criadores = criadoresDoQuadro(dados);
 
   const salvar = (novo: DadosQuadro) => updateAttributes({ dados: JSON.stringify(novo) });
   const mudarColuna = (id: string, f: (c: Coluna) => Coluna) => salvar({ colunas: dados.colunas.map((c) => (c.id === id ? f(c) : c)) });
@@ -103,7 +130,7 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
 
   const novoCartao = (colunaId: string) => {
     const id = novoId();
-    mudarColuna(colunaId, (c) => ({ ...c, cartoes: [...c.cartoes, { id, titulo: "", texto: "", etiquetas: filtro ? [filtro] : [] }] }));
+    mudarColuna(colunaId, (c) => ({ ...c, cartoes: [...c.cartoes, { id, titulo: "", texto: "", etiquetas: filtro ? [filtro] : [], ...(filtroCriador ? { criador: filtroCriador } : {}) }] }));
     setAberto(id);
     setFocarCartao(id);
   };
@@ -152,7 +179,13 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
         <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Quadro</span>
         {/* Filtrar por etiqueta: mostra só os cartões com ela (o cartão novo já nasce com ela). */}
         {todasEtiquetas.map((t) => <Etiqueta key={t} texto={t} ativa={filtro === t} onClick={() => setFiltro(filtro === t ? null : t)} />)}
-        {filtro && <button type="button" onClick={() => setFiltro(null)} className="text-[11px] text-muted-foreground hover:text-foreground">limpar filtro</button>}
+        {criadores.map((n) => (
+          <button key={n} type="button" onClick={() => setFiltroCriador(filtroCriador === n ? null : n)} title="Ver só os cartões deste criador"
+            className={cn("inline-flex items-center gap-0.5 rounded border px-1.5 py-px text-[10.5px] font-medium text-muted-foreground hover:text-foreground", filtroCriador === n && "border-primary text-primary")}>
+            <UserRound className="h-2.5 w-2.5" />{n}
+          </button>
+        ))}
+        {(filtro || filtroCriador) && <button type="button" onClick={() => { setFiltro(null); setFiltroCriador(null); }} className="text-[11px] text-muted-foreground hover:text-foreground">limpar filtro</button>}
         {editavel && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -169,7 +202,8 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
       <div ref={caixa} className="scrollbar-thin flex items-start gap-3 overflow-x-auto pb-1">
         {dados.colunas.map((col) => {
           const alvo = arrasto?.para === col.id;
-          const visiveis = filtro ? col.cartoes.filter((c) => (c.etiquetas ?? []).map(normalizarEtiqueta).includes(filtro)) : col.cartoes;
+          const visiveis = col.cartoes.filter((c) => (!filtro || (c.etiquetas ?? []).map(normalizarEtiqueta).includes(filtro))
+            && (!filtroCriador || (c.criador ?? "").trim().toLowerCase() === filtroCriador.toLowerCase()));
           return (
             <div key={col.id} data-quadro-coluna={col.id} className={cn("w-60 shrink-0 rounded-lg p-1.5 transition-colors", alvo ? "bg-primary/10" : "bg-muted/40")}>
               <div className="group/col mb-1.5 flex items-center gap-1.5 px-1">
@@ -222,6 +256,8 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
                                   <ChevronUp className="h-3 w-3" />Fechar
                                 </button>
                               </div>
+                              <CampoCriador valor={card.criador ?? ""} existentes={criadores}
+                                onMudar={(v) => mudarCartao(col.id, card.id, (c) => ({ ...c, criador: v }))} />
                               {etiquetas.length > 0 && (
                                 <div className="flex flex-wrap gap-1">
                                   {etiquetas.map((t) => <Etiqueta key={t} texto={t} onTirar={() => mudarCartao(col.id, card.id, (c) => ({ ...c, etiquetas: (c.etiquetas ?? []).filter((x) => normalizarEtiqueta(x) !== t) }))} />)}
@@ -239,6 +275,9 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
                             // Fechado: pequeno (título, 2 linhas e as etiquetas); clicar abre.
                             <button type="button" onClick={() => editavel && setAberto(card.id)} className="min-w-0 flex-1 space-y-1 text-left">
                               <p className="line-clamp-2 font-semibold leading-snug">{titulo || <span className="font-normal text-muted-foreground">Sem título</span>}</p>
+                              {(card.criador ?? "").trim() && (
+                                <p className="flex items-center gap-1 truncate text-[11px] font-medium text-muted-foreground"><UserRound className="h-3 w-3 shrink-0" />{card.criador}</p>
+                              )}
                               {corpo && <p className="line-clamp-2 text-[12px] leading-snug text-muted-foreground">{corpo}</p>}
                               {etiquetas.length > 0 && <div className="flex flex-wrap gap-1">{etiquetas.map((t) => <Etiqueta key={t} texto={t} />)}</div>}
                             </button>
@@ -308,7 +347,7 @@ export const QuadroKanban = Node.create({
     const d = lerDados(node.attrs.dados);
     return ["div", mergeAttributes(HTMLAttributes, { "data-quadro-kanban": "" }),
       ...d.colunas.map((c) => ["div", { "data-coluna": c.titulo }, ["strong", {}, c.titulo || "Coluna"],
-        ["ul", {}, ...c.cartoes.map((x) => ["li", {}, `${tituloDoCartao(x)}${(x.etiquetas ?? []).length ? ` (#${(x.etiquetas ?? []).join(" #")})` : ""}${corpoDoCartao(x) ? `: ${corpoDoCartao(x)}` : ""}`])]])];
+        ["ul", {}, ...c.cartoes.map((x) => ["li", {}, `${tituloDoCartao(x)}${(x.criador ?? "").trim() ? ` (criador: ${(x.criador ?? "").trim()})` : ""}${(x.etiquetas ?? []).length ? ` (#${(x.etiquetas ?? []).join(" #")})` : ""}${corpoDoCartao(x) ? `: ${corpoDoCartao(x)}` : ""}`])]])];
   },
 
   // O texto do documento que vai para a IA (chat ⌘I) inclui o quadro: sem isto ele seria invisível (é um bloco fechado).
