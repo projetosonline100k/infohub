@@ -377,7 +377,7 @@ export function AppSidebar() {
           </button>
           <a href={no.ir ?? "#"} onClick={(e) => { if (no.acao) { e.preventDefault(); no.acao(); return; } if (no.ir) ir(no.ir, no.titulo, e); else { e.preventDefault(); alternar(no.chave); } if (temFilhos && no.ir && !aberto) alternar(no.chave, true); }}
             draggable={false} className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-0.5" title={no.titulo}>
-            <Icone className={cn("h-3.5 w-3.5 shrink-0", eAtivo ? "text-primary" : no.icone === Folder ? "text-sky-400/80" : "text-sidebar-foreground/60")} />
+            <Icone className={cn("h-3.5 w-3.5 shrink-0", eAtivo ? "text-primary" : no.icone === Folder ? "text-sky-400/80" : "text-sidebar-foreground/60", no.icone === Folder && "icone-pasta")} />
             <span className="truncate">{no.titulo}</span>
           </a>
           {no.criar && (
