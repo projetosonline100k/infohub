@@ -286,7 +286,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   return (
     <div className="fixed inset-0 z-50 bg-background flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0">
+      <header className="barra-editor flex items-center justify-between gap-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0">
         <div className="flex items-center gap-1 sm:gap-3 min-w-0 flex-1">
           <Button variant="ghost" size="icon" className="shrink-0" onClick={onClose}>
             <ArrowLeft className="h-5 w-5" />
@@ -367,10 +367,10 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             folha de papel flutuando (fica artificial numa tela estreita e
             sobra pouco espaço de verdade pro texto); a partir de sm o
             "papel" volta, como no desktop. */}
-        <div className="flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+        <div className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
           <div
             className={cn(
-              "mx-auto max-w-[816px] bg-background transition-opacity duration-150 sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg",
+              "superficie-folha mx-auto max-w-[816px] bg-background transition-opacity duration-150 sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg",
               loading && "opacity-40"
             )}
           >

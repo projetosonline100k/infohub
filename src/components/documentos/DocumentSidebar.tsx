@@ -140,7 +140,7 @@ export function DocumentSidebar({
   };
 
   return (
-    <div className={cn("w-64 border-r bg-muted/30 flex flex-col h-full", className)}>
+    <div className={cn("painel-secundario w-64 border-r bg-muted/30 flex flex-col h-full", className)}>
       <div className="flex items-center justify-between p-4 border-b">
         <span className="text-sm font-medium">Guias no documento</span>
         <Button
@@ -199,7 +199,7 @@ export function DocumentSidebar({
               title="Clique para abrir · ⌘+clique ou botão direito: nova guia / tela dividida"
               className={cn(
                 "w-full text-left p-2 pr-8 rounded hover:bg-muted text-sm flex items-center gap-2 transition-colors",
-                guia.id === documentoAtualId && "bg-muted font-medium"
+                guia.id === documentoAtualId && "item-ativo bg-muted font-medium"
               )}
             >
               <FileText className="h-4 w-4 shrink-0" />

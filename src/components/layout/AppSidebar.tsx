@@ -369,7 +369,7 @@ export function AppSidebar() {
           arrastando && "opacity-40", arrasto && "cursor-grabbing",
           marca === "antes" && "before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded before:bg-primary before:content-['']",
           marca === "depois" && "after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded after:bg-primary after:content-['']",
-          eAtivo ? "bg-primary/15 font-medium text-sidebar-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground")}
+          eAtivo ? "item-ativo bg-primary/15 font-medium text-sidebar-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground")}
           style={{ paddingLeft: 6 + nivel * 12 }}>
           <button type="button" data-sem-arrasto="" aria-label={aberto ? "Fechar" : "Abrir"} onClick={() => temFilhos && alternar(no.chave)}
             className={cn("flex h-5 w-4 shrink-0 items-center justify-center rounded text-sidebar-foreground/50", temFilhos ? "hover:text-sidebar-foreground" : "pointer-events-none opacity-0")}>

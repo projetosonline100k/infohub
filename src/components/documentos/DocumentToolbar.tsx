@@ -49,7 +49,7 @@ function ToolbarButton({ onClick, isActive, children, title }: ToolbarButtonProp
       size="icon"
       className={cn(
         "h-8 w-8",
-        isActive && "bg-accent text-accent-foreground"
+        isActive && "item-ativo bg-accent text-accent-foreground"
       )}
       onClick={onClick}
       title={title}
@@ -93,7 +93,7 @@ export function DocumentToolbar({ editor }: DocumentToolbarProps) {
   };
 
   return (
-    <div className="flex items-center gap-0.5 p-2 border-b bg-background flex-wrap">
+    <div className="barra-editor flex items-center gap-0.5 p-2 border-b bg-background flex-wrap">
       {/* Heading selector */}
       <Select value={getCurrentHeading()} onValueChange={handleHeadingChange}>
         <SelectTrigger className="w-32 h-8 text-xs">

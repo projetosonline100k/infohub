@@ -444,7 +444,7 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
         onPointerCancel={() => setArrasto(null)}
         onLostPointerCapture={() => onLostPointerCapture(tab)}
         onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onNavigate(tab.path); }}
-        className={cn("group flex h-9 min-w-28 max-w-52 cursor-default select-none touch-none items-center [-webkit-user-drag:none] gap-1 rounded-t-md border border-b-0 px-2 text-sm", active ? "bg-background font-medium text-foreground" : "border-transparent text-muted-foreground hover:bg-muted", naDivisao && !active && "bg-muted/60", sendoArrastada && "opacity-60", arrasto?.destacando && arrasto.id === tab.id && "opacity-30")}
+        className={cn("group flex h-9 min-w-28 max-w-52 cursor-default select-none touch-none items-center [-webkit-user-drag:none] gap-1 rounded-t-md border border-b-0 px-2 text-sm", active ? "aba-ativa bg-background font-medium text-foreground" : "aba border-transparent text-muted-foreground hover:bg-muted", naDivisao && !active && "bg-muted/60", sendoArrastada && "opacity-60", arrasto?.destacando && arrasto.id === tab.id && "opacity-30")}
       >
         {naDivisao && <Columns2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Na tela dividida" />}
         {(() => { const Icone = iconeDaGuia(tab.path); return <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />; })()}

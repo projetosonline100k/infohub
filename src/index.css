@@ -197,38 +197,77 @@ redesign (só o dark era o pedido).
     --paper-texture-opacity: 0.16;
   }
 
-  /* Papel Preto: sketchbook preto (base escura: o <html> também tem .dark). */
+  /* Papel Preto (24/10, 2ª versão — "caderno premium de papel preto"): capa (lateral e abas) mais escura →
+     mesa → painel → folha, só com diferença de tom; café/dourado só nos acabamentos (selecionado, foco,
+     botão principal). Base escura: o <html> também tem .dark. Textura por superfície (veja "pele" abaixo). */
   .tema-papel-preto {
-    --background: 60 6% 6%;
-    --foreground: 38 48% 91%;
-    --card: 48 9% 10%;
-    --card-foreground: 38 48% 91%;
-    --popover: 43 11% 13%;
-    --popover-foreground: 38 48% 91%;
-    --surface-elevated: 43 11% 13%;
-    --primary: 38 54% 54%;
-    --primary-foreground: 60 6% 6%;
-    --primary-hover: 40 66% 64%;
-    --secondary: 43 11% 13%;
-    --secondary-foreground: 38 48% 91%;
-    --muted: 45 10% 12%;
-    --muted-foreground: 38 10% 63%;
-    --accent: 42 14% 14%;
-    --accent-foreground: 38 48% 91%;
-    --selection: 38 28% 16%;
-    --border: 45 11% 21%;
-    --input: 45 11% 21%;
-    --ring: 38 54% 54%;
-    --sidebar-background: 60 8% 8%;
-    --sidebar-foreground: 38 48% 91%;
-    --sidebar-primary: 38 54% 54%;
-    --sidebar-primary-foreground: 60 6% 6%;
-    --sidebar-accent: 38 28% 16%;
-    --sidebar-accent-foreground: 38 48% 91%;
-    --sidebar-border: 45 11% 18%;
-    --sidebar-ring: 38 54% 54%;
-    --paper-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 1.5 0 0 0 -.55'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.045 .16' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 2.4 0 0 0 -1.42'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3C/svg%3E");
-    --paper-texture-opacity: 0.14;
+    --background: 36 14% 6.9%;          /* mesa #14120F */
+    --foreground: 38 29% 85.1%;         /* texto #E4DCCE */
+    --card: 34 16% 8.8%;                /* #1A1713 */
+    --card-foreground: 38 29% 85.1%;
+    --popover: 36 18% 11%;              /* card elevado #211D17 */
+    --popover-foreground: 38 29% 85.1%;
+    --surface-elevated: 36 18% 11%;
+    --primary: 35 55% 50%;              /* #C58A3A */
+    --primary-foreground: 40 9% 6.5%;
+    --primary-hover: 38 62% 60.2%;      /* #D8AA5B */
+    --secondary: 34 17% 8%;             /* painel #181511 */
+    --secondary-foreground: 38 29% 85.1%;
+    --muted: 34 17% 9.5%;
+    --muted-foreground: 35 11% 61.2%;   /* #A79E91 */
+    --accent: 33 28% 12.5%;             /* hover #292117 */
+    --accent-foreground: 37 59% 89.4%;
+    --selection: 34 41% 16.1%;          /* selecionado #3A2B18 */
+    --border: 34 17% 16.1%;             /* #302A22 */
+    --input: 34 17% 16.1%;
+    --ring: 35 55% 50%;
+    --sidebar-background: 40 11% 5.3%;  /* capa #0F0E0C */
+    --sidebar-foreground: 38 34% 86.3%; /* #E8DFD0 */
+    --sidebar-primary: 35 55% 50%;
+    --sidebar-primary-foreground: 40 9% 6.5%;
+    --sidebar-accent: 33 28% 12.5%;
+    --sidebar-accent-foreground: 37 59% 89.4%;
+    --sidebar-border: 34 17% 16.1%;
+    --sidebar-ring: 35 55% 50%;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.35);
+    --shadow-md: 0 2px 6px -2px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 6px 18px -6px rgb(0 0 0 / 0.55);
+
+    /* Tokens do caderno (usados pela "pele" abaixo). */
+    --bg-app: 40 9% 6.5%;
+    --bg-sidebar: 40 11% 5.3%;
+    --bg-workspace: 36 14% 6.9%;
+    --bg-panel: 34 17% 8%;
+    --bg-document: 34 15% 9.2%;
+    --bg-elevated: 36 18% 11%;
+    --topbar: 40 10% 6.1%;
+    --tab: 34 18% 7.6%;
+    --tab-active: 31 32% 12.7%;
+    --tab-active-border: 31 46% 24.7%;
+    --tab-foreground: 37 37% 86.3%;
+    --toolbar: 36 14% 7.3%;
+    --toolbar-border: 35 22% 15.5%;
+    --toolbar-icon: 34 26% 78.8%;
+    --hover: 33 28% 12.5%;
+    --selected: 34 41% 16.1%;
+    --selected-foreground: 37 59% 89.4%;
+    --selected-border: rgba(197, 138, 58, 0.25);
+    --border-subtle: 34 17% 16.1%;
+    --border-active: rgba(197, 138, 58, 0.25);
+    --document-border: rgba(198, 145, 67, 0.2);
+    --text-title: 38 52% 91.8%;
+    --text-muted: 35 8% 42.5%;
+    --link: 37 58% 57.5%;
+    --accent-light: 38 62% 60.2%;
+    --accent-dark: 32 53% 30.2%;
+    --sidebar-muted: 36 11% 56.3%;
+    --sidebar-icon: 37 37% 56.5%;
+    /* Textura: grão creme + fibras café; a camada única dos outros temas fica desligada aqui. */
+    --paper-texture-opacity: 0;
+    --papel-lateral: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 0.112 0 0 0 -0.041'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.07 .15' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.62 0 0 0 0 0.48 0 0 0 0 0.32 0.107 0 0 0 -0.065'/%3E%3C/filter%3E%3Cfilter id='c'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.32' numOctaves='2' seed='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.09 0 0 0 -0.037'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23c%29'/%3E%3C/svg%3E");
+    --papel-mesa: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 0.15 0 0 0 -0.055'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.07 .15' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.62 0 0 0 0 0.48 0 0 0 0 0.32 0.143 0 0 0 -0.087'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3C/svg%3E");
+    --papel-folha: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 0.195 0 0 0 -0.072'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.07 .15' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.62 0 0 0 0 0.48 0 0 0 0 0.32 0.186 0 0 0 -0.113'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3C/svg%3E");
+    --papel-card: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 0.098 0 0 0 -0.036'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.07 .15' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.62 0 0 0 0 0.48 0 0 0 0 0.32 0.093 0 0 0 -0.056'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3C/svg%3E");
   }
 
   /* Cor de destaque escolhida (aparencia.ts põe --destaque-h/s/l e data-destaque="claro|escuro" = cor do texto
@@ -263,6 +302,75 @@ redesign (só o dark era o pedido).
     --sidebar-accent: var(--destaque-h) 42% 70%;
   }
 }
+
+/* ── Pele do Papel Preto: as superfícies do caderno ─────────────────────────────────────────────────────────
+   Classes-marcador nos componentes (sem efeito nos outros temas): .superficie-mesa / .superficie-folha (documento),
+   .painel-secundario, .barra-editor, .item-ativo, [data-barra-guias] / .aba / .aba-ativa. A textura vai no fundo
+   da própria caixa (cada uma com a sua intensidade); quem rola é o conteúdo, então ela não "anda". */
+html.tema-papel-preto body { background-image: var(--papel-mesa); }
+html.tema-papel-preto .bg-background { background-image: var(--papel-mesa); }
+html.tema-papel-preto .bg-sidebar { background-image: var(--papel-lateral); }
+html.tema-papel-preto .bg-card,
+html.tema-papel-preto .bg-popover { background-image: var(--papel-card); }
+
+html.tema-papel-preto [data-sidebar="sidebar"] svg { color: hsl(var(--sidebar-icon)); }
+html.tema-papel-preto [data-sidebar="sidebar"] .item-ativo svg { color: hsl(var(--primary)); }
+
+html.tema-papel-preto .item-ativo {
+  background-color: hsl(var(--selected)) !important;
+  color: hsl(var(--selected-foreground)) !important;
+  box-shadow: inset 0 0 0 1px var(--selected-border);
+}
+
+html.tema-papel-preto [data-barra-guias] { background-color: hsl(var(--topbar)); background-image: var(--papel-lateral); border-color: hsl(var(--border-subtle)); }
+html.tema-papel-preto [data-barra-guias] .aba { background-color: hsl(var(--tab)); color: hsl(var(--sidebar-muted)); }
+html.tema-papel-preto [data-barra-guias] .aba:hover { background-color: hsl(var(--hover)); color: hsl(var(--tab-foreground)); }
+html.tema-papel-preto [data-barra-guias] .aba-ativa {
+  background-color: hsl(var(--tab-active));
+  border-color: hsl(var(--tab-active-border));
+  color: hsl(var(--tab-foreground));
+  box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.06);
+}
+
+html.tema-papel-preto .barra-editor {
+  background-color: hsl(var(--toolbar));
+  background-image: none;
+  border-color: hsl(var(--toolbar-border));
+}
+html.tema-papel-preto .barra-editor button { color: hsl(var(--toolbar-icon)); }
+html.tema-papel-preto .barra-editor button:hover { background-color: hsl(var(--hover)); }
+
+html.tema-papel-preto .painel-secundario { background-color: hsl(var(--bg-panel)); background-image: var(--papel-card); }
+html.tema-papel-preto .superficie-mesa { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
+html.tema-papel-preto .superficie-folha {
+  background-color: hsl(var(--bg-document));
+  background-image: var(--papel-folha);
+  border: 1px solid var(--document-border);
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.35), 0 10px 28px -16px rgb(0 0 0 / 0.7);
+}
+
+/* Texto do documento: o plugin de tipografia tem paleta cinza/branca própria; aqui ele lê o tema (creme). */
+html.tema-papel-preto .prose {
+  --tw-prose-invert-body: hsl(var(--foreground));
+  --tw-prose-invert-headings: hsl(var(--text-title));
+  --tw-prose-invert-lead: hsl(var(--muted-foreground));
+  --tw-prose-invert-links: hsl(var(--link));
+  --tw-prose-invert-bold: hsl(var(--text-title));
+  --tw-prose-invert-counters: hsl(var(--muted-foreground));
+  --tw-prose-invert-bullets: hsl(var(--accent-dark));
+  --tw-prose-invert-hr: hsl(var(--border));
+  --tw-prose-invert-quotes: hsl(var(--foreground));
+  --tw-prose-invert-quote-borders: hsl(var(--accent-dark));
+  --tw-prose-invert-captions: hsl(var(--muted-foreground));
+  --tw-prose-invert-code: hsl(var(--text-title));
+  --tw-prose-invert-th-borders: hsl(var(--border));
+  --tw-prose-invert-td-borders: hsl(var(--border));
+}
+html.tema-papel-preto .document-editor .ProseMirror p.is-editor-empty:first-child::before,
+html.tema-papel-preto .document-editor .ProseMirror .is-empty::before { color: hsl(var(--text-muted)); }
+html.tema-papel-preto ::placeholder { color: hsl(var(--text-muted)); }
+html.tema-papel-preto ::selection { background: hsl(var(--selected)); color: hsl(var(--selected-foreground)); }
+html.tema-papel-preto .document-editor a { color: hsl(var(--link)); }
 
 /* Textura de papel: UMA camada fixa por cima da tela (não rola, não pega clique), com um ruído SVG pequeno que
    se repete (grão + fibras, ~1 KB, sem baixar imagem) e uma leve variação de tom. A cor já vem na textura e o
