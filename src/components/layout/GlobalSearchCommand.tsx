@@ -1,7 +1,7 @@
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, User, Gauge, CalendarDays, Zap, CheckSquare, FileText, Loader2 } from "lucide-react";
+import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, User, Gauge, CalendarDays, Zap, CheckSquare, FileText, Loader2, Radio } from "lucide-react";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -149,6 +149,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     ...(ehAdmin(user?.email)
       ? [
           { titulo: "Automações", rota: "/automacoes", icon: Zap },
+          { titulo: "Ponte", rota: "/ponte", icon: Radio },
           { titulo: "Administração", rota: "/admin", icon: ShieldCheck },
         ]
       : []),

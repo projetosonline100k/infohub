@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, type LucideIcon,
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, type LucideIcon,
 } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
@@ -255,6 +255,7 @@ export function AppSidebar() {
     ];
     if (ehAdmin(user?.email)) itens.push(
       { chave: "automacoes", titulo: "Automações", icone: Zap, ir: "/automacoes" },
+      { chave: "ponte", titulo: "Ponte", icone: Radio, ir: "/ponte" },
       { chave: "admin", titulo: "Administração", icone: ShieldCheck, ir: "/admin" },
     );
     return itens;
