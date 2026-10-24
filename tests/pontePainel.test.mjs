@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/ponte/painel.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022 } });
-const { duracaoTexto, duracaoMs, pedidosParados, concluidosPorDia, tempoMedioMs, contagemPorStatus } =
+const { duracaoTexto, duracaoMs, pedidosParados, concluidosPorDia, tempoMedioMs, contagemPorStatus, pedidoEmAndamento, proximoDaFila } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const agora = new Date('2026-10-24T18:30:00').getTime();
@@ -35,6 +35,20 @@ test('bolinha vermelha: aprovado/pronto e parado há mais de 5 min', () => {
     pedido({ id: 'f', status: 'aguardando_aprovacao', criado_em: min(9) }),
   ], agora);
   assert.deepEqual(parados.map((p) => p.id), ['a', 'd', 'e']);
+});
+
+test('trabalhando agora e próximo da fila (mesma ordem do serviço)', () => {
+  assert.equal(pedidoEmAndamento([pedido({})]), null);
+  assert.equal(pedidoEmAndamento([pedido({ id: 'r', status: 'em_andamento', iniciado_em: min(2) })]).id, 'r');
+  const ps = [
+    pedido({ id: 'velho-normal', aprovado: true, criado_em: min(30) }),
+    pedido({ id: 'novo-alto', prioridade: 'alta', requer_aprovacao: false, criado_em: min(1) }),
+    pedido({ id: 'alto-sem-ok', prioridade: 'alta', status: 'aguardando_aprovacao', criado_em: min(60) }),
+    pedido({ id: 'feito', prioridade: 'alta', status: 'concluido', aprovado: true, criado_em: min(90) }),
+  ];
+  assert.deepEqual(proximoDaFila(ps), { pedido: ps[1], pronto: true });
+  assert.deepEqual(proximoDaFila(ps.slice(2)), { pedido: ps[2], pronto: false });
+  assert.equal(proximoDaFila([ps[3]]), null);
 });
 
 test('concluídos por dia nos últimos 7 dias e tempo médio', () => {

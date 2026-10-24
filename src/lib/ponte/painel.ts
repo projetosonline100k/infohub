@@ -52,6 +52,27 @@ export function prontoParaRodar(p: PontePedido): boolean {
   return (p.status === "pendente" && (!p.requer_aprovacao || p.aprovado)) || (p.status === "aguardando_aprovacao" && p.aprovado);
 }
 
+const ORDEM_PRIORIDADE: Record<PontePedido["prioridade"], number> = { alta: 0, normal: 1, baixa: 2 };
+
+/** Ordem da fila do serviço: prioridade (alta, normal, baixa) e depois o mais antigo. */
+function ordemFila(a: PontePedido, b: PontePedido): number {
+  return ORDEM_PRIORIDADE[a.prioridade] - ORDEM_PRIORIDADE[b.prioridade] || Date.parse(a.criado_em) - Date.parse(b.criado_em);
+}
+
+/** O pedido que o serviço está rodando (o mais antigo em andamento, se houver mais de um). */
+export function pedidoEmAndamento(pedidos: PontePedido[]): PontePedido | null {
+  return pedidos.filter((p) => p.status === "em_andamento")
+    .sort((a, b) => Date.parse(a.iniciado_em ?? a.criado_em) - Date.parse(b.iniciado_em ?? b.criado_em))[0] ?? null;
+}
+
+/** Próximo da fila: o primeiro pronto (regra de pegar()); se nenhum estiver pronto, o primeiro que espera aprovação. */
+export function proximoDaFila(pedidos: PontePedido[]): { pedido: PontePedido; pronto: boolean } | null {
+  const prontos = pedidos.filter(prontoParaRodar).sort(ordemFila);
+  if (prontos.length) return { pedido: prontos[0], pronto: true };
+  const esperando = pedidos.filter((p) => (p.status === "pendente" || p.status === "aguardando_aprovacao") && !p.aprovado).sort(ordemFila);
+  return esperando.length ? { pedido: esperando[0], pronto: false } : null;
+}
+
 /** Pedidos prontos e parados há mais de 5 min: se houver algum, a bolinha fica vermelha. */
 export function pedidosParados(pedidos: PontePedido[], agora: number): PontePedido[] {
   return pedidos.filter((p) => prontoParaRodar(p) && agora - Date.parse(p.criado_em) > LIMITE_PARADO_MS);

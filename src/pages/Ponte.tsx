@@ -13,7 +13,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { usePontePainel } from "@/hooks/usePontePainel";
 import { ehAdmin } from "@/lib/admin";
 import {
-  STATUS_PONTE, concluidosPorDia, contagemPorStatus, duracaoMs, duracaoTexto, pedidosParados, tempoMedioMs,
+  STATUS_PONTE, concluidosPorDia, contagemPorStatus, duracaoMs, duracaoTexto, pedidoEmAndamento, pedidosParados, proximoDaFila, tempoMedioMs,
   type PontePedido, type PonteStatus,
 } from "@/lib/ponte/painel";
 import { cn } from "@/lib/utils";
@@ -56,6 +56,8 @@ export default function Ponte() {
   })), [pedidos, agora]);
   const medio = useMemo(() => tempoMedioMs(pedidos), [pedidos]);
   const parados = pedidosParados(pedidos, agora);
+  const emAndamento = useMemo(() => pedidoEmAndamento(pedidos), [pedidos]);
+  const proximo = useMemo(() => proximoDaFila(pedidos), [pedidos]);
   const aberto = pedidos.find((p) => p.id === abertoId) ?? null;
 
   const confirmarAprovacao = async (p: PontePedido) => {
@@ -158,26 +160,31 @@ export default function Ponte() {
         </Card>
       </div>
 
-      <div className="flex snap-x gap-3 overflow-x-auto pb-2 lg:grid lg:grid-cols-5 lg:overflow-visible">
-        {STATUS_PONTE.map((s) => {
-          const lista = pedidos.filter((p) => p.status === s.chave);
-          const V = VISUAL[s.chave];
-          return (
-            <section key={s.chave} className="w-[78vw] max-w-xs shrink-0 snap-start rounded-xl bg-muted/40 p-2 sm:w-64 lg:w-auto lg:max-w-none">
-              <header className="mb-2 flex items-center justify-between px-1.5 py-1">
-                <span className={cn("flex items-center gap-1.5 text-sm font-semibold", V.texto)}><V.icone className="h-4 w-4" />{s.rotulo}</span>
-                <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums", V.fundo, V.texto)}>{lista.length}</span>
-              </header>
-              <div className="space-y-2">
-                {lista.length === 0 && <p className="px-1.5 py-6 text-center text-xs text-muted-foreground">Nada aqui</p>}
-                {lista.map((p) => (
-                  <CartaoPedido key={p.id} p={p} agora={agora} parado={parados.includes(p)} aprovando={aprovando === p.id}
-                    abrir={() => setAbertoId(p.id)} aprovar={() => void confirmarAprovacao(p)} />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_17rem]">
+        <TrabalhandoAgora className="xl:sticky xl:top-4 xl:order-last xl:self-start" emAndamento={emAndamento} proximo={proximo} agora={agora}
+          aprovando={aprovando} abrir={setAbertoId} aprovar={(p) => void confirmarAprovacao(p)} />
+
+        <div className="flex min-w-0 snap-x gap-3 overflow-x-auto pb-2 lg:grid lg:grid-cols-5 lg:overflow-visible">
+          {STATUS_PONTE.map((s) => {
+            const lista = pedidos.filter((p) => p.status === s.chave);
+            const V = VISUAL[s.chave];
+            return (
+              <section key={s.chave} className="w-[78vw] max-w-xs shrink-0 snap-start rounded-xl bg-muted/40 p-2 sm:w-64 lg:w-auto lg:max-w-none">
+                <header className="mb-2 flex items-center justify-between px-1.5 py-1">
+                  <span className={cn("flex items-center gap-1.5 text-sm font-semibold", V.texto)}><V.icone className="h-4 w-4" />{s.rotulo}</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums", V.fundo, V.texto)}>{lista.length}</span>
+                </header>
+                <div className="space-y-2">
+                  {lista.length === 0 && <p className="px-1.5 py-6 text-center text-xs text-muted-foreground">Nada aqui</p>}
+                  {lista.map((p) => (
+                    <CartaoPedido key={p.id} p={p} agora={agora} parado={parados.includes(p)} aprovando={aprovando === p.id}
+                      abrir={() => setAbertoId(p.id)} aprovar={() => void confirmarAprovacao(p)} />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       </div>
 
       <Sheet open={!!aberto} onOpenChange={(v) => !v && setAbertoId(null)}>
@@ -203,6 +210,67 @@ function Saude({ parados, erro, atualizadoEm, agora }: { parados: number; erro: 
       </span>
       {texto}
     </div>
+  );
+}
+
+// Bloco lateral: o que o serviço está rodando agora e o que ele pega em seguida (regra de pegar() em scripts/ponte.py).
+function TrabalhandoAgora({ emAndamento, proximo, agora, aprovando, abrir, aprovar, className }: {
+  emAndamento: PontePedido | null; proximo: { pedido: PontePedido; pronto: boolean } | null; agora: number;
+  aprovando: string | null; abrir: (id: string) => void; aprovar: (p: PontePedido) => void; className?: string;
+}) {
+  const ms = emAndamento ? duracaoMs(emAndamento, agora) : null;
+  const prox = proximo?.pedido;
+  const pr = prox ? PRIORIDADE[prox.prioridade] : null;
+  return (
+    <aside className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-1", className)}>
+      <Card className={cn("relative overflow-hidden rounded-xl p-4 animate-in fade-in slide-in-from-bottom-2 duration-500",
+        emAndamento && "border-primary/50 ring-1 ring-primary/30")}>
+        <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+        <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <Play className={cn("h-3.5 w-3.5 text-primary", emAndamento && "animate-pulse")} /> Trabalhando agora em
+        </p>
+        {emAndamento ? (
+          <button type="button" onClick={() => abrir(emAndamento.id)} className="mt-2 block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <p className="line-clamp-3 text-sm font-semibold leading-snug">{emAndamento.titulo}</p>
+            <p className="mt-2 inline-flex items-center gap-1.5 font-mono text-2xl font-bold tabular-nums text-primary">
+              <Hourglass className="h-5 w-5 animate-pulse" />{ms == null ? "—" : duracaoTexto(ms)}
+            </p>
+          </button>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Nenhum pedido em andamento</p>
+        )}
+      </Card>
+
+      <Card className="rounded-xl p-4 animate-in fade-in slide-in-from-bottom-2 duration-500 [animation-delay:80ms]">
+        <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          <Clock className="h-3.5 w-3.5 text-primary" /> Próximo da fila
+        </p>
+        {prox && pr ? (
+          <>
+            <button type="button" onClick={() => abrir(prox.id)} className="mt-2 block w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <p className="line-clamp-3 text-sm font-semibold leading-snug">{prox.titulo}</p>
+            </button>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", pr.selo)}>Prioridade {pr.rotulo.toLowerCase()}</span>
+              {proximo.pronto ? (
+                <span className="text-[11px] font-medium text-status-success">{emAndamento ? "Entra quando o atual terminar" : "Entra em até 1 min"}</span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-status-warning/10 px-2 py-0.5 text-[11px] font-semibold text-status-warning">
+                  <ShieldQuestion className="h-3 w-3" /> Aguardando sua aprovação
+                </span>
+              )}
+            </div>
+            {podeAprovar(prox) && (
+              <Button size="sm" className="mt-3 h-7 w-full" disabled={aprovando === prox.id} onClick={() => aprovar(prox)}>
+                {aprovando === prox.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="mr-1 h-3.5 w-3.5" />} Aprovar
+              </Button>
+            )}
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">Fila vazia</p>
+        )}
+      </Card>
+    </aside>
   );
 }
 
