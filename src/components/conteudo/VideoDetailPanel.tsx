@@ -92,6 +92,18 @@ interface VideoDetailPanelProps {
 }
 
 // Roteiros antigos são texto puro: cada linha vira um parágrafo (HTML já guardado passa direto).
+// Rodinha do mouse em cima da barra de roteiros anda para os lados (e não rola a folha junto). Ref de
+// callback (o painel tem return antecipado, então nada de hook aqui).
+function rodinhaParaOsLados(el: HTMLDivElement | null) {
+  if (!el || el.dataset.rodinha) return;
+  el.dataset.rodinha = "1";
+  el.addEventListener("wheel", (e) => {
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+    e.preventDefault();
+    el.scrollLeft += e.deltaY;
+  }, { passive: false });
+}
+
 function roteiroParaHtml(texto: string | null | undefined): string {
   const t = texto ?? "";
   if (/<(p|h[1-6]|ul|ol|li|br|strong|em)[\s>/]/i.test(t)) return t;
@@ -790,7 +802,11 @@ export const VideoDetailPanel = ({
         <main ref={folhaRef} className="flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
           {roteirosMarcados.length > 0 && (
             // Vários roteiros no documento ("Headline 1", "#2"…): índice para pular direto (18/10).
-            <div className="sticky top-0 z-10 mx-auto mb-3 flex max-w-[816px] items-center gap-1.5 overflow-x-auto rounded-md border bg-background/95 px-3 py-2 backdrop-blur">
+            // 24/10 (Davi: "tá bugado a parte superior"): a barra grudava abaixo do respiro da folha (o texto
+            // passava por cima dela) e a barra de rolagem grossa do Mac ocupava metade da altura. Agora gruda
+            // no topo de verdade, sem barra de rolagem; a rodinha do mouse anda para os lados.
+            <div className="sticky top-0 z-10 mb-3 bg-background before:absolute before:inset-0 before:content-[''] sm:-top-4 sm:-mt-4 sm:pt-4 sm:before:bg-muted/50 md:-top-8 md:-mt-8 md:pt-8">
+            <div ref={rodinhaParaOsLados} className="relative mx-auto flex max-w-[816px] items-center gap-1.5 overflow-x-auto rounded-md border bg-background px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <span className="shrink-0 text-xs font-semibold text-muted-foreground">{rotuloRoteiros(roteirosMarcados.length)}:</span>
               {roteirosMarcados.map((r, i) => (
                 <button key={`${r.numero}-${i}`} type="button" title={r.titulo} onClick={() => irParaRoteiro(i)}
@@ -799,6 +815,7 @@ export const VideoDetailPanel = ({
                   <span className="truncate">{r.titulo || "sem título"}</span>
                 </button>
               ))}
+            </div>
             </div>
           )}
           <div className="mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
