@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, type LucideIcon,
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, MoreHorizontal, Trash2, type LucideIcon,
 } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
@@ -12,6 +12,8 @@ import { ehAdmin } from "@/lib/admin";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { useExcluirDesenho } from "@/hooks/useExcluirDesenho";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { createEmptyMindMapContent } from "@/components/documentos/MindMapEditor";
 
@@ -34,6 +36,8 @@ interface No {
   criar?: { clienteId: string; pastaId: string | null };
   /** clicar faz isto em vez de navegar (ex.: "Novo desenho" cria e abre numa guia nova) */
   acao?: () => void;
+  /** desenho solto: três pontinhos e clique direito com "Excluir" (24/10) */
+  desenhoId?: string;
   /** nome na ordem guardada (as seções valem para todos os projetos); padrão: a chave */
   ordemId?: string;
   /** grupo da ordem dos filhos (ex.: "escritorio" para o Escritório de qualquer projeto); padrão: a chave */
@@ -85,7 +89,7 @@ async function desenhosSoltos(): Promise<No[]> {
   const { data } = await supabase.from("documentos").select("id, titulo").eq("tipo", "mapa").is("cliente_id", null)
     .is("deleted_at", null).order("updated_at", { ascending: false }).limit(50);
   return ((data ?? []) as { id: string; titulo: string | null }[]).map((d) => ({
-    chave: `desenho:${d.id}`, titulo: d.titulo || "Desenho sem título", icone: Workflow, ir: `/desenho/${d.id}`,
+    chave: `desenho:${d.id}`, titulo: d.titulo || "Desenho sem título", icone: Workflow, ir: `/desenho/${d.id}`, desenhoId: d.id,
   }));
 }
 
@@ -135,6 +139,7 @@ export function AppSidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { openTab } = useWorkspaceTabs();
+  const excluirDesenhoComConfirmacao = useExcluirDesenho();
   const { user } = useAuth();
   const { state } = useSidebar();
   const recolhida = state === "collapsed";
@@ -315,6 +320,12 @@ export function AppSidebar() {
     openTab(`/desenho/${data.id}`, titulo, { nova: true });
   };
 
+  // Some na hora da lateral (o "documentos:mudou" depois busca a lista de novo).
+  const excluirDesenho = async (id: string) => {
+    if (!(await excluirDesenhoComConfirmacao(id))) return;
+    setCarregados((c) => (Array.isArray(c.desenho) ? { ...c, desenho: c.desenho.filter((d) => d.desenhoId !== id) } : c));
+  };
+
   // + numa pasta de documentos (24/10, Davi): cria um documento (e abre) ou uma pasta dentro dela.
   const novoDocumento = async ({ clienteId, pastaId }: { clienteId: string; pastaId: string | null }, chavePasta: string) => {
     const { data, error } = await supabase.from("documentos")
@@ -346,8 +357,8 @@ export function AppSidebar() {
     const temFilhos = !!no.carregar || filhos.length > 0;
     const eAtivo = ativo(no);
     const Icone = temFilhos && no.icone === Folder ? (aberto ? FolderOpen : Folder) : no.icone;
-    return (
-      <li>
+    const desenhoId = no.desenhoId;
+    const linha = (
         <div data-ordem-grupo={grupo} data-ordem-id={meuId}
           onPointerDown={(e) => {
             if (e.button !== 0 || (e.target as Element).closest("[data-sem-arrasto]")) return;
@@ -383,7 +394,35 @@ export function AppSidebar() {
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {desenhoId && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button type="button" data-sem-arrasto="" aria-label={`Opções de ${no.titulo}`} title="Opções do desenho"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/60 opacity-0 hover:bg-sidebar-accent hover:text-sidebar-foreground focus:opacity-100 group-hover/linha:opacity-100 data-[state=open]:opacity-100">
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-44">
+                <DropdownMenuItem onClick={() => void excluirDesenho(desenhoId)} className="text-destructive focus:text-destructive">
+                  <Trash2 className="mr-2 h-4 w-4" />Excluir
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
+    );
+    return (
+      <li>
+        {desenhoId ? (
+          <ContextMenu>
+            <ContextMenuTrigger asChild>{linha}</ContextMenuTrigger>
+            <ContextMenuContent className="w-44">
+              <ContextMenuItem onClick={() => void excluirDesenho(desenhoId)} className="text-destructive focus:text-destructive">
+                <Trash2 className="mr-2 h-4 w-4" />Excluir
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : linha}
         {aberto && lazy === "carregando" && (
           <div className="flex h-6 items-center gap-1.5 text-[11.5px] text-sidebar-foreground/50" style={{ paddingLeft: 30 + nivel * 12 }}><Loader2 className="h-3 w-3 animate-spin" />Carregando…</div>
         )}

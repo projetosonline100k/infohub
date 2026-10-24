@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Excalidraw,
+  MainMenu,
   convertToExcalidrawElements,
   newElementWith,
   restore,
@@ -21,7 +22,7 @@ import type {
 } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement, ExcalidrawArrowElement } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
-import { ArrowLeft, ChevronDown, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2, Plus } from "lucide-react";
+import { ArrowLeft, ChevronDown, Eye, EyeOff, PenLine, Square, Waypoints, Maximize2, Minimize2, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -437,9 +438,11 @@ interface MindMapEditorProps {
   // botão de voltar; `extraTopo` entra na barrinha do título (ex.: o seletor de projeto).
   pagina?: boolean;
   extraTopo?: ReactNode;
+  // "Excluir" no menu ☰ do Excalidraw (24/10, desenho em guia própria); sem isto fica o menu de sempre.
+  onExcluir?: () => void;
 }
 
-export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas, pagina = false, extraTopo }: MindMapEditorProps) {
+export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas, pagina = false, extraTopo, onExcluir }: MindMapEditorProps) {
   const abaAtiva = useAbaAtiva();
   const [fullscreen, setFullscreen] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -2013,7 +2016,25 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
           isCollaborating
           theme={theme === "dark" ? "dark" : "light"}
           UIOptions={UI_OPTIONS}
-        />
+        >
+          {onExcluir && (
+            // Passar o MainMenu troca o menu padrão inteiro: repete os itens dele e põe o Excluir no fim.
+            <MainMenu>
+              <MainMenu.DefaultItems.SaveAsImage />
+              <MainMenu.DefaultItems.SearchMenu />
+              <MainMenu.DefaultItems.Help />
+              <MainMenu.DefaultItems.ClearCanvas />
+              <MainMenu.Separator />
+              <MainMenu.Group title="Excalidraw links"><MainMenu.DefaultItems.Socials /></MainMenu.Group>
+              <MainMenu.Separator />
+              <MainMenu.DefaultItems.ChangeCanvasBackground />
+              <MainMenu.Separator />
+              <MainMenu.Item icon={<Trash2 className="h-4 w-4" />} onSelect={onExcluir} className="text-destructive" style={{ color: "hsl(var(--destructive))" }}>
+                Excluir desenho
+              </MainMenu.Item>
+            </MainMenu>
+          )}
+        </Excalidraw>
 
         {/* Cor/fonte recolhidos num ícone de caneta — só aparece o painel
             quando a pessoa clica, em vez de ficar sempre ocupando espaço. */}

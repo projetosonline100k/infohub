@@ -9,6 +9,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { useExcluirDesenho } from "@/hooks/useExcluirDesenho";
 
 // Desenho numa guia própria (24/10, Davi: "New drawing… abre uma nova guia de desenho, igual o Obsidian, e lá
 // dentro eu consigo selecionar o projeto"). É a mesma lousa Excalidraw dos documentos (tipo "mapa"); sem
@@ -60,6 +61,7 @@ function SeletorProjeto({ documentoId, clienteId, onMudou }: { documentoId: stri
 export default function Desenho() {
   const { id } = useParams<{ id: string }>();
   const [clienteId, setClienteId] = useState<string | null | undefined>(undefined);
+  const excluirDesenho = useExcluirDesenho();
   useEffect(() => {
     if (!id) return;
     void supabase.from("documentos").select("cliente_id").eq("id", id).maybeSingle()
@@ -74,6 +76,7 @@ export default function Desenho() {
         documentoId={id}
         pagina
         onClose={() => undefined}
+        onExcluir={() => void excluirDesenho(id)}
         extraTopo={clienteId !== undefined && <SeletorProjeto documentoId={id} clienteId={clienteId} onMudou={setClienteId} />}
       />
     </div>
