@@ -374,12 +374,18 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
         <div className="mx-3 mb-1.5 flex flex-wrap items-center gap-1.5">
           {[{ id: null as string | null, nome: "Geral" }, ...org.pastas].map((p) => {
             const ativa = p.id ? visao.tipo === "pasta" && visao.id === p.id : visao.tipo === "tudo";
-            const n = p.id ? naoLidasDa(p.id) : 0;
+            // 24/10 (Davi): quantas conversas tem e quantas estão sem resposta sua (a última é da pessoa).
+            const daPasta = conversas.filter((c) => !org.arquivada(c.chat_id) && (!p.id || org.pastaDe(c.chat_id) === p.id));
+            const semResposta = daPasta.filter((c) => !c.ultima_de_mim).length;
+            const novas = p.id ? naoLidasDa(p.id) : 0;
             return (
               <button key={p.id ?? "tudo"} type="button" onClick={() => setVisao(p.id ? { tipo: "pasta", id: p.id } : { tipo: "tudo" })}
-                className={cn("rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
+                title={`${daPasta.length} ${daPasta.length === 1 ? "conversa" : "conversas"} · ${semResposta} sem resposta sua${novas ? ` · ${novas} com mensagem nova` : ""}`}
+                className={cn("flex items-center gap-1 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors",
                   ativa ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "border-border text-muted-foreground hover:text-foreground")}>
-                {p.nome}{n > 0 && <span className="ml-1 rounded-full bg-emerald-500 px-1.5 text-[10px] font-semibold text-white">{n}</span>}
+                {p.nome}
+                <span className="text-[10.5px] font-normal opacity-60">{daPasta.length}</span>
+                {semResposta > 0 && <span className="rounded-full bg-orange-500 px-1.5 text-[10px] font-semibold text-white">{semResposta} sem resposta</span>}
               </button>
             );
           })}
