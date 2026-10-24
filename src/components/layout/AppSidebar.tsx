@@ -298,10 +298,30 @@ export function AppSidebar() {
     if (!m) return;
     const c = clientes.find((x) => x.id === m[1]);
     if (!c) return;
-    const precisa = ["projetos", ...(c.arquivado ? ["arquivados"] : []), `projeto:${c.id}`, ...(location.search.includes("documento=") ? [`${c.id}:documentos`] : [])];
+    // 24/10 (Davi: "a guia precisa refletir na lateral"): abre também o Escritório quando a seção é dele.
+    const secao = new URLSearchParams(location.search).get("secao");
+    const doEscritorio = !!secao && SECOES_ESCRITORIO.some((x) => x.secao === secao);
+    const precisa = ["projetos", ...(c.arquivado ? ["arquivados"] : []), `projeto:${c.id}`,
+      ...(doEscritorio ? [`${c.id}:conteudo:visao-geral`] : []),
+      ...(location.search.includes("documento=") ? [`${c.id}:documentos`] : [])];
     if (precisa.some((k) => !abertos.has(k))) precisa.forEach((k) => alternar(k, true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search, clientes]);
+
+  // Trocou de guia ou de página: rola a lateral até o item que está na tela (sem pular se ele já aparece).
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      const el = document.querySelector('[data-sidebar="sidebar"] .item-ativo, [data-sidebar="sidebar"] .item-contem-ativo');
+      el?.scrollIntoView({ block: "nearest" });
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [location.pathname, location.search, abertos]);
+
+  // A página está dentro de uma pasta fechada: a pasta fica marcada (como no VS Code).
+  const contemAtivo = (n: No): boolean => {
+    const filhos = n.carregar ? (Array.isArray(carregados[n.chave]) ? carregados[n.chave] as No[] : []) : n.filhos ?? [];
+    return filhos.some((f) => ativo(f) || contemAtivo(f));
+  };
 
   const ir = (destino: string, titulo: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -356,6 +376,7 @@ export function AppSidebar() {
     const marca = arrasto?.grupo === grupo && arrasto.alvo === meuId && arrasto.id !== meuId ? (arrasto.depois ? "depois" : "antes") : null;
     const temFilhos = !!no.carregar || filhos.length > 0;
     const eAtivo = ativo(no);
+    const marcaPasta = !eAtivo && !aberto && contemAtivo(no);
     const Icone = temFilhos && no.icone === Folder ? (aberto ? FolderOpen : Folder) : no.icone;
     const desenhoId = no.desenhoId;
     const linha = (
@@ -369,7 +390,9 @@ export function AppSidebar() {
           arrastando && "opacity-40", arrasto && "cursor-grabbing",
           marca === "antes" && "before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded before:bg-primary before:content-['']",
           marca === "depois" && "after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded after:bg-primary after:content-['']",
-          eAtivo ? "item-ativo bg-primary/15 font-medium text-sidebar-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground")}
+          eAtivo ? "item-ativo bg-primary/15 font-medium text-sidebar-foreground"
+            : marcaPasta ? "item-contem-ativo bg-primary/[0.07] font-medium text-sidebar-foreground hover:bg-sidebar-accent"
+            : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground")}
           style={{ paddingLeft: 6 + nivel * 12 }}>
           <button type="button" data-sem-arrasto="" aria-label={aberto ? "Fechar" : "Abrir"} onClick={() => temFilhos && alternar(no.chave)}
             className={cn("flex h-5 w-4 shrink-0 items-center justify-center rounded text-sidebar-foreground/50", temFilhos ? "hover:text-sidebar-foreground" : "pointer-events-none opacity-0")}>
