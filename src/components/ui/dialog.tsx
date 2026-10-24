@@ -45,7 +45,12 @@ const DialogContent = React.forwardRef<
       ref={ref}
       // Escondida: Esc e cliques na outra aba não fecham esta janela.
       onEscapeKeyDown={(e) => { if (!ativa) e.preventDefault(); else onEscapeKeyDown?.(e); }}
-      onInteractOutside={(e) => { if (!ativa) e.preventDefault(); else onInteractOutside?.(e); }}
+      // 24/10 (Davi: "ao sair para outra guia, o que estiver na tela permanece"): clicar na barra de guias
+      // também não fecha (a guia some e a janela fica guardada, com o que foi digitado).
+      onInteractOutside={(e) => {
+        if (!ativa || (e.target as Element | null)?.closest?.("[data-barra-guias]")) e.preventDefault();
+        else onInteractOutside?.(e);
+      }}
       aria-hidden={!ativa || undefined}
       className={cn(
         "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",

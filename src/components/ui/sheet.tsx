@@ -4,8 +4,14 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 
-const Sheet = SheetPrimitive.Root;
+// Painel lateral de uma guia escondida: continua aberto com o estado, some da tela e não prende o app
+// (igual ao Dialog; 24/10, Davi: "ao sair para outra guia, o que estiver na tela permanece").
+const Sheet = ({ modal, ...props }: React.ComponentPropsWithoutRef<typeof SheetPrimitive.Root>) => {
+  const ativa = useAbaAtiva();
+  return <SheetPrimitive.Root modal={ativa ? modal : false} {...props} />;
+};
 
 const SheetTrigger = SheetPrimitive.Trigger;
 
@@ -52,10 +58,19 @@ interface SheetContentProps
     VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, children, ...props }, ref) => (
+  ({ side = "right", className, children, onEscapeKeyDown, onInteractOutside, ...props }, ref) => {
+    const ativa = useAbaAtiva();
+    return (
     <SheetPortal>
       <SheetOverlay />
-      <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
+      <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className, !ativa && "!hidden")}
+        aria-hidden={!ativa || undefined}
+        onEscapeKeyDown={(e) => { if (!ativa) e.preventDefault(); else onEscapeKeyDown?.(e); }}
+        onInteractOutside={(e) => {
+          if (!ativa || (e.target as Element | null)?.closest?.("[data-barra-guias]")) e.preventDefault();
+          else onInteractOutside?.(e);
+        }}
+        {...props}>
         {children}
         <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity data-[state=open]:bg-secondary hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none">
           <X className="h-4 w-4" />
@@ -63,7 +78,8 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
         </SheetPrimitive.Close>
       </SheetPrimitive.Content>
     </SheetPortal>
-  ),
+    );
+  },
 );
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
