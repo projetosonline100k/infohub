@@ -103,3 +103,7 @@ Quando o usuário pedir para criar, editar, pausar ou apagar uma automação ("c
 - Nomes em português (tabelas, colunas, componentes, hooks), exceto módulos de produtividade (`daily_plans`, `performance_*`, `sleep_*`) que estão em inglês.
 - Migrações novas em `supabase/migrations/` com timestamp; aplicadas via `scripts/apply-*.py` e registradas em `supabase_migrations.schema_migrations`. Depois de mudar schema: `scripts/reload-postgrest-schema.py`.
 - Histórico da migração de Supabase (set/2026): `MIGRATION_STATUS.md`.
+
+## Ponte de voz (Claude de voz → Claude Code)
+
+O Claude de voz grava pedidos em `ponte_pedidos` (só service role; sem acesso pelo app). O serviço `scripts/ponte.py` (LaunchAgent `com.infoprohub.ponte`, `scripts/instalar-ponte.sh`, log `~/.infopro-hub/ponte/ponte.log`) pega um por vez a cada minuto, roda o Claude Code num worktree (`ponte/<id>`), junta no main e grava `resultado`. `requer_aprovacao` sem `aprovado` vira `aguardando_aprovacao`; aprovar: `python3 scripts/ponte.py aprovar <id>` (ou `aprovado = true`). `python3 scripts/ponte.py listar` mostra a fila. Não armar Monitor para essa fila (disputaria os pedidos).
