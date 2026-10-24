@@ -394,6 +394,8 @@ redesign (só o dark era o pedido).
   box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.06);
 }
 :is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .aba-ativa svg { color: hsl(var(--sidebar-primary)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .seta-guia { color: hsl(var(--tab-text)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .seta-guia:hover { background-color: hsl(var(--tab-hover)); color: hsl(var(--tab-foreground)); }
 html.tema-papel-vintage [data-barra-guias] .aba { --tab-bg: transparent; }
 
 :is(html.tema-papel-preto, html.tema-papel-vintage) .barra-editor {

@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { Columns2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Columns2, X } from "lucide-react";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent,
   ContextMenuSubTrigger, ContextMenuTrigger,
@@ -51,6 +51,12 @@ interface WorkspaceTabsContextValue {
   abrirNovaGuia: (path: string, title?: string) => WorkspaceTab;
   // Abre `path` ao lado da guia ativa (tela dividida); devolve a guia aberta.
   abrirAoLado: (path: string, title?: string) => WorkspaceTab;
+  // Voltar/avançar como no navegador (24/10), com o histórico de CADA guia. Devolvem o endereço para onde
+  // ir (quem chama navega) ou null se não há para onde.
+  voltar: () => string | null;
+  avancar: () => string | null;
+  podeVoltar: boolean;
+  podeAvancar: boolean;
 }
 
 export const MAX_PAINEIS = 3;
@@ -81,6 +87,8 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
   // Ref evita closures velhas: syncPath roda num efeito e precisa da aba ativa atual.
   const activeIdRef = useRef(activeId);
   const setActiveId = useCallback((id: string) => { activeIdRef.current = id; setActiveIdState(id); }, []);
+  // Voltar/avançar: o endereço fica nesta guia, mesmo que outra guia esteja aberta nele.
+  const irNaAtivaRef = useRef<string | null>(null);
 
   const openTab = useCallback((path: string, title = titleForPath(path), opcoes?: { nova?: boolean }) => {
     setTabs((current) => {
@@ -101,7 +109,9 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
       // A guia ativa já está nesse endereço: fica nela (com a tela dividida
       // pode haver duas guias no mesmo endereço, ex.: dois Painéis).
       if (current.find((tab) => tab.id === activeIdRef.current)?.path === path) return current;
-      const existing = current.find((tab) => tab.path === path);
+      const doHistorico = irNaAtivaRef.current === path;
+      irNaAtivaRef.current = null;
+      const existing = doHistorico ? undefined : current.find((tab) => tab.path === path);
       if (existing) {
         setActiveId(existing.id);
         return current;
@@ -275,11 +285,42 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     return nova;
   };
 
+  // Histórico de cada guia (24/10, Davi: "seta para voltar ou avançar, igual ao do Google"): os endereços por
+  // onde a guia passou e onde ela está agora. Ir para um endereço novo corta o "avançar", como no navegador.
+  const historicos = useRef(new Map<string, { pilha: string[]; i: number }>());
+  const [versaoHistorico, setVersaoHistorico] = useState(0);
+  useEffect(() => {
+    const ativa = tabs.find((t) => t.id === activeId);
+    if (!ativa) return;
+    const h = historicos.current.get(ativa.id);
+    if (!h) { historicos.current.set(ativa.id, { pilha: [ativa.path], i: 0 }); setVersaoHistorico((v) => v + 1); return; }
+    if (h.pilha[h.i] === ativa.path) return;   // veio do voltar/avançar, ou nada mudou
+    h.pilha = [...h.pilha.slice(0, h.i + 1), ativa.path].slice(-50);
+    h.i = h.pilha.length - 1;
+    setVersaoHistorico((v) => v + 1);
+  }, [tabs, activeId]);
+  useEffect(() => {
+    for (const id of [...historicos.current.keys()]) if (!tabs.some((t) => t.id === id)) historicos.current.delete(id);
+  }, [tabs]);
+  const andarNoHistorico = useCallback((passo: number) => {
+    const h = historicos.current.get(activeIdRef.current);
+    if (!h || h.i + passo < 0 || h.i + passo >= h.pilha.length) return null;
+    h.i += passo;
+    setVersaoHistorico((v) => v + 1);
+    irNaAtivaRef.current = h.pilha[h.i];
+    return h.pilha[h.i];
+  }, []);
+  const hAtual = historicos.current.get(activeId);
+  const podeVoltar = !!hAtual && hAtual.i > 0;
+  const podeAvancar = !!hAtual && hAtual.i < hAtual.pilha.length - 1;
+
   const value = useMemo(() => ({
     tabs, activeId, openTab, syncPath, closeTab, reorderTabs, detachTab,
     divisao, larguras, moverDivisoria, igualarLarguras, dividir, tirarDaDivisao, desfazerDivisao, focarGuia,
     novaGuiaADireita, fecharOutras, abrirAoLado, abrirNovaGuia,
-  }), [tabs, activeId, divisao, larguras]);
+    voltar: () => andarNoHistorico(-1), avancar: () => andarNoHistorico(1), podeVoltar, podeAvancar,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [tabs, activeId, divisao, larguras, versaoHistorico, podeVoltar, podeAvancar]);
   return <WorkspaceTabsContext.Provider value={value}>{children}</WorkspaceTabsContext.Provider>;
 }
 
@@ -303,7 +344,27 @@ interface Arrasto { id: string; inicioX: number; inicioY: number; x: number; y: 
 export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => void }) {
   const {
     tabs, activeId, closeTab, reorderTabs, detachTab, divisao, dividir, tirarDaDivisao, desfazerDivisao, novaGuiaADireita, fecharOutras, abrirNovaGuia,
+    voltar, avancar, podeVoltar, podeAvancar,
   } = useWorkspaceTabs();
+  // Voltar/avançar também pelo teclado (⌘[ e ⌘], como no Chrome) e pelos botões laterais do mouse.
+  const voltarRef = useRef(() => { const p = voltar(); if (p) onNavigate(p); });
+  voltarRef.current = () => { const p = voltar(); if (p) onNavigate(p); };
+  const avancarRef = useRef(() => { const p = avancar(); if (p) onNavigate(p); });
+  avancarRef.current = () => { const p = avancar(); if (p) onNavigate(p); };
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (e.key === "[") { e.preventDefault(); voltarRef.current(); }
+      else if (e.key === "]") { e.preventDefault(); avancarRef.current(); }
+    };
+    const mouse = (e: MouseEvent) => {
+      if (e.button === 3) { e.preventDefault(); voltarRef.current(); }
+      else if (e.button === 4) { e.preventDefault(); avancarRef.current(); }
+    };
+    window.addEventListener("keydown", tecla);
+    window.addEventListener("mouseup", mouse);
+    return () => { window.removeEventListener("keydown", tecla); window.removeEventListener("mouseup", mouse); };
+  }, []);
   const navRef = useRef<HTMLElement>(null);
   const tabRefs = useRef(new Map<string, HTMLDivElement>());
   const [arrasto, setArrastoState] = useState<Arrasto | null>(null);
@@ -421,6 +482,17 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
     data-barra-guias=""
     className={cn("pointer-events-auto relative z-[100] flex shrink-0 items-end gap-1 overflow-x-auto border-b bg-background px-3 shadow-sm",
       naBarraDeTitulo ? "h-[42px] pl-[84px] pt-1.5 bg-muted" : "h-10 pt-1")} aria-label="Abas abertas">
+    {/* Voltar / avançar desta guia (24/10), como as setas do navegador. */}
+    <div className="mb-1 flex shrink-0 items-center gap-0.5 self-center pr-1">
+      <button type="button" onClick={() => voltarRef.current()} disabled={!podeVoltar} aria-label="Voltar" title="Voltar (⌘[)"
+        className="seta-guia flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-35">
+        <ArrowLeft className="h-4 w-4" />
+      </button>
+      <button type="button" onClick={() => avancarRef.current()} disabled={!podeAvancar} aria-label="Avançar" title="Avançar (⌘])"
+        className="seta-guia flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-35">
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </div>
     {tabs.map((tab) => {
       const active = tab.id === activeId;
       const canClose = tabs.length > 1;
