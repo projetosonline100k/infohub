@@ -54,6 +54,18 @@ def _git(*args, cwd=RAIZ):
     return subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
 
 
+def avisar(titulo, texto):
+    """Notificação do macOS com som (o Davi não precisa ficar perguntando se terminou). Chamada só na mudança
+    para concluido, erro ou aguardando_aprovacao, então sai uma vez por pedido. Texto vai por argv (sem escapar)."""
+    try:
+        subprocess.run(["osascript", "-e", "on run argv",
+                        "-e", 'display notification (item 2 of argv) with title "Ponte" subtitle (item 1 of argv) sound name "Glass"',
+                        "-e", "end run", (titulo or "Pedido")[:120], " ".join((texto or "").split())[:200]],
+                       capture_output=True, timeout=10)
+    except Exception as e:
+        log("aviso não saiu —", repr(e)[:200])
+
+
 # ---------------------------------------------------------------- fila
 
 def _gravar(sql, params=()):
@@ -70,8 +82,9 @@ def _gravar(sql, params=()):
 
 def pegar():
     """Marca os que esperam aprovação e pega o próximo que pode rodar (já em_andamento). None se não há."""
-    _gravar("""UPDATE public.ponte_pedidos SET status = 'aguardando_aprovacao'
-               WHERE status = 'pendente' AND requer_aprovacao AND NOT aprovado""")
+    for (titulo,) in _gravar("""UPDATE public.ponte_pedidos SET status = 'aguardando_aprovacao'
+                               WHERE status = 'pendente' AND requer_aprovacao AND NOT aprovado RETURNING titulo"""):
+        avisar(titulo, "Precisa da sua aprovação.")
     linhas = _gravar("""
         UPDATE public.ponte_pedidos SET status = 'em_andamento', iniciado_em = now(), erro = NULL
         WHERE id = (
@@ -89,18 +102,22 @@ def pegar():
 
 
 def concluir(pid, resultado):
-    _gravar("UPDATE public.ponte_pedidos SET status = 'concluido', concluido_em = now(), resultado = %s, erro = NULL WHERE id = %s",
-            (resultado[:20000], pid))
+    for (titulo,) in _gravar("UPDATE public.ponte_pedidos SET status = 'concluido', concluido_em = now(), resultado = %s, erro = NULL WHERE id = %s RETURNING titulo",
+                             (resultado[:20000], pid)):
+        avisar(titulo, "Concluído.")
 
 
 def falhar(pid, erro, resultado=None):
-    _gravar("UPDATE public.ponte_pedidos SET status = 'erro', concluido_em = now(), erro = %s, resultado = coalesce(%s, resultado) WHERE id = %s",
-            (erro[:5000], resultado, pid))
+    for (titulo,) in _gravar("UPDATE public.ponte_pedidos SET status = 'erro', concluido_em = now(), erro = %s, resultado = coalesce(%s, resultado) WHERE id = %s RETURNING titulo",
+                             (erro[:5000], resultado, pid)):
+        avisar(titulo, f"Erro: {erro}")
 
 
 def pedir_aprovacao(pid, motivo):
-    _gravar("""UPDATE public.ponte_pedidos SET status = 'aguardando_aprovacao', requer_aprovacao = true, aprovado = false,
-               iniciado_em = NULL, resultado = %s WHERE id = %s""", (f"Precisa da aprovação do Davi antes: {motivo}"[:5000], pid))
+    linhas = _gravar("""UPDATE public.ponte_pedidos SET status = 'aguardando_aprovacao', requer_aprovacao = true, aprovado = false,
+               iniciado_em = NULL, resultado = %s WHERE id = %s RETURNING titulo""", (f"Precisa da aprovação do Davi antes: {motivo}"[:5000], pid))
+    for (titulo,) in linhas:
+        avisar(titulo, "Precisa da sua aprovação.")
 
 
 def reenfileirar():
