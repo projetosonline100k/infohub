@@ -308,7 +308,7 @@ export function AppSidebar() {
     const agora = new Date();
     const titulo = `Desenho ${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
     const { data, error } = await supabase.from("documentos")
-      .insert({ titulo, tipo: "mapa", conteudo: createEmptyMindMapContent(), cliente_id: null }).select("id").single();
+      .insert({ titulo, conteudo: createEmptyMindMapContent(), cliente_id: null }).select("id").single();
     if (error || !data) { toast.error("Não consegui criar o desenho"); return; }
     window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId: null } }));
     openTab(`/desenho/${data.id}`, titulo, { nova: true });
