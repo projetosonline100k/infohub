@@ -31,6 +31,23 @@ interface No {
   carregar?: () => Promise<No[]>;
   /** pasta de documentos: o + cria documento ou pasta dentro dela (24/10) */
   criar?: { clienteId: string; pastaId: string | null };
+  /** nome na ordem guardada (as seções valem para todos os projetos); padrão: a chave */
+  ordemId?: string;
+  /** grupo da ordem dos filhos (ex.: "escritorio" para o Escritório de qualquer projeto); padrão: a chave */
+  grupoOrdem?: string;
+}
+
+// Ordem arrastada pelo Davi (24/10: "segurar e arrastar e ir mudando a ordem"): por grupo, a lista dos
+// itens na ordem escolhida. Item novo (projeto, documento) entra no fim, na ordem de sempre.
+type Ordens = Record<string, string[]>;
+const CHAVE_ORDEM = "sidebar:ordem";
+const lerOrdens = (): Ordens => { try { return JSON.parse(localStorage.getItem(CHAVE_ORDEM) || "{}"); } catch { return {}; } };
+const idDeOrdem = (n: No) => n.ordemId ?? n.chave;
+function ordenar(nos: No[], ordem?: string[]): No[] {
+  if (!ordem?.length) return nos;
+  const pos = new Map(ordem.map((id, i) => [id, i]));
+  return nos.map((n, i) => ({ n, i, p: pos.get(idDeOrdem(n)) ?? Infinity }))
+    .sort((a, b) => (a.p === b.p ? a.i - b.i : a.p - b.p)).map((x) => x.n);
 }
 
 // Documentos do projeto (23/10, Davi: "tudo que tem subcategorias na lateral — os documentos, e dentro
@@ -84,7 +101,7 @@ interface ClienteMenu { id: string; nome_especialista: string; arquivado: boolea
 function noDoProjeto(c: ClienteMenu): No {
   const base = `/clientes/${c.id}`;
   const secao = (s: { secao: string; titulo: string; icone: LucideIcon }): No => ({
-    chave: `${c.id}:${s.secao}`, titulo: s.titulo, icone: s.icone, ir: `${base}?secao=${s.secao}`,
+    chave: `${c.id}:${s.secao}`, ordemId: s.secao, titulo: s.titulo, icone: s.icone, ir: `${base}?secao=${s.secao}`,
     ativoSe: (caminho, busca) => caminho === base && busca.get("secao") === s.secao && !busca.get("documento"),
     ...(s.secao === "documentos" ? { carregar: () => documentosDoProjeto(c.id), criar: { clienteId: c.id, pastaId: null } } : {}),
   });
@@ -92,7 +109,8 @@ function noDoProjeto(c: ClienteMenu): No {
     chave: `projeto:${c.id}`, titulo: c.nome_especialista, icone: Folder, ir: base,
     ativoSe: (caminho) => caminho === base,
     // O Escritório é uma pasta (clicar abre o Escritório; a setinha mostra as abas dele).
-    filhos: SECOES.map((s) => (s.secao === "conteudo:visao-geral" ? { ...secao(s), filhos: SECOES_ESCRITORIO.map(secao) } : secao(s))),
+    grupoOrdem: "secoes-projeto",
+    filhos: SECOES.map((s) => (s.secao === "conteudo:visao-geral" ? { ...secao(s), grupoOrdem: "escritorio", filhos: SECOES_ESCRITORIO.map(secao) } : secao(s))),
   };
 }
 
@@ -111,6 +129,54 @@ export function AppSidebar() {
   const [abertos, setAbertos] = useState<Set<string>>(lerAbertos);
   const [clientes, setClientes] = useState<ClienteMenu[]>([]);
   const [carregados, setCarregados] = useState<Record<string, No[] | "carregando">>({});
+  const [ordens, setOrdens] = useState<Ordens>(lerOrdens);
+  // Arrastando: qual item (grupo + id) e onde vai cair (antes/depois de qual irmão).
+  const [arrasto, setArrasto] = useState<{ grupo: string; id: string; alvo: string | null; depois: boolean } | null>(null);
+  const inicioArrasto = useRef<{ x: number; y: number; grupo: string; id: string; irmaos: string[] } | null>(null);
+  const arrastoRef = useRef(arrasto);
+  arrastoRef.current = arrasto;
+  useEffect(() => {
+    const mover = (e: PointerEvent) => {
+      const ini = inicioArrasto.current;
+      if (!ini) return;
+      if (!arrastoRef.current) {
+        if (Math.abs(e.clientY - ini.y) < 5 && Math.abs(e.clientX - ini.x) < 5) return;
+        document.body.style.userSelect = "none";
+      }
+      const el = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)
+        ?.closest<HTMLElement>(`[data-ordem-grupo="${CSS.escape(ini.grupo)}"]`);
+      const alvo = el?.dataset.ordemId ?? null;
+      const r = el?.getBoundingClientRect();
+      const depois = r ? e.clientY > r.top + r.height / 2 : false;
+      setArrasto((a) => (a && a.alvo === alvo && a.depois === depois ? a : { grupo: ini.grupo, id: ini.id, alvo, depois }));
+    };
+    const soltar = () => {
+      const ini = inicioArrasto.current, a = arrastoRef.current;
+      inicioArrasto.current = null;
+      document.body.style.userSelect = "";
+      if (!ini || !a) return;
+      setArrasto(null);
+      // O clique que vem junto com o soltar não abre o item.
+      const engolir = (ev: MouseEvent) => { ev.preventDefault(); ev.stopPropagation(); };
+      window.addEventListener("click", engolir, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener("click", engolir, { capture: true }), 0);
+      if (!a.alvo || a.alvo === a.id) return;
+      const lista = ini.irmaos.filter((x) => x !== a.id);
+      const i = lista.indexOf(a.alvo);
+      if (i < 0) return;
+      lista.splice(a.depois ? i + 1 : i, 0, a.id);
+      setOrdens((o) => {
+        const novo = { ...o, [ini.grupo]: lista };
+        try { localStorage.setItem(CHAVE_ORDEM, JSON.stringify(novo)); } catch { /* sem storage */ }
+        return novo;
+      });
+    };
+    const cancelar = (e: KeyboardEvent) => { if (e.key === "Escape" && inicioArrasto.current) { inicioArrasto.current = null; document.body.style.userSelect = ""; setArrasto(null); } };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+    window.addEventListener("keydown", cancelar);
+    return () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); window.removeEventListener("keydown", cancelar); };
+  }, []);
   // Pastas e documentos criados/movidos na página (ou ao voltar para o app): busca de novo o que já foi
   // carregado, trocando só quando chega (sem a árvore piscar).
   const carregadores = useRef(new Map<string, () => Promise<No[]>>());
@@ -242,31 +308,45 @@ export function AppSidebar() {
     window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId } }));
   };
 
-  const Linha = ({ no, nivel }: { no: No; nivel: number }) => {
+  const Linha = ({ no, nivel, grupo, irmaos }: { no: No; nivel: number; grupo: string; irmaos: string[] }) => {
     const aberto = abertos.has(no.chave);
     const lazy = carregados[no.chave];
-    const filhos = no.carregar ? (Array.isArray(lazy) ? lazy : []) : no.filhos ?? [];
+    const grupoFilhos = no.grupoOrdem ?? no.chave;
+    const filhos = ordenar(no.carregar ? (Array.isArray(lazy) ? lazy : []) : no.filhos ?? [], ordens[grupoFilhos]);
+    const idsFilhos = filhos.map(idDeOrdem);
+    const meuId = idDeOrdem(no);
+    const arrastando = arrasto?.grupo === grupo && arrasto.id === meuId;
+    const marca = arrasto?.grupo === grupo && arrasto.alvo === meuId && arrasto.id !== meuId ? (arrasto.depois ? "depois" : "antes") : null;
     const temFilhos = !!no.carregar || filhos.length > 0;
     const eAtivo = ativo(no);
     const Icone = temFilhos && no.icone === Folder ? (aberto ? FolderOpen : Folder) : no.icone;
     return (
       <li>
-        <div className={cn("group/linha flex h-7 items-center rounded-md pr-1 text-[13px] transition-colors",
+        <div data-ordem-grupo={grupo} data-ordem-id={meuId}
+          onPointerDown={(e) => {
+            if (e.button !== 0 || (e.target as Element).closest("[data-sem-arrasto]")) return;
+            inicioArrasto.current = { x: e.clientX, y: e.clientY, grupo, id: meuId, irmaos };
+          }}
+          onDragStart={(e) => e.preventDefault()}
+          className={cn("group/linha relative flex h-7 items-center rounded-md pr-1 text-[13px] transition-colors",
+          arrastando && "opacity-40", arrasto && "cursor-grabbing",
+          marca === "antes" && "before:absolute before:inset-x-1 before:-top-px before:h-0.5 before:rounded before:bg-primary before:content-['']",
+          marca === "depois" && "after:absolute after:inset-x-1 after:-bottom-px after:h-0.5 after:rounded after:bg-primary after:content-['']",
           eAtivo ? "bg-primary/15 font-medium text-sidebar-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground")}
           style={{ paddingLeft: 6 + nivel * 12 }}>
-          <button type="button" aria-label={aberto ? "Fechar" : "Abrir"} onClick={() => temFilhos && alternar(no.chave)}
+          <button type="button" data-sem-arrasto="" aria-label={aberto ? "Fechar" : "Abrir"} onClick={() => temFilhos && alternar(no.chave)}
             className={cn("flex h-5 w-4 shrink-0 items-center justify-center rounded text-sidebar-foreground/50", temFilhos ? "hover:text-sidebar-foreground" : "pointer-events-none opacity-0")}>
             <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", aberto && "rotate-90")} />
           </button>
           <a href={no.ir ?? "#"} onClick={(e) => { if (no.ir) ir(no.ir, no.titulo, e); else { e.preventDefault(); alternar(no.chave); } if (temFilhos && no.ir && !aberto) alternar(no.chave, true); }}
-            className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-0.5" title={no.titulo}>
+            draggable={false} className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-0.5" title={no.titulo}>
             <Icone className={cn("h-3.5 w-3.5 shrink-0", eAtivo ? "text-primary" : no.icone === Folder ? "text-sky-400/80" : "text-sidebar-foreground/60")} />
             <span className="truncate">{no.titulo}</span>
           </a>
           {no.criar && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" aria-label={`Criar em ${no.titulo}`} title="Novo documento ou pasta aqui"
+                <button type="button" data-sem-arrasto="" aria-label={`Criar em ${no.titulo}`} title="Novo documento ou pasta aqui"
                   className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-sidebar-foreground/60 opacity-0 hover:bg-sidebar-accent hover:text-sidebar-foreground focus:opacity-100 group-hover/linha:opacity-100 data-[state=open]:opacity-100">
                   <Plus className="h-3.5 w-3.5" />
                 </button>
@@ -288,13 +368,15 @@ export function AppSidebar() {
           // Linha-guia vertical (como no Obsidian) ligando os filhos à pasta.
           <ul className="relative">
             <span className="pointer-events-none absolute bottom-1 top-0 w-px bg-sidebar-border" style={{ left: 13 + nivel * 12 }} />
-            {filhos.map((f) => <Linha key={f.chave} no={f} nivel={nivel + 1} />)}
+            {filhos.map((f) => <Linha key={f.chave} no={f} nivel={nivel + 1} grupo={grupoFilhos} irmaos={idsFilhos} />)}
           </ul>
         )}
       </li>
     );
   };
 
+  const raiz = ordenar(arvore, ordens.raiz);
+  const idsRaiz = raiz.map(idDeOrdem);
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
@@ -307,7 +389,7 @@ export function AppSidebar() {
         {recolhida ? (
           // Recolhida: só os ícones do primeiro nível.
           <div className="flex flex-col items-center gap-1">
-            {arvore.map((n) => {
+            {raiz.map((n) => {
               const Icone = n.icone;
               return (
                 <a key={n.chave} href={n.ir ?? "#"} title={n.titulo} onClick={(e) => n.ir && ir(n.ir, n.titulo, e)}
@@ -318,7 +400,7 @@ export function AppSidebar() {
             })}
           </div>
         ) : (
-          <ul className="space-y-px">{arvore.map((n) => <Linha key={n.chave} no={n} nivel={0} />)}</ul>
+          <ul className="space-y-px">{raiz.map((n) => <Linha key={n.chave} no={n} nivel={0} grupo="raiz" irmaos={idsRaiz} />)}</ul>
         )}
       </SidebarContent>
     </Sidebar>
