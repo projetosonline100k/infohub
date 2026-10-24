@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Bike, Users } from "lucide-react";
+import { Bike, CalendarDays, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AtividadesView } from "@/components/atividades/AtividadesView";
 import { AtividadesClientesView } from "@/components/atividades/AtividadesClientesView";
+import { SemanaView } from "@/components/atividades/SemanaView";
 import { FiltroResponsavel } from "@/components/atividades/FiltroResponsavel";
 import type { FiltroResponsavel as Filtro } from "@/lib/atividades/filtroResponsavel";
 
-type Secao = "pessoal" | "clientes";
+type Secao = "semana" | "pessoal" | "clientes";
 
 const CHAVE_SECAO = "atividades-secao";
 const CHAVE_RESPONSAVEL = "atividades-filtro-responsavel";
@@ -15,7 +16,7 @@ const CHAVE_RESPONSAVEL = "atividades-filtro-responsavel";
 const Atividades = () => {
   const [secao, setSecao] = useState<Secao>(() => {
     const salvo = localStorage.getItem(CHAVE_SECAO);
-    return salvo === "clientes" ? "clientes" : "pessoal";
+    return salvo === "clientes" || salvo === "semana" ? salvo : "pessoal";
   });
   const [filtroResponsavel, setFiltroResponsavel] = useState<Filtro>(() => {
     const salvo = localStorage.getItem(CHAVE_RESPONSAVEL);
@@ -39,8 +40,19 @@ const Atividades = () => {
         <h1 className="text-xl font-bold text-foreground">Atividades</h1>
 
         <div className="flex items-center gap-2">
-          <FiltroResponsavel value={filtroResponsavel} onChange={selecionarResponsavel} />
+          {secao !== "semana" && <FiltroResponsavel value={filtroResponsavel} onChange={selecionarResponsavel} />}
           <div className="flex items-center bg-muted rounded-lg p-0.5">
+          {/* 24/10 (Davi): a semana com o dia, o calendário e o Kanban embaixo. */}
+          <button
+            onClick={() => selecionarSecao("semana")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              secao === "semana" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <CalendarDays className="h-4 w-4" />
+            Semana
+          </button>
           <button
             onClick={() => selecionarSecao("pessoal")}
             className={cn(
@@ -65,9 +77,11 @@ const Atividades = () => {
         </div>
       </div>
 
-      <Card className="p-4 shadow-md w-full">
-        {secao === "pessoal" ? <AtividadesView filtroResponsavel={filtroResponsavel} /> : <AtividadesClientesView filtroResponsavel={filtroResponsavel} />}
-      </Card>
+      {secao === "semana" ? <SemanaView /> : (
+        <Card className="p-4 shadow-md w-full">
+          {secao === "pessoal" ? <AtividadesView filtroResponsavel={filtroResponsavel} /> : <AtividadesClientesView filtroResponsavel={filtroResponsavel} />}
+        </Card>
+      )}
     </div>
   );
 };
