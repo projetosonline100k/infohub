@@ -37,6 +37,8 @@ export interface DadosPedido {
   proximaHeadline: number;
   /** documentos que o Davi puxou com @ no chat (24/10) */
   citados?: { titulo: string; texto: string }[];
+  /** cartões dos quadros do projeto que combinam com o pedido (etiquetas/colunas; lib/documentos/quadro.ts) */
+  referencias?: { fonte: string; coluna: string; titulo: string; etiquetas: string[]; texto: string }[];
   /** data e hora de agora, por extenso (no chat, o Claude não tem relógio nem ferramentas) */
   agora?: string;
   /** "conversa" (24/10): responde no painel do chat, ao lado do documento, em vez de escrever nele */
@@ -101,6 +103,12 @@ export function montarPedido(d: DadosPedido): string {
   partes.push(`DOCUMENTO ATUAL (contexto; [CURSOR] é onde ${conversa ? "está o cursor do Davi" : "a sua resposta entra; não repita o que já está escrito"}):\n"""\n${recortarDocumento(d.documento)}\n"""`);
   for (const c of (d.citados ?? []).filter((x) => x.texto.trim())) {
     partes.push(`DOCUMENTO CITADO PELO DAVI (@${c.titulo}):\n"""\n${recortarDocumento(c.texto)}\n"""`);
+  }
+  const refs = (d.referencias ?? []).filter((r) => (r.titulo + r.texto).trim());
+  if (refs.length) {
+    partes.push("REFERÊNCIAS DO BANCO DO DAVI (cartões dos quadros dele, escolhidos pelas etiquetas e colunas que combinam com o pedido; "
+      + "use como base: estrutura, gancho, argumentos e tom. Adapte para o pedido, não copie frase por frase):\n"
+      + refs.map((r) => `[${r.coluna || "sem coluna"}${r.etiquetas.length ? ` · #${r.etiquetas.join(" #")}` : ""} · de "${r.fonte}"] ${r.titulo}\n${r.texto.trim()}`).join("\n\n"));
   }
   if (d.selecao?.trim()) partes.push(`TRECHO SELECIONADO PELO DAVI (é sobre ele o pedido; a sua resposta entra no lugar dele):\n"""\n${d.selecao.trim()}\n"""`);
   if (d.anterior?.texto.trim()) {

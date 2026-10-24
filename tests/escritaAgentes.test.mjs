@@ -100,3 +100,13 @@ test('o mapa da inteligência do funcionário entra no pedido, logo depois do ma
   const p = montarPedido({ agente: { ...junior, mapa: 'MAPA DA INTELIGÊNCIA DE JUNIOR — siga cada pilar:\n1. Headline' }, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'x', proximaHeadline: 1 });
   assert.match(p, /SEU MANUAL:\nEscreve roteiros\.\n\nMAPA DA INTELIGÊNCIA DE JUNIOR/);
 });
+
+test('referências dos quadros entram no pedido com coluna, etiquetas e de onde vieram', () => {
+  const p = montarPedido({
+    agente: null, skills: [], cerebro: null, documento: '[CURSOR]', pedido: 'roteiro de defesa de crença', proximaHeadline: 1,
+    referencias: [{ fonte: 'Estruturas', coluna: 'Defesa de crença', titulo: 'Paulo Porto', etiquetas: ['saúde'], texto: 'O que acontece com o cérebro…' }],
+  });
+  assert.match(p, /REFERÊNCIAS DO BANCO DO DAVI/);
+  assert.match(p, /\[Defesa de crença · #saúde · de "Estruturas"\] Paulo Porto\nO que acontece/);
+  assert.doesNotMatch(montarPedido({ agente: null, skills: [], cerebro: null, documento: '', pedido: 'x', proximaHeadline: 1 }), /REFERÊNCIAS DO BANCO/);
+});

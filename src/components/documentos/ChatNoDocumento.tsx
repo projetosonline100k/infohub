@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
 import { proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
+import { cartoesDoHtml, escolherReferencias, palavrasDoPedido } from "@/lib/documentos/quadro";
 import { alinhar } from "@/lib/conteudo/trechos";
 import {
   ehRevisao, linhasDoTexto, montarPedido, montarRevisao, separarNotas, textoParaHtml,
@@ -374,6 +375,16 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const { data } = await db.from("documentos").select("id, titulo, conteudo").in("id", lista.map((c) => c.id));
     return ((data ?? []) as { titulo: string; conteudo: string | null }[]).map((d) => ({ titulo: d.titulo, texto: htmlParaTexto(d.conteudo ?? "") }));
   };
+  // Referências dos quadros (24/10, Davi: "categorizar os cards para que, quando eu escrever os roteiros, ele puxe
+  // as coisas na hora"): os cartões dos quadros nos documentos do projeto cujas etiquetas/colunas combinam com o pedido.
+  const referenciasPara = async (pedido: string) => {
+    if (!palavrasDoPedido(pedido).length) return [];
+    let q = db.from("documentos").select("titulo, conteudo").is("deleted_at", null).ilike("conteudo", "%data-quadro-kanban%").limit(40);
+    q = clienteId ? q.eq("cliente_id", clienteId) : q.is("cliente_id", null);
+    const { data } = await q;
+    const todos = ((data ?? []) as { titulo: string | null; conteudo: string | null }[]).flatMap((d) => cartoesDoHtml(d.conteudo ?? "", d.titulo || "Sem título"));
+    return escolherReferencias(todos, pedido);
+  };
   const listaConversa = useRef<HTMLDivElement>(null);
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   const [escolhidos, setEscolhidos] = useState<string[]>(() => ler("docchat:agentes", []));   // membro_id
@@ -507,6 +518,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   }): Promise<{ texto: string; erro?: string }> => {
     const { regiao, selecao, documento, pedido, proximaHeadline, fila } = o;
     const andar = o.aoAndar ?? setAndamento;
+    // A headline em volta do cursor também conta para achar as referências (no "gerar todos" o pedido é genérico).
+    const perto = documento.slice(Math.max(0, documento.indexOf("[CURSOR]") - 400), documento.indexOf("[CURSOR]") + 1);
+    const referencias = await referenciasPara(`${pedido} ${selecao ?? ""} ${perto}`);
     const largar = o.jaSeguida ? () => undefined : seguirRegiao(editor, regiao);
     const blocos: { quem: string; texto: string }[] = [];
     let anterior: { quem: string; texto: string } | null = null;
@@ -540,7 +554,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
           documento, selecao: anterior ? null : selecao, anterior,
-          historico: turnos.filter((t) => !t.erro), pedido, proximaHeadline,
+          historico: turnos.filter((t) => !t.erro), pedido, proximaHeadline, referencias,
         });
         const id = crypto.randomUUID();
         idAtual = id;
@@ -604,6 +618,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     setCitados([]);
     setMencao(null);
     const docsCitados = await textoDosCitados(citadosAgora);
+    const referencias = await referenciasPara(pedido);
     setTurnos((l) => [...l, { id: idTurno, pedido: pedido || "(fazer a sua parte)", resposta: "", selecao, passos: [], rodando: true, citados: citadosAgora }]);
     const atualizar = (patch: Partial<Turno>) => setTurnos((l) => l.map((t) => (t.id === idTurno ? { ...t, ...patch } : t)));
 
@@ -628,7 +643,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
         } : null;
         const prompt = montarPedido({
           escritorio: esc?.nome, agente, skills: await conteudoSkills(m ? m.nome.trim().toLowerCase() : null), cerebro,
-          documento, selecao: anterior ? null : selecao, anterior, historico, pedido, citados: docsCitados,
+          documento, selecao: anterior ? null : selecao, anterior, historico, pedido, citados: docsCitados, referencias,
           agora: new Date().toLocaleString("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }),
           proximaHeadline: proximoNumeroHeadline(editor.getHTML()), modo: "conversa",
         });
