@@ -25,6 +25,7 @@ export function useTheme() {
     }
     
     localStorage.setItem("theme", theme);
+    window.dispatchEvent(new CustomEvent<Theme>("infopro-tema", { detail: theme }));
   }, [theme]);
 
   // Mudou em outra janela (Agenda, Notas): acompanha aqui também.
@@ -32,6 +33,15 @@ export function useTheme() {
     const ouvir = (e: StorageEvent) => { if (e.key === "theme" && (e.newValue === "light" || e.newValue === "dark")) setTheme(e.newValue); };
     window.addEventListener("storage", ouvir);
     return () => window.removeEventListener("storage", ouvir);
+  }, []);
+
+  // Mudou nesta mesma janela por outro componente (o botão de tema): sem
+  // isso, quem também usa o hook (ex.: o Excalidraw do Desenho) só via a
+  // troca depois de recarregar.
+  useEffect(() => {
+    const ouvir = (e: Event) => { const t = (e as CustomEvent<Theme>).detail; if (t === "light" || t === "dark") setTheme(t); };
+    window.addEventListener("infopro-tema", ouvir);
+    return () => window.removeEventListener("infopro-tema", ouvir);
   }, []);
 
   const toggleTheme = () => {

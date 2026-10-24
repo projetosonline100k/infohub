@@ -62,6 +62,20 @@ const CANVAS_PREFIX = "__CANVASMENTAL_V1__";
 // assim (o usuário pode trocar pela paleta de fundo nativa do Excalidraw).
 const PAPER_BACKGROUND = "#FBF9F2";
 
+// No tema escuro o Excalidraw passa o canvas inteiro por um filtro
+// (invert 93% + hue-rotate 180°), e o creme do papel sai marrom. Só na tela,
+// trocamos o papel por este quase-branco levemente frio, que depois do filtro
+// vira grafite neutro (~#121415), perto do fundo do app. O que vai pro banco
+// continua sendo PAPER_BACKGROUND (ver serializeCanvasDoc).
+const PAPER_BACKGROUND_NO_ESCURO = "#FCFDFF";
+
+function fundoParaTela(cor: string | undefined, escuro: boolean) {
+  const c = (cor || "").toUpperCase();
+  if (escuro && c === PAPER_BACKGROUND) return PAPER_BACKGROUND_NO_ESCURO;
+  if (!escuro && c === PAPER_BACKGROUND_NO_ESCURO) return PAPER_BACKGROUND;
+  return cor;
+}
+
 // Precisa ser um objeto estável (fora do componente) — se for um literal
 // novo a cada render, o Excalidraw entende que suas opções "mudaram" a
 // cada render e pode reagir de formas inesperadas.
@@ -239,7 +253,7 @@ function serializeCanvasDoc(elements: readonly ExcalidrawElement[], appState: Ap
       scrollX: appState.scrollX,
       scrollY: appState.scrollY,
       zoom: appState.zoom,
-      viewBackgroundColor: appState.viewBackgroundColor,
+      viewBackgroundColor: fundoParaTela(appState.viewBackgroundColor, false),
     },
     files,
   };
@@ -480,6 +494,8 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const novosCardsCountRef = useRef(0);
 
   const { theme } = useTheme();
+  const escuroRef = useRef(theme === "dark");
+  escuroRef.current = theme === "dark";
   const { saving, lastSaved, error: saveError, debouncedSave, saveNow } = useCanvasAutoSave(documentoId);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -1192,7 +1208,10 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         const restored = restore(
           {
             elements: parsed.elements as ExcalidrawElement[],
-            appState: parsed.appState,
+            appState: {
+              ...parsed.appState,
+              viewBackgroundColor: fundoParaTela(parsed.appState.viewBackgroundColor, escuroRef.current),
+            },
             files: parsed.files,
           },
           null,
@@ -1484,7 +1503,14 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       event.preventDefault();
       const parsed = parseCanvasDoc(proximo);
       const restored = restore(
-        { elements: parsed.elements as ExcalidrawElement[], appState: parsed.appState, files: parsed.files },
+        {
+          elements: parsed.elements as ExcalidrawElement[],
+          appState: {
+            ...parsed.appState,
+            viewBackgroundColor: fundoParaTela(parsed.appState.viewBackgroundColor, escuroRef.current),
+          },
+          files: parsed.files,
+        },
         null,
         null
       );
@@ -1616,6 +1642,18 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const handleApiReady = useCallback((api: ExcalidrawImperativeAPI) => {
     excalidrawApiRef.current = api;
   }, []);
+
+  // Trocou o tema com o mapa aberto: ajusta o fundo "papel" na tela (sem
+  // entrar no desfazer). O conteúdo salvo não muda.
+  useEffect(() => {
+    const api = excalidrawApiRef.current;
+    if (!api) return;
+    const atual = api.getAppState().viewBackgroundColor;
+    const novo = fundoParaTela(atual, theme === "dark");
+    if (novo && novo !== atual) {
+      api.updateScene({ appState: { viewBackgroundColor: novo }, captureUpdate: CaptureUpdateAction.NEVER });
+    }
+  }, [theme]);
 
   // Manda a posição do mouse pros outros que estiverem no mapa agora —
   // é isso que faz aparecer o cursor colorido deles se mexendo, igual Miro.
