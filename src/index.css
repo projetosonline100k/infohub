@@ -145,6 +145,145 @@ redesign (só o dark era o pedido).
   }
 }
 
+/* ── Temas visuais (24/10, Davi): Papel Vintage e Papel Preto + cor de destaque ─────────────────────────────
+   Só variáveis: os componentes continuam usando bg-background, bg-card, text-primary… (src/lib/aparencia).
+   Ordem importa: estes blocos vêm depois do :root/.dark, então ganham deles. Tokens novos que valem em todo
+   tema: --surface-elevated (card acima de card), --selection (item selecionado), --primary-hover,
+   --paper-texture e --paper-texture-opacity (a textura; "none" fora dos temas de papel). */
+@layer base {
+  :root {
+    --surface-elevated: var(--popover);
+    --selection: var(--accent);
+    --primary-hover: var(--primary);
+    --paper-texture: none;
+    --paper-texture-opacity: 0;
+  }
+
+  /* Papel Vintage: caderno premium, papel antigo limpo (base clara). */
+  .tema-papel-vintage {
+    --background: 39 55% 79%;
+    --foreground: 28 28% 13%;
+    --card: 38 64% 85%;
+    --card-foreground: 28 28% 13%;
+    --popover: 40 70% 88%;
+    --popover-foreground: 28 28% 13%;
+    --surface-elevated: 40 70% 88%;
+    --primary: 34 61% 44%;
+    --primary-foreground: 40 70% 97%;
+    --primary-hover: 37 63% 57%;
+    --secondary: 39 51% 71%;
+    --secondary-foreground: 28 28% 13%;
+    --muted: 39 50% 74%;
+    --muted-foreground: 32 21% 38%;
+    /* hover/realce suave; o selecionado forte é --selection */
+    --accent: 38 52% 71%;
+    --accent-foreground: 28 28% 13%;
+    --selection: 35 56% 52%;
+    --border: 34 38% 60%;
+    --input: 34 38% 60%;
+    --ring: 34 61% 44%;
+    --sidebar-background: 37 51% 63%;
+    --sidebar-foreground: 28 28% 13%;
+    --sidebar-primary: 34 61% 44%;
+    --sidebar-primary-foreground: 40 70% 97%;
+    --sidebar-accent: 35 56% 55%;
+    --sidebar-accent-foreground: 28 28% 10%;
+    --sidebar-border: 34 43% 51%;
+    --sidebar-ring: 34 61% 44%;
+    --shadow-sm: 0 1px 2px 0 rgb(80 55 25 / 0.08);
+    --shadow-md: 0 3px 8px -2px rgb(80 55 25 / 0.14);
+    --shadow-lg: 0 10px 24px -6px rgb(80 55 25 / 0.2);
+    --paper-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.17 0 0 0 0 0.13 0 0 0 0 0.09 1.5 0 0 0 -.55'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.045 .16' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.17 0 0 0 0 0.13 0 0 0 0 0.09 2.4 0 0 0 -1.42'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3C/svg%3E");
+    --paper-texture-opacity: 0.16;
+  }
+
+  /* Papel Preto: sketchbook preto (base escura: o <html> também tem .dark). */
+  .tema-papel-preto {
+    --background: 60 6% 6%;
+    --foreground: 38 48% 91%;
+    --card: 48 9% 10%;
+    --card-foreground: 38 48% 91%;
+    --popover: 43 11% 13%;
+    --popover-foreground: 38 48% 91%;
+    --surface-elevated: 43 11% 13%;
+    --primary: 38 54% 54%;
+    --primary-foreground: 60 6% 6%;
+    --primary-hover: 40 66% 64%;
+    --secondary: 43 11% 13%;
+    --secondary-foreground: 38 48% 91%;
+    --muted: 45 10% 12%;
+    --muted-foreground: 38 10% 63%;
+    --accent: 42 14% 14%;
+    --accent-foreground: 38 48% 91%;
+    --selection: 38 28% 16%;
+    --border: 45 11% 21%;
+    --input: 45 11% 21%;
+    --ring: 38 54% 54%;
+    --sidebar-background: 60 8% 8%;
+    --sidebar-foreground: 38 48% 91%;
+    --sidebar-primary: 38 54% 54%;
+    --sidebar-primary-foreground: 60 6% 6%;
+    --sidebar-accent: 38 28% 16%;
+    --sidebar-accent-foreground: 38 48% 91%;
+    --sidebar-border: 45 11% 18%;
+    --sidebar-ring: 38 54% 54%;
+    --paper-texture: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='320'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 1.5 0 0 0 -.55'/%3E%3C/filter%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.045 .16' numOctaves='3' seed='7' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.87 2.4 0 0 0 -1.42'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url%28%23g%29'/%3E%3Crect width='100%25' height='100%25' filter='url%28%23f%29'/%3E%3C/svg%3E");
+    --paper-texture-opacity: 0.14;
+  }
+
+  /* Cor de destaque escolhida (aparencia.ts põe --destaque-h/s/l e data-destaque="claro|escuro" = cor do texto
+     em cima dela). html[...] ganha das classes de tema: troca o destaque sem mexer no fundo do tema. */
+  html[data-destaque] {
+    --primary: var(--destaque-h) var(--destaque-s) var(--destaque-l);
+    --primary-hover: var(--destaque-h) var(--destaque-s) calc(var(--destaque-l) + 8%);
+    --ring: var(--destaque-h) var(--destaque-s) var(--destaque-l);
+    --sidebar-primary: var(--destaque-h) var(--destaque-s) var(--destaque-l);
+    --sidebar-ring: var(--destaque-h) var(--destaque-s) var(--destaque-l);
+  }
+  html[data-destaque="escuro"] { --primary-foreground: 0 0% 7%; --sidebar-primary-foreground: 0 0% 7%; }
+  html[data-destaque="claro"] { --primary-foreground: 0 0% 100%; --sidebar-primary-foreground: 0 0% 100%; }
+  html.dark[data-destaque] {
+    --accent: var(--destaque-h) 30% 15%;
+    --accent-foreground: var(--foreground);
+    --selection: var(--destaque-h) 35% 18%;
+    --sidebar-accent: var(--destaque-h) 30% 15%;
+    --sidebar-accent-foreground: var(--foreground);
+  }
+  html:not(.dark)[data-destaque] {
+    --accent: var(--destaque-h) 55% 90%;
+    --accent-foreground: var(--foreground);
+    --selection: var(--destaque-h) 55% 84%;
+    --sidebar-accent: var(--destaque-h) 50% 86%;
+    --sidebar-accent-foreground: var(--foreground);
+  }
+  /* No Papel Vintage o "claro" do destaque fica no tom do papel (sem branco frio). */
+  html.tema-papel-vintage[data-destaque] {
+    --accent: var(--destaque-h) 40% 76%;
+    --selection: var(--destaque-h) 45% 66%;
+    --sidebar-accent: var(--destaque-h) 42% 70%;
+  }
+}
+
+/* Textura de papel: UMA camada fixa por cima da tela (não rola, não pega clique), com um ruído SVG pequeno que
+   se repete (grão + fibras, ~1 KB, sem baixar imagem) e uma leve variação de tom. A cor já vem na textura e o
+   ruído vira só transparência: sem mix-blend, então não pesa no scroll. Fora dos temas de papel não existe. */
+html.tema-papel:not(.jarvis-window) body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  pointer-events: none;
+  background-image:
+    var(--paper-texture),
+    radial-gradient(ellipse at 18% 12%, hsl(var(--foreground) / 0.025), transparent 55%),
+    radial-gradient(ellipse at 85% 80%, hsl(var(--foreground) / 0.03), transparent 60%);
+  background-size: 320px 320px, 100% 100%, 100% 100%;
+  opacity: var(--paper-texture-opacity);
+}
+@media print {
+  html.tema-papel body::after { display: none; }
+}
+
 @layer base {
   * {
     @apply border-border;

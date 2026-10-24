@@ -1,14 +1,14 @@
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { ErroNaTela, registrarErroTela } from "./components/ErroNaTela";
+import { CHAVES_APARENCIA, aplicarAparencia, lerAparencia } from "./lib/aparencia/aparencia";
 
 const raiz = createRoot(document.getElementById("root")!);
 
-// Tema claro/escuro em todas as janelas (23/10: a janela da Agenda/Notas não seguia o app). Aplica o salvo
-// ao abrir e acompanha quando ele muda em outra janela (o evento "storage" chega nas outras janelas).
-const aplicarTema = (tema: string | null) => document.documentElement.classList.toggle("dark", (tema ?? "dark") === "dark");
-try { aplicarTema(localStorage.getItem("theme")); } catch { aplicarTema(null); }
-window.addEventListener("storage", (e) => { if (e.key === "theme") aplicarTema(e.newValue); });
+// Aparência (claro/escuro, tema visual e cor de destaque) em todas as janelas (23/10: a janela da Agenda/Notas
+// não seguia o app). Aplica a salva antes de desenhar (sem piscar) e acompanha quando muda em outra janela.
+aplicarAparencia(lerAparencia());
+window.addEventListener("storage", (e) => { if (e.key && CHAVES_APARENCIA.includes(e.key)) aplicarAparencia(lerAparencia()); });
 
 // Aviso do Atlas (janelinha que abre e fecha a cada aviso): só a página dele, sem o app, o login
 // nem o cliente do Supabase — várias abrindo juntas disputavam a renovação do login com as outras

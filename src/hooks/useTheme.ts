@@ -1,52 +1,51 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  CHAVES_APARENCIA, EVENTO_APARENCIA, aplicarAparencia, guardarAparencia, lerAparencia, modoDoTema,
+  type Aparencia, type Destaque, type TemaVisual,
+} from "@/lib/aparencia/aparencia";
 
 type Theme = "light" | "dark";
 
+// Aparência do app (claro/escuro, tema visual e cor de destaque — src/lib/aparencia/aparencia.ts).
+// `theme` continua sendo o modo de fato (claro/escuro) para quem só precisa disso (Excalidraw, avisos).
+// Toda janela e todo componente que usa o hook acompanha a mudança na hora: na mesma janela pelo evento
+// EVENTO_APARENCIA; nas outras janelas pelo "storage".
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("theme") as Theme;
-      if (stored) return stored;
-      // Redesign visual: dark é a identidade padrão do Infopro Hub agora —
-      // não depende mais da preferência do sistema. O toggle continua
-      // funcionando normalmente pra quem preferir claro.
-      return "dark";
-    }
-    return "dark";
-  });
+  const [aparencia, setAparencia] = useState<Aparencia>(lerAparencia);
 
-  useEffect(() => {
-    const root = document.documentElement;
-    
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
-    
-    localStorage.setItem("theme", theme);
-    window.dispatchEvent(new CustomEvent<Theme>("infopro-tema", { detail: theme }));
-  }, [theme]);
-
-  // Mudou em outra janela (Agenda, Notas): acompanha aqui também.
-  useEffect(() => {
-    const ouvir = (e: StorageEvent) => { if (e.key === "theme" && (e.newValue === "light" || e.newValue === "dark")) setTheme(e.newValue); };
-    window.addEventListener("storage", ouvir);
-    return () => window.removeEventListener("storage", ouvir);
+  const mudar = useCallback((parcial: Partial<Aparencia>) => {
+    // Parte do que está salvo (outra instância do hook pode ter mudado algo antes desta saber).
+    const nova = { ...lerAparencia(), ...parcial };
+    aplicarAparencia(nova);
+    guardarAparencia(nova);
+    setAparencia(nova);
+    window.dispatchEvent(new CustomEvent<Aparencia>(EVENTO_APARENCIA, { detail: nova }));
   }, []);
 
-  // Mudou nesta mesma janela por outro componente (o botão de tema): sem
-  // isso, quem também usa o hook (ex.: o Excalidraw do Desenho) só via a
-  // troca depois de recarregar.
   useEffect(() => {
-    const ouvir = (e: Event) => { const t = (e as CustomEvent<Theme>).detail; if (t === "light" || t === "dark") setTheme(t); };
-    window.addEventListener("infopro-tema", ouvir);
-    return () => window.removeEventListener("infopro-tema", ouvir);
+    const daOutraJanela = (e: StorageEvent) => {
+      if (e.key && CHAVES_APARENCIA.includes(e.key)) { const a = lerAparencia(); aplicarAparencia(a); setAparencia(a); }
+    };
+    const destaJanela = (e: Event) => setAparencia((e as CustomEvent<Aparencia>).detail);
+    window.addEventListener("storage", daOutraJanela);
+    window.addEventListener(EVENTO_APARENCIA, destaJanela);
+    return () => { window.removeEventListener("storage", daOutraJanela); window.removeEventListener(EVENTO_APARENCIA, destaJanela); };
   }, []);
 
+  const theme: Theme = modoDoTema(aparencia);
+  // Sol/lua: no "Atual" alterna claro/escuro; num tema de papel, troca para o papel do outro modo.
   const toggleTheme = () => {
-    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+    if (aparencia.tema === "papel-vintage") mudar({ tema: "papel-preto" });
+    else if (aparencia.tema === "papel-preto") mudar({ tema: "papel-vintage" });
+    else mudar({ modo: aparencia.modo === "dark" ? "light" : "dark" });
   };
+  const setTheme = (t: Theme) => mudar(aparencia.tema === "atual" ? { modo: t } : { tema: t === "dark" ? "papel-preto" : "papel-vintage" });
 
-  return { theme, setTheme, toggleTheme };
+  return {
+    theme, setTheme, toggleTheme,
+    aparencia,
+    setTema: (tema: TemaVisual) => mudar({ tema }),
+    setModo: (modo: Theme) => mudar({ modo }),
+    setDestaque: (destaque: Destaque, personalizada?: string) => mudar(personalizada ? { destaque, personalizada } : { destaque }),
+  };
 }

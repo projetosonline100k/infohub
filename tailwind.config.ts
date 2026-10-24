@@ -18,6 +18,9 @@ export default {
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
+        // Temas visuais (24/10): card acima de card e item selecionado (src/index.css, src/lib/aparencia).
+        "surface-elevated": "hsl(var(--surface-elevated))",
+        selection: "hsl(var(--selection))",
         foreground: "hsl(var(--foreground))",
         primary: {
           DEFAULT: "hsl(var(--primary))",
