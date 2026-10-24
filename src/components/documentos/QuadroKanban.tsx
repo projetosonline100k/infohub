@@ -134,6 +134,13 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
     setAberto(id);
     setFocarCartao(id);
   };
+  // Excluir cartão (24/10, Davi: "preciso conseguir excluir um bloco"): sem texto vai direto; com texto pergunta.
+  const excluirCartao = (colunaId: string, card: Cartao) => {
+    const tem = tituloDoCartao(card) || corpoDoCartao(card);
+    if (tem && !window.confirm(`Excluir o cartão "${tituloDoCartao(card) || "sem título"}"?`)) return;
+    if (aberto === card.id) setAberto(null);
+    mudarColuna(colunaId, (x) => ({ ...x, cartoes: x.cartoes.filter((c) => c.id !== card.id) }));
+  };
   const novaColuna = () => salvar({ colunas: [...dados.colunas, { id: novoId(), titulo: "", cor: CORES_COLUNA[dados.colunas.length % CORES_COLUNA.length], cartoes: [] }] });
 
   // Arrastar cartão: segura a alcinha e move (5 px) → mostra onde cai; solta → muda de coluna/posição.
@@ -251,6 +258,10 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
                               <div className="flex items-start gap-1">
                                 <CampoTexto valor={card.titulo ?? titulo} autoFocus={focarCartao === card.id} placeholder="Título" className="text-sm font-semibold"
                                   onMudar={(v) => mudarCartao(col.id, card.id, (c) => ({ ...c, titulo: v, texto: (c.titulo ?? "").trim() ? c.texto : corpoDoCartao(c) }))} />
+                                <button type="button" onClick={() => excluirCartao(col.id, card)} title="Excluir cartão" aria-label="Excluir cartão"
+                                  className="shrink-0 rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
                                 <button type="button" onClick={() => setAberto(null)} title="Fechar o cartão"
                                   className="flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground">
                                   <ChevronUp className="h-3 w-3" />Fechar
@@ -283,10 +294,13 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
                             </button>
                           )}
                           {editavel && (
-                            <button type="button" title="Apagar cartão" className="mt-0.5 text-muted-foreground opacity-0 hover:text-destructive group-hover/card:opacity-100"
-                              onClick={() => { if (!corpo || window.confirm(`Apagar o cartão "${titulo || "sem título"}"?`)) mudarColuna(col.id, (x) => ({ ...x, cartoes: x.cartoes.filter((c) => c.id !== card.id) })); }}>
-                              <X className="h-3.5 w-3.5" />
-                            </button>
+                            !estaAberto && (
+                              <button type="button" title="Excluir cartão" aria-label="Excluir cartão"
+                                className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground/60 transition-colors hover:bg-destructive/10 hover:text-destructive group-hover/card:text-muted-foreground"
+                                onClick={() => excluirCartao(col.id, card)}>
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )
                           )}
                         </div>
                       </div>
