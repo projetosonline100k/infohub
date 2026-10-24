@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowLeft, Check, FileText, Loader2, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, FileText, Folder, FolderOpen, Loader2, Plus, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { InteligenciaMembro } from "./InteligenciaMembro";
@@ -354,10 +354,15 @@ const textoDoHtml = (html: string | null) => {
   return (doc.body.textContent ?? "").replace(/\n{3,}/g, "\n\n").trim();
 };
 
+interface DocConectar { id: string; titulo: string; cliente_id: string | null; updated_at: string; pasta_id: string | null }
+interface PastaConectar { id: string; nome: string; parent_id: string | null }
+
 function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cliente_id: string }; conectar?: boolean; onMudou: () => void }) {
   const [aberto, setAberto] = useState(!!conectar);
   const [busca, setBusca] = useState("");
-  const [docs, setDocs] = useState<{ id: string; titulo: string; cliente_id: string | null; updated_at: string }[] | null>(null);
+  const [docs, setDocs] = useState<DocConectar[] | null>(null);
+  const [pastas, setPastas] = useState<PastaConectar[]>([]);
+  const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [ligando, setLigando] = useState<string | null>(null);
   const [versao, setVersao] = useState(0);
   // De qual projeto vêm os documentos (24/10, Davi: "preciso conseguir selecionar o projeto"): começa no do
@@ -369,38 +374,111 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
     void db.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista")
       .then(({ data }) => setProjetos((data ?? []) as typeof projetos));
   }, [aberto, projetos.length]);
+  // Pastas do projeto (24/10, Davi: "precisa mostrar as pastas que existem no projeto"), como na lateral.
+  const emArvore = projeto !== "todos" && !busca.trim();
+  useEffect(() => {
+    if (!aberto || projeto === "todos") { setPastas([]); return; }
+    let q = db.from("pastas_atividade").select("id, nome, parent_id").eq("origem", "documentos").is("deleted_at", null).order("ordem");
+    q = projeto === "sem" ? q.is("cliente_id", null) : q.eq("cliente_id", projeto);
+    void q.then(({ data }) => setPastas((data ?? []) as PastaConectar[]));
+  }, [aberto, projeto]);
   useEffect(() => {
     if (!aberto) return;
     const t = window.setTimeout(() => {
       // Desenhos (tipo "mapa") não têm texto para virar conhecimento: ficam fora da lista.
-      let q = db.from("documentos").select("id, titulo, cliente_id, updated_at").is("deleted_at", null).neq("tipo", "mapa")
-        .order("updated_at", { ascending: false }).limit(40);
+      let q = db.from("documentos").select("id, titulo, cliente_id, updated_at, pasta_id").is("deleted_at", null).neq("tipo", "mapa")
+        .order("titulo").limit(emArvore ? 600 : 40);
       if (busca.trim()) q = q.ilike("titulo", `%${busca.trim()}%`);
       if (projeto === "sem") q = q.is("cliente_id", null);
       else if (projeto !== "todos") q = q.eq("cliente_id", projeto);
-      void q.then(({ data }) => setDocs((data ?? []) as typeof docs));
+      void q.then(({ data }) => setDocs((data ?? []) as DocConectar[]));
     }, 200);
     return () => window.clearTimeout(t);
-  }, [aberto, busca, projeto]);
+  }, [aberto, busca, projeto, emArvore]);
   const nomeProjeto = (id: string | null) => (id ? projetos.find((p) => p.id === id)?.nome_especialista ?? "" : "sem projeto");
-  const ligar = async (d: { id: string; titulo: string }) => {
-    setLigando(d.id);
+  const nomePasta = (id: string | null) => (id ? pastas.find((p) => p.id === id)?.nome ?? "" : "");
+
+  /** Conecta um documento; devolve se deu certo (sem fechar a lista, para a pasta inteira). */
+  const ligarUm = async (d: { id: string; titulo: string }) => {
     const { data } = await db.from("documentos").select("conteudo").eq("id", d.id).maybeSingle();
     const conteudo = (data as { conteudo: string | null } | null)?.conteudo ?? null;
     const texto = conteudo?.startsWith("__") ? "" : textoDoHtml(conteudo);
-    if (!texto) { setLigando(null); toast.error("Esse documento está vazio (ou é um desenho)"); return; }
+    if (!texto) return false;
     const { error } = await db.from("inteligencia_membros").insert({
       cliente_id: membro.cliente_id, membro_id: membro.id, agente: membro.nome.trim().toLowerCase(), escopo: "projeto", tipo: "texto",
       nome: `Documento: ${d.titulo || "Sem título"}`, observacao: `Conectado do documento ${d.id} (cópia do texto de ${new Date().toLocaleDateString("pt-BR")}).`,
       conteudo: texto, caracteres: texto.length, status: "pronto",
     });
-    setLigando(null);
-    if (error) { toast.error("Não consegui conectar o documento"); return; }
-    toast.success(`"${d.titulo}" conectado ao ${membro.nome}`);
-    setAberto(false); setBusca("");
-    setVersao((v) => v + 1);
-    onMudou();
+    return !error;
   };
+  const terminou = () => { setAberto(false); setBusca(""); setVersao((v) => v + 1); onMudou(); };
+  const ligar = async (d: DocConectar) => {
+    setLigando(d.id);
+    const ok = await ligarUm(d);
+    setLigando(null);
+    if (!ok) { toast.error("Não consegui conectar (o documento está vazio?)"); return; }
+    toast.success(`"${d.titulo}" conectado ao ${membro.nome}`);
+    terminou();
+  };
+  // Pasta inteira: os documentos dela e das pastas de dentro.
+  const docsDaPasta = (id: string): DocConectar[] => [
+    ...(docs ?? []).filter((d) => d.pasta_id === id),
+    ...pastas.filter((p) => p.parent_id === id).flatMap((p) => docsDaPasta(p.id)),
+  ];
+  const ligarPasta = async (p: PastaConectar) => {
+    const lista = docsDaPasta(p.id);
+    if (!lista.length) { toast.error("Essa pasta não tem documentos"); return; }
+    if (!window.confirm(`Conectar os ${lista.length} documento(s) da pasta "${p.nome}" ao ${membro.nome}?`)) return;
+    setLigando(p.id);
+    let ok = 0;
+    for (const d of lista) if (await ligarUm(d)) ok += 1;
+    setLigando(null);
+    toast.success(`${ok} de ${lista.length} documento(s) de "${p.nome}" conectados ao ${membro.nome}`);
+    terminou();
+  };
+
+  const LinhaDoc = ({ d, nivel = 0 }: { d: DocConectar; nivel?: number }) => (
+    <button type="button" disabled={!!ligando} onClick={() => void ligar(d)} style={{ paddingLeft: 8 + nivel * 14 }}
+      className="flex w-full items-center gap-2 rounded-md py-1.5 pr-2 text-left text-sm hover:bg-foreground/10 disabled:opacity-50">
+      {ligando === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-foreground/50" />}
+      <span className="min-w-0 flex-1 truncate">{d.titulo || "Sem título"}</span>
+      {!emArvore && (projeto === "todos" ? nomeProjeto(d.cliente_id) : nomePasta(d.pasta_id)) && (
+        <span className="max-w-[100px] shrink-0 truncate text-[10.5px] text-foreground/50">{projeto === "todos" ? nomeProjeto(d.cliente_id) : nomePasta(d.pasta_id)}</span>
+      )}
+      <span className="text-[11px] text-foreground/40">{new Date(d.updated_at).toLocaleDateString("pt-BR")}</span>
+    </button>
+  );
+  const idsPastas = new Set(pastas.map((p) => p.id));
+  const LinhaPasta = ({ p, nivel = 0 }: { p: PastaConectar; nivel?: number }): JSX.Element => {
+    const aberta = abertas.has(p.id);
+    const total = docsDaPasta(p.id).length;
+    return (
+      <div>
+        <div className="group/pasta flex items-center gap-1 rounded-md pr-1 hover:bg-foreground/10" style={{ paddingLeft: 4 + nivel * 14 }}>
+          <button type="button" onClick={() => setAbertas((a) => { const n = new Set(a); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })}
+            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left text-sm">
+            <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 text-foreground/50 transition-transform", aberta && "rotate-90")} />
+            {aberta ? <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-500" /> : <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+            <span className="min-w-0 flex-1 truncate font-medium">{p.nome}</span>
+            <span className="text-[11px] tabular-nums text-foreground/45">{total}</span>
+          </button>
+          {total > 0 && (
+            <button type="button" disabled={!!ligando} onClick={() => void ligarPasta(p)} title={`Conectar os ${total} documentos desta pasta`}
+              className="shrink-0 rounded px-1.5 py-0.5 text-[10.5px] text-foreground/60 opacity-0 hover:bg-foreground/10 hover:text-foreground group-hover/pasta:opacity-100 disabled:opacity-40">
+              {ligando === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : "conectar pasta"}
+            </button>
+          )}
+        </div>
+        {aberta && (
+          <>
+            {pastas.filter((f) => f.parent_id === p.id).map((f) => <LinhaPasta key={f.id} p={f} nivel={nivel + 1} />)}
+            {(docs ?? []).filter((d) => d.pasta_id === p.id).map((d) => <LinhaDoc key={d.id} d={d} nivel={nivel + 1} />)}
+          </>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-foreground/10 p-3">
@@ -417,20 +495,17 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
               {projetos.filter((p) => p.id !== membro.cliente_id).map((p) => <option key={p.id} value={p.id}>{p.nome_especialista}</option>)}
             </select>
             <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar documento pelo nome" className={campo} />
-            {docs === null ? <Loader2 className="h-4 w-4 animate-spin text-foreground/50" /> : !docs.length ? <p className="text-xs text-foreground/50">Nenhum documento.</p> : (
-              <div className="max-h-64 space-y-1 overflow-y-auto">
-                {docs.map((d) => (
-                  <button key={d.id} type="button" disabled={!!ligando} onClick={() => void ligar(d)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-foreground/10 disabled:opacity-50">
-                    {ligando === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-foreground/50" />}
-                    <span className="min-w-0 flex-1 truncate">{d.titulo || "Sem título"}</span>
-                    {projeto === "todos" && <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-foreground/50">{nomeProjeto(d.cliente_id)}</span>}
-                    <span className="text-[11px] text-foreground/40">{new Date(d.updated_at).toLocaleDateString("pt-BR")}</span>
-                  </button>
-                ))}
+            {docs === null ? <Loader2 className="h-4 w-4 animate-spin text-foreground/50" /> : !docs.length && !pastas.length ? <p className="text-xs text-foreground/50">Nenhum documento.</p> : (
+              <div className="max-h-72 space-y-0.5 overflow-y-auto">
+                {emArvore ? (
+                  <>
+                    {pastas.filter((p) => !p.parent_id || !idsPastas.has(p.parent_id)).map((p) => <LinhaPasta key={p.id} p={p} />)}
+                    {docs.filter((d) => !d.pasta_id || !idsPastas.has(d.pasta_id)).map((d) => <LinhaDoc key={d.id} d={d} />)}
+                  </>
+                ) : docs.map((d) => <LinhaDoc key={d.id} d={d} />)}
               </div>
             )}
-            <p className="text-[11px] text-foreground/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo).</p>
+            <p className="text-[11px] text-foreground/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo). Passe o mouse numa pasta para conectar todos os documentos dela.</p>
           </div>
         )}
       </div>
