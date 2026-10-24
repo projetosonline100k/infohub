@@ -20,7 +20,8 @@ import {
 function corDaEtiqueta(t: string) {
   let h = 0;
   for (const ch of t) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  return { background: `hsl(${h} 45% 50% / 0.16)`, color: `hsl(${h} 55% 62%)`, borderColor: `hsl(${h} 45% 50% / 0.35)` };
+  // Claro (papel, tema claro) pede texto mais escuro: --etiqueta-l vem do tema (index.css).
+  return { background: `hsl(${h} 45% 50% / 0.16)`, color: `hsl(${h} 55% var(--etiqueta-l, 62%))`, borderColor: `hsl(${h} 45% 50% / 0.35)` };
 }
 
 function Etiqueta({ texto, onTirar, onClick, ativa }: { texto: string; onTirar?: () => void; onClick?: () => void; ativa?: boolean }) {
