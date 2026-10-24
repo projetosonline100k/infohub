@@ -308,9 +308,10 @@ export function KanbanEsteira({ clienteId, setorId, aberto, onFechar }: { client
 // O cérebro da esteira (18/10, Davi: "cadastrar cliente — Davi, informações importantes, apresentação,
 // narrativa e outras coisas que eu quiser ir colocando; o cérebro onde o Junior e o Elias vão se basear").
 // Cada mudança salva na hora (ao sair do campo); esteira.py contexto entrega o cérebro da peça.
-export function CerebroEsteira({ inicial, onFechar, onSalvar }: { inicial: Cerebro[]; onFechar: () => void; onSalvar: (l: Cerebro[]) => Promise<boolean> }) {
+export function CerebroEsteira({ inicial, abrirId, onFechar, onSalvar }: { inicial: Cerebro[]; abrirId?: string | null; onFechar: () => void; onSalvar: (l: Cerebro[]) => Promise<boolean> }) {
   const [lista, setLista] = useState<Cerebro[]>(inicial);
-  const [selId, setSelId] = useState<string | null>(inicial[0]?.id ?? null);
+  // abrirId (24/10): o lápis ao lado do seletor do chat abre direto no cérebro escolhido.
+  const [selId, setSelId] = useState<string | null>(inicial.find((c) => c.id === abrirId)?.id ?? inicial[0]?.id ?? null);
   const [novoNome, setNovoNome] = useState(inicial.length ? null : "");
   const [versao, setVersao] = useState(0);   // tirou/pôs seção: os campos remontam com o texto certo
   const sel = lista.find((c) => c.id === selId) ?? null;
@@ -368,14 +369,14 @@ export function CerebroEsteira({ inicial, onFechar, onSalvar }: { inicial: Cereb
                 <div key={`${sel.id}-${versao}-${i}`} className="group rounded-lg border bg-background p-3">
                   <div className="mb-1.5 flex items-center gap-2">
                     <input defaultValue={sec.titulo} placeholder="Título da seção" className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none"
-                      onBlur={(e) => { const t = e.target.value.trim(); if (t !== sec.titulo) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, titulo: t } : x)) })), "Salvo"); }} />
+                      onBlur={(e) => { const t = e.target.value.trim(); if (t !== sec.titulo) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, titulo: t } : x)) })), "Cérebro atualizado"); }} />
                     <button type="button" title="Apagar seção" className="text-muted-foreground opacity-0 hover:text-rose-600 group-hover:opacity-100"
                       onClick={() => { setVersao((v) => v + 1); void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.filter((_, j) => j !== i) }))); }}><Trash2 className="h-3.5 w-3.5" /></button>
                   </div>
                   <textarea defaultValue={sec.texto} ref={crescer} onInput={(e) => crescer(e.currentTarget)}
                     placeholder={sec.titulo === "Apresentação" ? "Como você se apresenta nos vídeos (ex.: Eu sou o Davi, …)" : sec.titulo === "Narrativa" ? "A lei/crença que liga qualquer assunto ao seu público (o fio condutor)" : "Escreva aqui…"}
                     className="w-full resize-none overflow-hidden bg-transparent text-[13.5px] leading-relaxed outline-none"
-                    onBlur={(e) => { const t = e.target.value; if (t !== sec.texto) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, texto: t } : x)) })), "Salvo"); }} />
+                    onBlur={(e) => { const t = e.target.value; if (t !== sec.texto) void salvar(mudarSel((c) => ({ ...c, secoes: c.secoes.map((x, j) => (j === i ? { ...x, texto: t } : x)) })), "Cérebro atualizado"); }} />
                 </div>
               ))}
               <Button variant="outline" size="sm" className="gap-1 self-start" onClick={() => void salvar(mudarSel((c) => ({ ...c, secoes: [...c.secoes, { titulo: "", texto: "" }] })))}>

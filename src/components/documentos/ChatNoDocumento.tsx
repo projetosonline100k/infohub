@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowUp, AtSign, BookOpen, Network, Check, FileText, History, Loader2, MessageSquare, Plus, Quote, Search, Settings2, Sparkles, Square, X } from "lucide-react";
+import { ArrowUp, AtSign, BookOpen, Network, Check, FileText, History, Loader2, MessageSquare, Pencil, Plus, Quote, Search, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { MapaInteligenciaView } from "@/components/empresa/MapaInteligenciaView";
 import { lerMapa, mapaParaTexto } from "@/lib/conteudo/mapaInteligencia";
@@ -392,7 +392,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
   // 24/10: o mapa da inteligência de cada um (abre pelo ícone ao lado do nome).
   const [mapaDe, setMapaDe] = useState<Membro | null>(null);
   // 19/10 (Davi: "aqui mesmo, quero conseguir subir mais cérebros"): a mesma tela de cérebro da esteira.
-  const [cerebrosAbertos, setCerebrosAbertos] = useState(false);
+  // 24/10 (Davi: "abrir um cérebro já existente e editar"): o lápis abre já no cérebro escolhido
+  // (false = fechado; null = abre no primeiro).
+  const [cerebrosAbertos, setCerebrosAbertos] = useState<string | null | false>(false);
   // 19/10 (Davi: "preciso conseguir mudar as configurações do Elias e dos outros, hoje só ativo ou
   // desativo"): a engrenagem de cada um abre os critérios, formatos e skills dele (os mesmos da esteira).
   const [configDe, setConfigDe] = useState<number | null>(null);
@@ -770,9 +772,9 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
       )}
       <MapaInteligenciaView membro={mapaDe} aberto={!!mapaDe} onFechar={() => setMapaDe(null)}
         onSalvo={(mapa) => { if (mapaDe) setMembros((l) => ({ ...l, [mapaDe.id]: { ...l[mapaDe.id], mapa_inteligencia: mapa } })); }} />
-      {cerebrosAbertos && esc && (
+      {cerebrosAbertos !== false && esc && (
         <div className="fixed inset-0 z-[70]" onKeyDown={(e) => e.stopPropagation()}>
-          <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]}
+          <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]} abrirId={cerebrosAbertos}
             onFechar={() => setCerebrosAbertos(false)}
             onSalvar={(l) => salvarCerebros(l as CerebroEscrita[])} />
         </div>
@@ -1025,12 +1027,18 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
               </Popover>
               {esc && (
                 <select value={cerebro?.id ?? "nenhum"} disabled={escrevendo}
-                  onChange={(e) => { if (e.target.value === "__cerebros") setCerebrosAbertos(true); else setPara(e.target.value); }}
+                  onChange={(e) => { if (e.target.value === "__cerebros") setCerebrosAbertos(null); else setPara(e.target.value); }}
                   className="min-w-0 max-w-[110px] truncate rounded-full border bg-transparent px-1.5 py-0.5 text-[11px] text-muted-foreground" title="Cérebro: para quem é o texto">
                   {esc.cerebros.map((c) => <option key={c.id} value={c.id}>🧠 {c.nome}</option>)}
                   <option value="nenhum">🧠 Sem cérebro</option>
                   <option value="__cerebros">＋ Novo cérebro / editar…</option>
                 </select>
+              )}
+              {esc && cerebro && (
+                <button type="button" disabled={escrevendo} onClick={() => setCerebrosAbertos(cerebro.id)} title={`Editar o cérebro de ${cerebro.nome}`}
+                  className="-ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-primary disabled:opacity-40">
+                  <Pencil className="h-3 w-3" />
+                </button>
               )}
               <select value={modelo} onChange={(e) => setModelo(e.target.value)} disabled={escrevendo}
                 className="ml-auto rounded-full border bg-transparent px-1.5 py-0.5 text-[11px] text-muted-foreground">
