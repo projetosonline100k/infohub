@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, type LucideIcon,
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, type LucideIcon,
 } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { createEmptyMindMapContent } from "@/components/documentos/MindMapEditor";
 
 // Barra lateral em árvore, no jeito do Obsidian (23/10, Davi: "clicar no item e ter subcategorias, com as
 // funções e projetos que já temos"). Pastas abrem e fecham (o que fica aberto é lembrado); cada projeto
@@ -31,6 +32,8 @@ interface No {
   carregar?: () => Promise<No[]>;
   /** pasta de documentos: o + cria documento ou pasta dentro dela (24/10) */
   criar?: { clienteId: string; pastaId: string | null };
+  /** clicar faz isto em vez de navegar (ex.: "Novo desenho" cria e abre numa guia nova) */
+  acao?: () => void;
   /** nome na ordem guardada (as seções valem para todos os projetos); padrão: a chave */
   ordemId?: string;
   /** grupo da ordem dos filhos (ex.: "escritorio" para o Escritório de qualquer projeto); padrão: a chave */
@@ -75,6 +78,15 @@ async function documentosDoProjeto(clienteId: string): Promise<No[]> {
     ...todas.filter((p) => !mae(p)).map((p) => noPasta(p)),
     ...lista.filter((d) => !d.pasta_id || !idsPastas.has(d.pasta_id)).map(noDoc),
   ];
+}
+
+// Desenhos sem projeto (24/10, "New drawing"): os com projeto ficam nos Documentos dele.
+async function desenhosSoltos(): Promise<No[]> {
+  const { data } = await supabase.from("documentos").select("id, titulo").eq("tipo", "mapa").is("cliente_id", null)
+    .is("deleted_at", null).order("updated_at", { ascending: false }).limit(50);
+  return ((data ?? []) as { id: string; titulo: string | null }[]).map((d) => ({
+    chave: `desenho:${d.id}`, titulo: d.titulo || "Desenho sem título", icone: Workflow, ir: `/desenho/${d.id}`,
+  }));
 }
 
 // Seções de um projeto (as mesmas da página do projeto).
@@ -229,6 +241,9 @@ export function AppSidebar() {
       },
       { chave: "atividades", titulo: "Atividades", icone: Activity, ir: "/atividades" },
       { chave: "notas", titulo: "Notas", icone: StickyNote, ir: "/notas" },
+      // 24/10 (Davi: "New drawing, abre uma nova guia de desenho, igual o Obsidian"): cria a lousa e abre numa
+      // guia nova; a setinha mostra os desenhos que ainda não têm projeto.
+      { chave: "desenho", titulo: "Novo desenho", icone: PenTool, acao: () => void novoDesenho(), carregar: desenhosSoltos },
       {
         chave: "produtividade", titulo: "Produtividade", icone: Gauge, ir: "/produtividade",
         filhos: [
@@ -289,6 +304,16 @@ export function AppSidebar() {
     navigate(destino);
   };
 
+  const novoDesenho = async () => {
+    const agora = new Date();
+    const titulo = `Desenho ${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+    const { data, error } = await supabase.from("documentos")
+      .insert({ titulo, tipo: "mapa", conteudo: createEmptyMindMapContent(), cliente_id: null }).select("id").single();
+    if (error || !data) { toast.error("Não consegui criar o desenho"); return; }
+    window.dispatchEvent(new CustomEvent("documentos:mudou", { detail: { clienteId: null } }));
+    openTab(`/desenho/${data.id}`, titulo, { nova: true });
+  };
+
   // + numa pasta de documentos (24/10, Davi): cria um documento (e abre) ou uma pasta dentro dela.
   const novoDocumento = async ({ clienteId, pastaId }: { clienteId: string; pastaId: string | null }, chavePasta: string) => {
     const { data, error } = await supabase.from("documentos")
@@ -338,7 +363,7 @@ export function AppSidebar() {
             className={cn("flex h-5 w-4 shrink-0 items-center justify-center rounded text-sidebar-foreground/50", temFilhos ? "hover:text-sidebar-foreground" : "pointer-events-none opacity-0")}>
             <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", aberto && "rotate-90")} />
           </button>
-          <a href={no.ir ?? "#"} onClick={(e) => { if (no.ir) ir(no.ir, no.titulo, e); else { e.preventDefault(); alternar(no.chave); } if (temFilhos && no.ir && !aberto) alternar(no.chave, true); }}
+          <a href={no.ir ?? "#"} onClick={(e) => { if (no.acao) { e.preventDefault(); no.acao(); return; } if (no.ir) ir(no.ir, no.titulo, e); else { e.preventDefault(); alternar(no.chave); } if (temFilhos && no.ir && !aberto) alternar(no.chave, true); }}
             draggable={false} className="flex min-w-0 flex-1 items-center gap-1.5 py-1 pl-0.5" title={no.titulo}>
             <Icone className={cn("h-3.5 w-3.5 shrink-0", eAtivo ? "text-primary" : no.icone === Folder ? "text-sky-400/80" : "text-sidebar-foreground/60")} />
             <span className="truncate">{no.titulo}</span>
@@ -392,7 +417,7 @@ export function AppSidebar() {
             {raiz.map((n) => {
               const Icone = n.icone;
               return (
-                <a key={n.chave} href={n.ir ?? "#"} title={n.titulo} onClick={(e) => n.ir && ir(n.ir, n.titulo, e)}
+                <a key={n.chave} href={n.ir ?? "#"} title={n.titulo} onClick={(e) => { if (n.acao) { e.preventDefault(); n.acao(); } else if (n.ir) ir(n.ir, n.titulo, e); }}
                   className={cn("flex h-8 w-8 items-center justify-center rounded-md", ativo(n) || (n.chave === "projetos" && location.pathname.startsWith("/clientes")) ? "bg-primary/15 text-primary" : "text-sidebar-foreground/70 hover:bg-sidebar-accent")}>
                   <Icone className="h-4 w-4" />
                 </a>

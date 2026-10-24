@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Excalidraw,
   convertToExcalidrawElements,
@@ -39,6 +39,7 @@ import { toast } from "sonner";
 import { useTheme } from "@/hooks/useTheme";
 import { useMapaMentalColaboracao } from "@/hooks/useMapaMentalColaboracao";
 import { PresencaAvatares } from "./PresencaAvatares";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { MindMapKanbanCard, type MindMapKanbanAtividade } from "./MindMapKanbanCard";
 import { MindMapKanbanPicker, type MindMapKanbanPickerItem } from "./MindMapKanbanPicker";
 import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
@@ -418,9 +419,14 @@ interface MindMapEditorProps {
   // mesma página do Kanban) usa isso pra recarregar o quadro na hora, sem
   // precisar trocar de aba ou dar F5 pra ver a mudança refletida.
   onAtividadesAlteradas?: () => void;
+  // Desenho aberto numa guia própria (24/10, "New drawing" como no Obsidian): ocupa a guia toda, sem o
+  // botão de voltar; `extraTopo` entra na barrinha do título (ex.: o seletor de projeto).
+  pagina?: boolean;
+  extraTopo?: ReactNode;
 }
 
-export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas }: MindMapEditorProps) {
+export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas, pagina = false, extraTopo }: MindMapEditorProps) {
+  const abaAtiva = useAbaAtiva();
   const [fullscreen, setFullscreen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [titulo, setTitulo] = useState("Mapa mental sem título");
@@ -1658,21 +1664,21 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     return "";
   };
 
-  if (loadError) return <div className={embedded ? "rounded-lg border p-8" : "fixed inset-0 z-50 bg-background p-8"}>
+  if (loadError) return <div className={embedded ? "rounded-lg border p-8" : pagina ? "h-full bg-background p-8" : "fixed inset-0 z-50 bg-background p-8"}>
     <p>Não foi possível carregar a lousa. Nenhuma alteração foi feita.</p>
     <Button variant="outline" className="mt-3" onClick={onClose}>Voltar</Button>
   </div>;
 
   if (loading || !initialData) {
     return (
-      <div className={embedded ? "h-[600px] flex items-center justify-center bg-background" : "fixed inset-0 z-50 flex items-center justify-center bg-background"}>
+      <div className={embedded ? "h-[600px] flex items-center justify-center bg-background" : pagina ? "flex h-full items-center justify-center bg-background" : "fixed inset-0 z-50 flex items-center justify-center bg-background"}>
         <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary" />
       </div>
     );
   }
 
   return (
-    <div className={embedded && !fullscreen ? "relative h-[600px] min-h-[400px] resize-y overflow-hidden rounded-lg border bg-background" : "fixed inset-0 z-50 bg-background"}>
+    <div className={embedded && !fullscreen ? "relative h-[600px] min-h-[400px] resize-y overflow-hidden rounded-lg border bg-background" : pagina ? "relative h-full bg-background" : "fixed inset-0 z-50 bg-background"}>
       <div className="relative h-full mindmap-canvas" data-document-canvas tabIndex={-1} ref={wrapperRef}>
         {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
             lateral e ocupa bastante espaço — trocamos pelo botão de caneta
@@ -1687,9 +1693,11 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
             por cima do canvas mesmo, sem tomar espaço dele. Encostado ao
             lado do menu (☰) nativo do Excalidraw, não embaixo dele. */}
         <div className="absolute left-14 top-2 z-20 flex h-9 items-center gap-1 rounded-lg border bg-background/95 px-1 shadow-sm">
-          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={embedded ? "Recolher lousa" : "Voltar"} onClick={handleClose}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
+          {!pagina && (
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={embedded ? "Recolher lousa" : "Voltar"} onClick={handleClose}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          )}
           <Input
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
@@ -1712,6 +1720,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
               </DropdownMenuContent>
             </DropdownMenu>
           )}
+          {extraTopo}
           <span className="hidden shrink-0 truncate pr-1 text-[11px] text-muted-foreground md:inline">
             {getSaveStatus()}
           </span>
@@ -1959,7 +1968,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
 
         <Excalidraw
           excalidrawAPI={handleApiReady}
-          handleKeyboardGlobally={!embedded || fullscreen}
+          handleKeyboardGlobally={(!embedded || fullscreen) && abaAtiva}
           initialData={initialData}
           onChange={handleChange}
           onPointerUpdate={handlePointerUpdate}

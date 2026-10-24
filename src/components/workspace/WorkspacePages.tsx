@@ -10,6 +10,7 @@ import Produtividade from "@/pages/Produtividade";
 import Agenda from "@/pages/Agenda";
 import Admin from "@/pages/Admin";
 import Automacoes from "@/pages/Automacoes";
+import Desenho from "@/pages/Desenho";
 import NotFound from "@/pages/NotFound";
 import { useWorkspaceTabs } from "./WorkspaceTabs";
 import { AbaAtivaContext } from "@/lib/workspace/abaAtiva";
@@ -71,7 +72,7 @@ export function WorkspacePages() {
               metade dividida). 20/10: era "w-fit" (a página esticava até o item mais
               largo) e um texto comprido empurrava tudo pro lado — agora o conteúdo se
               ajusta à janela e só rola pro lado se a janela ficar menor que o mínimo. */}
-          <div className={cn("w-full", lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]", isClienteDetalhePath(pathname) ? "" : "p-3 sm:p-6")}>
+          <div className={cn("w-full", lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]", isClienteDetalhePath(pathname) ? "" : pathname.startsWith("/desenho/") ? "h-full" : "p-3 sm:p-6")}>
             <Routes location={{ pathname, search: search ? `?${search}` : "", hash: "", state: null, key: tab.id }}>
               <Route path="/" element={<DashGeral />} />
               <Route path="/clientes" element={<Clientes />} />
@@ -82,6 +83,7 @@ export function WorkspacePages() {
               <Route path="/agenda" element={<Agenda />} />
               <Route path="/admin" element={<Admin />} />
               <Route path="/automacoes" element={<Automacoes />} />
+              <Route path="/desenho/:id" element={<Desenho />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </div>
