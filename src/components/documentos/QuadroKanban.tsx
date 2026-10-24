@@ -211,17 +211,26 @@ function VistaQuadro({ node, updateAttributes, deleteNode, editor, selected }: N
                             </span>
                           )}
                           {estaAberto && editavel ? (
-                            // Aberto: título, texto inteiro e etiquetas, tudo editável.
+                            // Aberto: título, logo abaixo as etiquetas e o Fechar (24/10, Davi: "em cima, em vez de ir
+                            // até o final"), e depois o texto inteiro. Tudo editável.
                             <div className="min-w-0 flex-1 space-y-1.5">
-                              <CampoTexto valor={card.titulo ?? titulo} autoFocus={focarCartao === card.id} placeholder="Título" className="text-sm font-semibold"
-                                onMudar={(v) => mudarCartao(col.id, card.id, (c) => ({ ...c, titulo: v, texto: (c.titulo ?? "").trim() ? c.texto : corpoDoCartao(c) }))} />
-                              <CampoTexto valor={(card.titulo ?? "").trim() ? card.texto : corpo} placeholder="Escreva (roteiro, transcrição, ideia…)" className="text-[13px] leading-relaxed text-foreground/90"
-                                onMudar={(v) => mudarCartao(col.id, card.id, (c) => ({ ...c, titulo: (c.titulo ?? "").trim() ? c.titulo : tituloDoCartao(c), texto: v }))} />
-                              <div className="flex flex-wrap gap-1">
-                                {etiquetas.map((t) => <Etiqueta key={t} texto={t} onTirar={() => mudarCartao(col.id, card.id, (c) => ({ ...c, etiquetas: (c.etiquetas ?? []).filter((x) => normalizarEtiqueta(x) !== t) }))} />)}
+                              <div className="flex items-start gap-1">
+                                <CampoTexto valor={card.titulo ?? titulo} autoFocus={focarCartao === card.id} placeholder="Título" className="text-sm font-semibold"
+                                  onMudar={(v) => mudarCartao(col.id, card.id, (c) => ({ ...c, titulo: v, texto: (c.titulo ?? "").trim() ? c.texto : corpoDoCartao(c) }))} />
+                                <button type="button" onClick={() => setAberto(null)} title="Fechar o cartão"
+                                  className="flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground">
+                                  <ChevronUp className="h-3 w-3" />Fechar
+                                </button>
                               </div>
+                              {etiquetas.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {etiquetas.map((t) => <Etiqueta key={t} texto={t} onTirar={() => mudarCartao(col.id, card.id, (c) => ({ ...c, etiquetas: (c.etiquetas ?? []).filter((x) => normalizarEtiqueta(x) !== t) }))} />)}
+                                </div>
+                              )}
                               <NovaEtiqueta existentes={todasEtiquetas} jaTem={etiquetas}
                                 onAdicionar={(t) => mudarCartao(col.id, card.id, (c) => ({ ...c, etiquetas: [...new Set([...(c.etiquetas ?? []).map(normalizarEtiqueta), t])] }))} />
+                              <CampoTexto valor={(card.titulo ?? "").trim() ? card.texto : corpo} placeholder="Escreva (roteiro, transcrição, ideia…)" className="text-[13px] leading-relaxed text-foreground/90"
+                                onMudar={(v) => mudarCartao(col.id, card.id, (c) => ({ ...c, titulo: (c.titulo ?? "").trim() ? c.titulo : tituloDoCartao(c), texto: v }))} />
                               <button type="button" onClick={() => setAberto(null)} className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground">
                                 <ChevronUp className="h-3 w-3" />Fechar
                               </button>
