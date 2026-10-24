@@ -34,6 +34,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { useZoomDocumento } from "@/hooks/useZoomDocumento";
 import "./editor.css";
 
 interface DocumentEditorProps {
@@ -50,6 +51,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   const [pastaId, setPastaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const isMobile = useIsMobile();
+  const { zoom, refArea: refMesa, aviso: avisoZoom } = useZoomDocumento<HTMLDivElement>();
   const [showSidebar, setShowSidebar] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
   // Só a primeira abertura mostra a tela cheia de carregamento; trocar de
@@ -367,8 +369,15 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             folha de papel flutuando (fica artificial numa tela estreita e
             sobra pouco espaço de verdade pro texto); a partir de sm o
             "papel" volta, como no desktop. */}
-        <div className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+        {/* ⌘ + rodinha (ou pinça) aumenta só a folha, como no Google Docs (useZoomDocumento). */}
+        {avisoZoom && (
+          <div className="pointer-events-none absolute bottom-5 right-6 z-20 rounded-md bg-popover/95 px-2.5 py-1 text-xs font-semibold tabular-nums shadow-md ring-1 ring-border">
+            {Math.round(zoom * 100)}%
+          </div>
+        )}
+        <div ref={refMesa} className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
           <div
+            style={zoom !== 1 ? { zoom } : undefined}
             className={cn(
               "superficie-folha mx-auto max-w-[816px] bg-background transition-opacity duration-150 sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg",
               loading && "opacity-40"

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useZoomDocumento } from "@/hooks/useZoomDocumento";
 import {
   ArrowLeft,
   ChevronDown,
@@ -154,7 +155,9 @@ export const VideoDetailPanel = ({
   const [selectionContext, setSelectionContext] = useState<SelectionContext | null>(null);
   const [selectionLength, setSelectionLength] = useState(0);
   const [showChat, setShowChat] = useState(false);
-  const folhaRef = useRef<HTMLElement>(null);
+  const folhaRef = useRef<HTMLElement | null>(null);
+  // ⌘ + rodinha (ou pinça) aumenta só a folha do roteiro, como no Google Docs (24/10).
+  const { zoom, refArea: refMesa, aviso: avisoZoom } = useZoomDocumento<HTMLElement>();
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedSnapshotRef = useRef("");
   const currentVideoIdRef = useRef<string | null>(null);
@@ -799,7 +802,12 @@ export const VideoDetailPanel = ({
           )
         )}
 
-        <main ref={folhaRef} className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+        {avisoZoom && (
+          <div className="pointer-events-none absolute bottom-5 right-6 z-20 rounded-md bg-popover/95 px-2.5 py-1 text-xs font-semibold tabular-nums shadow-md ring-1 ring-border">
+            {Math.round(zoom * 100)}%
+          </div>
+        )}
+        <main ref={(el) => { folhaRef.current = el; refMesa(el); }} className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
           {roteirosMarcados.length > 0 && (
             // Vários roteiros no documento ("Headline 1", "#2"…): índice para pular direto (18/10).
             // 24/10 (Davi: "tá bugado a parte superior"): a barra grudava abaixo do respiro da folha (o texto
@@ -818,7 +826,7 @@ export const VideoDetailPanel = ({
             </div>
             </div>
           )}
-          <div className="superficie-folha mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
+          <div style={zoom !== 1 ? { zoom } : undefined} className="superficie-folha mx-auto max-w-[816px] bg-background sm:min-h-[1056px] sm:rounded-sm sm:shadow-lg">
             <div className="flex min-h-[60vh] flex-col px-5 py-6 sm:min-h-[900px] sm:p-8 md:p-16">
 <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor min-h-[50vh] flex-1 sm:min-h-[900px]" />
               {editor && <BancoViraisDoc editor={editor} clienteId={editedVideo.cliente_id} />}
