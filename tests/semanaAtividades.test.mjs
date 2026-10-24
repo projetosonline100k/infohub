@@ -29,6 +29,9 @@ test("dia da tarefa: entrega, coluna do dia, concluída", () => {
   assert.equal(diaDaTarefa(base, { nome: "Domingo", status_key: "domingo", eh_conclusao: false }, hoje), "2026-10-25");
   assert.equal(diaDaTarefa(base, { nome: "Backlog", status_key: "backlog", eh_conclusao: false }, hoje), null);
   assert.equal(diaDaTarefa({ ...base, concluida: true, concluida_em: "2026-10-22T18:00:00" }, undefined, hoje), "2026-10-22");
+  // Concluída antes do prazo conta no dia em que foi feita, não no da entrega.
+  assert.equal(diaDaTarefa({ ...base, concluida: true, concluida_em: "2026-10-20T14:00:00", data_vencimento: "2026-10-24" }, undefined, hoje), "2026-10-20");
+  assert.equal(diaDaTarefa({ ...base, concluida: true, data_vencimento: "2026-10-24" }, undefined, hoje), "2026-10-24");
 });
 
 test("situação", () => {

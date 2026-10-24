@@ -43,12 +43,14 @@ export function inicioDaSemana(d: Date): Date {
 
 /**
  * Dia da tarefa (chave "aaaa-mm-dd") ou null (sem data):
- * 1. a data de entrega; 2. concluída sem data: o dia em que concluiu; 3. sem data, numa coluna com nome de dia
- * ("Terça feira", como o Davi usa no Kanban): esse dia na semana de hoje.
+ * 1. concluída: o dia em que concluiu (concluida_em) — 24/10, Davi: "Concluídas" do dia é o que foi feito
+ * naquele dia, não o que tinha prazo nele (ex.: "Programar reel" do sábado feito na terça conta na terça);
+ * 2. a data de entrega (data_vencimento; data_atividade é só quando foi criada); 3. sem data, numa coluna com
+ * nome de dia ("Terça feira", como o Davi usa no Kanban): esse dia na semana de hoje.
  */
 export function diaDaTarefa(t: TarefaSemana, coluna: ColunaSemana | undefined, hoje: Date): string | null {
-  if (t.data_vencimento) return t.data_vencimento.slice(0, 10);
   if (t.concluida && t.concluida_em) return chaveDia(new Date(t.concluida_em));
+  if (t.data_vencimento) return t.data_vencimento.slice(0, 10);
   const dia = diaDaColuna(coluna?.nome);
   if (dia === null || t.concluida) return null;
   const seg = inicioDaSemana(hoje);

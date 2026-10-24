@@ -248,11 +248,12 @@ export function SemanaView() {
                 <button key={ch} type="button" onClick={() => irParaDia(d)}
                   className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors", sel ? "bg-primary/10 font-semibold" : "hover:bg-muted")}>
                   <span className={cn("w-24 shrink-0 truncate", ch === chaveDia(hoje) && "text-primary")}>{NOMES_DIAS[i]}</span>
-                  <span className="w-5 shrink-0 text-right font-semibold tabular-nums">{ts.length}</span>
-                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-                    <span className="block h-full rounded-full bg-primary" style={{ width: ts.length ? `${(feitas / ts.length) * 100}%` : "0%" }} />
+                  <span className="w-5 shrink-0 text-right font-semibold tabular-nums" title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} no dia`}>{ts.length}</span>
+                  {/* Progresso do dia: concluídas sobre o total; o número à direita são as atrasadas (some quando 0). */}
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" title={`${feitas} de ${ts.length} concluída${feitas === 1 ? "" : "s"}`}>
+                    <span className="block h-full rounded-full bg-emerald-500" style={{ width: ts.length ? `${(feitas / ts.length) * 100}%` : "0%" }} />
                   </span>
-                  <span className={cn("w-6 shrink-0 text-right text-xs font-semibold tabular-nums", atr ? "text-red-500" : "text-muted-foreground/50")}>{atr || "0"}</span>
+                  <span className="w-6 shrink-0 text-right text-xs font-semibold tabular-nums text-red-500" title={atr ? `${atr} atrasada${atr > 1 ? "s" : ""}` : undefined}>{atr || ""}</span>
                 </button>
               );
             })}
