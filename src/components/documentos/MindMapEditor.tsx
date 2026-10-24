@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Excalidraw,
   MainMenu,
@@ -444,6 +444,30 @@ interface MindMapEditorProps {
 
 export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas, pagina = false, extraTopo, onExcluir }: MindMapEditorProps) {
   const abaAtiva = useAbaAtiva();
+  // O MainMenu entra no Excalidraw por um "túnel" (tunnel-rat, um store do zustand): um elemento novo a cada
+  // render faz o túnel se atualizar, o Excalidraw redesenhar e o túnel se atualizar de novo, até o React
+  // derrubar a tela ("Maximum update depth exceeded", 24/10). Por isso o menu é criado UMA vez e o Excluir
+  // chama a função mais recente por uma ref.
+  const onExcluirRef = useRef(onExcluir);
+  onExcluirRef.current = onExcluir;
+  const temExcluir = !!onExcluir;
+  const menuPrincipal = useMemo(() => (temExcluir ? (
+    // Passar o MainMenu troca o menu padrão inteiro: repete os itens dele e põe o Excluir no fim.
+    <MainMenu>
+      <MainMenu.DefaultItems.SaveAsImage />
+      <MainMenu.DefaultItems.SearchMenu />
+      <MainMenu.DefaultItems.Help />
+      <MainMenu.DefaultItems.ClearCanvas />
+      <MainMenu.Separator />
+      <MainMenu.Group title="Excalidraw links"><MainMenu.DefaultItems.Socials /></MainMenu.Group>
+      <MainMenu.Separator />
+      <MainMenu.DefaultItems.ChangeCanvasBackground />
+      <MainMenu.Separator />
+      <MainMenu.Item icon={<Trash2 className="h-4 w-4" />} onSelect={() => onExcluirRef.current?.()} className="text-destructive" style={{ color: "hsl(var(--destructive))" }}>
+        Excluir desenho
+      </MainMenu.Item>
+    </MainMenu>
+  ) : null), [temExcluir]);
   const [fullscreen, setFullscreen] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [titulo, setTitulo] = useState("Mapa mental sem título");
@@ -2017,23 +2041,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
           theme={theme === "dark" ? "dark" : "light"}
           UIOptions={UI_OPTIONS}
         >
-          {onExcluir && (
-            // Passar o MainMenu troca o menu padrão inteiro: repete os itens dele e põe o Excluir no fim.
-            <MainMenu>
-              <MainMenu.DefaultItems.SaveAsImage />
-              <MainMenu.DefaultItems.SearchMenu />
-              <MainMenu.DefaultItems.Help />
-              <MainMenu.DefaultItems.ClearCanvas />
-              <MainMenu.Separator />
-              <MainMenu.Group title="Excalidraw links"><MainMenu.DefaultItems.Socials /></MainMenu.Group>
-              <MainMenu.Separator />
-              <MainMenu.DefaultItems.ChangeCanvasBackground />
-              <MainMenu.Separator />
-              <MainMenu.Item icon={<Trash2 className="h-4 w-4" />} onSelect={onExcluir} className="text-destructive" style={{ color: "hsl(var(--destructive))" }}>
-                Excluir desenho
-              </MainMenu.Item>
-            </MainMenu>
-          )}
+          {menuPrincipal}
         </Excalidraw>
 
         {/* Cor/fonte recolhidos num ícone de caneta — só aparece o painel
