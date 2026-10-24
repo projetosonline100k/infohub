@@ -360,15 +360,29 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
   const [docs, setDocs] = useState<{ id: string; titulo: string; cliente_id: string | null; updated_at: string }[] | null>(null);
   const [ligando, setLigando] = useState<string | null>(null);
   const [versao, setVersao] = useState(0);
+  // De qual projeto vêm os documentos (24/10, Davi: "preciso conseguir selecionar o projeto"): começa no do
+  // funcionário; "todos" busca em todos; "sem" são os documentos fora de projeto.
+  const [projeto, setProjeto] = useState<string>(membro.cliente_id);
+  const [projetos, setProjetos] = useState<{ id: string; nome_especialista: string }[]>([]);
+  useEffect(() => {
+    if (!aberto || projetos.length) return;
+    void db.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista")
+      .then(({ data }) => setProjetos((data ?? []) as typeof projetos));
+  }, [aberto, projetos.length]);
   useEffect(() => {
     if (!aberto) return;
     const t = window.setTimeout(() => {
-      let q = db.from("documentos").select("id, titulo, cliente_id, updated_at").is("deleted_at", null).order("updated_at", { ascending: false }).limit(30);
-      q = busca.trim() ? q.ilike("titulo", `%${busca.trim()}%`) : q.eq("cliente_id", membro.cliente_id);
+      // Desenhos (tipo "mapa") não têm texto para virar conhecimento: ficam fora da lista.
+      let q = db.from("documentos").select("id, titulo, cliente_id, updated_at").is("deleted_at", null).neq("tipo", "mapa")
+        .order("updated_at", { ascending: false }).limit(40);
+      if (busca.trim()) q = q.ilike("titulo", `%${busca.trim()}%`);
+      if (projeto === "sem") q = q.is("cliente_id", null);
+      else if (projeto !== "todos") q = q.eq("cliente_id", projeto);
       void q.then(({ data }) => setDocs((data ?? []) as typeof docs));
     }, 200);
     return () => window.clearTimeout(t);
-  }, [aberto, busca, membro.cliente_id]);
+  }, [aberto, busca, projeto]);
+  const nomeProjeto = (id: string | null) => (id ? projetos.find((p) => p.id === id)?.nome_especialista ?? "" : "sem projeto");
   const ligar = async (d: { id: string; titulo: string }) => {
     setLigando(d.id);
     const { data } = await db.from("documentos").select("conteudo").eq("id", d.id).maybeSingle();
@@ -396,7 +410,13 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
         </button>
         {aberto && (
           <div className="mt-3 space-y-2">
-            <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar documento pelo nome (vazio = os deste projeto)" className={campo} />
+            <select value={projeto} onChange={(e) => setProjeto(e.target.value)} className={campo} aria-label="Projeto dos documentos">
+              <option value={membro.cliente_id}>Projeto do {membro.nome}{nomeProjeto(membro.cliente_id) ? ` (${nomeProjeto(membro.cliente_id)})` : ""}</option>
+              <option value="todos">Todos os projetos</option>
+              <option value="sem">Sem projeto</option>
+              {projetos.filter((p) => p.id !== membro.cliente_id).map((p) => <option key={p.id} value={p.id}>{p.nome_especialista}</option>)}
+            </select>
+            <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar documento pelo nome" className={campo} />
             {docs === null ? <Loader2 className="h-4 w-4 animate-spin text-foreground/50" /> : !docs.length ? <p className="text-xs text-foreground/50">Nenhum documento.</p> : (
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {docs.map((d) => (
@@ -404,6 +424,7 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
                     className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-foreground/10 disabled:opacity-50">
                     {ligando === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-foreground/50" />}
                     <span className="min-w-0 flex-1 truncate">{d.titulo || "Sem título"}</span>
+                    {projeto === "todos" && <span className="max-w-[90px] shrink-0 truncate text-[10.5px] text-foreground/50">{nomeProjeto(d.cliente_id)}</span>}
                     <span className="text-[11px] text-foreground/40">{new Date(d.updated_at).toLocaleDateString("pt-BR")}</span>
                   </button>
                 ))}
