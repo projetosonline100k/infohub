@@ -1,15 +1,17 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, FileText, Folder, FolderPlus, Loader2, MessageCircle, Mic, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Loader2, MessageCircle, Mic, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDesktop } from "@/lib/platform";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 import { ehComODavi, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AudioMensagem } from "./AudioMensagem";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent,
   DropdownMenuSubTrigger, DropdownMenuTrigger,
@@ -68,24 +70,112 @@ function useMidiaUrl() {
 
 // @ marcado na mensagem (24/10, Davi: "esse @ que é marcado, preciso que mostre quem é"): o WhatsApp manda
 // o id da pessoa (nas contas novas, um id interno @lid); o receptor do Mac traduz em nome (/contato/<id>).
-const nomesMencao = new Map<string, Promise<{ nome: string | null; eu?: boolean } | null>>();
-function Mencao({ numero, nomeDoGrupo }: { numero: string; nomeDoGrupo?: string }) {
+type Contato = { nome: string | null; eu?: boolean; numero?: string | null };
+const contatos = new Map<string, Promise<Contato | null>>();
+function useContato(id: string | null, ligado = true) {
   const conta = useContext(ContaWhatsapp);
-  const [r, setR] = useState<{ nome: string | null; eu?: boolean } | null>(null);
+  const [r, setR] = useState<Contato | null>(null);
   useEffect(() => {
-    if (!isDesktop()) return;
-    const chave = `${conta}:${numero}`;
-    if (!nomesMencao.has(chave)) {
-      nomesMencao.set(chave, midiaBaseDe(conta).then((cfg) => (cfg
-        ? fetch(`${cfg.base.replace(/\/midia\/$/, "/contato/")}${numero}?k=${cfg.chave}`).then((x) => x.json()).catch(() => null)
+    if (!isDesktop() || !id || !ligado) return;
+    const chave = `${conta}:${id}`;
+    if (!contatos.has(chave)) {
+      contatos.set(chave, midiaBaseDe(conta).then((cfg) => (cfg
+        ? fetch(`${cfg.base.replace(/\/midia\/$/, "/contato/")}${encodeURIComponent(id)}?k=${cfg.chave}`).then((x) => x.json()).catch(() => null)
         : null)));
     }
     let vivo = true;
-    void nomesMencao.get(chave)!.then((v) => { if (vivo) setR(v); });
+    void contatos.get(chave)!.then((v) => { if (vivo) setR(v); });
     return () => { vivo = false; };
-  }, [conta, numero]);
+  }, [conta, id, ligado]);
+  return r;
+}
+function Mencao({ numero, nomeDoGrupo }: { numero: string; nomeDoGrupo?: string }) {
+  const r = useContato(numero);
   const nome = r?.eu ? "Você" : r?.nome || nomeDoGrupo || numero;
-  return <span className="font-semibold text-sky-600 dark:text-sky-400" title={r?.eu ? "Você" : numero}>@{nome}</span>;
+  return (
+    <PerfilPessoa id={numero} nome={r?.eu ? "Você" : r?.nome || nomeDoGrupo || null}>
+      <button type="button" className="font-semibold text-sky-600 hover:underline dark:text-sky-400">@{nome}</button>
+    </PerfilPessoa>
+  );
+}
+
+// Perfil de quem está no grupo (24/10, Davi: "clicar no nome ou no ícone da pessoa e ver as informações dela,
+// número e tal"): foto, nome, telefone (o receptor do Mac traduz o id @lid), copiar, abrir a conversa no
+// privado (se já existe aqui) ou no WhatsApp, e os grupos em que ela fala com quantas mensagens.
+const AbrirPrivado = createContext<(numeros: string[]) => boolean>(() => false);
+const telefoneBonito = (n: string) => {
+  const m = n.match(/^55(\d{2})(\d{4,5})(\d{4})$/);
+  return m ? `+55 (${m[1]}) ${m[2]}-${m[3]}` : `+${n}`;
+};
+function PerfilPessoa({ id, nome, children }: { id: string; nome: string | null; children: React.ReactNode }) {
+  const conta = useContext(ContaWhatsapp);
+  const abrirPrivado = useContext(AbrirPrivado);
+  const [aberto, setAberto] = useState(false);
+  const contato = useContato(id, aberto);
+  const [grupos, setGrupos] = useState<{ nome: string; total: number; ultima: string }[] | null>(null);
+  const digitos = id.split("@")[0];
+  const numero = contato?.numero ?? (id.endsWith("@lid") || digitos.length > 13 ? null : digitos);
+  useEffect(() => {
+    if (!aberto || grupos) return;
+    void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens")
+      .select("chat_id, chat_nome, enviada_em").eq("conta", conta).eq("eh_grupo", true)
+      .in("autor_id", [id, `${digitos}@c.us`, `${digitos}@lid`]).order("enviada_em", { ascending: false }).limit(2000)
+      .then(({ data }) => {
+        const porChat = new Map<string, { nome: string; total: number; ultima: string }>();
+        for (const m of (data || []) as { chat_id: string; chat_nome: string | null; enviada_em: string }[]) {
+          const g = porChat.get(m.chat_id) ?? { nome: m.chat_nome || "Grupo", total: 0, ultima: m.enviada_em };
+          g.total += 1;
+          porChat.set(m.chat_id, g);
+        }
+        setGrupos([...porChat.values()]);
+      });
+  }, [aberto, grupos, conta, id, digitos]);
+  const nomeMostrado = contato?.eu ? "Você" : nome || contato?.nome || (numero ? telefoneBonito(numero) : "Sem nome");
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger asChild>{children}</PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex flex-col items-center gap-2 border-b px-4 pb-3 pt-4 text-center">
+          <FotoChat chatId={id.includes("@") ? id : `${id}@c.us`} nome={nomeMostrado} grupo={false} tamanho="h-16 w-16 text-xl" />
+          <div className="min-w-0">
+            <p className="truncate text-[14px] font-semibold">{nomeMostrado}</p>
+            {contato?.nome && nome && contato.nome !== nome && <p className="truncate text-[11px] text-muted-foreground">No seu WhatsApp: {contato.nome}</p>}
+            <p className="mt-0.5 text-[12.5px] tabular-nums text-muted-foreground">
+              {numero ? telefoneBonito(numero) : contato || !isDesktop() ? "Número escondido pelo WhatsApp" : "Buscando o número…"}
+            </p>
+          </div>
+        </div>
+        {numero && (
+          <div className="grid grid-cols-2 gap-1.5 border-b p-2">
+            <button type="button" className="flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[12px] hover:bg-muted"
+              onClick={() => { void navigator.clipboard.writeText(`+${numero}`).then(() => toast.success("Número copiado")); }}>
+              <Copy className="h-3.5 w-3.5" /> Copiar número
+            </button>
+            <button type="button" className="flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-[12px] hover:bg-muted"
+              onClick={() => {
+                if (abrirPrivado([numero, digitos])) { setAberto(false); return; }
+                void abrirLinkExterno(`https://wa.me/${numero}`);
+              }}>
+              <MessageCircle className="h-3.5 w-3.5" /> Conversar
+            </button>
+          </div>
+        )}
+        <div className="max-h-48 overflow-y-auto px-3 py-2">
+          <p className="mb-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">Grupos em que fala</p>
+          {!grupos ? <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+            : grupos.length === 0 ? <p className="text-[12px] text-muted-foreground">Nenhuma mensagem em grupo.</p>
+            : grupos.map((g) => (
+              <div key={g.nome + g.ultima} className="flex items-center justify-between gap-2 py-0.5 text-[12px]">
+                <span className="truncate">{g.nome}</span>
+                <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground" title={`Última: ${format(new Date(g.ultima), "dd/MM HH:mm")}`}>
+                  {g.total} msg · {format(new Date(g.ultima), "dd/MM")}
+                </span>
+              </div>
+            ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 function TextoComMencoes({ texto, nomes }: { texto: string; nomes: Map<string, string> }) {
   const partes = texto.split(/(@\d{8,})/g);
@@ -481,7 +571,16 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
   }
 
   if (aberta) {
-    const chat = <Conversa key={aberta.chat_id} conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />;
+    const abrirPrivado = (numeros: string[]) => {
+      const c = conversas.find((x) => !x.eh_grupo && numeros.includes(x.chat_id.split("@")[0]));
+      if (c) { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }
+      return !!c;
+    };
+    const chat = (
+      <AbrirPrivado.Provider value={abrirPrivado}>
+        <Conversa key={aberta.chat_id} conversa={aberta} novidade={novidade} onVoltar={() => setAberta(null)} onVista={marcarVista} />
+      </AbrirPrivado.Provider>
+    );
     return (
       <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-conversa-info" : "jarvis:whatsapp-lista-conversa"} className="h-full">
         <ResizablePanel defaultSize={info ? 26 : 34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
@@ -672,11 +771,17 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
               {separador && <div className="my-2 text-center"><span className="rounded-full bg-background px-2 py-0.5 text-[10px] text-muted-foreground shadow-sm">{dia}</span></div>}
               <div className={cn("flex", m.de_mim ? "justify-end" : "justify-start", comFoto && "items-start gap-1.5", primeiraDaSequencia && i > 0 && "mt-1.5")}>
                 {comFoto && (primeiraDaSequencia && m.autor_id
-                  ? <FotoChat chatId={m.autor_id} nome={m.autor_nome} grupo={false} tamanho="h-7 w-7" />
+                  ? <PerfilPessoa id={m.autor_id} nome={m.autor_nome}>
+                      <button type="button" aria-label={`Ver ${m.autor_nome || "pessoa"}`} className="shrink-0 rounded-full"><FotoChat chatId={m.autor_id} nome={m.autor_nome} grupo={false} tamanho="h-7 w-7" /></button>
+                    </PerfilPessoa>
                   : <span className="w-7 shrink-0" aria-hidden />)}
                 <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
                   m.de_mim ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]")}>
-                  {primeiraDaSequencia && <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome || m.autor_id?.split("@")[0] || "?"}</p>}
+                  {primeiraDaSequencia && (m.autor_id
+                    ? <PerfilPessoa id={m.autor_id} nome={m.autor_nome}>
+                        <button type="button" className="mb-0.5 block text-left text-[10.5px] font-semibold text-teal-600 hover:underline">{m.autor_nome || m.autor_id.split("@")[0]}</button>
+                      </PerfilPessoa>
+                    : <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome || "?"}</p>)}
                   {m.tipo === "audio" ? (
                     <div className="space-y-1">
                       {urlDe(m.midia_arquivo) ? (

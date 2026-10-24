@@ -241,12 +241,15 @@ def nome_do_contato(contato_id):
     with _trava_nomes:
         if numero in _nomes and agora - _nomes[numero][1] < 86400:
             return _nomes[numero][0]
-    resposta = {"nome": None, "eu": False}
+    # "numero": o telefone de verdade (24/10, perfil da pessoa ao clicar no nome/foto no grupo); com id @lid
+    # vem do WAHA, senão é o próprio id.
+    resposta = {"nome": None, "eu": False, "numero": None if contato_id.endswith("@lid") or len(numero) > 13 else numero}
     try:
         me = waha_get("/api/sessions/default/me")
         meus = {"".join(ch for ch in str(me.get(k) or "").split("@")[0] if ch.isdigit()) for k in ("id", "lid", "jid")}
         if numero in meus:
-            resposta = {"nome": me.get("pushName") or "Você", "eu": True}
+            resposta = {"nome": me.get("pushName") or "Você", "eu": True,
+                        "numero": "".join(ch for ch in str(me.get("id") or "").split("@")[0] if ch.isdigit()) or None}
         else:
             pn = None
             try:
@@ -254,6 +257,8 @@ def nome_do_contato(contato_id):
             except Exception:
                 pass
             alvo = pn or f"{numero}@c.us"
+            if pn:
+                resposta["numero"] = "".join(ch for ch in pn.split("@")[0] if ch.isdigit())
             c = waha_get("/api/contacts?" + urllib.parse.urlencode({"contactId": alvo, "session": "default"}))
             resposta["nome"] = c.get("name") or c.get("pushname") or c.get("shortName") or None
     except Exception as e:
