@@ -371,6 +371,8 @@ html.tema-papel-preto .document-editor .ProseMirror .is-empty::before { color: h
 html.tema-papel-preto ::placeholder { color: hsl(var(--text-muted)); }
 html.tema-papel-preto ::selection { background: hsl(var(--selected)); color: hsl(var(--selected-foreground)); }
 html.tema-papel-preto .document-editor a { color: hsl(var(--link)); }
+/* Grifo: no papel preto, caramelo escuro com texto creme (o amarelo-limão gritava). */
+html.tema-papel-preto .document-editor .ProseMirror mark { background-color: hsl(var(--accent-dark)); color: hsl(var(--text-title)); }
 
 /* Textura de papel: UMA camada fixa por cima da tela (não rola, não pega clique), com um ruído SVG pequeno que
    se repete (grão + fibras, ~1 KB, sem baixar imagem) e uma leve variação de tom. A cor já vem na textura e o

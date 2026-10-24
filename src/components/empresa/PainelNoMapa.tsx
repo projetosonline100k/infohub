@@ -31,7 +31,7 @@ interface ItemIntel { id: string; nome: string; conteudo: string | null; caracte
 const rolados = new WeakSet<Element>();
 const rolarUmaVez = (el: Element) => { if (!rolados.has(el)) { rolados.add(el); el.scrollIntoView({ block: "center" }); } };
 
-const campo = "w-full rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-sm outline-none focus:border-sky-400";
+const campo = "w-full rounded-md border border-foreground/15 bg-foreground/5 px-2 py-1.5 text-sm outline-none focus:border-sky-400";
 const botao = "flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold disabled:opacity-50";
 
 export function PainelNoMapa({ membro, origem, onFechar, onMudou }: {
@@ -40,11 +40,11 @@ export function PainelNoMapa({ membro, origem, onFechar, onMudou }: {
   const titulo = origem.tipo === "manual" ? "Manual" : origem.tipo === "etapa" ? `${origem.campo === "criterios" ? "Critérios" : "Formatos"} · ${origem.etapa}`
     : origem.tipo === "skills" ? "Skills" : origem.tipo === "aprendizados" ? "Aprendizados" : "Documentos e conhecimento";
   return (
-    <div className="absolute inset-y-0 right-0 z-10 flex w-[480px] max-w-full flex-col border-l border-white/10 bg-[#0f1625] shadow-2xl"
+    <div className="absolute inset-y-0 right-0 z-10 flex w-[480px] max-w-full flex-col border-l border-foreground/10 bg-card shadow-2xl"
       onKeyDown={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3">
-        <p className="flex-1 truncate text-sm font-semibold">{titulo} <span className="font-normal text-white/50">· {membro.nome}</span></p>
-        <button type="button" onClick={onFechar} className="rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
+      <div className="flex items-center gap-2 border-b border-foreground/10 px-4 py-3">
+        <p className="flex-1 truncate text-sm font-semibold">{titulo} <span className="font-normal text-foreground/50">· {membro.nome}</span></p>
+        <button type="button" onClick={onFechar} className="rounded-md p-1 text-foreground/60 hover:bg-foreground/10 hover:text-foreground"><X className="h-4 w-4" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {origem.tipo === "manual" && <Manual membro={membro} foco={origem.foco} onMudou={onMudou} />}
@@ -53,7 +53,7 @@ export function PainelNoMapa({ membro, origem, onFechar, onMudou }: {
         {origem.tipo === "aprendizados" && <Aprendizados membro={membro} foco={origem.foco} onMudou={onMudou} />}
         {origem.tipo === "conhecimento" && (membro.cliente_id
           ? <Conhecimento membro={membro as MembroMapa & { cliente_id: string }} conectar={origem.foco === "novo"} onMudou={onMudou} />
-          : <p className="text-sm text-white/60">Este funcionário não está num projeto.</p>)}
+          : <p className="text-sm text-foreground/60">Este funcionário não está num projeto.</p>)}
       </div>
     </div>
   );
@@ -87,7 +87,7 @@ function Manual({ membro, foco, onMudou }: { membro: MembroMapa; foco?: number |
   };
   return (
     <div className="space-y-3">
-      <p className="text-xs text-white/55">Como o {membro.nome} trabalha. Uma regra por linha fica melhor no mapa.</p>
+      <p className="text-xs text-foreground/55">Como o {membro.nome} trabalha. Uma regra por linha fica melhor no mapa.</p>
       <textarea ref={area} value={texto} onChange={(e) => setTexto(e.target.value)} rows={16} className={cn(campo, "resize-y leading-relaxed")} />
       <button type="button" onClick={() => void salvar()} disabled={salvando || texto === (membro.manual ?? "")} className={cn(botao, "bg-sky-600 hover:bg-sky-500")}>
         {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar manual
@@ -119,8 +119,8 @@ function EditarEtapa({ membro, origem, onMudou }: { membro: MembroMapa; origem: 
       setFocado(origem.foco === "novo" ? n - 1 : typeof origem.foco === "number" ? origem.foco : null);
     });
   }, [origem.setorId, origem.etapa, origem.campo, origem.foco, membro.id]);
-  if (!esteira) return <Loader2 className="h-4 w-4 animate-spin text-white/50" />;
-  if (indice < 0) return <p className="text-sm text-white/60">Não achei essa etapa na esteira.</p>;
+  if (!esteira) return <Loader2 className="h-4 w-4 animate-spin text-foreground/50" />;
+  if (indice < 0) return <p className="text-sm text-foreground/60">Não achei essa etapa na esteira.</p>;
   const salvar = async () => {
     setSalvando(true);
     const nova = esteira.map((e, k) => (k !== indice ? e : origem.campo === "criterios"
@@ -137,31 +137,31 @@ function EditarEtapa({ membro, origem, onMudou }: { membro: MembroMapa; origem: 
     <div className="space-y-3">
       {origem.campo === "criterios" ? (
         <>
-          <p className="text-xs text-white/55">O que o {membro.nome} confere, um por um, antes de entregar.</p>
+          <p className="text-xs text-foreground/55">O que o {membro.nome} confere, um por um, antes de entregar.</p>
           {criterios.map((c, k) => (
             <div key={k} className="flex items-start gap-2">
-              <span className="mt-1.5 w-5 text-right text-xs text-white/40">{k + 1}.</span>
+              <span className="mt-1.5 w-5 text-right text-xs text-foreground/40">{k + 1}.</span>
               <textarea value={c} rows={2} autoFocus={focado === k} ref={(el) => { if (el && focado === k) rolarUmaVez(el); }}
                 onChange={(e) => setCriterios((l) => l.map((x, j) => (j === k ? e.target.value : x)))} className={cn(campo, "resize-y", focado === k && "border-sky-400")} placeholder="Novo critério" />
-              <button type="button" onClick={() => setCriterios((l) => l.filter((_, j) => j !== k))} className="mt-1 text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
+              <button type="button" onClick={() => setCriterios((l) => l.filter((_, j) => j !== k))} className="mt-1 text-foreground/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
             </div>
           ))}
-          <button type="button" onClick={() => setCriterios((l) => [...l, ""])} className={cn(botao, "border border-dashed border-white/25 text-white/70 hover:text-white")}><Plus className="h-3.5 w-3.5" />Critério</button>
+          <button type="button" onClick={() => setCriterios((l) => [...l, ""])} className={cn(botao, "border border-dashed border-foreground/25 text-foreground/70 hover:text-foreground")}><Plus className="h-3.5 w-3.5" />Critério</button>
         </>
       ) : (
         <>
-          <p className="text-xs text-white/55">Estruturas de referência: ele escolhe a que mais combina e segue.</p>
+          <p className="text-xs text-foreground/55">Estruturas de referência: ele escolhe a que mais combina e segue.</p>
           {formatos.map((f, k) => (
-            <div key={k} className={cn("space-y-1.5 rounded-lg border p-2.5", focado === k ? "border-sky-400" : "border-white/10")}
+            <div key={k} className={cn("space-y-1.5 rounded-lg border p-2.5", focado === k ? "border-sky-400" : "border-foreground/10")}
               ref={(el) => { if (el && focado === k) rolarUmaVez(el); }}>
               <div className="flex items-center gap-2">
                 <input value={f.nome} placeholder={`Formato ${k + 1}`} autoFocus={focado === k} onChange={(e) => setFormatos((l) => l.map((x, j) => (j === k ? { ...x, nome: e.target.value } : x)))} className={campo} />
-                <button type="button" onClick={() => setFormatos((l) => l.filter((_, j) => j !== k))} className="text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setFormatos((l) => l.filter((_, j) => j !== k))} className="text-foreground/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
               </div>
               <textarea value={f.texto} rows={6} placeholder="O formato (estrutura, exemplo)" onChange={(e) => setFormatos((l) => l.map((x, j) => (j === k ? { ...x, texto: e.target.value } : x)))} className={cn(campo, "resize-y")} />
             </div>
           ))}
-          <button type="button" onClick={() => setFormatos((l) => [...l, { nome: "", texto: "" }])} className={cn(botao, "border border-dashed border-white/25 text-white/70 hover:text-white")}><Plus className="h-3.5 w-3.5" />Formato</button>
+          <button type="button" onClick={() => setFormatos((l) => [...l, { nome: "", texto: "" }])} className={cn(botao, "border border-dashed border-foreground/25 text-foreground/70 hover:text-foreground")}><Plus className="h-3.5 w-3.5" />Formato</button>
         </>
       )}
       <div><button type="button" onClick={() => void salvar()} disabled={salvando} className={cn(botao, "bg-sky-600 hover:bg-sky-500")}>
@@ -225,7 +225,7 @@ function Skills({ membro, abrirId, nova, onMudou }: { membro: MembroMapa; abrirI
 
   if (aberta) return (
     <div className="space-y-3">
-      <button type="button" onClick={() => setAberta(null)} className="flex items-center gap-1 text-xs text-white/60 hover:text-white"><ArrowLeft className="h-3.5 w-3.5" />Todas as skills</button>
+      <button type="button" onClick={() => setAberta(null)} className="flex items-center gap-1 text-xs text-foreground/60 hover:text-foreground"><ArrowLeft className="h-3.5 w-3.5" />Todas as skills</button>
       <input value={aberta.nome} onChange={(e) => setAberta({ ...aberta, nome: e.target.value })} placeholder="Nome da skill" className={cn(campo, "font-semibold")} />
       <select value={aberta.escopo} onChange={(e) => setAberta({ ...aberta, escopo: e.target.value })} className={campo}>
         <option value="geral">Geral do funcionário (todo projeto)</option>
@@ -245,15 +245,15 @@ function Skills({ membro, abrirId, nova, onMudou }: { membro: MembroMapa; abrirI
     <div className="space-y-3">
       <div className="flex gap-2">
         <button type="button" onClick={() => setAberta({ id: null, nome: "", conteudo: "", escopo: "geral" })} className={cn(botao, "bg-sky-600 hover:bg-sky-500")}><Plus className="h-3.5 w-3.5" />Nova skill</button>
-        <button type="button" onClick={() => arquivo.current?.click()} className={cn(botao, "border border-white/15 hover:bg-white/10")}><Upload className="h-3.5 w-3.5" />Subir .md / .txt</button>
+        <button type="button" onClick={() => arquivo.current?.click()} className={cn(botao, "border border-foreground/15 hover:bg-foreground/10")}><Upload className="h-3.5 w-3.5" />Subir .md / .txt</button>
         <input ref={arquivo} type="file" accept=".md,.txt,.markdown,text/plain,text/markdown" className="hidden" onChange={(e) => void doArquivo(e.target.files?.[0])} />
       </div>
-      {itens === null ? <Loader2 className="h-4 w-4 animate-spin text-white/50" /> : !itens.length ? <p className="text-sm text-white/60">Nenhuma skill ainda.</p> : itens.map((s) => (
+      {itens === null ? <Loader2 className="h-4 w-4 animate-spin text-foreground/50" /> : !itens.length ? <p className="text-sm text-foreground/60">Nenhuma skill ainda.</p> : itens.map((s) => (
         <button key={s.id} type="button" onClick={() => setAberta({ id: s.id, nome: nomeSkill(s.nome), conteudo: s.conteudo ?? "", escopo: s.escopo })}
-          className="flex w-full items-center gap-2 rounded-lg border border-white/10 px-3 py-2 text-left hover:bg-white/5">
+          className="flex w-full items-center gap-2 rounded-lg border border-foreground/10 px-3 py-2 text-left hover:bg-foreground/5">
           <FileText className="h-4 w-4 shrink-0 text-sky-300" />
           <span className="flex-1 truncate text-sm">{nomeSkill(s.nome)}</span>
-          <span className="text-[11px] text-white/45">{s.escopo === "geral" ? "geral" : "projeto"}{s.caracteres ? ` · ${Math.round(s.caracteres / 1000)}k` : ""}</span>
+          <span className="text-[11px] text-foreground/45">{s.escopo === "geral" ? "geral" : "projeto"}{s.caracteres ? ` · ${Math.round(s.caracteres / 1000)}k` : ""}</span>
         </button>
       ))}
     </div>
@@ -306,25 +306,25 @@ function Aprendizados({ membro, foco, onMudou }: { membro: MembroMapa; foco?: nu
       setSalvando(false);
     }
   };
-  if (itens === null) return <Loader2 className="h-4 w-4 animate-spin text-white/50" />;
+  if (itens === null) return <Loader2 className="h-4 w-4 animate-spin text-foreground/50" />;
   let n = -1;
   return (
     <div className="space-y-3">
-      <p className="text-xs text-white/55">Regras que o {membro.nome} segue sempre (aparecem no topo do que ele lê). Uma por campo.</p>
+      <p className="text-xs text-foreground/55">Regras que o {membro.nome} segue sempre (aparecem no topo do que ele lê). Uma por campo.</p>
       {itens.map((a) => (
         <div key={a.id} className="space-y-2">
-          {itens.length > 1 && <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">{a.nome} · {a.escopo === "geral" ? "geral" : "projeto"}</p>}
+          {itens.length > 1 && <p className="text-[11px] font-semibold uppercase tracking-wide text-foreground/45">{a.nome} · {a.escopo === "geral" ? "geral" : "projeto"}</p>}
           {(linhas[a.id] ?? []).map((l, k) => {
             n += 1;
             const focado = foco === n;
             return (
               <div key={k} className="flex items-start gap-2">
-                <span className="mt-2 w-10 shrink-0 text-right text-[10px] text-white/40">{l.data ?? ""}</span>
+                <span className="mt-2 w-10 shrink-0 text-right text-[10px] text-foreground/40">{l.data ?? ""}</span>
                 <textarea value={l.texto} rows={2} autoFocus={focado} ref={(el) => { if (el && focado) rolarUmaVez(el); }}
                   onChange={(e) => setLinhas((m) => ({ ...m, [a.id]: m[a.id].map((x, j) => (j === k ? { ...x, texto: e.target.value } : x)) }))}
                   className={cn(campo, "resize-y", focado && "border-sky-400")} />
                 <button type="button" title="Tirar" onClick={() => setLinhas((m) => ({ ...m, [a.id]: m[a.id].filter((_, j) => j !== k) }))}
-                  className="mt-1.5 text-white/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
+                  className="mt-1.5 text-foreground/40 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
               </div>
             );
           })}
@@ -337,7 +337,7 @@ function Aprendizados({ membro, foco, onMudou }: { membro: MembroMapa; foco?: nu
             className={cn(campo, "resize-y border-sky-400")} />
         </div>
       ) : (
-        <button type="button" onClick={() => setNovo("")} className={cn(botao, "border border-dashed border-white/25 text-white/70 hover:text-white")}><Plus className="h-3.5 w-3.5" />Aprendizado</button>
+        <button type="button" onClick={() => setNovo("")} className={cn(botao, "border border-dashed border-foreground/25 text-foreground/70 hover:text-foreground")}><Plus className="h-3.5 w-3.5" />Aprendizado</button>
       )}
       <div><button type="button" onClick={() => void salvar()} disabled={salvando} className={cn(botao, "bg-sky-600 hover:bg-sky-500")}>
         {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar
@@ -389,7 +389,7 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
   };
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border border-white/10 p-3">
+      <div className="rounded-lg border border-foreground/10 p-3">
         <button type="button" onClick={() => setAberto((a) => !a)} className="flex w-full items-center gap-2 text-left text-sm font-semibold">
           <FileText className="h-4 w-4 text-sky-300" />Conectar documento do app
           <Plus className={cn("ml-auto h-4 w-4 transition-transform", aberto && "rotate-45")} />
@@ -397,23 +397,23 @@ function Conhecimento({ membro, conectar, onMudou }: { membro: MembroMapa & { cl
         {aberto && (
           <div className="mt-3 space-y-2">
             <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar documento pelo nome (vazio = os deste projeto)" className={campo} />
-            {docs === null ? <Loader2 className="h-4 w-4 animate-spin text-white/50" /> : !docs.length ? <p className="text-xs text-white/50">Nenhum documento.</p> : (
+            {docs === null ? <Loader2 className="h-4 w-4 animate-spin text-foreground/50" /> : !docs.length ? <p className="text-xs text-foreground/50">Nenhum documento.</p> : (
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {docs.map((d) => (
                   <button key={d.id} type="button" disabled={!!ligando} onClick={() => void ligar(d)}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-white/10 disabled:opacity-50">
-                    {ligando === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-white/50" />}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-foreground/10 disabled:opacity-50">
+                    {ligando === d.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5 shrink-0 text-foreground/50" />}
                     <span className="min-w-0 flex-1 truncate">{d.titulo || "Sem título"}</span>
-                    <span className="text-[11px] text-white/40">{new Date(d.updated_at).toLocaleDateString("pt-BR")}</span>
+                    <span className="text-[11px] text-foreground/40">{new Date(d.updated_at).toLocaleDateString("pt-BR")}</span>
                   </button>
                 ))}
               </div>
             )}
-            <p className="text-[11px] text-white/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo).</p>
+            <p className="text-[11px] text-foreground/45">O texto do documento vira conhecimento do {membro.nome} (uma cópia de hoje; se o documento mudar, conecte de novo).</p>
           </div>
         )}
       </div>
-      <div className="dark text-foreground"><InteligenciaMembro key={versao} clienteId={membro.cliente_id} membro={membro} /></div>
+      <div className="text-foreground"><InteligenciaMembro key={versao} clienteId={membro.cliente_id} membro={membro} /></div>
     </div>
   );
 }

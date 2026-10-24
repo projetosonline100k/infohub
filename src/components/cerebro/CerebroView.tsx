@@ -347,7 +347,7 @@ export function CerebroView({ clienteId }: { clienteId: string }) {
   };
 
   return (
-    <div ref={caixa} className="relative h-[calc(100vh-170px)] min-h-[520px] overflow-hidden rounded-xl border bg-slate-50 dark:bg-[#1e1f24]">
+    <div ref={caixa} className="relative h-[calc(100vh-170px)] min-h-[520px] overflow-hidden rounded-xl border bg-secondary/40">
       {carregando && <div className="absolute inset-0 z-10 grid place-items-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}
       <canvas ref={tela} className="h-full w-full touch-none" onPointerDown={aoApertar} onPointerMove={aoMover} onPointerUp={aoSoltar}
         onPointerLeave={() => { hover.current = null; }} onDoubleClick={(e) => { const n = noEm(mundo(e)); if (n) abrir(n); }} />
