@@ -28,7 +28,7 @@ interface DocumentSidebarProps {
   tituloAtual: string;
   clienteId: string | null;
   pastaId: string | null;
-  onTrocarDocumento: (novoId: string) => void;
+  onTrocarDocumento: (novoId: string, titulo?: string) => void;
   onMudarPasta: (novaPastaId: string | null) => void;
   className?: string;
 }
@@ -107,7 +107,7 @@ export function DocumentSidebar({
     if (error) { toast.error("Não consegui mover para a lixeira"); return; }
     const resto = guias.filter((g) => g.id !== guia.id);
     setGuias(resto);
-    if (guia.id === documentoAtualId && resto.length) onTrocarDocumento(resto[0].id);
+    if (guia.id === documentoAtualId && resto.length) onTrocarDocumento(resto[0].id, resto[0].titulo);
     avisarLateral();
     toast.success(`"${guia.titulo || "Sem título"}" foi para a lixeira`, {
       action: {
@@ -194,7 +194,7 @@ export function DocumentSidebar({
                   navigate(path);
                   return;
                 }
-                onTrocarDocumento(guia.id);
+                onTrocarDocumento(guia.id, guia.titulo);
               }}
               title="Clique para abrir · ⌘+clique ou botão direito: nova guia / tela dividida"
               className={cn(

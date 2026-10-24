@@ -103,24 +103,43 @@ export const DashboardLayout = () => {
 
   const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
 
+  // 24/10 (Davi: "no modo docs não consigo ver as guias"): ao focar o editor, o navegador rolava as caixas
+  // de fora (que têm overflow-hidden, mas aceitam rolagem por código) e a barra de guias subia para fora da
+  // janela, deixando uma faixa branca embaixo. Essas caixas nunca rolam: volta para o lugar na hora.
+  useEffect(() => {
+    const voltar = (e: Event) => {
+      const el = e.target;
+      if (el === document || el === document.documentElement || el === document.body) {
+        if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+        return;
+      }
+      if (el instanceof HTMLElement && el.hasAttribute("data-sem-rolagem") && (el.scrollTop || el.scrollLeft)) {
+        el.scrollTop = 0;
+        el.scrollLeft = 0;
+      }
+    };
+    document.addEventListener("scroll", voltar, true);
+    return () => document.removeEventListener("scroll", voltar, true);
+  }, []);
+
   return (
-    <div className="flex h-svh w-full flex-col overflow-hidden">
+    <div data-sem-rolagem="" className="flex h-svh w-full flex-col overflow-hidden">
       <WorkspaceTabs onNavigate={navigate} />
       <AtalhoWhatsapp clienteId={clienteRotaId} />
-      <SidebarProvider className="min-h-0 min-w-0 flex-1">
+      <SidebarProvider data-sem-rolagem="" className="min-h-0 min-w-0 flex-1">
         {/* min-w-0 em toda a cadeia: sem isso este item de flex estica até a
             largura da página e é cortado pela janela, e o <main> nunca rola. */}
-        <div className="flex min-h-0 min-w-0 flex-1">
+        <div data-sem-rolagem="" className="flex min-h-0 min-w-0 flex-1">
           {/* 23/10: a barra em árvore aparece também dentro do projeto (com as seções dele). */}
           <AppSidebar />
           {/* min-w-0/min-h-0: a área da página não estica além da janela — quem
               rola (inclusive pro lado, em janela estreita) é o <main>. */}
-          <SidebarInset className="min-h-0 min-w-0">
+          <SidebarInset data-sem-rolagem="" className="min-h-0 min-w-0">
             {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
             <DesktopUpdateBanner />
             {/* Quem rola é cada guia (ou cada metade, com a tela dividida) —
                 ver WorkspacePages. */}
-            <main className="min-h-0 flex-1 overflow-hidden">
+            <main data-sem-rolagem="" className="min-h-0 flex-1 overflow-hidden">
               <WorkspacePages />
             </main>
           </SidebarInset>

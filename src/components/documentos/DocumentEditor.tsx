@@ -59,6 +59,10 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   const idNoEditorRef = useRef<string | null>(null);
   const carregandoRef = useRef(false);
   const pedidoCargaRef = useRef(0);
+  // 24/10 (Davi: "ao mudar de guia tem um delay, o nome se repete e depois atualiza"): documentos já abertos
+  // ficam guardados aqui; trocar mostra o nome e o texto na hora e o banco só confirma depois.
+  const cacheRef = useRef(new Map<string, { titulo: string; conteudo: string; cliente_id: string | null; pasta_id: string | null }>());
+  const mostradoDoCacheRef = useRef<string | null>(null);
   const tituloFocadoRef = useRef(false);
   // Histórico que sobrevive a sair do documento e voltar (localStorage). O
   // Tiptap já desfaz palavra a palavra dentro da sessão atual — isso aqui só
@@ -114,6 +118,8 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
     onUpdate: ({ editor }) => {
       if (carregandoRef.current || !idNoEditorRef.current) return;
       const html = editor.getHTML();
+      const guardado = cacheRef.current.get(idNoEditorRef.current);
+      if (guardado) guardado.conteudo = html;
       if (suprimirRegistroRef.current) {
         suprimirRegistroRef.current = false;
       } else if (!jaRegistrouSessaoRef.current) {
@@ -192,9 +198,15 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         setPastaId(data.pasta_id);
         conteudoAoAbrirRef.current = data.conteudo || "";
         jaRegistrouSessaoRef.current = false;
+        cacheRef.current.set(docAtualId, { titulo: data.titulo || "Documento sem título", conteudo: data.conteudo || "", cliente_id: data.cliente_id, pasta_id: data.pasta_id });
         if (editor) {
-          editor.commands.setContent(data.conteudo || "", { emitUpdate: false });
+          const mostrado = mostradoDoCacheRef.current;
+          mostradoDoCacheRef.current = null;
+          if (mostrado === null || mostrado !== (data.conteudo || "")) editor.commands.setContent(data.conteudo || "", { emitUpdate: false });
           idNoEditorRef.current = docAtualId;
+          // Digitou no instante entre mostrar o guardado e o banco confirmar (e o banco bate com o guardado):
+          // o que foi digitado fica e é salvo.
+          if (mostrado !== null && mostrado === (data.conteudo || "") && editor.getHTML() !== mostrado) debouncedSave(editor.getHTML(), docAtualId);
         }
       }
       carregandoRef.current = false;
@@ -214,13 +226,24 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       .eq("id", docAtualId);
   }, [titulo, docAtualId]);
 
-  const trocarDocumento = (novoId: string) => {
+  const trocarDocumento = (novoId: string, tituloSabido?: string) => {
     if (novoId !== docAtualId) {
       // Salva o que está na tela antes de trocar, sem esperar o debounce — no documento que está na tela
       // (se ainda estava carregando, não há nada novo para salvar).
       if (editor && idNoEditorRef.current && !carregandoRef.current) void saveNow(editor.getHTML(), idNoEditorRef.current);
       carregandoRef.current = true;
       idNoEditorRef.current = null;
+      // Na hora: o nome (da lista) e, se já foi aberto antes, o texto guardado. O banco confirma em seguida.
+      const guardado = cacheRef.current.get(novoId);
+      setTitulo(guardado?.titulo ?? tituloSabido ?? "");
+      if (guardado && editor) {
+        editor.commands.setContent(guardado.conteudo, { emitUpdate: false });
+        mostradoDoCacheRef.current = guardado.conteudo;
+        setClienteId(guardado.cliente_id);
+        setPastaId(guardado.pasta_id);
+      } else {
+        mostradoDoCacheRef.current = null;
+      }
       setDocAtualId(novoId);
     }
     // No celular a barra lateral é uma gaveta por cima do documento — some
