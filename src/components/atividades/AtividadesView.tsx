@@ -1739,6 +1739,8 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
                                     onClick={openAtividadeDetail}
                                     onDelete={excluirAtividade}
                                     dragHandleProps={provided.dragHandleProps}
+                                    clienteId={atividade.cliente_id}
+                                    onResponsavelMudou={(id, m) => setAtividades((prev) => prev.map((a) => (a.id === id ? { ...a, ...m } : a)))}
                                   />
                                 </div>
                               )}

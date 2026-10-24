@@ -10,6 +10,7 @@ import { ptBR } from "date-fns/locale";
 import { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import { rotuloFaltando } from "@/lib/atividades/padroesNovaTarefa";
 import { IndicadorAlarme } from "./IndicadorAlarme";
+import { SeletorResponsavel, type MudancaAtividade } from "./EditarNaLinha";
 
 interface ChecklistResumo {
   total: number;
@@ -34,6 +35,9 @@ interface AtividadeItemProps {
   onClick: (id: string) => void;
   onDelete: (id: string) => void;
   dragHandleProps?: DraggableProvidedDragHandleProps | null;
+  // Com isto, clicar no avatar troca o responsável ali mesmo (EditarNaLinha).
+  clienteId?: string | null;
+  onResponsavelMudou?: (id: string, mudanca: MudancaAtividade) => void;
 }
 
 const formatTempo = (minutos: number): string => {
@@ -63,6 +67,8 @@ export const AtividadeItem = ({
   onDelete,
   dragHandleProps,
   alarmeEm,
+  clienteId,
+  onResponsavelMudou,
 }: AtividadeItemProps) => {
   // Comparação por string (yyyy-MM-dd) evita problema de fuso ao converter
   // pra Date; atividade concluída nunca conta como atrasada.
@@ -155,7 +161,13 @@ export const AtividadeItem = ({
       )}
 
       {/* Responsible */}
-      <ResponsavelAvatares responsavelNome={responsavelNome} />
+      {onResponsavelMudou ? (
+        <SeletorResponsavel atividadeId={id} clienteId={clienteId ?? null} responsavelNome={responsavelNome ?? null} onMudou={(m) => onResponsavelMudou(id, m)}>
+          <ResponsavelAvatares responsavelNome={responsavelNome} />
+        </SeletorResponsavel>
+      ) : (
+        <ResponsavelAvatares responsavelNome={responsavelNome} />
+      )}
 
       <IndicadorAlarme alarmeEm={alarmeEm} concluida={concluida} />
 

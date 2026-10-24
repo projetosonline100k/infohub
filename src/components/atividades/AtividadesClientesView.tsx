@@ -750,6 +750,8 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
                           onToggle={toggleAtividade}
                           onClick={openAtividadeDetail}
                           onDelete={excluirAtividade}
+                          clienteId={a.cliente_id}
+                          onResponsavelMudou={(id, m) => setAtividades((prev) => prev.map((x) => (x.id === id ? { ...x, ...m } : x)))}
                         />
                       ))
                     )}

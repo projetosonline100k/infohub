@@ -26,6 +26,7 @@ import {
 import { AtividadesView } from "./AtividadesView";
 import { AtividadeDetailPanel } from "./AtividadeDetailPanel";
 import { ResponsavelAvatares } from "./ResponsavelAvatares";
+import { SeletorProjeto, SeletorResponsavel, type MudancaAtividade } from "./EditarNaLinha";
 
 // Visão "Semana" das Atividades (24/10, Davi, com uma imagem de referência): à esquerda os dias da semana
 // (clicar mostra só aquele dia), no meio as tarefas do dia por situação, à direita um calendário (clicar num dia
@@ -174,6 +175,9 @@ export function SemanaView() {
     const { error } = await supabase.from("atividades").update({ data_vencimento: destino }).eq("id", t.id);
     if (error) toast.error("Não consegui mudar a data"); else { toast.success(`Movida para ${format(dataLocal(destino), "EEEE, dd/MM", { locale: ptBR })}`); void carregar(); }
   };
+  const mudarNaLinha = (id: string, mudanca: MudancaAtividade) =>
+    setTarefas((ts) => ts.map((x) => (x.id === id ? { ...x, ...mudanca } : x)));
+  const projetosSeletor = useMemo(() => projetos.map((p) => ({ id: p.id, nome: p.nome_especialista })), [projetos]);
   const abrir = async (id: string) => {
     const { data } = await supabase.from("atividades").select("*").eq("id", id).maybeSingle();
     if (!data) return;
@@ -381,12 +385,18 @@ export function SemanaView() {
                             <span className={cn("h-2 w-2 shrink-0 rounded-full", PONTO[t.sit])} />
                             <button type="button" onClick={() => void abrir(t.id)} className={cn("min-w-0 flex-1 truncate text-left hover:underline", t.concluida && "text-muted-foreground line-through")}>{t.titulo}</button>
                             {foco.tipo !== "dia" && t.dia && <span className="shrink-0 text-[11px] text-muted-foreground">{format(dataLocal(t.dia), "dd/MM")}</span>}
-                            <span className="hidden max-w-[120px] shrink-0 items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground sm:flex">
-                              <span className={cn("h-2 w-2 shrink-0 rounded-sm", corProjeto(t.cliente_id))} />{nomeProjeto(t.cliente_id)}
+                            <span className="hidden max-w-[120px] shrink-0 sm:flex">
+                              <SeletorProjeto atividade={t} projetos={projetosSeletor} onMudou={(m) => mudarNaLinha(t.id, m)}>
+                                <span className="flex min-w-0 items-center gap-1 truncate rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                                  <span className={cn("h-2 w-2 shrink-0 rounded-sm", corProjeto(t.cliente_id))} /><span className="truncate">{nomeProjeto(t.cliente_id)}</span>
+                                </span>
+                              </SeletorProjeto>
                             </span>
-                            <span className="hidden w-24 shrink-0 items-center gap-1.5 md:flex">
-                              <ResponsavelAvatares responsavelNome={t.responsavel_nome} max={2} />
-                              <span className="truncate text-xs">{nomes[0]?.split(" ")[0] ?? ""}</span>
+                            <span className="hidden w-24 shrink-0 md:flex">
+                              <SeletorResponsavel atividadeId={t.id} clienteId={t.cliente_id} responsavelNome={t.responsavel_nome} onMudou={(m) => mudarNaLinha(t.id, m)}>
+                                <ResponsavelAvatares responsavelNome={t.responsavel_nome} max={2} />
+                                <span className="truncate pr-1 text-xs">{nomes[0]?.split(" ")[0] ?? ""}</span>
+                              </SeletorResponsavel>
                             </span>
                             <span className="hidden w-24 shrink-0 justify-end lg:flex">
                               {atraso > 0 ? <span className="rounded bg-red-500/10 px-1.5 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">{atraso}d atrasada</span>
