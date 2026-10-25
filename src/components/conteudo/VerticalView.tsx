@@ -1,5 +1,7 @@
 import { IdeiasEmDestaque } from "./IdeiasEmDestaque";
 import { useState, useEffect } from "react";
+import { useLocation, useSearchParams } from "react-router-dom";
+import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -171,6 +173,12 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
   
   // Detail panel state
   const [selectedVideo, setSelectedVideo] = useState<VideoVertical | null>(null);
+  // Roteiro aberto no endereço da guia (25/10, Davi: "ao entrar em roteiros não mudou o nome da guia"): ?video=<id>.
+  // Assim a guia mostra o título do roteiro, o voltar/avançar passa por ele e reabrir a guia volta nele.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const guias = useWorkspaceTabsOpcional();
+  const videoNaUrl = searchParams.get("video");
   const [editVideoTags, setEditVideoTags] = useState<string[]>([]);
   
   // Collapsible groups state
@@ -307,7 +315,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     const { error } = await supabase.from("videos_vertical").delete().eq("id", id);
     if (!error) {
       toast.success("Item removido");
-      setSelectedVideo(null);
+      fecharRoteiro();
       fetchVideos();
     }
   };
@@ -411,8 +419,29 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     if (error) { toast.error("Não foi possível adicionar ao cronograma"); void fetchVideos(); }
   };
 
+  const fecharRoteiro = () => {
+    setSelectedVideo(null);
+    if (videoNaUrl) setSearchParams((sp) => { const n = new URLSearchParams(sp); n.delete("video"); return n; });
+  };
+  // Endereço → painel: voltar/avançar, guia reaberta ou link com ?video= abrem (ou fecham) o roteiro certo.
+  useEffect(() => {
+    if (!videoNaUrl) { if (selectedVideo) setSelectedVideo(null); return; }
+    if (selectedVideo?.id === videoNaUrl) return;
+    const v = videosKanban.find((x) => x.id === videoNaUrl);
+    if (v) { setSelectedVideo(v); setEditVideoTags(getVideoTagIds(v.id)); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoNaUrl, videosKanban]);
+  // Nome da guia: o título do roteiro aberto.
+  useEffect(() => {
+    if (!guias || !videoNaUrl || selectedVideo?.id !== videoNaUrl) return;
+    const caminho = `${location.pathname}${location.search}`;
+    guias.nomearEndereco(caminho, selectedVideo.titulo || "Roteiro");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoNaUrl, selectedVideo?.id, selectedVideo?.titulo, location.pathname, location.search]);
+
   const openDetailPanel = (video: VideoVertical) => {
     setSelectedVideo(video);
+    if (videoNaUrl !== video.id) setSearchParams((sp) => { const n = new URLSearchParams(sp); n.set("video", video.id); return n; });
     setEditVideoTags(getVideoTagIds(video.id));
   };
 
@@ -464,7 +493,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
     toast.success(novoStatus !== video.status 
       ? "Salvo! Movido para 'Criando roteiro'" 
       : "Salvo com sucesso!");
-    setSelectedVideo(null);
+    fecharRoteiro();
     fetchVideos();
   };
 
@@ -1370,7 +1399,7 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
       <VideoDetailPanel
         video={selectedVideo}
         open={!!selectedVideo}
-        onClose={() => setSelectedVideo(null)}
+        onClose={() => fecharRoteiro()}
         onSave={handleSaveVideo}
         onAutoSave={handleAutoSaveVideo}
         onDelete={handleDeleteVideoKanban}

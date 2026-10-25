@@ -54,6 +54,9 @@ interface WorkspaceTabsContextValue {
   // Voltar/avançar como no navegador (24/10), com o histórico de CADA guia. Devolvem o endereço para onde
   // ir (quem chama navega) ou null se não há para onde.
   voltar: () => string | null;
+  // Nome que aparece na guia para um endereço (25/10: o roteiro aberto mostra o título dele em vez do projeto).
+  nomesPorEndereco: Record<string, string>;
+  nomearEndereco: (path: string, nome: string | null) => void;
   avancar: () => string | null;
   podeVoltar: boolean;
   podeAvancar: boolean;
@@ -310,6 +313,13 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     irNaAtivaRef.current = h.pilha[h.i];
     return h.pilha[h.i];
   }, []);
+  const [nomesPorEndereco, setNomesPorEndereco] = useState<Record<string, string>>({});
+  const nomearEndereco = useCallback((path: string, nome: string | null) => setNomesPorEndereco((m) => {
+    if ((m[path] ?? null) === nome) return m;
+    const n = { ...m };
+    if (nome) n[path] = nome; else delete n[path];
+    return n;
+  }), []);
   const hAtual = historicos.current.get(activeId);
   const podeVoltar = !!hAtual && hAtual.i > 0;
   const podeAvancar = !!hAtual && hAtual.i < hAtual.pilha.length - 1;
@@ -319,8 +329,9 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     divisao, larguras, moverDivisoria, igualarLarguras, dividir, tirarDaDivisao, desfazerDivisao, focarGuia,
     novaGuiaADireita, fecharOutras, abrirAoLado, abrirNovaGuia,
     voltar: () => andarNoHistorico(-1), avancar: () => andarNoHistorico(1), podeVoltar, podeAvancar,
+    nomesPorEndereco, nomearEndereco,
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [tabs, activeId, divisao, larguras, versaoHistorico, podeVoltar, podeAvancar]);
+  }), [tabs, activeId, divisao, larguras, versaoHistorico, podeVoltar, podeAvancar, nomesPorEndereco]);
   return <WorkspaceTabsContext.Provider value={value}>{children}</WorkspaceTabsContext.Provider>;
 }
 
@@ -344,7 +355,7 @@ interface Arrasto { id: string; inicioX: number; inicioY: number; x: number; y: 
 export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => void }) {
   const {
     tabs, activeId, closeTab, reorderTabs, detachTab, divisao, dividir, tirarDaDivisao, desfazerDivisao, novaGuiaADireita, fecharOutras, abrirNovaGuia,
-    voltar, avancar, podeVoltar, podeAvancar,
+    voltar, avancar, podeVoltar, podeAvancar, nomesPorEndereco,
   } = useWorkspaceTabs();
   // Voltar/avançar também pelo teclado (⌘[ e ⌘], como no Chrome) e pelos botões laterais do mouse.
   const voltarRef = useRef(() => { const p = voltar(); if (p) onNavigate(p); });
@@ -520,10 +531,10 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
       >
         {naDivisao && <Columns2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Na tela dividida" />}
         {(() => { const Icone = iconeDaGuia(tab.path); return <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />; })()}
-        <span className="min-w-0 flex-1 truncate text-left" title={tab.title}>
-          {tab.title}
+        <span className="min-w-0 flex-1 truncate text-left" title={nomesPorEndereco[tab.path] ? `${nomesPorEndereco[tab.path]} · ${tab.title}` : tab.title}>
+          {nomesPorEndereco[tab.path] ?? tab.title}
           {/* Guias com o mesmo nome (ex.: três "Core"): mostra a seção ao lado. */}
-          {(() => { const secao = nomeDaSecao(tab.path); return secao && !tab.title.includes(secao) && tabs.filter((t) => t.title === tab.title).length > 1 ? <span className="opacity-60"> · {secao}</span> : null; })()}
+          {(() => { const secao = nomeDaSecao(tab.path); return secao && !nomesPorEndereco[tab.path] && !tab.title.includes(secao) && tabs.filter((t) => t.title === tab.title).length > 1 ? <span className="opacity-60"> · {secao}</span> : null; })()}
         </span>
         {canClose && <button type="button" data-fechar-aba aria-label={`Fechar aba ${tab.title}`} onClick={(event) => { event.stopPropagation(); fechar(tab); }} className="rounded p-0.5 opacity-0 transition-opacity hover:bg-muted-foreground/15 group-hover:opacity-100 focus:opacity-100"><X className="h-3.5 w-3.5" /></button>}
       </div>

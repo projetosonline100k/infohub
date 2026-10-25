@@ -19,7 +19,7 @@ const PAGINAS: [RegExp, LucideIcon][] = [
 export function iconeDaGuia(caminho: string): LucideIcon {
   const [rota, busca = ""] = caminho.split("?");
   const params = new URLSearchParams(busca);
-  if (params.get("documento")) return FileText;
+  if (params.get("documento") || params.get("video")) return FileText;
   if (params.get("atividade")) return ListChecks;
   if (/^\/clientes\/[^/]+/.test(rota)) {
     const secao = params.get("secao") ?? "conteudo:visao-geral";
@@ -33,7 +33,7 @@ export function nomeDaSecao(caminho: string): string | null {
   const [rota, busca = ""] = caminho.split("?");
   if (!/^\/clientes\/[^/]+/.test(rota)) return null;
   const params = new URLSearchParams(busca);
-  if (params.get("documento")) return null;
+  if (params.get("documento") || params.get("video")) return null;
   const nomes: Record<string, string> = {
     "conteudo:visao-geral": "Escritório", informacoes: "Informações", atividades: "Atividades", documentos: "Documentos",
     pesquisa: "Pesquisa", cerebro: "Cérebro", "conteudo:vertical": "Vertical", "conteudo:youtube": "Youtube",
