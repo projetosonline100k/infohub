@@ -154,6 +154,38 @@ function batidaGravada(volume: number, velocidade = 1) {
   return true;
 }
 
+/** Espaço da 1ª versão (25/10, Davi: "o espaço está saindo como bumbo, mantenha como estava antes"): batida
+ *  triangular curta de 95 Hz + estalo médio, sem o eco de sala e no volume de antes. */
+function espacoAntigo(v: number) {
+  const { c, n } = audio();
+  const t = c.currentTime;
+  const mestre = c.createGain();
+  mestre.gain.value = 0.55;   // o volume geral da 1ª versão
+  mestre.connect(c.destination);
+  const osc = c.createOscillator();
+  osc.type = "triangle";
+  osc.frequency.setValueAtTime(95, t);
+  osc.frequency.exponentialRampToValueAtTime(47.5, t + 0.09);
+  const g1 = c.createGain();
+  g1.gain.setValueAtTime(0.45 * v, t);
+  g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+  osc.connect(g1).connect(mestre);
+  osc.start(t);
+  osc.stop(t + 0.11);
+  const fonte = c.createBufferSource();
+  fonte.buffer = n;
+  fonte.playbackRate.value = 0.9 + Math.random() * 0.2;
+  const filtro = c.createBiquadFilter();
+  filtro.type = "bandpass";
+  filtro.frequency.value = 1400;
+  filtro.Q.value = 1;
+  const g2 = c.createGain();
+  g2.gain.setValueAtTime(0.25 * v, t);
+  g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
+  fonte.connect(filtro).connect(g2).connect(mestre);
+  fonte.start(t, Math.random() * 0.2, 0.08);
+}
+
 export type TipoTecla = "letra" | "espaco" | "enter" | "apagar";
 
 export function tocarTecla(tipo: TipoTecla) {
@@ -181,9 +213,7 @@ export function tocarTecla(tipo: TipoTecla) {
       estalo("bandpass", 1900, 1.4, 0.35 * v, 0.03, 0.004);      // corpo do estalo
       estalo("bandpass", 4200, 3, 0.22 * v, 0.018, 0.026);       // tique do carro andando uma casa
     } else if (tipo === "espaco") {
-      baque(90, 0.55 * v, 0.1);
-      estalo("bandpass", 1200, 1, 0.3 * v, 0.05);
-      estalo("bandpass", 4200, 3, 0.25 * v, 0.018, 0.02);        // só o carro anda
+      espacoAntigo(v);
     } else if (tipo === "apagar") {
       estalo("bandpass", 3600, 2, 0.35 * v, 0.02);
       baque(150, 0.2 * v, 0.04);
