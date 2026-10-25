@@ -6,6 +6,8 @@ import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
+import { QuadroKanban } from "@/components/documentos/QuadroKanban";
+import { Comentario } from "@/lib/tiptapComentario";
 import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
@@ -262,6 +264,9 @@ const EditorDoDocumento = forwardRef<EditorDoDocumentoHandle, {
       Placeholder.configure({ placeholder: "Comece a escrever..." }),
       Link.configure({ openOnClick: true }),
       ...extensoesEstiloTexto,
+      // Sem estes, editar pelo link compartilhado apagava os quadros e as marcas de comentário ao salvar (25/10).
+      QuadroKanban,
+      Comentario,
     ],
     content: "",
     onUpdate: ({ editor }) => {

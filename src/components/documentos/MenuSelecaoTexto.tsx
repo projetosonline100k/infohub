@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Editor, useEditorState } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { Bold, ChevronDown, Italic, Link, RemoveFormatting, Strikethrough, Underline } from "lucide-react";
+import { Bold, ChevronDown, Italic, Link, MessageSquarePlus, RemoveFormatting, Strikethrough, Underline } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CORES_GRIFO, CORES_TEXTO, FONTES, TAMANHOS } from "@/lib/tiptapEstiloTexto";
 import { trIsolarLinhasDaSelecao } from "@/lib/tiptapIsolarLinhas";
@@ -41,7 +41,7 @@ function Botao({ ativo, titulo, onAcionar, children, className }: {
 // Menu flutuante que aparece ao selecionar texto (estilo Notion): tipo de
 // bloco, fonte, tamanho, negrito/itálico/sublinhado/tachado, cor do texto,
 // marca-texto colorido e link.
-export function MenuSelecaoTexto({ editor }: { editor: Editor }) {
+export function MenuSelecaoTexto({ editor, onComentar }: { editor: Editor; onComentar?: () => void }) {
   const [painel, setPainel] = useState<Painel>(null);
   const estado = useEditorState({
     editor,
@@ -91,6 +91,12 @@ export function MenuSelecaoTexto({ editor }: { editor: Editor }) {
       </Botao>
       <Botao titulo={estado.link ? "Remover link" : "Adicionar link"} ativo={estado.link} onAcionar={definirLink}><Link className="h-4 w-4" /></Botao>
       <Botao titulo="Limpar formatação" onAcionar={() => cadeia().unsetAllMarks().run()}><RemoveFormatting className="h-4 w-4" /></Botao>
+      {/* Comentar o trecho (25/10), como no Google Docs. */}
+      {onComentar && (
+        <Botao titulo="Comentar (⌘⌥M)" onAcionar={onComentar} className="gap-1 border-l pl-2">
+          <MessageSquarePlus className="h-4 w-4" /><span className="text-xs">Comentar</span>
+        </Botao>
+      )}
     </div>
 
     {painel === "tipo" && <div className="border-t p-1">

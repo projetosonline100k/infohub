@@ -12,6 +12,8 @@ import Placeholder from "@tiptap/extension-placeholder";
 import Link from "@tiptap/extension-link";
 import { extensoesEstiloTexto } from "@/lib/tiptapEstiloTexto";
 import { QuadroKanban } from "./QuadroKanban";
+import { ComentariosNoDocumento } from "./ComentariosNoDocumento";
+import { Comentario } from "@/lib/tiptapComentario";
 import { ComandosBarra } from "./ComandosBarra";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ItalicSemAsterisco } from "@/lib/tiptapItalicSemAsterisco";
@@ -51,6 +53,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
   const [pastaId, setPastaId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const isMobile = useIsMobile();
+  const [pedidoComentario, setPedidoComentario] = useState(0);
   const { zoom, refArea: refMesa, aviso: avisoZoom } = useZoomDocumento<HTMLDivElement>();
   const [showSidebar, setShowSidebar] = useState(true);
   const [shareOpen, setShareOpen] = useState(false);
@@ -118,6 +121,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       }),
       ...extensoesEstiloTexto,
       QuadroKanban,   // quadro com colunas (Kanban) dentro do documento (24/10)
+      Comentario,     // trecho comentado (25/10)
       ComandosBarra,  // "/" abre o menu de blocos (24/10)
     ],
     content: "",
@@ -387,7 +391,8 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             <div className="px-5 py-6 sm:p-8 md:p-16">
               <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
               {editor && <EscolherModelo editor={editor} nome={titulo === "Documento sem título" ? "" : titulo} />}
-            {editor && <MenuSelecaoTexto editor={editor} />}
+            {editor && <MenuSelecaoTexto editor={editor} onComentar={() => setPedidoComentario((n) => n + 1)} />}
+            {editor && <ComentariosNoDocumento editor={editor} documentoId={docAtualId} pedido={pedidoComentario} />}
             {editor && <BancoViraisDoc editor={editor} clienteId={clienteId} />}
             {editor && <MicrofoneNoCursor editor={editor} />}
             {editor && <ChatNoDocumento editor={editor} clienteId={clienteId} chave={docAtualId} />}

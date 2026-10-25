@@ -261,3 +261,13 @@
 /* Revisão do Elias, marca leve (sem riscado): a linha mudada com fundo suave e o número do comentário. */
 .document-editor .rev-mudou { background: rgb(14 165 233 / 0.07); border-radius: 4px; box-shadow: -6px 0 0 rgb(14 165 233 / 0.07), 6px 0 0 rgb(14 165 233 / 0.07); }
 .document-editor .rev-num { display: inline-grid; place-items: center; min-width: 16px; height: 16px; margin-left: 4px; padding: 0 4px; border-radius: 999px; background: rgb(14 165 233); color: #fff; font-size: 10px; font-weight: 700; line-height: 1; vertical-align: 0.35em; user-select: none; }
+
+/* Trecho comentado (25/10): amarelo leve como no Google Docs; o comentário aberto fica mais forte. */
+.document-editor .ProseMirror .comentario-marca {
+  background-color: rgba(250, 204, 21, 0.22);
+  border-bottom: 2px solid rgba(234, 179, 8, 0.65);
+  cursor: pointer;
+}
+.document-editor .ProseMirror .comentario-marca.comentario-ativo {
+  background-color: rgba(250, 204, 21, 0.45);
+}
