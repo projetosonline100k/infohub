@@ -118,12 +118,62 @@ function sino(atraso = 0) {
   }
 }
 
+// 3ª versão (25/10, Davi mandou a gravação "sea-you-later-typewriter"): as teclas e o "plim" agora são recortes
+// dessa gravação (public/sons: 9 batidas do trecho 14–20 s e o toque do fim, ~85 s). O espaço continua o sintetizado,
+// que ele aprovou. Enquanto os arquivos não chegam (1º toque), vale o sintetizado.
+const ARQUIVOS_TECLA = Array.from({ length: 9 }, (_, i) => `/sons/tecla-${i + 1}.wav`);
+let amostras: { teclas: AudioBuffer[]; plim: AudioBuffer | null } | null = null;
+let carregando = false;
+function carregarAmostras() {
+  if (amostras || carregando) return;
+  carregando = true;
+  const { c } = audio();
+  const baixar = (url: string) => fetch(url).then((r) => r.arrayBuffer()).then((b) => c.decodeAudioData(b));
+  void Promise.all([Promise.all(ARQUIVOS_TECLA.map(baixar)), baixar("/sons/plim.wav").catch(() => null)])
+    .then(([teclas, plim]) => { amostras = { teclas, plim }; })
+    .catch(() => { carregando = false; });
+}
+let ultimaTecla = -1;
+function tocarAmostra(buf: AudioBuffer, volume: number, velocidade = 1, atraso = 0) {
+  const { c, s } = audio();
+  const fonte = c.createBufferSource();
+  fonte.buffer = buf;
+  fonte.playbackRate.value = velocidade;
+  const g = c.createGain();
+  g.gain.value = volume;
+  fonte.connect(g).connect(s);
+  fonte.start(c.currentTime + atraso);
+}
+/** Uma das batidas gravadas, sem repetir a anterior, com leve variação de tom (cada tecla soa um pouco diferente). */
+function batidaGravada(volume: number, velocidade = 1) {
+  if (!amostras?.teclas.length) return false;
+  let i = Math.floor(Math.random() * amostras.teclas.length);
+  if (i === ultimaTecla) i = (i + 1) % amostras.teclas.length;
+  ultimaTecla = i;
+  tocarAmostra(amostras.teclas[i], volume, velocidade * (0.97 + Math.random() * 0.06));
+  return true;
+}
+
 export type TipoTecla = "letra" | "espaco" | "enter" | "apagar";
 
 export function tocarTecla(tipo: TipoTecla) {
   try {
+    carregarAmostras();
     const v = 0.85 + Math.random() * 0.3;   // cada tecla um pouco diferente, como na máquina de verdade
     const tom = 0.94 + Math.random() * 0.12;
+    if (tipo === "letra" && batidaGravada(0.9 * v)) return;
+    if (tipo === "apagar" && batidaGravada(0.45 * v, 1.12)) return;
+    if (tipo === "enter" && amostras?.plim) {
+      // Enter: a batida, a catraca do carro voltando (sintetizada, curta) e o "plim" da gravação.
+      batidaGravada(0.8);
+      let tempo = 0.06;
+      for (let i = 0; i < 10; i++) {
+        estalo("bandpass", 2600 + Math.random() * 800, 3.5, 0.1 + i * 0.005, 0.016, tempo);
+        tempo += Math.max(0.014, 0.03 - i * 0.0016);
+      }
+      tocarAmostra(amostras.plim, 0.75, 1, 0.05);
+      return;
+    }
     if (tipo === "letra") {
       estalo("highpass", 3000, 0.7, 0.9 * v, 0.012);            // a haste batendo no rolo: seco e curto
       metal(1650 * tom, 0.07 * v, 0.09);                         // o metal vibrando
