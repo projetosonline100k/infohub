@@ -1,4 +1,7 @@
-import { Check, Moon, Palette, Sun } from "lucide-react";
+import { useState } from "react";
+import { Check, Keyboard, Moon, Palette, Sun } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { ligarSom, somLigado, tocarTecla } from "@/lib/somDigitacao";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTheme } from "@/hooks/useTheme";
@@ -34,6 +37,7 @@ function Miniatura({ p, textura }: { p: Previa; textura: boolean }) {
 
 export function ThemeToggle() {
   const { theme, aparencia, setTema, setModo, setDestaque } = useTheme();
+  const [som, setSom] = useState(somLigado);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -98,6 +102,16 @@ export function ThemeToggle() {
           </div>
           <p className="text-[11px] text-muted-foreground">Muda o botão principal, o selecionado, links e o foco. O fundo do tema continua.</p>
         </div>
+
+        {/* Som de máquina de escrever ao digitar nos documentos (25/10). */}
+        <label className="flex cursor-pointer items-center gap-2 rounded-lg border p-2.5">
+          <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="flex-1">
+            <span className="block text-sm font-medium">Som de máquina de escrever</span>
+            <span className="block text-[11px] text-muted-foreground">Ao digitar nos documentos e roteiros</span>
+          </span>
+          <Switch checked={som} onCheckedChange={(v) => { setSom(v); ligarSom(v); if (v) { tocarTecla("letra"); window.setTimeout(() => tocarTecla("letra"), 110); window.setTimeout(() => tocarTecla("enter"), 260); } }} />
+        </label>
       </PopoverContent>
     </Popover>
   );

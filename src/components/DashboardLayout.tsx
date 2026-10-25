@@ -12,6 +12,7 @@ import { abrirJanelaAgenda, abrirJanelaNotas } from "@/lib/desktop/window";
 import { onMainNavigate, emitClienteAtualMudou } from "@/lib/desktop/events";
 import { useWorkspaceTabs, WorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { WorkspacePages } from "@/components/workspace/WorkspacePages";
+import { useSomDigitacao } from "@/hooks/useSomDigitacao";
 import { useAlarmesAgenda } from "@/hooks/useAlarmesAgenda";
 
 // Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
@@ -102,6 +103,7 @@ export const DashboardLayout = () => {
   }, [navigate]);
 
   const isClienteDetalhe = /^\/clientes\/[^/]+/.test(location.pathname);
+  useSomDigitacao();   // som de máquina de escrever nos editores (25/10)
 
   // 24/10 (Davi: "no modo docs não consigo ver as guias"): ao focar o editor, o navegador rolava as caixas
   // de fora (que têm overflow-hidden, mas aceitam rolagem por código) e a barra de guias subia para fora da
