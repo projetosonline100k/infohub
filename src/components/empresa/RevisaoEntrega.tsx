@@ -15,6 +15,7 @@ import { aprovarEPassarParaRoy, pareceEsbocoDeQuiz } from "@/lib/quiz/passarPara
 import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
+import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import type { EstruturaQuiz, StatusQuiz } from "@/lib/quiz/quiz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -204,18 +205,10 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 )}
                 {quiz?.estrutura && !verEsboco ? (
                   noCelular ? (
-                    // Moldura de celular (375 px, como um iPhone): o quiz em tela cheia, igual ao link público.
-                    // Cabe na altura do painel (antes passava do fundo e cortava o fim do quiz); rola por dentro, como no celular.
-                    <div className="mx-auto flex min-h-[420px] w-[395px] max-w-full flex-1 flex-col rounded-[2.6rem] bg-neutral-900 p-[10px] shadow-xl md:max-h-[820px]">
-                      <div className={cn("relative min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin] overflow-x-hidden overscroll-contain rounded-[2rem]",
-                        quiz.estrutura.tema === "escuro" ? "quiz-escuro bg-neutral-950 text-neutral-100" : "quiz-claro bg-white text-neutral-900")}>
-                        <div className="sticky top-0 z-10 mx-auto h-5 w-24 rounded-b-2xl bg-neutral-900" />
-                        <div className="flex min-h-[calc(100%-1.25rem)] flex-col px-5 pb-6 pt-3">
-                          <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia
-                            editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
-                        </div>
-                      </div>
-                    </div>
+                    <MolduraCelular escuro={quiz.estrutura.tema === "escuro"}>
+                      <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia
+                        editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                    </MolduraCelular>
                   ) : (
                     <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste
                       editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
