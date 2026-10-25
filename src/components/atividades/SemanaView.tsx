@@ -227,74 +227,112 @@ export function SemanaView() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 lg:grid-cols-[230px_minmax(0,1fr)_270px]">
-        {/* ── Esquerda: a semana ── */}
-        <Card className="space-y-4 p-4">
-          <div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold">{ehEstaSemana ? "Esta semana" : `Semana de ${format(semana, "dd/MM")}`}</h2>
-              <div className="flex">
-                <Button variant="ghost" size="icon" className="h-6 w-6" title="Semana anterior" onClick={() => irParaDia(addDays(semana, -7))}><ChevronLeft className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" title="Próxima semana" onClick={() => irParaDia(addDays(semana, 7))}><ChevronRight className="h-4 w-4" /></Button>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground">{projeto === "todos" ? "Todas as tarefas de todos os projetos." : projeto === "pessoal" ? "Tarefas sem projeto." : projetoId ? `Tarefas de ${nomeProjeto(projetoId)}.` : "Tarefas do seu projeto."}</p>
-          </div>
-          <div className="space-y-0.5">
-            {diasDaSemana.map((d, i) => {
-              const ch = chaveDia(d);
-              const ts = porDia.get(ch) ?? [];
-              const feitas = ts.filter((t) => t.sit === "concluida").length;
-              const atr = ts.filter((t) => t.sit === "atrasada").length;
-              const sel = foco.tipo === "dia" && foco.chave === ch;
-              return (
-                <button key={ch} type="button" onClick={() => irParaDia(d)}
-                  className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors", sel ? "bg-primary/10 font-semibold" : "hover:bg-muted")}>
-                  <span className={cn("w-24 shrink-0 truncate", ch === chaveDia(hoje) && "text-primary")}>{NOMES_DIAS[i]}</span>
-                  <span className="w-5 shrink-0 text-right font-semibold tabular-nums" title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} no dia`}>{ts.length}</span>
-                  {/* Progresso do dia: concluídas sobre o total; o número à direita são as atrasadas (some quando 0). */}
-                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" title={`${feitas} de ${ts.length} concluída${feitas === 1 ? "" : "s"}`}>
-                    <span className="block h-full rounded-full bg-emerald-500" style={{ width: ts.length ? `${(feitas / ts.length) * 100}%` : "0%" }} />
-                  </span>
-                  <span className="w-6 shrink-0 text-right text-xs font-semibold tabular-nums text-red-500" title={atr ? `${atr} atrasada${atr > 1 ? "s" : ""}` : undefined}>{atr || ""}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="space-y-1 rounded-lg border p-2">
-            {[
-              { id: "atrasadas" as const, nome: "Atrasadas", n: atrasadas.length, icone: AlertCircle, cor: "text-red-500" },
-              { id: "semdata" as const, nome: "Sem data", n: semData.length, icone: CalendarX2, cor: "text-muted-foreground" },
-            ].map((x) => (
-              <button key={x.id} type="button" onClick={() => { setFoco({ tipo: x.id }); setFiltroSit("todas"); }}
-                className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-muted", foco.tipo === x.id && "bg-primary/10 font-semibold")}>
-                <x.icone className={cn("h-4 w-4", x.cor)} /><span className="flex-1 text-left">{x.nome}</span><span className="font-semibold tabular-nums">{x.n}</span>
-              </button>
-            ))}
-            <div className="flex items-center gap-2 px-2 py-1.5 text-[13px]">
-              <CalendarClock className="h-4 w-4 text-primary" /><span className="flex-1">{ehEstaSemana ? "Esta semana" : "Na semana"}</span><span className="font-semibold tabular-nums">{daSemana.length}</span>
-            </div>
-          </div>
-          {projeto === "todos" && (
+      <div className="grid items-start gap-4 lg:grid-cols-[250px_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-4">
+          {/* ── Esquerda: a semana ── */}
+          <Card className="space-y-4 p-4">
             <div>
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Por projeto (na semana)</p>
-              {[...projetos.map((p) => p.id), null].map((id) => {
-                const n = daSemana.filter((t) => t.cliente_id === id).length;
-                if (!n && id === null) return null;
-                const max = Math.max(1, ...projetos.map((p) => daSemana.filter((t) => t.cliente_id === p.id).length));
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold">{ehEstaSemana ? "Esta semana" : `Semana de ${format(semana, "dd/MM")}`}</h2>
+                <div className="flex">
+                  <Button variant="ghost" size="icon" className="h-6 w-6" title="Semana anterior" onClick={() => irParaDia(addDays(semana, -7))}><ChevronLeft className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" title="Próxima semana" onClick={() => irParaDia(addDays(semana, 7))}><ChevronRight className="h-4 w-4" /></Button>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">{projeto === "todos" ? "Todas as tarefas de todos os projetos." : projeto === "pessoal" ? "Tarefas sem projeto." : projetoId ? `Tarefas de ${nomeProjeto(projetoId)}.` : "Tarefas do seu projeto."}</p>
+            </div>
+            <div className="space-y-0.5">
+              {diasDaSemana.map((d, i) => {
+                const ch = chaveDia(d);
+                const ts = porDia.get(ch) ?? [];
+                const feitas = ts.filter((t) => t.sit === "concluida").length;
+                const atr = ts.filter((t) => t.sit === "atrasada").length;
+                const sel = foco.tipo === "dia" && foco.chave === ch;
                 return (
-                  <button key={id ?? "pessoal"} type="button" onClick={() => setProjeto(id ?? "pessoal")} title="Ver só este projeto"
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-[13px] hover:bg-muted">
-                    <span className={cn("h-3 w-3 shrink-0 rounded-sm", corProjeto(id))} />
-                    <span className="min-w-0 flex-1 truncate text-left">{nomeProjeto(id)}</span>
-                    <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-primary/70" style={{ width: `${(n / max) * 100}%` }} /></span>
-                    <span className="w-5 text-right tabular-nums text-muted-foreground">{n}</span>
+                  <button key={ch} type="button" onClick={() => irParaDia(d)}
+                    className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors", sel ? "bg-primary/10 font-semibold" : "hover:bg-muted")}>
+                    <span className={cn("w-24 shrink-0 truncate", ch === chaveDia(hoje) && "text-primary")}>{NOMES_DIAS[i]}</span>
+                    <span className="w-5 shrink-0 text-right font-semibold tabular-nums" title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} no dia`}>{ts.length}</span>
+                    {/* Progresso do dia: concluídas sobre o total; o número à direita são as atrasadas (some quando 0). */}
+                    <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted" title={`${feitas} de ${ts.length} concluída${feitas === 1 ? "" : "s"}`}>
+                      <span className="block h-full rounded-full bg-emerald-500" style={{ width: ts.length ? `${(feitas / ts.length) * 100}%` : "0%" }} />
+                    </span>
+                    <span className="w-6 shrink-0 text-right text-xs font-semibold tabular-nums text-red-500" title={atr ? `${atr} atrasada${atr > 1 ? "s" : ""}` : undefined}>{atr || ""}</span>
                   </button>
                 );
               })}
             </div>
-          )}
-        </Card>
+            <div className="space-y-1 rounded-lg border p-2">
+              {[
+                { id: "atrasadas" as const, nome: "Atrasadas", n: atrasadas.length, icone: AlertCircle, cor: "text-red-500" },
+                { id: "semdata" as const, nome: "Sem data", n: semData.length, icone: CalendarX2, cor: "text-muted-foreground" },
+              ].map((x) => (
+                <button key={x.id} type="button" onClick={() => { setFoco({ tipo: x.id }); setFiltroSit("todas"); }}
+                  className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[13px] hover:bg-muted", foco.tipo === x.id && "bg-primary/10 font-semibold")}>
+                  <x.icone className={cn("h-4 w-4", x.cor)} /><span className="flex-1 text-left">{x.nome}</span><span className="font-semibold tabular-nums">{x.n}</span>
+                </button>
+              ))}
+              <div className="flex items-center gap-2 px-2 py-1.5 text-[13px]">
+                <CalendarClock className="h-4 w-4 text-primary" /><span className="flex-1">{ehEstaSemana ? "Esta semana" : "Na semana"}</span><span className="font-semibold tabular-nums">{daSemana.length}</span>
+              </div>
+            </div>
+            {projeto === "todos" && (
+              <div>
+                <p className="mb-1 text-xs font-medium text-muted-foreground">Por projeto (na semana)</p>
+                {[...projetos.map((p) => p.id), null].map((id) => {
+                  const n = daSemana.filter((t) => t.cliente_id === id).length;
+                  if (!n && id === null) return null;
+                  const max = Math.max(1, ...projetos.map((p) => daSemana.filter((t) => t.cliente_id === p.id).length));
+                  return (
+                    <button key={id ?? "pessoal"} type="button" onClick={() => setProjeto(id ?? "pessoal")} title="Ver só este projeto"
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-[13px] hover:bg-muted">
+                      <span className={cn("h-3 w-3 shrink-0 rounded-sm", corProjeto(id))} />
+                      <span className="min-w-0 flex-1 truncate text-left">{nomeProjeto(id)}</span>
+                      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-primary/70" style={{ width: `${(n / max) * 100}%` }} /></span>
+                      <span className="w-5 text-right tabular-nums text-muted-foreground">{n}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+          {/* Calendário embaixo da semana (25/10, Davi: "no lado esquerdo, abaixo de Esta semana, economiza espaço"). */}
+          <Card className="p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="font-semibold capitalize">{format(mes, "MMMM yyyy", { locale: ptBR })}</h3>
+              <div className="flex">
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, -1))}><ChevronLeft className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, 1))}><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+            </div>
+            <div className="grid grid-cols-7 text-center text-[11px] text-muted-foreground">
+              {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => <span key={i} className="py-1">{d}</span>)}
+            </div>
+            <div className="grid grid-cols-7 gap-y-0.5 text-center">
+              {Array.from({ length: 42 }, (_, i) => addDays(inicioDaSemana(mes), i)).map((d) => {
+                const ch = chaveDia(d);
+                const ts = porDia.get(ch) ?? [];
+                const sel = foco.tipo === "dia" && foco.chave === ch;
+                const ehHoje = ch === chaveDia(hoje);
+                const temAtrasada = ts.some((t) => t.sit === "atrasada");
+                return (
+                  <button key={ch} type="button" onClick={() => irParaDia(d)} onDoubleClick={() => abrirNova(d)}
+                    title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} · clique duas vezes para criar uma tarefa neste dia`}
+                    className={cn("relative mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[12px] tabular-nums transition-colors",
+                      !isSameMonth(d, mes) && "text-muted-foreground/40",
+                      sel ? "bg-primary text-primary-foreground" : ehHoje ? "font-bold text-primary ring-1 ring-primary" : "hover:bg-muted")}>
+                    {d.getDate()}
+                    {ts.length > 0 && !sel && <span className={cn("absolute bottom-0.5 h-1 w-1 rounded-full", temAtrasada ? "bg-red-500" : "bg-primary/70")} />}
+                  </button>
+                );
+              })}
+            </div>
+            <Button variant="outline" size="sm" className="mt-3 w-full gap-1" onClick={() => abrirNova()}>
+              <Plus className="h-4 w-4" />Tarefa em {format(dataLocal(diaNovo), "dd/MM")}
+            </Button>
+            <p className="mt-2 text-center text-[11px] text-muted-foreground">Clique no dia para ver · dois cliques para criar</p>
+          </Card>
+        </div>
 
         {/* ── Meio: o dia ── */}
         <Card className="min-w-0 p-4">
@@ -429,42 +467,6 @@ export function SemanaView() {
           </div>
         </Card>
 
-        {/* ── Direita: calendário ── */}
-        <Card className="h-fit p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-semibold capitalize">{format(mes, "MMMM yyyy", { locale: ptBR })}</h3>
-            <div className="flex">
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, -1))}><ChevronLeft className="h-4 w-4" /></Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, 1))}><ChevronRight className="h-4 w-4" /></Button>
-            </div>
-          </div>
-          <div className="grid grid-cols-7 text-center text-[11px] text-muted-foreground">
-            {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => <span key={i} className="py-1">{d}</span>)}
-          </div>
-          <div className="grid grid-cols-7 gap-y-0.5 text-center">
-            {Array.from({ length: 42 }, (_, i) => addDays(inicioDaSemana(mes), i)).map((d) => {
-              const ch = chaveDia(d);
-              const ts = porDia.get(ch) ?? [];
-              const sel = foco.tipo === "dia" && foco.chave === ch;
-              const ehHoje = ch === chaveDia(hoje);
-              const temAtrasada = ts.some((t) => t.sit === "atrasada");
-              return (
-                <button key={ch} type="button" onClick={() => irParaDia(d)} onDoubleClick={() => abrirNova(d)}
-                  title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} · clique duas vezes para criar uma tarefa neste dia`}
-                  className={cn("relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-[13px] tabular-nums transition-colors",
-                    !isSameMonth(d, mes) && "text-muted-foreground/40",
-                    sel ? "bg-primary text-primary-foreground" : ehHoje ? "font-bold text-primary ring-1 ring-primary" : "hover:bg-muted")}>
-                  {d.getDate()}
-                  {ts.length > 0 && !sel && <span className={cn("absolute bottom-0.5 h-1 w-1 rounded-full", temAtrasada ? "bg-red-500" : "bg-primary/70")} />}
-                </button>
-              );
-            })}
-          </div>
-          <Button variant="outline" size="sm" className="mt-3 w-full gap-1" onClick={() => abrirNova()}>
-            <Plus className="h-4 w-4" />Tarefa em {format(dataLocal(diaNovo), "dd/MM")}
-          </Button>
-          <p className="mt-2 text-center text-[11px] text-muted-foreground">Clique no dia para ver · dois cliques para criar</p>
-        </Card>
       </div>
 
       {/* ── Embaixo: o Kanban do projeto ── */}
