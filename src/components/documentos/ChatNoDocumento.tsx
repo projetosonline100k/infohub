@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRascunho } from "@/hooks/useRascunho";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import type { Slice } from "@tiptap/pm/model";
@@ -240,7 +241,7 @@ interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevend
 /** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
 export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; clienteId: string | null; chave?: string | null }) {
   const [aberto, setAberto] = useState(false);
-  const [texto, setTexto] = useState("");
+  const [texto, setTexto] = useRascunho(`docchat:${chave ?? "sem"}`);
   // 24/10 (Davi: "quero que fiquem salvos, a ideia é virar um super cérebro"): as conversas ficam no banco
   // (conversas_documento, só o dono vê), agrupadas por conversa; o + começa outra sem apagar a anterior.
   const chaveConversa = `docchat:conversa:${chave ?? "sem"}`;   // onde a 1ª versão guardava (neste Mac)

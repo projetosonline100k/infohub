@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRascunho } from "@/hooks/useRascunho";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Loader2, MessageCircle, Send, UserPlus } from "lucide-react";
@@ -44,7 +45,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const [colegas, setColegas] = useState<Colega[]>([]);
   const [participantes, setParticipantes] = useState<string[]>([]);
   const [chamando, setChamando] = useState(false);
-  const [texto, setTexto] = useState("");
+  const [texto, setTexto] = useRascunho(`entrega:${sobre.id}:${membroId}`);
   const fotos = useImagensChat();
   const [enviando, setEnviando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
@@ -124,7 +125,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   };
 
   // Texto que o Davi já tinha escrito na caixa de baixo vem pro chat.
-  useEffect(() => { if (textoInicial) setTexto(textoInicial); }, [textoInicial]);
+  useEffect(() => { if (textoInicial) setTexto(textoInicial); }, [textoInicial, setTexto]);
 
   const esperando = esperandoResposta(mensagens);
   useEffect(() => { onEsperando?.(esperando); }, [esperando, onEsperando]);
