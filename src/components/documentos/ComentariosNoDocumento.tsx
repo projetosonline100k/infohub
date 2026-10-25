@@ -175,13 +175,26 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
   useLayoutEffect(() => {
     if (!mesa) return;
     const folha = editor.view.dom.closest<HTMLElement>(".superficie-folha");
+    const abertos = new Set(comentarios.filter((c) => !c.parent_id && (!c.resolvido || verResolvidos)).map((c) => c.id));
+    const temCartao = !!novo || idsComentariosNoTexto(editor).some((id) => abertos.has(id)) || comentarios.some((c) => c.resolvido && !c.parent_id);
+    // Coluna dos comentários (25/10, Davi: "o comentário fica em cima do texto"): como no Google Docs, com
+    // comentário a folha abre espaço à direita (anda para a esquerda e, se precisar, encolhe). Sem comentário,
+    // ela volta ao centro. A margem é dividida pelo zoom da folha (o zoom aumentaria a margem também).
+    if (folha) {
+      const zoomFolha = folha.offsetWidth ? folha.getBoundingClientRect().width / folha.offsetWidth : 1;
+      const precisa = temCartao ? Math.round((LARGURA + 40) / (zoomFolha || 1)) : 0;
+      const atual = folha.style.marginRight;
+      folha.style.marginRight = "";
+      const livre = mesa.getBoundingClientRect().right - folha.getBoundingClientRect().right;
+      folha.style.marginRight = atual;
+      const novoMargin = temCartao && livre < LARGURA + 40 ? `${precisa}px` : "";
+      if (folha.style.marginRight !== novoMargin) folha.style.marginRight = novoMargin;
+    }
     const rm = mesa.getBoundingClientRect();
     const rf = (folha ?? editor.view.dom).getBoundingClientRect();
-    const sobra = rm.right - rf.right;
-    setEsquerda(sobra >= LARGURA + 24 ? rf.right - rm.left + mesa.scrollLeft + 16 : rm.width - LARGURA - 16 + mesa.scrollLeft);
+    setEsquerda(rf.right - rm.left + mesa.scrollLeft + 16);
     const topoDe = (el: Element | null) => (el ? el.getBoundingClientRect().top - rm.top + mesa.scrollTop : null);
     const lista: { id: string; top: number }[] = [];
-    const abertos = new Set(comentarios.filter((c) => !c.parent_id && (!c.resolvido || verResolvidos)).map((c) => c.id));
     for (const id of idsComentariosNoTexto(editor)) {
       if (!abertos.has(id)) continue;
       const top = topoDe(editor.view.dom.querySelector(`[data-comentario="${id}"]`));
@@ -193,6 +206,12 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     lista.sort((a, b) => a.top - b.top);
     setPosicoes(lista);
   }, [mesa, editor, comentarios, novo, versao, verResolvidos]);
+  useEffect(() => () => {
+    try {
+      const folha = editor.view.dom.closest<HTMLElement>(".superficie-folha");
+      if (folha) folha.style.marginRight = "";
+    } catch { /* editor já desmontado */ }
+  }, [editor]);
   // Um cartão não fica por cima do outro: empurra para baixo o que encostar (e o aberto fica na altura certa).
   useLayoutEffect(() => {
     const el = camada.current;
