@@ -65,7 +65,7 @@ export default function QuizPublico() {
 
   return (
     <div ref={rolagem}
-      className={escuro ? "fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
+      className={escuro ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "quiz-claro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
       style={{ touchAction: "pan-y" }}>
       <div className="flex min-h-full flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-[max(env(safe-area-inset-top),1.25rem)] sm:py-12">
         {carregando ? (

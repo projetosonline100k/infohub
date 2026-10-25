@@ -205,8 +205,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
   return (
     <QuizCtx.Provider value={ctx}>
-      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5",
-        telaCheia ? "flex-1" : escuro && "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7")}>
+      {/* O quiz usa sempre a própria paleta (quiz-claro / quiz-escuro em index.css), não o tema do Infopro
+          (25/10, Davi: "o fundo do quiz está da mesma cor do Infopro; preciso que mostre a cor original"). */}
+      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro",
+        telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}>
         {teste && !editar && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra imagem que ainda falta.</p>}
         {editar && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
