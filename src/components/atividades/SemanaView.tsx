@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, addMonths, format, isSameMonth, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertCircle, CalendarClock, CalendarX2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot,
-  Eye, Loader2, Maximize2, MoreHorizontal, Plus, Trash2, Users,
+  Eye, GripVertical, Loader2, Maximize2, MoreHorizontal, Plus, Trash2, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,7 +37,7 @@ import { SeletorProjeto, SeletorResponsavel, type MudancaAtividade } from "./Edi
 interface Tarefa {
   id: string; titulo: string; cliente_id: string | null; status: string; concluida: boolean; data_vencimento: string | null;
   concluida_em: string | null; timer_iniciado_em: string | null; progresso: number | null; situacao: string | null;
-  responsavel_nome: string | null; prioridade: string; user_id: string | null;
+  responsavel_nome: string | null; prioridade: string; user_id: string | null; ordem: number | null;
 }
 interface Coluna { cliente_id: string | null; status_key: string; nome: string; eh_conclusao: boolean; ordem: number }
 interface Projeto { id: string; nome_especialista: string }
@@ -87,7 +87,7 @@ export function SemanaView() {
   const carregar = useCallback(async () => {
     const [a, c, p] = await Promise.all([
       supabase.from("atividades")
-        .select("id, titulo, cliente_id, status, concluida, data_vencimento, concluida_em, timer_iniciado_em, progresso, situacao, responsavel_nome, prioridade, user_id")
+        .select("id, titulo, cliente_id, status, concluida, data_vencimento, concluida_em, timer_iniciado_em, progresso, situacao, responsavel_nome, prioridade, user_id, ordem")
         .is("deleted_at", null).order("data_vencimento", { ascending: true, nullsFirst: false }).limit(3000),
       supabase.from("colunas_atividade").select("cliente_id, status_key, nome, eh_conclusao, ordem").order("ordem"),
       supabase.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista"),
@@ -161,6 +161,50 @@ export function SemanaView() {
     if (!isSameMonth(d, mes)) setMes(startOfMonth(d));
     setFiltroSit("todas");
   };
+
+  // ── mudar a ordem arrastando (25/10, Davi: "quero conseguir mover a ordem das atividades") ──
+  // Reaproveita os valores de "ordem" das próprias tarefas do grupo, redistribuídos na nova ordem: o resto do
+  // Kanban não muda de lugar em relação a elas.
+  const [arrastoT, setArrastoT] = useState<{ id: string; grupo: string; alvo: string | null; depois: boolean } | null>(null);
+  const inicioT = useRef<{ x: number; y: number; id: string; grupo: string; ids: string[] } | null>(null);
+  const arrastoTRef = useRef(arrastoT);
+  arrastoTRef.current = arrastoT;
+  const tarefasRef = useRef(tarefas);
+  tarefasRef.current = tarefas;
+  useEffect(() => {
+    const mover = (e: PointerEvent) => {
+      const ini = inicioT.current;
+      if (!ini) return;
+      if (!arrastoTRef.current && Math.abs(e.clientY - ini.y) < 5 && Math.abs(e.clientX - ini.x) < 5) return;
+      const el = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest<HTMLElement>(`[data-tarefa-grupo="${ini.grupo}"]`);
+      const alvo = el?.dataset.tarefaId ?? null;
+      const r = el?.getBoundingClientRect();
+      const depois = r ? e.clientY > r.top + r.height / 2 : false;
+      setArrastoT((a) => (a && a.alvo === alvo && a.depois === depois ? a : { id: ini.id, grupo: ini.grupo, alvo, depois }));
+    };
+    const soltar = () => {
+      const ini = inicioT.current, a = arrastoTRef.current;
+      inicioT.current = null;
+      document.body.style.userSelect = "";
+      setArrastoT(null);
+      if (!ini || !a?.alvo || a.alvo === a.id) return;
+      const nova = ini.ids.filter((x) => x !== a.id);
+      const i = nova.indexOf(a.alvo);
+      if (i < 0) return;
+      nova.splice(a.depois ? i + 1 : i, 0, a.id);
+      const atuais = tarefasRef.current;
+      const valores = ini.ids.map((id) => atuais.find((t) => t.id === id)?.ordem ?? 0).sort((x, y) => x - y);
+      const distintos = new Set(valores).size === valores.length;
+      const novaOrdem = new Map(nova.map((id, k) => [id, distintos ? valores[k] : valores[0] + k]));
+      setTarefas((ts) => ts.map((t) => (novaOrdem.has(t.id) ? { ...t, ordem: novaOrdem.get(t.id)! } : t)));
+      void Promise.all([...novaOrdem].filter(([id, ordem]) => atuais.find((t) => t.id === id)?.ordem !== ordem)
+        .map(([id, ordem]) => supabase.from("atividades").update({ ordem }).eq("id", id)))
+        .then((rs) => { if (rs.some((r) => r.error)) { toast.error("Não consegui salvar a nova ordem"); void carregar(); } });
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+    return () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); };
+  }, [carregar]);
 
   // ── ações ──
   const concluir = async (t: Tarefa, concluida: boolean) => {
@@ -400,7 +444,7 @@ export function SemanaView() {
           <div className="mt-3 space-y-3">
             {doFoco.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">Nada aqui. {foco.tipo === "dia" && "Use “Nova tarefa” ou clique duas vezes no dia do calendário."}</p>}
             {SITUACOES.filter((s) => filtroSit === "todas" || filtroSit === s.id).map((s) => {
-              const ts = visiveis.filter((t) => t.sit === s.id);
+              const ts = visiveis.filter((t) => t.sit === s.id).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
               if (!ts.length) return null;
               const fechada = fechadas.has(s.id) && filtroSit !== s.id;
               return (
@@ -417,7 +461,18 @@ export function SemanaView() {
                         const atraso = diasDeAtraso(t, hoje);
                         const nomes = parseResponsaveis(t.responsavel_nome);
                         return (
-                          <li key={t.id} className="group flex items-center gap-2.5 px-2 py-1.5 text-[13px] hover:bg-muted/40">
+                          <li key={t.id} data-tarefa-id={t.id} data-tarefa-grupo={s.id}
+                            className={cn("group relative flex items-center gap-2.5 px-2 py-1.5 text-[13px] hover:bg-muted/40",
+                              arrastoT?.id === t.id && "opacity-40",
+                              arrastoT?.grupo === s.id && arrastoT.alvo === t.id && arrastoT.id !== t.id && (arrastoT.depois
+                                ? "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded after:bg-primary after:content-['']"
+                                : "before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:rounded before:bg-primary before:content-['']"))}>
+                            {/* Segure e arraste para mudar a ordem (25/10, Davi). */}
+                            <span title="Segure e arraste para mudar a ordem" aria-hidden
+                              onPointerDown={(e) => { e.preventDefault(); document.body.style.userSelect = "none"; inicioT.current = { x: e.clientX, y: e.clientY, id: t.id, grupo: s.id, ids: ts.map((x) => x.id) }; }}
+                              className="-ml-1 -mr-1.5 cursor-grab text-muted-foreground/40 opacity-0 transition-opacity hover:text-muted-foreground group-hover:opacity-100 active:cursor-grabbing">
+                              <GripVertical className="h-3.5 w-3.5" />
+                            </span>
                             <Checkbox checked={t.concluida} onCheckedChange={(v) => void concluir(t, v === true)} aria-label="Concluir" />
                             <span className={cn("h-2 w-2 shrink-0 rounded-full", PONTO[t.sit])} />
                             <button type="button" onClick={() => void abrir(t.id)} className={cn("min-w-0 flex-1 truncate text-left hover:underline", t.concluida && "text-muted-foreground line-through")}>{t.titulo}</button>
