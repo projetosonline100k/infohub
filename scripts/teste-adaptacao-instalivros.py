@@ -3,8 +3,9 @@ que são apagados no fim (só os ids criados aqui; nada real é mexido):
 
  1. card de teste no Instalivros sai de "Criando roteiro" para Gravação → o banco cria a tarefa do Junior;
     no mesmo instante ela passa para "andamento" para o ouvinte não pegar (quem adapta aqui é o teste);
- 2. adaptacao.py contexto/entregar → card "Aguardando aprovação" na Vertical do Davi, etiqueta Instalivros;
- 3. pedir ajuste (igual ao botão do app) → nova versão no mesmo card, a anterior guardada na tarefa;
+ 2. adaptacao.py contexto/entregar → card "Aguardando aprovação" na Vertical do Davi, etiqueta Instalivros,
+    documento com "Roteiro do Instalivros:" (original sem alteração) e "Roteiro adaptado para você:";
+ 3. pedir ajuste (igual ao botão do app) → nova versão no mesmo card, só a parte adaptada muda, a anterior guardada na tarefa;
  4. voltar o original e marcar pronto de novo → não duplica;
  5. aprovar → Gravação.
 
@@ -63,6 +64,7 @@ try:
     c.rollback()
     criados['videos'].insert(0, card[0])
     assert card[1] == 'aprovacao' and card[2] == 'instalivros', card
+    assert card[3].startswith('<h2>Roteiro do Instalivros:</h2>' + ORIGINAL + '<hr><h2>Roteiro adaptado para você:</h2><p>[TESTE]'), card[3][:400]
     assert um(q, 'SELECT concluida FROM atividades WHERE id = %s', (t1[0],))[0], 'tarefa não concluída'
     c.rollback()
     print('2. versão adaptada na Vertical do Davi, aguardando aprovação, etiqueta Instalivros:', card[0])
@@ -84,6 +86,10 @@ try:
     n, rot, st = um(q, """SELECT count(*), max(roteiro), max(status) FROM videos_vertical WHERE cliente_id = %s AND ideia_origem_id = %s""", (DAVI, vid))
     c.rollback()
     assert n == 1 and 'Ninguém me contou' in rot and st == 'aprovacao', (n, st)
+    antes, depois = rot.split('<h2>Roteiro adaptado para você:</h2>')
+    assert antes == card[3].split('<h2>Roteiro adaptado para você:</h2>')[0], 'a parte do Instalivros mudou'
+    assert 'Eu demorei para entender' not in depois and 'Eu demorei' not in ctx.split('VERSÃO ANTERIOR')[0], 'ajuste não trocou'
+    assert 'Roteiro do Instalivros' not in ctx.split('VERSÃO ANTERIOR')[1], 'versão anterior deveria vir só com a parte adaptada'
     print('3. ajuste → nova versão no mesmo card (a anterior guardada na tarefa do ajuste)')
 
     q.execute("UPDATE videos_vertical SET status = 'roteiro' WHERE id = %s", (vid,))

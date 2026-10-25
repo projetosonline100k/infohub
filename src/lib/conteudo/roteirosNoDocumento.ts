@@ -4,6 +4,11 @@
 // abre um roteiro; o card mostra quantos tem e o painel lista para pular direto.
 // Testes: tests/roteirosNoDocumento.test.mjs.
 
+// Adaptação do Instalivros (25/10/2026, Davi): o documento traz o original e a versão do Davi,
+// cada um com seu título (iguais em scripts/empresa/adaptacao.py). Só os da versão do Davi contam.
+export const TITULO_ORIGINAL_INSTALIVROS = "Roteiro do Instalivros:";
+export const TITULO_ADAPTADO = "Roteiro adaptado para você:";
+
 export interface RoteiroMarcado { numero: number; titulo: string; inicio: number }
 
 // Começo da linha: marcação opcional (#, *, -, >), depois "headline N" / "roteiro N" / "#N",
@@ -13,7 +18,9 @@ const MARCA = /^[ \t]*(?:[*>-][ \t]*)*(?:(?:headlines?|roteiros?)[ \t]*#?[ \t]*(
 export function roteirosNoDocumento(texto: string | null | undefined): RoteiroMarcado[] {
   const t = (texto ?? "").replace(/<\/(p|h\d|li|div)>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "");
   const achados: RoteiroMarcado[] = [];
+  const corte = t.indexOf(TITULO_ADAPTADO);
   for (const m of t.matchAll(MARCA)) {
+    if ((m.index ?? 0) < corte) continue;
     const numero = Number(m[1] ?? m[2]);
     let titulo = (m[3] ?? "").replace(/^[\s*_:\-–—.)]+|[*_\s]+$/g, "");
     if (!titulo) {
@@ -37,4 +44,11 @@ export function textoDoRoteiro(roteiro: string | null | undefined): string {
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&")
     .replace(/\n\s*\n/g, "\n").trim();
+}
+
+/** Só a versão do Davi de um documento de adaptação (os outros documentos: o texto todo). */
+export function textoAdaptado(roteiro: string | null | undefined): string {
+  const t = textoDoRoteiro(roteiro);
+  const i = t.indexOf(TITULO_ADAPTADO);
+  return i < 0 ? t : t.slice(i + TITULO_ADAPTADO.length).trim();
 }

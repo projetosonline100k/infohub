@@ -2,6 +2,7 @@
 // Instalivros fica pronto, o Junior escreve a versão do @eu.daviqueiroz (scripts/empresa/adaptacao.py)
 // e ela chega aqui "Aguardando aprovação". Aprovar → fila de gravação; Pedir ajuste → nova tarefa do
 // Junior com o pedido e a versão anterior guardada na descrição; Descartar → sai da Vertical (não apaga).
+// O documento do card tem "Roteiro do Instalivros:" (original) e "Roteiro adaptado para você:"; o ajuste só troca o segundo.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -10,7 +11,7 @@ import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { textoDoRoteiro } from "@/lib/conteudo/roteirosNoDocumento";
+import { textoAdaptado } from "@/lib/conteudo/roteirosNoDocumento";
 import { toast } from "sonner";
 import { Check, ExternalLink, FileText, History, Loader2, MessageSquare, X } from "lucide-react";
 
@@ -91,7 +92,7 @@ export function AdaptacoesInstalivros({ clienteId, cards, maiorOrdemGravacao, on
       id: t.id,
       em: t.created_at,
       pedido: t.descricao.split(AJUSTE)[1]?.split(ANTERIOR)[0]?.trim() ?? "",
-      texto: textoDoRoteiro(t.descricao.split(ANTERIOR)[1] ?? ""),
+      texto: textoAdaptado(t.descricao.split(ANTERIOR)[1] ?? ""),
     }))
     .reverse();
 
@@ -165,7 +166,7 @@ export function AdaptacoesInstalivros({ clienteId, cards, maiorOrdemGravacao, on
                 <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Junior escrevendo a nova versão…</span>
               )}
             </div>
-            <p className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{textoDoRoteiro(c.roteiro)}</p>
+            <p className="line-clamp-3 whitespace-pre-line text-xs text-muted-foreground">{textoAdaptado(c.roteiro)}</p>
             <div className="flex flex-wrap items-center gap-2">
               <Button size="sm" className="h-7 gap-1" disabled={ocupado} onClick={() => void aprovar(c)}><Check className="h-3.5 w-3.5" />Aprovar</Button>
               <Button size="sm" variant="outline" className="h-7 gap-1" disabled={ocupado}

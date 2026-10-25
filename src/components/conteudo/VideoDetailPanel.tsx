@@ -48,7 +48,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
-import { roteirosNoDocumento, rotuloRoteiros } from "@/lib/conteudo/roteirosNoDocumento";
+import { roteirosNoDocumento, rotuloRoteiros, TITULO_ADAPTADO } from "@/lib/conteudo/roteirosNoDocumento";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -408,7 +408,10 @@ export const VideoDetailPanel = ({
   // Pula para o roteiro N (o N-ésimo título "Headline…" do editor) e põe o cursor nele.
   const irParaRoteiro = (indice: number) => {
     if (!editor) return;
-    const alvo = Array.from(editor.view.dom.children).filter((el) => MARCA_HEADLINE.test(el.textContent || ""))[indice];
+    const alvos = Array.from(editor.view.dom.children).filter((el) => MARCA_HEADLINE.test(el.textContent || ""));
+    // Adaptação do Instalivros: os "Headline N" do original vêm antes e não contam.
+    const pular = (editedVideo.roteiro ?? "").includes(TITULO_ADAPTADO) ? Math.max(0, alvos.length - roteirosMarcados.length) : 0;
+    const alvo = alvos[pular + indice];
     if (!alvo) return;
     alvo.scrollIntoView({ behavior: "smooth", block: "start" });
     try { editor.chain().focus().setTextSelection(editor.view.posAtDOM(alvo, 0)).run(); } catch { /* só rola */ }

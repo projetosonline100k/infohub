@@ -44,3 +44,12 @@ test('roteiro em HTML (editor) vira texto, e conta as headlines do HTML', () => 
   assert.deepEqual(roteirosNoDocumento(html).map((r) => r.titulo), ['Livros', 'Outro']);
   assert.equal(textoDoRoteiro('texto puro\nlinha 2'), 'texto puro\nlinha 2');
 });
+
+test('adaptação do Instalivros: só contam os roteiros da versão do Davi, e a prévia mostra só ela', async () => {
+  const { textoAdaptado } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+  const doc = '<h2>Roteiro do Instalivros:</h2><p>Headline 1: Original um</p><p>Headline 2: Original dois</p><hr>'
+    + '<h2>Roteiro adaptado para você:</h2><p>Headline 1: Davi um</p><p>texto</p><p>Headline 2: Davi dois</p>';
+  assert.deepEqual(roteirosNoDocumento(doc).map((x) => x.titulo), ['Davi um', 'Davi dois']);
+  assert.equal(textoAdaptado(doc), 'Headline 1: Davi um\ntexto\nHeadline 2: Davi dois');
+  assert.equal(textoAdaptado('<p>sem partes</p>'), 'sem partes');
+});

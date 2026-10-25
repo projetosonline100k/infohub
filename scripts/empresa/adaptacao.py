@@ -13,8 +13,11 @@ ouvinte pega e o Junior usa:
 
 O entregar cria (ou atualiza) o card "Aguardando aprovação" na Vertical do Davi, com a etiqueta
 Instalivros e o link para o original (ideia_origem_id), e conclui a tarefa.
+O documento do card traz os dois (25/10, Davi): "Roteiro do Instalivros:" com o original copiado sem
+alteração e, abaixo, "Roteiro adaptado para você:" com a versão do Junior (só essa parte ele manda).
 Pedir ajuste (botão no card): o app cria outra tarefa ADAPTAR:<original>:<card> com o pedido e a
-versão anterior guardada na descrição; o entregar troca o roteiro do card e ele volta para aprovação.
+versão anterior guardada na descrição; o entregar troca só a parte adaptada (a do Instalivros fica
+como está) e o card volta para aprovação.
 """
 import html as _h
 import re
@@ -29,6 +32,10 @@ MARCA = 'ADAPTAR:'
 DAVI = 'e4b24f93-0eda-43fc-b50e-3ebe24f8905f'
 AJUSTE = '--- Ajuste pedido pelo Davi ---'
 ANTERIOR = '--- Versão anterior (guardada) ---'
+# Títulos das duas partes do documento (iguais em src/lib/conteudo/roteirosNoDocumento.ts).
+TITULO_ORIGINAL = 'Roteiro do Instalivros:'
+TITULO_ADAPTADO = 'Roteiro adaptado para você:'
+_CABECALHO_ADAPTADO = re.compile(r'<h[1-6][^>]*>(?:\s*<[^>]+>)*\s*' + re.escape(TITULO_ADAPTADO), re.I)
 
 REGRAS = """REGRAS DA ADAPTAÇÃO (do Davi, siga TODAS):
 1. Reescreva só a NARRATIVA e a APRESENTAÇÃO para a voz e o perfil do Davi (@eu.daviqueiroz: produtividade, foco,
@@ -54,6 +61,22 @@ def texto(roteiro):
     r = re.sub(r'<li[^>]*>', '• ', r, flags=re.I)
     r = _h.unescape(re.sub(r'<[^>]+>', '', r))
     return re.sub(r'\n\s*\n', '\n', r).strip()
+
+
+def so_adaptado(roteiro):
+    """Do documento com as duas partes, só o texto da versão do Davi (documentos antigos: tudo)."""
+    t = texto(roteiro)
+    return t.split(TITULO_ADAPTADO, 1)[1].strip() if TITULO_ADAPTADO in t else t
+
+
+def _documento_par(parte_instalivros, adaptado):
+    """Original (HTML do card do Instalivros, sem alteração) + linha + a versão do Davi."""
+    return f'{parte_instalivros}<hr><h2>{TITULO_ADAPTADO}</h2>{adaptado}'
+
+
+def _parte_instalivros(original):
+    o = original or ''
+    return f'<h2>{TITULO_ORIGINAL}</h2>' + (o if re.search(r'<[a-z][^>]*>', o, re.I) else _html(o))
 
 
 def _tarefa(aid):
@@ -101,11 +124,13 @@ def contexto(aid):
         print(f"\n⚠️ É um AJUSTE pedido pelo Davi na versão anterior. Faça o que ele pediu sem perder o que estava bom"
               f" (e sem quebrar as regras acima):\n{pedido}")
         if anterior:
-            print(f"\n--- VERSÃO ANTERIOR (a que ele leu) ---\n{texto(anterior)}\n--- FIM DA VERSÃO ANTERIOR ---")
+            print(f"\n--- VERSÃO ANTERIOR (a que ele leu) ---\n{so_adaptado(anterior)}\n--- FIM DA VERSÃO ANTERIOR ---")
     elif card:
         print(f"\n(Já existe a versão do Davi deste roteiro, card {card}: o entregar atualiza a mesma, não cria outra.)")
     print(f"\nComo entregar (cria/atualiza o card 'Aguardando aprovação' na Vertical do Davi e conclui a tarefa; NÃO use o execucao.py entregar):\n"
           f"  python3 scripts/empresa/adaptacao.py entregar {aid} \"<headline adaptada>\" <<'FIM'\n  <roteiro adaptado em texto, a headline na 1ª linha>\n  FIM\n"
+          f"Mande SÓ a versão adaptada: o entregar monta o documento com \"{TITULO_ORIGINAL}\" (o original, sem mexer)"
+          f" e \"{TITULO_ADAPTADO}\" (a sua versão).\n"
           f"Se não der para adaptar (ex.: original vazio), rode: python3 scripts/empresa/execucao.py erro {aid} \"<motivo>\"")
 
 
@@ -115,8 +140,15 @@ def entregar(aid, titulo, corpo):
     if not corpo or not titulo:
         raise SystemExit('mande a headline e o roteiro')
     t = _tarefa(aid)
-    roteiro = corpo if re.match(r'^\s*<[a-z]', corpo, re.I) else _html(corpo)
+    adaptado = corpo if re.match(r'^\s*<[a-z]', corpo, re.I) else _html(corpo)
     card = t['card'] or _card_do_original(t['original'])
+    atual = _q("SELECT roteiro FROM videos_vertical WHERE id = %s", (card,), um=True) if card else None
+    m = _CABECALHO_ADAPTADO.search((atual[0] if atual else None) or '')
+    if m:   # ajuste: a parte do Instalivros fica como está no documento
+        roteiro = _documento_par(atual[0][:m.start()].removesuffix('<hr>'), adaptado)
+    else:
+        o = _q("SELECT roteiro FROM videos_vertical WHERE id = %s", (t['original'],), um=True)
+        roteiro = _documento_par(_parte_instalivros(o[0] if o else ''), adaptado)
     if card:
         _q("UPDATE videos_vertical SET titulo = %s, roteiro = %s, status = 'aprovacao' WHERE id = %s", (titulo, roteiro, card), commit=True)
         acao = 'NOVA VERSÃO no card'
