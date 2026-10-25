@@ -208,22 +208,31 @@ export function MicrofoneNoCursor({ editor }: { editor: Editor }) {
     if (!editor.isFocused || !vazio) { setOnde(null); return; }
     try {
       const c = view.coordsAtPos(selection.from);
-      setOnde({ left: c.left + 10, top: c.top + (c.bottom - c.top) / 2 });
+      const novo = { left: Math.round(c.left + 10), top: Math.round(c.top + (c.bottom - c.top) / 2) };
+      setOnde((o) => (o && o.left === novo.left && o.top === novo.top ? o : novo));
     } catch { setOnde(null); }
   }, [editor]);
 
   useEffect(() => {
     const aoMudar = () => medir();
     const aoSair = () => window.setTimeout(medir, 120);
+    // Rolagem (25/10, Davi: "descendo nos docs trava"): cada evento de rolagem media a posição do cursor e forçava
+    // o navegador a recalcular o documento inteiro. Agora mede no máximo uma vez por quadro e só com o microfone na tela.
+    let quadro = 0;
+    const aoRolar = () => {
+      if (quadro || !editor.isFocused) return;
+      quadro = requestAnimationFrame(() => { quadro = 0; medir(); });
+    };
     editor.on("selectionUpdate", aoMudar);
     editor.on("update", aoMudar);
     editor.on("focus", aoMudar);
     editor.on("blur", aoSair);
-    window.addEventListener("scroll", aoMudar, true);
+    window.addEventListener("scroll", aoRolar, { capture: true, passive: true });
     window.addEventListener("resize", aoMudar);
     return () => {
+      cancelAnimationFrame(quadro);
       editor.off("selectionUpdate", aoMudar); editor.off("update", aoMudar); editor.off("focus", aoMudar); editor.off("blur", aoSair);
-      window.removeEventListener("scroll", aoMudar, true);
+      window.removeEventListener("scroll", aoRolar, { capture: true });
       window.removeEventListener("resize", aoMudar);
     };
   }, [editor, medir]);
