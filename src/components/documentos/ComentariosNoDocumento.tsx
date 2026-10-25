@@ -18,14 +18,17 @@ import { idsComentariosNoTexto, tirarMarcaComentario } from "@/lib/tiptapComenta
 const db = supabase as unknown as SupabaseClient;
 
 interface ComentarioDb {
-  id: string; documento_id: string; parent_id: string | null; autor_id: string; autor_nome: string | null;
+  id: string; documento_id: string | null; video_id?: string | null; parent_id: string | null; autor_id: string; autor_nome: string | null;
   trecho: string | null; texto: string; resolvido: boolean; created_at: string;
 }
 interface Novo { de: number; ate: number; trecho: string }
 
 const LARGURA = 260;
 
-export function ComentariosNoDocumento({ editor, documentoId, pedido }: { editor: Editor; documentoId: string; pedido: number }) {
+/** `documentoId` (Documentos) ou `videoId` (roteiro da Vertical, 25/10): de quem são os comentários. */
+export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }: { editor: Editor; documentoId?: string; videoId?: string; pedido: number }) {
+  const alvo = documentoId ? { documento_id: documentoId } : { video_id: videoId! };
+  const chaveAlvo = documentoId ?? videoId ?? "";
   const { user } = useAuth();
   const [comentarios, setComentarios] = useState<ComentarioDb[]>([]);
   const [novo, setNovo] = useState<Novo | null>(null);
@@ -39,9 +42,11 @@ export function ComentariosNoDocumento({ editor, documentoId, pedido }: { editor
   const meuNome = (user?.user_metadata?.nome as string | undefined) || (user?.user_metadata?.name as string | undefined) || user?.email?.split("@")[0] || "Você";
 
   const carregar = useCallback(async () => {
-    const { data } = await db.from("documento_comentarios").select("*").eq("documento_id", documentoId).order("created_at");
+    if (!chaveAlvo) return;
+    const { data } = await db.from("documento_comentarios").select("*").eq(documentoId ? "documento_id" : "video_id", chaveAlvo).order("created_at");
     setComentarios((data ?? []) as ComentarioDb[]);
-  }, [documentoId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveAlvo]);
   useEffect(() => { setNovo(null); setAtivo(null); void carregar(); }, [carregar]);
   useEffect(() => {
     const voltou = () => void carregar();
@@ -59,7 +64,7 @@ export function ComentariosNoDocumento({ editor, documentoId, pedido }: { editor
     achar();
     const t = window.setTimeout(achar, 300);
     return () => window.clearTimeout(t);
-  }, [editor, documentoId]);
+  }, [editor, chaveAlvo]);
 
   useEffect(() => {
     const mudou = () => setVersao((v) => v + 1);
@@ -117,7 +122,7 @@ export function ComentariosNoDocumento({ editor, documentoId, pedido }: { editor
     if (!novo || !texto.trim()) return;
     setSalvando(true);
     const { data, error } = await db.from("documento_comentarios")
-      .insert({ documento_id: documentoId, trecho: novo.trecho, texto: texto.trim(), autor_nome: meuNome }).select("*").single();
+      .insert({ ...alvo, trecho: novo.trecho, texto: texto.trim(), autor_nome: meuNome }).select("*").single();
     setSalvando(false);
     if (error || !data) { toast.error("Não consegui salvar o comentário"); return; }
     const c = data as ComentarioDb;
@@ -132,7 +137,7 @@ export function ComentariosNoDocumento({ editor, documentoId, pedido }: { editor
     if (!resposta.trim()) return;
     setSalvando(true);
     const { data, error } = await db.from("documento_comentarios")
-      .insert({ documento_id: documentoId, parent_id: raiz.id, texto: resposta.trim(), autor_nome: meuNome }).select("*").single();
+      .insert({ ...alvo, parent_id: raiz.id, texto: resposta.trim(), autor_nome: meuNome }).select("*").single();
     setSalvando(false);
     if (error || !data) { toast.error("Não consegui responder"); return; }
     setComentarios((l) => [...l, data as ComentarioDb]);

@@ -38,4 +38,24 @@ begin
     reset role;
   end if;
 end $$;
+
+-- Roteiro de vídeo: o dono do vídeo comenta; comentário precisa de exatamente um alvo.
+do $$
+declare v record;
+declare n int;
+begin
+  select id, user_id into v from public.videos_vertical where user_id is not null limit 1;
+  if v.id is null then return; end if;
+  perform set_config('request.jwt.claims', json_build_object('sub', v.user_id, 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  insert into public.documento_comentarios (video_id, trecho, texto) values (v.id, 'trecho', 'Comentário no roteiro');
+  select count(*) into n from public.documento_comentarios where video_id = v.id and texto = 'Comentário no roteiro';
+  if n <> 1 then raise exception 'dono do vídeo devia ver o comentário do roteiro'; end if;
+  begin
+    insert into public.documento_comentarios (texto) values ('sem alvo');
+    raise exception 'comentário sem documento nem vídeo devia falhar';
+  exception when check_violation or insufficient_privilege then null;   -- recusado pela regra ou pela checagem
+  end;
+  reset role;
+end $$;
 ROLLBACK;

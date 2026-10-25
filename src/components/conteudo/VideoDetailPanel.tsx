@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { useZoomDocumento } from "@/hooks/useZoomDocumento";
+import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
+import { ComentariosNoDocumento } from "@/components/documentos/ComentariosNoDocumento";
+import { Comentario } from "@/lib/tiptapComentario";
 import {
   ArrowLeft,
   ChevronDown,
@@ -159,6 +162,7 @@ export const VideoDetailPanel = ({
   const folhaRef = useRef<HTMLElement | null>(null);
   // ⌘ + rodinha (ou pinça) aumenta só a folha do roteiro, como no Google Docs (24/10).
   const { zoom, refArea: refMesa, aviso: avisoZoom } = useZoomDocumento<HTMLElement>();
+  const [pedidoComentario, setPedidoComentario] = useState(0);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const lastSavedSnapshotRef = useRef("");
   const currentVideoIdRef = useRef<string | null>(null);
@@ -186,6 +190,7 @@ export const VideoDetailPanel = ({
       Placeholder.configure({ placeholder: "Escreva o roteiro… Comece um roteiro com \"Headline 1\" (vira título) e use ⌘H para trazer um vídeo do banco de virais." }),
       LinkExt.configure({ openOnClick: true }),
       ...extensoesEstiloTexto,
+      Comentario,   // trecho comentado (25/10)
     ],
     content: "",
     onUpdate: ({ editor: e }) => setEditedVideo((prev) => (prev ? { ...prev, roteiro: e.getHTML() } : prev)),
@@ -836,6 +841,9 @@ export const VideoDetailPanel = ({
 <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor min-h-[50vh] flex-1 sm:min-h-[900px]" />
               {editor && <BancoViraisDoc editor={editor} clienteId={editedVideo.cliente_id} />}
               {editor && <MicrofoneNoCursor editor={editor} />}
+              {/* Selecionar texto: formatar e comentar, como nos Documentos (25/10). */}
+              {editor && <MenuSelecaoTexto editor={editor} onComentar={() => setPedidoComentario((n) => n + 1)} />}
+              {editor && <ComentariosNoDocumento editor={editor} videoId={editedVideo.id} pedido={pedidoComentario} />}
               {editor && <ChatNoDocumento editor={editor} clienteId={editedVideo.cliente_id} chave={`video:${editedVideo.id}`} />}
             </div>
           </div>
