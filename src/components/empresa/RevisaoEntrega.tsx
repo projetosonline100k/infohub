@@ -176,9 +176,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               </div>
             )}
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden">
-              <div className="min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0">
+              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && noCelular && "flex flex-col")}>
                 {quiz?.estrutura && (
-                  <div className="mb-4 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+                  <div className="mb-4 flex shrink-0 gap-1 rounded-lg bg-muted p-1 text-sm">
                     <button type="button" onClick={() => setVerEsboco(false)} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
                     <button type="button" onClick={() => setVerEsboco(true)} className={cn("flex-1 rounded-md px-3 py-1", verEsboco && "bg-background font-medium shadow-sm")}>Esboço aprovado</button>
                     {!verEsboco && (
@@ -205,8 +205,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 {quiz?.estrutura && !verEsboco ? (
                   noCelular ? (
                     // Moldura de celular (375 px, como um iPhone): o quiz em tela cheia, igual ao link público.
-                    <div className="mx-auto w-[395px] max-w-full rounded-[2.6rem] bg-neutral-900 p-[10px] shadow-xl">
-                      <div className={cn("relative h-[min(760px,70vh)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-[2rem]",
+                    // Cabe na altura do painel (antes passava do fundo e cortava o fim do quiz); rola por dentro, como no celular.
+                    <div className="mx-auto flex min-h-[420px] w-[395px] max-w-full flex-1 flex-col rounded-[2.6rem] bg-neutral-900 p-[10px] shadow-xl md:max-h-[820px]">
+                      <div className={cn("relative min-h-0 flex-1 overflow-y-auto [scrollbar-width:thin] overflow-x-hidden overscroll-contain rounded-[2rem]",
                         quiz.estrutura.tema === "escuro" ? "quiz-escuro bg-neutral-950 text-neutral-100" : "quiz-claro bg-white text-neutral-900")}>
                         <div className="sticky top-0 z-10 mx-auto h-5 w-24 rounded-b-2xl bg-neutral-900" />
                         <div className="flex min-h-[calc(100%-1.25rem)] flex-col px-5 pb-6 pt-3">
