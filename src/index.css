@@ -222,7 +222,7 @@ redesign (só o dark era o pedido).
     --sidebar-folder: 36 50% 56.3%;
     --border-subtle: 28 32% 17.3%;
     --document-border: rgba(150, 110, 55, 0.28);
-    --document-shadow: 0 1px 0 rgb(90 60 25 / 0.12), 0 10px 26px -14px rgb(90 60 25 / 0.35);
+    --document-shadow: 0 1px 0 rgb(90 60 25 / 0.12), 0 2px 6px -2px rgb(90 60 25 / 0.22);
     --text-title: 30 27% 10.2%;
     --text-muted: 33 22% 38.6%;
     --link: 32 60% 33.7%;
@@ -313,7 +313,7 @@ redesign (só o dark era o pedido).
     --tab-text: 36 11% 56.3%;
     --tab-hover: 33 28% 12.5%;
     --panel-foreground: 38 29% 85.1%;
-    --document-shadow: 0 1px 0 rgb(0 0 0 / 0.35), 0 10px 28px -16px rgb(0 0 0 / 0.7);
+    --document-shadow: 0 1px 0 rgb(0 0 0 / 0.35), 0 2px 6px -2px rgb(0 0 0 / 0.5);
     /* Textura: grão creme + fibras café; a camada única dos outros temas fica desligada aqui. */
     --paper-texture-opacity: 0;
     --papel-lateral: url("/texturas/preto-lateral.png");
@@ -415,6 +415,8 @@ html.tema-papel-vintage [data-barra-guias] .aba { --tab-bg: transparent; }
   background-image: var(--papel-folha);
   border: 1px solid var(--document-border);
   box-shadow: var(--document-shadow);
+  /* Rolagem (25/10): a folha é muito alta (ainda mais com zoom); sombra curta e pintura isolada pesam menos. */
+  contain: layout paint;
 }
 
 /* Papel Vintage — contraste (24/10, 3ª): texto secundário e apagado com COR própria, nunca opacidade (que também
