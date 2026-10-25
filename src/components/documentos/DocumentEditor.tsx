@@ -315,12 +315,13 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
         </div>
         <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           <PresencaAvatares pessoas={pessoasOnline} />
-          <span className="hidden lg:inline text-sm text-muted-foreground tabular-nums">
-            {caracteresSelecionados > 0
-              ? `${caracteresSelecionados.toLocaleString("pt-BR")} selecionados`
-              : `${totalCaracteres.toLocaleString("pt-BR")} caracteres`}
+          {/* Contador sempre à vista (25/10, Davi: "ao encolher, o contador desaparece"); estreito, fica curto. */}
+          <span className="whitespace-nowrap text-xs sm:text-sm text-muted-foreground tabular-nums" title={caracteresSelecionados > 0 ? "Caracteres selecionados" : "Caracteres do documento"}>
+            {(caracteresSelecionados > 0 ? caracteresSelecionados : totalCaracteres).toLocaleString("pt-BR")}
+            <span className="hidden xl:inline">{caracteresSelecionados > 0 ? " selecionados" : " caracteres"}</span>
+            <span className="xl:hidden">{caracteresSelecionados > 0 ? " sel." : " car."}</span>
           </span>
-          <span className="hidden md:inline text-sm text-muted-foreground">{getSaveStatus()}</span>
+          <span className="hidden lg:inline whitespace-nowrap text-sm text-muted-foreground">{getSaveStatus()}</span>
           <BotaoModelos editor={editor} nome={titulo === "Documento sem título" ? "" : titulo} />
           <Button variant="outline" size="sm" onClick={() => setShareOpen(true)}>
             <Share2 className="h-4 w-4 sm:mr-1.5" />

@@ -751,13 +751,14 @@ export const VideoDetailPanel = ({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-3 shrink-0">
-          <span className="hidden lg:inline text-sm text-muted-foreground tabular-nums">
-            {selectionLength > 0
-              ? `${selectionLength.toLocaleString("pt-BR")} selecionados`
-              : `${roteiroCharacterCount.toLocaleString("pt-BR")} caracteres`}
+          {/* Contador sempre à vista (25/10, Davi: "ao encolher, o contador desaparece"); estreito, fica curto. */}
+          <span className="whitespace-nowrap text-xs sm:text-sm text-muted-foreground tabular-nums" title={selectionLength > 0 ? "Caracteres selecionados" : "Caracteres do roteiro"}>
+            {(selectionLength > 0 ? selectionLength : roteiroCharacterCount).toLocaleString("pt-BR")}
+            <span className="hidden xl:inline">{selectionLength > 0 ? " selecionados" : " caracteres"}</span>
+            <span className="xl:hidden">{selectionLength > 0 ? " sel." : " car."}</span>
           </span>
           <span className={cn(
-            "hidden md:inline text-sm",
+            "hidden lg:inline whitespace-nowrap text-sm",
             autoSaveStatus === "error" ? "text-destructive" : "text-muted-foreground"
           )}>
             {saveStatusLabel}
