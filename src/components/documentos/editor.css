@@ -271,3 +271,9 @@
 .document-editor .ProseMirror .comentario-marca.comentario-ativo {
   background-color: rgba(250, 204, 21, 0.45);
 }
+/* Comentário resolvido: a marca continua no texto (dá para reabrir), mas sem o amarelo. */
+.document-editor .ProseMirror .comentario-marca.comentario-resolvido {
+  background-color: transparent;
+  border-bottom-color: transparent;
+  cursor: text;
+}

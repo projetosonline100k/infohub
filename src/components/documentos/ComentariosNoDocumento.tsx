@@ -4,7 +4,7 @@ import type { Editor } from "@tiptap/react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, Loader2, Trash2 } from "lucide-react";
+import { Check, Loader2, RotateCcw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -38,6 +38,7 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
   const [salvando, setSalvando] = useState(false);
   const [versao, setVersao] = useState(0);   // muda quando o texto muda: recalcula onde ficam os cartões
   const [mesa, setMesa] = useState<HTMLElement | null>(null);
+  const [verResolvidos, setVerResolvidos] = useState(false);
   const camada = useRef<HTMLDivElement>(null);
   const meuNome = (user?.user_metadata?.nome as string | undefined) || (user?.user_metadata?.name as string | undefined) || user?.email?.split("@")[0] || "Você";
 
@@ -116,6 +117,11 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     const dom = editor.view.dom;
     dom.querySelectorAll(".comentario-ativo").forEach((el) => el.classList.remove("comentario-ativo"));
     if (ativo) dom.querySelectorAll(`[data-comentario="${ativo}"]`).forEach((el) => el.classList.add("comentario-ativo"));
+    // Resolvido: a marca fica no texto (dá para reabrir), só o amarelo some — como no Google Docs.
+    const resolvidos = new Set(comentarios.filter((c) => c.resolvido && !c.parent_id).map((c) => c.id));
+    dom.querySelectorAll<HTMLElement>("[data-comentario]").forEach((el) => {
+      el.classList.toggle("comentario-resolvido", resolvidos.has(el.getAttribute("data-comentario") ?? "") && el.getAttribute("data-comentario") !== ativo);
+    });
   }, [ativo, editor, versao, comentarios]);
 
   const salvarNovo = async () => {
@@ -143,14 +149,18 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     setComentarios((l) => [...l, data as ComentarioDb]);
     setResposta("");
   };
-  const resolver = async (c: ComentarioDb) => {
-    const { error } = await db.from("documento_comentarios").update({ resolvido: true }).eq("id", c.id);
-    if (error) { toast.error("Não consegui resolver"); return; }
-    tirarMarcaComentario(editor, c.id);
-    setComentarios((l) => l.map((x) => (x.id === c.id ? { ...x, resolvido: true } : x)));
-    setAtivo(null);
-    toast.success("Comentário resolvido");
+  const marcarResolvido = async (c: ComentarioDb, resolvido: boolean) => {
+    const { error } = await db.from("documento_comentarios").update({ resolvido }).eq("id", c.id);
+    if (error) { toast.error(resolvido ? "Não consegui resolver" : "Não consegui reabrir"); return false; }
+    setComentarios((l) => l.map((x) => (x.id === c.id ? { ...x, resolvido } : x)));
+    return true;
   };
+  const resolver = async (c: ComentarioDb) => {
+    if (!(await marcarResolvido(c, true))) return;
+    setAtivo(null);
+    toast.success("Comentário resolvido", { action: { label: "Desfazer", onClick: () => { void marcarResolvido(c, false).then((ok) => ok && setAtivo(c.id)); } } });
+  };
+  const reabrir = async (c: ComentarioDb) => { if (await marcarResolvido(c, false)) setAtivo(c.id); };
   const apagar = async (c: ComentarioDb) => {
     if (!window.confirm(c.parent_id ? "Apagar esta resposta?" : "Apagar este comentário e as respostas?")) return;
     const { error } = await db.from("documento_comentarios").delete().eq("id", c.id);
@@ -171,7 +181,7 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     setEsquerda(sobra >= LARGURA + 24 ? rf.right - rm.left + mesa.scrollLeft + 16 : rm.width - LARGURA - 16 + mesa.scrollLeft);
     const topoDe = (el: Element | null) => (el ? el.getBoundingClientRect().top - rm.top + mesa.scrollTop : null);
     const lista: { id: string; top: number }[] = [];
-    const abertos = new Set(comentarios.filter((c) => !c.parent_id && !c.resolvido).map((c) => c.id));
+    const abertos = new Set(comentarios.filter((c) => !c.parent_id && (!c.resolvido || verResolvidos)).map((c) => c.id));
     for (const id of idsComentariosNoTexto(editor)) {
       if (!abertos.has(id)) continue;
       const top = topoDe(editor.view.dom.querySelector(`[data-comentario="${id}"]`));
@@ -182,12 +192,13 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     }
     lista.sort((a, b) => a.top - b.top);
     setPosicoes(lista);
-  }, [mesa, editor, comentarios, novo, versao]);
+  }, [mesa, editor, comentarios, novo, versao, verResolvidos]);
   // Um cartão não fica por cima do outro: empurra para baixo o que encostar (e o aberto fica na altura certa).
   useLayoutEffect(() => {
     const el = camada.current;
     if (!el) return;
-    let fim = -Infinity;
+    // Com a pílula "N resolvidos" no topo, o primeiro cartão começa embaixo dela.
+    let fim = comentarios.some((c) => c.resolvido && !c.parent_id) ? 40 : -Infinity;
     for (const p of posicoes) {
       const card = el.querySelector<HTMLElement>(`[data-cartao="${p.id}"]`);
       if (!card) continue;
@@ -199,11 +210,19 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
 
   if (!mesa) return null;
   const raiz = (id: string) => comentarios.find((c) => c.id === id);
+  const totalResolvidos = comentarios.filter((c) => c.resolvido && !c.parent_id).length;
   const respostas = (id: string) => comentarios.filter((c) => c.parent_id === id);
   const quando = (iso: string) => formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
 
   return createPortal(
     <div ref={camada} className="pointer-events-none absolute left-0 top-0 z-20" style={{ width: 0, height: 0 }} onMouseDown={(e) => e.stopPropagation()}>
+      {totalResolvidos > 0 && (
+        <button type="button" onClick={() => setVerResolvidos((v) => !v)}
+          className="pointer-events-auto absolute flex items-center gap-1 rounded-full border bg-popover px-2.5 py-1 text-[11px] font-medium text-muted-foreground shadow-sm hover:text-foreground"
+          style={{ left: esquerda, top: 12 }}>
+          <Check className="h-3 w-3" />{verResolvidos ? "Esconder resolvidos" : `${totalResolvidos} resolvido${totalResolvidos > 1 ? "s" : ""}`}
+        </button>
+      )}
       {posicoes.map(({ id, top }) => {
         if (id === "__novo" && novo) {
           return (
@@ -228,13 +247,20 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
         const resps = respostas(id);
         return (
           <div key={id} data-cartao={id} onClick={() => setAtivo(id)}
-            className={cn("pointer-events-auto absolute cursor-pointer rounded-lg border bg-popover p-3 text-sm transition-shadow", aberto ? "shadow-lg ring-1 ring-amber-400/60" : "opacity-90 shadow-sm hover:shadow-md")}
+            className={cn("pointer-events-auto absolute cursor-pointer rounded-lg border bg-popover p-3 text-sm transition-shadow", aberto ? "shadow-lg ring-1 ring-amber-400/60" : "opacity-90 shadow-sm hover:shadow-md", c.resolvido && !aberto && "opacity-60")}
             style={{ left: aberto ? esquerda - 8 : esquerda, top, width: LARGURA }}>
             <Cabecalho nome={c.autor_id === user?.id ? "Você" : c.autor_nome || "Alguém"} quando={quando(c.created_at)}>
-              {aberto && (
+              {c.resolvido ? (
+                <button type="button" title="Voltar a mostrar este comentário" onClick={(e) => { e.stopPropagation(); void reabrir(c); }}
+                  className="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground">
+                  <RotateCcw className="h-3 w-3" />Reabrir
+                </button>
+              ) : aberto && (
                 <>
-                  <button type="button" title="Resolver (some e tira o amarelo)" onClick={(e) => { e.stopPropagation(); void resolver(c); }}
-                    className="rounded p-1 text-muted-foreground hover:bg-emerald-500/15 hover:text-emerald-600"><Check className="h-3.5 w-3.5" /></button>
+                  <button type="button" title="Resolver: o cartão some e o amarelo sai (dá para reabrir)" onClick={(e) => { e.stopPropagation(); void resolver(c); }}
+                    className="flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-700 dark:hover:text-emerald-400">
+                    <Check className="h-3 w-3" />Resolver
+                  </button>
                   {(c.autor_id === user?.id) && (
                     <button type="button" title="Apagar" onClick={(e) => { e.stopPropagation(); void apagar(c); }}
                       className="rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
