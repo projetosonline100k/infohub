@@ -262,6 +262,42 @@ export function SemanaView() {
                 );
               })}
             </div>
+            {/* Calendário em segundo, depois dos dias da semana (25/10, Davi). */}
+            <div className="rounded-lg border p-2">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="font-semibold capitalize">{format(mes, "MMMM yyyy", { locale: ptBR })}</h3>
+                <div className="flex">
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, -1))}><ChevronLeft className="h-4 w-4" /></Button>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, 1))}><ChevronRight className="h-4 w-4" /></Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-7 text-center text-[11px] text-muted-foreground">
+                {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => <span key={i} className="py-1">{d}</span>)}
+              </div>
+              <div className="grid grid-cols-7 gap-y-0.5 text-center">
+                {Array.from({ length: 42 }, (_, i) => addDays(inicioDaSemana(mes), i)).map((d) => {
+                  const ch = chaveDia(d);
+                  const ts = porDia.get(ch) ?? [];
+                  const sel = foco.tipo === "dia" && foco.chave === ch;
+                  const ehHoje = ch === chaveDia(hoje);
+                  const temAtrasada = ts.some((t) => t.sit === "atrasada");
+                  return (
+                    <button key={ch} type="button" onClick={() => irParaDia(d)} onDoubleClick={() => abrirNova(d)}
+                      title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} · clique duas vezes para criar uma tarefa neste dia`}
+                      className={cn("relative mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[12px] tabular-nums transition-colors",
+                        !isSameMonth(d, mes) && "text-muted-foreground/40",
+                        sel ? "bg-primary text-primary-foreground" : ehHoje ? "font-bold text-primary ring-1 ring-primary" : "hover:bg-muted")}>
+                      {d.getDate()}
+                      {ts.length > 0 && !sel && <span className={cn("absolute bottom-0.5 h-1 w-1 rounded-full", temAtrasada ? "bg-red-500" : "bg-primary/70")} />}
+                    </button>
+                  );
+                })}
+              </div>
+              <Button variant="outline" size="sm" className="mt-2 h-7 w-full gap-1 text-xs" onClick={() => abrirNova()}>
+                <Plus className="h-4 w-4" />Tarefa em {format(dataLocal(diaNovo), "dd/MM")}
+              </Button>
+              <p className="mt-1.5 text-center text-[10.5px] text-muted-foreground">Clique no dia para ver · dois cliques para criar</p>
+            </div>
             <div className="space-y-1 rounded-lg border p-2">
               {[
                 { id: "atrasadas" as const, nome: "Atrasadas", n: atrasadas.length, icone: AlertCircle, cor: "text-red-500" },
@@ -295,42 +331,6 @@ export function SemanaView() {
                 })}
               </div>
             )}
-          </Card>
-          {/* Calendário embaixo da semana (25/10, Davi: "no lado esquerdo, abaixo de Esta semana, economiza espaço"). */}
-          <Card className="p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="font-semibold capitalize">{format(mes, "MMMM yyyy", { locale: ptBR })}</h3>
-              <div className="flex">
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, -1))}><ChevronLeft className="h-4 w-4" /></Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setMes(addMonths(mes, 1))}><ChevronRight className="h-4 w-4" /></Button>
-              </div>
-            </div>
-            <div className="grid grid-cols-7 text-center text-[11px] text-muted-foreground">
-              {["S", "T", "Q", "Q", "S", "S", "D"].map((d, i) => <span key={i} className="py-1">{d}</span>)}
-            </div>
-            <div className="grid grid-cols-7 gap-y-0.5 text-center">
-              {Array.from({ length: 42 }, (_, i) => addDays(inicioDaSemana(mes), i)).map((d) => {
-                const ch = chaveDia(d);
-                const ts = porDia.get(ch) ?? [];
-                const sel = foco.tipo === "dia" && foco.chave === ch;
-                const ehHoje = ch === chaveDia(hoje);
-                const temAtrasada = ts.some((t) => t.sit === "atrasada");
-                return (
-                  <button key={ch} type="button" onClick={() => irParaDia(d)} onDoubleClick={() => abrirNova(d)}
-                    title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} · clique duas vezes para criar uma tarefa neste dia`}
-                    className={cn("relative mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[12px] tabular-nums transition-colors",
-                      !isSameMonth(d, mes) && "text-muted-foreground/40",
-                      sel ? "bg-primary text-primary-foreground" : ehHoje ? "font-bold text-primary ring-1 ring-primary" : "hover:bg-muted")}>
-                    {d.getDate()}
-                    {ts.length > 0 && !sel && <span className={cn("absolute bottom-0.5 h-1 w-1 rounded-full", temAtrasada ? "bg-red-500" : "bg-primary/70")} />}
-                  </button>
-                );
-              })}
-            </div>
-            <Button variant="outline" size="sm" className="mt-3 w-full gap-1" onClick={() => abrirNova()}>
-              <Plus className="h-4 w-4" />Tarefa em {format(dataLocal(diaNovo), "dd/MM")}
-            </Button>
-            <p className="mt-2 text-center text-[11px] text-muted-foreground">Clique no dia para ver · dois cliques para criar</p>
           </Card>
         </div>
 
