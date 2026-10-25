@@ -5,6 +5,8 @@ export const areasEquipe = [
   { id: 'conteudo', label: 'Conteúdo' },
   { id: 'atividades', label: 'Atividades' },
   { id: 'produtos', label: 'Produtos e receita' },
+  // Automações do Instagram das contas ligadas ao projeto (25/10).
+  { id: 'automacoes', label: 'Automações' },
 ] as const;
 export type AreaEquipe = typeof areasEquipe[number]['id'];
 export type AcaoEquipe = 'acessar' | 'criar' | 'editar';

@@ -145,6 +145,12 @@ export function AppSidebar() {
   const recolhida = state === "collapsed";
   const [abertos, setAbertos] = useState<Set<string>>(lerAbertos);
   const [clientes, setClientes] = useState<ClienteMenu[]>([]);
+  // Alguma conta do Instagram que eu possa automatizar (minha ou de projeto com a área liberada).
+  const [temAutomacoes, setTemAutomacoes] = useState(false);
+  useEffect(() => {
+    if (!user || ehAdmin(user.email)) return;
+    void supabase.rpc("instagram_contas").then(({ data }) => setTemAutomacoes(Array.isArray(data) && data.length > 0));
+  }, [user]);
   const [carregados, setCarregados] = useState<Record<string, No[] | "carregando">>({});
   const [ordens, setOrdens] = useState<Ordens>(lerOrdens);
   // Arrastando: qual item (grupo + id) e onde vai cair (antes/depois de qual irmão).
@@ -258,13 +264,14 @@ export function AppSidebar() {
         ],
       },
     ];
+    // Automações: o admin e quem tem a área "Automações" liberada em algum projeto (25/10).
+    if (ehAdmin(user?.email) || temAutomacoes) itens.push({ chave: "automacoes", titulo: "Automações", icone: Zap, ir: "/automacoes" });
     if (ehAdmin(user?.email)) itens.push(
-      { chave: "automacoes", titulo: "Automações", icone: Zap, ir: "/automacoes" },
       { chave: "ponte", titulo: "Ponte", icone: Radio, ir: "/ponte" },
       { chave: "admin", titulo: "Administração", icone: ShieldCheck, ir: "/admin" },
     );
     return itens;
-  }, [clientes, user?.email]);
+  }, [clientes, user?.email, temAutomacoes]);
 
   // Pastas abertas que carregam os filhos sob demanda (documentos): carrega depois do desenho.
   useEffect(() => {
