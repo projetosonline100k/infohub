@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CheckCircle2, FileText, Loader2, Pencil } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, Monitor, Pencil, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -52,6 +52,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
   const [quiz, setQuiz] = useState<{ id: string; titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
   const [verEsboco, setVerEsboco] = useState(false);
+  // 25/10 (Davi): ver o quiz como no celular (é onde o lead abre). Fica lembrado neste navegador.
+  const [noCelular, setNoCelular] = useState(() => { try { return localStorage.getItem("revisao:quiz-celular") === "1"; } catch { return false; } });
+  const mudarCelular = (v: boolean) => { setNoCelular(v); try { localStorage.setItem("revisao:quiz-celular", v ? "1" : "0"); } catch { /* sem armazenamento */ } };
   // Editar o quiz aqui mesmo (pedido do Davi, 15/10): clica no texto ou na imagem.
   // O quiz só recomeça quando a estrutura muda por fora (o Roy salvou).
   const [editandoQuiz, setEditandoQuiz] = useState(false);
@@ -143,7 +146,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     const ext = (arquivo.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
     const caminho = `${u.user?.id}/${quiz?.id}/${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("quiz-imagens").upload(caminho, arquivo, { contentType: arquivo.type || undefined });
-    if (error) { toast.error("Não consegui enviar a imagem"); throw error; }
+    if (error) { toast.error(arquivo.type.startsWith("audio/") ? "Não consegui enviar o áudio (até 20 MB, mp3/m4a/wav)" : "Não consegui enviar a imagem (até 20 MB)"); throw error; }
     return supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
   };
   // Esboço de quiz de outro funcionário (sem quiz ligado ainda): dá pra mandar pro Roy criar.
@@ -184,11 +187,38 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                         <Pencil className="h-3.5 w-3.5" />{editandoQuiz ? "Editando" : "Editar"}
                       </button>
                     )}
+                    {!verEsboco && (
+                      <span className="flex shrink-0 rounded-md bg-background/60 p-0.5">
+                        {([false, true] as const).map((c) => {
+                          const Icone = c ? Smartphone : Monitor;
+                          return (
+                            <button key={String(c)} type="button" onClick={() => mudarCelular(c)} title={c ? "Ver como no celular" : "Ver como no computador"}
+                              className={cn("rounded px-2 py-1", noCelular === c ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                              <Icone className="h-3.5 w-3.5" />
+                            </button>
+                          );
+                        })}
+                      </span>
+                    )}
                   </div>
                 )}
                 {quiz?.estrutura && !verEsboco ? (
-                  <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste
-                    editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                  noCelular ? (
+                    // Moldura de celular (375 px, como um iPhone): o quiz em tela cheia, igual ao link público.
+                    <div className="mx-auto w-[395px] max-w-full rounded-[2.6rem] bg-neutral-900 p-[10px] shadow-xl">
+                      <div className={cn("relative h-[min(760px,70vh)] overflow-y-auto overflow-x-hidden overscroll-contain rounded-[2rem]",
+                        quiz.estrutura.tema === "escuro" ? "quiz-escuro bg-neutral-950 text-neutral-100" : "quiz-claro bg-white text-neutral-900")}>
+                        <div className="sticky top-0 z-10 mx-auto h-5 w-24 rounded-b-2xl bg-neutral-900" />
+                        <div className="flex min-h-[calc(100%-1.25rem)] flex-col px-5 pb-6 pt-3">
+                          <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia
+                            editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste
+                      editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                  )
                 ) : carregando ? (
                   <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 ) : docs.length === 0 ? (

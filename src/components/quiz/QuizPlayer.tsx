@@ -26,9 +26,11 @@ interface Ctx {
   editar: boolean; mostrarFaltas: boolean; cor: string; escuro: boolean;
   mudarTexto: (caminho: string, valor: string) => void;
   mudarImagem: (caminho: string, arquivo: File | null) => void;
+  // 25/10 (Davi): no teste da revisão também dá pra enviar a foto/áudio que falta, sem entrar no Editar.
+  podeEnviar: boolean;
   aoClicarOferta?: () => void;   // métrica: clique no link da oferta
 }
-const QuizCtx = createContext<Ctx>({ editar: false, mostrarFaltas: false, cor: "#0ea5e9", escuro: false, mudarTexto: () => {}, mudarImagem: () => {} });
+const QuizCtx = createContext<Ctx>({ editar: false, mostrarFaltas: false, cor: "#0ea5e9", escuro: false, mudarTexto: () => {}, mudarImagem: () => {}, podeEnviar: false });
 
 // Texto do quiz: normal mostra já preenchido ({perfil}, {resposta:q1}); editando, o original.
 function Txt({ caminho, valor, mostrar, as: Tag = "span", className }: {
@@ -52,7 +54,8 @@ function Txt({ caminho, valor, mostrar, as: Tag = "span", className }: {
 
 // Imagem do quiz. Sem URL: no teste aparece o espaço reservado (com o que vai ali); no link público some.
 function Img({ caminho, url, nota, className, redonda }: { caminho: string; url?: string; nota?: string; className?: string; redonda?: boolean }) {
-  const { editar, mostrarFaltas, mudarImagem } = useContext(QuizCtx);
+  const { editar: editando, mostrarFaltas, mudarImagem, podeEnviar } = useContext(QuizCtx);
+  const editar = editando || (mostrarFaltas && podeEnviar);
   const input = useRef<HTMLInputElement>(null);
   const escolher = editar ? (e: React.MouseEvent) => { e.stopPropagation(); input.current?.click(); } : undefined;
   const campo = editar && (
@@ -63,7 +66,7 @@ function Img({ caminho, url, nota, className, redonda }: { caminho: string; url?
     return (
       <div className={cn("group relative overflow-hidden", redonda ? "rounded-full" : "rounded-xl", className)}>
         <img src={url} alt={nota ?? ""} className="h-full w-full object-cover" />
-        {editar && (
+        {editando && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
             <button type="button" onClick={escolher} className="rounded-md bg-white/90 px-2 py-1 text-xs text-black">Trocar</button>
             <button type="button" onClick={(e) => { e.stopPropagation(); mudarImagem(caminho, null); }} className="rounded-md bg-white/90 p-1 text-black"><Trash2 className="h-3.5 w-3.5" /></button>
@@ -156,7 +159,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   useEffect(() => { trocou.current?.(); if (pos > 0) evento.current?.("passo", pos); }, [pos]);
 
   const ctx: Ctx = {
-    editar, mostrarFaltas: !!teste, cor, escuro,
+    editar, mostrarFaltas: !!teste, cor, escuro, podeEnviar: !!onImagem && !!onMudar,
     aoClicarOferta: () => evento.current?.("cta"),
     mudarTexto: (c, v) => onMudar?.(comValor(e, c, v)),
     mudarImagem: (c, arq) => {
@@ -209,7 +212,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           (25/10, Davi: "o fundo do quiz está da mesma cor do Infopro; preciso que mostre a cor original"). */}
       <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro",
         telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}>
-        {teste && !editar && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra imagem que ainda falta.</p>}
+        {teste && !editar && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
         {editar && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
             <button type="button" onClick={voltar} disabled={pos === 0} className="flex items-center gap-1 disabled:opacity-40"><ArrowLeft className="h-3 w-3" />Anterior</button>
@@ -334,9 +337,44 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   );
 }
 
+// Áudio da tela. Sem arquivo: no teste aparece "Falta: …" e, podendo enviar, clicar abre o arquivo.
+function AudioDaTela({ caminho, url, nota }: { caminho: string; url?: string; nota?: string }) {
+  const { editar, mostrarFaltas, mudarImagem, podeEnviar } = useContext(QuizCtx);
+  const input = useRef<HTMLInputElement>(null);
+  const enviar = editar || (mostrarFaltas && podeEnviar);
+  const escolher = (e: React.MouseEvent) => { e.stopPropagation(); input.current?.click(); };
+  const campo = enviar && (
+    <input ref={input} type="file" accept="audio/*" className="hidden"
+      onChange={(e) => { const f = e.target.files?.[0]; if (f) mudarImagem(caminho, f); e.target.value = ""; }} />
+  );
+  if (url) {
+    return (
+      <div className="space-y-1">
+        <audio controls src={url} className="w-full" />
+        {enviar && (
+          <div className="flex justify-center gap-3 text-xs opacity-70">
+            <button type="button" onClick={escolher} className="underline-offset-2 hover:underline">Trocar áudio</button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); mudarImagem(caminho, null); }} className="underline-offset-2 hover:underline">Tirar</button>
+          </div>
+        )}
+        {campo}
+      </div>
+    );
+  }
+  if (!nota || !(mostrarFaltas || editar)) return null;
+  return (
+    <div onClick={enviar ? escolher : undefined} role={enviar ? "button" : undefined}
+      className={cn("flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-gray-500/40 p-3 text-center text-xs opacity-70", enviar && "cursor-pointer hover:opacity-100")}>
+      <span className="flex items-center gap-1.5"><Mic className="h-4 w-4" />Falta: {nota}</span>
+      {enviar && <span className="opacity-70">clique para enviar o áudio</span>}
+      {campo}
+    </div>
+  );
+}
+
 // Tela de respiro (dado, frase, prova social) ou de apresentação do especialista.
 function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (s?: string) => string; onSeguir: () => void; suave: string }) {
-  const { cor, mostrarFaltas, editar } = useContext(QuizCtx);
+  const { cor } = useContext(QuizCtx);
   const especialista = t.tipo === "especialista";
   const maior = Math.max(1, ...(t.grafico?.barras ?? []).map((b) => b.valor));
   return (
@@ -373,10 +411,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
         </div>
       )}
       <Txt caminho={`${base}.texto`} valor={t.texto} mostrar={f(t.texto)} as="p" className={cn("block text-base leading-relaxed", !especialista && "text-left")} />
-      {(t.audio || ((mostrarFaltas || editar) && t.audio_nota)) && (
-        t.audio ? <audio controls src={t.audio} className="w-full" />
-          : <p className="flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-gray-500/40 p-3 text-xs opacity-70"><Mic className="h-4 w-4" />Falta: {t.audio_nota}</p>
-      )}
+      <AudioDaTela caminho={`${base}.audio`} url={t.audio} nota={t.audio_nota} />
       <Depoimentos caminho={`${base}.depoimentos`} lista={t.depoimentos} nota={t.depoimentos_nota} />
       <Txt caminho={`${base}.fonte`} valor={t.fonte} as="p" className={cn("block text-left text-[11px]", suave)} />
       <Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>
