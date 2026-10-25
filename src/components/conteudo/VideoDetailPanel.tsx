@@ -115,6 +115,7 @@ function roteiroParaHtml(texto: string | null | undefined): string {
 const STATUS_OPTIONS = [
   { value: "ideia", label: "Ideia" },
   { value: "roteiro", label: "Roteiro" },
+  { value: "aprovacao", label: "Aguardando aprovação" },
   { value: "gravacao", label: "Gravação" },
   { value: "edicao", label: "Edição" },
   { value: "pronto", label: "Pronto" },

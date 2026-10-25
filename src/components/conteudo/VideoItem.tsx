@@ -110,10 +110,12 @@ export const VideoItem = ({
                 "h-5 px-1.5 py-0 text-[10px]",
                 origemPlataforma === "youtube" 
                   ? "border-red-500/50 text-red-500" 
-                  : "border-purple-500/50 text-purple-500"
+                  : origemPlataforma === "instalivros"
+                    ? "border-orange-500/50 text-orange-600 dark:text-orange-400"
+                    : "border-purple-500/50 text-purple-500"
               )}
             >
-              {origemPlataforma === "youtube" ? "YouTube" : "Vertical"}
+              {origemPlataforma === "youtube" ? "YouTube" : origemPlataforma === "instalivros" ? "Instalivros" : "Vertical"}
             </Badge>
           )}
 

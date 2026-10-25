@@ -177,6 +177,13 @@ def contexto(aid):
               ' (umas 4 a 8 vezes: formato/skills escolhidos, gancho, cada bloco, critério que está conferindo).'
               ' E vá salvando os trechos já escritos com o anotado --so-salvar (a lista até onde chegou) para o texto ir aparecendo;'
               ' no fim, o anotado SEM --so-salvar (ele passa adiante).')
+    if (descricao or '').startswith('ADAPTAR:'):
+        # 25/10: roteiro do Instalivros pronto → versão do Davi (scripts/empresa/adaptacao.py).
+        print('\nÉ uma ADAPTAÇÃO de roteiro do Instalivros para o perfil do Davi. NÃO use o entregar nem crie documento.'
+              f' Veja o original, o cérebro do Davi, as regras e o ajuste pedido (se houver):\n'
+              f'  python3 scripts/empresa/adaptacao.py contexto {aid}\n'
+              f"e entregue com:\n  python3 scripts/empresa/adaptacao.py entregar {aid} \"<headline adaptada>\" <<'FIM'\n  <roteiro>\n  FIM")
+        return
     if anterior and AJUSTE in (descricao or ''):
         print(f'\n⚠️ É um AJUSTE: o Davi leu a versão anterior e pediu mudanças (o último "{AJUSTE}" acima).'
               f'\nVersão anterior: "{anterior[1]}" ({anterior[0]}). Leia com scripts/consulta.py, faça só o que ele pediu'

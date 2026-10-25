@@ -53,6 +53,7 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 
 **Conteúdo**
 - `videos_vertical` (status: `ideia` → `roteiro` → … → `postado`; `roteiro`, arquivos bruto/editado, `ideia_origem_id`), `videos_youtube`, `tags_video`/`videos_vertical_tags`.
+- Roteiro do Instalivros que vai para Gravação vira tarefa do Junior (`ADAPTAR:<id>`, gatilho `instalivros_adaptar_para_davi`) e ele escreve a versão do Davi com `scripts/empresa/adaptacao.py`: card `aprovacao` com `origem_plataforma = 'instalivros'` e `ideia_origem_id` = original; descartado = `descartado`. Teste: `scripts/teste-adaptacao-instalivros.py`.
 - `ideias_conteudo`, `videos_referencia` (com `transcricao`, `visualizacoes`), `perfis_parecidos`, `termos_virais`.
 - `nucleo_influencia` + `categorias_nucleo` — posicionamento do especialista.
 - `agentes_ia` + `conhecimentos_agente` — agente de IA por cliente (edge `chat`, PDFs via `process-pdf`).

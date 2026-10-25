@@ -1,4 +1,5 @@
 import { IdeiasEmDestaque } from "./IdeiasEmDestaque";
+import { AdaptacoesInstalivros } from "./AdaptacoesInstalivros";
 import { useState, useEffect } from "react";
 import { useLocation, useSearchParams } from "react-router-dom";
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
@@ -97,6 +98,8 @@ const createEmptyIdeias = (): NovaIdeia[] => [createEmptyIdeia()];
 const KANBAN_COLUMNS = [
   { id: "ideia", label: "Ideias de vídeos", color: "bg-card border-border", borderColor: "border-l-blue-500" },
   { id: "roteiro", label: "Criando roteiro", color: "bg-card border-border", borderColor: "border-l-yellow-500" },
+  // Versão adaptada de um roteiro de outro projeto (hoje: Instalivros → Davi), esperando o Davi aprovar.
+  { id: "aprovacao", label: "Aguardando aprovação", color: "bg-card border-border", borderColor: "border-l-orange-500" },
   { id: "gravacao", label: "Gravação", color: "bg-card border-border", borderColor: "border-l-purple-500" },
   { id: "edicao", label: "Edição", color: "bg-card border-border", borderColor: "border-l-cyan-500" },
   // "Prontos para postar" saiu do pipeline; a última etapa agora é "Prontos".
@@ -780,6 +783,14 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
         onImportado={() => void fetchVideos()}
       />
 
+      <AdaptacoesInstalivros
+        clienteId={clienteId}
+        cards={videosKanban.filter((v) => v.status === "aprovacao" && v.origem_plataforma === "instalivros")}
+        maiorOrdemGravacao={Math.max(0, ...getVideosByStatus("gravacao").map((v) => v.ordem))}
+        onAbrir={(id) => { const video = videosKanban.find((v) => v.id === id); if (video) openDetailPanel(video); }}
+        onMudou={() => void fetchVideos()}
+      />
+
       {/* Pipeline Header with View Toggle */}
       <div className="flex items-center justify-between">
         <div>
@@ -1044,6 +1055,9 @@ export function VerticalView({ clienteId }: VerticalViewProps) {
                                   <p className={`min-w-0 flex-1 whitespace-normal break-words text-sm font-medium leading-snug ${isEscalado ? "text-primary-foreground" : ""}`}>
                                     {video.titulo}
                                   </p>
+                                  {video.origem_plataforma === "instalivros" && (
+                                    <span className="inline-flex flex-shrink-0 items-center rounded px-1.5 py-0 text-[10px] font-medium bg-orange-500/15 text-orange-600 dark:text-orange-400">Instalivros</span>
+                                  )}
                                   {getTagsForVideo(video.id).length > 0 && (
                                     <div className="flex gap-1 flex-shrink-0">
                                       {getTagsForVideo(video.id).slice(0, 1).map((tag) => (
