@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 
 // As abas do app ficam montadas em segundo plano (não recarregam ao trocar
 // de aba). Telas que mostram dados que mudam por fora (Atlas, outra aba,
@@ -7,7 +7,8 @@ import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 // elas: ao ativar a aba onde estão ou ao voltar pra janela do app.
 // O realtime continua valendo; isto cobre quando ele não chega.
 export function useRecarregarAoVoltar(ref: RefObject<HTMLElement>, recarregar: () => void) {
-  const { activeId } = useWorkspaceTabs();
+  // A visibilidade da PRÓPRIA guia (26/10): com a guia ativa global, a tela era redesenhada a cada troca.
+  const abaAtiva = useAbaAtiva();
   const recarregarRef = useRef(recarregar);
   recarregarRef.current = recarregar;
   const primeiraVez = useRef(true);
@@ -17,11 +18,12 @@ export function useRecarregarAoVoltar(ref: RefObject<HTMLElement>, recarregar: (
 
   useEffect(() => {
     if (primeiraVez.current) { primeiraVez.current = false; return; }
+    if (!abaAtiva) return;
     // Espera o layout aplicar a troca de aba antes de checar a visibilidade.
     const quadro = requestAnimationFrame(() => { if (visivel()) recarregarRef.current(); });
     return () => cancelAnimationFrame(quadro);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
+  }, [abaAtiva]);
 
   useEffect(() => {
     let ultima = 0;

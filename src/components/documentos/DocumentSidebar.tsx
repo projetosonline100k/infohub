@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
 
 interface Guia {
@@ -47,7 +47,7 @@ export function DocumentSidebar({
 }: DocumentSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { openTab, abrirAoLado } = useWorkspaceTabs();
+  const { openTab, abrirAoLado } = useWorkspaceAcoes();
   const [pastas, setPastas] = useState<Pasta[]>([]);
   const [guias, setGuias] = useState<Guia[]>([]);
   const guiaAnteriorRef = useRef<{ id: string; titulo: string } | null>(null);

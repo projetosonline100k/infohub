@@ -18,7 +18,7 @@ import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
-import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { confirmar } from "@/components/DialogosGlobais";
 
 interface Cliente {
@@ -82,7 +82,7 @@ export default function ClienteDetalhe() {
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
   // Continua avisando que o Davi está no projeto (a bolinha de presença saiu junto com o menu interno).
   usePresencaProjeto(id);
-  const { openTab } = useWorkspaceTabs();
+  const { openTab } = useWorkspaceAcoes();
 
   // ?secao=<aba>[:<guia>] (barra lateral em árvore, 23/10): abre a seção pedida e o endereço acompanha
   // quando a aba muda aqui dentro (assim a árvore marca o item certo).

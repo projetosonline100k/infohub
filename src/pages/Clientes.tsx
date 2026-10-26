@@ -12,7 +12,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import ClienteForm from "@/components/ClienteForm";
 import { StatTile } from "@/components/dashboard/StatTile";
 import { ProjetoRow } from "@/components/clientes/ProjetoRow";
-import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 
 interface Cliente {
   user_id: string | null;
@@ -42,7 +42,7 @@ type Ordenacao = "nome" | "recente" | "notas";
 
 const Clientes = () => {
   const navigate = useNavigate();
-  const { openTab } = useWorkspaceTabs();
+  const { openTab } = useWorkspaceAcoes();
   const { user } = useAuth();
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [showForm, setShowForm] = useState(false);

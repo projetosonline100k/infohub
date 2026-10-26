@@ -68,6 +68,10 @@ const LARGURA_MINIMA = 0.15;
 const iguais = (n: number) => Array.from({ length: n }, () => 1 / n);
 
 const WorkspaceTabsContext = createContext<WorkspaceTabsContextValue | null>(null);
+// Ações que não mudam (26/10, "trocar de guia demora"): páginas que só ABREM guias (projeto, documentos…)
+// usam este, que nunca muda; com o contexto inteiro, elas eram redesenhadas a cada troca de guia.
+type AcoesGuias = Pick<WorkspaceTabsContextValue, "openTab" | "abrirAoLado">;
+const WorkspaceAcoesContext = createContext<AcoesGuias | null>(null);
 
 const titleForPath = (path: string) => {
   if (path === "/") return "Painel";
@@ -333,7 +337,24 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     nomesPorEndereco, nomearEndereco,
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [tabs, activeId, divisao, larguras, versaoHistorico, podeVoltar, podeAvancar, nomesPorEndereco]);
-  return <WorkspaceTabsContext.Provider value={value}>{children}</WorkspaceTabsContext.Provider>;
+  const valorRef = useRef(value);
+  valorRef.current = value;
+  const acoes = useMemo<AcoesGuias>(() => ({
+    openTab: (...a) => valorRef.current.openTab(...a),
+    abrirAoLado: (...a) => valorRef.current.abrirAoLado(...a),
+  }), []);
+  return (
+    <WorkspaceAcoesContext.Provider value={acoes}>
+      <WorkspaceTabsContext.Provider value={value}>{children}</WorkspaceTabsContext.Provider>
+    </WorkspaceAcoesContext.Provider>
+  );
+}
+
+/** Só abrir guias (openTab / abrirAoLado), sem redesenhar a página quando a guia ativa muda. */
+export function useWorkspaceAcoes() {
+  const acoes = useContext(WorkspaceAcoesContext);
+  if (!acoes) throw new Error("useWorkspaceAcoes precisa estar dentro de WorkspaceTabsProvider");
+  return acoes;
 }
 
 /** Igual ao useWorkspaceTabs, mas devolve null fora do provider (ex.: busca usada fora do workspace). */

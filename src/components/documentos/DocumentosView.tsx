@@ -21,7 +21,7 @@ import { DocumentEditor } from "./DocumentEditor";
 import { CadernoEditor, createEmptyCadernoContent } from "./CadernoEditor";
 import { MindMapEditor, createEmptyMindMapContent } from "./MindMapEditor";
 import { toast } from "sonner";
-import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
+import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { confirmar } from "@/components/DialogosGlobais";
 
 interface Documento {
@@ -48,7 +48,7 @@ interface DocumentosViewProps {
 export function DocumentosView({ clienteId }: DocumentosViewProps) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { openTab } = useWorkspaceTabs();
+  const { openTab } = useWorkspaceAcoes();
   // 24/10: pasta dentro de pasta (parent_id); sem mãe (ou com a mãe apagada) = pasta de cima.
   const [pastas, setPastas] = useState<{ id: string; nome: string; parent_id: string | null }[]>([]);
   const [dentroDe, setDentroDe] = useState("");

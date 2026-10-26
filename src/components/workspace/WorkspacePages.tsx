@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { Route, Routes, useNavigate } from "react-router-dom";
+import { memo, useContext, useMemo, useRef } from "react";
+import { Route, Routes, UNSAFE_LocationContext, UNSAFE_RouteContext, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import DashGeral from "@/pages/DashGeral";
 import Clientes from "@/pages/Clientes";
@@ -31,6 +31,9 @@ export function WorkspacePages() {
   const { tabs, activeId, divisao, larguras, moverDivisoria, igualarLarguras, focarGuia } = useWorkspaceTabs();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+  // A rota de fora ("*", pathnameBase "/") não muda; guardada uma vez, as guias não ouvem cada navegação.
+  const rotaDeFora = useContext(UNSAFE_RouteContext);
+  const rotaPai = useRef(rotaDeFora).current;
   const dividido = !!divisao && divisao.includes(activeId);
 
   const arrastarDivisoria = (indice: number) => (e: React.PointerEvent<HTMLDivElement>) => {
@@ -67,30 +70,8 @@ export function WorkspacePages() {
             lado && tab.id === activeId && "after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:ring-2 after:ring-inset after:ring-primary/40",
           )}
         >
-          <AbaAtivaContext.Provider value={visivel}>
-          <div className="h-full overflow-auto">
-          {/* A página ocupa a largura da janela (nunca menos que 720px, ou 420px numa
-              metade dividida). 20/10: era "w-fit" (a página esticava até o item mais
-              largo) e um texto comprido empurrava tudo pro lado — agora o conteúdo se
-              ajusta à janela e só rola pro lado se a janela ficar menor que o mínimo. */}
-          <div className={cn("w-full", lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]", isClienteDetalhePath(pathname) ? "" : pathname.startsWith("/desenho/") ? "h-full" : "p-3 sm:p-6")}>
-            <Routes location={{ pathname, search: search ? `?${search}` : "", hash: "", state: null, key: tab.id }}>
-              <Route path="/" element={<DashGeral />} />
-              <Route path="/clientes" element={<Clientes />} />
-              <Route path="/clientes/:id" element={<ClienteDetalhe />} />
-              <Route path="/atividades" element={<Atividades />} />
-              <Route path="/notas" element={<Notas />} />
-              <Route path="/produtividade" element={<Produtividade />} />
-              <Route path="/agenda" element={<Agenda />} />
-              <Route path="/admin" element={<Admin />} />
-              <Route path="/automacoes" element={<Automacoes />} />
-              <Route path="/ponte" element={<Ponte />} />
-              <Route path="/desenho/:id" element={<Desenho />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </div>
-          </div>
-          </AbaAtivaContext.Provider>
+          <ConteudoDaGuia tabId={tab.id} pathname={pathname} search={search} visivel={visivel} rotaPai={rotaPai}
+            largura={lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]"} />
         </div>;
       })}
       {/* Uma divisória entre cada par de painéis vizinhos. */}
@@ -111,3 +92,47 @@ export function WorkspacePages() {
     </div>
   );
 }
+
+// Conteúdo de uma guia, memorizado (26/10, Davi: "trocar de guia demora bastante"): trocar de guia só
+// redesenha as duas guias que mudaram de visível/escondida; antes TODAS as páginas abertas eram
+// redesenhadas a cada troca.
+// O <Routes> de cada guia também lia o endereço da barra (o do app) só para "assinar" a mudança — e aí
+// toda navegação redesenhava todas as páginas. Aqui ele recebe o endereço da PRÓPRIA guia, que só muda
+// quando ela navega (as páginas continuam vendo o caminho delas, como antes).
+const ConteudoDaGuia = memo(function ConteudoDaGuia({ tabId, pathname, search, visivel, largura, rotaPai }: {
+  tabId: string; pathname: string; search: string; visivel: boolean; largura: string;
+  rotaPai: React.ContextType<typeof UNSAFE_RouteContext>;
+}) {
+  const local = useMemo(() => ({ pathname, search: search ? `?${search}` : "", hash: "", state: null, key: tabId }), [pathname, search, tabId]);
+  const contextoLocal = useMemo(() => ({ location: local, navigationType: "POP" as const }), [local]);
+  return (
+    <UNSAFE_RouteContext.Provider value={rotaPai}>
+    <UNSAFE_LocationContext.Provider value={contextoLocal as React.ContextType<typeof UNSAFE_LocationContext>}>
+    <AbaAtivaContext.Provider value={visivel}>
+    <div className="h-full overflow-auto">
+    {/* A página ocupa a largura da janela (nunca menos que 720px, ou 420px numa
+        metade dividida). 20/10: era "w-fit" (a página esticava até o item mais
+        largo) e um texto comprido empurrava tudo pro lado — agora o conteúdo se
+        ajusta à janela e só rola pro lado se a janela ficar menor que o mínimo. */}
+    <div className={cn("w-full", largura, isClienteDetalhePath(pathname) ? "" : pathname.startsWith("/desenho/") ? "h-full" : "p-3 sm:p-6")}>
+      <Routes location={local}>
+        <Route path="/" element={<DashGeral />} />
+        <Route path="/clientes" element={<Clientes />} />
+        <Route path="/clientes/:id" element={<ClienteDetalhe />} />
+        <Route path="/atividades" element={<Atividades />} />
+        <Route path="/notas" element={<Notas />} />
+        <Route path="/produtividade" element={<Produtividade />} />
+        <Route path="/agenda" element={<Agenda />} />
+        <Route path="/admin" element={<Admin />} />
+        <Route path="/automacoes" element={<Automacoes />} />
+        <Route path="/ponte" element={<Ponte />} />
+        <Route path="/desenho/:id" element={<Desenho />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </div>
+    </div>
+    </AbaAtivaContext.Provider>
+    </UNSAFE_LocationContext.Provider>
+    </UNSAFE_RouteContext.Provider>
+  );
+});
