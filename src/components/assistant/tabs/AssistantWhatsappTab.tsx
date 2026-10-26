@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { carregarEquipeWhatsapp } from "@/lib/whatsapp/equipe";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Check, Copy, MessageCircle, RefreshCw } from "lucide-react";
@@ -525,20 +526,7 @@ function IdadeDoPainel({ atualizadoEm, agora, emAndamento, onAtualizar }: { atua
 /** Quem é da equipe pelo WhatsApp: fala em 3 ou mais grupos de clientes nas últimas 3 semanas. */
 function useEquipeWhatsapp() {
   const [equipe, setEquipe] = useState<string[]>([]);
-  useEffect(() => {
-    const desde = new Date(Date.now() - 21 * 86_400_000).toISOString();
-    void (supabase as unknown as import("@supabase/supabase-js").SupabaseClient).from("whatsapp_mensagens").select("chat_id, autor_nome").eq("conta", "principal").eq("eh_grupo", true).eq("de_mim", false)
-      .gte("enviada_em", desde).not("autor_nome", "is", null).limit(4000)
-      .then(({ data }) => {
-        const grupos = new Map<string, Set<string>>();
-        for (const r of (data ?? []) as { chat_id: string; autor_nome: string | null }[]) {
-          if (!r.autor_nome?.trim()) continue;
-          if (!grupos.has(r.autor_nome)) grupos.set(r.autor_nome, new Set());
-          grupos.get(r.autor_nome)!.add(r.chat_id);
-        }
-        setEquipe([...grupos].filter(([, g]) => g.size >= 3).map(([n]) => n));
-      });
-  }, []);
+  useEffect(() => { void carregarEquipeWhatsapp().then(setEquipe); }, []);
   return equipe;
 }
 

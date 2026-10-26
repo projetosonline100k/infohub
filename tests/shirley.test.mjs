@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/whatsapp/shirley.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo, ehSoConfirmacao, humorDaShirley, falaDaShirley, ADIAR_MIN } =
+const { alertasDoWhatsapp, pareceInsatisfeito, horarioDeCobrar, tempoEsperando, chegaramAgora, clienteDoGrupo, ehSoConfirmacao, esperaSuaResposta, humorDaShirley, falaDaShirley, ADIAR_MIN } =
   await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const agora = new Date(2026, 9, 16, 15, 0);
@@ -88,4 +88,18 @@ test('grupo de cliente só chama o Davi quando é com ele (o resto é do CS)', (
   assert.equal(alertasDoWhatsapp([g('Quero cancelar, péssimo')], agora, 60, nada).length, 1);
   assert.equal(alertasDoWhatsapp([g('Quero cancelar, péssimo', 'Natália Cristina')], agora, 60, nada, (n) => n === 'Natália Cristina').length, 0);
   assert.equal(alertasDoWhatsapp([{ ...g('Oi, tudo bem? Me ajuda aqui'), eh_grupo: false, chat_nome: 'Carol' }], agora, 60, nada).length, 1);
+});
+
+test('esperaSuaResposta: só o que espera mesmo o Davi (26/10)', () => {
+  const c = (x) => ({ chat_id: 'x', eh_grupo: false, ultima_de_mim: false, ultima_texto: 'Tem custo?', ultima_autor: null, ultima_em: antes(30), ...x });
+  const equipe = (n) => n === 'Natália Cristina';
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Royal Defense | Core Audience', eh_grupo: true, ultima_autor: 'Daniel Teixeira' }), agora, equipe), true);
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Jeannety' }), agora, equipe), true);
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Jeannety', ultima_de_mim: true }), agora, equipe), false);   // você respondeu
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Jeannety', ultima_texto: 'Combinado' }), agora, equipe), false);   // só confirmação
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Natália Cristina' }), agora, equipe), false);   // equipe
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Davi' }), agora, equipe), false);   // você mesmo, outro aparelho
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Meus arquivos', eh_grupo: true, ultima_autor: 'Ana' }), agora, equipe), false);   // grupo que não é de cliente
+  assert.equal(esperaSuaResposta(c({ chat_nome: 'Jessica', ultima_em: antes(8 * 24 * 60) }), agora, equipe), false);   // mais de 7 dias
+  assert.equal(esperaSuaResposta(c({ chat_nome: '' }), agora, equipe), false);   // sem nome (aviso do WhatsApp)
 });

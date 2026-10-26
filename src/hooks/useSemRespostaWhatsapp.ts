@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { carregarEquipeWhatsapp } from "@/lib/whatsapp/equipe";
+import { ehDaEquipe } from "@/lib/whatsapp/painel";
+import { esperaSuaResposta, type ConversaResumo } from "@/lib/whatsapp/shirley";
 
 // Quantas conversas do WhatsApp esperam resposta (26/10, Davi: "quando tiver mensagens que faltam ser
-// respondidas, apareça no ícone"): a mesma conta do "Geral" da lista — não arquivadas e com a última
-// mensagem da outra pessoa. Atualiza ao chegar mensagem nova (realtime) e a cada minuto.
+// respondidas, apareça no ícone"): a mesma conta do "Geral" da lista — conversas não arquivadas que esperam
+// mesmo a resposta dele (esperaSuaResposta). Atualiza ao chegar mensagem nova (realtime) e a cada minuto.
 const db = supabase as unknown as SupabaseClient;
 
 export function useSemRespostaWhatsapp(clienteId: string | null): number {
@@ -15,13 +18,16 @@ export function useSemRespostaWhatsapp(clienteId: string | null): number {
     let conta = "principal";
     let espera: number | undefined;
     const contar = async () => {
-      const [{ data: conversas }, { data: org }] = await Promise.all([
+      const [{ data: conversas }, { data: org }, equipe] = await Promise.all([
         db.rpc("whatsapp_conversas", { p_conta: conta }),
         db.from("whatsapp_organizacao").select("chat_id").eq("conta", conta).eq("arquivada", true),
+        carregarEquipeWhatsapp(),
       ]);
       if (!vivo) return;
       const arquivadas = new Set(((org || []) as { chat_id: string }[]).map((o) => o.chat_id));
-      setN(((conversas || []) as { chat_id: string; ultima_de_mim: boolean }[]).filter((c) => !c.ultima_de_mim && !arquivadas.has(c.chat_id)).length);
+      const agora = new Date();
+      const daEquipe = (nome: string | null) => ehDaEquipe(nome, equipe);
+      setN(((conversas || []) as ConversaResumo[]).filter((c) => !arquivadas.has(c.chat_id) && esperaSuaResposta(c, agora, daEquipe)).length);
     };
     const depois = () => { window.clearTimeout(espera); espera = window.setTimeout(() => void contar(), 1500); };
     void db.from("clientes").select("whatsapp_conta").eq("id", clienteId).maybeSingle().then(({ data }) => {

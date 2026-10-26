@@ -47,6 +47,18 @@ export function ehSoConfirmacao(texto: string | null | undefined): boolean {
   return /^(ok(ay)?|ok obrigad[oa]|blz|beleza|show( de bola)?|top|perfeito|agendado|combinado|fechado|certo|certinho|obrigad[oa]( davi)?|muito obrigad[oa]|valeu|vlw|massa|am[eé]m|kk+|ha(ha)+|entendi|t[aá] bom|tudo certo|maravilha|[oó]timo|boa)$/.test(t);
 }
 
+/** Conversa que espera resposta do Davi (26/10, Davi: "não tem tudo isso de mensagens não respondidas"):
+ *  a última é da outra pessoa E não é da equipe, não é ele mesmo por outro aparelho, não é só "ok/obrigado",
+ *  é de até 7 dias e, em grupo, é grupo de cliente. Antes contava toda conversa cuja última não era dele. */
+export function esperaSuaResposta(c: ConversaResumo, agora: Date, ehEquipe?: (nome: string | null) => boolean): boolean {
+  if (c.ultima_de_mim || !c.chat_nome?.trim()) return false;
+  if (agora.getTime() - new Date(c.ultima_em).getTime() > 7 * 86_400_000) return false;
+  if (c.eh_grupo && !ehGrupoDeCliente(c.chat_nome)) return false;
+  const autor = (c.eh_grupo ? c.ultima_autor : c.chat_nome) ?? "";
+  if (/^davi\b/i.test(autor.trim()) || ehEquipe?.(autor)) return false;
+  return !ehSoConfirmacao(c.ultima_texto);
+}
+
 export function pareceInsatisfeito(texto: string | null | undefined): boolean {
   return !!texto && INSATISFEITO.test(texto);
 }

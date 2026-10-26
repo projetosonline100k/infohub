@@ -8,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isDesktop } from "@/lib/platform";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
-import { ehComODavi, type ConversaResumo } from "@/lib/whatsapp/shirley";
+import { ehComODavi, esperaSuaResposta, type ConversaResumo } from "@/lib/whatsapp/shirley";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { AudioMensagem } from "./AudioMensagem";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -465,6 +465,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
   const [infoAberta, setInfoAberta] = useState(() => { try { return localStorage.getItem("whatsapp:painel-conversa") !== "fechado"; } catch { return true; } });
   const mudarInfo = (v: boolean) => { setInfoAberta(v); try { localStorage.setItem("whatsapp:painel-conversa", v ? "aberto" : "fechado"); } catch { /* sem storage */ } };
   const org = useOrganizacaoWhatsapp(conta);
+  const agoraLista = new Date();
   const [visao, setVisao] = useState<{ tipo: "tudo" } | { tipo: "pasta"; id: string } | { tipo: "arquivadas" }>({ tipo: "tudo" });
   const [menuDe, setMenuDe] = useState<string | null>(null);
   const qtdArquivadas = conversas.filter((c) => org.arquivada(c.chat_id)).length;
@@ -543,7 +544,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
             const ativa = p.id ? visao.tipo === "pasta" && visao.id === p.id : visao.tipo === "tudo";
             // 24/10 (Davi): quantas conversas tem e quantas estão sem resposta sua (a última é da pessoa).
             const daPasta = conversas.filter((c) => !org.arquivada(c.chat_id) && (!p.id || org.pastaDe(c.chat_id) === p.id));
-            const semResposta = daPasta.filter((c) => !c.ultima_de_mim).length;
+            const semResposta = daPasta.filter((c) => esperaSuaResposta(c, agoraLista, ehEquipe)).length;
             const novas = p.id ? naoLidasDa(p.id) : 0;
             return (
               <button key={p.id ?? "tudo"} type="button" onClick={() => setVisao(p.id ? { tipo: "pasta", id: p.id } : { tipo: "tudo" })}
