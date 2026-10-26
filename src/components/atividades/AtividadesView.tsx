@@ -939,8 +939,13 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
     });
   };
 
+  // 26/10: um Enter repetido (tecla segurada / ditado) criou 10 cópias da mesma tarefa no mesmo segundo.
+  // Uma criação por vez, e o campo esvazia na hora.
+  const criandoRef = useRef(false);
   const adicionarAtividade = async (dataOverride?: Date) => {
-    if (!novaAtividade.trim()) return;
+    if (!novaAtividade.trim() || criandoRef.current) return;
+    criandoRef.current = true;
+    window.setTimeout(() => { criandoRef.current = false; }, 800);
 
     try {
       const { titulo, tempo } = parseTempoFromText(novaAtividade);
@@ -1600,7 +1605,7 @@ export const AtividadesView = ({ clienteId, filtroResponsavel = "todas" }: Ativi
             value={novaAtividade}
             onChange={(e) => setNovaAtividade(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && !e.repeat && !e.nativeEvent.isComposing) {
                 adicionarAtividade();
               }
             }}

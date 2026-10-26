@@ -477,9 +477,12 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
     }
   };
 
+  const criandoRef = useRef(false);
   const adicionarAtividade = async () => {
     const titulo = novoTitulo.trim();
-    if (!titulo) return;
+    if (!titulo || criandoRef.current) return;
+    criandoRef.current = true;
+    window.setTimeout(() => { criandoRef.current = false; }, 800);
     if (!novoClienteId) {
       toast.error("Selecione o cliente da tarefa");
       return;
@@ -687,7 +690,7 @@ export const AtividadesClientesView = ({ filtroResponsavel = "todas" }: { filtro
                   value={novoTitulo}
                   onChange={(e) => setNovoTitulo(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") adicionarAtividade();
+                    if (e.key === "Enter" && !e.repeat && !e.nativeEvent.isComposing) adicionarAtividade();
                   }}
                   placeholder="Adicionar tarefa para o cliente selecionado"
                   className="pl-9 bg-muted/50 border-muted"
