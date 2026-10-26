@@ -912,8 +912,30 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     if (!(await confirmar("Apagar esta mensagem para todos?", { botao: "Apagar para todos", destrutivo: true, descricao: "Ela some para todo mundo na conversa." }))) return;
     if (await acao("whatsapp_apagar", { chatId: conversa.chat_id, messageId: m.id }, "Não consegui apagar")) setApagadas((x) => new Set(x).add(m.id));
   };
-  const irParaMensagem = (id: string) => {
-    const el = document.getElementById(`wa-msg-${id}`);
+  // Citação (26/10, Davi: "preciso que mostre qual é essa mensagem anterior"): o WhatsApp guarda em
+  // responde_a só o código curto da mensagem citada ("3A8B…"), que fica no meio do id completo
+  // ("true_<chat>_3A8B…_<autor>"). Acha pelo código; a que for mais antiga que as carregadas vem do banco.
+  const codigoDe = (id: string) => id.split("_")[2] ?? id;
+  const porCodigo = useMemo(() => new Map(mensagens.map((x) => [codigoDe(x.id), x])), [mensagens]);
+  const [citadasAntigas, setCitadasAntigas] = useState<Record<string, Mensagem | null>>({});
+  useEffect(() => { setCitadasAntigas({}); }, [conversa.chat_id]);
+  useEffect(() => {
+    const faltam = [...new Set(mensagens.map((x) => x.responde_a).filter((r): r is string => !!r && /^[A-Za-z0-9]+$/.test(r)))]
+      .filter((r) => !porCodigo.has(r) && !(r in citadasAntigas)).slice(0, 30);
+    if (!faltam.length) return;
+    setCitadasAntigas((x) => ({ ...x, ...Object.fromEntries(faltam.map((r) => [r, null])) }));
+    void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens")
+      .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, autor_id, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo, responde_a")
+      .eq("chat_id", conversa.chat_id).or(faltam.map((r) => `id.like.*_${r}_*,id.like.*_${r}`).join(","))
+      .then(({ data }) => {
+        const achadas = (data ?? []) as Mensagem[];
+        setCitadasAntigas((x) => ({ ...x, ...Object.fromEntries(achadas.map((m) => [codigoDe(m.id), m])) }));
+      });
+  }, [mensagens, porCodigo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const citadaDe = (r: string) => porCodigo.get(r) ?? mensagens.find((x) => x.id === r) ?? citadasAntigas[r] ?? null;
+  const irParaMensagem = (r: string) => {
+    const alvo = citadaDe(r);
+    const el = alvo ? document.getElementById(`wa-msg-${alvo.id}`) : null;
     if (!el) { toast.info("Essa mensagem é mais antiga do que as carregadas aqui."); return; }
     el.scrollIntoView({ block: "center", behavior: "smooth" });
     el.classList.add("ring-2", "ring-emerald-500");
@@ -1023,7 +1045,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                       </PerfilPessoa>
                     : <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome || "?"}</p>)}
                   {m.responde_a && (() => {
-                    const citada = mensagens.find((x) => x.id === m.responde_a);
+                    const citada = citadaDe(m.responde_a);
                     return (
                       <button type="button" onClick={() => irParaMensagem(m.responde_a!)}
                         className="mb-1 block w-full rounded-md border-l-4 border-teal-600 bg-black/5 px-2 py-1 text-left dark:bg-white/5">
