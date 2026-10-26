@@ -51,6 +51,7 @@ interface WorkspaceTabsContextValue {
   // Guia NOVA com `path`, logo depois da ativa, e já ativa (⌘T, escolha no ⌘K — 19/10).
   // Quem chama navega para `path`.
   abrirNovaGuia: (path: string, title?: string) => WorkspaceTab;
+  juntarGrupos: () => void;
   // Abre `path` ao lado da guia ativa (tela dividida); devolve a guia aberta.
   abrirAoLado: (path: string, title?: string) => WorkspaceTab;
   // Voltar/avançar como no navegador (24/10), com o histórico de CADA guia. Devolvem o endereço para onde
@@ -69,6 +70,28 @@ const LARGURA_MINIMA = 0.15;
 const iguais = (n: number) => Array.from({ length: n }, () => 1 / n);
 
 const WorkspaceTabsContext = createContext<WorkspaceTabsContextValue | null>(null);
+
+// Grupos de guias (26/10, Davi: "organizar as guias por grupos — as da mesma família ficam separadas; uma cor
+// diferente na guia"): o grupo é o projeto (/clientes/<id>). Guia nova de um projeto abre logo depois das
+// outras dele e todas levam a cor dele embaixo.
+export function grupoDaGuia(caminho: string): string | null {
+  return caminho.split("?")[0].match(/^\/clientes\/([^/]+)/)?.[1] ?? null;
+}
+const CORES_GRUPO = [212, 152, 28, 330, 262, 188, 4, 96];   // matizes bem separados
+export function corDoGrupo(grupo: string): string {
+  let h = 0;
+  for (const ch of grupo) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${CORES_GRUPO[h % CORES_GRUPO.length]} 70% 50%)`;
+}
+function inserirNoGrupo(lista: WorkspaceTab[], nova: WorkspaceTab): WorkspaceTab[] {
+  const grupo = grupoDaGuia(nova.path);
+  let ultima = -1;
+  if (grupo) lista.forEach((t, i) => { if (grupoDaGuia(t.path) === grupo) ultima = i; });
+  if (ultima < 0) return [...lista, nova];
+  const next = [...lista];
+  next.splice(ultima + 1, 0, nova);
+  return next;
+}
 // Ações que não mudam (26/10, "trocar de guia demora"): páginas que só ABREM guias (projeto, documentos…)
 // usam este, que nunca muda; com o contexto inteiro, elas eram redesenhadas a cada troca de guia.
 type AcoesGuias = Pick<WorkspaceTabsContextValue, "openTab" | "abrirAoLado">;
@@ -108,7 +131,7 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
       }
       const tab = { id: `${path}-${Date.now()}`, path, title };
       setActiveId(tab.id);
-      return [...current, tab];
+      return inserirNoGrupo(current, tab);
     });
   }, [setActiveId]);
 
@@ -261,6 +284,20 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     setTabs((current) => current.filter((t) => t.id === id));
     setActiveId(id);
   };
+  // Botão direito › "Juntar as guias de cada projeto": as de um mesmo projeto ficam lado a lado, na ordem em
+  // que o primeiro aparece; as outras ficam onde estão.
+  const juntarGrupos = () => setTabs((current) => {
+    const usados = new Set<string>();
+    const next: WorkspaceTab[] = [];
+    for (const t of current) {
+      const g = grupoDaGuia(t.path);
+      if (!g) { next.push(t); continue; }
+      if (usados.has(g)) continue;
+      usados.add(g);
+      next.push(...current.filter((x) => grupoDaGuia(x.path) === g));
+    }
+    return next;
+  });
   const reorderTabs = (fromId: string, toId: string) => setTabs((current) => { const from = current.findIndex((tab) => tab.id === fromId); const to = current.findIndex((tab) => tab.id === toId); if (from < 0 || to < 0 || from === to) return current; const next = [...current]; const [tab] = next.splice(from, 1); next.splice(to, 0, tab); return next; });
   // Destaca a aba numa janela própria (como o Chrome), posicionada sob o cursor.
   const detachTab = async (tab: WorkspaceTab, posicao?: { x: number; y: number }) => {
@@ -284,12 +321,9 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
 
   const abrirNovaGuia = (path: string, title = titleForPath(path)): WorkspaceTab => {
     const nova = { id: `${path}-${Date.now()}`, path, title };
-    setTabs((current) => {
-      const i = current.findIndex((t) => t.id === activeIdRef.current);
-      const next = [...current];
-      next.splice(i < 0 ? next.length : i + 1, 0, nova);
-      return next;
-    });
+    // 26/10 (Davi: "o ⌘T abre a guia do meu lado; preciso que seja no final"): no fim da barra — ou, se for
+    // de um projeto que já tem guias abertas, logo depois delas.
+    setTabs((current) => inserirNoGrupo(current, nova));
     setActiveId(nova.id);
     return nova;
   };
@@ -333,7 +367,7 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
   const value = useMemo(() => ({
     tabs, activeId, openTab, syncPath, closeTab, reorderTabs, detachTab,
     divisao, larguras, moverDivisoria, igualarLarguras, dividir, tirarDaDivisao, desfazerDivisao, focarGuia,
-    novaGuiaADireita, fecharOutras, abrirAoLado, abrirNovaGuia,
+    novaGuiaADireita, fecharOutras, abrirAoLado, abrirNovaGuia, juntarGrupos,
     voltar: () => andarNoHistorico(-1), avancar: () => andarNoHistorico(1), podeVoltar, podeAvancar,
     nomesPorEndereco, nomearEndereco,
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,7 +432,7 @@ interface Arrasto { id: string; inicioX: number; inicioY: number; x: number; y: 
 
 export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => void }) {
   const {
-    tabs, activeId, closeTab, reorderTabs, detachTab, divisao, dividir, tirarDaDivisao, desfazerDivisao, novaGuiaADireita, fecharOutras, abrirNovaGuia,
+    tabs, activeId, closeTab, reorderTabs, detachTab, divisao, dividir, tirarDaDivisao, desfazerDivisao, novaGuiaADireita, fecharOutras, abrirNovaGuia, juntarGrupos,
     voltar, avancar, podeVoltar, podeAvancar, nomesPorEndereco,
   } = useWorkspaceTabs();
   // Voltar/avançar também pelo teclado (⌘[ e ⌘], como no Chrome) e pelos botões laterais do mouse.
@@ -584,8 +618,9 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
         onPointerCancel={() => setArrasto(null)}
         onLostPointerCapture={() => onLostPointerCapture(tab)}
         onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") onNavigate(tab.path); }}
-        className={cn("group flex h-9 min-w-28 max-w-52 cursor-default select-none touch-none items-center [-webkit-user-drag:none] gap-1 rounded-t-md border border-b-0 px-2 text-sm", active ? "aba-ativa bg-background font-medium text-foreground" : "aba border-transparent text-muted-foreground hover:bg-muted", naDivisao && !active && "bg-muted/60", sendoArrastada && "opacity-60", arrasto?.destacando && arrasto.id === tab.id && "opacity-30")}
+        className={cn("group relative flex h-9 min-w-28 max-w-52 cursor-default select-none touch-none items-center [-webkit-user-drag:none] gap-1 rounded-t-md border border-b-0 px-2 text-sm", active ? "aba-ativa bg-background font-medium text-foreground" : "aba border-transparent text-muted-foreground hover:bg-muted", naDivisao && !active && "bg-muted/60", sendoArrastada && "opacity-60", arrasto?.destacando && arrasto.id === tab.id && "opacity-30")}
       >
+        {(() => { const g = grupoDaGuia(tab.path); return g ? <span aria-hidden className="pointer-events-none absolute inset-x-1.5 bottom-0 h-[3px] rounded-full" style={{ background: corDoGrupo(g), opacity: active ? 1 : 0.75 }} /> : null; })()}
         {naDivisao && <Columns2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Na tela dividida" />}
         {(() => {
           const Icone = iconeDaGuia(tab.path);
@@ -630,6 +665,7 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
               void detachTab(tab).then(() => { if (eraAtiva && fallback) onNavigate(fallback.path); });
             }}>Mover guia para uma nova janela</ContextMenuItem>
           )}
+          <ContextMenuItem onSelect={juntarGrupos}>Juntar as guias de cada projeto</ContextMenuItem>
           <ContextMenuSeparator />
           {canClose && <ContextMenuItem onSelect={() => fechar(tab)}>Fechar</ContextMenuItem>}
           {canClose && <ContextMenuItem onSelect={() => { fecharOutras(tab.id); onNavigate(tab.path); }}>Fechar outras guias</ContextMenuItem>}

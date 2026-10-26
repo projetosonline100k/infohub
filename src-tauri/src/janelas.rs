@@ -60,7 +60,11 @@ pub async fn mostrar_aviso(app: AppHandle, rota: String, vaga: u32) -> Result<()
         .always_on_top(true)
         .skip_taskbar(true)
         .visible_on_all_workspaces(true)
-        .focused(false);
+        .focused(false)
+        // 26/10 (Davi: "quando chega notificação do WhatsApp, o que eu estava escrevendo para"): no Mac,
+        // mostrar a janela a deixava como a janela ativa e o cursor saía do campo. Nasce escondida e
+        // aparece por cima SEM virar a janela ativa (orderFrontRegardless, logo abaixo).
+        .visible(false);
     #[cfg(target_os = "macos")]
     {
         janela = janela.accept_first_mouse(true);
@@ -69,6 +73,20 @@ pub async fn mostrar_aviso(app: AppHandle, rota: String, vaga: u32) -> Result<()
         log::error!("mostrar_aviso falhou: {erro}");
         erro.to_string()
     })?;
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(ptr) = criada.ns_window() {
+            let endereco = ptr as usize;
+            let _ = criada.run_on_main_thread(move || unsafe {
+                let janela: &objc2::runtime::AnyObject = &*(endereco as *const objc2::runtime::AnyObject);
+                let _: () = objc2::msg_send![janela, orderFrontRegardless];
+            });
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = criada.show();
+    }
     // 22/10: um aviso que a página não conseguiu fechar ficou invisível no canto, por cima do X do chat
     // da equipe, segurando os cliques. Garantia: o próprio app fecha a janelinha depois de 20 s.
     std::thread::spawn(move || {

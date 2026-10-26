@@ -108,7 +108,7 @@ export function ThemeToggle() {
           <Keyboard className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="flex-1">
             <span className="block text-sm font-medium">Som de máquina de escrever</span>
-            <span className="block text-[11px] text-muted-foreground">Ao digitar nos documentos e roteiros</span>
+            <span className="block text-[11px] text-muted-foreground">Ao digitar em qualquer lugar do app</span>
           </span>
           <Switch checked={som} onCheckedChange={(v) => { setSom(v); ligarSom(v); if (v) { tocarTecla("letra"); window.setTimeout(() => tocarTecla("letra"), 110); window.setTimeout(() => tocarTecla("enter"), 260); } }} />
         </label>
