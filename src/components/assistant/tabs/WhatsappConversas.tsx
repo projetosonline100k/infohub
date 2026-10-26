@@ -755,7 +755,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto bg-[#efeae2] px-2.5 py-2 dark:bg-[#0b141a]">
+      <div className="whatsapp-fundo min-h-0 flex-1 space-y-1 overflow-y-auto bg-[#efeae2] px-2.5 py-2 dark:bg-[#0b141a]">
         {carregando ? (
           <div className="flex justify-center py-8"><Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /></div>
         ) : mensagens.map((m, i) => {
@@ -776,7 +776,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                     </PerfilPessoa>
                   : <span className="w-7 shrink-0" aria-hidden />)}
                 <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
-                  m.de_mim ? "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]")}>
+                  m.de_mim ? "bolha-minha bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bolha-outra bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]")}>
                   {primeiraDaSequencia && (m.autor_id
                     ? <PerfilPessoa id={m.autor_id} nome={m.autor_nome}>
                         <button type="button" className="mb-0.5 block text-left text-[10.5px] font-semibold text-teal-600 hover:underline">{m.autor_nome || m.autor_id.split("@")[0]}</button>
@@ -822,7 +822,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
         {aindaPendentes.map((p) => (
           <div key={p.id} className="flex justify-end">
             <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
-              "bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]", p.estado === "erro" && "ring-1 ring-rose-400")}>
+              "bolha-minha bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]", p.estado === "erro" && "ring-1 ring-rose-400")}>
               {p.tipo === "audio"
                 ? (p.audioUrl ? <AudioMensagem url={p.audioUrl} deMim /> : <span className="inline-flex items-center gap-1 text-[11.5px]"><Mic className="h-3 w-3" />Áudio</span>)
                 : <p className="whitespace-pre-wrap break-words">{p.texto}</p>}

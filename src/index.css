@@ -410,6 +410,12 @@ html.tema-papel-vintage [data-barra-guias] .aba { --tab-bg: transparent; }
 
 :is(html.tema-papel-preto, html.tema-papel-vintage) .painel-secundario { background-color: hsl(var(--bg-panel)); background-image: var(--papel-card); color: hsl(var(--panel-foreground)); }
 :is(html.tema-papel-preto, html.tema-papel-vintage) .superficie-mesa { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
+/* Conversa do WhatsApp (26/10, Davi: "o fundo do WhatsApp destoou"): nos temas de papel o fundo é a mesa e os
+   balões são papel — o meu num verde-sálvia (vintage) / verde-musgo (preto), o da outra pessoa no tom do cartão. */
+:is(html.tema-papel-preto, html.tema-papel-vintage) .whatsapp-fundo { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
+:is(html.tema-papel-preto, html.tema-papel-vintage) .bolha-outra { background-color: hsl(var(--card)); background-image: var(--papel-card); color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--border)); }
+html.tema-papel-vintage .bolha-minha { background-color: hsl(78 32% 72%); background-image: var(--papel-card); color: hsl(var(--foreground)); }
+html.tema-papel-preto .bolha-minha { background-color: hsl(140 16% 17%); background-image: var(--papel-card); color: hsl(var(--foreground)); }
 :is(html.tema-papel-preto, html.tema-papel-vintage) .superficie-folha {
   background-color: hsl(var(--bg-document));
   background-image: var(--papel-folha);
