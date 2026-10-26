@@ -69,7 +69,9 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
       {laminas.map((l, n) => {
         const editar = editarTudo || editando === l.chave;
         return (
-          <div key={l.chave} className="flex w-[395px] shrink-0 flex-col gap-2" style={{ zoom: escala }}>
+          // transform em vez de zoom: no app do Mac (motor do Safari) o zoom encolhia o iframe duas vezes.
+          <div key={l.chave} className="shrink-0" style={{ width: 395 * escala, height: ALTURA_LAMINA * escala }}>
+          <div className="flex w-[395px] origin-top-left flex-col gap-2" style={{ height: ALTURA_LAMINA, transform: `scale(${escala})` }}>
             <div className="flex items-center gap-2 px-1 text-xs">
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 font-semibold tabular-nums">{n + 1}</span>
               <span className="min-w-0 flex-1 truncate font-medium" title={l.rotulo}>{l.rotulo}</span>
@@ -86,6 +88,7 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
               </MolduraCelular>
             </div>
             <PedidoDaLamina chave={`quiz-tela:${quizId}:${l.chave}`} rotulo={l.rotulo} numero={n + 1} agente={agente} onPedir={onPedir} />
+          </div>
           </div>
         );
       })}
