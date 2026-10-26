@@ -465,6 +465,20 @@ def ligar_tarefas():
         db("""UPDATE public.atividades SET situacao = %s, progresso = %s, observacao = %s
               WHERE id = %s AND (situacao IS DISTINCT FROM %s OR progresso IS DISTINCT FROM %s)""",
            (sit, prog, obs, aid, sit, prog))
+    # Qualquer outra tarefa ligada a uma edição (pedido confirmado no chat, piloto…) acompanha a edição mais
+    # nova dela (26/10: o "Piloto IMG_2106" ficou em "fazendo agora · 5%" horas depois da prévia estar em
+    # Revisar edição). Pronta ou com erro: sai de "fazendo agora" e passa a esperar o Davi.
+    for aid, st in db("""SELECT DISTINCT ON (e.atividade_id) e.atividade_id, e.status
+                         FROM public.edicoes_video e JOIN public.atividades a ON a.id = e.atividade_id
+                         WHERE e.cliente_id = %s AND e.status <> 'cancelado' AND a.deleted_at IS NULL
+                           AND NOT a.concluida AND a.situacao = 'andamento'
+                         ORDER BY e.atividade_id, e.criado_em DESC""", (CLIENTE,)):
+        if st not in ("revisar", "erro"):
+            continue
+        obs = ("Pronto para sua revisão em Precisa de você › Revisar edição." if st == "revisar"
+               else "Deu erro na edição: veja em Precisa de você.")
+        db("UPDATE public.atividades SET situacao = 'aguardando_aprovacao', progresso = 100, observacao = %s WHERE id = %s",
+           (obs, aid))
 
 
 def _msg(id_, texto):
