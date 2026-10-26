@@ -233,6 +233,21 @@ def retomar_interrompidas():
         log("retomando ajustes interrompidos:", [x[0] for x in a])
 
 
+def destravar_parados():
+    """Carrossel preso em 'produzindo' sem ninguém trabalhando nele (26/10: o 025 ficou 4 dias em "Montando as
+    páginas…" — tiraram da programação para refazer e o refazer não rodou). Sem pedido de ajuste, sem tarefa do
+    Roy em andamento, já com páginas e parado há mais de 3 h: volta para a revisão do Davi."""
+    n = roy.db("""UPDATE public.carrosseis c SET status = 'revisar', atualizado_em = now(),
+                    mensagem = 'Pronto para revisar (tinha ficado parado em "' || coalesce(c.mensagem, 'produzindo') || '").'
+                  WHERE c.cliente_id = %s AND c.status = 'produzindo' AND c.feedback IS NULL
+                    AND c.atualizado_em < now() - interval '3 hours' AND coalesce(array_length(c.paginas, 1), 0) > 0
+                    AND NOT EXISTS (SELECT 1 FROM public.atividades a WHERE a.id = c.atividade_roy_id AND a.situacao = 'andamento'
+                                      AND a.deleted_at IS NULL AND NOT a.concluida)
+                  RETURNING c.tema""", (roy.CLIENTE,))
+    if n:
+        log("destravei carrossel parado:", [x[0] for x in n])
+
+
 def atender_tarefa():
     """Atividade na fila do Roy (o Davi passou pelo Infopro) → carrosséis prontos
     para revisão; a tarefa fica 'aguardando_aprovacao' até ele aprovar.
@@ -401,6 +416,7 @@ if __name__ == "__main__":
                 continue
             if time.time() - ultima_drive > 300:  # a cada 5 min: pastas do Drive que ficaram pendentes
                 ultima_drive = time.time()
+                destravar_parados()
                 try:
                     if roy.drive_pendentes():
                         log("Drive: pasta pendente gravada")
