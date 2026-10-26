@@ -19,6 +19,8 @@ import { ehCoordenador } from "@/lib/empresa/visaoGeral";
 
 const db = supabase as unknown as SupabaseClient;   // participantes e membro_id ainda não estão nos tipos gerados
 type Mensagem = MensagemBriefing & { membro_id?: string | null };
+export interface PedidoAndamento { id: string; texto: string; quando: string; feito: boolean; resposta: { quem: string; texto: string; quando: string } | null }
+export interface Andamento { esperando: boolean; fazendo: string | null; desde: string | null; quem: string; pedidos: PedidoAndamento[] }
 interface Colega { id: string; nome: string; eh_ia: boolean }
 
 // Chat sobre a entrega (pedido do Davi, 15/10): na tela "Ver e aprovar" ele
@@ -29,13 +31,15 @@ interface Colega { id: string; nome: string; eh_ia: boolean }
 // Conversa em grupo (15/10): "Chamar" põe outro funcionário IA na conversa;
 // cada um responde pela sua área e cada fala mostra quem disse.
 // melhoriaId (16/10): a mesma conversa, sobre uma melhoria do kanban do Pedro (pendências).
-export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais, onEnviou }: {
+export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais, onEnviou, onAndamento }: {
   clienteId: string; tarefaId?: string; melhoriaId?: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
   onEsperando?: (esperando: boolean) => void;
   /** Conversa em grupo desde o começo (ex.: chat da esteira com o trio, 17/10). */
   participantesIniciais?: string[];
   /** O Davi mandou uma mensagem (ex.: o carrossel aberto vira o "da vez" no chat do lote). */
   onEnviou?: () => void;
+  /** 25/10 (aba "Em andamento" da revisão): o que estão fazendo agora e cada pedido do Davi, feito ou não. */
+  onAndamento?: (a: Andamento) => void;
 }) {
   const sobre = melhoriaId ? { campo: "melhoria_id", id: melhoriaId } : { campo: "atividade_id", id: tarefaId ?? "" };
   // O que ele está fazendo agora (briefing.py agora): "lendo o documento", "reescrevendo as chamadas"…
@@ -158,6 +162,25 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   };
 
   const esperou = segundosEsperando(mensagens, agora);
+
+  const andamentoRef = useRef(onAndamento);
+  andamentoRef.current = onAndamento;
+  useEffect(() => {
+    if (!andamentoRef.current) return;
+    const pedidos: PedidoAndamento[] = [];
+    mensagens.forEach((m, i) => {
+      if (m.papel !== "davi") return;
+      const r = mensagens.slice(i + 1).find((x) => x.papel !== "davi");
+      pedidos.push({
+        id: m.id, texto: m.texto, quando: m.criada_em, feito: !!r || m.status === "respondida",
+        resposta: r ? { quem: nomeDe(r.membro_id), texto: r.texto, quando: r.criada_em } : null,
+      });
+    });
+    const quem = emGrupo ? [nome, ...participantes.map((p) => nomeDe(p))].join(" + ") : nome;
+    andamentoRef.current({ esperando, fazendo, desde: esperando ? mensagens[mensagens.length - 1]?.criada_em ?? null : null, quem, pedidos });
+    // nomeDe muda junto com colegas
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mensagens, esperando, fazendo, colegas, participantes, nome]);
   // 'lida' = o ouvinte já pegou a mensagem: está trabalhando, não é ouvinte desligado.
   const pegou = mensagens[mensagens.length - 1]?.status === "lida";
 

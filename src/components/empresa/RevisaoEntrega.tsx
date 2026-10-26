@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -16,6 +16,9 @@ import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
+import { faltasDoQuiz } from "@/lib/quiz/faltas";
+import { AndamentoEntrega } from "./AndamentoEntrega";
+import type { Andamento } from "./ConversaEntrega";
 import type { EstruturaQuiz, StatusQuiz } from "@/lib/quiz/quiz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -52,7 +55,11 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
   const [quiz, setQuiz] = useState<{ id: string; titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
-  const [verEsboco, setVerEsboco] = useState(false);
+  const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
+  // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
+  const [abaQuiz, setAbaQuiz] = useState<"testar" | "andamento" | "esboco">("testar");
+  const verEsboco = abaQuiz !== "testar";
+  const [andamento, setAndamento] = useState<Andamento | null>(null);
   // 25/10 (Davi): ver o quiz como no celular (é onde o lead abre). Fica lembrado neste navegador.
   const [noCelular, setNoCelular] = useState(() => { try { return localStorage.getItem("revisao:quiz-celular") === "1"; } catch { return false; } });
   const mudarCelular = (v: boolean) => { setNoCelular(v); try { localStorage.setItem("revisao:quiz-celular", v ? "1" : "0"); } catch { /* sem armazenamento */ } };
@@ -110,7 +117,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     })();
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
-  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setVerEsboco(false); setEditandoQuiz(false); estruturaConhecida.current = ""; }, [tarefaId]);
+  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setAbaQuiz("testar"); setAndamento(null); setEditandoQuiz(false); estruturaConhecida.current = ""; }, [tarefaId]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
@@ -180,8 +187,11 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && noCelular && "flex flex-col")}>
                 {quiz?.estrutura && (
                   <div className="mb-4 flex shrink-0 gap-1 rounded-lg bg-muted p-1 text-sm">
-                    <button type="button" onClick={() => setVerEsboco(false)} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
-                    <button type="button" onClick={() => setVerEsboco(true)} className={cn("flex-1 rounded-md px-3 py-1", verEsboco && "bg-background font-medium shadow-sm")}>Esboço aprovado</button>
+                    <button type="button" onClick={() => setAbaQuiz("testar")} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
+                    <button type="button" onClick={() => setAbaQuiz("andamento")} className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1", verEsboco && "bg-background font-medium shadow-sm")}>
+                      {andamento?.esperando && <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 dark:text-amber-300" />}Em andamento
+                      {!!faltasQuiz.length && <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[10px] tabular-nums" title="Coisas que ainda faltam no quiz">{faltasQuiz.length}</span>}
+                    </button>
                     {!verEsboco && (
                       <button type="button" onClick={() => setEditandoQuiz((v) => !v)} title="Clique num texto pra mudar a palavra, ou numa imagem pra enviar"
                         className={cn("flex items-center gap-1 rounded-md px-3 py-1", editandoQuiz && "bg-amber-500/20 font-medium text-amber-700 dark:text-amber-300")}>
@@ -213,6 +223,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste
                       editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
                   )
+                ) : quiz?.estrutura && abaQuiz === "andamento" ? (
+                  <AndamentoEntrega andamento={andamento} faltas={faltasQuiz} onTestar={() => setAbaQuiz("testar")} onVerEsboco={() => setAbaQuiz("esboco")} />
                 ) : carregando ? (
                   <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 ) : docs.length === 0 ? (
@@ -258,7 +270,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               {info?.responsavelId && (
                 <div className="h-[420px] shrink-0 md:h-auto md:w-[340px]">
                   <ConversaEntrega key={tarefaId} clienteId={clienteId} tarefaId={tarefa.id} membroId={info.responsavelId}
-                    nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} />
+                    nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} onAndamento={setAndamento} />
                 </div>
               )}
             </div>
