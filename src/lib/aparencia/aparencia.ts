@@ -1,12 +1,12 @@
 // Aparência do Infopro (24/10, Davi: "temas visuais — Papel Vintage e Papel Preto, com textura de papel — e a
 // cor de destaque que eu escolher"). Três camadas no <html>, todas só com variáveis de cor (src/index.css):
 //   1. modo: a classe `dark` (o tema diz se é claro ou escuro; no "Atual" é o botão de sol/lua);
-//   2. tema: `tema-papel-vintage` / `tema-papel-preto` redefinem fundo, superfícies, bordas, texto e textura;
+//   2. tema: `tema-papel-vintage` / `tema-papel-preto` / `tema-papel-branco` (26/10) redefinem fundo, superfícies, bordas, texto e textura;
 //   3. destaque: `data-destaque` (+ --destaque-h/s/l) troca só a cor de destaque (botão principal, seleção,
 //      foco, links), sem mexer no fundo do tema.
 // Fica salvo no navegador (vale para todas as janelas do app) e é aplicado antes de desenhar (src/main.tsx).
 
-export type TemaVisual = "atual" | "papel-vintage" | "papel-preto";
+export type TemaVisual = "atual" | "papel-vintage" | "papel-preto" | "papel-branco";
 export type Modo = "light" | "dark";
 export type Destaque = "padrao" | "azul" | "ciano" | "dourado" | "verde" | "roxo" | "vermelho" | "personalizada";
 
@@ -30,6 +30,10 @@ export const TEMAS: { id: TemaVisual; nome: string; base: Modo | null; previa: R
   {
     id: "papel-preto", nome: "Papel Preto", base: "dark", textura: true,
     previa: { fundo: "#11110F", lateral: "#151512", card: "#1D1C18", texto: "#F3EBDD", texto2: "#A9A296", destaque: "#C99A4A", borda: "#3B382F" },
+  },
+  {
+    id: "papel-branco", nome: "Papel Branco", base: "light", textura: true,
+    previa: { fundo: "#F6F5F1", lateral: "#EFEDE7", card: "#FFFFFE", texto: "#1F1E1B", texto2: "#8A857B", destaque: "#2A2926", borda: "#E2DFD7" },
   },
 ];
 

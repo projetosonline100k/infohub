@@ -322,6 +322,84 @@ redesign (só o dark era o pedido).
     --papel-card: url("/texturas/preto-card.png");
   }
 
+  /* Papel Branco (26/10, Davi: "caderno/documento premium de papel branco real, textura extremamente sutil"):
+     de longe é uma interface branca e limpa; de perto, grão fino e fibras discretas. As superfícies se separam
+     por diferenças pequenas de tom — capa (lateral e abas) → mesa → painel → cartão → folha, que é a mais branca.
+     Tinta grafite; destaque em grafite (o botão principal), trocável pela cor de destaque. */
+  .tema-papel-branco {
+    --background: 48 18% 95.5%;          /* mesa #F6F5F1 */
+    --foreground: 45 7% 11.4%;           /* tinta #1F1E1B */
+    --card: 45 25% 97.3%;                /* #FAF9F6 */
+    --card-foreground: 45 7% 11.4%;
+    --popover: 60 20% 99%;               /* #FDFDFB */
+    --popover-foreground: 45 7% 11.4%;
+    --surface-elevated: 60 20% 99%;
+    --primary: 45 5% 15.5%;              /* grafite #2A2926 */
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 40 5% 23.5%;
+    --secondary: 43 18% 93.5%;
+    --secondary-foreground: 45 7% 11.4%;
+    --muted: 43 18% 93.5%;
+    --muted-foreground: 40 7% 35%;       /* #5F5B53 */
+    --accent: 44 14% 91%;                /* hover #ECEAE4 */
+    --accent-foreground: 45 7% 11.4%;
+    --selection: 44 16% 87%;
+    --border: 43 15% 86.5%;              /* #E2DFD7 */
+    --input: 43 15% 86.5%;
+    --ring: 45 5% 15.5%;
+    --sidebar-background: 45 15% 92%;    /* capa #EFEDE7 */
+    --sidebar-foreground: 45 6% 15.5%;
+    --sidebar-primary: 45 5% 15.5%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 43 14% 88.5%;      /* hover #E6E3DC */
+    --sidebar-accent-foreground: 45 7% 11.4%;
+    --sidebar-border: 43 14% 85%;
+    --sidebar-ring: 45 5% 15.5%;
+    --shadow-sm: 0 1px 2px 0 rgb(60 50 30 / 0.05);
+    --shadow-md: 0 2px 8px -2px rgb(60 50 30 / 0.08);
+    --shadow-lg: 0 10px 24px -8px rgb(60 50 30 / 0.12);
+
+    --bg-sidebar: 45 15% 92%;
+    --bg-workspace: 48 18% 95.5%;
+    --bg-panel: 43 18% 93.5%;
+    --bg-document: 50 33% 99.4%;         /* folha, a mais branca */
+    --bg-elevated: 60 20% 99%;
+    --topbar: 45 14% 91.2%;
+    --tab: transparent;
+    --tab-text: 42 6% 41%;
+    --tab-hover: 43 14% 88.5%;
+    --tab-active: 45 25% 97.3%;
+    --tab-active-border: 43 14% 82%;
+    --tab-foreground: 45 7% 11.4%;
+    --toolbar: 48 20% 96.5%;
+    --toolbar-border: 43 15% 86.5%;
+    --toolbar-icon: 40 6% 27%;
+    --hover: 44 14% 91%;
+    --selected: 44 16% 87%;
+    --selected-foreground: 40 8% 7%;
+    --selected-border: rgba(60, 50, 30, 0.12);
+    --sidebar-selected: 44 17% 85.5%;
+    --sidebar-selected-foreground: 40 8% 7%;
+    --sidebar-selected-border: rgba(60, 50, 30, 0.12);
+    --sidebar-muted: 40 6% 45%;
+    --sidebar-icon: 42 6% 41%;
+    --sidebar-folder: 40 8% 51%;
+    --border-subtle: 43 14% 85%;
+    --document-border: rgba(80, 70, 50, 0.12);
+    --document-shadow: 0 1px 0 rgb(60 50 30 / 0.04), 0 2px 8px -3px rgb(60 50 30 / 0.10);
+    --text-title: 40 8% 7%;
+    --text-muted: 40 6% 51%;
+    --link: 222 59% 45%;                 /* tinta azul de caneta */
+    --accent-light: 40 5% 40%;
+    --accent-dark: 40 6% 30%;
+    --panel-foreground: 45 7% 11.4%;
+    --paper-texture-opacity: 0;
+    --papel-lateral: url("/texturas/branco-lateral.png");
+    --papel-mesa: url("/texturas/branco-mesa.png");
+    --papel-folha: url("/texturas/branco-folha.png");
+    --papel-card: url("/texturas/branco-card.png");
+  }
+
   /* Cor de destaque escolhida (aparencia.ts põe --destaque-h/s/l e data-destaque="claro|escuro" = cor do texto
      em cima dela). html[...] ganha das classes de tema: troca o destaque sem mexer no fundo do tema. */
   html[data-destaque] {
@@ -360,63 +438,66 @@ redesign (só o dark era o pedido).
    .painel-secundario, .barra-editor, .item-ativo, .icone-pasta, [data-barra-guias] / .aba / .aba-ativa. Cada tema
    só muda os tokens. A textura vai no fundo da própria caixa (cada uma com a sua intensidade); quem rola é o
    conteúdo, então ela não "anda". */
-:is(html.tema-papel-preto, html.tema-papel-vintage) body { background-image: var(--papel-mesa); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) body { background-image: var(--papel-mesa); }
 /* A camada única de textura (body::after) é dos outros temas; aqui cada superfície tem a sua. */
-:is(html.tema-papel-preto, html.tema-papel-vintage) body::after { display: none; }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .bg-background { background-image: var(--papel-mesa); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .bg-sidebar { background-image: var(--papel-lateral); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .bg-card,
-:is(html.tema-papel-preto, html.tema-papel-vintage) .bg-popover { background-image: var(--papel-card); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) body::after { display: none; }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .bg-background { background-image: var(--papel-mesa); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .bg-sidebar { background-image: var(--papel-lateral); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .bg-card,
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .bg-popover { background-image: var(--papel-card); }
 
 /* Capa (lateral): ícones, pastas, texto secundário e o selecionado em "couro iluminado". */
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-sidebar="sidebar"] svg { color: hsl(var(--sidebar-icon)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-sidebar="sidebar"] svg.icone-pasta { color: hsl(var(--sidebar-folder)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-sidebar="sidebar"] .item-ativo svg { color: hsl(var(--sidebar-primary)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-sidebar="sidebar"] .item-ativo {
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-sidebar="sidebar"] svg { color: hsl(var(--sidebar-icon)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-sidebar="sidebar"] svg.icone-pasta { color: hsl(var(--sidebar-folder)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-sidebar="sidebar"] .item-ativo svg { color: hsl(var(--sidebar-primary)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-sidebar="sidebar"] .item-ativo {
   background-color: hsl(var(--sidebar-selected)) !important;
   color: hsl(var(--sidebar-selected-foreground)) !important;
   box-shadow: inset 0 0 0 1px var(--sidebar-selected-border);
 }
 
 /* Selecionado no papel (guias do documento, barra do editor). */
-:is(html.tema-papel-preto, html.tema-papel-vintage) .item-ativo {
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .item-ativo {
   background-color: hsl(var(--selected)) !important;
   color: hsl(var(--selected-foreground)) !important;
   box-shadow: inset 0 0 0 1px var(--selected-border);
 }
 
 /* Abas: também são capa. */
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] { background-color: hsl(var(--topbar)); background-image: var(--papel-lateral); border-color: hsl(var(--border-subtle)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .aba { background-color: var(--tab-bg, hsl(var(--tab))); color: hsl(var(--tab-text)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .aba:hover { background-color: hsl(var(--tab-hover)); color: hsl(var(--tab-foreground)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .aba-ativa {
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] { background-color: hsl(var(--topbar)); background-image: var(--papel-lateral); border-color: hsl(var(--border-subtle)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] .aba { background-color: var(--tab-bg, hsl(var(--tab))); color: hsl(var(--tab-text)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] .aba:hover { background-color: hsl(var(--tab-hover)); color: hsl(var(--tab-foreground)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] .aba-ativa {
   background-color: hsl(var(--tab-active));
   border-color: hsl(var(--tab-active-border));
   color: hsl(var(--tab-foreground));
   box-shadow: inset 0 1px 0 rgba(255, 220, 170, 0.06);
 }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .aba-ativa svg { color: hsl(var(--sidebar-primary)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .seta-guia { color: hsl(var(--tab-text)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) [data-barra-guias] .seta-guia:hover { background-color: hsl(var(--tab-hover)); color: hsl(var(--tab-foreground)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] .aba-ativa svg { color: hsl(var(--sidebar-primary)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] .seta-guia { color: hsl(var(--tab-text)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) [data-barra-guias] .seta-guia:hover { background-color: hsl(var(--tab-hover)); color: hsl(var(--tab-foreground)); }
 html.tema-papel-vintage [data-barra-guias] .aba { --tab-bg: transparent; }
 
-:is(html.tema-papel-preto, html.tema-papel-vintage) .barra-editor {
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .barra-editor {
   background-color: hsl(var(--toolbar));
   background-image: none;
   border-color: hsl(var(--toolbar-border));
 }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .barra-editor button { color: hsl(var(--toolbar-icon)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .barra-editor button:hover { background-color: hsl(var(--hover)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .barra-editor button { color: hsl(var(--toolbar-icon)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .barra-editor button:hover { background-color: hsl(var(--hover)); }
 
-:is(html.tema-papel-preto, html.tema-papel-vintage) .painel-secundario { background-color: hsl(var(--bg-panel)); background-image: var(--papel-card); color: hsl(var(--panel-foreground)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .superficie-mesa { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .painel-secundario { background-color: hsl(var(--bg-panel)); background-image: var(--papel-card); color: hsl(var(--panel-foreground)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .superficie-mesa { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
 /* Conversa do WhatsApp (26/10, Davi: "o fundo do WhatsApp destoou"): nos temas de papel o fundo é a mesa e os
    balões são papel — o meu num verde-sálvia (vintage) / verde-musgo (preto), o da outra pessoa no tom do cartão. */
-:is(html.tema-papel-preto, html.tema-papel-vintage) .whatsapp-fundo { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .bolha-outra { background-color: hsl(var(--card)); background-image: var(--papel-card); color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--border)); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .whatsapp-fundo { background-color: hsl(var(--bg-workspace)); background-image: var(--papel-mesa); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .bolha-outra { background-color: hsl(var(--card)); background-image: var(--papel-card); color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(var(--border)); }
 html.tema-papel-vintage .bolha-minha { background-color: hsl(78 32% 72%); background-image: var(--papel-card); color: hsl(var(--foreground)); }
 html.tema-papel-preto .bolha-minha { background-color: hsl(140 16% 17%); background-image: var(--papel-card); color: hsl(var(--foreground)); }
-:is(html.tema-papel-preto, html.tema-papel-vintage) .superficie-folha {
+html.tema-papel-branco .bolha-minha { background-color: hsl(110 28% 91%); background-image: var(--papel-card); color: hsl(var(--foreground)); box-shadow: 0 0 0 1px hsl(110 18% 82%); }
+/* Papel Branco: a aba aberta é um cartão branco com sombra mínima (o brilho dourado dos outros some no claro). */
+html.tema-papel-branco [data-barra-guias] .aba-ativa { box-shadow: 0 1px 2px rgb(60 50 30 / 0.07); }
+:is(html.tema-papel-preto, html.tema-papel-vintage, html.tema-papel-branco) .superficie-folha {
   background-color: hsl(var(--bg-document));
   background-image: var(--papel-folha);
   border: 1px solid var(--document-border);

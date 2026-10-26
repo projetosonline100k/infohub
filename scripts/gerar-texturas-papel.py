@@ -56,7 +56,7 @@ def textura(cor, grao, fibras, couro=0, semente=1):
 
 def main():
     SAIDA.mkdir(parents=True, exist_ok=True)
-    marrom, creme = (44, 31, 18), (242, 234, 222)
+    marrom, creme, grafite = (44, 31, 18), (242, 234, 222), (70, 64, 54)
     # nome: (cor, grão, fibras, couro) — intensidades para dar ~3–7% na tela.
     pedidos = {
         "preto-lateral": (creme, 0.07, 0.10, 0.10),
@@ -67,6 +67,11 @@ def main():
         "vintage-mesa": (marrom, 0.10, 0.14, 0),
         "vintage-folha": (marrom, 0.12, 0.17, 0),
         "vintage-card": (marrom, 0.07, 0.10, 0),
+        # Papel Branco (26/10): grafite morno bem fraco — de longe é branco liso; de perto, grão e fibra.
+        "branco-lateral": (grafite, 0.05, 0.07, 0.05),
+        "branco-mesa": (grafite, 0.06, 0.08, 0),
+        "branco-folha": (grafite, 0.045, 0.065, 0),
+        "branco-card": (grafite, 0.04, 0.055, 0),
     }
     for i, (nome, (cor, g, f, c)) in enumerate(pedidos.items()):
         caminho = SAIDA / f"{nome}.png"

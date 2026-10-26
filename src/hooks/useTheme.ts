@@ -37,9 +37,10 @@ export function useTheme() {
   const toggleTheme = () => {
     if (aparencia.tema === "papel-vintage") mudar({ tema: "papel-preto" });
     else if (aparencia.tema === "papel-preto") mudar({ tema: "papel-vintage" });
+    else if (aparencia.tema === "papel-branco") mudar({ tema: "papel-preto" });
     else mudar({ modo: aparencia.modo === "dark" ? "light" : "dark" });
   };
-  const setTheme = (t: Theme) => mudar(aparencia.tema === "atual" ? { modo: t } : { tema: t === "dark" ? "papel-preto" : "papel-vintage" });
+  const setTheme = (t: Theme) => mudar(aparencia.tema === "atual" ? { modo: t } : { tema: t === "dark" ? "papel-preto" : aparencia.tema === "papel-branco" ? "papel-branco" : "papel-vintage" });
 
   return {
     theme, setTheme, toggleTheme,
