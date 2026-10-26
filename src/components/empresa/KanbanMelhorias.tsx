@@ -118,7 +118,7 @@ export function KanbanMelhorias({ clienteId }: { clienteId: string }) {
     if (!ehNova(m)) return;
     const visto_em = new Date().toISOString();
     setItens((xs) => xs.map((x) => (x.id === m.id ? { ...x, visto_em } : x)));
-    void db.from("melhorias_sistema").update({ visto_em }).eq("id", m.id);
+    void db.from("melhorias_sistema").update({ visto_em }).eq("id", m.id).then(() => undefined);
   };
 
   const mover = async (id: string, status: Status) => {

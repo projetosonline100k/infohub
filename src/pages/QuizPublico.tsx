@@ -59,7 +59,9 @@ export default function QuizPublico() {
     catch { sessao.current = crypto.randomUUID(); }
   }
   const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number) => {
-    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1 } as never);
+    // O .then é o que envia: a consulta do Supabase só sai quando alguém espera a resposta. Sem ele (15–25/10)
+    // nenhuma visita/tela/fim foi gravada e as métricas ficaram zeradas.
+    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1 } as never).then(() => undefined);
   }, [slug]);
   useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
 

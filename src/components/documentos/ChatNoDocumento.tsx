@@ -715,7 +715,7 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const { regiao } = regiaoInicial(editor);
     trocarRegiao(editor, regiao, textoFinal, true);
     setTurnos((l) => l.map((x) => (x.id === t.id ? { ...x, inserido: true } : x)));
-    if (chave) void db.from("conversas_documento").update({ inserido: true }).eq("id", t.id);
+    if (chave) void db.from("conversas_documento").update({ inserido: true }).eq("id", t.id).then(() => undefined);
     editor.commands.focus();
   };
 

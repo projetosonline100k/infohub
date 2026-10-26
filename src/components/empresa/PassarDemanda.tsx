@@ -104,7 +104,7 @@ export function PassarDemanda({ clienteId, onNovas }: { clienteId: string; onNov
     if (d.visto_em) return;
     const visto_em = new Date().toISOString();
     setItens((xs) => xs.map((x) => (x.id === d.id ? { ...x, visto_em } : x)));
-    void db.from("demandas_sugeridas").update({ visto_em }).eq("id", d.id);
+    void db.from("demandas_sugeridas").update({ visto_em }).eq("id", d.id).then(() => undefined);
   };
   const mover = async (d: Demanda, status: Status) => {
     setItens((xs) => xs.map((x) => (x.id === d.id ? { ...x, status } : x)));

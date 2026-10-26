@@ -140,7 +140,7 @@ export function useMotorBloqueador(ligadoAqui: boolean) {
           const s = ativaRef.current;
           void mostrarAviso({ id: `bloqueio-${Date.now()}`, tipo: "urgente", titulo: `${e.payload.alvo} está bloqueado`,
             quem: `Foco ${textoAte(s)}`, corpo: "Para liberar antes, desligue o bloqueador e diga o motivo." });
-          if (s) void db.from("bloqueador_sessoes").update({ bloqueios: (s.bloqueios ?? 0) + 1 }).eq("id", s.id);
+          if (s) void db.from("bloqueador_sessoes").update({ bloqueios: (s.bloqueios ?? 0) + 1 }).eq("id", s.id).then(() => undefined);
         });
       } catch { /* web */ }
     })();
