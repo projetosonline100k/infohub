@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Forward, PanelRightClose, PanelRightOpen, Reply, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Forward, PanelRightClose, PanelRightOpen, Reply, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X, Video, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -263,6 +263,41 @@ function TextoComMencoes({ texto, nomes }: { texto: string; nomes: Map<string, s
 
 // Documento (24/10, Davi: "queria conseguir abrir isso aqui"): o receptor do Mac baixa na hora (vale para os
 // antigos), salva com o nome original em Downloads/WhatsApp (Infopro) e abre no programa do Mac.
+// Foto/vídeo que o WhatsApp do Mac não baixou sozinho (26/10, Davi: "preciso conseguir ver as fotos, por mais
+// que não baixe de forma automática"): um clique pede ao receptor (/baixar/) e a foto aparece ali mesmo.
+function MidiaPorClique({ id, tipo, onPronta }: { id: string; tipo: string; onPronta: (arquivo: string) => void }) {
+  const conta = useContext(ContaWhatsapp);
+  const [estado, setEstado] = useState<"parado" | "baixando" | "erro">("parado");
+  const [erro, setErro] = useState("");
+  const baixar = async () => {
+    if (!isDesktop()) { toast.info("Abra pelo app do Mac (o WhatsApp está conectado nele)."); return; }
+    setEstado("baixando");
+    try {
+      const cfg = await midiaBaseDe(conta);
+      if (!cfg) throw new Error("o receptor do WhatsApp não respondeu");
+      const r = await fetch(`${cfg.base.replace(/\/midia\/$/, "/baixar/")}${encodeURIComponent(id)}?k=${cfg.chave}`).then((x) => x.json());
+      if (r.erro || !r.arquivo) throw new Error(r.erro || "não veio o arquivo");
+      onPronta(r.arquivo);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "erro");
+      setEstado("erro");
+    }
+  };
+  const rotulo = tipo === "video" ? "Vídeo" : tipo === "figurinha" ? "Figurinha" : "Foto";
+  const Icone = tipo === "video" ? Video : ImageIcon;
+  return (
+    <button type="button" onClick={() => void baixar()} disabled={estado === "baixando"}
+      className="flex w-56 max-w-full items-center gap-2 rounded-md bg-black/5 px-2 py-2 text-left hover:bg-black/10 dark:bg-white/5 dark:hover:bg-white/10">
+      <Icone className="h-6 w-6 shrink-0 text-sky-500" />
+      <span className="min-w-0 flex-1">
+        <span className="block text-[12.5px] font-medium">{rotulo}</span>
+        <span className="block text-[10.5px] opacity-70">{estado === "baixando" ? "baixando…" : estado === "erro" ? `${erro} · tentar de novo` : "clique para ver"}</span>
+      </span>
+      {estado === "baixando" && <Loader2 className="h-4 w-4 animate-spin" />}
+    </button>
+  );
+}
+
 function DocumentoMensagem({ id, nome }: { id: string; nome: string | null }) {
   const conta = useContext(ContaWhatsapp);
   const [estado, setEstado] = useState<"parado" | "abrindo">("parado");
@@ -1099,6 +1134,12 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                   ) : m.tipo === "video" && urlDe(m.midia_arquivo) ? (
                     <div className="space-y-1">
                       <video controls preload="metadata" src={urlDe(m.midia_arquivo)!} className="max-h-64 w-56 max-w-full rounded-md bg-black" />
+                      {m.texto && <p className="whitespace-pre-wrap break-words"><TextoComMencoes texto={m.texto} nomes={nomesDoChat} /></p>}
+                    </div>
+                  ) : (m.tipo === "imagem" || m.tipo === "video" || m.tipo === "figurinha") && !m.midia_arquivo ? (
+                    <div className="space-y-1">
+                      <MidiaPorClique id={m.id} tipo={m.tipo}
+                        onPronta={(arquivo) => setMensagens((l) => l.map((x) => (x.id === m.id ? { ...x, midia_arquivo: arquivo } : x)))} />
                       {m.texto && <p className="whitespace-pre-wrap break-words"><TextoComMencoes texto={m.texto} nomes={nomesDoChat} /></p>}
                     </div>
                   ) : m.tipo === "documento" ? (

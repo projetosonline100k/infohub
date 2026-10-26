@@ -319,6 +319,42 @@ def abrir_documento(id_msg):
     return {"ok": True, "nome": destino.name}
 
 
+def baixar_midia_no_clique(id_msg):
+    """Foto/vídeo/figurinha que não veio baixada (26/10, Davi: "preciso conseguir ver as fotos, por mais que
+    não baixe de forma automática"): no clique, pede ao WAHA a mídia da mensagem, guarda em midia/ e grava o
+    nome na mensagem — o app passa a mostrar ali mesmo. Não abre nada no Mac."""
+    prefixo = "" if CONTA == "principal" else f"{CONTA}:"
+    if prefixo and not id_msg.startswith(prefixo):
+        return {"erro": "mensagem de outro número"}
+    id_waha = id_msg[len(prefixo):]
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("SELECT chat_id, midia_arquivo FROM public.whatsapp_mensagens WHERE id = %s", (id_msg,))
+        linha = q.fetchone()
+    finally:
+        c.close()
+    if not linha:
+        return {"erro": "mensagem não encontrada"}
+    if linha[1] and (MIDIA / linha[1]).exists():
+        return {"ok": True, "arquivo": linha[1]}
+    msg = waha_get(f"/api/{SESSAO}/chats/{urllib.parse.quote(linha[0])}/messages/{urllib.parse.quote(id_waha)}?downloadMedia=true")
+    media = msg.get("media") or {}
+    if not media.get("url"):
+        return {"erro": "o WhatsApp não tem mais esse arquivo (abra no celular)"}
+    dados = waha_get(media["url"], binario=True)
+    nome_midia = nome_seguro(id_msg, media.get("mimetype"))
+    (MIDIA / nome_midia).write_bytes(dados)
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.whatsapp_mensagens SET midia_arquivo = %s WHERE id = %s", (nome_midia, id_msg))
+        c.commit()
+    finally:
+        c.close()
+    return {"ok": True, "arquivo": nome_midia}
+
+
 def nome_seguro(id_msg, mime):
     base = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in id_msg)[-120:]
     return base + EXTENSOES.get((mime or "").split(";")[0].strip(), ".bin")
@@ -536,11 +572,13 @@ class Webhook(BaseHTTPRequestHandler):
         player de vídeo/áudio do app pede pedaços)."""
         url = urllib.parse.urlparse(self.path)
         consulta = urllib.parse.parse_qs(url.query)
-        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/", "/contato/", "/abrir/")):
+        if consulta.get("k", [""])[0] != CONFIG["segredo_webhook"] or not url.path.startswith(("/midia/", "/foto/", "/contato/", "/abrir/", "/baixar/")):
             self.send_response(403); self.end_headers(); return
-        if url.path.startswith("/abrir/"):
+        if url.path.startswith(("/abrir/", "/baixar/")):
+            baixar = url.path.startswith("/baixar/")
             try:
-                resposta = abrir_documento(urllib.parse.unquote(url.path[len("/abrir/"):]))
+                ident = urllib.parse.unquote(url.path[len("/baixar/" if baixar else "/abrir/"):])
+                resposta = baixar_midia_no_clique(ident) if baixar else abrir_documento(ident)
             except Exception as e:
                 log("abrir: erro", repr(e)[:200])
                 resposta = {"erro": "não consegui baixar o arquivo"}
