@@ -1743,21 +1743,12 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   }
 
   return (
-    <div className={embedded && !fullscreen ? "relative h-[600px] min-h-[400px] resize-y overflow-hidden rounded-lg border bg-background" : pagina ? "relative h-full bg-background" : "fixed inset-0 z-50 bg-background"}>
-      <div className="relative h-full mindmap-canvas" data-document-canvas tabIndex={-1} ref={wrapperRef}>
-        {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
-            lateral e ocupa bastante espaço — trocamos pelo botão de caneta
-            (com o popup compacto) lá embaixo. */}
-        <style>
-          {".mindmap-canvas .selected-shape-actions { display: none !important; } " +
-            ".mm-node-variant-active { position: relative; } " +
-            '.mm-node-variant-active::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary, #7c5cff); }'}
-        </style>
+    <div className={cn("flex flex-col", embedded && !fullscreen ? "relative h-[600px] min-h-[400px] resize-y overflow-hidden rounded-lg border bg-background" : pagina ? "relative h-full bg-background" : "fixed inset-0 z-50 bg-background")}>
+      {/* 26/10 (Davi: "uma informação fica em cima da outra"): título, projeto, salvamento e os botões do Kanban
+          numa faixa fina ACIMA do desenho — flutuando por cima, cobriam as ferramentas do Excalidraw. */}
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b bg-background px-2">
+        <div className="flex h-9 min-w-0 items-center gap-1">
 
-        {/* Nenhuma barra fixa: voltar/título e as conexões ficam flutuando
-            por cima do canvas mesmo, sem tomar espaço dele. Encostado ao
-            lado do menu (☰) nativo do Excalidraw, não embaixo dele. */}
-        <div className="absolute left-14 top-2 z-20 flex h-9 items-center gap-1 rounded-lg border bg-background/95 px-1 shadow-sm">
           {!pagina && (
             <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title={embedded ? "Recolher lousa" : "Voltar"} onClick={handleClose}>
               <ArrowLeft className="h-4 w-4" />
@@ -1792,7 +1783,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         </div>
 
         {/* Puxar/criar cards do Kanban direto no mapa. */}
-        <div className="absolute left-14 top-14 z-20 flex h-8 items-center gap-0.5 rounded-lg border bg-background/95 px-1 shadow-sm">
+        <div className="ml-auto flex h-8 shrink-0 items-center gap-0.5 rounded-lg border px-1">
           <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" title="Novo card" onClick={() => void criarNovoCard()}>
             <Plus className="h-4 w-4" />
           </Button>
@@ -1801,6 +1792,16 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
             onSelect={inserirCardNoMapa}
           />
         </div>
+      </div>
+      <div className="relative min-h-0 flex-1 mindmap-canvas" data-document-canvas tabIndex={-1} ref={wrapperRef}>
+        {/* O painel nativo de cor/traço/fonte do Excalidraw fica preso na
+            lateral e ocupa bastante espaço — trocamos pelo botão de caneta
+            (com o popup compacto) lá embaixo. */}
+        <style>
+          {".mindmap-canvas .selected-shape-actions { display: none !important; } " +
+            ".mm-node-variant-active { position: relative; } " +
+            '.mm-node-variant-active::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 9999px; background: var(--primary, #7c5cff); }'}
+        </style>
 
         {embedded && <Button variant="outline" size="sm" className="absolute right-3 bottom-14 z-30 gap-2" onClick={() => setFullscreen(value => !value)}>
           {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
