@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Forward, Reply, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Forward, PanelRightClose, PanelRightOpen, Reply, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -462,6 +462,8 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
 
   // Arquivar e pastas (20/10, Davi: "no meu WhatsApp eu consigo arquivar; aqui está tudo junto" e
   // "conseguir criar pastas"). Arquivada some da lista e fica em "Arquivadas"; a busca acha todas.
+  const [infoAberta, setInfoAberta] = useState(() => { try { return localStorage.getItem("whatsapp:painel-conversa") !== "fechado"; } catch { return true; } });
+  const mudarInfo = (v: boolean) => { setInfoAberta(v); try { localStorage.setItem("whatsapp:painel-conversa", v ? "aberto" : "fechado"); } catch { /* sem storage */ } };
   const org = useOrganizacaoWhatsapp(conta);
   const [visao, setVisao] = useState<{ tipo: "tudo" } | { tipo: "pasta"; id: string } | { tipo: "arquivadas" }>({ tipo: "tudo" });
   const [menuDe, setMenuDe] = useState<string | null>(null);
@@ -646,6 +648,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
   }
 
   if (aberta) {
+    const comInfo = !!info && infoAberta;
     const abrirPrivado = (numeros: string[]) => {
       const c = conversas.find((x) => !x.eh_grupo && numeros.includes(x.chat_id.split("@")[0]));
       if (c) { setAberta(c); marcarVista(c.chat_id, c.ultima_em); }
@@ -657,20 +660,36 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
       </AbrirPrivado.Provider>
     );
     return (
-      <ResizablePanelGroup direction="horizontal" autoSaveId={info ? "jarvis:whatsapp-lista-conversa-info" : "jarvis:whatsapp-lista-conversa"} className="h-full">
-        <ResizablePanel defaultSize={info ? 26 : 34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
+      <div className="flex h-full">
+      <ResizablePanelGroup direction="horizontal" autoSaveId={comInfo ? "jarvis:whatsapp-lista-conversa-info" : "jarvis:whatsapp-lista-conversa"} className="h-full min-w-0 flex-1">
+        <ResizablePanel defaultSize={comInfo ? 26 : 34} minSize={18} className="min-w-0 pt-1">{lista}</ResizablePanel>
         <ResizableHandle withHandle />
-        <ResizablePanel defaultSize={info ? 46 : 66} minSize={28} className="min-w-0">{chat}</ResizablePanel>
-        {info && (
+        <ResizablePanel defaultSize={comInfo ? 46 : 66} minSize={28} className="min-w-0">{chat}</ResizablePanel>
+        {comInfo && (
           <>
-            {/* Informações à direita da conversa (24/10, Davi: "a mensagem no meio e a inteligência no lado direito"). */}
+            {/* Informações à direita da conversa (24/10, Davi: "a mensagem no meio e a inteligência no lado direito").
+                26/10: dá para encolher (fica uma faixa fina com o botão de abrir de novo). */}
             <ResizableHandle withHandle />
             <ResizablePanel defaultSize={28} minSize={16} className="min-w-0">
-              <div className="h-full overflow-y-auto px-4 pb-4">{info(aberta)}</div>
+              <div className="flex h-full flex-col">
+                <div className="flex justify-end px-2 pt-1">
+                  <button type="button" onClick={() => mudarInfo(false)} title="Encolher o painel"
+                    className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"><PanelRightClose className="h-4 w-4" /></button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{info!(aberta)}</div>
+              </div>
             </ResizablePanel>
           </>
         )}
       </ResizablePanelGroup>
+      {info && !infoAberta && (
+        <button type="button" onClick={() => mudarInfo(true)} title="Abrir o painel da conversa"
+          className="flex w-8 shrink-0 flex-col items-center gap-2 border-l border-border pt-2 text-muted-foreground hover:bg-accent hover:text-foreground">
+          <PanelRightOpen className="h-4 w-4" />
+          <span className="text-[11px] font-medium [writing-mode:vertical-rl]">Painel da conversa</span>
+        </button>
+      )}
+      </div>
     );
   }
 

@@ -454,12 +454,13 @@ function ListaEntregas({ entregas, nomes, agora }: { entregas: Entrega[]; nomes?
 /** O painel (cards, histórico, marcas) para as telas de conversa, ao vivo. */
 function useDadosPainel() {
   const { user } = useAuth();
-  const [dados, setDados] = useState<{ cards: CardWhatsapp[]; h: Historico | null; respondidos: Record<string, boolean> } | null>(null);
+  const [dados, setDados] = useState<{ cards: CardWhatsapp[]; h: Historico | null; respondidos: Record<string, boolean>; atualizadoEm: string | null; status: string | null; pedidoEm: string | null } | null>(null);
   const [agora, setAgora] = useState(() => new Date());
   const carregar = useCallback(async () => {
     if (!user?.id) return;
-    const { data } = await supabase.from("whatsapp_painel").select("cards, historico, respondidos").eq("user_id", user.id).maybeSingle();
+    const { data } = await supabase.from("whatsapp_painel").select("cards, historico, respondidos, atualizado_em, atualizacao_status, atualizacao_pedida_em").eq("user_id", user.id).maybeSingle();
     setDados({
+      atualizadoEm: data?.atualizado_em ?? null, status: data?.atualizacao_status ?? null, pedidoEm: data?.atualizacao_pedida_em ?? null,
       cards: (data?.cards as unknown as CardWhatsapp[]) || [],
       h: data?.historico && Object.keys(data.historico as object).length ? (data.historico as unknown as Historico) : null,
       respondidos: (data?.respondidos as Record<string, boolean>) || {},
@@ -484,7 +485,41 @@ function useDadosPainel() {
     const { error } = await supabase.from("whatsapp_painel").update({ respondidos }).eq("user_id", user.id);
     if (error) toast.error("Não consegui salvar a marcação");
   };
-  return { dados, metricas, agora, salvar };
+  // "Forçar atualizar" do painel da conversa (26/10): o mesmo pedido do botão Atualizar do Painel.
+  const pedirAtualizacao = async () => {
+    if (!dados || !user?.id) return;
+    const pedidoEm = new Date().toISOString();
+    setDados({ ...dados, status: "pedida", pedidoEm });
+    const { error } = await supabase.from("whatsapp_painel")
+      .update({ atualizacao_pedida_em: pedidoEm, atualizacao_status: "pedida", atualizacao_mensagem: null }).eq("user_id", user.id);
+    if (error) toast.error("Não consegui enviar o pedido");
+  };
+  const emAndamento = dados?.status === "rodando" || (dados?.status === "pedida" && !!dados.pedidoEm && agora.getTime() - new Date(dados.pedidoEm).getTime() < 15 * 60_000);
+  useEffect(() => {
+    if (!emAndamento) return;
+    const t = setInterval(() => { setAgora(new Date()); void carregar(); }, 5000);
+    return () => clearInterval(t);
+  }, [emAndamento, carregar]);
+  return { dados, metricas, agora, salvar, pedirAtualizacao, emAndamento };
+}
+
+// Painel da conversa desatualizado (26/10, Davi: "mostre caso esteja desatualizado, e eu consiga forçar
+// a atualizar"): a idade do painel, em laranja a partir de 3 h, e o botão que pede a leitura de novo.
+const PAINEL_VELHO_MS = 3 * 3_600_000;
+function IdadeDoPainel({ atualizadoEm, agora, emAndamento, onAtualizar }: { atualizadoEm: string | null; agora: Date; emAndamento: boolean; onAtualizar: () => void }) {
+  const idade = atualizadoEm ? agora.getTime() - new Date(atualizadoEm).getTime() : Infinity;
+  const velho = idade > PAINEL_VELHO_MS;
+  const quando = !atualizadoEm ? "nunca" : idade < 3_600_000 ? `há ${Math.max(1, Math.round(idade / 60_000))} min`
+    : idade < 86_400_000 ? `há ${Math.round(idade / 3_600_000)} h` : format(new Date(atualizadoEm), "dd/MM 'às' HH:mm", { locale: ptBR });
+  return (
+    <div className={cn("mb-2 flex items-center gap-2 rounded-md px-2 py-1 text-[11px]", velho && !emAndamento ? TOM.media : "text-muted-foreground")}>
+      <span className="min-w-0 flex-1">{emAndamento ? "O Claude está lendo o WhatsApp e atualizando…" : `${velho ? "Desatualizado · " : ""}painel lido ${quando}`}</span>
+      <button type="button" onClick={onAtualizar} disabled={emAndamento} title="Pede pro Claude ler o WhatsApp de novo e atualizar"
+        className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-background/60 px-1.5 py-0.5 hover:bg-accent disabled:opacity-60">
+        <RefreshCw className={cn("h-3 w-3", emAndamento && "animate-spin")} />{emAndamento ? "Atualizando" : "Atualizar"}
+      </button>
+    </div>
+  );
 }
 
 /** Quem é da equipe pelo WhatsApp: fala em 3 ou mais grupos de clientes nas últimas 3 semanas. */
@@ -520,11 +555,12 @@ function useEtiquetas() {
 }
 
 function InfoDaConversa({ chat }: { chat: ChatResumo }) {
-  const { dados, metricas, agora, salvar } = useDadosPainel();
+  const { dados, metricas, agora, salvar, pedirAtualizacao, emAndamento } = useDadosPainel();
   if (!dados) return <Nota>Carregando…</Nota>;
   const { mentorados, cards } = daConversa(chat, dados.h, dados.cards);
+  const idade = <IdadeDoPainel atualizadoEm={dados.atualizadoEm} agora={agora} emAndamento={emAndamento} onAtualizar={() => void pedirAtualizacao()} />;
   if (!mentorados.length && !cards.length) {
-    return <div className="py-8 text-center text-sm text-muted-foreground">Ainda não tenho informações desta conversa no painel.<br />Ela entra quando o Claude ler o WhatsApp e ela tiver algo para acompanhar.</div>;
+    return <div className="pt-2">{idade}<div className="py-8 text-center text-sm text-muted-foreground">Ainda não tenho informações desta conversa no painel.<br />Ela entra quando o Claude ler o WhatsApp e ela tiver algo para acompanhar.</div></div>;
   }
   const meta = metricas?.meta ?? 240;
   const ids = new Set(mentorados.map((m) => m.id));
@@ -537,6 +573,7 @@ function InfoDaConversa({ chat }: { chat: ChatResumo }) {
 
   return (
     <div className="space-y-1 pt-2">
+      {idade}
       {mentorados.map((x) => {
         const s = metricas?.saude.find((y) => y.mentorado.id === x.id);
         const [upRotulo, upTom] = UPGRADE[x.upgrade?.nivel] ?? ["—", "cinza"];

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { EVENTO_FECHAR_GUIA } from "@/lib/desktop/desfazer";
+import { useSemRespostaWhatsapp } from "@/hooks/useSemRespostaWhatsapp";
 import { ArrowLeft, ArrowRight, Columns2, X } from "lucide-react";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent,
@@ -368,6 +369,27 @@ export function useWorkspaceTabs() {
   return context;
 }
 
+// Guia do WhatsApp de um projeto (/clientes/<id>?secao=conteudo:whatsapp): o ícone leva quantas conversas
+// esperam resposta (26/10).
+function clienteDoWhatsapp(caminho: string): string | null {
+  const [rota, busca = ""] = caminho.split("?");
+  const m = rota.match(/^\/clientes\/([^/]+)/);
+  return m && new URLSearchParams(busca).get("secao") === "conteudo:whatsapp" ? m[1] : null;
+}
+function IconeComPendentes({ clienteId, children }: { clienteId: string; children: React.ReactNode }) {
+  const n = useSemRespostaWhatsapp(clienteId);
+  return (
+    <span className={cn("relative inline-flex shrink-0", n > 0 && "mr-2")} title={n ? `${n} ${n === 1 ? "conversa espera" : "conversas esperam"} sua resposta` : undefined}>
+      {children}
+      {n > 0 && (
+        <span className="absolute -right-2 -top-1.5 min-w-[15px] rounded-full bg-orange-500 px-1 text-center text-[9px] font-bold leading-[15px] text-white shadow-sm">
+          {n > 99 ? "99+" : n}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Arrastar a aba mais que isso para fora da barra a destaca numa janela nova.
 const DISTANCIA_DESTACAR = 70;
 const LIMIAR_ARRASTO = 5;
@@ -565,7 +587,12 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
         className={cn("group flex h-9 min-w-28 max-w-52 cursor-default select-none touch-none items-center [-webkit-user-drag:none] gap-1 rounded-t-md border border-b-0 px-2 text-sm", active ? "aba-ativa bg-background font-medium text-foreground" : "aba border-transparent text-muted-foreground hover:bg-muted", naDivisao && !active && "bg-muted/60", sendoArrastada && "opacity-60", arrasto?.destacando && arrasto.id === tab.id && "opacity-30")}
       >
         {naDivisao && <Columns2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Na tela dividida" />}
-        {(() => { const Icone = iconeDaGuia(tab.path); return <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />; })()}
+        {(() => {
+          const Icone = iconeDaGuia(tab.path);
+          const icone = <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />;
+          const whats = clienteDoWhatsapp(tab.path);
+          return whats ? <IconeComPendentes clienteId={whats}>{icone}</IconeComPendentes> : icone;
+        })()}
         <span className="min-w-0 flex-1 truncate text-left" title={nomesPorEndereco[tab.path] ? `${nomesPorEndereco[tab.path]} · ${tab.title}` : tab.title}>
           {nomesPorEndereco[tab.path] ?? tab.title}
           {/* Guias com o mesmo nome (ex.: três "Core"): mostra a seção ao lado. */}
