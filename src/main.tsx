@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import "./lib/realtimeCanais";
 import "./index.css";
 import { ErroNaTela, registrarErroTela } from "./components/ErroNaTela";
 import { CHAVES_APARENCIA, aplicarAparencia, lerAparencia } from "./lib/aparencia/aparencia";

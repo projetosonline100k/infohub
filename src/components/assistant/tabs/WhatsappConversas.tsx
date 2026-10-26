@@ -404,14 +404,17 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
   useEffect(() => { void carregarConversas(); }, [carregarConversas]);
 
   // Ao vivo: qualquer mensagem nova (ou transcrição pronta) atualiza a lista.
-  const [novidade, setNovidade] = useState<Mensagem | null>(null);
+  // 26/10 (Davi: "a mensagem enviada só apareceu depois de sair e entrar"): cada tela tem o seu canal (com o
+  // mesmo nome, uma guia que fechava derrubava o canal das outras) e as novidades vão numa fila — duas
+  // mensagens no mesmo instante (dois áudios) não se perdem mais.
+  const [novidade, setNovidade] = useState<Mensagem[]>([]);
   useEffect(() => {
-    const canal = supabase.channel(`jarvis-whatsapp-conversas-${conta}`)
+    const canal = supabase.channel(`jarvis-whatsapp-conversas-${conta}-${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_mensagens" }, (ev) => {
         const de = (ev.new as { conta?: string } | null)?.conta;
         if (de && de !== conta) return;   // mensagem do outro número
         void carregarConversas();
-        if (ev.new && (ev.new as Mensagem).id) setNovidade(ev.new as Mensagem);
+        if (ev.new && (ev.new as Mensagem).id) setNovidade((l) => [...l.slice(-49), ev.new as Mensagem]);
       })
       .subscribe();
     return () => { void supabase.removeChannel(canal); };
@@ -701,7 +704,7 @@ function ListaConversas({ pedido, info, etiquetas, ehEquipe, tela }: PropsConver
 }
 
 function Conversa({ conversa, novidade, onVoltar, onVista }: {
-  conversa: Conversa; novidade: Mensagem | null; onVoltar: () => void; onVista: (chatId: string, quando: string) => void;
+  conversa: Conversa; novidade: Mensagem[]; onVoltar: () => void; onVista: (chatId: string, quando: string) => void;
 }) {
   const conta = useContext(ContaWhatsapp);
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -811,16 +814,34 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     return () => { cancelado = true; };
   }, [conversa.chat_id, conta]);
 
-  // Mensagem nova (ou transcrição pronta) desta conversa, ao vivo.
-  useEffect(() => {
-    if (!novidade || novidade.chat_id !== conversa.chat_id) return;
+  // Mensagens novas (ou transcrição pronta) desta conversa, ao vivo — e uma conferida a cada 15 s e ao voltar
+  // para a janela, caso o ao vivo tenha falhado.
+  const juntar = useCallback((novas: Mensagem[]) => {
+    const daqui = novas.filter((n) => n.chat_id === conversa.chat_id);
+    if (!daqui.length) return;
     setMensagens((atual) => {
-      const i = atual.findIndex((m) => m.id === novidade.id);
-      if (i >= 0) { const copia = [...atual]; copia[i] = { ...copia[i], ...novidade }; return copia; }
-      return [...atual, novidade].sort((a, b) => a.enviada_em.localeCompare(b.enviada_em));
+      const copia = [...atual];
+      for (const n of daqui) {
+        const i = copia.findIndex((m) => m.id === n.id);
+        if (i >= 0) copia[i] = { ...copia[i], ...n }; else copia.push(n);
+      }
+      return copia.sort((a, b) => a.enviada_em.localeCompare(b.enviada_em));
     });
-    onVista(conversa.chat_id, novidade.enviada_em);
-  }, [novidade, conversa.chat_id, onVista]);
+    onVista(conversa.chat_id, daqui.reduce((x, n) => (n.enviada_em > x ? n.enviada_em : x), daqui[0].enviada_em));
+  }, [conversa.chat_id, onVista]);
+  useEffect(() => { juntar(novidade); }, [novidade, juntar]);
+  useEffect(() => {
+    const conferir = () => {
+      void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens")
+        .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, autor_id, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo, responde_a")
+        .eq("chat_id", conversa.chat_id).eq("conta", conta).gte("recebida_em", new Date(Date.now() - 10 * 60_000).toISOString())
+        .order("enviada_em", { ascending: false }).limit(40)
+        .then(({ data }) => { if (data?.length) juntar(data as Mensagem[]); });
+    };
+    const t = window.setInterval(() => { if (document.visibilityState === "visible") conferir(); }, 15_000);
+    window.addEventListener("focus", conferir);
+    return () => { window.clearInterval(t); window.removeEventListener("focus", conferir); };
+  }, [conversa.chat_id, conta, juntar]);
 
   useLayoutEffect(() => { fimRef.current?.scrollIntoView({ block: "end" }); }, [mensagens.length, carregando, pendentes.length]);
 
