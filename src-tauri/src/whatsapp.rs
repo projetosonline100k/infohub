@@ -73,6 +73,34 @@ pub async fn whatsapp_enviar_audio(chat_id: String, base64: String, mimetype: St
     resultado
 }
 
+/// Foto, vídeo ou arquivo arrastado/colado na conversa (26/10, Davi: "arrastar imagens no WhatsApp para
+/// enviar"). Foto → sendImage, vídeo → sendVideo, o resto → sendFile; a legenda vai junto.
+#[tauri::command]
+pub async fn whatsapp_enviar_arquivo(chat_id: String, base64: String, mimetype: String, nome: String, legenda: Option<String>, conta: Option<String>) -> Result<serde_json::Value, String> {
+    registrar(&format!("pedido de arquivo chat={chat_id} tipo={mimetype} tamanho={}", base64.len()));
+    if base64.is_empty() || chat_id.trim().is_empty() {
+        return Err("Arquivo vazio".into());
+    }
+    let cfg = config(conta.as_deref())?;
+    let (rota, convert) = if mimetype.starts_with("image/") && mimetype != "image/gif" && mimetype != "image/svg+xml" {
+        ("/api/sendImage", false)
+    } else if mimetype.starts_with("video/") {
+        ("/api/sendVideo", true)
+    } else {
+        ("/api/sendFile", false)
+    };
+    let mut corpo = serde_json::json!({
+        "session": cfg["sessao"].as_str().unwrap_or("default"),
+        "chatId": chat_id,
+        "file": { "mimetype": mimetype, "data": base64, "filename": nome },
+    });
+    if let Some(l) = legenda.as_deref().map(str::trim).filter(|l| !l.is_empty()) { corpo["caption"] = l.into(); }
+    if convert { corpo["convert"] = true.into(); }
+    let resultado = post_waha(&cfg, rota, corpo).await;
+    registrar(&match &resultado { Ok(_) => format!("arquivo ok {rota}"), Err(e) => format!("arquivo erro: {e}") });
+    resultado
+}
+
 /// Endereço das fotos/vídeos/áudios guardados no Mac (servidos pelo
 /// receptor): o Jarvis monta `<base><arquivo>?k=<chave>`.
 #[tauri::command]
@@ -96,7 +124,7 @@ async fn post_waha(cfg: &serde_json::Value, caminho: &str, corpo: serde_json::Va
         std::fs::write(&arquivo, corpo.to_string()).map_err(|e| e.to_string())?;
         let saida = (|| {
             let mut filho = Command::new("/usr/bin/curl")
-                .args(["-sS", "--max-time", "60", "-X", "POST", &url, "-H", "Content-Type: application/json",
+                .args(["-sS", "--max-time", "180", "-X", "POST", &url, "-H", "Content-Type: application/json",
                        "--data-binary", &format!("@{}", arquivo.display()), "-K", "-", "-w", "\n%{http_code}"])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())

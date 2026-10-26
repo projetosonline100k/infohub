@@ -87,6 +87,7 @@ pub fn run() {
             creator::voz_transcrever,
             whatsapp::whatsapp_enviar,
             whatsapp::whatsapp_enviar_audio,
+            whatsapp::whatsapp_enviar_arquivo,
             whatsapp::whatsapp_midia_base,
             danilo::danilo_base,
             ditado::ditado_organizar,

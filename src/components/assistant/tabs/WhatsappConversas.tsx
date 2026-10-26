@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Loader2, MessageCircle, Mic, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -31,7 +31,9 @@ interface Conversa {
 // 19/10 (Davi): "quando mando mensagem, em vez de ficar vazio e só aparecer quando é enviada, já
 // aparece com o relógio no cantinho igual ao WhatsApp; quando enviar, os dois tracinhos". A mensagem
 // fica aqui até a de verdade chegar do WhatsApp (pelo receptor, ao vivo).
-interface Pendente { id: string; tipo: "texto" | "audio"; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string }
+interface Pendente { id: string; tipo: "texto" | "audio" | "arquivo"; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string; arquivo?: File; arquivoUrl?: string }
+// Até onde o WhatsApp do Mac aguenta mandar de uma vez (o arquivo vai inteiro em base64).
+const LIMITE_ARQUIVO = 64 * 1024 * 1024;
 const normTexto = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
 
 function Situacao({ estado }: { estado: "enviando" | "enviada" | "erro" }) {
@@ -673,6 +675,11 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
       const { invoke } = await import("@tauri-apps/api/core");
       if (p.tipo === "audio" && p.audio) {
         await invoke("whatsapp_enviar_audio", { chatId: conversa.chat_id, base64: await paraBase64(p.audio), mimetype: p.audio.type.split(";")[0], conta });
+      } else if (p.tipo === "arquivo" && p.arquivo) {
+        await invoke("whatsapp_enviar_arquivo", {
+          chatId: conversa.chat_id, base64: await paraBase64(p.arquivo), mimetype: p.arquivo.type || "application/octet-stream",
+          nome: p.arquivo.name || "arquivo", legenda: p.texto || null, conta,
+        });
       } else {
         await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto, conta });
       }
@@ -721,9 +728,32 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
 
   useLayoutEffect(() => { fimRef.current?.scrollIntoView({ block: "end" }); }, [mensagens.length, carregando, pendentes.length]);
 
+  // Arquivos arrastados, colados (⌘V) ou escolhidos no clipe: ficam numa bandeja acima do campo e vão
+  // ao apertar Enviar — o texto digitado vira a legenda do primeiro (26/10).
+  const [anexos, setAnexos] = useState<{ id: string; arquivo: File; url: string }[]>([]);
+  const [soltando, setSoltando] = useState(false);
+  const entradaArquivo = useRef<HTMLInputElement>(null);
+  useEffect(() => setAnexos([]), [conversa.chat_id]);
+  const anexar = (lista: FileList | File[] | null | undefined) => {
+    const novos = [...(lista ?? [])].filter((f) => {
+      if (f.size > LIMITE_ARQUIVO) { toast.error(`"${f.name}" passa de 64 MB`); return false; }
+      return f.size > 0;
+    });
+    if (novos.length) setAnexos((l) => [...l, ...novos.map((arquivo) => ({ id: crypto.randomUUID(), arquivo, url: URL.createObjectURL(arquivo) }))]);
+  };
+  const tirarAnexo = (id: string) => setAnexos((l) => l.filter((a) => a.id !== id));
+
   // A mensagem entra na conversa na hora (com o relógio) e o campo já fica livre para a próxima.
   const enviar = () => {
     const t = texto.trim();
+    if (anexos.length) {
+      const novos: Pendente[] = anexos.map((a, i) => ({ id: crypto.randomUUID(), tipo: "arquivo", texto: i === 0 ? t : "", criada: new Date().toISOString(), estado: "enviando", arquivo: a.arquivo, arquivoUrl: a.url }));
+      setPendentes((l) => [...l, ...novos]);
+      setAnexos([]);
+      setTexto("");
+      void (async () => { for (const p of novos) await mandar(p); })();
+      return;
+    }
     if (!t) return;
     const p: Pendente = { id: crypto.randomUUID(), tipo: "texto", texto: t, criada: new Date().toISOString(), estado: "enviando" };
     setPendentes((l) => [...l, p]);
@@ -734,7 +764,9 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   // A pendente sai quando a de verdade (minha, mesmo texto, depois dela) chega do WhatsApp.
   const aindaPendentes = pendentes.filter((p) => !mensagens.some((m) => m.de_mim
     && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 5 * 60_000
-    && (p.tipo === "audio" ? m.tipo === "audio" : normTexto(m.texto) === normTexto(p.texto))));
+    && (p.tipo === "audio" ? m.tipo === "audio"
+      : p.tipo === "arquivo" ? m.tipo !== "texto" && m.tipo !== "audio" && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 60_000
+      : normTexto(m.texto) === normTexto(p.texto))));
   useEffect(() => {
     if (aindaPendentes.length !== pendentes.length) setPendentes(aindaPendentes);
   }, [aindaPendentes.length, pendentes.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -743,7 +775,15 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   const nomesDoChat = new Map(mensagens.filter((x) => x.autor_id && x.autor_nome).map((x) => [x.autor_id!.split("@")[0], x.autor_nome!]));
   let diaAnterior = "";
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col"
+      onDragOver={podeEnviar ? (e) => { if ([...e.dataTransfer.types].includes("Files")) { e.preventDefault(); setSoltando(true); } } : undefined}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setSoltando(false); }}
+      onDrop={podeEnviar ? (e) => { if (e.dataTransfer.files.length) { e.preventDefault(); anexar(e.dataTransfer.files); } setSoltando(false); } : undefined}>
+      {soltando && (
+        <div className="pointer-events-none absolute inset-1 z-20 flex items-center justify-center rounded-lg border-2 border-dashed border-emerald-500 bg-emerald-500/10 text-sm font-medium text-emerald-700 backdrop-blur-[1px] dark:text-emerald-300">
+          Solte para enviar nesta conversa
+        </div>
+      )}
       <div className="flex items-center gap-2 border-b border-border bg-muted/60 px-2 py-1.5">
         <button type="button" onClick={onVoltar} className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground" aria-label="Voltar às conversas">
           <ArrowLeft className="h-4 w-4" />
@@ -825,6 +865,16 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
               "bolha-minha bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]", p.estado === "erro" && "ring-1 ring-rose-400")}>
               {p.tipo === "audio"
                 ? (p.audioUrl ? <AudioMensagem url={p.audioUrl} deMim /> : <span className="inline-flex items-center gap-1 text-[11.5px]"><Mic className="h-3 w-3" />Áudio</span>)
+                : p.tipo === "arquivo" && p.arquivo ? (
+                  <div className="space-y-1">
+                    {p.arquivo.type.startsWith("image/") && p.arquivoUrl
+                      ? <img src={p.arquivoUrl} alt="" className="max-h-64 w-56 max-w-full rounded-md object-cover" />
+                      : p.arquivo.type.startsWith("video/") && p.arquivoUrl
+                        ? <video src={p.arquivoUrl} className="max-h-64 w-56 max-w-full rounded-md" muted />
+                        : <span className="inline-flex items-center gap-1.5 text-[11.5px]"><FileText className="h-4 w-4" />{p.arquivo.name}</span>}
+                    {p.texto && <p className="whitespace-pre-wrap break-words">{p.texto}</p>}
+                  </div>
+                )
                 : <p className="whitespace-pre-wrap break-words">{p.texto}</p>}
               <p className="mt-0.5 flex items-center justify-end gap-1 text-[9.5px] text-muted-foreground">
                 {format(new Date(p.criada), "HH:mm")}<Situacao estado={p.estado} />
@@ -834,7 +884,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                   Não enviou: {p.erro}{" "}
                   <button type="button" onClick={() => void mandar(p)} className="font-semibold underline">tentar de novo</button>
                   {" · "}
-                  <button type="button" onClick={() => { if (p.tipo === "texto") setTexto(p.texto); mudarPendente(p.id, null); }} className="underline">desistir</button>
+                  <button type="button" onClick={() => { if (p.tipo === "texto" || (p.tipo === "arquivo" && p.texto)) setTexto(p.texto); mudarPendente(p.id, null); }} className="underline">desistir</button>
                 </p>
               )}
             </div>
@@ -866,23 +916,44 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
           </button>
         </div>
       ) : podeEnviar ? (
-        <form className="flex items-end gap-1.5 border-t border-border p-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+        <form className="border-t border-border p-2" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>
+          {anexos.length > 0 && (
+            <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+              {anexos.map((a) => (
+                <div key={a.id} className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-border bg-muted" title={a.arquivo.name}>
+                  {a.arquivo.type.startsWith("image/") ? <img src={a.url} alt="" className="h-full w-full object-cover" />
+                    : a.arquivo.type.startsWith("video/") ? <video src={a.url} className="h-full w-full object-cover" muted />
+                    : <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 p-1 text-center text-[9px] leading-tight"><FileText className="h-4 w-4" /><span className="line-clamp-2 break-all">{a.arquivo.name}</span></span>}
+                  <button type="button" onClick={() => tirarAnexo(a.id)} aria-label="Tirar"
+                    className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white hover:bg-black/80"><X className="h-3 w-3" /></button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex items-end gap-1.5">
+          <input ref={entradaArquivo} type="file" multiple className="hidden" onChange={(e) => { anexar(e.target.files); e.target.value = ""; }} />
+          <button type="button" onClick={() => entradaArquivo.current?.click()} aria-label="Anexar foto, vídeo ou arquivo" title="Anexar (ou arraste / cole aqui)"
+            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground">
+            <Paperclip className="h-4 w-4" />
+          </button>
           <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={1}
+            onPaste={(e) => { const fs = [...e.clipboardData.files]; if (fs.length) { e.preventDefault(); anexar(fs); } }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
-            placeholder={`Mensagem para ${conversa.chat_nome ?? "a conversa"}…`}
+            placeholder={anexos.length ? "Legenda (opcional)…" : `Mensagem para ${conversa.chat_nome ?? "a conversa"}…`}
             className="max-h-28 min-h-[34px] flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-[12.5px] outline-none focus:border-primary/50" />
           {/* Igual ao WhatsApp: sem texto, o botão grava áudio. */}
-          {!texto.trim() ? (
+          {!texto.trim() && !anexos.length ? (
             <button type="button" onClick={() => void comecarGravacao()} aria-label="Gravar áudio"
               className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white">
               <Mic className="h-4 w-4" />
             </button>
           ) : (
-            <button type="submit" disabled={!texto.trim()} aria-label="Enviar"
+            <button type="submit" disabled={!texto.trim() && !anexos.length} aria-label="Enviar"
               className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white disabled:opacity-40">
               <Send className="h-4 w-4" />
             </button>
           )}
+          </div>
         </form>
       ) : (
         <p className="border-t border-border p-2 text-center text-[11px] text-muted-foreground">Para responder, use o app do Mac (o WhatsApp está conectado nele).</p>
