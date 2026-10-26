@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Send } from "lucide-react";
 import { useRascunho } from "@/hooks/useRascunho";
 import { montarPassos, rotuloDoPasso, type EstruturaQuiz } from "@/lib/quiz/quiz";
@@ -10,6 +10,8 @@ import { QuizPlayer } from "./QuizPlayer";
 // conseguir alterar tanto manualmente quanto falando com o agente"). Cada tela num celular, lado a lado;
 // o resultado vira uma tela por perfil. Embaixo de cada uma: o lápis edita só ela (texto e imagem no lugar)
 // e o campo manda o pedido daquela tela para o chat com o agente.
+// Cabeçalho (28) + celular (820: 800 de tela + moldura) + campo do pedido (56) + espaços.
+const ALTURA_LAMINA = 28 + 8 + 820 + 8 + 56;
 interface Lamina { chave: string; passo: number; perfil?: string; rotulo: string }
 
 function PedidoDaLamina({ chave, rotulo, numero, agente, onPedir }: {
@@ -38,6 +40,19 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
   onMudar: (e: EstruturaQuiz) => void; onImagem: (arquivo: File) => Promise<string>; onPedir: (texto: string) => void;
 }) {
   const [editando, setEditando] = useState<string | null>(null);
+  // Celular inteiro (25/10, Davi: "consiga ver o tamanho do celular de forma completa"): cada lâmina tem o
+  // tamanho real (375 × 800 de tela) e encolhe por igual (zoom) até caber na altura do painel.
+  const caixa = useRef<HTMLDivElement>(null);
+  const [escala, setEscala] = useState(1);
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    const medir = () => setEscala(Math.min(1, Math.max(0.45, (el.clientHeight - 16) / ALTURA_LAMINA)));
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   const laminas = useMemo<Lamina[]>(() => {
     const pedir = estrutura.captura?.ativa === false ? [] : (estrutura.captura?.pedir ?? []);
     const passos = montarPassos(estrutura, pedir.length > 0);
@@ -50,11 +65,11 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
   }, [estrutura]);
 
   return (
-    <div className="-mx-4 flex gap-5 overflow-x-auto px-4 pb-3">
+    <div ref={caixa} className="-mx-4 flex min-h-0 flex-1 items-start gap-5 overflow-x-auto overflow-y-hidden px-4 pb-3">
       {laminas.map((l, n) => {
         const editar = editarTudo || editando === l.chave;
         return (
-          <div key={l.chave} className="flex w-[395px] shrink-0 flex-col gap-2">
+          <div key={l.chave} className="flex w-[395px] shrink-0 flex-col gap-2" style={{ zoom: escala }}>
             <div className="flex items-center gap-2 px-1 text-xs">
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 font-semibold tabular-nums">{n + 1}</span>
               <span className="min-w-0 flex-1 truncate font-medium" title={l.rotulo}>{l.rotulo}</span>
@@ -64,7 +79,7 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
                 <Pencil className="h-3 w-3" />{editar ? "Editando" : "Editar"}
               </button>
             </div>
-            <div className="flex h-[640px] flex-col">
+            <div className="flex h-[820px] flex-col">
               <MolduraCelular escuro={estrutura.tema === "escuro"}>
                 <QuizPlayer titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={l.passo} perfilFixo={l.perfil}
                   editar={editar} onMudar={onMudar} onImagem={onImagem} />

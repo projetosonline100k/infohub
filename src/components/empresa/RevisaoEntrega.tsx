@@ -170,7 +170,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
 
   return (
     <Dialog open={aberto && !!tarefa} onOpenChange={(a) => { if (!a) onFechar(); }}>
-      <DialogContent className="flex h-[92vh] max-w-6xl flex-col gap-3 overflow-hidden">
+      <DialogContent className={cn("flex flex-col gap-3 overflow-hidden",
+        // Em fileira a revisão ocupa quase a tela toda: cabem mais celulares, inteiros (25/10).
+        quiz?.estrutura && abaQuiz === "testar" && vista === "fileira" ? "h-[96vh] w-[98vw] max-w-[98vw]" : "h-[92vh] max-w-6xl")}>
         {tarefa && (
           <>
             <style>{ESTILO_REVISAO}</style>
@@ -191,7 +193,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               </div>
             )}
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden">
-              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && noCelular && "flex flex-col")}>
+              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && vista !== "computador" && "flex flex-col")}>
                 {quiz?.estrutura && (
                   <div className="mb-4 flex shrink-0 gap-1 rounded-lg bg-muted p-1 text-sm">
                     <button type="button" onClick={() => setAbaQuiz("testar")} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
