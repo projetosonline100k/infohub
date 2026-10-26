@@ -118,7 +118,7 @@ function Botao({ children, onClick, href }: { children: React.ReactNode; onClick
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
-export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento }: {
+export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, passoFixo, perfilFixo }: {
   titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; teste?: boolean;
   editar?: boolean; onMudar?: (e: EstruturaQuiz) => void; onImagem?: (arquivo: File) => Promise<string>;
   // Link público no celular (15/10): ocupa a tela toda, barra de progresso fixa no
@@ -126,6 +126,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   telaCheia?: boolean; onTrocarTela?: () => void;
   // Métricas do link público (15/10): cada tela alcançada e o clique na oferta.
   onEvento?: (tipo: "passo" | "cta", passo?: number) => void;
+  /** Vista em fileira da revisão (25/10): mostra só esta tela, sem avançar; no fim, o resultado deste perfil. */
+  passoFixo?: number; perfilFixo?: string;
 }) {
   const e = estrutura;
   const cor = corDoQuiz(e);
@@ -134,13 +136,15 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const telas = e.telas ?? [];
   const pedir = e.captura?.ativa === false ? [] : (e.captura?.pedir ?? []);
   const passos = useMemo(() => montarPassos(e, pedir.length > 0), [e, pedir.length]);
-  const [pos, setPos] = useState(0);
+  const travado = passoFixo != null;
+  const [pos, setPos] = useState(passoFixo ?? 0);
+  useEffect(() => { if (passoFixo != null) setPos(passoFixo); }, [passoFixo]);
   const [escolhas, setEscolhas] = useState<Record<string, number>>({});
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);
   const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
   const passo = passos[Math.min(pos, passos.length - 1)];
-  const perfil = useMemo(() => calcularPerfil(e, escolhas), [e, escolhas]);
+  const perfil = useMemo(() => (perfilFixo ? e.perfis.find((p) => p.id === perfilFixo) ?? null : calcularPerfil(e, escolhas)), [e, escolhas, perfilFixo]);
   const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
   const f = (t?: string) => preencher(t, e, escolhas, perfil, contato.nome);
   const temTelaResultado = telas.some((t) => t.tipo === "resultado");
@@ -184,14 +188,15 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     setPos((p) => Math.min(p + 1, passos.length - 1));
   };
   const avancar = () => {
+    if (travado) return;
     const prox = pos + 1;
     if (passos[prox]?.tipo === "fim" && !editar) void terminar(contato);
     else setPos(Math.min(prox, passos.length - 1));
   };
-  const voltar = () => setPos((p) => Math.max(0, p - 1));
+  const voltar = () => { if (!travado) setPos((p) => Math.max(0, p - 1)); };
   const escolher = (qid: string, k: number) => {
     setEscolhas((x) => ({ ...x, [qid]: k }));
-    if (!editar) window.setTimeout(avancar, 280);
+    if (!editar && !travado) window.setTimeout(avancar, 280);
   };
   const reiniciar = () => { setPos(0); setEscolhas({}); setContato({}); enviado.current = false; };
 
@@ -212,8 +217,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           (25/10, Davi: "o fundo do quiz está da mesma cor do Infopro; preciso que mostre a cor original"). */}
       <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro",
         telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}>
-        {teste && !editar && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
-        {editar && (
+        {teste && !editar && !travado && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
+        {editar && !travado && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
             <button type="button" onClick={voltar} disabled={pos === 0} className="flex items-center gap-1 disabled:opacity-40"><ArrowLeft className="h-3 w-3" />Anterior</button>
             <span>Editando · tela {pos + 1} de {passos.length} · clique no texto ou na imagem</span>
@@ -277,7 +282,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     );
                   })}
                 </div>
-                {pos > 1 && !editar && (
+                {pos > 1 && !editar && !travado && (
                   <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                 )}
               </div>
@@ -287,13 +292,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           {passo.tipo === "tela" && (() => {
             const t = telas[passo.indice];
             const base = `telas.${passo.indice}`;
-            if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar ? undefined : avancar} suave={suave} />;
+            if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar || travado ? undefined : avancar} suave={suave} />;
             if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} onSeguir={avancar} suave={suave} />;
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}
 
           {passo.tipo === "captura" && (
-            <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
+            <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
               <div className="space-y-2 text-center">
                 <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} mostrar={f(e.captura?.titulo || "Para onde enviamos o seu resultado?")} as="h2" className="block text-2xl font-bold leading-snug" />
                 <Txt caminho="captura.texto" valor={e.captura?.texto} mostrar={f(e.captura?.texto)} as="p" className={cn("block text-base", suave)} />
@@ -328,7 +333,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   perfil.cta_url ? <Botao href={perfil.cta_url}>{perfil.cta_texto}</Botao>
                     : <Button size="lg" className="w-full" disabled>{perfil.cta_texto} (link ainda não definido)</Button>
                 )}
-              {teste && !editar && <div className="text-center"><Button variant="outline" size="sm" className={escuro ? "border-white/20 bg-transparent" : undefined} onClick={reiniciar}>Testar de novo</Button></div>}
+              {teste && !editar && !travado && <div className="text-center"><Button variant="outline" size="sm" className={escuro ? "border-white/20 bg-transparent" : undefined} onClick={reiniciar}>Testar de novo</Button></div>}
             </div>
           )}
         </div>

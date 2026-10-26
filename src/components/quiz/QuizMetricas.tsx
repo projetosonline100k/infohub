@@ -5,7 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { montarPassos, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
+import { montarPassos, rotuloDoPasso, type QuizResumo } from "@/lib/quiz/quiz";
 import { cn } from "@/lib/utils";
 
 // Métricas do quiz publicado (pedido do Davi, 15/10): quantos abriram,
@@ -16,13 +16,6 @@ const db = supabase as unknown as SupabaseClient;   // quiz_eventos ainda não e
 
 interface Evento { sessao: string; tipo: "visita" | "passo" | "fim" | "cta"; passo: number; criado_em: string }
 
-function rotuloDoPasso(e: EstruturaQuiz, p: ReturnType<typeof montarPassos>[number]): string {
-  if (p.tipo === "intro") return "Abertura";
-  if (p.tipo === "pergunta") return `P${p.indice + 1}. ${e.perguntas[p.indice]?.texto ?? ""}`;
-  if (p.tipo === "tela") return e.telas?.[p.indice]?.titulo || "Tela de respiro";
-  if (p.tipo === "captura") return "Contato (nome/WhatsApp)";
-  return "Resultado e oferta";
-}
 
 export function QuizMetricas({ quiz, respostas, onFechar }: {
   quiz: QuizResumo | null; respostas: { perfil: string | null }[]; onFechar: () => void;

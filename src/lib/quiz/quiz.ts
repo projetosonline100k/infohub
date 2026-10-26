@@ -113,6 +113,15 @@ export type Passo =
   | { tipo: "captura" }
   | { tipo: "fim" };
 
+// Nome curto de cada tela (métricas e a vista em fileira da revisão).
+export function rotuloDoPasso(e: EstruturaQuiz, p: Passo): string {
+  if (p.tipo === "intro") return "Abertura";
+  if (p.tipo === "pergunta") return `P${p.indice + 1}. ${e.perguntas[p.indice]?.texto ?? ""}`;
+  if (p.tipo === "tela") return e.telas?.[p.indice]?.titulo || "Tela de respiro";
+  if (p.tipo === "captura") return "Contato (nome/WhatsApp)";
+  return "Resultado e oferta";
+}
+
 export function montarPassos(e: EstruturaQuiz, temCaptura: boolean): Passo[] {
   const telas = e.telas ?? [];
   const passos: Passo[] = [{ tipo: "intro" }];

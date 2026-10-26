@@ -31,7 +31,7 @@ interface Colega { id: string; nome: string; eh_ia: boolean }
 // Conversa em grupo (15/10): "Chamar" põe outro funcionário IA na conversa;
 // cada um responde pela sua área e cada fala mostra quem disse.
 // melhoriaId (16/10): a mesma conversa, sobre uma melhoria do kanban do Pedro (pendências).
-export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais, onEnviou, onAndamento }: {
+export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais, onEnviou, onAndamento, pedidoExterno }: {
   clienteId: string; tarefaId?: string; melhoriaId?: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
   onEsperando?: (esperando: boolean) => void;
   /** Conversa em grupo desde o começo (ex.: chat da esteira com o trio, 17/10). */
@@ -40,6 +40,8 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   onEnviou?: () => void;
   /** 25/10 (aba "Em andamento" da revisão): o que estão fazendo agora e cada pedido do Davi, feito ou não. */
   onAndamento?: (a: Andamento) => void;
+  /** Pedido mandado de fora do chat (ex.: o campo embaixo de cada tela na vista em fileira); envia ao mudar o id. */
+  pedidoExterno?: { id: number; texto: string } | null;
 }) {
   const sobre = melhoriaId ? { campo: "melhoria_id", id: melhoriaId } : { campo: "atividade_id", id: tarefaId ?? "" };
   // O que ele está fazendo agora (briefing.py agora): "lendo o documento", "reescrevendo as chamadas"…
@@ -141,17 +143,16 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   }, [conversaId, esperando, carregar]);
   useEffect(() => { fimRef.current?.scrollIntoView({ block: "nearest" }); }, [mensagens.length, esperando]);
 
-  const enviar = async () => {
-    const valor = fotos.comImagens(texto.trim());
-    if (!valor || enviando || fotos.subindo) return;
+  const enviar = async (externo?: string) => {
+    const valor = externo?.trim() || fotos.comImagens(texto.trim());
+    if (!valor || (!externo && (enviando || fotos.subindo))) return;
     setEnviando(true);
     try {
       const id = await garantirConversa();
       const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: valor });
       if (error) throw error;
       onEnviou?.();
-      setTexto("");
-      fotos.limpar();
+      if (!externo) { setTexto(""); fotos.limpar(); }
       setAgora(Date.now());
       await carregar(id);
     } catch {
@@ -162,6 +163,16 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   };
 
   const esperou = segundosEsperando(mensagens, agora);
+
+  const enviarRef = useRef(enviar);
+  enviarRef.current = enviar;
+  // Só pedidos novos: o que já estava ali quando o chat abriu (ex.: trocou de entrega) não é reenviado.
+  const pedidoVisto = useRef(pedidoExterno?.id);
+  useEffect(() => {
+    if (!pedidoExterno?.texto || pedidoExterno.id === pedidoVisto.current) return;
+    pedidoVisto.current = pedidoExterno.id;
+    void enviarRef.current(pedidoExterno.texto);
+  }, [pedidoExterno?.id, pedidoExterno?.texto]);
 
   const andamentoRef = useRef(onAndamento);
   andamentoRef.current = onAndamento;

@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CheckCircle2, FileText, Loader2, Monitor, Pencil, Smartphone } from "lucide-react";
+import { CheckCircle2, FileText, GalleryHorizontal, Loader2, Monitor, Pencil, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
+import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
 import { faltasDoQuiz } from "@/lib/quiz/faltas";
 import { AndamentoEntrega } from "./AndamentoEntrega";
 import type { Andamento } from "./ConversaEntrega";
@@ -61,8 +62,14 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const verEsboco = abaQuiz !== "testar";
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   // 25/10 (Davi): ver o quiz como no celular (é onde o lead abre). Fica lembrado neste navegador.
-  const [noCelular, setNoCelular] = useState(() => { try { return localStorage.getItem("revisao:quiz-celular") === "1"; } catch { return false; } });
-  const mudarCelular = (v: boolean) => { setNoCelular(v); try { localStorage.setItem("revisao:quiz-celular", v ? "1" : "0"); } catch { /* sem armazenamento */ } };
+  // 25/10: e "em fileira" (todas as telas lado a lado, cada uma com editar e pedido ao agente), que é o padrão.
+  type Vista = "computador" | "celular" | "fileira";
+  const [vista, setVista] = useState<Vista>(() => {
+    try { const v = localStorage.getItem("revisao:quiz-vista"); return v === "computador" || v === "celular" || v === "fileira" ? v : "fileira"; } catch { return "fileira"; }
+  });
+  const mudarVista = (v: Vista) => { setVista(v); try { localStorage.setItem("revisao:quiz-vista", v); } catch { /* sem armazenamento */ } };
+  const noCelular = vista === "celular";
+  const [pedidoTela, setPedidoTela] = useState<{ id: number; texto: string } | null>(null);
   // Editar o quiz aqui mesmo (pedido do Davi, 15/10): clica no texto ou na imagem.
   // O quiz só recomeça quando a estrutura muda por fora (o Roy salvou).
   const [editandoQuiz, setEditandoQuiz] = useState(false);
@@ -200,11 +207,12 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     )}
                     {!verEsboco && (
                       <span className="flex shrink-0 rounded-md bg-background/60 p-0.5">
-                        {([false, true] as const).map((c) => {
-                          const Icone = c ? Smartphone : Monitor;
+                        {(["fileira", "celular", "computador"] as const).map((c) => {
+                          const Icone = c === "fileira" ? GalleryHorizontal : c === "celular" ? Smartphone : Monitor;
                           return (
-                            <button key={String(c)} type="button" onClick={() => mudarCelular(c)} title={c ? "Ver como no celular" : "Ver como no computador"}
-                              className={cn("rounded px-2 py-1", noCelular === c ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
+                            <button key={c} type="button" onClick={() => mudarVista(c)}
+                              title={c === "fileira" ? "Todas as telas em fileira" : c === "celular" ? "Uma tela por vez, como no celular" : "Uma tela por vez, como no computador"}
+                              className={cn("rounded px-2 py-1", vista === c ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
                               <Icone className="h-3.5 w-3.5" />
                             </button>
                           );
@@ -214,7 +222,12 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   </div>
                 )}
                 {quiz?.estrutura && !verEsboco ? (
-                  noCelular ? (
+                  vista === "fileira" ? (
+                    <FileiraQuiz quizId={quiz.id} titulo={quiz.titulo} estrutura={quiz.estrutura} editarTudo={editandoQuiz}
+                      agente={andamento?.quem ?? info?.responsavel ?? "o agente"}
+                      onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
+                      onPedir={(texto) => { if (!info?.responsavelId) { toast.error("Esta entrega não tem chat com o agente"); return; } setPedidoTela({ id: Date.now(), texto }); toast.success("Pedido mandado no chat"); }} />
+                  ) : noCelular ? (
                     <MolduraCelular escuro={quiz.estrutura.tema === "escuro"}>
                       <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia
                         editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
@@ -270,7 +283,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               {info?.responsavelId && (
                 <div className="h-[420px] shrink-0 md:h-auto md:w-[340px]">
                   <ConversaEntrega key={tarefaId} clienteId={clienteId} tarefaId={tarefa.id} membroId={info.responsavelId}
-                    nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} onAndamento={setAndamento} />
+                    nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} onAndamento={setAndamento} pedidoExterno={pedidoTela} />
                 </div>
               )}
             </div>
