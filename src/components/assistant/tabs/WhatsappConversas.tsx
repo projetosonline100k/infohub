@@ -31,7 +31,7 @@ interface Conversa {
 // 19/10 (Davi): "quando mando mensagem, em vez de ficar vazio e só aparecer quando é enviada, já
 // aparece com o relógio no cantinho igual ao WhatsApp; quando enviar, os dois tracinhos". A mensagem
 // fica aqui até a de verdade chegar do WhatsApp (pelo receptor, ao vivo).
-interface Pendente { id: string; tipo: "texto" | "audio" | "arquivo"; responderA?: string; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string; arquivo?: File; arquivoUrl?: string }
+interface Pendente { id: string; tipo: "texto" | "audio" | "arquivo"; responderA?: string; enviado?: string; mencoes?: string[]; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string; arquivo?: File; arquivoUrl?: string }
 // Até onde o WhatsApp do Mac aguenta mandar de uma vez (o arquivo vai inteiro em base64).
 const LIMITE_ARQUIVO = 64 * 1024 * 1024;
 const normTexto = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
@@ -147,19 +147,22 @@ function useMidiaUrl() {
 // o id da pessoa (nas contas novas, um id interno @lid); o receptor do Mac traduz em nome (/contato/<id>).
 type Contato = { nome: string | null; eu?: boolean; numero?: string | null };
 const contatos = new Map<string, Promise<Contato | null>>();
+function buscarContato(conta: string, id: string): Promise<Contato | null> {
+  const chave = `${conta}:${id}`;
+  if (!contatos.has(chave)) {
+    contatos.set(chave, midiaBaseDe(conta).then((cfg) => (cfg
+      ? fetch(`${cfg.base.replace(/\/midia\/$/, "/contato/")}${encodeURIComponent(id)}?k=${cfg.chave}`).then((x) => x.json()).catch(() => null)
+      : null)));
+  }
+  return contatos.get(chave)!;
+}
 function useContato(id: string | null, ligado = true) {
   const conta = useContext(ContaWhatsapp);
   const [r, setR] = useState<Contato | null>(null);
   useEffect(() => {
     if (!isDesktop() || !id || !ligado) return;
-    const chave = `${conta}:${id}`;
-    if (!contatos.has(chave)) {
-      contatos.set(chave, midiaBaseDe(conta).then((cfg) => (cfg
-        ? fetch(`${cfg.base.replace(/\/midia\/$/, "/contato/")}${encodeURIComponent(id)}?k=${cfg.chave}`).then((x) => x.json()).catch(() => null)
-        : null)));
-    }
     let vivo = true;
-    void contatos.get(chave)!.then((v) => { if (vivo) setR(v); });
+    void buscarContato(conta, id).then((v) => { if (vivo) setR(v); });
     return () => { vivo = false; };
   }, [conta, id, ligado]);
   return r;
@@ -774,7 +777,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
           nome: p.arquivo.name || "arquivo", legenda: p.texto || null, conta,
         });
       } else {
-        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto, conta, responderA: p.responderA ?? null });
+        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.enviado ?? p.texto, conta, responderA: p.responderA ?? null, mencoes: p.mencoes ?? null });
       }
       mudarPendente(p.id, { estado: "enviada" });
     } catch (e) {
@@ -844,6 +847,52 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
       return false;
     }
   };
+  // @ no grupo (26/10, Davi: "quando eu digitar o @, apareça a opção de marcar alguém do grupo"): lista os
+  // participantes (do WhatsApp do Mac, com o nome de cada um), filtra pelo que vem depois do @ e, ao escolher,
+  // escreve "@Nome". Ao enviar vira "@<número>" com a marcação de verdade.
+  const [participantes, setParticipantes] = useState<{ numero: string; nome: string }[] | null>(null);
+  const [marcando, setMarcando] = useState<{ inicio: number; fim: number; q: string } | null>(null);
+  const [destaque, setDestaque] = useState(0);
+  const [marcados, setMarcados] = useState<{ nome: string; numero: string }[]>([]);
+  useEffect(() => { setParticipantes(null); setMarcando(null); setMarcados([]); }, [conversa.chat_id]);
+  const carregarParticipantes = async () => {
+    if (participantes || !conversa.eh_grupo) return;
+    setParticipantes([]);
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const lista = await invoke<{ id: string; pn?: string }[]>("whatsapp_participantes", { chatId: conversa.chat_id, conta });
+      const pessoas = await Promise.all((lista ?? []).map(async (p) => {
+        const numero = (p.pn ?? p.id).split("@")[0];
+        const c = await buscarContato(conta, p.pn ?? p.id);
+        if (c?.eu) return null;
+        const doChat = nomesDoChat.get(numero) ?? nomesDoChat.get(p.id.split("@")[0]);
+        return { numero, nome: c?.nome || doChat || `+${numero}` };
+      }));
+      setParticipantes(pessoas.filter((x): x is { numero: string; nome: string } => !!x).sort((a, b) => a.nome.localeCompare(b.nome)));
+    } catch {
+      setParticipantes([]);
+    }
+  };
+  const olharArroba = (valor: string, cursor: number) => {
+    if (!conversa.eh_grupo) return;
+    const m = valor.slice(0, cursor).match(/(?:^|\s)@([^\s@]{0,30})$/);
+    if (!m) { setMarcando(null); return; }
+    setMarcando({ inicio: cursor - m[1].length - 1, fim: cursor, q: m[1].toLowerCase() });
+    setDestaque(0);
+    void carregarParticipantes();
+  };
+  const sugestoes = marcando && participantes
+    ? participantes.filter((p) => !marcando.q || p.nome.toLowerCase().includes(marcando.q) || p.numero.includes(marcando.q)).slice(0, 8)
+    : [];
+  const marcar = (p: { numero: string; nome: string }) => {
+    if (!marcando) return;
+    const novo = `${texto.slice(0, marcando.inicio)}@${p.nome} ${texto.slice(marcando.fim)}`;
+    setTexto(novo);
+    setMarcados((l) => (l.some((x) => x.numero === p.numero) ? l : [...l, p]));
+    setMarcando(null);
+    const pos = marcando.inicio + p.nome.length + 2;
+    requestAnimationFrame(() => { const el = campoTexto.current; if (el) { el.focus(); el.setSelectionRange(pos, pos); } });
+  };
   const responder = (m: Mensagem) => { setRespondendo(m); requestAnimationFrame(() => campoTexto.current?.focus()); };
   const reagir = async (m: Mensagem, r: string) => {
     const nova = reacoes[m.id] === r ? "" : r;   // a mesma de novo tira a reação
@@ -891,8 +940,13 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
       return;
     }
     if (!t) return;
-    const p: Pendente = { id: crypto.randomUUID(), tipo: "texto", texto: t, criada: new Date().toISOString(), estado: "enviando", responderA: respondendo?.id };
+    const usados = marcados.filter((m) => t.includes(`@${m.nome}`));
+    const enviado = usados.reduce((acc, m) => acc.split(`@${m.nome}`).join(`@${m.numero}`), t);
+    const p: Pendente = { id: crypto.randomUUID(), tipo: "texto", texto: t, criada: new Date().toISOString(), estado: "enviando", responderA: respondendo?.id,
+      enviado: usados.length ? enviado : undefined, mencoes: usados.length ? usados.map((m) => `${m.numero}@c.us`) : undefined };
     setRespondendo(null);
+    setMarcados([]);
+    setMarcando(null);
     setPendentes((l) => [...l, p]);
     setTexto("");
     void mandar(p);
@@ -903,7 +957,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
     && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 5 * 60_000
     && (p.tipo === "audio" ? m.tipo === "audio"
       : p.tipo === "arquivo" ? m.tipo !== "texto" && m.tipo !== "audio" && new Date(m.enviada_em).getTime() >= new Date(p.criada).getTime() - 60_000
-      : normTexto(m.texto) === normTexto(p.texto))));
+      : normTexto(m.texto) === normTexto(p.enviado ?? p.texto))));
   useEffect(() => {
     if (aindaPendentes.length !== pendentes.length) setPendentes(aindaPendentes);
   }, [aindaPendentes.length, pendentes.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1105,9 +1159,31 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
             className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground">
             <Paperclip className="h-4 w-4" />
           </button>
-          <textarea ref={campoTexto} value={texto} onChange={(e) => setTexto(e.target.value)} rows={1}
+          {marcando && (
+            <div className="mb-1 max-h-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-md">
+              {!participantes || (participantes.length === 0 && !sugestoes.length)
+                ? <p className="flex items-center gap-1.5 px-2 py-1.5 text-[11.5px] text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />Buscando quem está no grupo…</p>
+                : !sugestoes.length ? <p className="px-2 py-1.5 text-[11.5px] text-muted-foreground">Ninguém com esse nome no grupo.</p>
+                : sugestoes.map((p, i) => (
+                  <button key={p.numero} type="button" onMouseDown={(e) => { e.preventDefault(); marcar(p); }} onMouseEnter={() => setDestaque(i)}
+                    className={cn("flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12.5px]", i === destaque && "bg-accent")}>
+                    <FotoChat chatId={`${p.numero}@c.us`} nome={p.nome} grupo={false} tamanho="h-6 w-6" />
+                    <span className="min-w-0 flex-1 truncate">{p.nome}</span>
+                    <span className="text-[10.5px] text-muted-foreground">+{p.numero}</span>
+                  </button>
+                ))}
+            </div>
+          )}
+          <textarea ref={campoTexto} value={texto} onChange={(e) => { setTexto(e.target.value); olharArroba(e.target.value, e.target.selectionStart ?? e.target.value.length); }} rows={1}
             onPaste={(e) => { const fs = [...e.clipboardData.files]; if (fs.length) { e.preventDefault(); anexar(fs); } }}
-            onKeyDown={(e) => { if (e.key === "Escape" && respondendo) { e.preventDefault(); setRespondendo(null); } if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
+            onKeyDown={(e) => {
+              if (marcando && sugestoes.length) {
+                if (e.key === "ArrowDown") { e.preventDefault(); setDestaque((d) => (d + 1) % sugestoes.length); return; }
+                if (e.key === "ArrowUp") { e.preventDefault(); setDestaque((d) => (d - 1 + sugestoes.length) % sugestoes.length); return; }
+                if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); marcar(sugestoes[Math.min(destaque, sugestoes.length - 1)]); return; }
+              }
+              if (e.key === "Escape" && marcando) { e.preventDefault(); setMarcando(null); return; }
+              if (e.key === "Escape" && respondendo) { e.preventDefault(); setRespondendo(null); } if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
             placeholder={anexos.length ? "Legenda (opcional)…" : `Mensagem para ${conversa.chat_nome ?? "a conversa"}…`}
             className="max-h-28 min-h-[34px] flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-[12.5px] outline-none focus:border-primary/50" />
           {/* Igual ao WhatsApp: sem texto, o botão grava áudio. */}

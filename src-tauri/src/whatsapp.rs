@@ -32,14 +32,14 @@ fn registrar(linha: &str) {
 }
 
 #[tauri::command]
-pub async fn whatsapp_enviar(chat_id: String, texto: String, conta: Option<String>, responder_a: Option<String>) -> Result<serde_json::Value, String> {
+pub async fn whatsapp_enviar(chat_id: String, texto: String, conta: Option<String>, responder_a: Option<String>, mencoes: Option<Vec<String>>) -> Result<serde_json::Value, String> {
     registrar(&format!("pedido chat={chat_id} tamanho={} conta={}", texto.len(), conta.as_deref().unwrap_or("principal")));
-    let resultado = enviar(chat_id, texto, conta, responder_a).await;
+    let resultado = enviar(chat_id, texto, conta, responder_a, mencoes).await;
     registrar(&match &resultado { Ok(_) => "ok".to_string(), Err(e) => format!("erro: {e}") });
     resultado
 }
 
-async fn enviar(chat_id: String, texto: String, conta: Option<String>, responder_a: Option<String>) -> Result<serde_json::Value, String> {
+async fn enviar(chat_id: String, texto: String, conta: Option<String>, responder_a: Option<String>, mencoes: Option<Vec<String>>) -> Result<serde_json::Value, String> {
     let texto = texto.trim().to_string();
     if texto.is_empty() || chat_id.trim().is_empty() {
         return Err("Mensagem vazia".into());
@@ -52,11 +52,22 @@ async fn enviar(chat_id: String, texto: String, conta: Option<String>, responder
     });
     // Responder uma mensagem específica (26/10): a resposta sai citando ela, como no WhatsApp.
     if let Some(id) = responder_a.filter(|i| !i.trim().is_empty()) { corpo["reply_to"] = id.into(); }
+    // @ no grupo (26/10): o texto leva "@<número>" e a lista diz quem foi marcado.
+    if let Some(m) = mencoes.filter(|m| !m.is_empty()) { corpo["mentions"] = m.into(); }
     post_waha(&cfg, "/api/sendText", corpo).await
 }
 
 /// Opções da mensagem (26/10, Davi: "o que mais tiver no WhatsApp normal"): reagir, encaminhar, apagar
 /// para todos e editar. Só rodam quando ele escolhe no menu da mensagem.
+/// Participantes do grupo, para o @ (26/10): id (às vezes @lid) e o número (pn).
+#[tauri::command]
+pub async fn whatsapp_participantes(chat_id: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    let cod = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+    let caminho = format!("/api/{}/groups/{}/participants/v2", cod(cfg["sessao"].as_str().unwrap_or("default")), cod(&chat_id));
+    pedir_waha(&cfg, "GET", &caminho, serde_json::json!({})).await
+}
+
 #[tauri::command]
 pub async fn whatsapp_reagir(message_id: String, reacao: String, conta: Option<String>) -> Result<serde_json::Value, String> {
     let cfg = config(conta.as_deref())?;
@@ -166,9 +177,12 @@ async fn pedir_waha(cfg: &serde_json::Value, metodo: &str, caminho: &str, corpo:
         let arquivo = std::env::temp_dir().join(format!("jarvis-wa-{}.json", std::process::id() as u128 * 1000 + std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() as u128).unwrap_or(0)));
         std::fs::write(&arquivo, corpo.to_string()).map_err(|e| e.to_string())?;
         let saida = (|| {
+            let dados = format!("@{}", arquivo.display());
+            let mut args: Vec<&str> = vec!["-sS", "--max-time", "180", "-X", &metodo, &url, "-K", "-", "-w", "\n%{http_code}"];
+            // GET (participantes) vai sem corpo.
+            if metodo != "GET" { args.extend(["-H", "Content-Type: application/json", "--data-binary", &dados]); }
             let mut filho = Command::new("/usr/bin/curl")
-                .args(["-sS", "--max-time", "180", "-X", &metodo, &url, "-H", "Content-Type: application/json",
-                       "--data-binary", &format!("@{}", arquivo.display()), "-K", "-", "-w", "\n%{http_code}"])
+                .args(&args)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())

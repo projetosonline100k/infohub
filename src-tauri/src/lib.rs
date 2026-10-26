@@ -89,6 +89,7 @@ pub fn run() {
             whatsapp::whatsapp_enviar_audio,
             whatsapp::whatsapp_enviar_arquivo,
             whatsapp::whatsapp_reagir,
+            whatsapp::whatsapp_participantes,
             whatsapp::whatsapp_encaminhar,
             whatsapp::whatsapp_apagar,
             whatsapp::whatsapp_editar,
