@@ -6,6 +6,8 @@ import { isDesktop } from "@/lib/platform";
 // (ex.: o editor de vídeo) pelos eventos "infopro:desfazer"/"infopro:refazer".
 export const EVENTO_DESFAZER = "infopro:desfazer";
 export const EVENTO_REFAZER = "infopro:refazer";
+// ⌘W (menu "Janela > Fechar guia", 26/10): a barra de guias fecha a guia aberta.
+export const EVENTO_FECHAR_GUIA = "infopro:fechar-guia";
 
 function editavel(el: Element | null): boolean {
   if (!el) return false;
@@ -22,4 +24,5 @@ export async function ligarDesfazerDoMenu() {
   };
   await listen("menu-desfazer", tratar(false));
   await listen("menu-refazer", tratar(true));
+  await listen("menu-fechar-guia", () => window.dispatchEvent(new CustomEvent(EVENTO_FECHAR_GUIA)));
 }

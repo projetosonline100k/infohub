@@ -155,13 +155,23 @@ pub fn run() {
                 let janela = Submenu::with_items(h, "Janela", true, &[
                     &PredefinedMenuItem::minimize(h, None)?,
                     &PredefinedMenuItem::fullscreen(h, None)?,
-                    &PredefinedMenuItem::close_window(h, None)?,
+                    // ⌘W fecha a guia aberta, como no navegador (26/10); nas outras janelas fecha a janela.
+                    &MenuItem::with_id(h, "menu-fechar-guia", "Fechar guia", true, Some("CmdOrCtrl+W"))?,
                 ])?;
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
                     if id == "menu-ocultar" {
                         let _ = app.hide();
+                        return;
+                    }
+                    if id == "menu-fechar-guia" {
+                        for (_, w) in app.webview_windows() {
+                            if w.is_focused().unwrap_or(false) {
+                                if w.label() == "main" { let _ = tauri::Emitter::emit_to(app, "main", id, ()); }
+                                else { let _ = w.close(); }
+                            }
+                        }
                         return;
                     }
                     if id == "menu-desfazer" || id == "menu-refazer" {

@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { EVENTO_FECHAR_GUIA } from "@/lib/desktop/desfazer";
 import { ArrowLeft, ArrowRight, Columns2, X } from "lucide-react";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent,
@@ -413,6 +414,19 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [onNavigate]);
+
+  // ⌘W: fecha a guia aberta (26/10). No app do Mac vem do menu "Janela > Fechar guia" (o navegador não
+  // deixa a página pegar o ⌘W). Com uma guia só, não fecha nada.
+  const fecharAtivaRef = useRef<() => void>(() => {});
+  fecharAtivaRef.current = () => {
+    const ativa = tabs.find((t) => t.id === activeId);
+    if (ativa && tabs.length > 1) fechar(ativa);
+  };
+  useEffect(() => {
+    const aoFechar = () => fecharAtivaRef.current();
+    window.addEventListener(EVENTO_FECHAR_GUIA, aoFechar);
+    return () => window.removeEventListener(EVENTO_FECHAR_GUIA, aoFechar);
+  }, []);
 
   const fallbackDe = (id: string) => {
     const index = tabs.findIndex((tab) => tab.id === id);
