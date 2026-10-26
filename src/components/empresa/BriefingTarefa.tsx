@@ -225,6 +225,16 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const confirmar = async () => {
     if (!briefingId || !proposta) return;
     setConfirmando(true);
+    // 26/10: o mesmo briefing virou duas tarefas (confirmado de novo 10 h depois, numa tela que ainda mostrava
+    // o botão). Agora a confirmação "trava" o briefing antes de criar a tarefa: se ele já não está mais em
+    // conversa (outra janela confirmou ou descartou), não cria nada.
+    const { data: travou } = await supabase.from("briefings").update({ status: "confirmado" })
+      .eq("id", briefingId).eq("status", "conversando").select("id");
+    if (!travou?.length) {
+      toast.info("Essa conversa já tinha virado tarefa (ou foi descartada). Nada novo foi criado.");
+      setBriefingId(null); setMensagens([]); setProposta(null); setConfirmando(false);
+      return;
+    }
     try {
       const atividadeId = await onCriarTarefa({
         titulo: proposta.titulo,
@@ -232,13 +242,15 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
         prazo: prazoValido(proposta.prazo_sugerido) ? proposta.prazo_sugerido! : null,
         descricao: descricaoDaTarefa(proposta, mensagens, membro.nome),
       });
-      const { error } = await supabase.from("briefings").update({ status: "confirmado", atividade_id: atividadeId }).eq("id", briefingId);
+      const { error } = await supabase.from("briefings").update({ atividade_id: atividadeId }).eq("id", briefingId);
       if (error) throw error;
       toast.success(trabalhaSozinho(membro.nome)
         ? `Tarefa subiu: ${membro.nome} já começa e te entrega para aprovar`
         : `Tarefa subiu para ${membro.nome}`);
       setBriefingId(null); setMensagens([]); setProposta(null);
     } catch {
+      // Não subiu: a conversa volta a ficar aberta para tentar de novo.
+      await supabase.from("briefings").update({ status: "conversando" }).eq("id", briefingId).is("atividade_id", null);
       toast.error("Não consegui subir a tarefa");
     } finally {
       setConfirmando(false);
