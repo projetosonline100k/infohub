@@ -5,8 +5,7 @@ import { cn } from "@/lib/utils";
 // Áudio da conversa do WhatsApp (24/10, Davi: "fica borrado, não consigo avançar as partes do áudio nem
 // acelerar"). O player padrão do WebKit vinha embaçado, sem velocidade e, com preload="none", sem dar para
 // avançar. Aqui: tocar/pausar, barra para clicar ou arrastar, tempo e 1× / 1,5× / 2× (como no WhatsApp).
-// O arquivo é baixado inteiro no primeiro play (vira um blob local), então avançar funciona mesmo se o
-// receptor do Mac não aceitar pedidos por partes.
+// 26/10: toca direto do receptor (que aceita pedidos por partes), sem baixar antes — veja preparar().
 
 const VELOCIDADES = [1, 1.5, 2];
 const CHAVE_VELOCIDADE = "whatsapp:velocidade-audio";
@@ -18,7 +17,6 @@ let tocandoAgora: HTMLAudioElement | null = null;
 
 export function AudioMensagem({ url, deMim }: { url: string; deMim: boolean }) {
   const audio = useRef<HTMLAudioElement | null>(null);
-  const urlLocal = useRef<string | null>(null);
   const barra = useRef<HTMLDivElement>(null);
   const [carregando, setCarregando] = useState(false);
   const [tocando, setTocando] = useState(false);
@@ -27,48 +25,43 @@ export function AudioMensagem({ url, deMim }: { url: string; deMim: boolean }) {
   const [velocidade, setVelocidade] = useState(lerVelocidade);
   const [erro, setErro] = useState(false);
 
-  useEffect(() => () => {
-    audio.current?.pause();
-    if (urlLocal.current) URL.revokeObjectURL(urlLocal.current);
-  }, []);
+  useEffect(() => () => { audio.current?.pause(); }, []);
 
-  const preparar = async () => {
+  // 26/10 (Davi: "preciso conseguir ouvir o áudio"): no app do Mac (motor do Safari) o som só pode começar
+  // NO clique. Antes o áudio era baixado inteiro e só depois tocado — o WebKit recusava o play em silêncio.
+  // Agora o player nasce e toca na hora, direto do endereço do receptor (que aceita pedidos por partes,
+  // então avançar continua funcionando).
+  const preparar = () => {
     if (audio.current) return audio.current;
-    setCarregando(true);
-    try {
-      const blob = await fetch(url).then((r) => { if (!r.ok) throw new Error(String(r.status)); return r.blob(); });
-      urlLocal.current = URL.createObjectURL(blob);
-      const a = new Audio(urlLocal.current);
-      a.playbackRate = velocidade;
-      a.onloadedmetadata = () => setDuracao(a.duration);
-      a.ontimeupdate = () => setAtual(a.currentTime);
-      a.onplay = () => setTocando(true);
-      a.onpause = () => setTocando(false);
-      a.onended = () => { setTocando(false); setAtual(0); a.currentTime = 0; };
-      audio.current = a;
-      return a;
-    } catch {
-      setErro(true);
-      return null;
-    } finally {
-      setCarregando(false);
-    }
+    const a = new Audio(url);
+    a.preload = "auto";
+    a.playbackRate = velocidade;
+    a.onloadedmetadata = () => setDuracao(a.duration);
+    a.ontimeupdate = () => setAtual(a.currentTime);
+    a.onwaiting = () => setCarregando(true);
+    a.oncanplay = () => setCarregando(false);
+    a.onplay = () => setTocando(true);
+    a.onpause = () => setTocando(false);
+    a.onended = () => { setTocando(false); setAtual(0); a.currentTime = 0; };
+    a.onerror = () => { setCarregando(false); setErro(true); };
+    audio.current = a;
+    return a;
   };
 
-  const alternar = async () => {
-    const a = await preparar();
-    if (!a) return;
+  const alternar = () => {
+    const a = preparar();
     if (a.paused) {
       if (tocandoAgora && tocandoAgora !== a) tocandoAgora.pause();
       tocandoAgora = a;
       a.playbackRate = velocidade;
-      void a.play();
+      setCarregando(a.readyState < 3);
+      a.play().catch(() => { setCarregando(false); setErro(true); });
     } else a.pause();
   };
 
-  const irPara = async (clientX: number) => {
+  const irPara = (clientX: number) => {
     const el = barra.current;
-    const a = await preparar();
+    const a = preparar();
     if (!el || !a || !Number.isFinite(a.duration)) return;
     const r = el.getBoundingClientRect();
     a.currentTime = Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * a.duration;
@@ -86,15 +79,15 @@ export function AudioMensagem({ url, deMim }: { url: string; deMim: boolean }) {
   const progresso = duracao ? (atual / duracao) * 100 : 0;
   return (
     <div className="flex w-64 max-w-full items-center gap-2 py-0.5">
-      <button type="button" onClick={() => void alternar()} aria-label={tocando ? "Pausar" : "Tocar"}
+      <button type="button" onClick={alternar} aria-label={tocando ? "Pausar" : "Tocar"}
         className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-full", deMim ? "bg-emerald-700/40 text-white" : "bg-black/10 dark:bg-white/10")}>
         {carregando ? <Loader2 className="h-4 w-4 animate-spin" /> : tocando ? <Pause className="h-4 w-4 fill-current" /> : <Play className="ml-0.5 h-4 w-4 fill-current" />}
       </button>
       <div className="min-w-0 flex-1">
         <div ref={barra} role="slider" aria-label="Posição do áudio" aria-valuemin={0} aria-valuemax={Math.round(duracao)} aria-valuenow={Math.round(atual)} tabIndex={0}
           className="relative h-4 cursor-pointer"
-          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); void irPara(e.clientX); }}
-          onPointerMove={(e) => { if (e.buttons === 1) void irPara(e.clientX); }}
+          onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); irPara(e.clientX); }}
+          onPointerMove={(e) => { if (e.buttons === 1) irPara(e.clientX); }}
           onKeyDown={(e) => {
             const a = audio.current;
             if (!a) return;

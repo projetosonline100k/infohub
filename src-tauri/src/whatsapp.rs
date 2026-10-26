@@ -32,25 +32,63 @@ fn registrar(linha: &str) {
 }
 
 #[tauri::command]
-pub async fn whatsapp_enviar(chat_id: String, texto: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+pub async fn whatsapp_enviar(chat_id: String, texto: String, conta: Option<String>, responder_a: Option<String>) -> Result<serde_json::Value, String> {
     registrar(&format!("pedido chat={chat_id} tamanho={} conta={}", texto.len(), conta.as_deref().unwrap_or("principal")));
-    let resultado = enviar(chat_id, texto, conta).await;
+    let resultado = enviar(chat_id, texto, conta, responder_a).await;
     registrar(&match &resultado { Ok(_) => "ok".to_string(), Err(e) => format!("erro: {e}") });
     resultado
 }
 
-async fn enviar(chat_id: String, texto: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+async fn enviar(chat_id: String, texto: String, conta: Option<String>, responder_a: Option<String>) -> Result<serde_json::Value, String> {
     let texto = texto.trim().to_string();
     if texto.is_empty() || chat_id.trim().is_empty() {
         return Err("Mensagem vazia".into());
     }
     let cfg = config(conta.as_deref())?;
-    let corpo = serde_json::json!({
+    let mut corpo = serde_json::json!({
         "session": cfg["sessao"].as_str().unwrap_or("default"),
         "chatId": chat_id,
         "text": texto,
     });
+    // Responder uma mensagem específica (26/10): a resposta sai citando ela, como no WhatsApp.
+    if let Some(id) = responder_a.filter(|i| !i.trim().is_empty()) { corpo["reply_to"] = id.into(); }
     post_waha(&cfg, "/api/sendText", corpo).await
+}
+
+/// Opções da mensagem (26/10, Davi: "o que mais tiver no WhatsApp normal"): reagir, encaminhar, apagar
+/// para todos e editar. Só rodam quando ele escolhe no menu da mensagem.
+#[tauri::command]
+pub async fn whatsapp_reagir(message_id: String, reacao: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    let corpo = serde_json::json!({ "session": cfg["sessao"].as_str().unwrap_or("default"), "messageId": message_id, "reaction": reacao });
+    pedir_waha(&cfg, "PUT", "/api/reaction", corpo).await
+}
+
+#[tauri::command]
+pub async fn whatsapp_encaminhar(chat_id: String, message_id: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    let corpo = serde_json::json!({ "session": cfg["sessao"].as_str().unwrap_or("default"), "chatId": chat_id, "messageId": message_id });
+    registrar(&format!("encaminhar para chat={chat_id}"));
+    post_waha(&cfg, "/api/forwardMessage", corpo).await
+}
+
+fn caminho_mensagem(cfg: &serde_json::Value, chat_id: &str, message_id: &str) -> String {
+    let cod = |s: &str| s.bytes().map(|b| if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") }).collect::<String>();
+    format!("/api/{}/chats/{}/messages/{}", cod(cfg["sessao"].as_str().unwrap_or("default")), cod(chat_id), cod(message_id))
+}
+
+#[tauri::command]
+pub async fn whatsapp_apagar(chat_id: String, message_id: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    registrar(&format!("apagar para todos chat={chat_id}"));
+    pedir_waha(&cfg, "DELETE", &caminho_mensagem(&cfg, &chat_id, &message_id), serde_json::json!({})).await
+}
+
+#[tauri::command]
+pub async fn whatsapp_editar(chat_id: String, message_id: String, texto: String, conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    if texto.trim().is_empty() { return Err("Texto vazio".into()); }
+    pedir_waha(&cfg, "PUT", &caminho_mensagem(&cfg, &chat_id, &message_id), serde_json::json!({ "text": texto.trim() })).await
 }
 
 /// Áudio gravado no Jarvis (microfone): vai como mensagem de voz. O WAHA
@@ -117,6 +155,11 @@ pub fn whatsapp_midia_base(conta: Option<String>) -> Result<serde_json::Value, S
 /// O corpo vai por arquivo temporário (áudio em base64 é grande) e a chave
 /// por config do curl na entrada — nenhum dos dois na linha de comando.
 async fn post_waha(cfg: &serde_json::Value, caminho: &str, corpo: serde_json::Value) -> Result<serde_json::Value, String> {
+    pedir_waha(cfg, "POST", caminho, corpo).await
+}
+
+async fn pedir_waha(cfg: &serde_json::Value, metodo: &str, caminho: &str, corpo: serde_json::Value) -> Result<serde_json::Value, String> {
+    let metodo = metodo.to_string();
     let url = format!("{}{}", cfg["waha_url"].as_str().unwrap_or("http://localhost:3000"), caminho);
     let chave = cfg["waha_api_key"].as_str().ok_or("Chave do WAHA ausente")?.to_string();
     tauri::async_runtime::spawn_blocking(move || {
@@ -124,7 +167,7 @@ async fn post_waha(cfg: &serde_json::Value, caminho: &str, corpo: serde_json::Va
         std::fs::write(&arquivo, corpo.to_string()).map_err(|e| e.to_string())?;
         let saida = (|| {
             let mut filho = Command::new("/usr/bin/curl")
-                .args(["-sS", "--max-time", "180", "-X", "POST", &url, "-H", "Content-Type: application/json",
+                .args(["-sS", "--max-time", "180", "-X", &metodo, &url, "-H", "Content-Type: application/json",
                        "--data-binary", &format!("@{}", arquivo.display()), "-K", "-", "-w", "\n%{http_code}"])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())

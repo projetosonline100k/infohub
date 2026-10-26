@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
+import { AlertCircle, Archive, ArchiveRestore, ArrowLeft, CheckCheck, ChevronDown, Clock3, Copy, FileText, Folder, FolderPlus, Forward, Reply, Loader2, MessageCircle, Mic, Paperclip, Pencil, Plus, Search, Send, Trash2, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -31,7 +31,7 @@ interface Conversa {
 // 19/10 (Davi): "quando mando mensagem, em vez de ficar vazio e só aparecer quando é enviada, já
 // aparece com o relógio no cantinho igual ao WhatsApp; quando enviar, os dois tracinhos". A mensagem
 // fica aqui até a de verdade chegar do WhatsApp (pelo receptor, ao vivo).
-interface Pendente { id: string; tipo: "texto" | "audio" | "arquivo"; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string; arquivo?: File; arquivoUrl?: string }
+interface Pendente { id: string; tipo: "texto" | "audio" | "arquivo"; responderA?: string; texto: string; criada: string; estado: "enviando" | "enviada" | "erro"; erro?: string; audio?: Blob; audioUrl?: string; arquivo?: File; arquivoUrl?: string }
 // Até onde o WhatsApp do Mac aguenta mandar de uma vez (o arquivo vai inteiro em base64).
 const LIMITE_ARQUIVO = 64 * 1024 * 1024;
 const normTexto = (t: string | null | undefined) => (t ?? "").replace(/\s+/g, " ").trim();
@@ -45,7 +45,80 @@ function Situacao({ estado }: { estado: "enviando" | "enviada" | "erro" }) {
 interface Mensagem {
   id: string; chat_id: string; chat_nome: string | null; eh_grupo: boolean; de_mim: boolean; autor_nome: string | null;
   autor_id?: string | null; tipo: string; texto: string | null; transcricao: string | null; transcricao_status: string | null; enviada_em: string;
-  midia_arquivo?: string | null;
+  midia_arquivo?: string | null; responde_a?: string | null;
+}
+
+// Opções da mensagem, como no WhatsApp (26/10): reagir, responder, copiar, encaminhar, editar e apagar.
+const REACOES = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const resumoDe = (m: Pick<Mensagem, "tipo" | "texto" | "transcricao">) =>
+  m.tipo === "audio" ? `🎤 ${m.transcricao ?? "Áudio"}` : m.tipo !== "texto" ? `${ROTULO_TIPO[m.tipo] ?? "Mensagem"}${m.texto ? ` ${m.texto}` : ""}` : m.texto ?? "";
+
+function EncaminharPara({ onEscolher }: { onEscolher: (c: { chat_id: string; chat_nome: string | null }) => void }) {
+  const conta = useContext(ContaWhatsapp);
+  const [lista, setLista] = useState<{ chat_id: string; chat_nome: string | null; eh_grupo: boolean; ultima_em: string }[]>([]);
+  const [busca, setBusca] = useState("");
+  useEffect(() => {
+    void (supabase as unknown as SupabaseClient).rpc("whatsapp_conversas", { p_conta: conta })
+      .then(({ data }) => setLista(((data || []) as typeof lista).sort((a, b) => b.ultima_em.localeCompare(a.ultima_em))));
+  }, [conta]);
+  const q = busca.trim().toLowerCase();
+  const vistas = lista.filter((c) => !q || (c.chat_nome ?? c.chat_id).toLowerCase().includes(q)).slice(0, 40);
+  return (
+    <div className="w-64 space-y-1.5">
+      <p className="text-xs font-semibold">Encaminhar para…</p>
+      <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar conversa"
+        className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary/50" />
+      <div className="max-h-60 overflow-y-auto">
+        {vistas.map((c) => (
+          <button key={c.chat_id} type="button" onClick={() => onEscolher(c)}
+            className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-xs hover:bg-accent">
+            <FotoChat chatId={c.chat_id} nome={c.chat_nome} grupo={c.eh_grupo} tamanho="h-6 w-6" />
+            <span className="truncate">{c.chat_nome ?? c.chat_id.split("@")[0]}</span>
+          </button>
+        ))}
+        {!vistas.length && <p className="px-1.5 py-2 text-[11px] text-muted-foreground">Nenhuma conversa.</p>}
+      </div>
+    </div>
+  );
+}
+
+function MenuMensagem({ m, podeEnviar, onResponder, onReagir, onCopiar, onEncaminhar, onEditar, onApagar }: {
+  m: Mensagem; podeEnviar: boolean; onResponder: () => void; onReagir: (r: string) => void; onCopiar: () => void;
+  onEncaminhar: (c: { chat_id: string; chat_nome: string | null }) => void; onEditar: () => void; onApagar: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [encaminhando, setEncaminhando] = useState(false);
+  const fechar = () => { setAberto(false); setEncaminhando(false); };
+  const editavel = m.de_mim && m.tipo === "texto" && Date.now() - new Date(m.enviada_em).getTime() < 15 * 60_000;
+  const item = "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent";
+  return (
+    <Popover open={aberto} onOpenChange={(a) => { setAberto(a); if (!a) setEncaminhando(false); }}>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label="Opções da mensagem"
+          className={cn("absolute right-1 top-1 z-10 rounded-full bg-inherit p-0.5 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100")}>
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align={m.de_mim ? "end" : "start"} className="w-auto p-1.5">
+        {encaminhando ? <EncaminharPara onEscolher={(c) => { fechar(); onEncaminhar(c); }} /> : (
+          <div className="w-48">
+            {podeEnviar && (
+              <div className="mb-1 flex justify-between rounded-full bg-muted px-1.5 py-1">
+                {REACOES.map((r) => (
+                  <button key={r} type="button" onClick={() => { fechar(); onReagir(r); }} className="rounded-full px-0.5 text-base transition-transform hover:scale-125" aria-label={`Reagir com ${r}`}>{r}</button>
+                ))}
+              </div>
+            )}
+            {podeEnviar && <button type="button" className={item} onClick={() => { fechar(); onResponder(); }}><Reply className="h-3.5 w-3.5" />Responder</button>}
+            <button type="button" className={item} onClick={() => { fechar(); onCopiar(); }}><Copy className="h-3.5 w-3.5" />Copiar</button>
+            {podeEnviar && <button type="button" className={item} onClick={() => setEncaminhando(true)}><Forward className="h-3.5 w-3.5" />Encaminhar</button>}
+            {podeEnviar && editavel && <button type="button" className={item} onClick={() => { fechar(); onEditar(); }}><Pencil className="h-3.5 w-3.5" />Editar</button>}
+            {podeEnviar && m.de_mim && <button type="button" className={cn(item, "text-rose-600 dark:text-rose-400")} onClick={() => { fechar(); onApagar(); }}><Trash2 className="h-3.5 w-3.5" />Apagar para todos</button>}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 // Fotos/vídeos/áudios ficam no Mac e o receptor do WhatsApp entrega pro
@@ -681,7 +754,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
           nome: p.arquivo.name || "arquivo", legenda: p.texto || null, conta,
         });
       } else {
-        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto, conta });
+        await invoke("whatsapp_enviar", { chatId: conversa.chat_id, texto: p.texto, conta, responderA: p.responderA ?? null });
       }
       mudarPendente(p.id, { estado: "enviada" });
     } catch (e) {
@@ -705,7 +778,7 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   useEffect(() => {
     let cancelado = false;
     void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens")
-      .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, autor_id, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo")
+      .select("id, chat_id, chat_nome, eh_grupo, de_mim, autor_nome, autor_id, tipo, texto, transcricao, transcricao_status, enviada_em, midia_arquivo, responde_a")
       .eq("chat_id", conversa.chat_id).eq("conta", conta).order("enviada_em", { ascending: false }).limit(200)
       .then(({ data }) => {
         if (cancelado) return;
@@ -734,6 +807,49 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   const [soltando, setSoltando] = useState(false);
   const entradaArquivo = useRef<HTMLInputElement>(null);
   useEffect(() => setAnexos([]), [conversa.chat_id]);
+  // Responder uma mensagem específica e as outras opções do menu da mensagem (26/10).
+  const [respondendo, setRespondendo] = useState<Mensagem | null>(null);
+  const [reacoes, setReacoes] = useState<Record<string, string>>({});
+  const [editadas, setEditadas] = useState<Record<string, string>>({});
+  const [apagadas, setApagadas] = useState<Set<string>>(new Set());
+  const campoTexto = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { setRespondendo(null); setReacoes({}); setEditadas({}); setApagadas(new Set()); }, [conversa.chat_id]);
+  const acao = async (comando: string, args: Record<string, unknown>, erro: string) => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke(comando, { ...args, conta });
+      return true;
+    } catch (e) {
+      toast.error(typeof e === "string" ? e : erro);
+      return false;
+    }
+  };
+  const responder = (m: Mensagem) => { setRespondendo(m); requestAnimationFrame(() => campoTexto.current?.focus()); };
+  const reagir = async (m: Mensagem, r: string) => {
+    const nova = reacoes[m.id] === r ? "" : r;   // a mesma de novo tira a reação
+    setReacoes((x) => ({ ...x, [m.id]: nova }));
+    if (!(await acao("whatsapp_reagir", { messageId: m.id, reacao: nova }, "Não consegui reagir"))) setReacoes((x) => ({ ...x, [m.id]: reacoes[m.id] ?? "" }));
+  };
+  const copiar = (m: Mensagem) => { void navigator.clipboard.writeText(editadas[m.id] ?? m.texto ?? m.transcricao ?? ""); toast.success("Copiado"); };
+  const encaminhar = async (m: Mensagem, c: { chat_id: string; chat_nome: string | null }) => {
+    if (await acao("whatsapp_encaminhar", { chatId: c.chat_id, messageId: m.id }, "Não consegui encaminhar")) toast.success(`Encaminhada para ${c.chat_nome ?? "a conversa"}`);
+  };
+  const editar = async (m: Mensagem) => {
+    const novo = await pedirTexto("Editar mensagem", editadas[m.id] ?? m.texto ?? "");
+    if (!novo?.trim() || novo.trim() === (editadas[m.id] ?? m.texto ?? "").trim()) return;
+    if (await acao("whatsapp_editar", { chatId: conversa.chat_id, messageId: m.id, texto: novo.trim() }, "Não consegui editar")) setEditadas((x) => ({ ...x, [m.id]: novo.trim() }));
+  };
+  const apagar = async (m: Mensagem) => {
+    if (!(await confirmar("Apagar esta mensagem para todos?", { botao: "Apagar para todos", destrutivo: true, descricao: "Ela some para todo mundo na conversa." }))) return;
+    if (await acao("whatsapp_apagar", { chatId: conversa.chat_id, messageId: m.id }, "Não consegui apagar")) setApagadas((x) => new Set(x).add(m.id));
+  };
+  const irParaMensagem = (id: string) => {
+    const el = document.getElementById(`wa-msg-${id}`);
+    if (!el) { toast.info("Essa mensagem é mais antiga do que as carregadas aqui."); return; }
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("ring-2", "ring-emerald-500");
+    window.setTimeout(() => el.classList.remove("ring-2", "ring-emerald-500"), 1200);
+  };
   const anexar = (lista: FileList | File[] | null | undefined) => {
     const novos = [...(lista ?? [])].filter((f) => {
       if (f.size > LIMITE_ARQUIVO) { toast.error(`"${f.name}" passa de 64 MB`); return false; }
@@ -755,7 +871,8 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
       return;
     }
     if (!t) return;
-    const p: Pendente = { id: crypto.randomUUID(), tipo: "texto", texto: t, criada: new Date().toISOString(), estado: "enviando" };
+    const p: Pendente = { id: crypto.randomUUID(), tipo: "texto", texto: t, criada: new Date().toISOString(), estado: "enviando", responderA: respondendo?.id };
+    setRespondendo(null);
     setPendentes((l) => [...l, p]);
     setTexto("");
     void mandar(p);
@@ -815,14 +932,37 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
                       <button type="button" aria-label={`Ver ${m.autor_nome || "pessoa"}`} className="shrink-0 rounded-full"><FotoChat chatId={m.autor_id} nome={m.autor_nome} grupo={false} tamanho="h-7 w-7" /></button>
                     </PerfilPessoa>
                   : <span className="w-7 shrink-0" aria-hidden />)}
-                <div className={cn("max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm",
-                  m.de_mim ? "bolha-minha bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bolha-outra bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]")}>
+                <div id={`wa-msg-${m.id}`} onDoubleClick={podeEnviar ? () => responder(m) : undefined}
+                  className={cn("group relative max-w-[85%] rounded-lg px-2.5 py-1.5 text-[12.5px] leading-snug shadow-sm transition-shadow",
+                  m.de_mim ? "bolha-minha bg-[#d9fdd3] text-[#111b21] dark:bg-[#005c4b] dark:text-[#e9edef]" : "bolha-outra bg-white text-[#111b21] dark:bg-[#202c33] dark:text-[#e9edef]",
+                  reacoes[m.id] && "mb-3")}>
+                  {!apagadas.has(m.id) && (
+                    <MenuMensagem m={m} podeEnviar={podeEnviar} onResponder={() => responder(m)} onReagir={(r) => void reagir(m, r)}
+                      onCopiar={() => copiar(m)} onEncaminhar={(c) => void encaminhar(m, c)} onEditar={() => void editar(m)} onApagar={() => void apagar(m)} />
+                  )}
+                  {reacoes[m.id] && (
+                    <span className={cn("absolute -bottom-3 rounded-full border border-border bg-background px-1 text-[12px] leading-5 shadow-sm", m.de_mim ? "right-2" : "left-2")}>{reacoes[m.id]}</span>
+                  )}
                   {primeiraDaSequencia && (m.autor_id
                     ? <PerfilPessoa id={m.autor_id} nome={m.autor_nome}>
                         <button type="button" className="mb-0.5 block text-left text-[10.5px] font-semibold text-teal-600 hover:underline">{m.autor_nome || m.autor_id.split("@")[0]}</button>
                       </PerfilPessoa>
                     : <p className="mb-0.5 text-[10.5px] font-semibold text-teal-600">{m.autor_nome || "?"}</p>)}
-                  {m.tipo === "audio" ? (
+                  {m.responde_a && (() => {
+                    const citada = mensagens.find((x) => x.id === m.responde_a);
+                    return (
+                      <button type="button" onClick={() => irParaMensagem(m.responde_a!)}
+                        className="mb-1 block w-full rounded-md border-l-4 border-teal-600 bg-black/5 px-2 py-1 text-left dark:bg-white/5">
+                        <span className="block text-[10.5px] font-semibold text-teal-600">{citada ? (citada.de_mim ? "Você" : citada.autor_nome || conversa.chat_nome || "Mensagem") : "Mensagem"}</span>
+                        <span className="line-clamp-2 text-[11px] opacity-80">{citada ? resumoDe(citada) : "mensagem anterior"}</span>
+                      </button>
+                    );
+                  })()}
+                  {apagadas.has(m.id) ? (
+                    <p className="italic text-muted-foreground">🚫 Você apagou esta mensagem</p>
+                  ) : editadas[m.id] ? (
+                    <p className="whitespace-pre-wrap break-words">{editadas[m.id]} <span className="text-[9.5px] text-muted-foreground">(editada)</span></p>
+                  ) : m.tipo === "audio" ? (
                     <div className="space-y-1">
                       {urlDe(m.midia_arquivo) ? (
                         <AudioMensagem url={urlDe(m.midia_arquivo)!} deMim={m.de_mim} />
@@ -930,15 +1070,24 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
               ))}
             </div>
           )}
+          {respondendo && (
+            <div className="mb-2 flex items-start gap-2 rounded-md border-l-4 border-teal-600 bg-muted/60 px-2 py-1">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10.5px] font-semibold text-teal-600">Respondendo {respondendo.de_mim ? "você" : respondendo.autor_nome || conversa.chat_nome || ""}</p>
+                <p className="line-clamp-2 text-[11px] text-muted-foreground">{resumoDe(respondendo)}</p>
+              </div>
+              <button type="button" onClick={() => setRespondendo(null)} aria-label="Cancelar resposta" className="rounded p-0.5 text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+            </div>
+          )}
           <div className="flex items-end gap-1.5">
           <input ref={entradaArquivo} type="file" multiple className="hidden" onChange={(e) => { anexar(e.target.files); e.target.value = ""; }} />
           <button type="button" onClick={() => entradaArquivo.current?.click()} aria-label="Anexar foto, vídeo ou arquivo" title="Anexar (ou arraste / cole aqui)"
             className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground">
             <Paperclip className="h-4 w-4" />
           </button>
-          <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={1}
+          <textarea ref={campoTexto} value={texto} onChange={(e) => setTexto(e.target.value)} rows={1}
             onPaste={(e) => { const fs = [...e.clipboardData.files]; if (fs.length) { e.preventDefault(); anexar(fs); } }}
-            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
+            onKeyDown={(e) => { if (e.key === "Escape" && respondendo) { e.preventDefault(); setRespondendo(null); } if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
             placeholder={anexos.length ? "Legenda (opcional)…" : `Mensagem para ${conversa.chat_nome ?? "a conversa"}…`}
             className="max-h-28 min-h-[34px] flex-1 resize-none rounded-md border border-border bg-background px-2.5 py-1.5 text-[12.5px] outline-none focus:border-primary/50" />
           {/* Igual ao WhatsApp: sem texto, o botão grava áudio. */}
