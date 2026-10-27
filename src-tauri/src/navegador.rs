@@ -38,17 +38,17 @@ pub async fn navegador_abrir(app: AppHandle, rotulo: String, url: String, x: f64
     let (r1, r2, r3) = (rotulo.clone(), rotulo.clone(), rotulo.clone());
     let construtor = WebviewBuilder::new(&rotulo, WebviewUrl::External(endereco(&url)?))
         .user_agent(AGENTE)
-        .on_navigation(move |u| {
-            avisar(&a1, "navegador-url", &r1, u.to_string());
-            true
-        })
+        // O endereço vem sempre de `w.url()` (a página principal): o aviso de navegação também dispara para os
+        // quadros internos (ex.: o YouTube carrega um de accounts.google.com) e trocava a barra por eles.
         .on_page_load(move |w, p| {
             avisar(&a2, "navegador-carregando", &r2, if matches!(p.event(), PageLoadEvent::Started) { "1" } else { "0" }.into());
-            if matches!(p.event(), PageLoadEvent::Finished) {
-                if let Ok(u) = w.url() { avisar(&a2, "navegador-url", &r2, u.to_string()); }
-            }
+            if let Ok(u) = w.url() { avisar(&a2, "navegador-url", &r2, u.to_string()); }
         })
-        .on_document_title_changed(move |_, titulo| avisar(&a3, "navegador-titulo", &r3, titulo))
+        // Sites que trocam de página sem recarregar (YouTube, Gmail) mudam o título: confere o endereço junto.
+        .on_document_title_changed(move |w, titulo| {
+            if let Ok(u) = w.url() { avisar(&a1, "navegador-url", &r1, u.to_string()); }
+            avisar(&a3, "navegador-titulo", &r3, titulo);
+        })
         .on_new_window(move |u, _| {
             let _ = a4.emit_to("main", "navegador-nova-guia", u.to_string());
             NewWindowResponse::Deny
