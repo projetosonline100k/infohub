@@ -569,6 +569,9 @@ html.tema-papel-preto .document-editor .ProseMirror p.is-editor-empty:first-chil
 html.tema-papel-preto .document-editor .ProseMirror .is-empty::before { color: hsl(var(--text-muted)); }
 html.tema-papel-preto ::placeholder { color: hsl(var(--text-muted)); }
 html.tema-papel-preto ::selection { background: hsl(var(--selected)); color: hsl(var(--selected-foreground)); }
+/* Seleção nos editores (27/10, Davi: "⌘A não mostra que está selecionado"): no tema escuro o azul padrão do
+   sistema quase não aparecia. Cor da marca, bem visível, em todos os temas (o papel preto tem a dele, acima). */
+.ProseMirror ::selection { background: hsl(var(--primary) / 0.4); }
 html.tema-papel-preto .document-editor a { color: hsl(var(--link)); }
 /* Grifo: no papel preto, caramelo escuro com texto creme (o amarelo-limão gritava). */
 html.tema-papel-preto .document-editor .ProseMirror mark { background-color: hsl(var(--accent-dark)); color: hsl(var(--text-title)); }

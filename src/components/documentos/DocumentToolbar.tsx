@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pedirTexto } from "@/components/DialogosGlobais";
+import { FONTES } from "@/lib/tiptapEstiloTexto";
 
 interface DocumentToolbarProps {
   editor: Editor | null;
@@ -124,6 +125,23 @@ export function DocumentToolbar({ editor }: DocumentToolbarProps) {
               Título 3
             </div>
           </SelectItem>
+        </SelectContent>
+      </Select>
+
+      {/* Fonte (27/10, Davi: "preciso da opção de selecionar a fonte"): vale para o trecho selecionado — com ⌘A,
+          o documento todo — ou para o que for digitado a seguir. */}
+      <Select value={FONTES.find((f) => f.valor && f.valor === editor.getAttributes("textStyle").fontFamily)?.valor ?? "padrao"}
+        onValueChange={(valor) => {
+          if (valor === "padrao") editor.chain().focus().unsetFontFamily().run();
+          else editor.chain().focus().setFontFamily(valor).run();
+        }}>
+        <SelectTrigger className="h-8 w-32 text-xs" title="Fonte">
+          <SelectValue placeholder="Fonte" />
+        </SelectTrigger>
+        <SelectContent>
+          {FONTES.map((f) => (
+            <SelectItem key={f.nome} value={f.valor || "padrao"}><span style={{ fontFamily: f.valor || undefined }}>{f.nome}</span></SelectItem>
+          ))}
         </SelectContent>
       </Select>
 
