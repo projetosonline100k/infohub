@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { endOfDay, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BellOff, Check, Crosshair, ExternalLink, Globe, Maximize2, Pause, Play, Plus, RotateCcw, SkipForward, Target, X } from "lucide-react";
+import { BellOff, Check, Columns3, Crosshair, List, Maximize2 as Expandir, ExternalLink, Globe, Maximize2, Pause, Play, Plus, RotateCcw, SkipForward, Target, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAssistantAtividades, type AssistantTarefa } from "@/hooks/useAssistantAtividades";
 import { chamarGoogleCalendar, type GoogleCalendarEvent } from "@/lib/googleCalendar";
@@ -23,7 +23,7 @@ const urlDe = (s: string) => (/^https?:\/\//i.test(s) ? s : `https://${s}`);
 const hoje = () => format(new Date(), "yyyy-MM-dd");
 
 export default function ModoFoco() {
-  const { tarefas, atrasadas, iniciarTimer, pausarTimer, concluir, criarAtividade } = useAssistantAtividades();
+  const { tarefas, atrasadas, iniciarTimer, pausarTimer, concluir, criarAtividade, colunasDoProjeto, moverParaStatus } = useAssistantAtividades();
   const { estado, rodando, restante, total, focoHojeMin, tocar, comecar, reiniciar, pular, escolherCiclo, escolherTarefa, marcarTotal } =
     useFocoTimer({ iniciarTimer: (id) => iniciarTimer(id), pausarTimer: (id) => pausarTimer(id) });
   const [personalizado, setPersonalizado] = useState<{ foco: string; pausa: string } | null>(null);
@@ -67,7 +67,36 @@ export default function ModoFoco() {
   const nomeProjeto = (id: string | null) => (id ? projetos.find((p) => p.id === id)?.nome ?? "Projeto" : "Pessoal");
   const [filtroProjeto, setFiltroProjetoBruto] = useState<string>(() => { try { return localStorage.getItem("modo-foco:projeto") || "todos"; } catch { return "todos"; } });
   const setFiltroProjeto = (v: string) => { setFiltroProjetoBruto(v); try { localStorage.setItem("modo-foco:projeto", v); } catch { /* */ } };
-  const visiveis = deHoje.filter((t) => filtroProjeto === "todos" || (filtroProjeto === "pessoal" ? !t.cliente_id : t.cliente_id === filtroProjeto));
+  const doProjeto = (t: AssistantTarefa) => filtroProjeto === "todos" || (filtroProjeto === "pessoal" ? !t.cliente_id : t.cliente_id === filtroProjeto);
+  const visiveis = deHoje.filter(doProjeto);
+
+  // Kanban (27/10, Davi: "visualização de kanban e funcional; ao selecionar, a mesma função de foco"): todas as
+  // suas tarefas em aberto do projeto (não só as de hoje), nas colunas dele; arrastar muda a coluna (soltar na
+  // de conclusão conclui) e clicar no cartão o coloca em foco. Em "Todos", as colunas padrão.
+  const [vista, setVistaBruta] = useState<"lista" | "kanban">(() => { try { return localStorage.getItem("modo-foco:vista") === "kanban" ? "kanban" : "lista"; } catch { return "lista"; } });
+  const setVista = (v: "lista" | "kanban") => { setVistaBruta(v); try { localStorage.setItem("modo-foco:vista", v); } catch { /* */ } };
+  const [colunas, setColunas] = useState<{ nome: string; status_key: string; eh_conclusao: boolean }[]>([]);
+  useEffect(() => {
+    if (vista !== "kanban") return;
+    const padrao = [{ nome: "Backlog", status_key: "backlog", eh_conclusao: false }, { nome: "Em execução", status_key: "em_progresso", eh_conclusao: false },
+      { nome: "Revisão", status_key: "revisao", eh_conclusao: false }, { nome: "Finalizado", status_key: "finalizado", eh_conclusao: true }];
+    if (filtroProjeto === "todos") { setColunas(padrao); return; }
+    void colunasDoProjeto(filtroProjeto === "pessoal" ? null : filtroProjeto).then((c) => setColunas(c.length ? c : padrao)).catch(() => setColunas(padrao));
+  }, [vista, filtroProjeto, colunasDoProjeto]);
+  const minhasAbertas = useMemo(() => [...atrasadas, ...tarefas].filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i)
+    .filter((t) => !t.tipo && (!t.responsavel_nome || /^davi\b/i.test(t.responsavel_nome.trim()))), [tarefas, atrasadas]);
+  const doKanban = minhasAbertas.filter(doProjeto);
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [sobre, setSobre] = useState<string | null>(null);
+  const soltar = (statusKey: string, ehConclusao: boolean) => {
+    const id = arrastando;
+    setArrastando(null); setSobre(null);
+    if (!id) return;
+    const t = doKanban.find((x) => x.id === id);
+    if (!t || t.status === statusKey) return;
+    if (ehConclusao && estado.tarefaId === id) escolherTarefa(null);
+    void moverParaStatus(id, statusKey, ehConclusao);
+  };
   const [aberta, setAberta] = useState<{ atividade: Record<string, unknown>; colunas: unknown[] } | null>(null);
   const abrirDetalhes = async (id: string) => {
     const { data } = await supabase.from("atividades").select("*").eq("id", id).maybeSingle();
@@ -83,7 +112,7 @@ export default function ModoFoco() {
     if (!titulo) return;
     setNova("");
     try {
-      await criarAtividade({ titulo, clienteId: filtroProjeto !== "todos" && filtroProjeto !== "pessoal" ? filtroProjeto : null, dataAtividade: dia, tempoEstimado: null, prioridade: "media", statusKey: "backlog" });
+      await criarAtividade({ titulo, clienteId: filtroProjeto !== "todos" && filtroProjeto !== "pessoal" ? filtroProjeto : null, dataAtividade: dia, tempoEstimado: null, prioridade: "media", statusKey: (vista === "kanban" && filtroProjeto !== "todos" && colunas.find((c) => !c.eh_conclusao)?.status_key) || "backlog" });
     } catch { toast.error("Não consegui criar a tarefa"); }
   };
 
@@ -214,7 +243,15 @@ export default function ModoFoco() {
           {/* Tarefas de hoje */}
           <div className={cartao}>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="font-semibold">Tarefas de hoje</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="font-semibold">{vista === "kanban" ? "Tarefas" : "Tarefas de hoje"}</h2>
+                <span className="flex rounded-lg bg-muted p-0.5">
+                  {([["lista", List, "Lista (as de hoje)"], ["kanban", Columns3, "Kanban (todas em aberto)"]] as const).map(([v, Icone, rotulo]) => (
+                    <button key={v} type="button" onClick={() => setVista(v)} title={rotulo}
+                      className={cn("rounded-md px-2 py-1", vista === v ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}><Icone className="h-3.5 w-3.5" /></button>
+                  ))}
+                </span>
+              </div>
               <select value={filtroProjeto} onChange={(e) => setFiltroProjeto(e.target.value)} title="Projeto"
                 className="max-w-[220px] rounded-lg border bg-background/60 px-2 py-1 text-xs outline-none">
                 <option value="todos">Todos os projetos</option>
@@ -222,6 +259,51 @@ export default function ModoFoco() {
                 {projetos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
             </div>
+            {vista === "kanban" ? (
+              <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+                {colunas.map((c) => {
+                  const cartoes = c.eh_conclusao ? [] : doKanban.filter((t) => (t.status === c.status_key) || (!colunas.some((x) => x.status_key === t.status) && c === colunas[0]))
+                    .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
+                  return (
+                    <div key={c.status_key}
+                      onDragOver={(e) => { e.preventDefault(); setSobre(c.status_key); }} onDragLeave={() => setSobre((x) => (x === c.status_key ? null : x))}
+                      onDrop={(e) => { e.preventDefault(); soltar(c.status_key, c.eh_conclusao); }}
+                      className={cn("flex w-60 shrink-0 flex-col rounded-2xl bg-muted/50 p-2 transition-colors", sobre === c.status_key && "bg-primary/10 ring-2 ring-primary/40",
+                        c.eh_conclusao && "border-2 border-dashed border-emerald-500/40 bg-emerald-500/5")}>
+                      <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
+                        <span className="truncate">{c.nome}</span>
+                        {!c.eh_conclusao && <span className="text-muted-foreground">{cartoes.length}</span>}
+                      </div>
+                      {c.eh_conclusao ? (
+                        <p className="flex flex-1 items-center justify-center px-2 py-6 text-center text-[11px] text-emerald-700 dark:text-emerald-400">Solte aqui para concluir</p>
+                      ) : (
+                        <div className="max-h-[420px] space-y-1.5 overflow-y-auto">
+                          {cartoes.map((t) => (
+                            <div key={t.id} draggable onDragStart={() => setArrastando(t.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
+                              onClick={() => escolherTarefa(estado.tarefaId === t.id ? null : t.id)} title={estado.tarefaId === t.id ? "Em foco (clique para tirar)" : "Clique para focar nesta"}
+                              className={cn("group cursor-pointer rounded-xl border bg-card p-2.5 text-sm shadow-sm transition hover:border-primary/40",
+                                estado.tarefaId === t.id && "border-primary ring-2 ring-primary/30", arrastando === t.id && "opacity-50")}>
+                              <div className="flex items-start gap-1.5">
+                                <span className="min-w-0 flex-1 leading-snug">{t.titulo}</span>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); void abrirDetalhes(t.id); }} title="Abrir a atividade"
+                                  className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 hover:bg-muted hover:text-foreground group-hover:opacity-100"><Expandir className="h-3.5 w-3.5" /></button>
+                              </div>
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10.5px]">
+                                {estado.tarefaId === t.id && <span className="rounded-full bg-primary px-1.5 py-0.5 font-medium text-primary-foreground">em foco</span>}
+                                {filtroProjeto === "todos" && <span className="rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground">{nomeProjeto(t.cliente_id)}</span>}
+                                {t.data_vencimento && <span className={cn("rounded-full px-1.5 py-0.5", t.data_vencimento.slice(0, 10) < dia ? "bg-rose-500/15 text-rose-600" : "bg-muted text-muted-foreground")}>
+                                  {format(new Date(`${t.data_vencimento.slice(0, 10)}T12:00:00`), "dd/MM")}</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {cartoes.length === 0 && <p className="px-1 py-3 text-center text-[11px] text-muted-foreground">Nada aqui</p>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
             <div className="space-y-1">
               {visiveis.length === 0 && <p className="py-2 text-sm text-muted-foreground">Nada vencendo hoje{filtroProjeto !== "todos" ? " neste projeto" : ""}. Crie uma abaixo ou escolha o foco livre.</p>}
               {visiveis.map((t: AssistantTarefa) => (
@@ -239,6 +321,7 @@ export default function ModoFoco() {
                 </div>
               ))}
             </div>
+            )}
             <form className="mt-3" onSubmit={(e) => { e.preventDefault(); void adicionar(); }}>
               <input value={nova} onChange={(e) => setNova(e.target.value)} placeholder="Adicionar uma tarefa…"
                 className="w-full rounded-xl border bg-background/60 px-4 py-2.5 text-sm outline-none focus:border-primary/50" />
