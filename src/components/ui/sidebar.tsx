@@ -78,7 +78,12 @@ const SidebarProvider = React.forwardRef<
   // Adds a keyboard shortcut to toggle the sidebar.
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+      // ⌘⇧B encolhe/abre a lateral em qualquer lugar (27/10, Davi). O ⌘B sozinho continua valendo fora
+      // dos campos de texto — dentro deles é negrito.
+      if (event.key.toLowerCase() !== SIDEBAR_KEYBOARD_SHORTCUT || !(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const alvo = event.target as HTMLElement | null;
+      const escrevendo = !!alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName));
+      if (event.shiftKey || !escrevendo) {
         event.preventDefault();
         toggleSidebar();
       }

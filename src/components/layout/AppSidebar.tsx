@@ -52,8 +52,15 @@ const idDeOrdem = (n: No) => n.ordemId ?? n.chave;
 function ordenar(nos: No[], ordem?: string[]): No[] {
   if (!ordem?.length) return nos;
   const pos = new Map(ordem.map((id, i) => [id, i]));
-  return nos.map((n, i) => ({ n, i, p: pos.get(idDeOrdem(n)) ?? Infinity }))
-    .sort((a, b) => (a.p === b.p ? a.i - b.i : a.p - b.p)).map((x) => x.n);
+  // Item novo (fora da ordem salva, ex.: "Modo Foco" em 27/10) fica logo depois do vizinho de cima dele,
+  // e não perdido no fim da lista.
+  let anterior = -1;
+  return nos.map((n, i) => {
+    const salvo = pos.get(idDeOrdem(n));
+    const p = salvo ?? anterior + 0.5;
+    anterior = p;
+    return { n, i, p };
+  }).sort((a, b) => (a.p === b.p ? a.i - b.i : a.p - b.p)).map((x) => x.n);
 }
 
 // Documentos do projeto (23/10, Davi: "tudo que tem subcategorias na lateral — os documentos, e dentro
@@ -236,6 +243,22 @@ export function AppSidebar() {
     try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
     return novo;
   });
+
+  // ⌘⇧E (27/10, Davi): encolhe tudo na lateral — pastas, documentos, Escritório, Produtividade… — menos os
+  // projetos que estavam abertos (e a lista de projetos).
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
+      e.preventDefault();
+      setAbertos((atual) => {
+        const novo = new Set([...atual].filter((k) => k === "projetos" || k === "arquivados" || /^projeto:[^:]+$/.test(k)));
+        try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
+        return novo;
+      });
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, []);
 
   const arvore = useMemo<No[]>(() => {
     const ativos = clientes.filter((c) => !c.arquivado), arquivados = clientes.filter((c) => c.arquivado);
