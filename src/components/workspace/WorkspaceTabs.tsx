@@ -483,7 +483,16 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
       if (alvo.id !== activeId) onNavigate(alvo.path);
     };
     window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
+    // No app do Mac vem pelo menu "Janela > Ir para a guia" (27/10).
+    let parar: (() => void) | undefined;
+    let vivo = true;
+    if (isDesktop()) {
+      void import("@tauri-apps/api/event").then(({ listen }) => listen<number>("menu-guia", ({ payload: n }) => {
+        const alvo = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
+        if (alvo && alvo.id !== activeId) onNavigate(alvo.path);
+      })).then((f) => { if (vivo) parar = f; else f(); });
+    }
+    return () => { vivo = false; window.removeEventListener("keydown", tecla); parar?.(); };
   }, [tabs, activeId, onNavigate]);
 
   // ⌘T: guia nova, como no navegador (19/10). 27/10 (Davi: "quero que me pergunte se eu quero navegar"): ela

@@ -181,6 +181,12 @@ pub fn run() {
                     // navegadores das guias na janela, o "Selecionar tudo" do sistema não chegava na página.
                     &MenuItem::with_id(h, "menu-selecionar-tudo", "Selecionar tudo", true, Some("CmdOrCtrl+A"))?,
                 ])?;
+                // ⌘1…⌘9 pelo menu (27/10): com os navegadores das guias na janela, os atalhos com ⌘ que não estão
+                // no menu não chegavam mais na página. ⌘9 = última guia.
+                let guias: Vec<MenuItem<_>> = (1..=9)
+                    .map(|n| MenuItem::with_id(h, format!("menu-guia-{n}"), if n == 9 { "Última guia".to_string() } else { format!("Guia {n}") }, true, Some(format!("CmdOrCtrl+{n}").as_str())))
+                    .collect::<Result<_, _>>()?;
+                let ir_para_guia = Submenu::with_items(h, "Ir para a guia", true, &guias.iter().map(|m| m as &dyn tauri::menu::IsMenuItem<_>).collect::<Vec<_>>())?;
                 let janela = Submenu::with_items(h, "Janela", true, &[
                     &PredefinedMenuItem::minimize(h, None)?,
                     &PredefinedMenuItem::fullscreen(h, None)?,
@@ -190,12 +196,17 @@ pub fn run() {
                     &MenuItem::with_id(h, "menu-nova-guia", "Nova guia", true, Some("CmdOrCtrl+T"))?,
                     // ⌘⇧E encolhe as pastas da lateral (27/10; era o atalho global do "Encerrar o dia").
                     &MenuItem::with_id(h, "recolher-lateral", "Encolher a lateral", true, Some("CmdOrCtrl+Shift+E"))?,
+                    &ir_para_guia,
                 ])?;
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
                     if id == "menu-ocultar" {
                         let _ = app.hide();
+                        return;
+                    }
+                    if let Some(n) = id.strip_prefix("menu-guia-").and_then(|n| n.parse::<u8>().ok()) {
+                        let _ = tauri::Emitter::emit_to(app, "main", "menu-guia", n);
                         return;
                     }
                     if id == "menu-selecionar-tudo" {
