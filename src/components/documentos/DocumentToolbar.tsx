@@ -29,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { pedirTexto } from "@/components/DialogosGlobais";
-import { FONTES } from "@/lib/tiptapEstiloTexto";
+import { FONTES, TAMANHOS } from "@/lib/tiptapEstiloTexto";
 
 interface DocumentToolbarProps {
   editor: Editor | null;
@@ -142,6 +142,20 @@ export function DocumentToolbar({ editor }: DocumentToolbarProps) {
           {FONTES.map((f) => (
             <SelectItem key={f.nome} value={f.valor || "padrao"}><span style={{ fontFamily: f.valor || undefined }}>{f.nome}</span></SelectItem>
           ))}
+        </SelectContent>
+      </Select>
+
+      {/* Tamanho da letra (27/10): trecho selecionado ou o que for digitado a seguir. */}
+      <Select value={TAMANHOS.find((t) => t.valor && t.valor === editor.getAttributes("textStyle").fontSize)?.valor ?? "normal"}
+        onValueChange={(valor) => {
+          if (valor === "normal") editor.chain().focus().unsetFontSize().run();
+          else editor.chain().focus().setFontSize(valor).run();
+        }}>
+        <SelectTrigger className="h-8 w-[5.5rem] text-xs" title="Tamanho da letra">
+          <SelectValue placeholder="Tamanho" />
+        </SelectTrigger>
+        <SelectContent>
+          {TAMANHOS.map((t) => <SelectItem key={t.nome} value={t.valor || "normal"}>{t.nome}</SelectItem>)}
         </SelectContent>
       </Select>
 

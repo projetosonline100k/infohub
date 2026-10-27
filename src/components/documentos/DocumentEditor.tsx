@@ -222,12 +222,47 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       carregandoRef.current = false;
       setLoading(false);
       primeiraCargaRef.current = false;
+      if (data && !error) voltarAondeEstava(docAtualId);
     }
 
     if (docAtualId && editor) {
       loadDocument();
     }
-  }, [docAtualId, editor]);
+  }, [docAtualId, editor]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Onde você estava em cada documento (27/10, Davi: "sempre que reiniciar, volte onde estava, principalmente no
+  // docs"): a rolagem e o cursor ficam guardados no Mac e voltam ao abrir o documento de novo.
+  const mesaRef = useRef<HTMLDivElement | null>(null);
+  const chavePosicao = (id: string) => `documento:posicao:${id}`;
+  const voltarAondeEstava = (id: string) => {
+    let guardado: { rolagem?: number; cursor?: number } | null = null;
+    try { guardado = JSON.parse(localStorage.getItem(chavePosicao(id)) || "null"); } catch { /* */ }
+    if (!guardado) return;
+    window.setTimeout(() => {
+      if (idNoEditorRef.current !== id || !editor) return;
+      if (typeof guardado!.cursor === "number") {
+        const pos = Math.min(Math.max(1, guardado!.cursor), editor.state.doc.content.size);
+        try { editor.commands.setTextSelection(pos); } catch { /* */ }
+      }
+      if (typeof guardado!.rolagem === "number" && mesaRef.current) mesaRef.current.scrollTop = guardado!.rolagem;
+    }, 80);
+  };
+  useEffect(() => {
+    const mesa = mesaRef.current;
+    if (!editor || !mesa) return;
+    let t = 0;
+    const guardar = () => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => {
+        const id = idNoEditorRef.current;
+        if (!id || carregandoRef.current) return;
+        try { localStorage.setItem(chavePosicao(id), JSON.stringify({ rolagem: Math.round(mesa.scrollTop), cursor: editor.state.selection.head })); } catch { /* */ }
+      }, 300);
+    };
+    mesa.addEventListener("scroll", guardar, { passive: true });
+    editor.on("selectionUpdate", guardar);
+    return () => { window.clearTimeout(t); mesa.removeEventListener("scroll", guardar); editor.off("selectionUpdate", guardar); };
+  }, [editor, loading]);
 
   const salvarTitulo = useCallback(async () => {
     await supabase
@@ -380,7 +415,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
             {Math.round(zoom * 100)}%
           </div>
         )}
-        <div ref={refMesa} className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
+        <div ref={(no) => { refMesa(no); mesaRef.current = no; }} className="superficie-mesa flex-1 overflow-auto bg-background sm:bg-muted/50 sm:p-4 md:p-8">
           <div
             style={zoom !== 1 ? { zoom } : undefined}
             className={cn(

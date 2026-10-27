@@ -80,11 +80,19 @@ export const FONTES = [
   { nome: "Manuscrita", valor: "'Bradley Hand', 'Segoe Print', cursive" },
 ];
 
+// 27/10 (Davi: "preciso conseguir escolher o tamanho das letras"): mais tamanhos, também na barra do documento.
+// 13/20/26 continuam (eram Pequeno/Grande/Enorme) para o que já foi escrito com eles.
 export const TAMANHOS = [
-  { nome: "Pequeno", valor: "13px" },
+  { nome: "12", valor: "12px" },
+  { nome: "13", valor: "13px" },
+  { nome: "14", valor: "14px" },
   { nome: "Normal", valor: "" },
-  { nome: "Grande", valor: "20px" },
-  { nome: "Enorme", valor: "26px" },
+  { nome: "18", valor: "18px" },
+  { nome: "20", valor: "20px" },
+  { nome: "24", valor: "24px" },
+  { nome: "26", valor: "26px" },
+  { nome: "32", valor: "32px" },
+  { nome: "40", valor: "40px" },
 ];
 
 export const CORES_TEXTO = [

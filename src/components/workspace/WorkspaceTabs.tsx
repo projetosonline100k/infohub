@@ -3,7 +3,7 @@ import { EVENTO_FECHAR_GUIA, EVENTO_NOVA_GUIA } from "@/lib/desktop/desfazer";
 import { nomeDoSite } from "@/lib/navegador/endereco";
 import { isDesktop } from "@/lib/platform";
 import { useSemRespostaWhatsapp } from "@/hooks/useSemRespostaWhatsapp";
-import { ArrowLeft, ArrowRight, Columns2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Columns2, Globe, X } from "lucide-react";
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent,
   ContextMenuSubTrigger, ContextMenuTrigger,
@@ -97,6 +97,19 @@ function inserirNoGrupo(lista: WorkspaceTab[], nova: WorkspaceTab): WorkspaceTab
 // usam este, que nunca muda; com o contexto inteiro, elas eram redesenhadas a cada troca de guia.
 type AcoesGuias = Pick<WorkspaceTabsContextValue, "openTab" | "abrirAoLado">;
 const WorkspaceAcoesContext = createContext<AcoesGuias | null>(null);
+
+/** Endereço do site aberto numa guia de navegador (/navegar?url=…). */
+const siteDaGuia = (path: string) => (path.startsWith("/navegar") ? new URLSearchParams(path.split("?")[1] ?? "").get("url") : null);
+
+/** Ícone do próprio site (27/10, Davi: "nas guias da internet, mostre o ícone — YouTube, Instagram…"): o
+ *  favicon.ico do site; sem ele, o globo. */
+function IconeDoSite({ url, className }: { url: string; className?: string }) {
+  const origem = (() => { try { return new URL(url).origin; } catch { return null; } })();
+  const [falhou, setFalhou] = useState(false);
+  useEffect(() => setFalhou(false), [origem]);
+  if (!origem || falhou) return <Globe className={className} />;
+  return <img src={`${origem}/favicon.ico`} alt="" className={cn(className, "rounded-sm object-contain")} onError={() => setFalhou(true)} draggable={false} />;
+}
 
 const titleForPath = (path: string) => {
   if (path === "/") return "Painel";
@@ -656,7 +669,9 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
         {naDivisao && <Columns2 className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Na tela dividida" />}
         {(() => {
           const Icone = iconeDaGuia(tab.path);
-          const icone = <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />;
+          const site = siteDaGuia(tab.path);
+          const icone = site ? <IconeDoSite url={site} className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />
+            : <Icone className={cn("h-3.5 w-3.5 shrink-0", active ? "text-primary" : "opacity-70")} />;
           const whats = clienteDoWhatsapp(tab.path);
           return whats ? <IconeComPendentes clienteId={whats}>{icone}</IconeComPendentes> : icone;
         })()}
