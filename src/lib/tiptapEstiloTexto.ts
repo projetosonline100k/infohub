@@ -5,8 +5,11 @@ import Highlight from "@tiptap/extension-highlight";
 
 // Texto colado de outro lugar (Google Docs, Word, sites) vem com a cor, o
 // fundo e a fonte de lá — feitos pra página branca, ficam ilegíveis no tema
-// escuro. Ao colar, mantém a estrutura (negrito, itálico, listas, títulos,
-// links) e descarta cor/fundo/fonte/tamanho; isso a pessoa aplica pelo menu.
+// escuro. Ao colar, mantém a estrutura (negrito, itálico, listas, links) e
+// descarta cor/fundo/fonte/tamanho; isso a pessoa aplica pelo menu.
+// 27/10 (Davi: "copio algo de outro lugar e do nada fica destoando"): título
+// de fora (ex.: linha de título do Notas) vira parágrafo — colado no meio de
+// uma linha, ele transformava a linha inteira num título enorme.
 export function limparEstiloColado(html: string): string {
   // Copiado de dentro do próprio editor (Infopro): mantém tudo, inclusive as
   // cores e o marca-texto aplicados aqui.
@@ -20,6 +23,11 @@ export function limparEstiloColado(html: string): string {
   });
   // <font> e <mark> de fora viram texto simples (o conteúdo fica).
   doc.body.querySelectorAll("font, mark").forEach((el) => el.replaceWith(...Array.from(el.childNodes)));
+  doc.body.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((el) => {
+    const p = doc.createElement("p");
+    p.append(...Array.from(el.childNodes));
+    el.replaceWith(p);
+  });
   return doc.body.innerHTML;
 }
 
