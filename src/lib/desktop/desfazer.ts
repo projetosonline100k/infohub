@@ -18,6 +18,14 @@ function editavel(el: Element | null): boolean {
   return h.isContentEditable || h.tagName === "TEXTAREA" || (h.tagName === "INPUT" && !["checkbox", "radio", "range", "button"].includes((h as HTMLInputElement).type));
 }
 
+/** Seleciona tudo do campo/editor com o teclado (no editor de documento, o documento inteiro). */
+export function selecionarTudo(el: Element | null) {
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) { el.select(); return; }
+  const editor = (el?.closest?.(".ProseMirror") as (Element & { editor?: { commands: { selectAll: () => boolean } } }) | null)?.editor;
+  if (editor) { editor.commands.selectAll(); return; }
+  document.execCommand("selectAll");
+}
+
 export async function ligarDesfazerDoMenu() {
   if (!isDesktop()) return;
   const { listen } = await import("@tauri-apps/api/event");
@@ -29,4 +37,17 @@ export async function ligarDesfazerDoMenu() {
   await listen("menu-refazer", tratar(true));
   await listen("menu-fechar-guia", () => window.dispatchEvent(new CustomEvent(EVENTO_FECHAR_GUIA)));
   await listen("menu-nova-guia", () => window.dispatchEvent(new CustomEvent(EVENTO_NOVA_GUIA)));
+  // ⌘A (menu "Editar > Selecionar tudo", 27/10): o evento chega em todas as janelas; age a que está com o
+  // teclado. Sem nenhuma, quem está com ele é o site aberto numa guia (a janela principal manda selecionar lá).
+  await listen("menu-selecionar-tudo", async () => {
+    if (!document.hasFocus()) {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      if (getCurrentWindow().label === "main") {
+        const { invoke } = await import("@tauri-apps/api/core");
+        void invoke("navegador_selecionar_tudo").catch(() => undefined);
+      }
+      return;
+    }
+    selecionarTudo(document.activeElement);
+  });
 }

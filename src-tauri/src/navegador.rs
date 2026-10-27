@@ -90,6 +90,16 @@ pub fn navegador_acao(app: AppHandle, rotulo: String, acao: String) {
     }
 }
 
+/// ⌘A com o teclado num site de uma guia: seleciona a página dele.
+#[tauri::command]
+pub fn navegador_selecionar_tudo(app: AppHandle) {
+    for (rotulo, w) in app.webviews() {
+        if rotulo.starts_with("navegador-") {
+            let _ = w.eval("document.execCommand('selectAll')");
+        }
+    }
+}
+
 #[tauri::command]
 pub fn navegador_fechar(app: AppHandle, rotulo: String) {
     if let Some(w) = app.get_webview(&rotulo) {

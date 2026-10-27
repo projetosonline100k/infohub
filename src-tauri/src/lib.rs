@@ -81,6 +81,7 @@ pub fn run() {
             navegador::navegador_ir,
             navegador::navegador_acao,
             navegador::navegador_fechar,
+            navegador::navegador_selecionar_tudo,
             foco::rodar_atalho,
             bloqueador::bloqueador_desligar,
             focus_monitor::stop_focus_monitor,
@@ -176,7 +177,9 @@ pub fn run() {
                     &PredefinedMenuItem::cut(h, None)?,
                     &PredefinedMenuItem::copy(h, None)?,
                     &PredefinedMenuItem::paste(h, None)?,
-                    &PredefinedMenuItem::select_all(h, None)?,
+                    // ⌘A tratado pelo app (27/10, Davi: "aperto ⌘A e não vejo as coisas selecionadas"): com os
+                    // navegadores das guias na janela, o "Selecionar tudo" do sistema não chegava na página.
+                    &MenuItem::with_id(h, "menu-selecionar-tudo", "Selecionar tudo", true, Some("CmdOrCtrl+A"))?,
                 ])?;
                 let janela = Submenu::with_items(h, "Janela", true, &[
                     &PredefinedMenuItem::minimize(h, None)?,
@@ -193,6 +196,11 @@ pub fn run() {
                     let id = event.id.as_ref();
                     if id == "menu-ocultar" {
                         let _ = app.hide();
+                        return;
+                    }
+                    if id == "menu-selecionar-tudo" {
+                        // Cada janela vê se é ela que está com o teclado (desfazer.ts).
+                        let _ = tauri::Emitter::emit(app, id, ());
                         return;
                     }
                     if id == "menu-nova-guia" || id == "recolher-lateral" {
