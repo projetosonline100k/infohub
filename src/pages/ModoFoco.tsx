@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
 import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import { isDesktop } from "@/lib/platform";
-import { CICLOS, mmss, useFocoTimer, type Ciclo } from "@/hooks/useFocoTimer";
+import { CICLOS, mmss, tocarFim, useFocoTimer, type Ciclo } from "@/hooks/useFocoTimer";
 import { ATALHO_DESLIGAR, ATALHO_LIGAR, CHAVE_SITES, desligarFocoTotal, ligarFocoTotal, lerSites } from "@/lib/foco/focoTotal";
 
 // Modo Foco (27/10, Davi: "quero deixar algo parecido com esse; dentro, a atividade linkada às minhas
@@ -22,19 +22,31 @@ import { ATALHO_DESLIGAR, ATALHO_LIGAR, CHAVE_SITES, desligarFocoTotal, ligarFoc
 const urlDe = (s: string) => (/^https?:\/\//i.test(s) ? s : `https://${s}`);
 const hoje = () => format(new Date(), "yyyy-MM-dd");
 
-export default function ModoFoco() {
+/** `naColuna`: aberto na coluna do foco total (FocoLateral) — é ela que pergunta se você ainda está focado. */
+export default function ModoFoco({ naColuna = false }: { naColuna?: boolean }) {
   const { tarefas, atrasadas, iniciarTimer, pausarTimer, concluir, criarAtividade, colunasDoProjeto, moverParaStatus } = useAssistantAtividades();
   const { estado, rodando, restante, total, focoHojeMin, tocar, comecar, reiniciar, pular, escolherCiclo, escolherTarefa, marcarTotal } =
     useFocoTimer({ iniciarTimer: (id) => iniciarTimer(id), pausarTimer: (id) => pausarTimer(id) });
   const [personalizado, setPersonalizado] = useState<{ foco: string; pausa: string } | null>(null);
+
+  // Foco total com o cronômetro parado há um tempo (27/10, Davi: "se eu estiver no modo foco e não ativar
+  // nada, me pergunte se ainda estou trabalhando focado"): 5 min parado → pergunta (e toca); "estou em
+  // pausa" adia 10 min.
+  const [pergunta, setPergunta] = useState(false);
+  const [adiamentos, setAdiamentos] = useState(0);
+  useEffect(() => {
+    if (!naColuna || !estado.total || rodando) { setPergunta(false); return; }
+    const t = window.setTimeout(() => { setPergunta(true); tocarFim(); }, (adiamentos ? 10 : 5) * 60_000);
+    return () => window.clearTimeout(t);
+  }, [naColuna, estado.total, rodando, adiamentos]);
 
   // Foco total (Não Perturbe + só os sites de trabalho + janelinha lateral; tela cheia opcional).
   const [telaCheia, setTelaCheia] = useState(() => { try { return localStorage.getItem("modo-foco:tela-cheia") === "1"; } catch { return false; } });
   const [ajudaAtalhos, setAjudaAtalhos] = useState(false);
   const alternarTotal = async () => {
     if (estado.total) {
+      marcarTotal(false);   // antes de fechar: na coluna, desligar fecha a própria janela
       await desligarFocoTotal();
-      marcarTotal(false);
       toast.success("Foco total desligado. Notificações e sites de volta.");
       return;
     }
@@ -237,6 +249,16 @@ export default function ModoFoco() {
               </span>
             </div>
           </div>
+          {!rodando && estado.aviso && (
+            // O bloco acabou: o que fazer agora, em destaque (27/10, Davi: "mostre Descansar x minutos").
+            <div className={cn("mb-5 rounded-2xl p-4 text-center", estado.aviso === "descansar" ? "bg-emerald-500/20" : "bg-white/10")}>
+              <p className="text-lg font-semibold">{estado.aviso === "descansar" ? `Descansar ${estado.ciclo.pausa} minutos` : "Pausa acabou. Bora voltar ao foco?"}</p>
+              <p className="mt-0.5 text-xs text-white/70">{estado.aviso === "descansar" ? "O bloco de foco acabou. Levanta, respira, bebe água." : `Mais ${estado.ciclo.foco} minutos de trabalho profundo.`}</p>
+              <button type="button" onClick={tocar} className="mt-3 rounded-xl bg-white px-4 py-1.5 text-sm font-semibold text-[#16305a] hover:bg-white/90">
+                {estado.aviso === "descansar" ? "Começar a pausa" : "Voltar ao foco"}
+              </button>
+            </div>
+          )}
           <div className="flex items-center justify-center gap-4">
             <button type="button" onClick={reiniciar} title="Recomeçar este bloco" className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 hover:bg-white/20"><RotateCcw className="h-4 w-4" /></button>
             <button type="button" onClick={tocar} title={rodando ? "Pausar" : "Começar"} className="flex h-16 w-16 items-center justify-center rounded-full bg-[#3d7fe0] shadow-lg hover:bg-[#4b8cf0]">
@@ -429,6 +451,17 @@ export default function ModoFoco() {
           </div>
         </div>}
       </div>
+      {pergunta && (
+        <div className="fixed inset-x-3 top-10 z-[150] rounded-2xl border border-primary/40 bg-card p-4 text-center shadow-2xl">
+          <p className="text-base font-semibold">Ainda está trabalhando focado?</p>
+          <p className="mt-1 text-xs text-muted-foreground">O cronômetro está parado há um tempo.</p>
+          <div className="mt-3 flex flex-wrap justify-center gap-2">
+            <button type="button" onClick={() => { setPergunta(false); tocar(); }} className="rounded-xl bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground">Sim, retomar</button>
+            <button type="button" onClick={() => { setPergunta(false); setAdiamentos((n) => n + 1); }} className="rounded-xl border px-3 py-1.5 text-sm hover:bg-muted">Estou em pausa</button>
+            <button type="button" onClick={() => { setPergunta(false); void alternarTotal(); }} className="rounded-xl px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted">Sair do foco total</button>
+          </div>
+        </div>
+      )}
       {fantasma && (
         <div className="pointer-events-none fixed z-[200] w-56 -translate-x-1/2 -translate-y-1/2 rotate-2 rounded-xl border border-primary bg-card p-2.5 text-sm shadow-xl"
           style={{ left: fantasma.x, top: fantasma.y }}>{fantasma.titulo}</div>

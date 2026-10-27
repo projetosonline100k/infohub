@@ -7,7 +7,7 @@ export default function FocoLateral() {
   return (
     <div className="h-screen overflow-y-auto bg-background">
       <div data-tauri-drag-region className="sticky top-0 z-10 h-7 bg-background" />
-      <div className="px-3 pb-4"><ModoFoco /></div>
+      <div className="px-3 pb-4"><ModoFoco naColuna /></div>
     </div>
   );
 }

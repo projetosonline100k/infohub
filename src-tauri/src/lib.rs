@@ -34,6 +34,8 @@ mod bloqueador;
 mod foco;
 // Navegador dentro das guias (⌘T, 27/10).
 mod navegador;
+#[cfg(target_os = "macos")]
+mod janelas_ao_lado;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

@@ -16,6 +16,8 @@ pub struct FocoState {
     permitidos: Arc<Mutex<Option<Vec<String>>>>,
     /// Onde a janela principal estava antes de encostar no canto (posição e tamanho lógicos).
     antes_de_encostar: Mutex<Option<(f64, f64, f64, f64)>>,
+    /// Vigia que encolhe as janelas que invadem a coluna (janelas_ao_lado.rs).
+    vigia: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// Sempre liberados no foco: o próprio Infopro, login do Google e as páginas internas do navegador.
@@ -156,7 +158,9 @@ pub fn foco_encostar(app: AppHandle, state: State<FocoState>, ativo: bool) {
             let _ = j.set_size(tauri::LogicalSize::new((tam.width - LARGURA_COLUNA).max(400.0), tam.height));
             let _ = j.set_position(tauri::LogicalPosition::new(pos.x, pos.y));
         }
+        crate::janelas_ao_lado::vigiar(app.clone(), state.vigia.clone(), LARGURA_COLUNA);
     } else {
+        state.vigia.store(false, std::sync::atomic::Ordering::SeqCst);
         if let Some((x, y, w, h)) = state.antes_de_encostar.lock().unwrap().take() {
             let _ = j.set_size(tauri::LogicalSize::new(w, h));
             let _ = j.set_position(tauri::LogicalPosition::new(x, y));

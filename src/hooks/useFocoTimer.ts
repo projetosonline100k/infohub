@@ -21,6 +21,8 @@ export interface EstadoFoco {
   focoHoje: { dia: string; segundos: number };
   /** Foco total ligado (Não Perturbe, só os sites de trabalho, janelinha lateral). */
   total: boolean;
+  /** O bloco acabou sozinho e ainda ninguém tocou (27/10): "descansar" (foco → pausa) ou "voltar" (pausa → foco). */
+  aviso?: "descansar" | "voltar" | null;
 }
 export const CHAVE_FOCO = "modo-foco:estado";
 /** Aviso na mesma janela (o "storage" só chega nas outras): o layout acompanha o foco total. */
@@ -35,7 +37,7 @@ function ler(): EstadoFoco {
 }
 export const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-function tocarFim() {
+export function tocarFim() {
   try {
     const ctx = new AudioContext();
     [0, 0.25, 0.5].forEach((t) => {
@@ -103,17 +105,18 @@ export function useFocoTimer(acoes: { iniciarTimer?: (id: string) => unknown; pa
     const proxima = e.fase === "foco" ? "pausa" : "foco";
     if (e.fase === "foco" && e.tarefaId) void acoesRef.current.pausarTimer?.(e.tarefaId);
     toast.success(proxima === "pausa" ? `Bloco de foco feito! Pausa de ${e.ciclo.pausa} min.` : "Pausa acabou. Bora para o próximo bloco?");
-    setEstado((x) => ({ ...x, focoHoje: fechandoTrecho(x, Date.now()), fase: proxima, terminaEm: null, iniciadoEm: null, restante: (proxima === "foco" ? x.ciclo.foco : x.ciclo.pausa) * 60 }));
+    setEstado((x) => ({ ...x, focoHoje: fechandoTrecho(x, Date.now()), fase: proxima, terminaEm: null, iniciadoEm: null, restante: (proxima === "foco" ? x.ciclo.foco : x.ciclo.pausa) * 60,
+      aviso: proxima === "pausa" ? "descansar" : "voltar" }));
   }, [agora, setEstado]);
 
   const parar = (x: EstadoFoco, restante?: number): EstadoFoco => {
     if (x.terminaEm != null && x.fase === "foco" && x.tarefaId) void acoesRef.current.pausarTimer?.(x.tarefaId);
-    return { ...x, focoHoje: fechandoTrecho(x, Date.now()), terminaEm: null, iniciadoEm: null, restante: restante ?? x.restante };
+    return { ...x, focoHoje: fechandoTrecho(x, Date.now()), terminaEm: null, iniciadoEm: null, restante: restante ?? x.restante, aviso: null };
   };
   const tocar = useCallback(() => setEstado((x) => {
     if (x.terminaEm != null) return parar(x, Math.max(1, Math.round((x.terminaEm - Date.now()) / 1000)));
     if (x.fase === "foco" && x.tarefaId) void acoesRef.current.iniciarTimer?.(x.tarefaId);
-    return { ...x, terminaEm: Date.now() + x.restante * 1000, iniciadoEm: Date.now() };
+    return { ...x, terminaEm: Date.now() + x.restante * 1000, iniciadoEm: Date.now(), aviso: null };
   }), [setEstado]);
   const comecar = useCallback(() => { if (ler().terminaEm == null) tocar(); }, [tocar]);
   const reiniciar = useCallback(() => setEstado((x) => ({ ...parar(x), restante: (x.fase === "foco" ? x.ciclo.foco : x.ciclo.pausa) * 60 })), [setEstado]);
