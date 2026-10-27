@@ -70,7 +70,9 @@ def claude_bin():
     atualização: pega a versão mais nova)."""
     achados = glob.glob(str(Path.home() / "Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude"))
     if not achados:
-        return None
+        # Servidor (27/10, migração para a VPS): o Claude Code instalado pelo npm.
+        import shutil
+        return shutil.which("claude")
     def versao(caminho):
         v = Path(caminho).parts[-6]
         return tuple(int(x) if x.isdigit() else 0 for x in v.split("."))
@@ -91,8 +93,9 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
            "--allowedTools", *(ferramentas or ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"])]
     if sessao:
         cmd += ["--resume", sessao]
-    if chrome:
-        # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele.
+    if chrome and sys.platform == "darwin":
+        # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele. No servidor não há Chrome com a
+        # extensão; o WhatsApp é lido pelo banco (whatsapp-ler.py).
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
     return rodar_claude_com(cmd, minutos, cwd, info, atividade)
 
