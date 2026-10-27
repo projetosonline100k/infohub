@@ -87,15 +87,13 @@ pub async fn foco_lateral_abrir(app: AppHandle) -> Result<(), String> {
         let _ = j.show();
         return Ok(());
     }
-    let (largura, altura) = (300.0, 430.0);
-    let (mut x, mut y) = (40.0, 80.0);
-    if let Ok(Some(m)) = app.primary_monitor() {
-        let e = m.scale_factor();
-        let area = m.work_area();
-        let pos = area.position.to_logical::<f64>(e);
-        let tam = area.size.to_logical::<f64>(e);
-        x = pos.x + tam.width - largura - 12.0;
-        y = pos.y + 60.0;
+    // Coluna no canto direito, da altura da tela (a principal fica ao lado: `foco_encostar`).
+    let (mut largura, mut altura, mut x, mut y) = (LARGURA_COLUNA, 800.0, 40.0, 40.0);
+    if let Some((pos, tam)) = area_da_tela(&app) {
+        largura = LARGURA_COLUNA.min(tam.width);
+        altura = tam.height;
+        x = pos.x + tam.width - largura;
+        y = pos.y;
     }
     let mut janela = WebviewWindowBuilder::new(&app, "foco-lateral", WebviewUrl::App("foco-lateral".into()))
         .title("Modo Foco")
@@ -127,8 +125,19 @@ pub fn foco_tela_cheia(app: AppHandle, ativo: bool) {
     }
 }
 
-/// Foco total (27/10, Davi): a janela principal vira uma coluna estreita no canto direito da tela, sempre por
-/// cima, só com o Modo Foco; ao sair volta para onde estava.
+/// Largura da coluna do Modo Foco no canto direito.
+const LARGURA_COLUNA: f64 = 420.0;
+
+fn area_da_tela(app: &AppHandle) -> Option<(tauri::LogicalPosition<f64>, tauri::LogicalSize<f64>)> {
+    let principal = app.get_webview_window("main");
+    let m = principal.and_then(|j| j.current_monitor().ok().flatten()).or_else(|| app.primary_monitor().ok().flatten())?;
+    let e = m.scale_factor();
+    let area = m.work_area();
+    Some((area.position.to_logical::<f64>(e), area.size.to_logical::<f64>(e)))
+}
+
+/// Foco total (27/10, Davi: "quero que ele fique aberto na lateral e o Infopro na lateral"): a janela principal
+/// ocupa a tela ao lado da coluna do Modo Foco (que fica no canto direito); ao sair volta para onde estava.
 #[tauri::command]
 pub fn foco_encostar(app: AppHandle, state: State<FocoState>, ativo: bool) {
     let Some(j) = app.get_webview_window("main") else { return };
@@ -141,25 +150,19 @@ pub fn foco_encostar(app: AppHandle, state: State<FocoState>, ativo: bool) {
                 *antes = Some((p.x, p.y, t.width, t.height));
             }
         }
-        let monitor = j.current_monitor().ok().flatten().or_else(|| app.primary_monitor().ok().flatten());
-        if let Some(m) = monitor {
-            let e = m.scale_factor();
-            let area = m.work_area();
-            let pos = area.position.to_logical::<f64>(e);
-            let tam = area.size.to_logical::<f64>(e);
-            let largura = 420.0_f64.min(tam.width);
+        if let Some((pos, tam)) = area_da_tela(&app) {
             let _ = j.set_fullscreen(false);
-            let _ = j.set_size(tauri::LogicalSize::new(largura, tam.height));
-            let _ = j.set_position(tauri::LogicalPosition::new(pos.x + tam.width - largura, pos.y));
+            let _ = j.unmaximize();
+            let _ = j.set_size(tauri::LogicalSize::new((tam.width - LARGURA_COLUNA).max(400.0), tam.height));
+            let _ = j.set_position(tauri::LogicalPosition::new(pos.x, pos.y));
         }
-        let _ = j.set_always_on_top(true);
     } else {
-        let _ = j.set_always_on_top(false);
         if let Some((x, y, w, h)) = state.antes_de_encostar.lock().unwrap().take() {
             let _ = j.set_size(tauri::LogicalSize::new(w, h));
             let _ = j.set_position(tauri::LogicalPosition::new(x, y));
-        } else if j.outer_size().map(|t| t.to_logical::<f64>(escala).width < 600.0).unwrap_or(false) {
+        } else {
             // Encostou antes de o app reiniciar (sem o lugar de antes guardado): volta a ocupar a tela.
+            let _ = j.set_always_on_top(false);
             let _ = j.maximize();
         }
     }
