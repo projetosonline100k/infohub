@@ -70,6 +70,7 @@ pub fn run() {
             foco::foco_lateral_abrir,
             foco::foco_lateral_fechar,
             foco::foco_tela_cheia,
+            foco::foco_encostar,
             foco::rodar_atalho,
             bloqueador::bloqueador_desligar,
             focus_monitor::stop_focus_monitor,

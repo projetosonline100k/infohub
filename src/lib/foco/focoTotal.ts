@@ -2,7 +2,8 @@ import { toast } from "sonner";
 import { isDesktop } from "@/lib/platform";
 
 // Foco total (27/10): Não Perturbe pelos atalhos do app Atalhos, só os sites de trabalho no navegador, a
-// janelinha lateral com o cronômetro e (opcional) a janela em tela cheia, numa área de trabalho só dela.
+// janela do Infopro encostada estreita no canto direito (sempre por cima) ou, se pedido, em tela cheia numa
+// área de trabalho só dela.
 export const ATALHO_LIGAR = "Infopro Foco Ligar";
 export const ATALHO_DESLIGAR = "Infopro Foco Desligar";
 export const CHAVE_SITES = "modo-foco:sites";
@@ -20,8 +21,8 @@ export async function ligarFocoTotal(opcoes: { telaCheia?: boolean } = {}): Prom
   let naoPerturbe = true;
   try { await invocar("rodar_atalho", { nome: ATALHO_LIGAR }); } catch { naoPerturbe = false; }
   if (sites.length) await invocar("foco_sites_ligar", { permitidos: sites }).catch(() => undefined);
-  await invocar("foco_lateral_abrir").catch(() => undefined);
   if (opcoes.telaCheia) await invocar("foco_tela_cheia", { ativo: true }).catch(() => undefined);
+  else await invocar("foco_encostar", { ativo: true }).catch(() => undefined);
   return { naoPerturbe };
 }
 
@@ -30,5 +31,6 @@ export async function desligarFocoTotal() {
   await invocar("rodar_atalho", { nome: ATALHO_DESLIGAR }).catch(() => undefined);
   await invocar("foco_sites_desligar").catch(() => undefined);
   await invocar("foco_tela_cheia", { ativo: false }).catch(() => undefined);
-  await invocar("foco_lateral_fechar").catch(() => undefined);
+  await invocar("foco_encostar", { ativo: false }).catch(() => undefined);
+  await invocar("foco_lateral_fechar").catch(() => undefined);   // a janelinha antiga, se ficou aberta
 }

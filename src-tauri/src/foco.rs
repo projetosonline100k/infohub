@@ -14,6 +14,8 @@ use crate::bloqueador::{host_bate, osascript, NAVEGADORES};
 #[derive(Default)]
 pub struct FocoState {
     permitidos: Arc<Mutex<Option<Vec<String>>>>,
+    /// Onde a janela principal estava antes de encostar no canto (posição e tamanho lógicos).
+    antes_de_encostar: Mutex<Option<(f64, f64, f64, f64)>>,
 }
 
 /// Sempre liberados no foco: o próprio Infopro, login do Google e as páginas internas do navegador.
@@ -122,6 +124,41 @@ pub fn foco_lateral_fechar(app: AppHandle) {
 pub fn foco_tela_cheia(app: AppHandle, ativo: bool) {
     if let Some(j) = app.get_webview_window("main") {
         let _ = j.set_fullscreen(ativo);
+    }
+}
+
+/// Foco total (27/10, Davi): a janela principal vira uma coluna estreita no canto direito da tela, sempre por
+/// cima, só com o Modo Foco; ao sair volta para onde estava.
+#[tauri::command]
+pub fn foco_encostar(app: AppHandle, state: State<FocoState>, ativo: bool) {
+    let Some(j) = app.get_webview_window("main") else { return };
+    let escala = j.scale_factor().unwrap_or(1.0);
+    if ativo {
+        let mut antes = state.antes_de_encostar.lock().unwrap();
+        if antes.is_none() {
+            if let (Ok(p), Ok(t)) = (j.outer_position(), j.inner_size()) {
+                let (p, t) = (p.to_logical::<f64>(escala), t.to_logical::<f64>(escala));
+                *antes = Some((p.x, p.y, t.width, t.height));
+            }
+        }
+        let monitor = j.current_monitor().ok().flatten().or_else(|| app.primary_monitor().ok().flatten());
+        if let Some(m) = monitor {
+            let e = m.scale_factor();
+            let area = m.work_area();
+            let pos = area.position.to_logical::<f64>(e);
+            let tam = area.size.to_logical::<f64>(e);
+            let largura = 420.0_f64.min(tam.width);
+            let _ = j.set_fullscreen(false);
+            let _ = j.set_size(tauri::LogicalSize::new(largura, tam.height));
+            let _ = j.set_position(tauri::LogicalPosition::new(pos.x + tam.width - largura, pos.y));
+        }
+        let _ = j.set_always_on_top(true);
+    } else {
+        let _ = j.set_always_on_top(false);
+        if let Some((x, y, w, h)) = state.antes_de_encostar.lock().unwrap().take() {
+            let _ = j.set_size(tauri::LogicalSize::new(w, h));
+            let _ = j.set_position(tauri::LogicalPosition::new(x, y));
+        }
     }
 }
 

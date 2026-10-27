@@ -72,7 +72,9 @@ export function WorkspacePages() {
           )}
         >
           <ConteudoDaGuia tabId={tab.id} pathname={pathname} search={search} visivel={visivel} rotaPai={rotaPai}
-            largura={lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]") : "min-w-[max(720px,100%)]"} />
+            largura={lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]")
+              // O Modo Foco cabe numa janela estreita (foco total encosta a janela no canto da tela).
+              : pathname === "/foco" ? "min-w-[max(320px,100%)]" : "min-w-[max(720px,100%)]"} />
         </div>;
       })}
       {/* Uma divisória entre cada par de painéis vizinhos. */}
