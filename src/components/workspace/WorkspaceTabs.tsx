@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { EVENTO_FECHAR_GUIA } from "@/lib/desktop/desfazer";
+import { EVENTO_FECHAR_GUIA, EVENTO_NOVA_GUIA } from "@/lib/desktop/desfazer";
+import { nomeDoSite } from "@/lib/navegador/endereco";
+import { isDesktop } from "@/lib/platform";
 import { useSemRespostaWhatsapp } from "@/hooks/useSemRespostaWhatsapp";
 import { ArrowLeft, ArrowRight, Columns2, X } from "lucide-react";
 import {
@@ -8,7 +10,6 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { isDesktop } from "@/lib/platform";
 import { lerSessao, salvarSessao } from "@/lib/workspace/sessao";
 import { iconeDaGuia, nomeDaSecao } from "@/lib/workspace/iconeDaGuia";
 import { supabase } from "@/integrations/supabase/client";
@@ -108,6 +109,10 @@ const titleForPath = (path: string) => {
   if (path === "/automacoes") return "Automações";
   if (path === "/ponte") return "Ponte";
   if (path === "/foco") return "Modo Foco";
+  if (path.startsWith("/navegar")) {
+    const url = new URLSearchParams(path.split("?")[1] ?? "").get("url");
+    return url ? nomeDoSite(url) : "Nova guia";
+  }
   if (path.startsWith("/clientes/")) return "Projeto";
   return "Infopro Hub";
 };
@@ -153,7 +158,8 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
       if (!ativa || ativa.path === path) return current;
       // Navegar dentro da aba mantém o título dado ao abrir (ex.: nome do projeto)
       // enquanto continua na mesma página; só troca ao ir pra outra seção.
-      const mesmaSecao = ativa.path.split("?")[0] === path.split("?")[0];
+      // (No navegador, o título acompanha o site aberto.)
+      const mesmaSecao = ativa.path.split("?")[0] === path.split("?")[0] && !path.startsWith("/navegar");
       return current.map((tab) => tab.id === ativa.id ? { ...tab, path, title: mesmaSecao ? tab.title : title } : tab);
     });
   }, [setActiveId]);
@@ -480,17 +486,33 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
     return () => window.removeEventListener("keydown", tecla);
   }, [tabs, activeId, onNavigate]);
 
-  // ⌘T: guia nova no Painel, como no navegador (19/10).
+  // ⌘T: guia nova, como no navegador (19/10). 27/10 (Davi: "quero que me pergunte se eu quero navegar"): ela
+  // abre na "Nova guia" (/navegar), que pesquisa/abre um site ali mesmo ou volta para o Painel. No app do Mac o
+  // ⌘T vem pelo menu; link de site que abriria outra janela também vira guia nova.
   const abrirNovaGuiaRef = useRef(abrirNovaGuia);
   abrirNovaGuiaRef.current = abrirNovaGuia;
   useEffect(() => {
+    const novaGuia = () => onNavigate(abrirNovaGuiaRef.current("/navegar").path);
     const tecla = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "t") return;
       e.preventDefault();
-      onNavigate(abrirNovaGuiaRef.current("/").path);
+      novaGuia();
     };
     window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
+    window.addEventListener(EVENTO_NOVA_GUIA, novaGuia);
+    let pararSite: (() => void) | undefined;
+    let vivo = true;
+    if (isDesktop()) {
+      void import("@tauri-apps/api/event").then(({ listen }) => listen<string>("navegador-nova-guia", ({ payload }) => {
+        onNavigate(abrirNovaGuiaRef.current(`/navegar?url=${encodeURIComponent(payload)}`).path);
+      })).then((f) => { if (vivo) pararSite = f; else f(); });
+    }
+    return () => {
+      vivo = false;
+      window.removeEventListener("keydown", tecla);
+      window.removeEventListener(EVENTO_NOVA_GUIA, novaGuia);
+      pararSite?.();
+    };
   }, [onNavigate]);
 
   // ⌘W: fecha a guia aberta (26/10). No app do Mac vem do menu "Janela > Fechar guia" (o navegador não

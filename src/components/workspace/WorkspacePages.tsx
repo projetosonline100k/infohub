@@ -13,6 +13,7 @@ import Automacoes from "@/pages/Automacoes";
 import Ponte from "@/pages/Ponte";
 import Desenho from "@/pages/Desenho";
 import ModoFoco from "@/pages/ModoFoco";
+import Navegador from "@/pages/Navegador";
 import NotFound from "@/pages/NotFound";
 import { useWorkspaceTabs } from "./WorkspaceTabs";
 import { AbaAtivaContext } from "@/lib/workspace/abaAtiva";
@@ -74,7 +75,7 @@ export function WorkspacePages() {
           <ConteudoDaGuia tabId={tab.id} pathname={pathname} search={search} visivel={visivel} rotaPai={rotaPai}
             largura={lado ? (divisao!.length >= 3 ? "min-w-[max(320px,100%)]" : "min-w-[max(420px,100%)]")
               // O Modo Foco cabe numa janela estreita (foco total encosta a janela no canto da tela).
-              : pathname === "/foco" ? "min-w-[max(320px,100%)]" : "min-w-[max(720px,100%)]"} />
+              : pathname === "/foco" || pathname === "/navegar" ? "min-w-[max(320px,100%)]" : "min-w-[max(720px,100%)]"} />
         </div>;
       })}
       {/* Uma divisória entre cada par de painéis vizinhos. */}
@@ -117,7 +118,7 @@ const ConteudoDaGuia = memo(function ConteudoDaGuia({ tabId, pathname, search, v
         metade dividida). 20/10: era "w-fit" (a página esticava até o item mais
         largo) e um texto comprido empurrava tudo pro lado — agora o conteúdo se
         ajusta à janela e só rola pro lado se a janela ficar menor que o mínimo. */}
-    <div className={cn("w-full", largura, isClienteDetalhePath(pathname) ? "" : pathname.startsWith("/desenho/") ? "h-full" : "p-3 sm:p-6")}>
+    <div className={cn("w-full", largura, isClienteDetalhePath(pathname) ? "" : pathname.startsWith("/desenho/") || pathname === "/navegar" ? "h-full" : "p-3 sm:p-6")}>
       <Routes location={local}>
         <Route path="/" element={<DashGeral />} />
         <Route path="/clientes" element={<Clientes />} />
@@ -131,6 +132,7 @@ const ConteudoDaGuia = memo(function ConteudoDaGuia({ tabId, pathname, search, v
         <Route path="/ponte" element={<Ponte />} />
         <Route path="/desenho/:id" element={<Desenho />} />
         <Route path="/foco" element={<ModoFoco />} />
+        <Route path="/navegar" element={<Navegador />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>

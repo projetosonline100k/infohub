@@ -32,6 +32,8 @@ mod escrita;
 mod bloqueador;
 #[cfg(target_os = "macos")]
 mod foco;
+// Navegador dentro das guias (⌘T, 27/10).
+mod navegador;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -71,6 +73,12 @@ pub fn run() {
             foco::foco_lateral_fechar,
             foco::foco_tela_cheia,
             foco::foco_encostar,
+            navegador::navegador_abrir,
+            navegador::navegador_posicionar,
+            navegador::navegador_esconder,
+            navegador::navegador_ir,
+            navegador::navegador_acao,
+            navegador::navegador_fechar,
             foco::rodar_atalho,
             bloqueador::bloqueador_desligar,
             focus_monitor::stop_focus_monitor,
@@ -173,12 +181,20 @@ pub fn run() {
                     &PredefinedMenuItem::fullscreen(h, None)?,
                     // ⌘W fecha a guia aberta, como no navegador (26/10); nas outras janelas fecha a janela.
                     &MenuItem::with_id(h, "menu-fechar-guia", "Fechar guia", true, Some("CmdOrCtrl+W"))?,
+                    // ⌘T pelo menu (27/10): funciona mesmo com o navegador de uma guia em foco.
+                    &MenuItem::with_id(h, "menu-nova-guia", "Nova guia", true, Some("CmdOrCtrl+T"))?,
                 ])?;
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
                     let id = event.id.as_ref();
                     if id == "menu-ocultar" {
                         let _ = app.hide();
+                        return;
+                    }
+                    if id == "menu-nova-guia" {
+                        if let Some(w) = app.get_webview_window("main") {
+                            if w.is_focused().unwrap_or(false) { let _ = tauri::Emitter::emit_to(app, "main", id, ()); }
+                        }
                         return;
                     }
                     if id == "menu-fechar-guia" {

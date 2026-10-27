@@ -8,6 +8,9 @@ export const EVENTO_DESFAZER = "infopro:desfazer";
 export const EVENTO_REFAZER = "infopro:refazer";
 // ⌘W (menu "Janela > Fechar guia", 26/10): a barra de guias fecha a guia aberta.
 export const EVENTO_FECHAR_GUIA = "infopro:fechar-guia";
+// ⌘T (menu "Janela > Nova guia", 27/10): guia nova perguntando se é para navegar. Vem pelo menu para valer
+// também com o navegador de uma guia em foco (ele não passa as teclas para a página).
+export const EVENTO_NOVA_GUIA = "infopro:nova-guia";
 
 function editavel(el: Element | null): boolean {
   if (!el) return false;
@@ -25,4 +28,5 @@ export async function ligarDesfazerDoMenu() {
   await listen("menu-desfazer", tratar(false));
   await listen("menu-refazer", tratar(true));
   await listen("menu-fechar-guia", () => window.dispatchEvent(new CustomEvent(EVENTO_FECHAR_GUIA)));
+  await listen("menu-nova-guia", () => window.dispatchEvent(new CustomEvent(EVENTO_NOVA_GUIA)));
 }
