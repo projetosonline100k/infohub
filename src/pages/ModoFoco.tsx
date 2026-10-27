@@ -273,7 +273,23 @@ export default function ModoFoco() {
           {tarefaAtual && <p className="mt-2 text-[11px] text-white/60">O cronômetro desta atividade anda junto com os blocos de foco.</p>}
         </div>
 
-        <div className="space-y-5">
+        {estado.total ? (
+          // Foco total: só a atividade em foco, nada de lista, agenda ou sites para distrair.
+          <div className={cn(cartao, "flex flex-col items-center justify-center gap-4 text-center")}>
+            {tarefaAtual ? (<>
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sua atividade agora</span>
+              <p className="text-xl font-semibold leading-snug">{tarefaAtual.titulo}</p>
+              <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{nomeProjeto(tarefaAtual.cliente_id)}</span>
+              <div className="flex flex-wrap justify-center gap-2">
+                <button type="button" onClick={() => { const id = tarefaAtual.id; escolherTarefa(null); void concluir(id); }}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><Check className="h-4 w-4" />Concluir</button>
+                <button type="button" onClick={() => void abrirDetalhes(tarefaAtual.id)} className="rounded-xl border px-4 py-2 text-sm hover:bg-muted">Ver detalhes</button>
+              </div>
+            </>) : (
+              <p className="text-sm text-muted-foreground">Escolha no "Foco atual" acima a atividade deste bloco.</p>
+            )}
+          </div>
+        ) : <div className="space-y-5">
           {/* Tarefas de hoje */}
           <div className={cartao}>
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -408,7 +424,7 @@ export default function ModoFoco() {
               </form>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
       {fantasma && (
         <div className="pointer-events-none fixed z-[200] w-56 -translate-x-1/2 -translate-y-1/2 rotate-2 rounded-xl border border-primary bg-card p-2.5 text-sm shadow-xl"
