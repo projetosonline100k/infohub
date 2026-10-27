@@ -1,5 +1,6 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 import Highlight from "@tiptap/extension-highlight";
 
@@ -38,11 +39,31 @@ const ColarSemEstilo = Extension.create({
   },
 });
 
+// Seleção desenhada pelo próprio editor (27/10, Davi: "aperto ⌘A e não vejo as coisas selecionadas"): no app do
+// Mac o destaque do sistema não aparecia (a seleção existia — "2.268 sel." —, só não era pintada). Uma marcação
+// sobre o trecho selecionado mostra sempre; o destaque nativo fica transparente para não pintar em dobro.
+const SelecaoVisivel = Extension.create({
+  name: "selecaoVisivel",
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey("selecaoVisivel"),
+      props: {
+        decorations(state) {
+          const { from, to, empty } = state.selection;
+          if (empty) return null;
+          return DecorationSet.create(state.doc, [Decoration.inline(from, to, { class: "selecao-visivel" })]);
+        },
+      },
+    })];
+  },
+});
+
 // Extensões de estilo por trecho (fonte, tamanho, cor e marca-texto colorido)
 // usadas pelo menu de seleção. Precisam estar em todo editor que abre o mesmo
 // conteúdo (inclusive o documento compartilhado), senão o estilo some lá.
 export const extensoesEstiloTexto = [
   ColarSemEstilo,
+  SelecaoVisivel,
   TextStyle,
   FontFamily,
   FontSize,
