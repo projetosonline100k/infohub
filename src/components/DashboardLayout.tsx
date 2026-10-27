@@ -27,13 +27,13 @@ export const DashboardLayout = () => {
   // O layout fica fora das rotas de página, então lê o id direto do caminho.
   const clienteRotaId = matchPath("/clientes/:id", location.pathname)?.params.id;
   const [buscaAberta, setBuscaAberta] = useState(false);
-  const { syncPath, tabs, activeId, openTab } = useWorkspaceTabs();
-  // Foco total (27/10, Davi: "a guia do Modo Foco não fica isolada"): só o Modo Foco na janela — sem guias,
-  // lateral nem busca — e a janela encostada no canto direito (também quando o app abre com o foco ligado).
-  const focoIsolado = useFocoTotal() && isDesktop();
+  const { syncPath, tabs, activeId } = useWorkspaceTabs();
+  // Foco total (27/10, Davi: "a guia do Modo Foco não fica isolada"): na tela do Modo Foco, só ela na janela —
+  // sem guias, lateral nem busca — e a janela encostada no canto direito (também quando o app abre com o foco
+  // ligado). Em outra tela o app fica normal (senão não havia como voltar nem desligar o foco).
+  const focoIsolado = useFocoTotal() && isDesktop() && location.pathname === "/foco";
   useEffect(() => {
     if (!focoIsolado) return;
-    if (location.pathname !== "/foco") openTab("/foco");
     let telaCheia = false;
     try { telaCheia = localStorage.getItem("modo-foco:tela-cheia") === "1"; } catch { /* */ }
     if (!telaCheia) void import("@tauri-apps/api/core").then(({ invoke }) => invoke("foco_encostar", { ativo: true })).catch(() => undefined);
@@ -142,7 +142,7 @@ export const DashboardLayout = () => {
       {/* No foco isolado a barra de guias some (fica montada: os atalhos dela continuam valendo) e sobra uma
           faixa para arrastar a janela, onde ficam os botões do Mac. */}
       <div className={cn(focoIsolado && "hidden")}><WorkspaceTabs onNavigate={navigate} /></div>
-      {focoIsolado && <div data-tauri-drag-region className="h-8 shrink-0" />}
+      {focoIsolado && <div data-tauri-drag-region className="h-8 shrink-0 bg-background" />}
       <AtalhoWhatsapp clienteId={clienteRotaId} />
       {/* --painel-direita: o chat do documento (⌘I) aberto à direita encolhe só a área abaixo das guias. */}
       <SidebarProvider data-sem-rolagem="" className="min-h-0 min-w-0 flex-1 pr-[var(--painel-direita,0px)]">
