@@ -67,9 +67,7 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
                 if recebido == &atalho && apertou {
                     // 27/10 (Davi): com a janela principal do Infopro na frente, ⌘⇧E encolhe a lateral;
                     // fora dela continua abrindo o "Encerrar o dia" do Atlas.
-                    use tauri::Manager;
-                    let principal_na_frente = app_para_handler.get_webview_window("main")
-                        .map(|j| principal_ativa(&j)).unwrap_or(false);
+                    let principal_na_frente = principal_ativa(&app_para_handler);
                     if principal_na_frente {
                         let _ = app_para_handler.emit_to("main", "recolher-lateral", ());
                     } else {
@@ -107,26 +105,28 @@ pub fn atalho_encerrar_dia_registrado(state: tauri::State<AtalhoEncerrarDiaState
     state.0.load(Ordering::SeqCst)
 }
 
-/// O Infopro é o app da frente e a janela principal é a janela principal dele (27/10). `is_focused()` dava
-/// falso com o Infopro na frente (a bolinha do Atlas ou o navegador de uma guia ficam com o teclado), e o
-/// ⌘⇧E abria o "Encerrar o dia" em vez de encolher a lateral.
-fn principal_ativa(j: &tauri::WebviewWindow) -> bool {
+/// O Infopro é o app da frente e a janela com o teclado não é a do Atlas (27/10). `is_focused()` da principal
+/// dava falso com o Infopro na frente (a janela destacada da Agenda/Notas ou o navegador de uma guia com o
+/// teclado), e o ⌘⇧E abria o "Encerrar o dia" em vez de encolher a lateral.
+fn principal_ativa(app: &tauri::AppHandle) -> bool {
+    use tauri::Manager;
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::NSRunningApplication;
         if !NSRunningApplication::currentApplication().isActive() {
             return false;
         }
-        let Ok(ptr) = j.ns_window() else { return false };
-        unsafe {
-            let janela: &objc2::runtime::AnyObject = &*(ptr as *const objc2::runtime::AnyObject);
-            let visivel: bool = objc2::msg_send![janela, isVisible];
-            let principal: bool = objc2::msg_send![janela, isMainWindow];
-            visivel && principal
-        }
+        let chave = |j: &tauri::WebviewWindow| -> bool {
+            let Ok(ptr) = j.ns_window() else { return false };
+            unsafe {
+                let janela: &objc2::runtime::AnyObject = &*(ptr as *const objc2::runtime::AnyObject);
+                objc2::msg_send![janela, isKeyWindow]
+            }
+        };
+        !app.get_webview_window("jarvis").map(|j| chave(&j)).unwrap_or(false)
     }
     #[cfg(not(target_os = "macos"))]
     {
-        j.is_focused().unwrap_or(false)
+        app.get_webview_window("main").map(|j| j.is_focused().unwrap_or(false)).unwrap_or(false)
     }
 }
