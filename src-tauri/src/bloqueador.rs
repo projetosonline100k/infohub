@@ -27,7 +27,7 @@ struct Bloqueio {
     tipo: &'static str,
 }
 
-const NAVEGADORES: [(&str, &str); 2] = [
+pub(crate) const NAVEGADORES: [(&str, &str); 2] = [
     ("com.google.Chrome", "tell application \"Google Chrome\" to get URL of active tab of front window"),
     ("com.apple.Safari", "tell application \"Safari\" to get URL of current tab of front window"),
 ];
@@ -36,7 +36,7 @@ fn simples(s: &str) -> String {
     s.trim().to_lowercase()
 }
 
-fn host_bate(url: &str, sites: &[String]) -> Option<String> {
+pub(crate) fn host_bate(url: &str, sites: &[String]) -> Option<String> {
     let resto = url.split("://").nth(1)?;
     let host = simples(resto.split(['/', '?', '#', ':']).next()?);
     let host = host.trim_start_matches("www.");
@@ -48,7 +48,7 @@ fn host_bate(url: &str, sites: &[String]) -> Option<String> {
     }).cloned()
 }
 
-fn osascript(script: &str) -> Option<String> {
+pub(crate) fn osascript(script: &str) -> Option<String> {
     let out = std::process::Command::new("osascript").arg("-e").arg(script).output().ok()?;
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
 }

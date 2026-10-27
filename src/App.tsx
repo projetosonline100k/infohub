@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
 import JarvisWindow from "./pages/JarvisWindow";
+import FocoLateral from "./pages/FocoLateral";
 import NotasWindow from "./pages/NotasWindow";
 import AgendaWindow from "./pages/AgendaWindow";
 import Privacidade from "./pages/Privacidade";
@@ -51,6 +52,7 @@ const App = () => (
               sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona
               pra /login: ver JarvisWindow.tsx). */}
           <Route path="/jarvis" element={<JarvisWindow />} />
+          <Route path="/foco-lateral" element={<FocoLateral />} />
           <Route path="/notas-janela" element={<NotasWindow />} />
           <Route path="/agenda-janela" element={<AgendaWindow />} />
           

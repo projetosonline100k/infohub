@@ -1,123 +1,46 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { endOfDay, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Check, ExternalLink, Globe, Pause, Play, Plus, RotateCcw, SkipForward, X } from "lucide-react";
+import { BellOff, Check, ExternalLink, Globe, Maximize2, Pause, Play, Plus, RotateCcw, SkipForward, Target, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAssistantAtividades, type AssistantTarefa } from "@/hooks/useAssistantAtividades";
 import { chamarGoogleCalendar, type GoogleCalendarEvent } from "@/lib/googleCalendar";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
+import { isDesktop } from "@/lib/platform";
+import { CICLOS, mmss, useFocoTimer, type Ciclo } from "@/hooks/useFocoTimer";
+import { ATALHO_DESLIGAR, ATALHO_LIGAR, CHAVE_SITES, desligarFocoTotal, ligarFocoTotal, lerSites } from "@/lib/foco/focoTotal";
 
 // Modo Foco (27/10, Davi: "quero deixar algo parecido com esse; dentro, a atividade linkada às minhas
 // atividades, ou eu posso criar; e os sites que vou usar"). Cronômetro com ciclos (foco/pausa), o foco atual
 // (uma atividade: o cronômetro dela anda junto), as tarefas de hoje, a agenda do dia e os sites de trabalho.
 // O estado do cronômetro fica salvo neste aparelho: trocar de guia ou recarregar não zera.
 
-type Ciclo = { id: string; rotulo: string; foco: number; pausa: number };
-const CICLOS: Ciclo[] = [
-  { id: "50/10", rotulo: "50/10", foco: 50, pausa: 10 },
-  { id: "25/5", rotulo: "25/5", foco: 25, pausa: 5 },
-  { id: "90/15", rotulo: "90/15", foco: 90, pausa: 15 },
-];
-interface Estado {
-  ciclo: Ciclo; fase: "foco" | "pausa";
-  /** Rodando: quando termina (ms). Parado: quanto falta (s). */
-  terminaEm: number | null; restante: number;
-  tarefaId: string | null;
-  focoHoje: { dia: string; segundos: number };
-}
-const CHAVE = "modo-foco:estado";
-const CHAVE_SITES = "modo-foco:sites";
-const hoje = () => format(new Date(), "yyyy-MM-dd");
-const inicial = (): Estado => ({ ciclo: CICLOS[0], fase: "foco", terminaEm: null, restante: CICLOS[0].foco * 60, tarefaId: null, focoHoje: { dia: hoje(), segundos: 0 } });
-function ler(): Estado {
-  try {
-    const e = JSON.parse(localStorage.getItem(CHAVE) || "null") as Estado | null;
-    if (!e) return inicial();
-    return e.focoHoje?.dia === hoje() ? e : { ...e, focoHoje: { dia: hoje(), segundos: 0 } };
-  } catch { return inicial(); }
-}
-const lerSites = (): string[] => { try { return JSON.parse(localStorage.getItem(CHAVE_SITES) || "[]"); } catch { return []; } };
-const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const urlDe = (s: string) => (/^https?:\/\//i.test(s) ? s : `https://${s}`);
-
-function tocarFim() {
-  try {
-    const ctx = new AudioContext();
-    [0, 0.25, 0.5].forEach((t) => {
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.frequency.value = 880; g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
-      g.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.2);
-      o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.22);
-    });
-  } catch { /* sem áudio */ }
-}
+const hoje = () => format(new Date(), "yyyy-MM-dd");
 
 export default function ModoFoco() {
   const { tarefas, atrasadas, iniciarTimer, pausarTimer, concluir, criarAtividade } = useAssistantAtividades();
-  const [estado, setEstadoBruto] = useState<Estado>(ler);
-  const estadoRef = useRef(estado);
-  const setEstado = useCallback((f: (e: Estado) => Estado) => {
-    setEstadoBruto((atual) => { const novo = f(atual); estadoRef.current = novo; try { localStorage.setItem(CHAVE, JSON.stringify(novo)); } catch { /* */ } return novo; });
-  }, []);
-  const [agora, setAgora] = useState(Date.now());
+  const { estado, rodando, restante, total, focoHojeMin, tocar, comecar, reiniciar, pular, escolherCiclo, escolherTarefa, marcarTotal } =
+    useFocoTimer({ iniciarTimer: (id) => iniciarTimer(id), pausarTimer: (id) => pausarTimer(id) });
   const [personalizado, setPersonalizado] = useState<{ foco: string; pausa: string } | null>(null);
 
-  const rodando = estado.terminaEm != null;
-  const restante = rodando ? Math.max(0, (estado.terminaEm! - agora) / 1000) : estado.restante;
-  const total = (estado.fase === "foco" ? estado.ciclo.foco : estado.ciclo.pausa) * 60;
-
-  // Relógio: um tique por segundo só enquanto roda; ao zerar, troca de fase.
-  useEffect(() => {
-    if (!rodando) return;
-    const t = window.setInterval(() => setAgora(Date.now()), 500);
-    return () => window.clearInterval(t);
-  }, [rodando]);
-  const ultimoTique = useRef(Date.now());
-  useEffect(() => {
-    const e = estadoRef.current;
-    if (e.terminaEm == null) { ultimoTique.current = Date.now(); return; }
-    const passou = Math.min(5, (agora - ultimoTique.current) / 1000);
-    ultimoTique.current = agora;
-    if (e.fase === "foco" && passou > 0) setEstado((x) => ({ ...x, focoHoje: { dia: hoje(), segundos: (x.focoHoje.dia === hoje() ? x.focoHoje.segundos : 0) + passou } }));
-    if (agora >= e.terminaEm) {
-      tocarFim();
-      const proxima = e.fase === "foco" ? "pausa" : "foco";
-      if (e.fase === "foco" && e.tarefaId) void pausarTimer(e.tarefaId);
-      toast.success(proxima === "pausa" ? `Bloco de foco feito! Pausa de ${e.ciclo.pausa} min.` : "Pausa acabou. Bora para o próximo bloco?");
-      setEstado((x) => ({ ...x, fase: proxima, terminaEm: null, restante: (proxima === "foco" ? x.ciclo.foco : x.ciclo.pausa) * 60 }));
+  // Foco total (Não Perturbe + só os sites de trabalho + janelinha lateral; tela cheia opcional).
+  const [telaCheia, setTelaCheia] = useState(() => { try { return localStorage.getItem("modo-foco:tela-cheia") === "1"; } catch { return false; } });
+  const [ajudaAtalhos, setAjudaAtalhos] = useState(false);
+  const alternarTotal = async () => {
+    if (estado.total) {
+      await desligarFocoTotal();
+      marcarTotal(false);
+      toast.success("Foco total desligado. Notificações e sites de volta.");
+      return;
     }
-  }, [agora, setEstado, pausarTimer]);
-
-  const tocar = () => {
-    if (rodando) {
-      setEstado((x) => ({ ...x, terminaEm: null, restante: Math.max(1, Math.round((x.terminaEm! - Date.now()) / 1000)) }));
-      if (estado.fase === "foco" && estado.tarefaId) void pausarTimer(estado.tarefaId);
-    } else {
-      ultimoTique.current = Date.now();
-      setEstado((x) => ({ ...x, terminaEm: Date.now() + x.restante * 1000 }));
-      if (estado.fase === "foco" && estado.tarefaId) void iniciarTimer(estado.tarefaId);
-    }
-  };
-  const reiniciar = () => {
-    if (rodando && estado.fase === "foco" && estado.tarefaId) void pausarTimer(estado.tarefaId);
-    setEstado((x) => ({ ...x, terminaEm: null, restante: (x.fase === "foco" ? x.ciclo.foco : x.ciclo.pausa) * 60 }));
-  };
-  const pular = () => {
-    if (rodando && estado.fase === "foco" && estado.tarefaId) void pausarTimer(estado.tarefaId);
-    setEstado((x) => { const f = x.fase === "foco" ? "pausa" : "foco"; return { ...x, fase: f, terminaEm: null, restante: (f === "foco" ? x.ciclo.foco : x.ciclo.pausa) * 60 }; });
-  };
-  const escolherCiclo = (c: Ciclo) => {
-    if (rodando && estado.fase === "foco" && estado.tarefaId) void pausarTimer(estado.tarefaId);
-    setEstado((x) => ({ ...x, ciclo: c, fase: "foco", terminaEm: null, restante: c.foco * 60 }));
-  };
-  const escolherTarefa = (id: string | null) => {
-    if (rodando && estado.fase === "foco") {
-      if (estado.tarefaId) void pausarTimer(estado.tarefaId);
-      if (id) void iniciarTimer(id);
-    }
-    setEstado((x) => ({ ...x, tarefaId: id }));
+    const r = await ligarFocoTotal({ telaCheia });
+    marcarTotal(true);
+    if (estado.fase === "foco") comecar();
+    abrirSites();
+    if (!r.naoPerturbe) { setAjudaAtalhos(true); toast.info("Foco total ligado — falta só criar os atalhos do Não Perturbe (veja abaixo)."); }
+    else toast.success("Foco total ligado: Não Perturbe, só os sites de trabalho e o cronômetro no canto.");
   };
 
   // Tarefas de hoje: as suas que vencem hoje ou já atrasaram (em aberto); a do foco atual sempre aparece.
@@ -164,6 +87,11 @@ export default function ModoFoco() {
     setNovoSite("");
   };
   const abrirSites = () => { for (const s of sites) void abrirLinkExterno(urlDe(s)); };
+  // Mudou a lista com o foco total ligado: o navegador passa a liberar a lista nova na hora.
+  useEffect(() => {
+    if (!estado.total || !isDesktop()) return;
+    void import("@tauri-apps/api/core").then(({ invoke }) => invoke("foco_sites_ligar", { permitidos: sites })).catch(() => undefined);
+  }, [sites, estado.total]);
 
   const progresso = total ? 1 - restante / total : 0;
   const raio = 118, volta = 2 * Math.PI * raio;
@@ -171,17 +99,43 @@ export default function ModoFoco() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold">Modo Foco</h1>
-        <p className="text-sm capitalize text-muted-foreground">{format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Modo Foco</h1>
+          <p className="text-sm capitalize text-muted-foreground">{format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}</p>
+        </div>
+        {isDesktop() && (
+          <div className="flex items-center gap-2">
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground" title="Abre o Infopro em tela cheia, numa área de trabalho só dele">
+              <input type="checkbox" checked={telaCheia} onChange={(e) => { setTelaCheia(e.target.checked); try { localStorage.setItem("modo-foco:tela-cheia", e.target.checked ? "1" : "0"); } catch { /* */ } }} />
+              <Maximize2 className="h-3.5 w-3.5" />Área própria
+            </label>
+            <button type="button" onClick={() => void alternarTotal()}
+              className={cn("flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold shadow-sm", estado.total ? "bg-rose-600 text-white hover:bg-rose-700" : "bg-[#3d7fe0] text-white hover:bg-[#4b8cf0]")}>
+              <Target className="h-4 w-4" />{estado.total ? "Sair do foco total" : "Foco total"}
+            </button>
+          </div>
+        )}
       </div>
+      {ajudaAtalhos && (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
+          <div className="mb-1 flex items-center gap-2 font-semibold"><BellOff className="h-4 w-4" />Para silenciar as notificações (uma vez só)</div>
+          <p className="text-muted-foreground">O Mac não deixa um app ligar o Não Perturbe sozinho. Crie dois atalhos no app <b>Atalhos</b>:</p>
+          <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
+            <li>Novo atalho com o nome <b>{ATALHO_LIGAR}</b> e a ação <b>Definir Foco</b> → <b>Não Perturbe</b> → <b>Ativar</b>.</li>
+            <li>Outro com o nome <b>{ATALHO_DESLIGAR}</b> e a ação <b>Definir Foco</b> → <b>Não Perturbe</b> → <b>Desativar</b>.</li>
+          </ol>
+          <p className="mt-2 text-muted-foreground">Pronto: da próxima vez que ligar o foco total, as notificações silenciam sozinhas.</p>
+          <button type="button" onClick={() => setAjudaAtalhos(false)} className="mt-2 text-xs underline">Entendi</button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
         {/* Cronômetro */}
         <div className="rounded-3xl bg-gradient-to-b from-[#1f3f73] to-[#16305a] p-6 text-white shadow-lg">
           <div className="flex items-center justify-between">
             <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold tracking-wider">{estado.fase === "foco" ? "MODO FOCO" : "PAUSA"}</span>
-            <span className="text-xs text-white/70">Hoje: {Math.round(estado.focoHoje.segundos / 60)} min de foco</span>
+            <span className="text-xs text-white/70">Hoje: {focoHojeMin} min de foco</span>
           </div>
           <div className="relative mx-auto my-6 h-64 w-64">
             <svg viewBox="0 0 260 260" className="h-full w-full -rotate-90">

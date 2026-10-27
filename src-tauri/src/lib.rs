@@ -30,6 +30,8 @@ mod ditado;
 mod escrita;
 #[cfg(target_os = "macos")]
 mod bloqueador;
+#[cfg(target_os = "macos")]
+mod foco;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -57,11 +59,18 @@ pub fn run() {
     let builder = builder
         .manage(focus_monitor::FocusMonitorState::default())
         .manage(bloqueador::BloqueadorState::default())
+        .manage(foco::FocoState::default())
         .manage(voz::VozState::default())
         .manage(creator::CreatorState::default())
         .invoke_handler(tauri::generate_handler![
             focus_monitor::start_focus_monitor,
             bloqueador::bloqueador_ligar,
+            foco::foco_sites_ligar,
+            foco::foco_sites_desligar,
+            foco::foco_lateral_abrir,
+            foco::foco_lateral_fechar,
+            foco::foco_tela_cheia,
+            foco::rodar_atalho,
             bloqueador::bloqueador_desligar,
             focus_monitor::stop_focus_monitor,
             focus_monitor::check_accessibility_trusted,
