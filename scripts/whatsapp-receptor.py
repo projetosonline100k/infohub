@@ -314,6 +314,9 @@ def abrir_documento(id_msg):
         c.commit()
     finally:
         c.close()
+    if sys.platform != "darwin":
+        # No servidor (27/10): não há onde abrir; o app do Mac baixa pelo /midia/ e abre lá.
+        return {"ok": True, "nome": destino.name, "arquivo": nome_midia, "abrir_no_app": True}
     import subprocess
     subprocess.Popen(["open", str(destino)])
     return {"ok": True, "nome": destino.name}
@@ -480,17 +483,40 @@ class _TravaPesada:
         self.f.close()
 
 
-def _soltar_modelo(mlx_whisper):
-    """Tira o Whisper da memória (~2–4 GB) quando a fila acaba; carrega de novo no próximo áudio."""
-    import gc
-    try:
-        mlx_whisper.transcribe.ModelHolder.model = None
-        mlx_whisper.transcribe.ModelHolder.model_path = None
-        gc.collect()
-        import mlx.core as mx
-        mx.clear_cache()
-    except Exception as e:
-        log("transcrição: não consegui soltar o modelo —", repr(e)[:120])
+class _Whisper:
+    """Transcrição: no Mac, mlx-whisper (chip da Apple); no servidor Linux (27/10, migração para a VPS),
+    faster-whisper no processador (int8), com o mesmo modelo large-v3-turbo."""
+    def __init__(self):
+        self.mlx = None
+        self.fw = None
+        if sys.platform == "darwin":
+            import mlx_whisper
+            self.mlx = mlx_whisper
+
+    def transcrever(self, caminho):
+        if self.mlx:
+            return self.mlx.transcribe(caminho, path_or_hf_repo=MODELO, verbose=None, language="pt").get("text") or ""
+        if self.fw is None:
+            from faster_whisper import WhisperModel
+            self.fw = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8", cpu_threads=os.cpu_count() or 4)
+        partes, _ = self.fw.transcribe(caminho, language="pt", vad_filter=True)
+        return " ".join(p.text.strip() for p in partes)
+
+    def soltar(self):
+        """Tira o Whisper da memória (~2–4 GB) quando a fila acaba; carrega de novo no próximo áudio."""
+        import gc
+        try:
+            if self.mlx:
+                self.mlx.transcribe.ModelHolder.model = None
+                self.mlx.transcribe.ModelHolder.model_path = None
+                gc.collect()
+                import mlx.core as mx
+                mx.clear_cache()
+            else:
+                self.fw = None
+                gc.collect()
+        except Exception as e:
+            log("transcrição: não consegui soltar o modelo —", repr(e)[:120])
 
 
 def transcritor():
@@ -498,7 +524,7 @@ def transcritor():
     primeiro áudio e fica na memória. O arquivo fica guardado (pra ouvir)."""
     sys.path.insert(0, str(Path.home() / ".infopro-hub" / "creator"))
     os.environ["PATH"] = str(Path.home() / ".infopro-hub" / "creator-bin") + os.pathsep + os.environ.get("PATH", "")
-    import mlx_whisper
+    whisper = _Whisper()
     migrar_audios_antigos()
     while True:
         _acordar.wait(timeout=60)
@@ -522,11 +548,11 @@ def transcritor():
         if not fila:
             continue
         with _TravaPesada():
-            _transcrever_fila(mlx_whisper, fila)
-        _soltar_modelo(mlx_whisper)
+            _transcrever_fila(whisper, fila)
+        whisper.soltar()
 
 
-def _transcrever_fila(mlx_whisper, fila):
+def _transcrever_fila(whisper, fila):
     for id_msg, nome, conta in fila:
         arq = pasta_midia(conta) / nome
         if not arq.exists():
@@ -540,8 +566,8 @@ def _transcrever_fila(mlx_whisper, fila):
             inicio = time.time()
             # Português fixo: áudio curto fazia o Whisper "adivinhar" outro idioma
             # (um "teste, teste" virou "Tæk, tæk" em 13/10).
-            r = mlx_whisper.transcribe(str(arq), path_or_hf_repo=MODELO, verbose=None, language="pt")
-            marcar(id_msg, "pronta", (r.get("text") or "").strip() or "(áudio sem fala)")
+            texto = whisper.transcrever(str(arq))
+            marcar(id_msg, "pronta", texto.strip() or "(áudio sem fala)")
             log("audio transcrito em", f"{time.time() - inicio:.1f}s")
         except Exception as e:
             log("audio: erro", repr(e)[:200])

@@ -311,6 +311,12 @@ function DocumentoMensagem({ id, nome }: { id: string; nome: string | null }) {
       const r = await fetch(`${cfg.base.replace(/\/midia\/$/, "/abrir/")}${encodeURIComponent(id)}?k=${cfg.chave}`).then((x) => x.json());
       if (r.erro) throw new Error(r.erro);
       setNomeArquivo(r.nome);
+      if (r.abrir_no_app && r.arquivo) {
+        // WhatsApp no servidor (27/10): o arquivo foi baixado lá; abre por aqui, direto do endereço da mídia.
+        void abrirLinkExterno(`${cfg.base}${encodeURIComponent(r.arquivo)}?k=${cfg.chave}`);
+        toast.success(`Abrindo ${r.nome}`);
+        return;
+      }
       toast.success(`Abrindo ${r.nome} (fica em Downloads › WhatsApp (Infopro))`);
     } catch (e) {
       toast.error(`Não abri o documento: ${e instanceof Error ? e.message : "erro"}`);
