@@ -158,6 +158,9 @@ pub fn foco_encostar(app: AppHandle, state: State<FocoState>, ativo: bool) {
         if let Some((x, y, w, h)) = state.antes_de_encostar.lock().unwrap().take() {
             let _ = j.set_size(tauri::LogicalSize::new(w, h));
             let _ = j.set_position(tauri::LogicalPosition::new(x, y));
+        } else if j.outer_size().map(|t| t.to_logical::<f64>(escala).width < 600.0).unwrap_or(false) {
+            // Encostou antes de o app reiniciar (sem o lugar de antes guardado): volta a ocupar a tela.
+            let _ = j.maximize();
         }
     }
 }

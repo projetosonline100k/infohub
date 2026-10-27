@@ -231,7 +231,10 @@ export default function ModoFoco() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-6xl font-bold tabular-nums">{mmss(restante)}</span>
-              <span className="mt-1 text-sm text-white/70">{estado.fase === "foco" ? "Trabalho profundo" : "Respira, levanta, bebe água"}</span>
+              {/* Abaixo do número, o nome do foco (27/10, Davi). */}
+              <span className="mt-1 line-clamp-2 max-w-[80%] text-center text-sm text-white/70" title={tarefaAtual?.titulo}>
+                {estado.fase === "foco" ? tarefaAtual?.titulo ?? "Trabalho profundo" : "Respira, levanta, bebe água"}
+              </span>
             </div>
           </div>
           <div className="flex items-center justify-center gap-4">

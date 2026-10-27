@@ -14,6 +14,8 @@ import { useWorkspaceTabs, WorkspaceTabs } from "@/components/workspace/Workspac
 import { WorkspacePages } from "@/components/workspace/WorkspacePages";
 import { useSomDigitacao } from "@/hooks/useSomDigitacao";
 import { useAlarmesAgenda } from "@/hooks/useAlarmesAgenda";
+import { useFocoTotal } from "@/hooks/useFocoTimer";
+import { cn } from "@/lib/utils";
 
 // Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
 // conteúdo, no lugar do header horizontal antigo. Rotas, autenticação,
@@ -25,7 +27,18 @@ export const DashboardLayout = () => {
   // O layout fica fora das rotas de página, então lê o id direto do caminho.
   const clienteRotaId = matchPath("/clientes/:id", location.pathname)?.params.id;
   const [buscaAberta, setBuscaAberta] = useState(false);
-  const { syncPath, tabs, activeId } = useWorkspaceTabs();
+  const { syncPath, tabs, activeId, openTab } = useWorkspaceTabs();
+  // Foco total (27/10, Davi: "a guia do Modo Foco não fica isolada"): só o Modo Foco na janela — sem guias,
+  // lateral nem busca — e a janela encostada no canto direito (também quando o app abre com o foco ligado).
+  const focoIsolado = useFocoTotal() && isDesktop();
+  useEffect(() => {
+    if (!focoIsolado) return;
+    if (location.pathname !== "/foco") openTab("/foco");
+    let telaCheia = false;
+    try { telaCheia = localStorage.getItem("modo-foco:tela-cheia") === "1"; } catch { /* */ }
+    if (!telaCheia) void import("@tauri-apps/api/core").then(({ invoke }) => invoke("foco_encostar", { ativo: true })).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focoIsolado]);
   // Alarmes da Agenda tocam em qualquer tela do app (não só na Agenda).
   useAlarmesAgenda();
 
@@ -126,7 +139,10 @@ export const DashboardLayout = () => {
 
   return (
     <div data-sem-rolagem="" className="flex h-svh w-full flex-col overflow-hidden">
-      <WorkspaceTabs onNavigate={navigate} />
+      {/* No foco isolado a barra de guias some (fica montada: os atalhos dela continuam valendo) e sobra uma
+          faixa para arrastar a janela, onde ficam os botões do Mac. */}
+      <div className={cn(focoIsolado && "hidden")}><WorkspaceTabs onNavigate={navigate} /></div>
+      {focoIsolado && <div data-tauri-drag-region className="h-8 shrink-0" />}
       <AtalhoWhatsapp clienteId={clienteRotaId} />
       {/* --painel-direita: o chat do documento (⌘I) aberto à direita encolhe só a área abaixo das guias. */}
       <SidebarProvider data-sem-rolagem="" className="min-h-0 min-w-0 flex-1 pr-[var(--painel-direita,0px)]">
@@ -134,11 +150,12 @@ export const DashboardLayout = () => {
             largura da página e é cortado pela janela, e o <main> nunca rola. */}
         <div data-sem-rolagem="" className="flex min-h-0 min-w-0 flex-1">
           {/* 23/10: a barra em árvore aparece também dentro do projeto (com as seções dele). */}
-          <AppSidebar />
+          {/* (Sem embrulho: o SidebarInset depende de ser irmão da lateral.) */}
+          {!focoIsolado && <AppSidebar />}
           {/* min-w-0/min-h-0: a área da página não estica além da janela — quem
               rola (inclusive pro lado, em janela estreita) é o <main>. */}
           <SidebarInset data-sem-rolagem="" className="min-h-0 min-w-0">
-            {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+            {!isClienteDetalhe && !focoIsolado && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
             <DesktopUpdateBanner />
             {/* Quem rola é cada guia (ou cada metade, com a tela dividida) —
                 ver WorkspacePages. */}

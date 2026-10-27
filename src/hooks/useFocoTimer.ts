@@ -23,6 +23,8 @@ export interface EstadoFoco {
   total: boolean;
 }
 export const CHAVE_FOCO = "modo-foco:estado";
+/** Aviso na mesma janela (o "storage" só chega nas outras): o layout acompanha o foco total. */
+const EVENTO_FOCO = "modo-foco:mudou";
 const hoje = () => format(new Date(), "yyyy-MM-dd");
 const inicial = (): EstadoFoco => ({ ciclo: CICLOS[0], fase: "foco", terminaEm: null, iniciadoEm: null, restante: CICLOS[0].foco * 60, tarefaId: null, focoHoje: { dia: hoje(), segundos: 0 }, total: false });
 function ler(): EstadoFoco {
@@ -53,6 +55,18 @@ function fechandoTrecho(e: EstadoFoco, ate: number): EstadoFoco["focoHoje"] {
   return { dia: hoje(), segundos: base + Math.max(0, Math.min(ate, e.terminaEm ?? ate) - e.iniciadoEm) / 1000 };
 }
 
+/** Foco total ligado? (27/10: o layout esconde guias, lateral e busca e deixa só o Modo Foco.) */
+export function useFocoTotal(): boolean {
+  const [total, setTotal] = useState(() => ler().total);
+  useEffect(() => {
+    const ver = () => setTotal(ler().total);
+    window.addEventListener(EVENTO_FOCO, ver);
+    window.addEventListener("storage", ver);
+    return () => { window.removeEventListener(EVENTO_FOCO, ver); window.removeEventListener("storage", ver); };
+  }, []);
+  return total;
+}
+
 export function useFocoTimer(acoes: { iniciarTimer?: (id: string) => unknown; pausarTimer?: (id: string) => unknown } = {}) {
   const [estado, setEstadoBruto] = useState<EstadoFoco>(ler);
   const estadoRef = useRef(estado);
@@ -64,6 +78,7 @@ export function useFocoTimer(acoes: { iniciarTimer?: (id: string) => unknown; pa
     estadoRef.current = novo;
     setEstadoBruto(novo);
     try { localStorage.setItem(CHAVE_FOCO, JSON.stringify(novo)); } catch { /* sem storage */ }
+    window.dispatchEvent(new Event(EVENTO_FOCO));
   }, []);
   // A outra janela mudou: acompanha.
   useEffect(() => {
