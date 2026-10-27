@@ -247,8 +247,8 @@ export function AppSidebar() {
 
   // ⌘⇧E (27/10, Davi): encolhe tudo na lateral — pastas, documentos, Escritório, Produtividade… — menos os
   // projetos que estavam abertos (e a lista de projetos).
-  // No app do Mac o ⌘⇧E é um atalho global (Encerrar o dia): com o Infopro na frente, o Rust manda
-  // "recolher-lateral" em vez de abrir o fluxo. No navegador vale a tecla direto.
+  // No app do Mac vem pelo menu "Janela > Encolher a lateral" (evento "recolher-lateral"; vale mesmo com o
+  // navegador de uma guia em foco). No navegador vale a tecla direto.
   useEffect(() => {
     const recolher = () => setAbertos((atual) => {
       const novo = new Set([...atual].filter((k) => k === "projetos" || k === "arquivados" || /^projeto:[^:]+$/.test(k)));

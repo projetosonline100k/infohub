@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { isDesktop } from "@/lib/platform";
-import { atalhoEncerrarDiaRegistrado } from "@/lib/desktop/shortcuts";
 
 interface AtalhoInfo {
   acao: string;
@@ -13,22 +11,15 @@ const ATALHOS: AtalhoInfo[] = [
   { acao: "Abrir Atlas", combinacao: "⌘ Shift J", disponivel: false },
   { acao: "Nova tarefa", combinacao: "⌘ Shift T", disponivel: false },
   { acao: "Nova nota", combinacao: "⌘ Shift N", disponivel: false },
-  { acao: "Encerrar o dia", combinacao: "⌘ Shift E", disponivel: true },
+  { acao: "Encolher a lateral", combinacao: "⌘ Shift E", disponivel: true },
 ];
 
-// Administração → Atlas → Atalhos (item 14). Só "Encerrar o dia" funciona
-// nesta etapa — os outros 3 aparecem como "Em breve" (item 14 do pedido:
+// Administração → Atlas → Atalhos (item 14). 27/10: o ⌘⇧E deixou de ser o "Encerrar o dia" (o Davi não
+// usava) e encolhe a lateral. Os outros 3 aparecem como "Em breve" (item 14 do pedido:
 // "se os outros atalhos ainda não existirem, podem aparecer como 'Em
 // breve'"). Estrutura já pronta pra ganhar edição de atalho no futuro
 // (bastaria trocar a "combinacao" fixa por um valor editável).
 export function AdminJarvisAtalhos() {
-  const [registrado, setRegistrado] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!isDesktop()) return;
-    atalhoEncerrarDiaRegistrado().then(setRegistrado);
-  }, []);
-
   return (
     <div className="space-y-3">
       <div>
@@ -45,9 +36,6 @@ export function AdminJarvisAtalhos() {
               <p className="text-sm font-medium text-foreground">{atalho.acao}</p>
               {atalho.disponivel && !isDesktop() && (
                 <p className="text-xs text-muted-foreground">Disponível só no app desktop.</p>
-              )}
-              {atalho.disponivel && isDesktop() && registrado === false && (
-                <p className="text-xs text-destructive">O atalho ⌘+Shift+E não pôde ser registrado (talvez já esteja em uso por outro app).</p>
               )}
             </div>
             <span className="shrink-0 rounded-md border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground">

@@ -19,7 +19,6 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-pub const EVENTO_ABRIR_ENCERRAR_DIA: &str = "abrir-encerrar-dia";
 /// ⌘+J: age ao SOLTAR (pedido do Davi). Apertou → só foca o Jarvis (pra ele
 /// ouvir um C, que com ⌘ ainda pressionado vira ⌘+J+C = modo Creator);
 /// soltou → o React decide: Conversa, ou Creator se o C veio no meio.
@@ -56,7 +55,6 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
     let state = AtalhoEncerrarDiaState::default();
     let flag = state.0.clone();
     let app_para_handler = app.clone();
-    let atalho = Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyE);
     let atalho_conversa = Shortcut::new(Some(Modifiers::SUPER), Code::KeyJ);
     let atalho_voz = Shortcut::new(Some(Modifiers::ALT), Code::Space);
 
@@ -64,16 +62,7 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
         tauri_plugin_global_shortcut::Builder::new()
             .with_handler(move |_app, recebido, event| {
                 let apertou = event.state() == ShortcutState::Pressed;
-                if recebido == &atalho && apertou {
-                    // 27/10 (Davi): com a janela principal do Infopro na frente, ⌘⇧E encolhe a lateral;
-                    // fora dela continua abrindo o "Encerrar o dia" do Atlas.
-                    let principal_na_frente = principal_ativa(&app_para_handler);
-                    if principal_na_frente {
-                        let _ = app_para_handler.emit_to("main", "recolher-lateral", ());
-                    } else {
-                        mostrar_e_focar_jarvis(&app_para_handler, EVENTO_ABRIR_ENCERRAR_DIA);
-                    }
-                } else if recebido == &atalho_voz {
+                if recebido == &atalho_voz {
                     let evento = if apertou { EVENTO_VOZ_APERTADO } else { EVENTO_VOZ_SOLTO };
                     // Gravando a voz: pausa o que estiver tocando e volta ao soltar (ditado.rs).
                     if apertou { crate::ditado::pausar_midia() } else { crate::ditado::retomar_midia() }
@@ -87,11 +76,9 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
     );
 
     if plugin_ok.is_ok() {
-        let registrou = app
-            .global_shortcut()
-            .register(Shortcut::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::KeyE))
-            .is_ok();
-        flag.store(registrou, Ordering::SeqCst);
+        // 27/10 (Davi: "pode tirar o atalho de encerrar o dia, eu nem uso"): o ⌘⇧E global saiu; a tecla agora
+        // é só do app (menu "Janela > Encolher a lateral").
+        flag.store(false, Ordering::SeqCst);
         // ⌘+J é independente: se outro app já usar, só esse atalho falha.
         let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::SUPER), Code::KeyJ));
         let _ = app.global_shortcut().register(Shortcut::new(Some(Modifiers::ALT), Code::Space));
@@ -103,30 +90,4 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
 #[tauri::command]
 pub fn atalho_encerrar_dia_registrado(state: tauri::State<AtalhoEncerrarDiaState>) -> bool {
     state.0.load(Ordering::SeqCst)
-}
-
-/// O Infopro é o app da frente e a janela com o teclado não é a do Atlas (27/10). `is_focused()` da principal
-/// dava falso com o Infopro na frente (a janela destacada da Agenda/Notas ou o navegador de uma guia com o
-/// teclado), e o ⌘⇧E abria o "Encerrar o dia" em vez de encolher a lateral.
-fn principal_ativa(app: &tauri::AppHandle) -> bool {
-    use tauri::Manager;
-    #[cfg(target_os = "macos")]
-    {
-        use objc2_app_kit::NSRunningApplication;
-        if !NSRunningApplication::currentApplication().isActive() {
-            return false;
-        }
-        let chave = |j: &tauri::WebviewWindow| -> bool {
-            let Ok(ptr) = j.ns_window() else { return false };
-            unsafe {
-                let janela: &objc2::runtime::AnyObject = &*(ptr as *const objc2::runtime::AnyObject);
-                objc2::msg_send![janela, isKeyWindow]
-            }
-        };
-        !app.get_webview_window("jarvis").map(|j| chave(&j)).unwrap_or(false)
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        app.get_webview_window("main").map(|j| j.is_focused().unwrap_or(false)).unwrap_or(false)
-    }
 }

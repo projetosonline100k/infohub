@@ -183,6 +183,8 @@ pub fn run() {
                     &MenuItem::with_id(h, "menu-fechar-guia", "Fechar guia", true, Some("CmdOrCtrl+W"))?,
                     // ⌘T pelo menu (27/10): funciona mesmo com o navegador de uma guia em foco.
                     &MenuItem::with_id(h, "menu-nova-guia", "Nova guia", true, Some("CmdOrCtrl+T"))?,
+                    // ⌘⇧E encolhe as pastas da lateral (27/10; era o atalho global do "Encerrar o dia").
+                    &MenuItem::with_id(h, "recolher-lateral", "Encolher a lateral", true, Some("CmdOrCtrl+Shift+E"))?,
                 ])?;
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
@@ -191,7 +193,7 @@ pub fn run() {
                         let _ = app.hide();
                         return;
                     }
-                    if id == "menu-nova-guia" {
+                    if id == "menu-nova-guia" || id == "recolher-lateral" {
                         let _ = tauri::Emitter::emit_to(app, "main", id, ());
                         return;
                     }
