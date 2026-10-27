@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { endOfDay, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { BellOff, Check, Columns3, Crosshair, List, Maximize2 as Expandir, ExternalLink, Globe, Maximize2, Pause, Play, Plus, RotateCcw, SkipForward, Target, X } from "lucide-react";
@@ -86,10 +86,44 @@ export default function ModoFoco() {
   const minhasAbertas = useMemo(() => [...atrasadas, ...tarefas].filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i)
     .filter((t) => !t.tipo && (!t.responsavel_nome || /^davi\b/i.test(t.responsavel_nome.trim()))), [tarefas, atrasadas]);
   const doKanban = minhasAbertas.filter(doProjeto);
+  // Arrastar com o mouse (pointer): no app do Mac o arrastar nativo do navegador não chega na página (o
+  // Tauri usa ele para soltar arquivos). Mexeu mais de 5 px = arrasto; senão é clique (focar).
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
-  const soltar = (statusKey: string, ehConclusao: boolean) => {
-    const id = arrastando;
+  const [fantasma, setFantasma] = useState<{ x: number; y: number; titulo: string } | null>(null);
+  const inicioArrasto = useRef<{ id: string; x: number; y: number; titulo: string; movendo: boolean } | null>(null);
+  const colunaEm = (x: number, y: number) => (document.elementFromPoint(x, y)?.closest("[data-coluna-foco]") as HTMLElement | null)?.dataset.colunaFoco ?? null;
+  const pegar = (e: React.PointerEvent, t: AssistantTarefa) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    inicioArrasto.current = { id: t.id, x: e.clientX, y: e.clientY, titulo: t.titulo, movendo: false };
+    const mover = (ev: PointerEvent) => {
+      const a = inicioArrasto.current;
+      if (!a) return;
+      if (!a.movendo && Math.hypot(ev.clientX - a.x, ev.clientY - a.y) < 5) return;
+      if (!a.movendo) { a.movendo = true; setArrastando(a.id); }
+      setFantasma({ x: ev.clientX, y: ev.clientY, titulo: a.titulo });
+      setSobre(colunaEm(ev.clientX, ev.clientY));
+    };
+    const largar = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", mover);
+      window.removeEventListener("pointerup", largar);
+      const a = inicioArrasto.current;
+      inicioArrasto.current = null;
+      setFantasma(null);
+      if (!a) return;
+      if (!a.movendo) { escolherTarefa(estadoFocoRef.current === a.id ? null : a.id); return; }
+      const destino = colunaEm(ev.clientX, ev.clientY);
+      const col = colunas.find((c) => c.status_key === destino);
+      setArrastando(a.id);
+      if (col) soltar(col.status_key, col.eh_conclusao, a.id); else { setArrastando(null); setSobre(null); }
+    };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", largar);
+  };
+  const estadoFocoRef = useRef(estado.tarefaId);
+  estadoFocoRef.current = estado.tarefaId;
+  const soltar = (statusKey: string, ehConclusao: boolean, idArrastado?: string) => {
+    const id = idArrastado ?? arrastando;
     setArrastando(null); setSobre(null);
     if (!id) return;
     const t = doKanban.find((x) => x.id === id);
@@ -265,9 +299,7 @@ export default function ModoFoco() {
                   const cartoes = c.eh_conclusao ? [] : doKanban.filter((t) => (t.status === c.status_key) || (!colunas.some((x) => x.status_key === t.status) && c === colunas[0]))
                     .sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
                   return (
-                    <div key={c.status_key}
-                      onDragOver={(e) => { e.preventDefault(); setSobre(c.status_key); }} onDragLeave={() => setSobre((x) => (x === c.status_key ? null : x))}
-                      onDrop={(e) => { e.preventDefault(); soltar(c.status_key, c.eh_conclusao); }}
+                    <div key={c.status_key} data-coluna-foco={c.status_key}
                       className={cn("flex w-60 shrink-0 flex-col rounded-2xl bg-muted/50 p-2 transition-colors", sobre === c.status_key && "bg-primary/10 ring-2 ring-primary/40",
                         c.eh_conclusao && "border-2 border-dashed border-emerald-500/40 bg-emerald-500/5")}>
                       <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold">
@@ -279,9 +311,8 @@ export default function ModoFoco() {
                       ) : (
                         <div className="max-h-[420px] space-y-1.5 overflow-y-auto">
                           {cartoes.map((t) => (
-                            <div key={t.id} draggable onDragStart={() => setArrastando(t.id)} onDragEnd={() => { setArrastando(null); setSobre(null); }}
-                              onClick={() => escolherTarefa(estado.tarefaId === t.id ? null : t.id)} title={estado.tarefaId === t.id ? "Em foco (clique para tirar)" : "Clique para focar nesta"}
-                              className={cn("group cursor-pointer rounded-xl border bg-card p-2.5 text-sm shadow-sm transition hover:border-primary/40",
+                            <div key={t.id} onPointerDown={(e) => pegar(e, t)} title={estado.tarefaId === t.id ? "Em foco (clique para tirar)" : "Clique para focar nesta"}
+                              className={cn("group cursor-grab touch-none select-none rounded-xl border bg-card p-2.5 text-sm shadow-sm transition hover:border-primary/40",
                                 estado.tarefaId === t.id && "border-primary ring-2 ring-primary/30", arrastando === t.id && "opacity-50")}>
                               <div className="flex items-start gap-1.5">
                                 <span className="min-w-0 flex-1 leading-snug">{t.titulo}</span>
@@ -379,6 +410,10 @@ export default function ModoFoco() {
           </div>
         </div>
       </div>
+      {fantasma && (
+        <div className="pointer-events-none fixed z-[200] w-56 -translate-x-1/2 -translate-y-1/2 rotate-2 rounded-xl border border-primary bg-card p-2.5 text-sm shadow-xl"
+          style={{ left: fantasma.x, top: fantasma.y }}>{fantasma.titulo}</div>
+      )}
       <AtividadeDetailPanel open={!!aberta} onClose={() => setAberta(null)} atividade={aberta?.atividade as never}
         colunas={(aberta?.colunas ?? []) as never} onUpdate={() => void (aberta && abrirDetalhes(String(aberta.atividade.id)))}
         onDelete={(id) => void excluirAtividade(id, () => undefined).then((ok) => { if (ok) setAberta(null); })} />
