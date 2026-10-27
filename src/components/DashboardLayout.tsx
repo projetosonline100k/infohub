@@ -37,7 +37,6 @@ export const DashboardLayout = () => {
     let telaCheia = false;
     try { telaCheia = localStorage.getItem("modo-foco:tela-cheia") === "1"; } catch { /* */ }
     if (!telaCheia) void import("@tauri-apps/api/core").then(({ invoke }) => invoke("foco_encostar", { ativo: true })).catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focoIsolado]);
   // Alarmes da Agenda tocam em qualquer tela do app (não só na Agenda).
   useAlarmesAgenda();
