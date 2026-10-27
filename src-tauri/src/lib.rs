@@ -192,9 +192,7 @@ pub fn run() {
                         return;
                     }
                     if id == "menu-nova-guia" {
-                        if let Some(w) = app.get_webview_window("main") {
-                            if w.is_focused().unwrap_or(false) { let _ = tauri::Emitter::emit_to(app, "main", id, ()); }
-                        }
+                        let _ = tauri::Emitter::emit_to(app, "main", id, ());
                         return;
                     }
                     if id == "menu-fechar-guia" {

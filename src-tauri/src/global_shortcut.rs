@@ -69,7 +69,7 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
                     // fora dela continua abrindo o "Encerrar o dia" do Atlas.
                     use tauri::Manager;
                     let principal_na_frente = app_para_handler.get_webview_window("main")
-                        .map(|j| j.is_focused().unwrap_or(false)).unwrap_or(false);
+                        .map(|j| principal_ativa(&j)).unwrap_or(false);
                     if principal_na_frente {
                         let _ = app_para_handler.emit_to("main", "recolher-lateral", ());
                     } else {
@@ -105,4 +105,28 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
 #[tauri::command]
 pub fn atalho_encerrar_dia_registrado(state: tauri::State<AtalhoEncerrarDiaState>) -> bool {
     state.0.load(Ordering::SeqCst)
+}
+
+/// O Infopro é o app da frente e a janela principal é a janela principal dele (27/10). `is_focused()` dava
+/// falso com o Infopro na frente (a bolinha do Atlas ou o navegador de uma guia ficam com o teclado), e o
+/// ⌘⇧E abria o "Encerrar o dia" em vez de encolher a lateral.
+fn principal_ativa(j: &tauri::WebviewWindow) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::NSRunningApplication;
+        if !NSRunningApplication::currentApplication().isActive() {
+            return false;
+        }
+        let Ok(ptr) = j.ns_window() else { return false };
+        unsafe {
+            let janela: &objc2::runtime::AnyObject = &*(ptr as *const objc2::runtime::AnyObject);
+            let visivel: bool = objc2::msg_send![janela, isVisible];
+            let principal: bool = objc2::msg_send![janela, isMainWindow];
+            visivel && principal
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        j.is_focused().unwrap_or(false)
+    }
 }
