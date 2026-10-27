@@ -9,6 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { ehAdmin } from "@/lib/admin";
 import { cn } from "@/lib/utils";
+import { isDesktop } from "@/lib/platform";
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -246,18 +247,25 @@ export function AppSidebar() {
 
   // ⌘⇧E (27/10, Davi): encolhe tudo na lateral — pastas, documentos, Escritório, Produtividade… — menos os
   // projetos que estavam abertos (e a lista de projetos).
+  // No app do Mac o ⌘⇧E é um atalho global (Encerrar o dia): com o Infopro na frente, o Rust manda
+  // "recolher-lateral" em vez de abrir o fluxo. No navegador vale a tecla direto.
   useEffect(() => {
+    const recolher = () => setAbertos((atual) => {
+      const novo = new Set([...atual].filter((k) => k === "projetos" || k === "arquivados" || /^projeto:[^:]+$/.test(k)));
+      try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
+      return novo;
+    });
     const tecla = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
       e.preventDefault();
-      setAbertos((atual) => {
-        const novo = new Set([...atual].filter((k) => k === "projetos" || k === "arquivados" || /^projeto:[^:]+$/.test(k)));
-        try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
-        return novo;
-      });
+      recolher();
     };
     window.addEventListener("keydown", tecla);
-    return () => window.removeEventListener("keydown", tecla);
+    let desligar = () => {};
+    if (isDesktop()) {
+      void import("@tauri-apps/api/event").then(({ listen }) => listen("recolher-lateral", recolher)).then((f) => { desligar = f; }).catch(() => undefined);
+    }
+    return () => { window.removeEventListener("keydown", tecla); desligar(); };
   }, []);
 
   const arvore = useMemo<No[]>(() => {

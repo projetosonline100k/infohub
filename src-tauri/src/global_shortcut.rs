@@ -65,7 +65,16 @@ pub fn registrar(app: &AppHandle) -> AtalhoEncerrarDiaState {
             .with_handler(move |_app, recebido, event| {
                 let apertou = event.state() == ShortcutState::Pressed;
                 if recebido == &atalho && apertou {
-                    mostrar_e_focar_jarvis(&app_para_handler, EVENTO_ABRIR_ENCERRAR_DIA);
+                    // 27/10 (Davi): com a janela principal do Infopro na frente, ⌘⇧E encolhe a lateral;
+                    // fora dela continua abrindo o "Encerrar o dia" do Atlas.
+                    use tauri::Manager;
+                    let principal_na_frente = app_para_handler.get_webview_window("main")
+                        .map(|j| j.is_focused().unwrap_or(false)).unwrap_or(false);
+                    if principal_na_frente {
+                        let _ = app_para_handler.emit_to("main", "recolher-lateral", ());
+                    } else {
+                        mostrar_e_focar_jarvis(&app_para_handler, EVENTO_ABRIR_ENCERRAR_DIA);
+                    }
                 } else if recebido == &atalho_voz {
                     let evento = if apertou { EVENTO_VOZ_APERTADO } else { EVENTO_VOZ_SOLTO };
                     // Gravando a voz: pausa o que estiver tocando e volta ao soltar (ditado.rs).
