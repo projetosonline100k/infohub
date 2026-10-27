@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { endOfDay, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BellOff, Check, ExternalLink, Globe, Maximize2, Pause, Play, Plus, RotateCcw, SkipForward, Target, X } from "lucide-react";
+import { BellOff, Check, Crosshair, ExternalLink, Globe, Maximize2, Pause, Play, Plus, RotateCcw, SkipForward, Target, X } from "lucide-react";
 import { toast } from "sonner";
 import { useAssistantAtividades, type AssistantTarefa } from "@/hooks/useAssistantAtividades";
 import { chamarGoogleCalendar, type GoogleCalendarEvent } from "@/lib/googleCalendar";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
+import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import { isDesktop } from "@/lib/platform";
 import { CICLOS, mmss, useFocoTimer, type Ciclo } from "@/hooks/useFocoTimer";
 import { ATALHO_DESLIGAR, ATALHO_LIGAR, CHAVE_SITES, desligarFocoTotal, ligarFocoTotal, lerSites } from "@/lib/foco/focoTotal";
@@ -54,13 +57,33 @@ export default function ModoFoco() {
     return lista.slice(0, 30);
   }, [tarefas, atrasadas, dia]);
   const tarefaAtual = [...tarefas, ...atrasadas].find((t) => t.id === estado.tarefaId) ?? null;
+
+  // Projeto (27/10, Davi: "escolher o projeto, mostrar qual é em cada atividade e clicar nela para ver mais").
+  const [projetos, setProjetos] = useState<{ id: string; nome: string }[]>([]);
+  useEffect(() => {
+    void supabase.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista")
+      .then(({ data }) => setProjetos((data ?? []).map((c) => ({ id: c.id, nome: c.nome_especialista }))));
+  }, []);
+  const nomeProjeto = (id: string | null) => (id ? projetos.find((p) => p.id === id)?.nome ?? "Projeto" : "Pessoal");
+  const [filtroProjeto, setFiltroProjetoBruto] = useState<string>(() => { try { return localStorage.getItem("modo-foco:projeto") || "todos"; } catch { return "todos"; } });
+  const setFiltroProjeto = (v: string) => { setFiltroProjetoBruto(v); try { localStorage.setItem("modo-foco:projeto", v); } catch { /* */ } };
+  const visiveis = deHoje.filter((t) => filtroProjeto === "todos" || (filtroProjeto === "pessoal" ? !t.cliente_id : t.cliente_id === filtroProjeto));
+  const [aberta, setAberta] = useState<{ atividade: Record<string, unknown>; colunas: unknown[] } | null>(null);
+  const abrirDetalhes = async (id: string) => {
+    const { data } = await supabase.from("atividades").select("*").eq("id", id).maybeSingle();
+    if (!data) return;
+    let q = supabase.from("colunas_atividade").select("*").order("ordem");
+    q = data.cliente_id ? q.eq("cliente_id", data.cliente_id) : q.is("cliente_id", null);
+    const { data: colunas } = await q;
+    setAberta({ atividade: data as Record<string, unknown>, colunas: colunas ?? [] });
+  };
   const [nova, setNova] = useState("");
   const adicionar = async () => {
     const titulo = nova.trim();
     if (!titulo) return;
     setNova("");
     try {
-      await criarAtividade({ titulo, clienteId: null, dataAtividade: dia, tempoEstimado: null, prioridade: "media", statusKey: "backlog" });
+      await criarAtividade({ titulo, clienteId: filtroProjeto !== "todos" && filtroProjeto !== "pessoal" ? filtroProjeto : null, dataAtividade: dia, tempoEstimado: null, prioridade: "media", statusKey: "backlog" });
     } catch { toast.error("Não consegui criar a tarefa"); }
   };
 
@@ -190,18 +213,29 @@ export default function ModoFoco() {
         <div className="space-y-5">
           {/* Tarefas de hoje */}
           <div className={cartao}>
-            <h2 className="mb-3 font-semibold">Tarefas de hoje</h2>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="font-semibold">Tarefas de hoje</h2>
+              <select value={filtroProjeto} onChange={(e) => setFiltroProjeto(e.target.value)} title="Projeto"
+                className="max-w-[220px] rounded-lg border bg-background/60 px-2 py-1 text-xs outline-none">
+                <option value="todos">Todos os projetos</option>
+                <option value="pessoal">Pessoal</option>
+                {projetos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </div>
             <div className="space-y-1">
-              {deHoje.length === 0 && <p className="py-2 text-sm text-muted-foreground">Nada vencendo hoje. Crie uma abaixo ou escolha o foco livre.</p>}
-              {deHoje.map((t: AssistantTarefa) => (
+              {visiveis.length === 0 && <p className="py-2 text-sm text-muted-foreground">Nada vencendo hoje{filtroProjeto !== "todos" ? " neste projeto" : ""}. Crie uma abaixo ou escolha o foco livre.</p>}
+              {visiveis.map((t: AssistantTarefa) => (
                 <div key={t.id} className={cn("group flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-muted/60", estado.tarefaId === t.id && "bg-primary/10")}>
                   <button type="button" onClick={() => { if (estado.tarefaId === t.id) escolherTarefa(null); void concluir(t.id); }} title="Concluir"
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground/40 text-transparent hover:border-emerald-500 hover:text-emerald-500"><Check className="h-3.5 w-3.5" /></button>
-                  <button type="button" onClick={() => escolherTarefa(t.id)} className="min-w-0 flex-1 truncate text-left text-sm" title="Focar nesta">
+                  <button type="button" onClick={() => void abrirDetalhes(t.id)} className="min-w-0 flex-1 truncate text-left text-sm" title="Ver e editar a atividade">
                     {t.titulo}
                     {(t.data_vencimento ?? "").slice(0, 10) < dia && t.data_vencimento && <span className="ml-2 text-[11px] text-rose-500">atrasada</span>}
                   </button>
-                  {estado.tarefaId === t.id && <span className="text-[11px] font-medium text-primary">em foco</span>}
+                  <span className="max-w-[140px] shrink-0 truncate rounded-full bg-muted px-2 py-0.5 text-[10.5px] text-muted-foreground" title={nomeProjeto(t.cliente_id)}>{nomeProjeto(t.cliente_id)}</span>
+                  {estado.tarefaId === t.id
+                    ? <button type="button" onClick={() => escolherTarefa(null)} title="Tirar do foco" className="shrink-0 text-[11px] font-medium text-primary hover:underline">em foco</button>
+                    : <button type="button" onClick={() => escolherTarefa(t.id)} title="Focar nesta" className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground opacity-0 hover:bg-primary/10 hover:text-primary group-hover:opacity-100"><Crosshair className="h-3.5 w-3.5" />Focar</button>}
                 </div>
               ))}
             </div>
@@ -262,6 +296,9 @@ export default function ModoFoco() {
           </div>
         </div>
       </div>
+      <AtividadeDetailPanel open={!!aberta} onClose={() => setAberta(null)} atividade={aberta?.atividade as never}
+        colunas={(aberta?.colunas ?? []) as never} onUpdate={() => void (aberta && abrirDetalhes(String(aberta.atividade.id)))}
+        onDelete={(id) => void excluirAtividade(id, () => undefined).then((ok) => { if (ok) setAberta(null); })} />
     </div>
   );
 }
