@@ -3,8 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, MoreHorizontal, Trash2, type LucideIcon,
-} from "lucide-react";
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, MoreHorizontal, Trash2, Timer, type LucideIcon, } from "lucide-react";
 import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -252,6 +251,7 @@ export function AppSidebar() {
       },
       { chave: "atividades", titulo: "Atividades", icone: Activity, ir: "/atividades" },
       { chave: "notas", titulo: "Notas", icone: StickyNote, ir: "/notas" },
+      { chave: "foco", titulo: "Modo Foco", icone: Timer, ir: "/foco" },
       // 24/10 (Davi: "New drawing, abre uma nova guia de desenho, igual o Obsidian"): cria a lousa e abre numa
       // guia nova; a setinha mostra os desenhos que ainda não têm projeto.
       { chave: "desenho", titulo: "Novo desenho", icone: PenTool, acao: () => void novoDesenho(), carregar: desenhosSoltos },

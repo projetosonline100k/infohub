@@ -12,6 +12,7 @@ import Admin from "@/pages/Admin";
 import Automacoes from "@/pages/Automacoes";
 import Ponte from "@/pages/Ponte";
 import Desenho from "@/pages/Desenho";
+import ModoFoco from "@/pages/ModoFoco";
 import NotFound from "@/pages/NotFound";
 import { useWorkspaceTabs } from "./WorkspaceTabs";
 import { AbaAtivaContext } from "@/lib/workspace/abaAtiva";
@@ -127,6 +128,7 @@ const ConteudoDaGuia = memo(function ConteudoDaGuia({ tabId, pathname, search, v
         <Route path="/automacoes" element={<Automacoes />} />
         <Route path="/ponte" element={<Ponte />} />
         <Route path="/desenho/:id" element={<Desenho />} />
+        <Route path="/foco" element={<ModoFoco />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>

@@ -107,6 +107,7 @@ const titleForPath = (path: string) => {
   if (path === "/admin") return "Administração";
   if (path === "/automacoes") return "Automações";
   if (path === "/ponte") return "Ponte";
+  if (path === "/foco") return "Modo Foco";
   if (path.startsWith("/clientes/")) return "Projeto";
   return "Infopro Hub";
 };

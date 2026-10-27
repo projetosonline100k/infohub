@@ -1,6 +1,6 @@
 import {
   BookOpen, Brain, Building2, CalendarDays, CalendarRange, Clapperboard, FileText, Folder, HelpCircle, Info, LayoutDashboard,
-  Lightbulb, ListChecks, MessageCircle, PenTool, ShieldCheck, StickyNote, Target, Users, Youtube, Zap, type LucideIcon,
+  Lightbulb, ListChecks, MessageCircle, PenTool, Timer, ShieldCheck, StickyNote, Target, Users, Youtube, Zap, type LucideIcon,
 } from "lucide-react";
 
 // Ícone de cada guia pelo que está aberto nela (24/10, Davi: "quero que as guias tenham ícones, para identificar
@@ -13,7 +13,7 @@ const SECOES: Record<string, LucideIcon> = {
 };
 const PAGINAS: [RegExp, LucideIcon][] = [
   [/^\/$/, LayoutDashboard], [/^\/agenda/, CalendarDays], [/^\/atividades/, ListChecks], [/^\/notas/, StickyNote],
-  [/^\/produtividade/, Target], [/^\/automacoes/, Zap], [/^\/admin/, ShieldCheck], [/^\/clientes\/?$/, Users], [/^\/desenho\//, PenTool],
+  [/^\/produtividade/, Target], [/^\/automacoes/, Zap], [/^\/admin/, ShieldCheck], [/^\/clientes\/?$/, Users], [/^\/desenho\//, PenTool], [/^\/foco/, Timer],
 ];
 
 export function iconeDaGuia(caminho: string): LucideIcon {
