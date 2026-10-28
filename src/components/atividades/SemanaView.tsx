@@ -22,6 +22,7 @@ import { filtrarPorResponsavel } from "@/lib/atividades/filtroResponsavel";
 import { parseResponsaveis } from "@/lib/responsaveis";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
+import { definirAlarmeAtividade } from "@/lib/atividades/alarmeAtividade";
 import {
   chaveDia, dataLocal, diaDaColuna, diaDaTarefa, diasDeAtraso, inicioDaSemana, situacaoDaTarefa, type Situacao,
 } from "@/lib/atividades/semana";
@@ -78,7 +79,9 @@ export function SemanaView() {
   const [projeto, setProjetoEstado] = useState(() => ler(CHAVE_PROJETO, "meu"));
   const [pessoa, setPessoaEstado] = useState(() => ler(CHAVE_PESSOA, "todas"));
   const [fechadas, setFechadas] = useState<Set<string>>(() => new Set(["concluida"]));
-  const [nova, setNova] = useState<{ titulo: string; projeto: string } | null>(null);
+  // dia/hora (28/10, Davi: "ao criar, preciso escolher a data, a hora…"): o dia começa no que está na tela; a hora
+  // é opcional e vira o alarme da tarefa.
+  const [nova, setNova] = useState<{ titulo: string; projeto: string; dia?: string; hora?: string } | null>(null);
   const [aberta, setAberta] = useState<{ atividade: Record<string, unknown>; colunas: Coluna[] } | null>(null);
   const [kanbanProjeto, setKanbanProjeto] = useState<string | null>(null);
 
@@ -279,16 +282,23 @@ export function SemanaView() {
     const cliente = nova.projeto === "pessoal" ? null : nova.projeto;
     const cols = colunas.filter((c) => c.cliente_id === cliente);
     // No projeto com colunas de dia (como o do Davi), cai na coluna daquele dia; senão, na primeira.
-    const diaSemana = dataLocal(diaNovo).getDay();
+    const dia = nova.dia || diaNovo;
+    const diaSemana = dataLocal(dia).getDay();
     const coluna = cols.find((c) => !c.eh_conclusao && diaDaColuna(c.nome) === diaSemana) ?? cols.find((c) => !c.eh_conclusao);
     try {
-      await criarAtividade({
+      const criada = await criarAtividade({
         titulo: nova.titulo.trim(), clienteId: cliente, pastaId: null, dataAtividade: chaveDia(hoje), statusKey: coluna?.status_key ?? "backlog",
         // Com o filtro "Só eu", a tarefa já nasce sua — sem responsável ela sumia da lista na hora (28/10).
-        concluida: false, ordem: 0, dataVencimento: diaNovo, responsavelNome: pessoa === "eu" ? meusNomes[0] ?? null : pessoa !== "todas" ? pessoa : null,
+        concluida: false, ordem: 0, dataVencimento: dia, responsavelNome: pessoa === "eu" ? meusNomes[0] ?? null : pessoa !== "todas" ? pessoa : null,
       });
+      if (nova.hora) {
+        const [h, m] = nova.hora.split(":").map(Number);
+        const quando = dataLocal(dia);
+        quando.setHours(h, m, 0, 0);
+        await definirAlarmeAtividade({ id: criada.id, titulo: criada.titulo }, quando).catch(() => toast.error("A tarefa foi criada, mas não consegui pôr o alarme"));
+      }
       setNova(null);
-      toast.success(`Tarefa criada para ${format(dataLocal(diaNovo), "EEEE, dd/MM", { locale: ptBR })}`);
+      toast.success(`Tarefa criada para ${format(dataLocal(dia), "EEEE, dd/MM", { locale: ptBR })}${nova.hora ? ` às ${nova.hora}` : ""}`);
       void carregar();
     } catch {
       toast.error("Não consegui criar a tarefa");
@@ -468,7 +478,7 @@ export function SemanaView() {
 
           {nova && (
             <form className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2" onSubmit={(e) => { e.preventDefault(); void criar(); }}>
-              <Input autoFocus value={nova.titulo} onChange={(e) => setNova({ ...nova, titulo: e.target.value })} placeholder={`Nova tarefa para ${format(dataLocal(diaNovo), "EEEE, dd/MM", { locale: ptBR })}`}
+              <Input autoFocus value={nova.titulo} onChange={(e) => setNova({ ...nova, titulo: e.target.value })} placeholder={`Nova tarefa para ${format(dataLocal(nova.dia || diaNovo), "EEEE, dd/MM", { locale: ptBR })}`}
                 className="h-8 min-w-[200px] flex-1 text-sm" onKeyDown={(e) => { if (e.key === "Escape") setNova(null); }} />
               <Select value={nova.projeto} onValueChange={(v) => setNova({ ...nova, projeto: v })}>
                 <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue /></SelectTrigger>
@@ -477,6 +487,10 @@ export function SemanaView() {
                   {projetos.map((p) => <SelectItem key={p.id} value={p.id}>{p.nome_especialista}</SelectItem>)}
                 </SelectContent>
               </Select>
+              <Input type="date" value={nova.dia || diaNovo} onChange={(e) => setNova({ ...nova, dia: e.target.value })} title="Dia"
+                className="h-8 w-[140px] text-xs" />
+              <Input type="time" value={nova.hora ?? ""} onChange={(e) => setNova({ ...nova, hora: e.target.value })} title="Hora (opcional — vira o alarme)"
+                className="h-8 w-[100px] text-xs" />
               <Button type="submit" size="sm" className="h-8" disabled={!nova.titulo.trim()}>Criar</Button>
               <Button type="button" size="sm" variant="ghost" className="h-8" onClick={() => setNova(null)}>Cancelar</Button>
             </form>

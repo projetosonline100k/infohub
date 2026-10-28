@@ -40,6 +40,13 @@ BEGIN
  SELECT data_vencimento INTO d FROM public.atividades WHERE id='30000000-0000-0000-0000-000000000082';
  IF d IS NULL OR extract(dow from d) <> 3 THEN RAISE EXCEPTION 'nova na quarta ganhou a data %', d; END IF;
 
+ -- Trocou de projeto (sem projeto → este), entrando na 1ª coluna (Segunda-feira): a data fica, a coluna é a do dia.
+ INSERT INTO public.atividades(id, user_id, cliente_id, titulo, status, data_vencimento)
+ VALUES ('30000000-0000-0000-0000-000000000083','10000000-0000-0000-0000-000000000081',NULL,'t3','backlog','2026-10-28');
+ UPDATE public.atividades SET cliente_id='20000000-0000-0000-0000-000000000081', status='backlog' WHERE id='30000000-0000-0000-0000-000000000083';
+ SELECT status, data_vencimento INTO s, d FROM public.atividades WHERE id='30000000-0000-0000-0000-000000000083';
+ IF d <> '2026-10-28' OR s <> 'revisao' THEN RAISE EXCEPTION 'trocar de projeto deu % / %', s, d; END IF;
+
  -- Data num dia sem coluna (sábado): a coluna fica como estava.
  UPDATE public.atividades SET data_vencimento='2026-10-31' WHERE id='30000000-0000-0000-0000-000000000082';
  SELECT status INTO s FROM public.atividades WHERE id='30000000-0000-0000-0000-000000000082';
