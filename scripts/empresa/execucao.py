@@ -56,11 +56,13 @@ def eh_sistema(aid):
     return situacao(aid, campo='tipo') == 'programacao'
 
 
-def pegar(ignorar=(), ocupados=(), com_membro=False, sistema=False):
+def pegar(ignorar=(), ocupados=(), com_membro=False, sistema=False, so_sistema=False):
     """Põe em andamento a tarefa mais antiga confirmada por briefing e devolve o id.
     ocupados: funcionários já trabalhando (cada um faz uma por vez; os outros não esperam,
     16/10: "o funcionário não pode ficar parado esperando"). com_membro: devolve (id, membro).
-    sistema: quem chama sabe fazer tarefa que muda o sistema num worktree (ouvinte novo)."""
+    sistema: quem chama sabe fazer tarefa que muda o sistema num worktree (ouvinte novo).
+    so_sistema: só essas (27/10: o ouvinte de código roda no Mac, onde está o repositório; o do servidor
+    não pega tarefa de programação)."""
     c = connect()
     try:
         q = c.cursor()
@@ -71,7 +73,8 @@ def pegar(ignorar=(), ocupados=(), com_membro=False, sistema=False):
                SELECT a2.id FROM public.atividades a2
                  JOIN public.membros m ON m.id = a2.responsavel_id
                 WHERE a2.deleted_at IS NULL AND NOT a2.concluida AND a2.situacao = 'fila'
-                  AND """ + _quem_faz('a2') + ("" if sistema else " AND coalesce(a2.tipo, '') <> 'programacao'") + """
+                  AND """ + _quem_faz('a2') + ("" if sistema else " AND coalesce(a2.tipo, '') <> 'programacao'")
+                  + (" AND a2.tipo = 'programacao'" if so_sistema else "") + """
                   -- "Começar agora" (▶️ na observação, botão da fila): tenta de novo mesmo se já falhou.
                   AND (NOT (a2.id = ANY(%s::uuid[])) OR coalesce(a2.observacao, '') LIKE '▶️%%')
                   AND NOT (m.id = ANY(%s::uuid[]))
@@ -86,10 +89,13 @@ def pegar(ignorar=(), ocupados=(), com_membro=False, sistema=False):
         c.close()
 
 
-def reenfileirar():
+def reenfileirar(sistema=None):
     """Ao ligar o ouvinte: tarefa que ele estava fazendo quando caiu volta pra fila (senão
     ficaria "em andamento" pra sempre). Só as do fluxo de execução — não mexe no carrossel do
-    serviço do Roy, na edição do Danilo nem no post programado da Dalila."""
+    serviço do Roy, na edição do Danilo nem no post programado da Dalila.
+    sistema: True = só as de programação (ouvinte de código, no Mac); False = todas menos elas
+    (ouvinte do servidor) — um não devolve à fila o que o outro está fazendo."""
+    filtro = {True: " AND a.tipo = 'programacao'", False: " AND coalesce(a.tipo, '') <> 'programacao'"}.get(sistema, "")
     c = connect()
     try:
         q = c.cursor()
@@ -97,7 +103,7 @@ def reenfileirar():
                             observacao = 'Retomada: o ouvinte reiniciou no meio do trabalho.'
                       FROM public.membros m
                      WHERE m.id = a.responsavel_id AND a.situacao = 'andamento' AND NOT a.concluida AND a.deleted_at IS NULL
-                       AND """ + _quem_faz('a') + """
+                       AND """ + _quem_faz('a') + filtro + """
                     RETURNING a.id""")
         n = len(q.fetchall())
         c.commit()

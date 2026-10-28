@@ -690,13 +690,21 @@ def _executar(aid):
             _trabalhando.pop(aid, None)
 
 
+# 27/10: tarefa que muda o código (programação dos funcionários, melhorias do Pedro) precisa do repositório,
+# que mora no Mac — o servidor só recebe uma cópia. No servidor (INFOPRO_SEM_CODIGO=1) o ouvinte não pega
+# essas; no Mac roda `jarvis-ouvinte.py --so-codigo` (LaunchAgent com.infoprohub.ouvinte-codigo), que só
+# faz elas.
+SO_CODIGO = "--so-codigo" in sys.argv
+SEM_CODIGO = os.environ.get("INFOPRO_SEM_CODIGO") == "1"
+
+
 def atender_execucao():
     while True:
         with _trava_execucoes:
             if len(_trabalhando) >= MAX_EXECUCOES:
                 return
             ocupados = list(_trabalhando.values())
-        aid, membro = execucao.pegar(ignorar=_tentadas, ocupados=ocupados, com_membro=True, sistema=True)
+        aid, membro = execucao.pegar(ignorar=_tentadas, ocupados=ocupados, com_membro=True, sistema=not SEM_CODIGO, so_sistema=SO_CODIGO)
         if not aid:
             return
         _tentadas.add(aid)  # uma tentativa por tarefa enquanto o ouvinte estiver de pé
@@ -957,23 +965,33 @@ if __name__ == "__main__":
         print("claude:", claude_bin())
         print(rodar_claude("Responda apenas: OK", minutos=2))
         sys.exit(0)
-    log("ouvinte iniciado; claude =", claude_bin())
-    for nome_fluxo, fn, texto in (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
-                                  ("execucao", execucao.reenfileirar, "tarefa(s) interrompida(s)"),
-                                  ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)")):
+    log("ouvinte iniciado" + (" (só código)" if SO_CODIGO else " (sem código)" if SEM_CODIGO else "") + "; claude =", claude_bin())
+    if SO_CODIGO:
+        fluxos = (("execucao", lambda: execucao.reenfileirar(sistema=True), "tarefa(s) de programação interrompida(s)"),
+                  ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"))
+    else:
+        fluxos = (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
+                  ("execucao", lambda: execucao.reenfileirar(sistema=False if SEM_CODIGO else None), "tarefa(s) interrompida(s)"))
+        if not SEM_CODIGO:
+            fluxos += (("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"),)
+    for nome_fluxo, fn, texto in fluxos:
         try:
             n = fn()
             if n:
                 log(f"{nome_fluxo}: {n} {texto} de volta na fila")
         except Exception as e:
             log(f"{nome_fluxo}: não reenfileirei —", repr(e)[:200])
+    if SO_CODIGO:
+        threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
+        laco("melhorias", atender_melhorias, 20)
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
     threading.Thread(target=laco, args=("sinal", gravar_sinal, 60), daemon=True).start()
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
-    threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
+    if not SEM_CODIGO:
+        threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
     # Esteira (17/10): peça na fila de uma etapa vira tarefa de quem é a vez; a execução pega.
     threading.Thread(target=laco, args=("esteira", lambda: esteira.andar(), 60), daemon=True).start()
     def _vigiar():
