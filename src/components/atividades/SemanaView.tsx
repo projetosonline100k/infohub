@@ -246,7 +246,8 @@ export function SemanaView() {
     try {
       await criarAtividade({
         titulo: nova.titulo.trim(), clienteId: cliente, pastaId: null, dataAtividade: chaveDia(hoje), statusKey: coluna?.status_key ?? "backlog",
-        concluida: false, ordem: 0, dataVencimento: diaNovo, responsavelNome: pessoa !== "todas" && pessoa !== "eu" ? pessoa : null,
+        // Com o filtro "Só eu", a tarefa já nasce sua — sem responsável ela sumia da lista na hora (28/10).
+        concluida: false, ordem: 0, dataVencimento: diaNovo, responsavelNome: pessoa === "eu" ? meusNomes[0] ?? null : pessoa !== "todas" ? pessoa : null,
       });
       setNova(null);
       toast.success(`Tarefa criada para ${format(dataLocal(diaNovo), "EEEE, dd/MM", { locale: ptBR })}`);
