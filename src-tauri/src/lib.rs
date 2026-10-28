@@ -197,6 +197,9 @@ pub fn run() {
                     // ⌘⇧E encolhe as pastas da lateral (27/10; era o atalho global do "Encerrar o dia").
                     &MenuItem::with_id(h, "recolher-lateral", "Encolher a lateral", true, Some("CmdOrCtrl+Shift+E"))?,
                     &ir_para_guia,
+                    // ⌘⇧R recarrega a janela (28/10, Davi). O ⌘R da página não chega com os sites nas guias, e
+                    // no editor de vídeo ele é outra coisa.
+                    &MenuItem::with_id(h, "menu-recarregar", "Recarregar", true, Some("CmdOrCtrl+Shift+R"))?,
                 ])?;
                 app.set_menu(Menu::with_items(h, &[&app_menu, &editar, &janela])?)?;
                 app.on_menu_event(|app, event| {
@@ -207,6 +210,12 @@ pub fn run() {
                     }
                     if let Some(n) = id.strip_prefix("menu-guia-").and_then(|n| n.parse::<u8>().ok()) {
                         let _ = tauri::Emitter::emit_to(app, "main", "menu-guia", n);
+                        return;
+                    }
+                    if id == "menu-recarregar" {
+                        for (_, w) in app.webview_windows() {
+                            if janela_com_teclado(&w) { let _ = w.reload(); }
+                        }
                         return;
                     }
                     if id == "menu-selecionar-tudo" {
