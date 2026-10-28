@@ -220,7 +220,7 @@ pub fn run() {
                     }
                     if id == "menu-fechar-guia" {
                         for (_, w) in app.webview_windows() {
-                            if w.is_focused().unwrap_or(false) {
+                            if janela_com_teclado(&w) {
                                 if w.label() == "main" { let _ = tauri::Emitter::emit_to(app, "main", id, ()); }
                                 else { let _ = w.close(); }
                             }
@@ -230,7 +230,7 @@ pub fn run() {
                     if id == "menu-desfazer" || id == "menu-refazer" {
                         // Vai pra janela em foco (principal ou Jarvis).
                         for (_, w) in app.webview_windows() {
-                            if w.is_focused().unwrap_or(false) {
+                            if janela_com_teclado(&w) {
                                 let _ = tauri::Emitter::emit_to(app, w.label(), id, ());
                             }
                         }
@@ -295,4 +295,21 @@ pub fn run() {
                 _ => {}
             }
         });
+}
+
+/// A janela que o Mac considera ativa (28/10). `is_focused()` dava falso com o teclado num site aberto numa
+/// guia (navegador.rs) — o ⌘W não fechava a guia.
+fn janela_com_teclado(w: &tauri::WebviewWindow) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let Ok(ptr) = w.ns_window() else { return false };
+        unsafe {
+            let janela: &objc2::runtime::AnyObject = &*(ptr as *const objc2::runtime::AnyObject);
+            objc2::msg_send![janela, isKeyWindow]
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        w.is_focused().unwrap_or(false)
+    }
 }
