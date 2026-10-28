@@ -5,6 +5,7 @@ import { isDesktop } from "@/lib/platform";
 import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { paraEndereco } from "@/lib/navegador/endereco";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 // Guia de navegador (27/10, Davi: "⌘T ... quero que me pergunte se eu quero navegar e aí acessar a internet,
 // normal, igual o Chrome"). Sem endereço é a "Nova guia" (pesquisar/digitar ou voltar ao Painel). Com
@@ -161,6 +162,7 @@ function Pagina({ url, visivel, aoIr, aoMudarUrl }: { url: string; visivel: bool
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 border-b bg-card/60 px-2 py-1.5">
+        <SidebarTrigger className="h-8 w-8 shrink-0 text-muted-foreground" title="Abrir/fechar a lateral (⌘⇧B)" />
         <button type="button" className={botao} onClick={() => acao("voltar")} title="Voltar"><ArrowLeft className="h-4 w-4" /></button>
         <button type="button" className={botao} onClick={() => acao("avancar")} title="Avançar"><ArrowRight className="h-4 w-4" /></button>
         <button type="button" className={botao} onClick={() => acao("recarregar")} title="Recarregar">

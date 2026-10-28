@@ -154,7 +154,9 @@ export const DashboardLayout = () => {
           {/* min-w-0/min-h-0: a área da página não estica além da janela — quem
               rola (inclusive pro lado, em janela estreita) é o <main>. */}
           <SidebarInset data-sem-rolagem="" className="min-h-0 min-w-0">
-            {!isClienteDetalhe && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+            {/* Guia de navegador (28/10, Davi: "tira a parte de buscar clientes, ocupa espaço do navegador"): só a
+                barra de endereço dela, que traz o botão da lateral. A busca segue no ⌘K. */}
+            {!isClienteDetalhe && location.pathname !== "/navegar" && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
             <DesktopUpdateBanner />
             {/* Quem rola é cada guia (ou cada metade, com a tela dividida) —
                 ver WorkspacePages. */}
