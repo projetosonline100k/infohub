@@ -11,6 +11,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
 import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import { isDesktop } from "@/lib/platform";
+import { openMainWindow } from "@/lib/desktop/window";
+import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { CICLOS, mmss, tocarFim, useFocoTimer, type Ciclo } from "@/hooks/useFocoTimer";
 import { ATALHO_DESLIGAR, ATALHO_LIGAR, CHAVE_SITES, desligarFocoTotal, ligarFocoTotal, lerSites } from "@/lib/foco/focoTotal";
 
@@ -28,6 +30,25 @@ export default function ModoFoco({ naColuna = false }: { naColuna?: boolean }) {
   const { estado, rodando, restante, total, focoHojeMin, tocar, comecar, reiniciar, pular, escolherCiclo, escolherTarefa, marcarTotal } =
     useFocoTimer({ iniciarTimer: (id) => iniciarTimer(id), pausarTimer: (id) => pausarTimer(id) });
   const [personalizado, setPersonalizado] = useState<{ foco: string; pausa: string } | null>(null);
+
+  // Concluir a tarefa no foco (28/10, Davi: "quando eu finalizar a atividade, feche o modo foco, a tela fique
+  // normal, ocupando a tela toda, e eu volte para Atividades"): para o cronômetro, desliga o foco total, abre o
+  // Infopro na tela toda e vai para Atividades.
+  const guias = useWorkspaceTabsOpcional();
+  const concluirEVoltar = async (id: string) => {
+    escolherTarefa(null);
+    reiniciar();
+    await concluir(id);
+    toast.success("Tarefa concluída. Bom trabalho!");
+    const irParaAtividades = async () => {
+      if (isDesktop()) await openMainWindow("/atividades");
+      else guias?.openTab("/atividades");
+    };
+    if (estado.total) {
+      marcarTotal(false);
+      await desligarFocoTotal(irParaAtividades);
+    } else await irParaAtividades();
+  };
 
   // Foco total com o cronômetro parado há um tempo (27/10, Davi: "se eu estiver no modo foco e não ativar
   // nada, me pergunte se ainda estou trabalhando focado"): 5 min parado → pergunta (e toca); "estou em
@@ -306,7 +327,7 @@ export default function ModoFoco({ naColuna = false }: { naColuna?: boolean }) {
               <p className="text-xl font-semibold leading-snug">{tarefaAtual.titulo}</p>
               <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">{nomeProjeto(tarefaAtual.cliente_id)}</span>
               <div className="flex flex-wrap justify-center gap-2">
-                <button type="button" onClick={() => { const id = tarefaAtual.id; escolherTarefa(null); void concluir(id); }}
+                <button type="button" onClick={() => void concluirEVoltar(tarefaAtual.id)}
                   className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"><Check className="h-4 w-4" />Concluir</button>
                 <button type="button" onClick={() => void abrirDetalhes(tarefaAtual.id)} className="rounded-xl border px-4 py-2 text-sm hover:bg-muted">Ver detalhes</button>
               </div>

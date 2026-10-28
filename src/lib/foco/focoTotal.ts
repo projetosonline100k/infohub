@@ -27,11 +27,14 @@ export async function ligarFocoTotal(opcoes: { telaCheia?: boolean } = {}): Prom
   return { naoPerturbe };
 }
 
-export async function desligarFocoTotal() {
+/** `antesDeFechar`: roda depois de devolver a janela do Infopro e antes de fechar a coluna do relógio (quem
+ *  chama da própria coluna para de rodar quando ela fecha). */
+export async function desligarFocoTotal(antesDeFechar?: () => Promise<void>) {
   if (!isDesktop()) return;
   await invocar("rodar_atalho", { nome: ATALHO_DESLIGAR }).catch(() => undefined);
   await invocar("foco_sites_desligar").catch(() => undefined);
   await invocar("foco_tela_cheia", { ativo: false }).catch(() => undefined);
   await invocar("foco_encostar", { ativo: false }).catch(() => undefined);
+  await antesDeFechar?.().catch(() => undefined);
   await invocar("foco_lateral_fechar").catch(() => undefined);
 }
