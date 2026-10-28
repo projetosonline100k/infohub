@@ -116,7 +116,9 @@ function Pagina({ url, visivel, aoIr, aoMudarUrl }: { url: string; visivel: bool
 
   // Algo do app aberto por cima: esconde o navegador.
   useEffect(() => {
-    const ver = () => setCoberto(!!document.querySelector(SOBREPOSICAO));
+    // Só o que está mesmo na tela: diálogo de uma guia escondida (display: none) não tem caixa e não conta —
+    // antes deixava o site em branco (28/10).
+    const ver = () => setCoberto(Array.from(document.querySelectorAll(SOBREPOSICAO)).some((el) => el.getClientRects().length > 0));
     ver();
     const obs = new MutationObserver(ver);
     obs.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["role", "data-state"] });
