@@ -15,8 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { FocoCompacto } from "@/components/foco/FocoCompacto";
-import { useFocoTimer } from "@/hooks/useFocoTimer";
+import { FocarTarefa } from "@/components/foco/FocarTarefa";
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { filtrarPorResponsavel } from "@/lib/atividades/filtroResponsavel";
@@ -78,7 +77,7 @@ export function SemanaView() {
   // "meu" = o projeto com o nome do Davi; "todos"; "pessoal" (sem projeto); ou o id de um projeto.
   const [projeto, setProjetoEstado] = useState(() => ler(CHAVE_PROJETO, "meu"));
   const [pessoa, setPessoaEstado] = useState(() => ler(CHAVE_PESSOA, "todas"));
-  const [fechadas, setFechadas] = useState<Set<Situacao>>(() => new Set(["concluida"]));
+  const [fechadas, setFechadas] = useState<Set<string>>(() => new Set(["concluida"]));
   const [nova, setNova] = useState<{ titulo: string; projeto: string } | null>(null);
   const [aberta, setAberta] = useState<{ atividade: Record<string, unknown>; colunas: Coluna[] } | null>(null);
   const [kanbanProjeto, setKanbanProjeto] = useState<string | null>(null);
@@ -155,6 +154,25 @@ export function SemanaView() {
 
   const doFoco = foco.tipo === "dia" ? porDia.get(foco.chave) ?? [] : foco.tipo === "atrasadas" ? atrasadas : semData;
   const visiveis = filtroSit === "todas" ? doFoco : doFoco.filter((t) => t.sit === filtroSit);
+  // Grupos da lista (28/10, Davi: "em vez de A fazer, quero o nome do projeto — Core, Yuri, Davi"): as tarefas em
+  // aberto por projeto (só os que têm tarefa); as concluídas num grupo no fim. Filtrando por situação (os botões
+  // de cima), a lista mostra aquela situação, ainda por projeto. A bolinha de cada tarefa mostra a situação.
+  const grupos = useMemo(() => {
+    const porOrdem = (a: { ordem: number | null }, b: { ordem: number | null }) => (a.ordem ?? 0) - (b.ordem ?? 0);
+    const abertas = visiveis.filter((t) => t.sit !== "concluida" && (filtroSit === "todas" || t.sit === filtroSit));
+    const porProjeto = new Map<string | null, typeof abertas>();
+    for (const t of abertas) porProjeto.set(t.cliente_id, [...(porProjeto.get(t.cliente_id) ?? []), t]);
+    const lista: { id: string; nome: string; fundo: string; ts: typeof visiveis; projeto?: string | null; icone?: typeof Circle; cor?: string }[] =
+      [...porProjeto].sort(([a], [b]) => nomeProjeto(a).localeCompare(nomeProjeto(b), "pt-BR"))
+        .map(([id, ts]) => ({ id: `projeto:${id ?? "pessoal"}`, nome: nomeProjeto(id), fundo: "bg-muted/60", ts: ts.sort(porOrdem), projeto: id }));
+    if (filtroSit === "todas" || filtroSit === "concluida") {
+      const feitas = visiveis.filter((t) => t.sit === "concluida").sort(porOrdem);
+      const s = SITUACOES.find((x) => x.id === "concluida")!;
+      if (feitas.length) lista.push({ id: "concluida", nome: s.nome, fundo: s.fundo, ts: feitas, icone: s.icone, cor: s.cor });
+    }
+    return lista;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visiveis, filtroSit, projetos]);
   const contar = (s: Situacao) => doFoco.filter((t) => t.sit === s).length;
 
   const irParaDia = (d: Date) => {
@@ -232,9 +250,8 @@ export function SemanaView() {
   };
   const moverParaDiaRef = useRef(moverParaDia);
   moverParaDiaRef.current = moverParaDia;
-  // Focar numa tarefa direto da lista: vira o foco do cronômetro e o bloco começa.
-  const { escolherTarefa, comecar } = useFocoTimer();
-  const focar = (id: string) => { escolherTarefa(id); comecar(); toast.success("Em foco — o cronômetro começou"); };
+  // "Focar" da tarefa (28/10, Davi): pergunta quanto tempo e se liga o foco total; aí começa (FocarTarefa).
+  const [focando, setFocando] = useState<{ id: string; titulo: string } | null>(null);
   const adiar = async (t: Tarefa & { dia: string | null; sit: Situacao }, dias: number) => {
     const base = t.dia ? dataLocal(t.dia) : new Date(hoje);
     const destino = chaveDia(addDays(t.sit === "atrasada" ? new Date(hoje) : base, dias));
@@ -297,7 +314,6 @@ export function SemanaView() {
         <div className="flex min-w-0 flex-col gap-4">
           {/* ── Esquerda: a semana ── */}
           <Card className="space-y-4 p-4">
-            <FocoCompacto />
             <div>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">{ehEstaSemana ? "Esta semana" : `Semana de ${format(semana, "dd/MM")}`}</h2>
@@ -468,15 +484,14 @@ export function SemanaView() {
 
           <div className="mt-3 space-y-3">
             {doFoco.length === 0 && <p className="py-10 text-center text-sm text-muted-foreground">Nada aqui. {foco.tipo === "dia" && "Use “Nova tarefa” ou clique duas vezes no dia do calendário."}</p>}
-            {SITUACOES.filter((s) => filtroSit === "todas" || filtroSit === s.id).map((s) => {
-              const ts = visiveis.filter((t) => t.sit === s.id).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0));
-              if (!ts.length) return null;
+            {grupos.map((s) => {
+              const ts = s.ts;
               const fechada = fechadas.has(s.id) && filtroSit !== s.id;
               return (
                 <div key={s.id}>
                   <button type="button" onClick={() => setFechadas((f) => { const n = new Set(f); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; })}
                     className={cn("flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-[13px] font-semibold", s.fundo)}>
-                    <s.icone className={cn("h-4 w-4", s.cor)} />
+                    {s.projeto !== undefined ? <span className={cn("h-3 w-3 shrink-0 rounded-sm", corProjeto(s.projeto))} /> : s.icone && <s.icone className={cn("h-4 w-4", s.cor)} />}
                     <span className={s.id === "atrasada" ? "text-red-600 dark:text-red-400" : ""}>{s.nome} ({ts.length})</span>
                     <ChevronDown className={cn("ml-auto h-4 w-4 opacity-60 transition-transform", fechada && "-rotate-90")} />
                   </button>
@@ -522,7 +537,7 @@ export function SemanaView() {
                                 ) : t.prioridade === "alta" ? <span className="rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] text-orange-600">Alta</span> : null}
                             </span>
                             {!t.concluida && (
-                              <button type="button" onClick={() => focar(t.id)} title="Focar nesta tarefa (Modo Foco)"
+                              <button type="button" onClick={() => setFocando({ id: t.id, titulo: t.titulo })} title="Focar nesta tarefa"
                                 className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-primary opacity-0 transition-opacity hover:bg-primary/10 group-hover:opacity-100">
                                 <Target className="h-3.5 w-3.5" />Focar
                               </button>
@@ -588,6 +603,7 @@ export function SemanaView() {
         {kanbanId ? <AtividadesView key={kanbanId} clienteId={kanbanId} /> : <p className="py-8 text-center text-sm text-muted-foreground">Escolha um projeto para ver o Kanban.</p>}
       </Card>
 
+      <FocarTarefa tarefa={focando} onFechar={() => setFocando(null)} />
       <AtividadeDetailPanel
         open={!!aberta}
         onClose={() => setAberta(null)}
