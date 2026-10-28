@@ -45,10 +45,10 @@ BEGIN
   SELECT * INTO c1 FROM public.carrosseis WHERE id = '10000000-0000-0000-0000-000000000d74';
   SELECT * INTO c2 FROM public.carrosseis WHERE id = '10000000-0000-0000-0000-000000000d75';
   SELECT * INTO c3 FROM public.carrosseis WHERE id = '10000000-0000-0000-0000-000000000d76';
-  -- Carrossel: programado sozinho, às 10h, um por dia, dias seguidos.
+  -- Carrossel: programado sozinho, às 14h (desde 22/10), um por dia, dias seguidos.
   IF c1.status <> 'programado' OR c2.status <> 'programado' OR c1.programado_pela_dalila_em IS NULL THEN
     RAISE EXCEPTION 'carrossel não programou sozinho: % / %', c1.status, c2.status; END IF;
-  IF to_char(c1.programado_para AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI') <> '10:00' THEN RAISE EXCEPTION 'carrossel fora das 10h'; END IF;
+  IF to_char(c1.programado_para AT TIME ZONE 'America/Sao_Paulo', 'HH24:MI') <> '14:00' THEN RAISE EXCEPTION 'carrossel fora das 14h'; END IF;
   -- (a ordem entre os dois do mesmo UPDATE não é garantida)
   IF least(c1.programado_para, c2.programado_para) <> v_10 THEN RAISE EXCEPTION 'não pegou o 1º dia livre'; END IF;
   IF abs(extract(epoch FROM c2.programado_para - c1.programado_para)) <> 86400 THEN RAISE EXCEPTION 'segundo carrossel não foi pro dia seguinte'; END IF;

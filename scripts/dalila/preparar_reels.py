@@ -8,6 +8,8 @@ Edição aprovada (Danilo) → linha em `reels` com status 'preparando'
      AAC 128k, moov no início (o que a Meta pede para Reels);
   2. sobe no bucket público `reels` com o token do reel (no Mac não há chave
      de servidor; a policy só aceita com o token, enquanto prepara);
+  2b. escolhe a capa (scripts/dalila/capa.py): o quadro mais bonito, sem a
+     lousa vazia em cima;
   3. sugere a legenda com o Claude em segundo plano (mesmo login do ouvinte),
      a partir da fala do vídeo e de legendas reais do perfil;
   4. marca 'pronto' → o banco programa sozinho no 1º dia sem reel às 18h
@@ -35,6 +37,7 @@ RAIZ = AQUI.parent.parent
 sys.path.insert(0, str(Path.home() / ".infopro-hub" / "py"))
 sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
+from dalila import capa as capa_do_reel  # noqa: E402
 
 FF = Path.home() / ".infopro-hub" / "creator-bin" / "ffmpeg"
 TRABALHO = Path.home() / ".infopro-hub" / "dalila" / "reels"
@@ -192,9 +195,17 @@ def preparar(reel):
     caminho = f"{reel['cliente_id']}/{rid}/{reel['token_envio']}/reel-v{tentativa}{int(time.time())}.mp4"
     publico = enviar(url, chave, caminho, saida)
     legenda = reel["legenda"] or sugerir_legenda(reel)
+    # Capa (27/10): o quadro mais bonito, não o 1º (lousa vazia = faixa preta no feed).
+    try:
+        quadros = capa_do_reel.escolher(saida, int(segundos))
+    except Exception as e:  # noqa: BLE001  sem capa a Meta usa o 1º quadro; não segura o reel
+        log(rid, "capa falhou:", e)
+        quadros = []
     db("""UPDATE public.reels SET video_url = %s, video_caminho = %s, video_bytes = %s, duracao = %s, legenda = %s,
+          capa_ms = %s, capa_sugestoes = %s,
           status = 'pronto', mensagem = 'Vídeo e legenda prontos: falta o Davi escolher a data', atualizado_em = now()
-          WHERE id = %s AND status = 'preparando'""", (publico, caminho, tamanho, round(segundos, 1), legenda, rid))
+          WHERE id = %s AND status = 'preparando'""", (publico, caminho, tamanho, round(segundos, 1), legenda,
+                                                     quadros[0] if quadros else None, quadros or None, rid))
     log(rid, "pronto:", reel["titulo"])
     return True
 
