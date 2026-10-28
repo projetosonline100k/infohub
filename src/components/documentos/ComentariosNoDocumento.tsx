@@ -73,6 +73,14 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     window.addEventListener("resize", mudou);
     return () => { editor.off("update", mudou); window.removeEventListener("resize", mudou); };
   }, [editor]);
+  // A mesa mudou de tamanho — inclusive a guia escondida voltando a aparecer (28/10: a janela mudou de tamanho
+  // com a guia escondida, a conta saiu com largura zero e os cartões ficaram em cima do texto).
+  useEffect(() => {
+    if (!mesa) return;
+    const obs = new ResizeObserver(() => setVersao((v) => v + 1));
+    obs.observe(mesa);
+    return () => obs.disconnect();
+  }, [mesa]);
 
   // Pedido de comentário (botão do menu de seleção, ou ⌘⌥M): guarda o trecho selecionado e abre o cartão novo.
   const comecar = useCallback(() => {
@@ -173,7 +181,7 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
   const [posicoes, setPosicoes] = useState<{ id: string; top: number }[]>([]);
   const [esquerda, setEsquerda] = useState(0);
   useLayoutEffect(() => {
-    if (!mesa) return;
+    if (!mesa || !mesa.offsetWidth) return;   // guia escondida: mede quando voltar a aparecer
     const folha = editor.view.dom.closest<HTMLElement>(".superficie-folha");
     const abertos = new Set(comentarios.filter((c) => !c.parent_id && (!c.resolvido || verResolvidos)).map((c) => c.id));
     const temCartao = !!novo || idsComentariosNoTexto(editor).some((id) => abertos.has(id)) || comentarios.some((c) => c.resolvido && !c.parent_id);
