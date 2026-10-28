@@ -100,6 +100,16 @@ Falha de publicação **não** usa `erro`, que é o vermelho do Roy no mapa.
   - Não tem problema: o gatilho do banco cria a tarefa dela.
   - Vale tirar o `!eh_ia` / `NOT eh_ia` numa sessão do Roy.
 
+## Capa dos reels (pedido do Davi, 27/10/2026)
+
+"Todos eles ficam com uma parte preta em cima ... escolha um frame melhor para a capa, senão o feed fica feio." Sem capa, a Meta usa o 1º quadro, e nos vídeos do Danilo ele tem a lousa ainda vazia em cima.
+- **A Dalila escolhe:** `scripts/dalila/capa.py` olha 1 quadro por segundo (fora o 1º segundo e os 2 últimos) e dá nota: traço na metade de cima (lousa cheia), nitidez, traço embaixo, e desconta linhas escuras vazias em cima. Grava o melhor em `reels.capa_ms` e até 6 opções espaçadas (6 s) em `reels.capa_sugestoes`. Roda no preparo (`preparar_reels.py`, logo depois de comprimir); se falhar, o reel segue sem capa.
+- **Vai para o Instagram:** a edge `dalila-publicar` manda `thumb_offset = capa_ms` ao criar o container do REELS. Só quadro do vídeo, sem texto por cima (o Davi não pediu headline na capa).
+- **O Davi troca:** em Programados o cartão do reel mostra o quadro escolhido; clicando, a janela do reel tem o quadro "Capa" com as opções e "Usar como capa o quadro parado no vídeo acima". A RPC `escolher_capa_reel(reel, ms)` grava, marca `capa_pelo_davi` (a Dalila não refaz) e zera o container da Meta, que é criado de novo com a capa nova.
+- **Reel já publicado:** a API não troca a capa; só pelo app do Instagram.
+- **Reels já programados sem capa:** `python3 scripts/dalila/capa.py --programados` (baixa o vídeo da nuvem e escolhe). `--refazer` refaz as escolhas da Dalila sem mexer nas do Davi.
+- Migração `20261028010000_dalila_capa_reel`, teste `supabase/tests/dalila_capa_reel.sql`, script `scripts/apply-dalila-capa-reel-migration.py`.
+
 ## Fora o modelo antigo (pedido do Davi, 22/10/2026)
 
 "Aqueles carrosséis que você programou para hoje às 14 horas, eu não quero mais eles, agora são nos novos modelos ... pode passar para o Roy refazer."

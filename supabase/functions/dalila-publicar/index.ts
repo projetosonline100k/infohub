@@ -256,6 +256,7 @@ type Reel = {
   id: string; cliente_id: string; titulo: string; status: string; legenda: string | null; video_url: string | null;
   video_caminho: string | null; programado_para: string | null; atividade_id: string | null; tarefa_data_id: string | null;
   ig_container_id: string | null; ig_container_em: string | null; publicacao_tentativas: number; criado_em: string;
+  capa_ms?: number | null;
 };
 
 async function soltarReel(admin: Admin, id: string, campos: Record<string, unknown> = {}) {
@@ -322,6 +323,9 @@ async function publicarReel(admin: Admin, r: Reel) {
     if (!container) {
       const criado = await meta("POST", `${conexao.ig_user_id}/media`, token, {
         media_type: "REELS", video_url: r.video_url, caption: r.legenda ?? "", share_to_feed: "true",
+        // Capa escolhida pela Dalila (ou trocada pelo Davi), migração 20261028010000: sem ela
+        // a Meta usa o 1º quadro, com a lousa vazia em cima.
+        ...(r.capa_ms != null ? { thumb_offset: String(r.capa_ms) } : {}),
       });
       container = criado.id as string;
       await admin.from("reels").update({ ig_container_id: container, ig_container_em: new Date().toISOString() }).eq("id", r.id);

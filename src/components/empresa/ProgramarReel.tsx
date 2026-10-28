@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Clapperboard, Loader2, Youtube } from "lucide-react";
+import { Check, Clapperboard, ImageIcon, Loader2, Youtube } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,8 @@ interface ReelParaProgramar {
   video_url: string | null;
   duracao: number | null;
   programado_para: string | null;
+  capa_ms: number | null;
+  capa_sugestoes: number[] | null;
   yt_publicar: boolean;
   yt_titulo: string | null;
   yt_status: string | null;
@@ -52,6 +54,9 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
   const [hora, setHora] = useState(HORA_REEL);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [capa, setCapa] = useState<number | null>(null);
+  const [trocandoCapa, setTrocandoCapa] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (!tarefaId) return;
@@ -59,7 +64,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
     void (async () => {
       // Os campos do YouTube só existem depois da migração dalila_youtube_shorts: sem ela,
       // busca só o reel (antes a busca inteira falhava e aparecia "Não achei o reel").
-      const BASE = "id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para";
+      const BASE = "id, cliente_id, titulo, status, mensagem, legenda, video_url, duracao, programado_para, capa_ms, capa_sugestoes";
       // eslint-disable-next-line prefer-const
       let { data: r, error } = await db.from("reels").select(`${BASE}, yt_publicar, yt_titulo, yt_status, yt_url`)
         .eq("tarefa_data_id", tarefaId).maybeSingle();
@@ -76,6 +81,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
       setTituloYt(r?.yt_titulo ?? tituloDoShort(r?.titulo ?? ""));
       setReel((r as ReelParaProgramar) ?? null);
       setLegenda(r?.legenda ?? "");
+      setCapa(r?.capa_ms ?? null);
       if (r?.programado_para) {
         const d = new Date(r.programado_para);
         setData(diaLocal(d));
@@ -99,6 +105,17 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
   const pronto = !!reel?.video_url;
   const shortJaSaiu = !!reel?.yt_url;
   const problemaYt = noYoutube && canal && !shortJaSaiu ? problemaNoTitulo(tituloYt) : null;
+
+  // Capa (27/10): a Dalila escolhe o quadro; trocar grava na hora (vale mesmo sem mudar a data).
+  const trocarCapa = async (ms: number) => {
+    if (!reel) return;
+    setTrocandoCapa(true);
+    const { error } = await db.rpc("escolher_capa_reel", { p_reel: reel.id, p_ms: ms });
+    setTrocandoCapa(false);
+    if (error) { toast.error(error.message); return; }
+    setCapa(ms);
+    toast.success("Capa trocada: o reel sai com este quadro.");
+  };
 
   const programar = async () => {
     if (!reel || !quando || problema || problemaYt || !instagram || !pronto) return;
@@ -130,7 +147,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-[180px_1fr]">
               {pronto ? (
-                <video src={reel.video_url!} controls playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg border bg-black" />
+                <video ref={videoRef} src={reel.video_url!} controls playsInline preload="metadata" className="aspect-[9/16] w-full rounded-lg border bg-black" />
               ) : (
                 <div className="flex aspect-[9/16] w-full items-center justify-center rounded-lg border bg-muted p-3 text-center text-xs text-muted-foreground">
                   {reel.mensagem ?? "A Dalila está preparando o vídeo."}
@@ -144,6 +161,9 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
                 <Textarea value={legenda} onChange={(e) => setLegenda(e.target.value)} className="min-h-[220px] flex-1 text-sm" />
               </label>
             </div>
+            {pronto && <CapaDoReel video={reel.video_url!} capa={capa} sugestoes={reel.capa_sugestoes ?? []} ocupado={trocandoCapa}
+              onEscolher={(ms) => void trocarCapa(ms)}
+              onQuadroAtual={() => videoRef.current && void trocarCapa(Math.round(videoRef.current.currentTime * 1000))} />}
             {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
             <CalendarioPosts agenda={agenda} tipo="reel" selecionado={data} onEscolher={escolherDia} />
             <div className="grid grid-cols-2 gap-3">
@@ -209,5 +229,35 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Quadros sugeridos pela Dalila (o 1º é o dela) + "usar o quadro do vídeo acima".
+function CapaDoReel({ video, capa, sugestoes, ocupado, onEscolher, onQuadroAtual }: {
+  video: string; capa: number | null; sugestoes: number[]; ocupado: boolean;
+  onEscolher: (ms: number) => void; onQuadroAtual: () => void;
+}) {
+  const opcoes = capa != null && !sugestoes.includes(capa) ? [capa, ...sugestoes] : sugestoes;
+  return (
+    <div className="space-y-2 rounded-md border p-3 text-sm">
+      <p className="flex items-center gap-2 text-muted-foreground">
+        <ImageIcon className="h-4 w-4" />
+        {capa != null ? "Capa do reel (a Dalila escolheu o quadro mais bonito; clique em outro para trocar)" : "Ainda sem capa escolhida: o Instagram usaria o primeiro quadro."}
+      </p>
+      {opcoes.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {opcoes.map((ms) => (
+            <button key={ms} type="button" disabled={ocupado} onClick={() => onEscolher(ms)} title={`Quadro em ${(ms / 1000).toFixed(1)}s`}
+              className={`relative w-16 shrink-0 overflow-hidden rounded-md border-2 ${ms === capa ? "border-primary" : "border-transparent hover:border-muted-foreground/40"}`}>
+              <video src={`${video}#t=${ms / 1000}`} muted playsInline preload="metadata" className="pointer-events-none aspect-[9/16] w-full bg-black object-cover" />
+              {ms === capa && <span className="absolute right-0.5 top-0.5 rounded-full bg-primary p-0.5 text-primary-foreground"><Check className="h-3 w-3" /></span>}
+            </button>
+          ))}
+        </div>
+      )}
+      <button type="button" disabled={ocupado} onClick={onQuadroAtual} className="text-xs font-medium text-primary hover:underline disabled:opacity-50">
+        Usar como capa o quadro parado no vídeo acima
+      </button>
+    </div>
   );
 }
