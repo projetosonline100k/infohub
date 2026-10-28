@@ -82,11 +82,13 @@ export function useFocoTimer(acoes: { iniciarTimer?: (id: string) => unknown; pa
     try { localStorage.setItem(CHAVE_FOCO, JSON.stringify(novo)); } catch { /* sem storage */ }
     window.dispatchEvent(new Event(EVENTO_FOCO));
   }, []);
-  // A outra janela mudou: acompanha.
+  // A outra janela mudou — ou outro cronômetro desta mesma janela (ex.: o "Focar" das Atividades): acompanha.
   useEffect(() => {
     const ouvir = (e: StorageEvent) => { if (e.key === CHAVE_FOCO) setEstadoBruto(ler()); };
+    const daqui = () => { const novo = ler(); estadoRef.current = novo; setEstadoBruto(novo); };
     window.addEventListener("storage", ouvir);
-    return () => window.removeEventListener("storage", ouvir);
+    window.addEventListener(EVENTO_FOCO, daqui);
+    return () => { window.removeEventListener("storage", ouvir); window.removeEventListener(EVENTO_FOCO, daqui); };
   }, []);
 
   const [agora, setAgora] = useState(Date.now());

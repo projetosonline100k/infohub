@@ -3,7 +3,7 @@ import { addDays, addMonths, format, isSameMonth, startOfMonth } from "date-fns"
 import { ptBR } from "date-fns/locale";
 import {
   AlertCircle, CalendarClock, CalendarX2, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleDot,
-  Eye, GripVertical, Loader2, Maximize2, MoreHorizontal, Plus, Trash2, Users,
+  Eye, GripVertical, Loader2, Maximize2, MoreHorizontal, Plus, Target, Trash2, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,7 +14,9 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { FocoCompacto } from "@/components/foco/FocoCompacto";
+import { useFocoTimer } from "@/hooks/useFocoTimer";
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { useIdentidadeResponsavel } from "@/hooks/useIdentidadeResponsavel";
 import { filtrarPorResponsavel } from "@/lib/atividades/filtroResponsavel";
@@ -165,7 +167,9 @@ export function SemanaView() {
   // ── mudar a ordem arrastando (25/10, Davi: "quero conseguir mover a ordem das atividades") ──
   // Reaproveita os valores de "ordem" das próprias tarefas do grupo, redistribuídos na nova ordem: o resto do
   // Kanban não muda de lugar em relação a elas.
-  const [arrastoT, setArrastoT] = useState<{ id: string; grupo: string; alvo: string | null; depois: boolean } | null>(null);
+  // 28/10 (Davi: "preciso jogar uma atividade para o dia seguinte"): soltar num dia da semana (lista da esquerda)
+  // ou do calendário muda a data — a coluna do projeto acompanha (gatilho trg_atividades_dia_coluna).
+  const [arrastoT, setArrastoT] = useState<{ id: string; grupo: string; alvo: string | null; depois: boolean; dia?: string | null } | null>(null);
   const inicioT = useRef<{ x: number; y: number; id: string; grupo: string; ids: string[] } | null>(null);
   const arrastoTRef = useRef(arrastoT);
   arrastoTRef.current = arrastoT;
@@ -176,17 +180,20 @@ export function SemanaView() {
       const ini = inicioT.current;
       if (!ini) return;
       if (!arrastoTRef.current && Math.abs(e.clientY - ini.y) < 5 && Math.abs(e.clientX - ini.x) < 5) return;
-      const el = (document.elementFromPoint(e.clientX, e.clientY) as Element | null)?.closest<HTMLElement>(`[data-tarefa-grupo="${ini.grupo}"]`);
+      const sob = document.elementFromPoint(e.clientX, e.clientY) as Element | null;
+      const el = sob?.closest<HTMLElement>(`[data-tarefa-grupo="${ini.grupo}"]`);
+      const dia = sob?.closest<HTMLElement>("[data-dia-alvo]")?.dataset.diaAlvo ?? null;
       const alvo = el?.dataset.tarefaId ?? null;
       const r = el?.getBoundingClientRect();
       const depois = r ? e.clientY > r.top + r.height / 2 : false;
-      setArrastoT((a) => (a && a.alvo === alvo && a.depois === depois ? a : { id: ini.id, grupo: ini.grupo, alvo, depois }));
+      setArrastoT((a) => (a && a.alvo === alvo && a.depois === depois && a.dia === dia ? a : { id: ini.id, grupo: ini.grupo, alvo, depois, dia }));
     };
     const soltar = () => {
       const ini = inicioT.current, a = arrastoTRef.current;
       inicioT.current = null;
       document.body.style.userSelect = "";
       setArrastoT(null);
+      if (ini && a?.dia) { void moverParaDiaRef.current(ini.id, a.dia); return; }
       if (!ini || !a?.alvo || a.alvo === a.id) return;
       const nova = ini.ids.filter((x) => x !== a.id);
       const i = nova.indexOf(a.alvo);
@@ -214,6 +221,20 @@ export function SemanaView() {
     const { error } = await supabase.from("atividades").update({ concluida, status }).eq("id", t.id);
     if (error) { toast.error("Não consegui atualizar a tarefa"); void carregar(); }
   };
+  const moverParaDia = async (id: string, dia: string) => {
+    const t = tarefasRef.current.find((x) => x.id === id);
+    if (!t || (t.data_vencimento ?? "").slice(0, 10) === dia) return;
+    setTarefas((ts) => ts.map((x) => (x.id === id ? { ...x, data_vencimento: dia } : x)));
+    const { error } = await supabase.from("atividades").update({ data_vencimento: dia }).eq("id", id);
+    if (error) toast.error("Não consegui mudar a data");
+    else toast.success(`Movida para ${format(dataLocal(dia), "EEEE, dd/MM", { locale: ptBR })}`);
+    void carregar();
+  };
+  const moverParaDiaRef = useRef(moverParaDia);
+  moverParaDiaRef.current = moverParaDia;
+  // Focar numa tarefa direto da lista: vira o foco do cronômetro e o bloco começa.
+  const { escolherTarefa, comecar } = useFocoTimer();
+  const focar = (id: string) => { escolherTarefa(id); comecar(); toast.success("Em foco — o cronômetro começou"); };
   const adiar = async (t: Tarefa & { dia: string | null; sit: Situacao }, dias: number) => {
     const base = t.dia ? dataLocal(t.dia) : new Date(hoje);
     const destino = chaveDia(addDays(t.sit === "atrasada" ? new Date(hoje) : base, dias));
@@ -276,6 +297,7 @@ export function SemanaView() {
         <div className="flex min-w-0 flex-col gap-4">
           {/* ── Esquerda: a semana ── */}
           <Card className="space-y-4 p-4">
+            <FocoCompacto />
             <div>
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold">{ehEstaSemana ? "Esta semana" : `Semana de ${format(semana, "dd/MM")}`}</h2>
@@ -294,8 +316,9 @@ export function SemanaView() {
                 const atr = ts.filter((t) => t.sit === "atrasada").length;
                 const sel = foco.tipo === "dia" && foco.chave === ch;
                 return (
-                  <button key={ch} type="button" onClick={() => irParaDia(d)}
-                    className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors", sel ? "bg-primary/10 font-semibold" : "hover:bg-muted")}>
+                  <button key={ch} type="button" onClick={() => irParaDia(d)} data-dia-alvo={ch}
+                    className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors", sel ? "bg-primary/10 font-semibold" : "hover:bg-muted",
+                      arrastoT?.dia === ch && "bg-primary/20 ring-2 ring-primary")}>
                     <span className={cn("w-24 shrink-0 truncate", ch === chaveDia(hoje) && "text-primary")}>{NOMES_DIAS[i]}</span>
                     <span className="w-5 shrink-0 text-right font-semibold tabular-nums" title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} no dia`}>{ts.length}</span>
                     {/* Progresso do dia: concluídas sobre o total; o número à direita são as atrasadas (some quando 0). */}
@@ -327,11 +350,12 @@ export function SemanaView() {
                   const ehHoje = ch === chaveDia(hoje);
                   const temAtrasada = ts.some((t) => t.sit === "atrasada");
                   return (
-                    <button key={ch} type="button" onClick={() => irParaDia(d)} onDoubleClick={() => abrirNova(d)}
+                    <button key={ch} type="button" onClick={() => irParaDia(d)} onDoubleClick={() => abrirNova(d)} data-dia-alvo={ch}
                       title={`${ts.length} tarefa${ts.length === 1 ? "" : "s"} · clique duas vezes para criar uma tarefa neste dia`}
                       className={cn("relative mx-auto flex h-7 w-7 items-center justify-center rounded-full text-[12px] tabular-nums transition-colors",
                         !isSameMonth(d, mes) && "text-muted-foreground/40",
-                        sel ? "bg-primary text-primary-foreground" : ehHoje ? "font-bold text-primary ring-1 ring-primary" : "hover:bg-muted")}>
+                        sel ? "bg-primary text-primary-foreground" : ehHoje ? "font-bold text-primary ring-1 ring-primary" : "hover:bg-muted",
+                        arrastoT?.dia === ch && "bg-primary/30 ring-2 ring-primary")}>
                       {d.getDate()}
                       {ts.length > 0 && !sel && <span className={cn("absolute bottom-0.5 h-1 w-1 rounded-full", temAtrasada ? "bg-red-500" : "bg-primary/70")} />}
                     </button>
@@ -468,8 +492,8 @@ export function SemanaView() {
                               arrastoT?.grupo === s.id && arrastoT.alvo === t.id && arrastoT.id !== t.id && (arrastoT.depois
                                 ? "after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded after:bg-primary after:content-['']"
                                 : "before:absolute before:inset-x-2 before:-top-px before:h-0.5 before:rounded before:bg-primary before:content-['']"))}>
-                            {/* Segure e arraste para mudar a ordem (25/10, Davi). */}
-                            <span title="Segure e arraste para mudar a ordem" aria-hidden
+                            {/* Segure e arraste para mudar a ordem (25/10, Davi) — ou solte num dia da esquerda para mudar a data. */}
+                            <span title="Segure e arraste: muda a ordem, ou solte num dia da semana (à esquerda) para mudar o dia" aria-hidden
                               onPointerDown={(e) => { e.preventDefault(); document.body.style.userSelect = "none"; inicioT.current = { x: e.clientX, y: e.clientY, id: t.id, grupo: s.id, ids: ts.map((x) => x.id) }; }}
                               className="-ml-1 -mr-1.5 cursor-grab text-muted-foreground/40 opacity-0 transition-opacity hover:text-muted-foreground group-hover:opacity-100 active:cursor-grabbing">
                               <GripVertical className="h-3.5 w-3.5" />
@@ -497,6 +521,12 @@ export function SemanaView() {
                                   <span className="flex w-full items-center gap-1.5"><span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted"><span className="block h-full bg-blue-500" style={{ width: `${Math.min(100, t.progresso ?? 0)}%` }} /></span><span className="text-[11px] tabular-nums text-muted-foreground">{t.progresso}%</span></span>
                                 ) : t.prioridade === "alta" ? <span className="rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] text-orange-600">Alta</span> : null}
                             </span>
+                            {!t.concluida && (
+                              <button type="button" onClick={() => focar(t.id)} title="Focar nesta tarefa (Modo Foco)"
+                                className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-primary opacity-0 transition-opacity hover:bg-primary/10 group-hover:opacity-100">
+                                <Target className="h-3.5 w-3.5" />Focar
+                              </button>
+                            )}
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 opacity-50 group-hover:opacity-100" aria-label="Mais"><MoreHorizontal className="h-4 w-4" /></Button>
@@ -506,6 +536,17 @@ export function SemanaView() {
                                 <DropdownMenuItem onClick={() => void adiar(t, 1)}>{t.sit === "atrasada" ? "Passar para amanhã" : "Adiar 1 dia"}</DropdownMenuItem>
                                 {t.sit === "atrasada" && <DropdownMenuItem onClick={() => void adiar(t, 0)}>Passar para hoje</DropdownMenuItem>}
                                 <DropdownMenuItem onClick={() => void adiar(t, 7)}>Próxima semana</DropdownMenuItem>
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger>Mover para…</DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
+                                    {Array.from({ length: 7 }, (_, k) => addDays(hoje, k)).map((d) => (
+                                      <DropdownMenuItem key={chaveDia(d)} disabled={t.dia === chaveDia(d)} onClick={() => void moverParaDia(t.id, chaveDia(d))}>
+                                        <span className="capitalize">{chaveDia(d) === chaveDia(hoje) ? "Hoje" : format(d, "EEEE", { locale: ptBR })}</span>
+                                        <span className="ml-auto pl-4 text-xs text-muted-foreground">{format(d, "dd/MM")}</span>
+                                      </DropdownMenuItem>
+                                    ))}
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => void excluir(t.id)} className="text-destructive focus:text-destructive">
                                   <Trash2 className="mr-2 h-4 w-4" />Excluir
