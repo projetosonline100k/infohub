@@ -15,6 +15,7 @@ import { WorkspacePages } from "@/components/workspace/WorkspacePages";
 import { useSomDigitacao } from "@/hooks/useSomDigitacao";
 import { useAlarmesAgenda } from "@/hooks/useAlarmesAgenda";
 import { useFocoTotal } from "@/hooks/useFocoTimer";
+import { EquipeGlobal } from "@/components/empresa/EquipeGlobal";
 
 // Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
 // conteúdo, no lugar do header horizontal antigo. Rotas, autenticação,
@@ -168,6 +169,7 @@ export const DashboardLayout = () => {
       </SidebarProvider>
 
       <GlobalSearchCommand open={buscaAberta} onOpenChange={setBuscaAberta} />
+      <EquipeGlobal clienteDaTela={clienteRotaId} />
 
       {/* Assistente virtual flutuante — única instância, visível em toda
           página autenticada (este layout envolve todas as rotas protegidas).

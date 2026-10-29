@@ -23,8 +23,10 @@ const STATUS: Record<Sinal, { cor: string; texto: string }> = {
   parado: { cor: "bg-zinc-400", texto: "Livre" },
 };
 
-export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou, pedido }: {
+export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou, pedido, seletor }: {
   clienteId: string; pessoas: PessoaChat[]; onAbrirFila: (m: MembroResumo) => void; onMudou: () => void;
+  /** Filtro de projeto no topo da lista (gaveta de todo o app, EquipeGlobal). */
+  seletor?: React.ReactNode;
   /** 22/10 (Davi: "ao clicar no colaborador, apareça o chat dele"): abre a conversa dessa pessoa. */
   pedido?: { membroId: string; n: number } | null;
 }) {
@@ -144,6 +146,7 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou, pedi
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          {seletor && <div className="px-1 pb-1.5">{seletor}</div>}
           <button type="button" onClick={() => { setComAtlas(true); setFocoAtlas((n) => n + 1); }}
             className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition-colors hover:bg-muted">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-900 text-sky-300"><Bot className="h-5 w-5" /></span>

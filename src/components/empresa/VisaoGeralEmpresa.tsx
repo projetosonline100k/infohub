@@ -28,6 +28,8 @@ import { ProgramarReel } from "./ProgramarReel";
 import { CanalYoutube } from "./CanalYoutube";
 import { ProgramarLote } from "./ProgramarLote";
 import { EquipeMessenger } from "./EquipeMessenger";
+import { marcarEquipeLocal } from "@/lib/empresa/equipeLocal";
+import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { RevisaoEntrega } from "./RevisaoEntrega";
 import { NovoFuncionario, type MembroParaEditar } from "./NovoFuncionario";
 import { NovoEscritorio } from "./NovoEscritorio";
@@ -100,6 +102,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   onAbrirAtividades: () => void;
 }) {
   const { user } = useAuth();
+  // Na tela, a gaveta da equipe deste Escritório substitui a de todo o app (EquipeGlobal).
+  const naTela = useAbaAtiva();
+  useEffect(() => {
+    if (!naTela) return;
+    marcarEquipeLocal(1);
+    return () => marcarEquipeLocal(-1);
+  }, [naTela]);
   const [carregando, setCarregando] = useState(true);
   const [setores, setSetores] = useState<SetorResumo[]>([]);
   const [membros, setMembros] = useState<MembroResumo[]>([]);
