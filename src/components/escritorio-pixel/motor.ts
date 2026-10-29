@@ -548,16 +548,23 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
         b.corpo.destroy(); b.anel.destroy(); b.etiqueta.destroy(); b.alerta.destroy();
         bonecos.delete(id);
       }
-      let novos = 0;
       for (const p of pessoas) {
         const b = bonecos.get(p.id);
         if (!b) {
-          // Chegam um por um pela porta de vidro e andam até o lugar.
-          bonecos.set(p.id, novoBoneco(p, 0.3 + novos++ * 0.9));
+          // 29/10 (Davi: "a equipe só entra quando eu clico no escritório; preciso que ela sempre fique lá"): cada um
+          // já aparece no seu lugar, sem entrar pela porta e andar até a mesa.
+          const novo = novoBoneco(p, 0);
+          bonecos.set(p.id, novo);
+          const lugar = escolherEstacao(novo);
+          novo.estacao = lugar;
+          novo.rota = [];
+          if (lugar) { novo.x = lugar.x; novo.y = lugar.y; }
+          novo.corpo.visible = true;
+          criarAlerta(novo);
           continue;
         }
         const mudou = b.p.estado !== p.estado || b.p.setorId !== p.setorId;
-        const textoMudou = b.p.agora !== p.agora || b.p.nome !== p.nome || b.p.estado !== p.estado;
+        const textoMudou = b.p.agora !== p.agora || b.p.nome !== p.nome || b.p.estado !== p.estado || b.p.head !== p.head;
         b.p = p;
         if (textoMudou) { criarEtiqueta(b); criarAlerta(b); }
         if (mudou && b.espera <= 0) mandarPara(b, escolherEstacao(b));
