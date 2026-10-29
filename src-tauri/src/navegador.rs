@@ -38,6 +38,9 @@ pub async fn navegador_abrir(app: AppHandle, rotulo: String, url: String, x: f64
     let (r1, r2, r3) = (rotulo.clone(), rotulo.clone(), rotulo.clone());
     let construtor = WebviewBuilder::new(&rotulo, WebviewUrl::External(endereco(&url)?))
         .user_agent(AGENTE)
+        // Arrastar arquivo para o site (29/10, Davi: "ao jogar qualquer coisa nas páginas, o sistema não
+        // aceita"): sem isso o Tauri pega o arquivo solto (para o app) e o site nunca recebe — ex.: subir no Drive.
+        .disable_drag_drop_handler()
         // O endereço vem sempre de `w.url()` (a página principal): o aviso de navegação também dispara para os
         // quadros internos (ex.: o YouTube carrega um de accounts.google.com) e trocava a barra por eles.
         .on_page_load(move |w, p| {
