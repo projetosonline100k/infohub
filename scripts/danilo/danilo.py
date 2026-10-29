@@ -78,7 +78,9 @@ REMOTO_DESTINO = f"{REMOTO}/Editado"
 PROJETOS_DRIVE = {
     "e354f4be-8a8d-4c34-8f47-f85e5981b8d3": {   # Instalivros (20/10: piloto = bruto 01, padrão do reel Dd4zAcSiWmV)
         "remoto": "metafocando:Projeto 100k/Instalivros/EDIÇÃO", "entrada": "BRUTOS", "destino": "EDITADOS",
-        "refazer_antigos": True, "ignorar": {"03-primeiro-milhao-3-livros.mp4"}, "estilo": "instalivros"},
+        "refazer_antigos": True, "ignorar": {"03-primeiro-milhao-3-livros.mp4"}, "estilo": "instalivros",
+        # 29/10 (Davi): também a pasta Para o Danilo/Instalivros da Mesa (o Mac manda para o servidor).
+        "local": "Instalivros"},
 }
 CONFIG_DRIVE = PROJETOS_DRIVE.get(CLIENTE, {})
 if CONFIG_DRIVE:
@@ -86,6 +88,11 @@ if CONFIG_DRIVE:
     REMOTO_ENTRADA = f"{REMOTO}/{CONFIG_DRIVE['entrada']}"
     REMOTO_DESTINO = f"{REMOTO}/{CONFIG_DRIVE['destino']}"
 OLHA_DRIVE = PRINCIPAL or bool(CONFIG_DRIVE)
+# Outro projeto com pasta própria dentro de Para o Danilo (29/10: Para o Danilo/Instalivros).
+if CONFIG_DRIVE.get("local"):
+    LOCAL = LOCAL / CONFIG_DRIVE["local"]
+    LOCAL_EDITADOS = LOCAL / "Editados"
+OLHA_LOCAL = PRINCIPAL or bool(CONFIG_DRIVE.get("local"))
 ESTILO = CONFIG_DRIVE.get("estilo")
 
 
@@ -212,7 +219,7 @@ def novos(minutos_parado=3):
     agora = datetime.now().timestamp()
     out = []
     # A pasta Para o Danilo (Mesa) é do Eu.davi.
-    entradas = [(LOCAL, list(LOCAL.iterdir()))] if PRINCIPAL and LOCAL.is_dir() else []
+    entradas = [(LOCAL, list(LOCAL.iterdir()))] if OLHA_LOCAL and LOCAL.is_dir() else []
     entradas.append((None, listar_remoto()))
     for pasta_, arquivos in entradas:
         for f in arquivos:
