@@ -25,6 +25,25 @@ export function salaDoSetor(nome: string): SalaRef | null {
   return null;
 }
 
+/** Área de cada sala na grade (tiles; ver o desenho no topo) — para aproximar a câmera ao clicar nela (29/10). */
+export type AreaRef = SalaRef | "colab" | "copa";
+export const AREAS: Record<AreaRef, { x: number; y: number; w: number; h: number; nome: string }> = {
+  diretoria: { x: 0, y: 0, w: 10, h: 8, nome: "Diretoria" },
+  copa: { x: 20, y: 0, w: 10, h: 8, nome: "Copa" },
+  marketing: { x: 0, y: 8, w: 10, h: 8, nome: "Marketing" },
+  colab: { x: 10, y: 8, w: 10, h: 8, nome: "Área Colaborativa" },
+  audiovisual: { x: 20, y: 8, w: 10, h: 8, nome: "Audiovisual" },
+  lab: { x: 0, y: 16, w: 11, h: 8, nome: "Laboratório de Viral" },
+  sucesso: { x: 16, y: 16, w: 7, h: 8, nome: "Sucesso do Cliente" },
+  sales: { x: 23, y: 16, w: 7, h: 8, nome: "Sales" },
+};
+export function areaEm(x: number, y: number): AreaRef | null {
+  for (const [ref, a] of Object.entries(AREAS) as [AreaRef, (typeof AREAS)[AreaRef]][]) {
+    if (x >= a.x && x < a.x + a.w && y >= a.y && y < a.y + a.h) return ref;
+  }
+  return null;
+}
+
 /** Desenhos feitos à mão (o pack gratuito não tem): quadros, monitores, objetos de mesa, luminárias, câmera… */
 export type TipoDecor =
   | "quadro-ideias" | "quadro-viral" | "quadro-vendas" | "quadro-parede" | "monitor" | "monitor-costas" | "notebook"

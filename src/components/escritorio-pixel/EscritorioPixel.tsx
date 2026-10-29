@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CheckSquare, Eye, Loader2, LocateFixed, MessageCircle, Play, Users } from "lucide-react";
+import { CheckSquare, Crown, Eye, Loader2, LocateFixed, MessageCircle, Play, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Funcionario3D, Resultado3D } from "@/components/escritorio3d/EscritorioVirtual";
 import { criarMundo, type EstadoPixel, type ModoCamera, type MundoPixel, type PessoaPixel } from "./motor";
-import { montarCena, salaDoSetor } from "./cena";
+import { AREAS, areaEm, montarCena, salaDoSetor, type AreaRef } from "./cena";
 
 // Escritório em pixel art (24/10: cena fixa copiada da imagem de referência do Davi). É o Escritório da página:
 // o mapa (PixiJS) ocupa quase tudo e o painel da direita tem a tarefa atual, a próxima reunião, o que precisa
@@ -30,8 +30,10 @@ const Card = ({ icone: Icone, titulo, children }: { icone: typeof Users; titulo:
   </section>
 );
 
-export default function EscritorioPixel({ setores, funcionarios, resultado, lateral, onFalhou, onConversar, onAbrirTarefa }: {
-  setores: { id: string; nome: string }[];
+export default function EscritorioPixel({ setores, funcionarios, resultado, lateral, onFalhou, onConversar, onAbrirTarefa, onMudarHead }: {
+  setores: { id: string; nome: string; headId?: string | null }[];
+  /** escolher o head do setor (29/10) */
+  onMudarHead?: (setorId: string, membroId: string | null) => void;
   funcionarios: (Funcionario3D & { setorId?: string | null })[];
   resultado: Resultado3D | null;
   /** "Precisa de você" e "Em andamento", no painel da direita */
@@ -47,6 +49,9 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
   const [erro, setErro] = useState<string | null>(null);
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [camera, setCamera] = useState<ModoCamera>("geral");
+  // Sala em foco (29/10, Davi: "ao clicar em cada setor, dê um foco para ele"): a câmera aproxima nela e o painel
+  // mostra o setor, o head e a equipe.
+  const [salaFoco, setSalaFoco] = useState<AreaRef | null>(null);
   const cena = useMemo(() => montarCena(), []);
   // 24/10 (Davi): sem faixa vazia em cima e embaixo do mapa: a altura do bloco segue o formato do mapa.
   const colunaMapa = useRef<HTMLDivElement>(null);
@@ -63,15 +68,21 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
 
   const nomeSetor = useMemo(() => new Map(setores.map((s) => [s.id, s.nome])), [setores]);
   // Cada pessoa vai para a sala do setor dela (pelo nome do setor); setor sem sala trabalha na Área Colaborativa.
+  const headDe = useMemo(() => new Map(setores.map((s) => [s.id, s.headId ?? null])), [setores]);
   const pessoas = useMemo<PessoaPixel[]>(() => funcionarios.map((f) => ({
     id: f.id, nome: f.nome, estado: f.sinal, agora: f.agora ?? null,
     setorId: salaDoSetor(nomeSetor.get(f.setorId ?? "") ?? ""),
-  })), [funcionarios, nomeSetor]);
+    head: !!f.setorId && headDe.get(f.setorId) === f.id,
+  })), [funcionarios, nomeSetor, headDe]);
 
   useEffect(() => {
     let cancelado = false;
     let criado: MundoPixel | null = null;
-    criarMundo(caixa.current!, { aoClicar: setSelecionado, aoMudarCamera: setCamera }, cena).then((m) => {
+    criarMundo(caixa.current!, {
+      aoClicar: setSelecionado,
+      aoMudarCamera: (modo) => { setCamera(modo); if (modo !== "sala") setSalaFoco(null); },
+      aoClicarChao: (x, y) => { const a = areaEm(x, y); setSalaFoco((atual) => (a && a !== "copa" ? (atual === a ? null : a) : null)); },
+    }, cena).then((m) => {
       if (cancelado) { m.destruir(); return; }
       criado = m;
       mundo.current = m;
@@ -86,7 +97,13 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
 
   useEffect(() => { if (pronto) mundo.current?.atualizar(pessoas, resultado); }, [pronto, pessoas, resultado]);
   useEffect(() => { mundo.current?.selecionar(selecionado); }, [pronto, selecionado]);
-  useEffect(() => { mundo.current?.camera(camera); }, [pronto, camera]);
+  useEffect(() => { if (camera !== "sala") mundo.current?.camera(camera); }, [pronto, camera]);
+  useEffect(() => {
+    mundo.current?.focarSala(salaFoco ? AREAS[salaFoco] : null);
+    if (salaFoco) setCamera("sala");
+  }, [pronto, salaFoco]);
+  // Setores que trabalham na sala em foco (setor sem sala própria fica na Área Colaborativa).
+  const setoresDaSala = salaFoco ? setores.filter((s) => (salaDoSetor(s.nome) ?? "colab") === salaFoco) : [];
   useEffect(() => {
     if (!selecionado) return;
     const tecla = (e: KeyboardEvent) => { if (e.key === "Escape") setSelecionado(null); };
@@ -110,11 +127,46 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
 
       <aside className="dark flex w-[320px] shrink-0 flex-col gap-2.5 overflow-y-auto border-l border-white/10 bg-[#0b1120] p-2.5">
         <div className="flex items-center gap-1.5">
-          <button type="button" onClick={() => setCamera((c) => (c === "geral" ? "seguir" : "geral"))}
+          <button type="button" onClick={() => { setSalaFoco(null); setCamera((c) => (c === "geral" ? "seguir" : "geral")); }}
             className="flex flex-1 items-center justify-center gap-1.5 rounded-md border border-white/10 bg-[#121a2b] px-2 py-1.5 text-[11px] font-semibold hover:bg-[#18233a]">
             {camera === "geral" ? <><LocateFixed className="h-3.5 w-3.5" />Seguir meu boneco</> : <><Eye className="h-3.5 w-3.5" />Visão geral</>}
           </button>
         </div>
+        {!salaFoco && camera === "geral" && <p className="px-1 text-[10.5px] text-white/45">Clique numa sala do mapa para ver o setor de perto.</p>}
+
+        {salaFoco && (
+          <Card icone={Users} titulo={AREAS[salaFoco].nome}>
+            {setoresDaSala.length === 0 && <p className="text-[11px] text-white/55">Nenhum setor trabalha nesta sala.</p>}
+            {setoresDaSala.map((s) => {
+              const equipe = funcionarios.filter((f) => f.setorId === s.id);
+              const head = equipe.find((f) => f.id === s.headId);
+              return (
+                <div key={s.id} className="mb-2 last:mb-0">
+                  {setoresDaSala.length > 1 && <p className="mb-1 text-[11px] font-semibold text-white/80">{s.nome}</p>}
+                  <label className="mb-1.5 flex items-center gap-1.5 text-[11px] text-white/70">
+                    <Crown className="h-3.5 w-3.5 text-amber-300" />Head
+                    <select value={head?.id ?? ""} disabled={!onMudarHead} onChange={(e) => onMudarHead?.(s.id, e.target.value || null)}
+                      className="min-w-0 flex-1 rounded border border-white/10 bg-[#0b1120] px-1.5 py-0.5 text-[11px] text-white outline-none">
+                      <option value="">Sem head</option>
+                      {equipe.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                    </select>
+                  </label>
+                  {equipe.length === 0 && <p className="text-[11px] text-white/55">Ninguém neste setor.</p>}
+                  {equipe.map((f) => (
+                    <button key={f.id} type="button" onClick={() => setSelecionado(f.id)}
+                      className="flex w-full items-center gap-2 rounded px-1 py-1 text-left hover:bg-white/5">
+                      <Avatar nome={f.nome} className="h-6 w-6 text-[10px]" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[12px] font-medium">{f.id === s.headId && "👑 "}{f.nome}</span>
+                        <span className="block truncate text-[10.5px] text-white/55">{f.agora ?? ROTULO[f.sinal]}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </Card>
+        )}
 
         {emFoco && (
         <Card icone={CheckSquare} titulo={emFoco.nome}>
@@ -132,7 +184,7 @@ export default function EscritorioPixel({ setores, funcionarios, resultado, late
                   )}
                 </div>
               </div>
-              <p className="mt-1.5 text-[11px] text-white/55">{emFoco.nome} · {setorDe(emFoco)}{emFoco.tarefa?.minutosRestantes != null && ` · ~${emFoco.tarefa.minutosRestantes} min`}</p>
+              <p className="mt-1.5 text-[11px] text-white/55">{emFoco.nome} · {emFoco.setorId && headDe.get(emFoco.setorId) === emFoco.id ? `👑 Head de ${setorDe(emFoco)}` : setorDe(emFoco)}{emFoco.tarefa?.minutosRestantes != null && ` · ~${emFoco.tarefa.minutosRestantes} min`}</p>
               <div className="mt-2 flex gap-1.5">
                 <button type="button" disabled={!emFoco.tarefa} onClick={() => onAbrirTarefa(emFoco)}
                   className="flex flex-1 items-center justify-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[11px] font-medium hover:bg-white/15 disabled:opacity-40"><Play className="h-3 w-3" />Abrir tarefa</button>

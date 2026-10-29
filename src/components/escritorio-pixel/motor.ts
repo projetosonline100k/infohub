@@ -1,5 +1,5 @@
 import { AnimatedSprite, Application, Assets, Container, Graphics, Rectangle, Sprite, Text, Texture, TextureStyle } from "pixi.js";
-import { PAREDES, PISOS, TILE, caminho, type Estacao, type Recorte, type TipoEstacao } from "./mapa";
+import { PAREDES, PISOS, TILE, caminho, type Estacao, type Recorte } from "./mapa";
 import type { Planta } from "./cena";
 import { canvasDaLuz, desenharDecor } from "./decor";
 
@@ -13,7 +13,7 @@ const DIR = { dir: 0, cima: 1, esq: 2, baixo: 3 } as const;
 type Direcao = keyof typeof DIR;
 
 export type EstadoPixel = "trabalhando" | "esperando" | "problema" | "parado" | "reuniao";
-export type ModoCamera = "geral" | "seguir";
+export type ModoCamera = "geral" | "seguir" | "sala";
 
 export interface PessoaPixel {
   id: string;
@@ -23,6 +23,8 @@ export interface PessoaPixel {
   setorId: string | null;
   /** texto do balão (aparece no hover/seleção) */
   agora?: string | null;
+  /** head do setor (29/10): coroa no nome */
+  head?: boolean;
 }
 
 export interface ResultadoPixel { concluidas: number; publicados: number; faltam: number; atrasadas: number; destaque: string }
@@ -53,22 +55,20 @@ function modeloDe(id: string): Modelo {
   return MODELOS[h % MODELOS.length];
 }
 
-function tipoDesejado(p: PessoaPixel): TipoEstacao[] {
-  if (p.estado === "reuniao") return ["reuniao", "espera", "sofa"];
-  if (p.estado === "trabalhando" || p.estado === "problema") return ["mesa", "reuniao", "espera", "sofa"];
-  if (p.estado === "esperando") return ["espera", "sofa", "copa"];
-  return ["copa", "sofa", "espera"];
-}
 
 export interface MundoPixel {
   atualizar(pessoas: PessoaPixel[], resultado: ResultadoPixel | null): void;
   selecionar(id: string | null): void;
   camera(modo: ModoCamera): void;
+  /** Aproxima a câmera numa sala (área em tiles); null volta para a visão geral. */
+  focarSala(area: { x: number; y: number; w: number; h: number } | null): void;
   destruir(): void;
 }
 
 export interface Avisos {
   aoClicar: (id: string | null) => void;
+  /** clique no chão de uma sala (tile), para aproximar nela */
+  aoClicarChao?: (x: number, y: number) => void;
   aoMudarCamera: (modo: ModoCamera) => void;
 }
 
@@ -257,7 +257,7 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
 
   const criarEtiqueta = (b: Boneco) => {
     limpar(b.etiqueta);
-    const nome = texto(b.p.nome.split(" ")[0], 5, 0xffffff, "800");
+    const nome = texto(`${b.p.head ? "👑 " : ""}${b.p.nome.split(" ")[0]}`, 5, b.p.head ? 0xfde68a : 0xffffff, "800");
     const dica = b.p.id === perto && b.p.id !== selecionado ? "E para conversar" : null;
     const linha2 = dica ?? (b.p.agora ? (b.p.agora.length > 34 ? `${b.p.agora.slice(0, 33)}…` : b.p.agora) : null);
     const agora = linha2 ? texto(linha2, 3.8, dica ? 0xfde68a : 0xd6d3d1, "400") : null;
@@ -325,16 +325,18 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     b.alerta.position.set(x, y + dy - alto - 5);
   };
 
+  // 29/10 (Davi: "a equipe sempre nos seus setores"): cada um fica nos lugares da sala do setor dele (quem não
+  // tem sala, na Área Colaborativa) — ninguém sai para a copa, o sofá ou a reunião. Sala cheia: divide o lugar.
   const escolherEstacao = (b: Boneco) => {
-    const tipos = tipoDesejado(b.p);
-    const serve = (e: Estacao, tipo: TipoEstacao) => e.tipo === tipo && (tipo !== "mesa" || e.setorId === b.p.setorId);
-    if (b.estacao && atual.estacoes.includes(b.estacao) && serve(b.estacao, tipos[0])) return b.estacao;
+    const daSala = atual.estacoes.filter((e) => (b.p.setorId ? e.setorId === b.p.setorId : e.tipo === "reuniao"));
+    if (b.estacao && daSala.includes(b.estacao)) return b.estacao;
     const ocupadas = new Set([...bonecos.values()].filter((o) => o !== b).map((o) => o.estacao?.id).filter(Boolean) as string[]);
-    for (const tipo of tipos) {
-      const livre = atual.estacoes.find((e) => serve(e, tipo) && !ocupadas.has(e.id));
-      if (livre) return livre;
-    }
-    return null;
+    const livre = daSala.find((e) => !ocupadas.has(e.id));
+    if (livre) return livre;
+    if (!daSala.length) return null;
+    let h = 0;
+    for (const ch of b.p.id) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    return daSala[h % daSala.length];
   };
 
   const andavelEm = (x: number, y: number) => !!atual.andavel[Math.floor(y)]?.[Math.floor(x)];
@@ -430,7 +432,12 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
 
   app.stage.eventMode = "static";
   app.stage.hitArea = app.screen;
-  app.stage.on("pointertap", (e) => { if (e.target === app.stage) avisos.aoClicar(null); });
+  app.stage.on("pointertap", (e) => {
+    if (e.target !== app.stage) return;
+    avisos.aoClicar(null);
+    const p = mundo.toLocal(e.global);
+    avisos.aoClicarChao?.(Math.floor(p.x / TILE), Math.floor(p.y / TILE));
+  });
 
   const novoBoneco = (p: PessoaPixel, atraso: number): Boneco => {
     const modelo = modeloDe(p.id);
@@ -461,17 +468,26 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     // 24/10: o mapa ocupa todo o espaço do bloco (pedido do Davi), mesmo que o pixel fique levemente desigual.
     return Math.max(0.5, bruta);
   };
+  let salaFocada: { x: number; y: number; w: number; h: number } | null = null;
   const posicionarCamera = () => {
     const w = app.screen.width, h = app.screen.height;
     const lw = atual.largura * TILE * escala, lh = atual.altura * TILE * escala;
     if (modoCamera === "geral") { mundo.position.set(Math.round((w - lw) / 2), Math.round((h - lh) / 2)); return; }
+    if (modoCamera === "sala" && salaFocada) {
+      const cx = (salaFocada.x + salaFocada.w / 2) * TILE * escala, cy = (salaFocada.y + salaFocada.h / 2) * TILE * escala;
+      mundo.position.set(Math.round(w / 2 - cx), Math.round(h / 2 - cy));
+      return;
+    }
     const cx = (jogador.x + 0.5) * TILE * escala, cy = (jogador.y + 0.5) * TILE * escala;
     const px = lw <= w ? (w - lw) / 2 : Math.min(0, Math.max(w - lw, w / 2 - cx));
     const py = lh <= h ? (h - lh) / 2 : Math.min(0, Math.max(h - lh, h / 2 - cy));
     mundo.position.set(Math.round(px), Math.round(py));
   };
   function ajustar() {
-    const nova = modoCamera === "geral" ? escalaGeral() : Math.max(2, Math.round(escalaGeral() * 2.5 * 2) / 2);
+    const nova = modoCamera === "geral" ? escalaGeral()
+      : modoCamera === "sala" && salaFocada
+        ? Math.min(app.screen.width / ((salaFocada.w + 1) * TILE), app.screen.height / ((salaFocada.h + 1) * TILE))
+        : Math.max(2, Math.round(escalaGeral() * 2.5 * 2) / 2);
     if (nova !== escala) { escala = nova; mundo.scale.set(escala); ajustarTextos(); }
     posicionarCamera();
   }
@@ -555,6 +571,11 @@ export async function criarMundo(el: HTMLElement, avisos: Avisos, planta: Planta
     camera(modo) {
       if (modo === modoCamera) return;
       modoCamera = modo;
+      ajustar();
+    },
+    focarSala(area) {
+      salaFocada = area;
+      modoCamera = area ? "sala" : "geral";
       ajustar();
     },
     destruir() {

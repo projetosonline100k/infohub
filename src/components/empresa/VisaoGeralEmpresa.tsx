@@ -232,7 +232,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
   async function carregarDados() {
     const [s, m, t, vv, vy] = await Promise.all([
-      (supabase as unknown as SupabaseClient).from("setores").select("id, nome, descricao, cor, icone, fileira, esteira").eq("cliente_id", clienteId).order("ordem"),
+      (supabase as unknown as SupabaseClient).from("setores").select("id, nome, descricao, cor, icone, fileira, esteira, head_id").eq("cliente_id", clienteId).order("ordem"),
       (supabase as unknown as SupabaseClient).from("membros").select("id, nome, funcao, setor_id, conta_id, eh_ia, link_ia, visual").eq("cliente_id", clienteId).eq("ativo", true).order("ordem"),
       // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
       (supabase as unknown as SupabaseClient).from("atividades").select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, andamento_desde, previsao_fim")
@@ -735,7 +735,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         // 24/10 (Davi): o escritório em pixel art é o Escritório da página; "Precisa de você" e
         // "Em andamento" ficam dentro dele, no painel da direita (no lugar de "Funcionários online").
         <Suspense fallback={<div className="flex h-[calc(100svh-140px)] min-h-[560px] items-center justify-center rounded-xl bg-[#0b1120] text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>}>
-          <EscritorioPixel funcionarios={dados3d.funcionarios} setores={setoresDoMapa} resultado={dados3d.resultado}
+          <EscritorioPixel funcionarios={dados3d.funcionarios} resultado={dados3d.resultado}
+            setores={setoresDoMapa.map((x) => ({ ...x, headId: (setores.find((y) => y.id === x.id) as SetorResumo & { head_id?: string | null })?.head_id ?? null }))}
+            onMudarHead={async (setorId, membroId) => {
+              const { error } = await (supabase as unknown as SupabaseClient).from("setores").update({ head_id: membroId }).eq("id", setorId);
+              if (error) toast.error("Não consegui trocar o head"); else { toast.success(membroId ? "Head do setor atualizado" : "Setor sem head"); void carregar(); }
+            }}
             onFalhou={() => setPixelFalhou(true)}
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
