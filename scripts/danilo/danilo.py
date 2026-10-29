@@ -289,7 +289,8 @@ def no_mac(arquivo):
     """O arquivo do Drive já está baixado (não é "dataless")? Bruto do rclone: sempre dá pra baixar."""
     if isinstance(arquivo, Remoto):
         return True
-    return not (os.stat(arquivo).st_flags & 0x40000000)   # SF_DATALESS
+    # 29/10: st_flags só existe no macOS; no servidor (Linux) o arquivo local já está inteiro.
+    return not (getattr(os.stat(arquivo), "st_flags", 0) & 0x40000000)   # SF_DATALESS
 
 
 def copiar_do_drive(origem, destino, minutos=60, log=print):
