@@ -30,7 +30,15 @@ export async function ligarDesfazerDoMenu() {
   if (!isDesktop()) return;
   const { listen } = await import("@tauri-apps/api/event");
   const tratar = (refazer: boolean) => () => {
-    if (editavel(document.activeElement)) document.execCommand(refazer ? "redo" : "undo");
+    const el = document.activeElement;
+    // Editor de texto (documentos, notas, roteiro): ele tem o próprio histórico e não ouve o "undo" do navegador
+    // (29/10, Davi: "⌘Z não faz nada"). Recebe o próprio atalho, como se a tecla tivesse chegado nele.
+    const editor = el instanceof HTMLElement ? el.closest(".ProseMirror") : null;
+    if (editor) {
+      editor.dispatchEvent(new KeyboardEvent("keydown", { key: "z", code: "KeyZ", metaKey: true, shiftKey: refazer, bubbles: true, cancelable: true }));
+      return;
+    }
+    if (editavel(el)) document.execCommand(refazer ? "redo" : "undo");
     else window.dispatchEvent(new CustomEvent(refazer ? EVENTO_REFAZER : EVENTO_DESFAZER));
   };
   await listen("menu-desfazer", tratar(false));
