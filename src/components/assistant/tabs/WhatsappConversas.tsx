@@ -972,7 +972,12 @@ function Conversa({ conversa, novidade, onVoltar, onVista }: {
   };
   const apagar = async (m: Mensagem) => {
     if (!(await confirmar("Apagar esta mensagem para todos?", { botao: "Apagar para todos", destrutivo: true, descricao: "Ela some para todo mundo na conversa." }))) return;
-    if (await acao("whatsapp_apagar", { chatId: conversa.chat_id, messageId: m.id }, "Não consegui apagar")) setApagadas((x) => new Set(x).add(m.id));
+    if (!(await acao("whatsapp_apagar", { chatId: conversa.chat_id, messageId: m.id }, "Não consegui apagar"))) return;
+    setApagadas((x) => new Set(x).add(m.id));
+    // 30/10 (Davi: "apaguei uma mensagem e ficam aparecendo duas"): sai também do que o app guarda — antes ela só
+    // sumia da tela e voltava ao recarregar a conversa.
+    void (supabase as unknown as SupabaseClient).from("whatsapp_mensagens").delete().eq("id", m.id)
+      .then(({ error }) => { if (error) console.error("Não tirei a mensagem apagada do banco", error); });
   };
   // Citação (26/10, Davi: "preciso que mostre qual é essa mensagem anterior"): o WhatsApp guarda em
   // responde_a só o código curto da mensagem citada ("3A8B…"), que fica no meio do id completo
