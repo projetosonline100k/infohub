@@ -10,10 +10,13 @@ Atlas (scripts/jarvis-ouvinte.py), fazendo o papel do funcionário.
   {"titulo": "...", "entendimento": "...", "entregas": ["..."], "consigo": "sim|em_parte|nao",
    "limites": "...", "precisa_de": ["..."], "prazo_sugerido": "AAAA-MM-DD", "tipo": "copy"}
   FIM
+  python3 scripts/empresa/briefing.py fazer <briefing_id> <<'FIM'
+  {"titulo": "...", "entendimento": "o que vou fazer", "tipo": "copy", "prazo": "AAAA-MM-DD"}
+  FIM                                                             → cria a tarefa e o funcionário já começa
   python3 scripts/empresa/briefing.py pegar                       → (ouvinte) marca as mensagens novas como lidas
 
-Só escreve em briefings/briefing_mensagens. A tarefa só nasce quando o Davi
-clica em "Confirmar" no app."""
+31/10 (Davi: "não quero confirmar; preciso conversar normal e ir fazendo, imagine que é uma pessoa"): o pedido
+vira tarefa direto pelo `fazer`, sem botão de confirmar; a conversa continua aberta. O `propor` é só legado."""
 import json
 import re
 import sys
@@ -133,6 +136,10 @@ def contexto(bid, como=None):
                         AND b.id <> %s AND b.status = 'confirmado'
                       ORDER BY b.atualizado_em DESC LIMIT 6""", (bid, bid))
         anteriores = q.fetchall()
+        q.execute("""SELECT a.titulo, a.situacao, a.progresso FROM atividades a
+                      WHERE a.responsavel_id = (SELECT membro_id FROM briefings WHERE id = %s)
+                        AND NOT a.concluida AND a.deleted_at IS NULL ORDER BY a.created_at DESC LIMIT 10""", (bid,))
+        em_aberto = q.fetchall()
     finally:
         c.rollback()
         c.close()
@@ -153,10 +160,14 @@ def contexto(bid, como=None):
         for quando, titulo, situacao, concluida, cancelada in anteriores:
             fim = 'cancelado' if cancelada else 'concluído' if concluida else (situacao or 'na fila')
             print(f'  - {quando:%d/%m}: {titulo or "(sem título)"} ({fim})')
+    if em_aberto:
+        print('Suas tarefas em aberto agora:')
+        for titulo, situacao, progresso in em_aberto:
+            print(f'  - {titulo} ({situacao or "na fila"}{f", {progresso}%" if progresso else ""})')
     if manual_cadastro and not eu:
         print('Seu manual (do cadastro no app, siga):\n' + manual_cadastro.strip())
     if eh_ia and (nome.lower() in EXECUTORES or autonomo):
-        print('Depois que o Davi confirmar: você começa SOZINHO e entrega um documento para ele aprovar. Diga isso a ele.')
+        print('Você faz SOZINHO e entrega um documento para ele aprovar.')
     print(f'Status do briefing: {status}')
     if melhoria_id:
         print(f'CONVERSA SOBRE UMA MELHORIA DO INFOPRO (kanban do Pedro), id {melhoria_id}. Veja tudo dela (inclusive as pendências com o Davi):'
@@ -278,6 +289,56 @@ def validar(p):
     return p
 
 
+def fazer(bid, bruto):
+    """Pedido claro na conversa: cria a tarefa para o funcionário, na fila (ele já começa). A conversa segue aberta."""
+    p = json.loads(bruto)
+    titulo, entendimento = str(p.get('titulo', '')).strip()[:120], str(p.get('entendimento', '')).strip()
+    if not titulo or not entendimento:
+        raise SystemExit('falta "titulo" ou "entendimento"')
+    if p.get('tipo') and p['tipo'] not in TIPOS:
+        raise SystemExit(f'"tipo" precisa ser um de {sorted(TIPOS)}')
+    prazo = p.get('prazo') or None
+    if prazo and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', str(prazo)):
+        raise SystemExit('"prazo" no formato AAAA-MM-DD')
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""SELECT b.cliente_id, b.user_id, b.membro_id, m.nome FROM public.briefings b JOIN public.membros m ON m.id = b.membro_id
+                      WHERE b.id = %s AND b.status = 'conversando' FOR UPDATE OF b""", (bid,))
+        linha = q.fetchone()
+        if not linha:
+            raise SystemExit('briefing não está em conversa')
+        cliente, dono, membro, nome = linha
+        # Mesma tarefa já em aberto (mensagem repetida, resposta refeita): não duplica.
+        q.execute("""SELECT id FROM public.atividades WHERE responsavel_id = %s AND lower(titulo) = lower(%s)
+                      AND NOT concluida AND deleted_at IS NULL LIMIT 1""", (membro, titulo))
+        ja = q.fetchone()
+        if ja:
+            print('TAREFA_JA_EXISTE', ja[0])
+            return
+        q.execute("SELECT status_key FROM public.colunas_atividade WHERE cliente_id = %s AND NOT eh_conclusao ORDER BY ordem LIMIT 1", (cliente,))
+        coluna = q.fetchone()
+        q.execute("SELECT id FROM public.pastas_atividade WHERE cliente_id = %s AND deleted_at IS NULL ORDER BY ordem LIMIT 1", (cliente,))
+        pasta = q.fetchone()     # sem pasta a tarefa não aparece em Atividades (criarAtividade.ts)
+        if not pasta:
+            q.execute("INSERT INTO public.pastas_atividade(nome, cliente_id, user_id, ordem, origem) VALUES ('Geral', %s, %s, 0, 'atividades') RETURNING id", (cliente, dono))
+            pasta = q.fetchone()
+        q.execute("SELECT papel, texto FROM public.briefing_mensagens WHERE briefing_id = %s ORDER BY criada_em DESC LIMIT 8", (bid,))
+        conversa = [f"{'Davi' if papel == 'davi' else nome}: {texto.strip()}" for papel, texto in reversed(q.fetchall())]
+        descricao = '\n'.join([f'Combinado com {nome} na conversa:', '', entendimento, '', 'Conversa:', *conversa])
+        q.execute("""INSERT INTO public.atividades(user_id, cliente_id, pasta_id, titulo, status, concluida, ordem, data_atividade,
+                                                   data_vencimento, responsavel_id, situacao, tipo, descricao)
+                     VALUES (%s, %s, %s, %s, %s, false, 0, (now() AT TIME ZONE 'America/Sao_Paulo')::date,
+                             coalesce(%s::date, (now() AT TIME ZONE 'America/Sao_Paulo')::date), %s, 'fila', %s, %s) RETURNING id""",
+                  (dono, cliente, pasta[0], titulo, coluna[0] if coluna else 'backlog', prazo, membro, p.get('tipo'), descricao))
+        novo = q.fetchone()[0]
+        q.execute("UPDATE public.briefings SET proposta = NULL, atualizado_em = now() WHERE id = %s", (bid,))
+        c.commit()
+    finally:
+        c.close()
+    print('TAREFA_CRIADA', novo)
+
+
 def propor(bid, bruto):
     p = validar(json.loads(bruto))
     c = connect()
@@ -397,6 +458,8 @@ if __name__ == '__main__':
         convidar(args[1], args[2])
     elif cmd == 'propor':
         propor(args[1], sys.stdin.read())
+    elif cmd == 'fazer':
+        fazer(args[1], sys.stdin.read())
     elif cmd == 'agora':
         agora(args[1], args[2])
     else:

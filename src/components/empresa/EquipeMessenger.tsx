@@ -174,7 +174,7 @@ export function EquipeMessenger({ clienteId, pessoas, onAbrirFila, onMudou, pedi
               </span>
             </button>
           ))}
-          <p className="px-2 pt-2 text-[11px] text-muted-foreground">Converse com alguém: ele diz o que entendeu e, quando você confirma, vira tarefa. O Atlas é o Claude: pede o que quiser no sistema.</p>
+          <p className="px-2 pt-2 text-[11px] text-muted-foreground">Fale com qualquer um como numa conversa normal: pediu, a pessoa já faz. O Atlas é o Claude: pede o que quiser no sistema.</p>
         </div>
       )}
     </div>

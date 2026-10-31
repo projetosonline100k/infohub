@@ -280,8 +280,8 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
 
       {mensagens.length === 0 ? (
         <p className={cn("text-xs text-muted-foreground", messenger && "mt-auto rounded-lg bg-muted/60 p-3")}>
-          Explique o que precisa como se falasse com {membro.eh_ia ? "ele" : "a pessoa"}. {membro.nome} diz o que entendeu, pergunta o que falta e se consegue fazer.
-          A tarefa só sobe quando você confirmar. Digite <b>@</b> para mandar um documento do projeto para {membro.nome} ler.
+          Fale com {membro.nome} como numa conversa normal: pediu, {membro.eh_ia ? "ele já faz" : "a pessoa recebe"}.
+          Digite <b>@</b> para mandar um documento do projeto para {membro.nome} ler.
         </p>
       ) : (
         // A proposta fica dentro da rolagem: texto longo não corta mais (bug de 15/10).
