@@ -1,8 +1,8 @@
 import { textoDoRoteiro } from "@/lib/conteudo/roteirosNoDocumento";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Bot, CalendarDays, Copy, ExternalLink, Eye, Loader2, Play, Plus, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Bot, CalendarDays, CheckCircle2, ChevronDown, Clapperboard, Clock, Copy, ExternalLink, Eye, FileText, Loader2, Pencil, Play, Plus, Zap, X } from "lucide-react";
 import { confirmar } from "@/components/DialogosGlobais";
 import { cancelarTarefa } from "@/lib/empresa/cancelar";
 import { toast } from "sonner";
@@ -19,6 +19,8 @@ import { InteligenciaMembro } from "./InteligenciaMembro";
 import { BriefingTarefa, type TarefaDoBriefing } from "./BriefingTarefa";
 import { RevisaoEntrega } from "./RevisaoEntrega";
 import { PassosTarefa } from "./PassosTarefa";
+import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
+import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import { QuadroPedro } from "./PassarDemanda";
 import { AssistantWhatsappTab } from "@/components/assistant/tabs/AssistantWhatsappTab";
 
@@ -30,7 +32,14 @@ type TarefaFila = TarefaResumo & {
   publica_em?: string | null;
 };
 // Trabalho das IAs que não é tarefa: carrossel do Roy montando, edição do Danilo.
-interface TrabalhoAgora { id: string; titulo: string; etapa: string; desde: string }
+interface TrabalhoAgora { id: string; titulo: string; etapa: string; desde: string; atividadeId?: string | null }
+
+// A mensagem do serviço traz o andamento ("Gerando o Full HD… 15% · falta ~10 min"): separa para a barra.
+function lerEtapa(etapa: string) {
+  const pct = etapa.match(/(\d{1,3})\s*%/)?.[1];
+  const falta = etapa.match(/falta\s*~?\s*([^·]+)/i)?.[1]?.trim();
+  return { pct: pct ? Math.min(100, Number(pct)) : null, falta: falta ?? null, texto: etapa.split(/\s*(?:…\s*)?\d{1,3}\s*%/)[0].replace(/[…·\s]+$/, "") || etapa };
+}
 
 const minutos = (ms: number) => Math.max(0, Math.round(ms / 60000));
 const duracaoTexto = (min: number) => (min >= 60 ? `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}` : `${min} min`);
@@ -158,7 +167,19 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   const [passarTarefa, setPassarTarefa] = useState(false);
   const [trabalho, setTrabalho] = useState<TrabalhoAgora[]>([]);
   const [agora, setAgora] = useState(() => Date.now());
-  const [revisando, setRevisando] = useState(false);
+  // Qual entrega está aberta para revisar (31/10: cada cartão abre a dele); "todas" = navega entre as entregas.
+  const [revisando, setRevisando] = useState<string | null>(null);
+  const [verHoje, setVerHoje] = useState(false);
+  // "Ver atividade": o painel completo da tarefa.
+  const [aberta, setAberta] = useState<{ atividade: Record<string, unknown>; colunas: unknown[] } | null>(null);
+  const abrirAtividade = async (id: string) => {
+    const { data } = await supabase.from("atividades").select("*").eq("id", id).maybeSingle();
+    if (!data) { toast.error("Não achei essa atividade"); return; }
+    let q = supabase.from("colunas_atividade").select("*").order("ordem");
+    q = data.cliente_id ? q.eq("cliente_id", data.cliente_id) : q.is("cliente_id", null);
+    const { data: colunas } = await q;
+    setAberta({ atividade: data as Record<string, unknown>, colunas: colunas ?? [] });
+  };
   const ehPedro = !!membro?.eh_ia && membro.nome.trim().toLowerCase() === "pedro";
   // CS (Shirley, Core, 16/10): "eu clico nela e aparece o WhatsApp" — o mesmo WhatsApp do Atlas.
   const ehCs = !!membro?.eh_ia && (membro.nome.trim().toLowerCase() === "shirley" || /sucesso do cliente|\bcs\b/i.test(membro.funcao ?? ""));
@@ -172,9 +193,9 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
   const hoje = format(new Date(), "yyyy-MM-dd");
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (quieto = false) => {
     if (!membro) return;
-    setCarregando(true);
+    if (!quieto) setCarregando(true);
     // andamento_desde/previsao_fim ainda não estão nos tipos gerados.
     const { data } = await (supabase as unknown as SupabaseClient).from("atividades")
       .select("id, titulo, responsavel_id, setor_id, situacao, tipo, data_vencimento, concluida, progresso, concluida_em, video_vertical_id, video_youtube_id, tempo_estimado, timer_iniciado_em, timer_decorrido_segundos, observacao, created_at, andamento_desde, previsao_fim")
@@ -193,15 +214,16 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
     // O que a IA está fazendo fora das tarefas (carrossel / edição em curso).
     const nome = membro.nome.toLowerCase();
     if (nome === "roy") {
-      const { data: cs } = await supabase.from("carrosseis").select("id, numero, tema, status, mensagem, atualizado_em")
+      const { data: cs } = await supabase.from("carrosseis").select("id, numero, tema, status, mensagem, atualizado_em, atividade_id")
         .eq("cliente_id", clienteId).in("status", ["produzindo", "ajuste"]);
       setTrabalho((cs || []).map((c) => ({ id: c.id, titulo: `Carrossel ${String(c.numero ?? "").padStart(3, "0")} · ${c.tema}`,
-        etapa: c.status === "ajuste" ? "Refazendo com o seu ajuste" : c.mensagem || "Montando as páginas", desde: c.atualizado_em })));
+        etapa: c.status === "ajuste" ? "Refazendo com o seu ajuste" : c.mensagem || "Montando as páginas", desde: c.atualizado_em, atividadeId: c.atividade_id })));
     } else if (nome === "danilo") {
-      const { data: es } = await supabase.from("edicoes_video").select("id, titulo, status, mensagem, atualizado_em")
+      const { data: es } = await (supabase as unknown as SupabaseClient).from("edicoes_video").select("id, titulo, status, mensagem, atualizado_em, atividade_id")
         .eq("cliente_id", clienteId).in("status", ["na_fila", "editando", "renderizando", "aprovando"]);
       const ETAPA: Record<string, string> = { na_fila: "Na fila de edição", editando: "Editando", renderizando: "Gerando a versão", aprovando: "Gerando o vídeo final" };
-      setTrabalho((es || []).map((e) => ({ id: e.id, titulo: e.titulo, etapa: e.mensagem || ETAPA[e.status] || e.status, desde: e.atualizado_em })));
+      setTrabalho(((es || []) as { id: string; titulo: string; status: string; mensagem: string | null; atualizado_em: string; atividade_id: string | null }[])
+        .map((e) => ({ id: e.id, titulo: e.titulo, etapa: e.mensagem || ETAPA[e.status] || e.status, desde: e.atualizado_em, atividadeId: e.atividade_id })));
     } else setTrabalho([]);
     setCarregando(false);
   }, [membro, hoje, clienteId]);
@@ -210,6 +232,14 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
     setTitulo(""); setTipo(""); setPrazo(""); setSituacao("fila"); setPassarTarefa(false); setRapida(false);
     void carregar();
   }, [carregar]);
+  // Aberto: o andamento se atualiza sozinho (sem o "carregando", para a tela não piscar).
+  const carregarRef = useRef(carregar);
+  carregarRef.current = carregar;
+  useEffect(() => {
+    if (!membro) return;
+    const t = window.setInterval(() => void carregarRef.current(true), 10_000);
+    return () => window.clearInterval(t);
+  }, [membro]);
 
   const adicionar = async () => {
     if (!membro || !titulo.trim()) return;
@@ -294,26 +324,33 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
   return (
     <>
     <MapaInteligenciaView membro={mapaAberto ? membro : null} aberto={mapaAberto} onFechar={() => setMapaAberto(false)} />
-    {/* Com o mapa aberto, a ficha sai da frente (o diálogo prenderia o foco e os cliques fora dele). */}
-    <Dialog open={!!membro && !mapaAberto} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
-      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehCs ? "max-h-[96vh] w-[97vw] max-w-[97vw]" : ehPedro ? "max-w-6xl" : "max-w-xl")}>
+    {/* Com o mapa ou a atividade abertos, a ficha sai da frente (o diálogo prenderia o foco e os cliques fora dele). */}
+    <Dialog open={!!membro && !mapaAberto && !aberta} onOpenChange={(aberto) => { if (!aberto) onFechar(); }}>
+      <DialogContent className={cn("max-h-[90vh] grid-cols-[minmax(0,1fr)] overflow-y-auto overflow-x-hidden", ehCs ? "max-h-[96vh] w-[97vw] max-w-[97vw]" : ehPedro ? "max-w-6xl" : "max-w-2xl")}>
         {membro && (
           <>
+            {/* Topo (31/10, Davi: "ao clicar, entender o que está acontecendo"): quem é e como está agora. */}
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">{membro.nome}
-                {onEditar && <button type="button" onClick={onEditar} className="rounded-md border px-2 py-0.5 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground">Editar cadastro</button>}
-                {membro.eh_ia && <button type="button" onClick={() => setMapaAberto(true)} className="rounded-md border px-2 py-0.5 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground">Mapa da inteligência</button>}
+              <DialogTitle className="flex flex-wrap items-center gap-2 text-2xl font-bold">{membro.nome}
+                {(() => {
+                  const ocupado = trabalho.length + emAndamento.length > 0;
+                  return (
+                    <span className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
+                      ocupado ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" : esperando.length ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground")}>
+                      <span className={cn("h-2 w-2 rounded-full", ocupado ? "bg-emerald-500" : esperando.length ? "bg-amber-500" : "bg-zinc-400")} />
+                      {ocupado ? "Trabalhando agora" : esperando.length ? "Precisa de você" : "Livre"}
+                    </span>
+                  );
+                })()}
               </DialogTitle>
               <DialogDescription>{[membro.funcao, setorNome].filter(Boolean).join(" · ")}</DialogDescription>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {onEditar && <button type="button" onClick={onEditar} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">Editar cadastro</button>}
+                {membro.eh_ia && <button type="button" onClick={() => setMapaAberto(true)} className="rounded-lg border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground">Mapa da inteligência</button>}
+              </div>
             </DialogHeader>
 
-            {ia && membro.nome.toLowerCase() === "roy" ? (
-              // O Roy roda no Mac com o Claude (scripts/roy/servico.py): não precisa levar nada até ele.
-              <div className="space-y-1 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 text-sm">
-                <p className="flex items-center gap-1.5 font-medium"><Bot className="h-4 w-4 text-emerald-500" />{membro.nome} trabalha sozinho, no seu Mac</p>
-                <p className="text-xs text-muted-foreground">Passe uma tarefa pra ele (ex.: “transforme um reel em carrossel”): ele cria e manda pra sua revisão em <b>Precisa de você</b>. Lá você aprova, exclui página, edita texto ou escreve o que ele deve mudar: ele refaz em segundo plano.</p>
-              </div>
-            ) : ia && membro.link_ia && (
+            {ia && membro.link_ia && membro.nome.toLowerCase() !== "roy" && (
               // IA operária que ainda é conversa do ChatGPT: o Davi leva o trabalho até ela.
               <div className="space-y-2 rounded-lg border border-sky-500/30 bg-sky-500/5 p-3 text-sm">
                 <p className="flex items-center gap-1.5 font-medium"><Bot className="h-4 w-4 text-sky-500" />{membro.nome} é uma conversa do ChatGPT</p>
@@ -342,58 +379,71 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
               </section>
             )}
 
-            {/* 1. Em andamento (15/10: um bloco só — o "Agora" repetia a mesma lista) */}
-            {carregando ? (
+            {carregando && !tarefas.length ? (
               <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
             ) : (
-              <div className="space-y-4">
-                <section className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">Em andamento ({emAndamento.length + trabalho.length})</p>
+              <div className="space-y-5">
+                {/* 1. Trabalhando agora */}
+                <section className="rounded-2xl border border-sky-500/30 bg-sky-500/5 p-4">
+                  <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-sky-700 dark:text-sky-400"><Zap className="h-3.5 w-3.5 fill-current" />Trabalhando agora</p>
                   {emAndamento.length === 0 && trabalho.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">{membro.nome} não está fazendo nada agora{abertas.length ? ` · ${abertas.length} na fila` : ""}.</p>
+                    <p className="text-sm text-muted-foreground">{membro.nome} não está fazendo nada agora{naFila.length ? ` · ${naFila.length} na fila` : ""}.</p>
                   ) : (
-                    <div className="space-y-2.5">
-                      {trabalho.map((w) => (
-                        <div key={w.id}>
-                          <p className="text-sm font-medium">{w.titulo}</p>
-                          <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />{w.etapa} · desde {format(new Date(w.desde), "HH:mm")} ({duracaoTexto(minutos(agora - new Date(w.desde).getTime()))})</p>
-                        </div>
-                      ))}
+                    <div className="space-y-5">
+                      {trabalho.map((w) => {
+                        const e = lerEtapa(w.etapa);
+                        return (
+                          <div key={w.id}>
+                            <p className="break-words text-lg font-bold leading-snug">{w.titulo}</p>
+                            <p className="mt-0.5 text-sm text-muted-foreground">{e.texto}</p>
+                            {e.pct != null ? (
+                              <div className="mt-2 flex items-center gap-3">
+                                <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${e.pct}%` }} /></div>
+                                <span className="text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{e.pct}%</span>
+                              </div>
+                            ) : <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full w-1/3 animate-pulse rounded-full bg-sky-500/60" /></div>}
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                              <span className="flex items-center gap-1.5"><Loader2 className="h-3 w-3 animate-spin" />{e.falta ? `falta ${e.falta} · ` : ""}desde {format(new Date(w.desde), "HH:mm")} ({duracaoTexto(minutos(agora - new Date(w.desde).getTime()))})</span>
+                              {w.atividadeId && <button type="button" onClick={() => void abrirAtividade(w.atividadeId!)} className="flex items-center gap-1 font-medium text-sky-700 hover:underline dark:text-sky-400">Ver atividade<ArrowRight className="h-3.5 w-3.5" /></button>}
+                            </div>
+                          </div>
+                        );
+                      })}
                       {emAndamento.map((t) => {
                         const tt = tempoDaTarefa(t, agora);
+                        const m = minutosRestantes(t, agora);
                         return (
                           <div key={t.id}>
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="min-w-0 flex-1 break-words text-sm font-medium">{t.titulo}</p>
-                              <span className="shrink-0 text-right">
-                                <span className="block text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{tt.pct ?? 0}%</span>
-                                {(() => { const m = minutosRestantes(t, agora); return m != null ? <span className="block text-[10px] text-muted-foreground">faltam {textoRestante(m)}</span> : null; })()}
-                              </span>
-                              {ia && (
-                                <button type="button" onClick={() => void copiarParaIa(t)} title="Copiar título e roteiro pro ChatGPT"
-                                  className="flex h-6 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] hover:bg-accent"><Copy className="h-3 w-3" />Copiar</button>
-                              )}
-                              <button type="button" onClick={() => void cancelar(t)} title="Cancelar tarefa (vai pra Lixeira)"
-                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
+                            <div className="flex items-start gap-2">
+                              <p className="min-w-0 flex-1 break-words text-lg font-bold leading-snug">{t.titulo}</p>
+                              {ia && <button type="button" onClick={() => void copiarParaIa(t)} title="Copiar título e roteiro pro ChatGPT" className="flex h-6 shrink-0 items-center gap-1 rounded-md border px-1.5 text-[11px] hover:bg-accent"><Copy className="h-3 w-3" />Copiar</button>}
                               <select value={t.situacao ?? "andamento"} onChange={(e) => void mudarSituacao(t, e.target.value)} aria-label="Situação"
                                 className={cn("h-6 shrink-0 rounded-md border-0 px-1.5 text-[11px] font-medium", CORES_SITUACAO[t.situacao ?? "andamento"])}>
                                 {SITUACOES.map((x) => <option key={x.valor} value={x.valor}>{x.rotulo}</option>)}
                               </select>
+                              <button type="button" onClick={() => void cancelar(t)} title="Cancelar tarefa (vai pra Lixeira)" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
                             </div>
-                            <div className="mt-1 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct ?? 0}%` }} /></div>
+                            {t.observacao && <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">{t.observacao}</p>}
+                            <div className="mt-2 flex items-center gap-3">
+                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${tt.pct ?? 0}%` }} /></div>
+                              <span className="text-sm font-bold tabular-nums text-sky-700 dark:text-sky-400">{tt.pct ?? 0}%</span>
+                            </div>
                             {!membro.eh_ia && (
                               <input key={`${t.id}-${tt.pct ?? 0}`} type="range" min={0} max={100} step={10} defaultValue={tt.pct ?? 0} aria-label="Quanto já foi feito"
                                 onPointerUp={(e) => void mudarProgresso(t, Number((e.target as HTMLInputElement).value))}
                                 onKeyUp={(e) => void mudarProgresso(t, Number((e.target as HTMLInputElement).value))}
                                 className="mt-1 h-1 w-full cursor-pointer accent-sky-500" title="Arraste para marcar quanto já foi feito" />
                             )}
-                            <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs text-muted-foreground">
-                              <span>{tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `Desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "Em andamento"} ·</span>
-                              {tt.rotuloAlvo === "publica" && tt.alvo
-                                ? <span>a Dalila publica <b className="text-foreground">{format(tt.alvo, "EEE, d MMM 'às' HH:mm", { locale: ptBR })}</b></span>
-                                : <span className="inline-flex items-center gap-1">entrega <b className="text-foreground"><PrazoEditavel valor={t.data_vencimento} onMudar={(d) => void mudarPrazo(t, d)} /></b>{tt.falta != null && <> (em {faltaTexto(tt.falta)})</>}</span>}
-                            </p>
-                            {t.observacao && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">“{t.observacao}”</p>}
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                              <span className="flex flex-wrap items-center gap-x-1">
+                                {m != null && <span>faltam {textoRestante(m)} ·</span>}
+                                <span>{tt.feito > 0 ? `${duracaoTexto(tt.feito)} trabalhados${tt.rodando ? " (cronômetro rodando)" : ""}` : t.created_at ? `desde ${format(new Date(t.created_at), "dd/MM HH:mm")}` : "em andamento"} ·</span>
+                                {tt.rotuloAlvo === "publica" && tt.alvo
+                                  ? <span>a Dalila publica <b className="text-foreground">{format(tt.alvo, "EEE, d MMM 'às' HH:mm", { locale: ptBR })}</b></span>
+                                  : <span className="inline-flex items-center gap-1">entrega <b className="text-foreground"><PrazoEditavel valor={t.data_vencimento} onMudar={(d) => void mudarPrazo(t, d)} /></b></span>}
+                              </span>
+                              <button type="button" onClick={() => void abrirAtividade(t.id)} className="flex items-center gap-1 font-medium text-sky-700 hover:underline dark:text-sky-400">Ver atividade<ArrowRight className="h-3.5 w-3.5" /></button>
+                            </div>
                             {membro.eh_ia && <PassosTarefa atividadeId={t.id} aoVivo />}
                           </div>
                         );
@@ -402,11 +452,83 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
                   )}
                 </section>
 
-                {/* 2. As tarefas, por situação */}
-                <ListaTarefas titulo="Na fila" vazio="Nada na fila." tarefas={naFila} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onCopiar={ia ? (t) => void copiarParaIa(t) : undefined}
-                  onComecar={ia ? (t) => void comecarAgora(t) : undefined} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />
-                {esperando.length > 0 && <ListaTarefas titulo="Esperando sua aprovação" comPassos={membro.eh_ia} tarefas={esperando} hoje={hoje} agora={agora} onMudar={mudarSituacao} onCancelar={(t) => void cancelar(t)} onRevisar={() => setRevisando(true)} onMudarPrazo={(t, d) => void mudarPrazo(t, d)} />}
-                {feitasHoje.length > 0 && <ListaTarefas titulo="Concluídas hoje" comPassos={membro.eh_ia} tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} />}
+                {/* 2. Próximo na fila */}
+                <section>
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground"><Clock className="h-3.5 w-3.5" />Próximo na fila · {naFila.length}</p>
+                  {naFila.length === 0 ? <p className="rounded-xl border border-dashed p-3 text-center text-sm text-muted-foreground">Nada na fila.</p> : (
+                    <div className="space-y-2">
+                      {naFila.map((t, i) => {
+                        const atrasada = tarefaAtrasada(t, hoje);
+                        const pedido = (t.observacao ?? "").startsWith("▶️");
+                        return (
+                          <div key={t.id} className="flex items-center gap-3 rounded-xl border p-3">
+                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-sm font-semibold text-muted-foreground">{i + 1}</span>
+                            <button type="button" onClick={() => void abrirAtividade(t.id)} className="min-w-0 flex-1 text-left">
+                              <span className="block break-words text-sm font-semibold hover:underline">{t.titulo}</span>
+                              <span className="block truncate text-xs text-muted-foreground">{TIPOS.find((x) => x.valor === t.tipo)?.rotulo ?? "Tarefa"}</span>
+                            </button>
+                            <span className="shrink-0 text-xs text-muted-foreground"><PrazoEditavel valor={t.data_vencimento} atrasada={atrasada} onMudar={(d) => void mudarPrazo(t, d)} /></span>
+                            {ia && <button type="button" onClick={() => void comecarAgora(t)} disabled={pedido} title="Fazer começar agora (mesmo se já tentou e falhou)"
+                              className="flex h-7 shrink-0 items-center gap-1 rounded-md bg-emerald-600 px-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"><Play className="h-3 w-3 fill-current" />{pedido ? "Começando…" : "Começar"}</button>}
+                            {ia && <button type="button" onClick={() => void copiarParaIa(t)} title="Copiar título e roteiro pro ChatGPT" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border hover:bg-accent"><Copy className="h-3 w-3" /></button>}
+                            {!ia && (
+                              <select value={t.situacao ?? "fila"} onChange={(e) => void mudarSituacao(t, e.target.value)} aria-label="Situação"
+                                className={cn("h-7 shrink-0 rounded-md border-0 px-2 text-xs font-medium", CORES_SITUACAO[t.situacao ?? "fila"])}>
+                                {SITUACOES.map((s) => <option key={s.valor} value={s.valor}>{s.rotulo}</option>)}
+                              </select>
+                            )}
+                            <button type="button" onClick={() => void cancelar(t)} title="Cancelar tarefa (vai pra Lixeira)" className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><X className="h-3.5 w-3.5" /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+
+                {/* 3. Precisa de você */}
+                {esperando.length > 0 && (
+                  <section>
+                    <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400"><AlertCircle className="h-3.5 w-3.5" />Precisa de você · {esperando.length}</p>
+                    <div className="space-y-3">
+                      {esperando.map((t) => {
+                        const Icone = t.tipo === "edicao" ? Clapperboard : FileText;
+                        return (
+                          <div key={t.id} className="grid gap-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,240px)]">
+                            <div className="min-w-0">
+                              <div className="flex items-start gap-3">
+                                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-700 dark:text-amber-400"><Icone className="h-5 w-5" /></span>
+                                <div className="min-w-0">
+                                  <button type="button" onClick={() => void abrirAtividade(t.id)} className="break-words text-left text-sm font-bold hover:underline">{t.titulo}</button>
+                                  {t.observacao && <p className="mt-0.5 line-clamp-3 text-xs text-muted-foreground">{t.observacao}</p>}
+                                </div>
+                              </div>
+                              <p className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />Pronto para sua revisão</p>
+                              <div className="mt-3 flex flex-wrap items-center gap-3">
+                                <Button size="sm" className="gap-1.5" onClick={() => setRevisando(t.id)}>
+                                  {t.tipo === "edicao" ? <><Play className="h-3.5 w-3.5 fill-current" />Assistir e aprovar</> : <><Eye className="h-3.5 w-3.5" />Ver e aprovar</>}
+                                </Button>
+                                <button type="button" onClick={() => setRevisando(t.id)} className="flex items-center gap-1 text-xs font-medium text-sky-700 hover:underline dark:text-sky-400"><Pencil className="h-3 w-3" />Solicitar alteração</button>
+                                <button type="button" onClick={() => void cancelar(t)} className="text-xs text-muted-foreground hover:text-rose-600">Cancelar</button>
+                              </div>
+                            </div>
+                            {membro.eh_ia && <PassosTarefa atividadeId={t.id} />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
+
+                {/* 4. Concluídas hoje (recolhido: é consulta) */}
+                {feitasHoje.length > 0 && (
+                  <section>
+                    <button type="button" onClick={() => setVerHoje(!verHoje)} className="flex w-full items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted-foreground hover:text-foreground">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />Concluídas hoje · {feitasHoje.length}
+                      <ChevronDown className={cn("ml-auto h-4 w-4 transition-transform", verHoje && "rotate-180")} />
+                    </button>
+                    {verHoje && <div className="mt-2"><ListaTarefas titulo="" comPassos={membro.eh_ia} tarefas={feitasHoje} hoje={hoje} agora={agora} onMudar={mudarSituacao} /></div>}
+                  </section>
+                )}
               </div>
             )}
 
@@ -443,12 +565,15 @@ export function FilaPessoa({ clienteId, membro, setorNome, onFechar, onMudou, on
             </div>
 
             <InteligenciaMembro clienteId={clienteId} membro={membro} />
-            <RevisaoEntrega clienteId={clienteId} tarefas={esperando} aberto={revisando} onFechar={() => setRevisando(false)}
+            <RevisaoEntrega clienteId={clienteId} tarefas={esperando.filter((t) => t.id === revisando)} aberto={!!revisando} onFechar={() => setRevisando(null)}
               onMudou={() => { void carregar(); onMudou(); }} />
           </>
         )}
       </DialogContent>
     </Dialog>
+    <AtividadeDetailPanel open={!!aberta} onClose={() => setAberta(null)} atividade={aberta?.atividade as never}
+      colunas={(aberta?.colunas ?? []) as never} onUpdate={() => { void carregar(true); onMudou(); if (aberta) void abrirAtividade(String(aberta.atividade.id)); }}
+      onDelete={(id) => void excluirAtividade(id, () => undefined).then((ok) => { if (ok) { setAberta(null); void carregar(true); onMudou(); } })} />
     </>
   );
 }
@@ -464,7 +589,7 @@ function ListaTarefas({ titulo, vazio, tarefas, hoje, agora, onMudar, onCopiar, 
 }) {
   return (
     <div>
-      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo} ({tarefas.length})</p>
+      {titulo && <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo} ({tarefas.length})</p>}
       {tarefas.length === 0 ? (
         <p className="py-3 text-center text-sm text-muted-foreground">{vazio}</p>
       ) : (
