@@ -135,7 +135,9 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
   const guias = useWorkspaceTabsOpcional();
   const ir = (rota: string) => {
     onOpenChange(false);
-    if (guias) guias.abrirNovaGuia(rota);
+    // Só a guia nova: o layout leva o endereço até ela. Navegar aqui também podia cair na guia que estava aberta e
+    // substituí-la (31/10, Davi: "ao clicar no item, a guia atual não seja substituída").
+    if (guias) { guias.abrirNovaGuia(rota); return; }
     navigate(rota);
   };
 
