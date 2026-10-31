@@ -419,9 +419,17 @@ def atender_drive():
             progresso(e["atividade"], 20, "Piloto pronto em Precisa de você › Revisar edição. Quando aprovar, edito os outros "
                       "com os mesmos ajustes.", "aguardando_aprovacao")
         else:
-            progresso(e["atividade"], int(20 + 80 * e["feitos"] / max(e["total"], 1)),
-                      f"Agora: {e['feitos']} de {e['total']} prontos em Revisar edição; começando o próximo.",
-                      faltam_videos=max(e["total"] - e["feitos"], 0))
+            # 31/10: no estilo do projeto, editar() só põe na fila (atender_formato edita depois): não é "pronto"
+            # ainda — a tarefa ficava em 100% "fazendo agora" com o vídeo fora de Revisar edição.
+            na_fila = danilo.db("SELECT 1 FROM public.edicoes_video WHERE id = %s AND status = 'na_fila'", (id_,))
+            if na_fila:
+                progresso(e["atividade"], min(90, int(20 + 80 * (e["feitos"] - 1) / max(e["total"], 1))),
+                          f"Editando o vídeo {e['feitos']} de {e['total']}. Quando ficar pronto, aparece em Revisar edição.",
+                          faltam_videos=max(e["total"] - e["feitos"] + 1, 0))
+            else:
+                progresso(e["atividade"], int(20 + 80 * e["feitos"] / max(e["total"], 1)),
+                          f"Agora: {e['feitos']} de {e['total']} prontos em Revisar edição; começando o próximo.",
+                          faltam_videos=max(e["total"] - e["feitos"], 0))
     return True
 
 
@@ -621,9 +629,10 @@ if __name__ == "__main__":
             danilo.ligar_tarefas()
             if danilo.PRINCIPAL:
                 danilo.guardar_editados(log)
-            if atender_tarefa():
-                continue
+            # Vídeo que já está na fila vem antes de tarefa nova (31/10: um piloto passou na frente da edição).
             if atender_formato():
+                continue
+            if atender_tarefa():
                 continue
             if danilo.OLHA_DRIVE and time.time() - ultima_drive > 60:       # a cada minuto olha as pastas de entrada
                 ultima_drive = time.time()
