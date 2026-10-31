@@ -79,8 +79,11 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     if (!mesa) return;
     const obs = new ResizeObserver(() => setVersao((v) => v + 1));
     obs.observe(mesa);
+    // A folha também: o zoom muda o tamanho dela sem mudar o da mesa.
+    const folha = editor.view.dom.closest<HTMLElement>(".superficie-folha");
+    if (folha) obs.observe(folha);
     return () => obs.disconnect();
-  }, [mesa]);
+  }, [mesa, editor]);
 
   // Pedido de comentário (botão do menu de seleção, ou ⌘⌥M): guarda o trecho selecionado e abre o cartão novo.
   const comecar = useCallback(() => {
@@ -188,20 +191,23 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
     // Coluna dos comentários (25/10, Davi: "o comentário fica em cima do texto"): como no Google Docs, com
     // comentário a folha abre espaço à direita (anda para a esquerda e, se precisar, encolhe). Sem comentário,
     // ela volta ao centro. A margem é dividida pelo zoom da folha (o zoom aumentaria a margem também).
+    // Zoom da folha (⌘ + rodinha): no app do Mac (WebKit) a posição de quem está dentro da folha vem dividida pelo
+    // zoom, e os cartões caíam em cima do texto (30/10). `corrige` devolve a posição real (no Chrome, é 1).
+    const zoom = (folha && parseFloat(getComputedStyle(folha).zoom)) || 1;
+    const corrige = folha?.offsetWidth ? zoom / (folha.getBoundingClientRect().width / folha.offsetWidth) : 1;
     if (folha) {
-      const zoomFolha = folha.offsetWidth ? folha.getBoundingClientRect().width / folha.offsetWidth : 1;
-      const precisa = temCartao ? Math.round((LARGURA + 40) / (zoomFolha || 1)) : 0;
+      const precisa = temCartao ? Math.round((LARGURA + 40) / zoom) : 0;
       const atual = folha.style.marginRight;
       folha.style.marginRight = "";
-      const livre = mesa.getBoundingClientRect().right - folha.getBoundingClientRect().right;
+      const livre = mesa.getBoundingClientRect().right - folha.getBoundingClientRect().right * corrige;
       folha.style.marginRight = atual;
       const novoMargin = temCartao && livre < LARGURA + 40 ? `${precisa}px` : "";
       if (folha.style.marginRight !== novoMargin) folha.style.marginRight = novoMargin;
     }
     const rm = mesa.getBoundingClientRect();
     const rf = (folha ?? editor.view.dom).getBoundingClientRect();
-    setEsquerda(rf.right - rm.left + mesa.scrollLeft + 16);
-    const topoDe = (el: Element | null) => (el ? el.getBoundingClientRect().top - rm.top + mesa.scrollTop : null);
+    setEsquerda(rf.right * corrige - rm.left + mesa.scrollLeft + 16);
+    const topoDe = (el: Element | null) => (el ? el.getBoundingClientRect().top * corrige - rm.top + mesa.scrollTop : null);
     const lista: { id: string; top: number }[] = [];
     for (const id of idsComentariosNoTexto(editor)) {
       if (!abertos.has(id)) continue;
@@ -209,7 +215,7 @@ export function ComentariosNoDocumento({ editor, documentoId, videoId, pedido }:
       if (top !== null) lista.push({ id, top });
     }
     if (novo) {
-      try { const c = editor.view.coordsAtPos(novo.de); lista.push({ id: "__novo", top: c.top - rm.top + mesa.scrollTop }); } catch { /* fora do texto */ }
+      try { const c = editor.view.coordsAtPos(novo.de); lista.push({ id: "__novo", top: c.top * corrige - rm.top + mesa.scrollTop }); } catch { /* fora do texto */ }
     }
     lista.sort((a, b) => a.top - b.top);
     setPosicoes(lista);
