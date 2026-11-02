@@ -228,6 +228,30 @@ def proxy(pasta):
     return {"pronto": False}
 
 
+_trava_empilhado = threading.Lock()
+
+
+def empilhado(destino):
+    """Vídeo com transparência leve para o editor (02/11): <nome>.empilhado.mp4 = a imagem em cima e a transparência
+    embaixo, em H.264 (uns 2 Mbps); o player recompõe na tela. No servidor o _alfa/<nome>.mov é ProRes de 60 Mbps,
+    mais que a internet entrega, e a animação ficava atrasada (o encoder com alfa da Apple só existe no Mac)."""
+    import subprocess
+    with _trava_empilhado:
+        if destino.exists():
+            return True
+        origem = destino.with_name(destino.name.replace(".empilhado.mp4", ".mov"))
+        if not origem.is_file():
+            return False
+        tmp = destino.with_name(destino.name + ".tmp.mp4")
+        subprocess.run([motor.FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(origem), "-an",
+                        "-filter_complex", "[0:v]format=yuva444p,split[c][a];[a]alphaextract[m];[c]format=yuv444p[r];"
+                        "[r][m]vstack,scale=trunc(iw/2)*2:trunc(ih/2)*2,format=yuv420p[v]",
+                        "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-g", "15", "-bf", "0",
+                        "-movflags", "+faststart", str(tmp)], check=True)
+        tmp.replace(destino)
+    return True
+
+
 _gerando_montagem = set()
 
 
@@ -368,6 +392,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Sem ".." (não sai da pasta); atalhos (ex.: bruto.mov → cópia) valem.
                 rel = Path(os.path.normpath("/".join(partes[3:])))
                 arq = pasta / rel
+                if rel.name.endswith(".empilhado.mp4") and rel.parts[:1] != ("..",) and not rel.is_absolute() and not arq.is_file():
+                    empilhado(arq)
                 if rel.is_absolute() or rel.parts[:1] == ("..",) or not arq.is_file():
                     return self._json(404, {"erro": "arquivo não encontrado"})
                 return self._arquivo(arq)

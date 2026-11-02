@@ -786,11 +786,13 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                       <img key={m.id} src={url(`arquivo/${rel}`)} alt="" className={cn("absolute", m.alfa ? "object-contain" : "object-cover")}
                         style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: raio, zIndex: i + 1 }} />
                     ) : m.tipo === "video" && rel ? (
-                      // Fundo verde: toca a cópia com transparência que o motor gera (_alfa/<nome>.mov).
-                      <VideoSobreposto key={m.id} tocando={tocando} t={tFinal - (paraFinal(segs, m.inicio, "inicio") ?? 0)}
-                        src={url(`arquivo/${m.chroma ? rel.replace(/[^/]+$/, (n) => `_alfa/${n.replace(/\.[^.]+$/, "")}.mov`) : rel}`)}
-                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: raio, zIndex: i + 1 }}
-                        cobrir={!m.chroma} />
+                      // Fundo verde ou vídeo com transparência (folhas rasgadas): toca a cópia leve com alfa (_alfa/<nome>.mov).
+                      <VideoSobreposto key={m.id} tocando={tocando && tFonte >= m.inicio} t={tFonte >= m.inicio ? tFinal - (paraFinal(segs, m.inicio, "inicio") ?? 0) : 0}
+                        empilhado={!!(m.chroma || m.alfa)}
+                        src={url(`arquivo/${m.chroma || m.alfa ? rel.replace(/[^/]+$/, (n) => `_alfa/${n.replace(/\.[^.]+$/, "")}.empilhado.mp4`) : rel}`)}
+                        style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: raio, zIndex: i + 1,
+                          ...(tFonte < m.inicio && { visibility: "hidden" as const }) }}
+                        cobrir={!m.chroma} vel={projeto.velocidade || 1} />
                     ) : (
                       <div key={m.id} className="absolute flex items-center justify-center bg-black/60 text-xs" style={{ left: m.x * escala, top: m.y * escala, width: m.w * escala, height: m.h * escala, borderRadius: 34 * escala }}>
                         <Film className="h-5 w-5" />
@@ -1510,16 +1512,66 @@ function FormaDeOnda({ onda, inicio, fim, pps, altura, repetir, cor = "rgba(167,
 }
 
 /** Vídeo por cima do player (V2), no tempo `t` dele e tocando junto. `cobrir`: recorta na moldura. */
-function VideoSobreposto({ src, t, tocando, style, cobrir }: { src: string; t: number; tocando: boolean; style: React.CSSProperties; cobrir: boolean }) {
+function VideoSobreposto({ src: original, t, tocando, style, cobrir, vel = 1, empilhado = false }: { src: string; t: number; tocando: boolean; style: React.CSSProperties; cobrir: boolean; vel?: number;
+  /** vídeo com a imagem em cima e a transparência embaixo (servidor.py, empilhado): recompõe num canvas */
+  empilhado?: boolean }) {
+  const src = useVideoNoMac(original, empilhado);
   const ref = useRef<HTMLVideoElement>(null);
+  const tela = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!empilhado) return;
+    const v = ref.current, c = tela.current;
+    const gl = c?.getContext("webgl", { premultipliedAlpha: true, alpha: true });
+    if (!v || !c || !gl) return;
+    const sombra = (tipo: number, cod: string) => { const s = gl.createShader(tipo)!; gl.shaderSource(s, cod); gl.compileShader(s); return s; };
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, sombra(gl.VERTEX_SHADER, "attribute vec2 p;varying vec2 u;void main(){u=vec2((p.x+1.)/2.,(1.-p.y)/2.);gl_Position=vec4(p,0.,1.);}"));
+    gl.attachShader(prog, sombra(gl.FRAGMENT_SHADER, "precision mediump float;varying vec2 u;uniform sampler2D t;void main(){vec3 c=texture2D(t,vec2(u.x,u.y*.5)).rgb;float a=texture2D(t,vec2(u.x,.5+u.y*.5)).r;gl_FragColor=vec4(c*a,a);}"));
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+    const pos = gl.getAttribLocation(prog, "p");
+    gl.enableVertexAttribArray(pos);
+    gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0);
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    let pedido = 0;
+    const desenhar = () => {
+      pedido = requestAnimationFrame(desenhar);
+      if (v.readyState < 2 || !v.videoWidth) return;
+      const w = v.videoWidth, h = Math.round(v.videoHeight / 2);
+      if (c.width !== w || c.height !== h) { c.width = w; c.height = h; gl.viewport(0, 0, w, h); }
+      try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v); } catch { return; }
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    };
+    desenhar();
+    return () => cancelAnimationFrame(pedido);
+  }, [empilhado]);
+  const ultimoPulo = useRef(0);
   useEffect(() => {
     const v = ref.current;
     if (!v) return;
     // Tocando: só corrige deriva grande e nunca no meio de um pulo (pular a cada quadro não deixa o vídeo aparecer).
-    if (!v.seeking && Math.abs(v.currentTime - t) > (tocando ? 0.5 : 0.1)) v.currentTime = Math.max(0, t);
+    // E no máximo um pulo por segundo, um pouco à frente: se o pulo demora, ele chegava atrasado, pulava de novo
+    // e o GIF ficava parado (26/10).
+    v.playbackRate = vel;
+    const agora = performance.now();
+    if (!v.seeking && Math.abs(v.currentTime - t) > (tocando ? 0.5 : 0.1) && (!tocando || agora - ultimoPulo.current > 1000)) {
+      v.currentTime = Math.max(0, t + (tocando ? 0.15 * vel : 0));
+      ultimoPulo.current = agora;
+    }
     if (tocando && v.paused) void v.play().catch(() => {});
     else if (!tocando && !v.paused) v.pause();
-  }, [t, tocando]);
+  }, [t, tocando, vel]);
+  if (empilhado) {
+    return <>
+      <video ref={ref} src={src} crossOrigin="anonymous" muted playsInline preload="auto" onLoadedMetadata={(e) => { e.currentTarget.currentTime = Math.max(0, t); }} className="pointer-events-none absolute h-px w-px opacity-0" />
+      <canvas ref={tela} className={cn("pointer-events-none absolute", cobrir ? "object-cover" : "object-contain")} style={style} />
+    </>;
+  }
   return <video ref={ref} src={src} muted playsInline preload="auto" onLoadedMetadata={(e) => { e.currentTarget.currentTime = Math.max(0, t); }} className={cn("pointer-events-none absolute", cobrir ? "object-cover" : "object-contain")} style={style} />;
 }
 
