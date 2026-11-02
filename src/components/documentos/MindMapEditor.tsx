@@ -526,6 +526,30 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   const { saving, lastSaved, error: saveError, debouncedSave, saveNow } = useCanvasAutoSave(documentoId);
 
   const wrapperRef = useRef<HTMLDivElement>(null);
+  // Atalhos do desenho fora do quadro (02/11). O handleKeyboardGlobally do Excalidraw só vale para o que era na
+  // hora de abrir (não acompanha a troca de guia) e não reconhece texto de documento como campo de digitação:
+  // um desenho aberto numa guia escondida comia o "h" (mão), o "e" (borracha) e o apagar dos documentos.
+  // Agora o Excalidraw só escuta o próprio quadro, e daqui repassamos as teclas de fora só com esta guia na
+  // frente e sem ninguém digitando em outro lugar.
+  const tecladoGlobalRef = useRef(false);
+  tecladoGlobalRef.current = (!embedded || fullscreen) && abaAtiva;
+  useEffect(() => {
+    const repassar = (e: KeyboardEvent) => {
+      if (!tecladoGlobalRef.current || e.defaultPrevented) return;
+      const caixa = wrapperRef.current?.querySelector<HTMLElement>(".excalidraw");
+      const alvo = e.target instanceof HTMLElement ? e.target : null;
+      if (!caixa || (alvo && caixa.contains(alvo))) return;   // dentro do quadro o próprio Excalidraw trata
+      if (alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName) || alvo.closest('[role="dialog"], [role="menu"]'))) return;
+      const copia = new KeyboardEvent("keydown", {
+        key: e.key, code: e.code, shiftKey: e.shiftKey, altKey: e.altKey, ctrlKey: e.ctrlKey, metaKey: e.metaKey,
+        repeat: e.repeat, bubbles: true, cancelable: true,
+      });
+      caixa.dispatchEvent(copia);
+      if (copia.defaultPrevented) e.preventDefault();
+    };
+    document.addEventListener("keydown", repassar);
+    return () => document.removeEventListener("keydown", repassar);
+  }, []);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const previousContentRef = useRef<string | null>(null);
   // Histórico que sobrevive a sair do mapa e voltar (localStorage). O
@@ -2034,7 +2058,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
 
         <Excalidraw
           excalidrawAPI={handleApiReady}
-          handleKeyboardGlobally={(!embedded || fullscreen) && abaAtiva}
+          handleKeyboardGlobally={false}
           initialData={initialData}
           onChange={handleChange}
           onPointerUpdate={handlePointerUpdate}
