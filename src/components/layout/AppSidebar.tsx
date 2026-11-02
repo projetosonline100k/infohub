@@ -331,11 +331,17 @@ export function AppSidebar() {
   const ativo = (n: No) => (n.ativoSe ? n.ativoSe(location.pathname, busca)
     : n.ir ? (n.ir.includes("?") ? `${location.pathname}${location.search}` === n.ir : location.pathname === n.ir || location.pathname.startsWith(`${n.ir}/`)) : false);
   // Abre sozinho o caminho até o que está na tela (ex.: entrou num projeto pela lista).
+  const telaAberta = useRef("");
   useEffect(() => {
     const m = location.pathname.match(/^\/clientes\/([^/]+)/);
     if (!m) return;
     const c = clientes.find((x) => x.id === m[1]);
     if (!c) return;
+    // Só ao mudar de tela: a lista de projetos recarrega sempre que a janela volta para a frente, e isso reabria
+    // o projeto logo depois do ⌘⇧E (01/11, Davi: "apertei e não deu certo").
+    const tela = `${location.pathname}${location.search}`;
+    if (telaAberta.current === tela) return;
+    telaAberta.current = tela;
     // 24/10 (Davi: "a guia precisa refletir na lateral"): abre também o Escritório quando a seção é dele.
     const secao = new URLSearchParams(location.search).get("secao");
     const doEscritorio = !!secao && SECOES_ESCRITORIO.some((x) => x.secao === secao);
