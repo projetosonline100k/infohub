@@ -265,7 +265,8 @@ def montagem(pasta, segs):
             try:
                 subprocess.run([motor.FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(fonte),
                                 "-filter_complex_script", str(script), "-map", "[v]", "-map", "[a]",
-                                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "24", "-g", "15", "-bf", "0",
+                                # veryfast: metade do tamanho do ultrafast (32 MB em 77 s), e o vídeo vem pela internet
+                                "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-g", "15", "-bf", "0",
                                 "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(tmp)], check=True)
                 tmp.replace(destino)
                 for velho in pasta.glob("montagem-*.mp4"):      # guarda só as 3 últimas

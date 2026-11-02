@@ -6,6 +6,7 @@ import {
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { useVideoNoMac } from "@/lib/empresa/videoNoMac";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
 import { EVENTO_DESFAZER, EVENTO_REFAZER } from "@/lib/desktop/desfazer";
@@ -386,6 +387,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const modoRef = useRef(modoMontagem); modoRef.current = modoMontagem;
   const segsQRef = useRef(segsQ); segsQRef.current = segsQ;
   const tocandoRef = useRef(tocando); tocandoRef.current = tocando;
+  // Vídeos do player na memória (videoNoMac.ts): o bruto original é pesado demais, esse toca pelo servidor.
+  const arquivoA = modoMontagem ? montagem!.arquivo : arquivoPlayer;
+  const srcA = useVideoNoMac(web ? "" : url(`arquivo/${arquivoA}`), !web && /^(proxy|montagem-)/.test(arquivoA));
+  const srcB = useVideoNoMac(web ? "" : url(`arquivo/${arquivoPlayer}`), !web && arquivoPlayer === "proxy.mp4");
+  const srcPrevia = useVideoNoMac(web ? "" : url(`arquivo/previa.mp4?v=${estado?.versao}`), !web && !!estado?.versao);
   useEffect(() => {   // trocou de modo: o player A assume; a reserva para
     ativoRef.current = 0;
     preparadoRef.current = null;
@@ -740,7 +746,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
           : !projeto ? <div className="flex flex-1 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
           : verVersao || dark ? (
             <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 bg-black p-4">
-              <video key={estado?.versao} src={web ? previaWeb ?? undefined : url(`arquivo/previa.mp4?v=${estado?.versao}`)} controls className="min-h-0 flex-1 rounded" />
+              <video key={estado?.versao} src={web ? previaWeb ?? undefined : srcPrevia} controls className="min-h-0 flex-1 rounded" />
               {dark && <p className="text-center text-xs text-zinc-400">Formato dark: para mudar uma cena, um texto ou a legenda, peça ao Danilo na conversa ao lado. Ele refaz e a versão nova aparece aqui.</p>}
             </div>
           ) : (
@@ -749,10 +755,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
               <div ref={colunaRef} className="flex shrink-0 flex-col items-center border-r border-zinc-700 bg-[#151515] p-3" style={{ width: larguraTela + 24 }}>
                 <div className="relative isolate shrink-0 overflow-hidden rounded bg-black" style={{ width: larguraTela, height: (larguraTela * 16) / 9 }} onClick={alternarPlay}>
                   {[vidA, vidB].map((ref, i) => (
-                    <video key={i} ref={ref} src={web ? (i === 0 ? previaWeb ?? undefined : undefined) : url(`arquivo/${i === 0 && modoMontagem ? montagem!.arquivo : arquivoPlayer}`)} className="absolute inset-0 h-full w-full object-cover" preload="auto" muted={i === 1}
+                    <video key={i} ref={ref} src={web ? (i === 0 ? previaWeb ?? undefined : undefined) : i === 0 ? srcA : srcB} className="absolute inset-0 h-full w-full object-cover" preload="auto" muted={i === 1}
                       style={{ ...estiloVideo, zIndex: i === ativoRef.current ? 0 : -1 }}
                       onLoadedMetadata={(e) => {
                         const v = e.currentTarget;
+                        v.playbackRate = velRef.current;
                         if (i === 0 && modoRef.current) v.currentTime = paraFinal(segsQRef.current, tFonteRef.current, "inicio") ?? 0;
                         else v.currentTime = tFonteRef.current > 0 ? tFonteRef.current : segs[0]?.[0] ?? 0;
                         if (i === ativoRef.current && tocandoRef.current) void v.play().catch(() => {});   // trocou de arquivo no meio do play
