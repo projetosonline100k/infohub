@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, Contact, Home, ListChecks, Monitor, Plus, Smartphone, Sparkles, Trash2, Trophy, type LucideIcon,
+  AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, Contact, Copy, Home, ListChecks, Monitor, Plus, Smartphone, Sparkles, Trash2, Trophy, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { EstruturaQuiz, Lamina, OpcaoQuiz } from "@/lib/quiz/quiz";
+import { laminasDoQuiz, type EstruturaQuiz, type Lamina, type OpcaoQuiz } from "@/lib/quiz/quiz";
 import type { FaltaQuiz } from "@/lib/quiz/faltas";
 import { MolduraCelular } from "./MolduraCelular";
 import { QuizPlayer } from "./QuizPlayer";
@@ -24,6 +24,33 @@ export function faltasDaLamina(l: Lamina, e: EstruturaQuiz, faltas: FaltaQuiz[])
   if (l.tipo === "captura") return comeca("captura");
   const perfil = l.perfil ? e.perfis.findIndex((p) => p.id === l.perfil) : 0;
   return [...comeca(`perfis.${perfil}`), ...comeca("oferta"), ...comeca("resultado")];
+}
+
+const idNovo = () => `p${Date.now().toString(36)}`;
+
+/** Pergunta nova depois da tela `l`. Devolve o quiz e a chave da tela criada, para já abrir nela. */
+export function adicionarPergunta(e: EstruturaQuiz, l: Lamina | undefined) {
+  const n = structuredClone(e);
+  const onde = l?.tipo === "pergunta" ? l.indice! + 1 : l?.tipo === "intro" ? 0 : n.perguntas.length;
+  const perfil = n.perfis[0]?.id ?? null;
+  n.perguntas.splice(onde, 0, { id: idNovo(), texto: "Nova pergunta", opcoes: [{ texto: "Opção 1", perfil }, { texto: "Opção 2", perfil }] });
+  return { estrutura: n, chave: laminasDoQuiz(n).find((x) => x.tipo === "pergunta" && x.indice === onde)?.chave };
+}
+
+export function duplicarPergunta(e: EstruturaQuiz, indice: number) {
+  const n = structuredClone(e);
+  n.perguntas.splice(indice + 1, 0, { ...structuredClone(n.perguntas[indice]), id: idNovo() });
+  return { estrutura: n, chave: laminasDoQuiz(n).find((x) => x.tipo === "pergunta" && x.indice === indice + 1)?.chave };
+}
+
+/** Tira a pergunta; o que vinha depois dela passa a vir depois da anterior. */
+export function excluirPergunta(e: EstruturaQuiz, indice: number) {
+  const n = structuredClone(e);
+  const [fora] = n.perguntas.splice(indice, 1);
+  const anterior = n.perguntas[indice - 1]?.id ?? "intro";
+  for (const t of n.telas ?? []) if (t.depois_de === fora.id) t.depois_de = anterior;
+  if (n.captura?.depois_de === fora.id) n.captura.depois_de = anterior;
+  return n;
 }
 
 export function EstruturaDoQuiz({ laminas, estrutura, faltas, selecionada, onEscolher }: {
@@ -56,9 +83,9 @@ export function EstruturaDoQuiz({ laminas, estrutura, faltas, selecionada, onEsc
 }
 
 /** A tela selecionada, grande: texto e imagem editáveis no lugar. */
-export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnterior, onProxima, onMudar, onImagem }: {
+export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnterior, onProxima, onMudar, onImagem, onDuplicar, onExcluir }: {
   titulo: string; estrutura: EstruturaQuiz; lamina: Lamina; numero: number; total: number; onAnterior: () => void; onProxima: () => void;
-  onMudar: (e: EstruturaQuiz) => void; onImagem: (arquivo: File) => Promise<string>;
+  onMudar: (e: EstruturaQuiz) => void; onImagem: (arquivo: File) => Promise<string>; onDuplicar?: () => void; onExcluir?: () => void;
 }) {
   const [modo, setModo] = useState<"celular" | "computador">("celular");
   const caixa = useRef<HTMLDivElement>(null);
@@ -66,7 +93,7 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
   useEffect(() => {
     const el = caixa.current;
     if (!el) return;
-    const medir = () => setEscala(Math.min(1, Math.max(0.4, (el.clientHeight - 8) / 820)));
+    const medir = () => setEscala(Math.min(1, Math.max(0.4, Math.min((el.clientHeight - 8) / 820, (el.clientWidth - 4) / 395))));
     medir();
     const obs = new ResizeObserver(medir);
     obs.observe(el);
@@ -78,7 +105,11 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
       <div className="flex items-center justify-between gap-2">
         <button type="button" className={botao} onClick={onAnterior} disabled={numero <= 1}><ChevronLeft className="h-3.5 w-3.5" />Anterior</button>
         <span className="text-sm font-medium tabular-nums">Tela {numero} de {total}</span>
-        <button type="button" className={botao} onClick={onProxima} disabled={numero >= total}>Próxima<ChevronRight className="h-3.5 w-3.5" /></button>
+        <span className="flex items-center gap-1">
+          {onDuplicar && <button type="button" className={botao} onClick={onDuplicar} title="Duplicar esta pergunta"><Copy className="h-3.5 w-3.5" /></button>}
+          {onExcluir && <button type="button" className={botao} onClick={onExcluir} title="Excluir esta pergunta"><Trash2 className="h-3.5 w-3.5" /></button>}
+          <button type="button" className={botao} onClick={onProxima} disabled={numero >= total}>Próxima<ChevronRight className="h-3.5 w-3.5" /></button>
+        </span>
       </div>
       <div ref={caixa} className="flex min-h-0 flex-1 justify-center overflow-hidden">
         {modo === "celular" ? (

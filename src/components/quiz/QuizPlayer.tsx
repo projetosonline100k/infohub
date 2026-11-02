@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ElementType } from "react";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ImagePlus, Loader2, Lock, Mic, Quote, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -162,6 +162,14 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   evento.current = onEvento;
   useEffect(() => { trocou.current?.(); if (pos > 0) evento.current?.("passo", pos); }, [pos]);
 
+  // Opções da pergunta da tela `posicao`, editadas direto no celular.
+  const mudarOpcoes = (posicao: number, f: (opcoes: EstruturaQuiz["perguntas"][number]["opcoes"]) => void) => {
+    const passo = passos[posicao];
+    if (passo?.tipo !== "pergunta" || !onMudar) return;
+    const n = structuredClone(e);
+    f(n.perguntas[passo.indice].opcoes);
+    onMudar(n);
+  };
   const ctx: Ctx = {
     editar, mostrarFaltas: !!teste, cor, escuro, podeEnviar: !!onImagem && !!onMudar,
     aoClicarOferta: () => evento.current?.("cta"),
@@ -272,15 +280,30 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                           cartoes && "flex-col justify-center text-center", marcada && "scale-[1.02] text-white")}
                         style={marcada ? { background: cor, borderColor: cor } : undefined}>
                         {cartoes && (o.imagem !== undefined) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={o.imagem} className="aspect-square w-full" />}
-                        {o.emoji ? <span className="text-xl">{o.emoji}</span> : !cartoes && (
+                        {editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji ? <span className="text-xl">{o.emoji}</span> : !cartoes && (
                           <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold", marcada ? "bg-white/25" : escuro ? "bg-white/10" : "bg-black/5")}>
                             {marcada ? <Check className="h-4 w-4" /> : LETRAS[k]}
                           </span>
                         )}
                         <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className="flex-1" />
+                        {editar && (
+                          // 03/11 (Davi: "editar direto no que estou vendo"): as ações da opção, só ao passar o mouse.
+                          <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                            {([["Subir", ArrowUp, () => mudarOpcoes(pos, (l) => { if (k > 0) l.splice(k - 1, 0, ...l.splice(k, 1)); })],
+                              ["Descer", ArrowDown, () => mudarOpcoes(pos, (l) => { if (k < l.length - 1) l.splice(k + 1, 0, ...l.splice(k, 1)); })],
+                              ["Duplicar", Copy, () => mudarOpcoes(pos, (l) => { l.splice(k + 1, 0, structuredClone(l[k])); })],
+                              ["Remover", Trash2, () => mudarOpcoes(pos, (l) => { if (l.length > 2) l.splice(k, 1); })]] as const).map(([rotulo, Icone, acao]) => (
+                              <button key={rotulo} type="button" title={rotulo} onClick={(ev) => { ev.stopPropagation(); acao(); }} className="rounded p-1 opacity-60 hover:bg-black/10 hover:opacity-100"><Icone className="h-3.5 w-3.5" /></button>
+                            ))}
+                          </span>
+                        )}
                       </Opcao>
                     );
                   })}
+                  {editar && (
+                    <button type="button" onClick={() => mudarOpcoes(pos, (l) => { l.push({ texto: "Nova opção", perfil: e.perfis[0]?.id ?? null }); })}
+                      className={cn("flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-3 py-2.5 text-sm", suave)}><Plus className="h-4 w-4" />Adicionar opção</button>
+                  )}
                 </div>
                 {pos > 1 && !editar && !travado && (
                   <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
