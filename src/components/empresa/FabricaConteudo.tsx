@@ -106,7 +106,6 @@ export function FabricaConteudo({ clienteId, setores, membros, tarefas, pessoas,
 
   const [recolhidos, setRecolhidos] = useState<Set<string>>(new Set());
   const [foco, setFoco] = useState<Foco | null>(null);
-  const [filtro, setFiltro] = useState("todos");
   const faixas = useRef(new Map<string, HTMLDivElement>());
   const focar = (a: AcaoFabrica) => {
     if (!a.setorId) { setFoco(null); return; }
@@ -220,8 +219,20 @@ export function FabricaConteudo({ clienteId, setores, membros, tarefas, pessoas,
           })}
         </div>
 
-        {/* Ações para você: a caixa de entrada da operação */}
-        <aside className="flex max-h-[calc(100svh-180px)] min-h-[400px] flex-col self-start rounded-2xl border border-rose-500/30 bg-gradient-to-b from-rose-950/40 to-[#0b0710] p-3 xl:sticky xl:top-4">
+        <PainelAcoes acoes={acoes} categorias={categorias} rotuloCategoria={rotuloCategoria} onFocar={focar} />
+      </div>
+    </div>
+  );
+}
+
+/** "Ações para você": a caixa de entrada da operação (usada pela fábrica e pela órbita). */
+export function PainelAcoes({ acoes, categorias, rotuloCategoria, onFocar, className }: {
+  acoes: AcaoFabrica[]; categorias: string[]; rotuloCategoria: Record<string, string>; onFocar: (a: AcaoFabrica) => void; className?: string;
+}) {
+  const [filtro, setFiltro] = useState("todos");
+  const focar = onFocar;
+  return (
+        <aside className={cn("flex max-h-[calc(100svh-180px)] min-h-[400px] flex-col self-start rounded-2xl border border-rose-500/30 bg-gradient-to-b from-rose-950/40 to-[#0b0710] p-3 xl:sticky xl:top-4", className)}>
           <div className="flex items-start gap-2">
             <Target className="mt-0.5 h-7 w-7 shrink-0 text-rose-400" />
             <div className="min-w-0 flex-1"><h2 className="text-lg font-bold leading-tight">Ações para você</h2><p className="text-xs text-white/55">O que depende da sua decisão.</p></div>
@@ -251,8 +262,6 @@ export function FabricaConteudo({ clienteId, setores, membros, tarefas, pessoas,
             ))}
           </div>
         </aside>
-      </div>
-    </div>
   );
 }
 

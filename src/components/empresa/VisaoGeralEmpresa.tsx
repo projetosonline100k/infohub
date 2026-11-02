@@ -36,6 +36,7 @@ import { NovoEscritorio } from "./NovoEscritorio";
 import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
 import { FabricaConteudo } from "./FabricaConteudo";
+import { OrbitaEmpresa } from "./OrbitaEmpresa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarReelPelaTarefa, cancelarTarefa } from "@/lib/empresa/cancelar";
@@ -126,11 +127,12 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [abaCentral, setAbaCentral] = useState<"precisa" | "andamento">("precisa");
   const usarPixel = import.meta.env.DEV && !pixelFalhou;
   // 03/11 (Davi): o Escritório virou "Fábrica de Conteúdo" (esteiras por setor); o mapa continua a um clique.
-  const [visao, setVisao] = useState<"fabrica" | "mapa">(() => {
-    try { return localStorage.getItem("escritorio:visao") === "mapa" ? "mapa" : "fabrica"; } catch { return "fabrica"; }
+  // 04/11: a órbita (Atlas no centro, setores e agentes em volta) passou a ser a visão principal.
+  const [visao, setVisao] = useState<"orbita" | "fabrica" | "mapa">(() => {
+    try { const v = localStorage.getItem("escritorio:visao2"); return v === "mapa" || v === "fabrica" ? v : "orbita"; } catch { return "orbita"; }
   });
   const [numerosAbertos, setNumerosAbertos] = useState(false);
-  const trocarVisao = (v: "fabrica" | "mapa") => { setVisao(v); try { localStorage.setItem("escritorio:visao", v); } catch { /* sem storage */ } };
+  const trocarVisao = (v: "orbita" | "fabrica" | "mapa") => { setVisao(v); try { localStorage.setItem("escritorio:visao2", v); } catch { /* sem storage */ } };
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -761,14 +763,29 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
 
       {setores.length > 0 && (
         <div className="flex items-center gap-1 rounded-lg border bg-card p-1 text-xs font-semibold w-fit">
-          {([["fabrica", "Fábrica"], ["mapa", "Mapa do escritório"]] as const).map(([v, r]) => (
+          {([["orbita", "Órbita"], ["fabrica", "Fábrica"], ["mapa", "Mapa do escritório"]] as const).map(([v, r]) => (
             <button key={v} type="button" onClick={() => trocarVisao(v)}
               className={cn("rounded-md px-3 py-1", visao === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{r}</button>
           ))}
         </div>
       )}
 
-      {visao === "fabrica" && setores.length > 0 ? (
+      {visao === "orbita" && setores.length > 0 ? (
+        <OrbitaEmpresa clienteId={clienteId} setores={setores} membros={membros} tarefas={tarefas}
+          pessoas={pessoasChat.filter((p) => !ehCoordenador(p.membro))} acoes={acoesFabrica}
+          categorias={[...CATEGORIAS]} rotuloCategoria={ROTULO_CATEGORIA} hoje={hoje}
+          onTarefa={(t) => {
+            const m = membros.find((x) => x.id === t.responsavel_id);
+            setAoVivo({ atividadeId: t.id, titulo: t.titulo, nome: m?.nome ?? "", ehIa: !!m?.eh_ia, progresso: t.progresso ?? null });
+          }}
+          onPessoa={(m) => { if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m); }}
+          topo={<div className="flex gap-2">
+            <button type="button" onClick={() => setEscritorio({ editando: null })}
+              className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Setor</button>
+            <button type="button" onClick={() => setCadastro({ editando: null })}
+              className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+          </div>} />
+      ) : visao === "fabrica" && setores.length > 0 ? (
         <FabricaConteudo clienteId={clienteId} setores={setores} membros={membros} tarefas={tarefas}
           pessoas={pessoasChat.filter((p) => !ehCoordenador(p.membro))} acoes={acoesFabrica}
           categorias={[...CATEGORIAS]} rotuloCategoria={ROTULO_CATEGORIA} hoje={hoje}
@@ -863,13 +880,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       )}
 
       {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). Na fábrica ficam recolhidos (secundários). */}
-      {visao === "fabrica" && setores.length > 0 && (
+      {visao !== "mapa" && setores.length > 0 && (
         <button type="button" onClick={() => setNumerosAbertos((x) => !x)}
           className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
           <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", numerosAbertos && "rotate-90")} />Números do conteúdo (ideias, roteiros, postados…)
         </button>
       )}
-      <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6", visao === "fabrica" && setores.length > 0 && !numerosAbertos && "hidden")}>
+      <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6", visao !== "mapa" && setores.length > 0 && !numerosAbertos && "hidden")}>
         {CARTOES.map(({ rotulo, valor, icone: Icone, cor, ir }) => (
           <button key={rotulo} type="button" onClick={() => onIrPara(ir)}
             className="group flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
