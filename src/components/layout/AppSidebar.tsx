@@ -245,16 +245,16 @@ export function AppSidebar() {
     return novo;
   });
 
-  // ⌘⇧E (27/10, Davi): encolhe tudo na lateral — pastas, documentos, Escritório, Produtividade… — menos os
-  // projetos que estavam abertos (e a lista de projetos).
+  // ⌘⇧E (27/10, Davi; 01/11: "tudo se feche"): encolhe tudo na lateral — projetos, pastas, documentos,
+  // Escritório, Produtividade… Fica aberta só a lista de Projetos Milionários, com cada projeto fechado.
   // No app do Mac vem pelo menu "Janela > Encolher a lateral" (evento "recolher-lateral"; vale mesmo com o
   // navegador de uma guia em foco). No navegador vale a tecla direto.
   useEffect(() => {
-    const recolher = () => setAbertos((atual) => {
-      const novo = new Set([...atual].filter((k) => k === "projetos" || k === "arquivados" || /^projeto:[^:]+$/.test(k)));
+    const recolher = () => {
+      const novo = new Set(["projetos"]);
       try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
-      return novo;
-    });
+      setAbertos(novo);
+    };
     const tecla = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
       e.preventDefault();
