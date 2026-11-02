@@ -35,11 +35,12 @@ import { NovoFuncionario, type MembroParaEditar } from "./NovoFuncionario";
 import { NovoEscritorio } from "./NovoEscritorio";
 import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
+import { FabricaConteudo } from "./FabricaConteudo";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarReelPelaTarefa, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, ehCoordenador, equipeOfflineDesde, filaAcabando, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, trabalhoDasIas, videosProgramados,
+  contarIndicadores, ehCoordenador, equipeOfflineDesde, filaAcabando, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, tarefaAtrasada, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -124,6 +125,11 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   // 24/10 (Davi): no escritório em pixel art, "Precisa de você" e "Em andamento" ficam num bloco só, com abas.
   const [abaCentral, setAbaCentral] = useState<"precisa" | "andamento">("precisa");
   const usarPixel = import.meta.env.DEV && !pixelFalhou;
+  // 03/11 (Davi): o Escritório virou "Fábrica de Conteúdo" (esteiras por setor); o mapa continua a um clique.
+  const [visao, setVisao] = useState<"fabrica" | "mapa">(() => {
+    try { return localStorage.getItem("escritorio:visao") === "mapa" ? "mapa" : "fabrica"; } catch { return "fabrica"; }
+  });
+  const trocarVisao = (v: "fabrica" | "mapa") => { setVisao(v); try { localStorage.setItem("escritorio:visao", v); } catch { /* sem storage */ } };
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -490,6 +496,20 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     }),
   ];
 
+  // Na fábrica, cada ação aponta para o setor de quem faz aquilo (clicar destaca a esteira).
+  const setorDeQuem = (re: RegExp) => membros.find((m) => re.test(m.nome))?.setor_id ?? null;
+  const SETOR_DA_CATEGORIA: Record<Categoria, string | null> = {
+    video: setorDeQuem(/^danilo$/i), gravar: setorDeQuem(/^danilo$/i), carrossel: setorDeQuem(/^roy$/i),
+    programar: setorDeQuem(/^dalila$/i), copy: setorDeQuem(/^[íi]talo$/i), outros: null,
+  };
+  const acoesFabrica = linhasPrecisa.map((l) => {
+    const tarefa = tarefas.find((t) => t.id === l.chave);
+    const membro = l.chave.startsWith("ia-") ? membros.find((m) => `ia-${m.id}` === l.chave) : undefined;
+    const setorId = tarefa ? (tarefa.setor_id ?? membros.find((m) => m.id === tarefa.responsavel_id)?.setor_id ?? null)
+      : membro ? membro.setor_id : SETOR_DA_CATEGORIA[l.categoria];
+    return { ...l, setorId, atrasada: !!tarefa && tarefaAtrasada(tarefa, hoje) };
+  });
+
   // Setores com as pessoas e o estado de cada uma: o mesmo para o mapa e para o escritório 3D.
   // (o protótipo 3D mostra o Audiovisual; ver dados3d abaixo)
   const setoresDoMapa = setores.map((setor) => {
@@ -731,7 +751,31 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </div>
       ))}
 
-      {usarPixel && setores.length > 0 ? (
+      {setores.length > 0 && (
+        <div className="flex items-center gap-1 rounded-lg border bg-card p-1 text-xs font-semibold w-fit">
+          {([["fabrica", "Fábrica"], ["mapa", "Mapa do escritório"]] as const).map(([v, r]) => (
+            <button key={v} type="button" onClick={() => trocarVisao(v)}
+              className={cn("rounded-md px-3 py-1", visao === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{r}</button>
+          ))}
+        </div>
+      )}
+
+      {visao === "fabrica" && setores.length > 0 ? (
+        <FabricaConteudo clienteId={clienteId} setores={setores} membros={membros} tarefas={tarefas}
+          pessoas={pessoasChat.filter((p) => !ehCoordenador(p.membro))} acoes={acoesFabrica}
+          categorias={[...CATEGORIAS]} rotuloCategoria={ROTULO_CATEGORIA} hoje={hoje}
+          onTarefa={(t) => {
+            const m = membros.find((x) => x.id === t.responsavel_id);
+            setAoVivo({ atividadeId: t.id, titulo: t.titulo, nome: m?.nome ?? "", ehIa: !!m?.eh_ia, progresso: t.progresso ?? null });
+          }}
+          onPessoa={(m) => { if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m); }}
+          topo={<div className="flex gap-2">
+            <button type="button" onClick={() => setEscritorio({ editando: null })}
+              className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Setor</button>
+            <button type="button" onClick={() => setCadastro({ editando: null })}
+              className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Funcionário</button>
+          </div>} />
+      ) : usarPixel && setores.length > 0 ? (
         // 24/10 (Davi): o escritório em pixel art é o Escritório da página; "Precisa de você" e
         // "Em andamento" ficam dentro dele, no painel da direita (no lugar de "Funcionários online").
         <Suspense fallback={<div className="flex h-[calc(100svh-140px)] min-h-[560px] items-center justify-center rounded-xl bg-[#0b1120] text-sm text-white/70"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Montando o escritório…</div>}>
