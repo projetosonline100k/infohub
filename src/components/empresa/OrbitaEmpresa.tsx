@@ -1,7 +1,7 @@
 import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ClipboardList, Crosshair, Factory, FlaskConical, Hand,
+  AlertTriangle, BarChart3, CalendarClock, Camera, CheckCircle2, ChevronDown, ChevronRight, ChevronsUp, CircleDashed, Clapperboard, ClipboardList, FileText, User, Crosshair, Factory, FlaskConical, Hand,
   Headphones, HeartPulse, Hourglass, Layers, LayoutGrid, Megaphone, Mic, MicOff, Minus, Play, Plus, Square, X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -51,7 +51,7 @@ const R_AGENTE = 17;
 const TEXTO = 168;        // largura do bloco nome + etiqueta do agente
 const LINHA = 74;         // distância vertical entre agentes do mesmo setor
 const MUNDO = 4000;
-const DECISOES_W = 270;
+const DECISOES_W = 210;
 
 const db = supabase as unknown as SupabaseClient;
 type Feita = TarefaResumo & { concluida_em?: string | null };
@@ -221,17 +221,22 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
   const [setorFoco, setSetorFoco] = useState<string | null>(null);
   const [agenteAberto, setAgenteAberto] = useState<string | null>(null);
   const [acaoFoco, setAcaoFoco] = useState<{ setorId: string; agentes: string[] } | null>(null);
-  const [decisoesAbertas, setDecisoesAbertas] = useState(true);
-  const [todasDecisoes, setTodasDecisoes] = useState(false);
+  // Cartão "Pendências para revisar": "todas" (aberto pelo Atlas) ou o id do setor clicado.
+  const [cartao, setCartao] = useState<string | null>(null);
   const focarSetor = (s: NoSetor) => {
     setSetorFoco(s.id);
+    setCartao(s.id);
     const xs = [s.x - R_SETOR, s.x + R_SETOR, ...s.agentes.flatMap((a) => [a.x - 20, a.x + 26 + TEXTO])];
     const ys = [s.y - R_SETOR, s.y + R_SETOR, ...s.agentes.map((a) => a.y)];
     const el = vista.current;
     const k = el ? Math.min(1.5, (el.clientWidth - 80) / (Math.max(...xs) - Math.min(...xs)), (el.clientHeight - 120) / (Math.max(...ys) - Math.min(...ys) + 80)) : 1.2;
-    irPara((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, k);
+    // O cartão de pendências ocupa a esquerda (até ~700 px): o setor vai para a parte livre da direita.
+    const livre = el ? Math.max(0, el.clientWidth - 700) : 0;
+    const kk = el && livre > 300 ? Math.min(k, (livre - 40) / (Math.max(...xs) - Math.min(...xs))) : k;
+    const desvio = el && livre > 300 ? (el.clientWidth / 2 - (700 + livre / 2)) / kk : 0;
+    irPara((Math.min(...xs) + Math.max(...xs)) / 2 + desvio, (Math.min(...ys) + Math.max(...ys)) / 2, kk);
   };
-  const visaoGeral = () => { setSetorFoco(null); setAcaoFoco(null); setAgenteAberto(null); enquadrar(); };
+  const visaoGeral = () => { setSetorFoco(null); setAcaoFoco(null); setAgenteAberto(null); setCartao(null); enquadrar(); };
   const organizar = () => {
     setDesloc({}); salvarLayout({}); setSetorFoco(null); setAcaoFoco(null); setAgenteAberto(null);
     window.setTimeout(() => enquadrar(), 30);
@@ -261,9 +266,28 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
 
   // Decisões: título e ação de cada linha vêm da própria LinhaAcao (mesmo clique de antes).
   const decisoes = acoes.map((a) => {
-    const p = (isValidElement(a.no) ? a.no.props : {}) as { titulo?: string; detalhe?: string; onClick?: () => void; atrasada?: boolean };
-    return { a, titulo: p.titulo ?? a.chave, detalhe: p.detalhe, abrir: p.onClick, atrasada: p.atrasada || a.atrasada };
+    const p = (isValidElement(a.no) ? a.no.props : {}) as { titulo?: string; detalhe?: string; onClick?: () => void; atrasada?: boolean; quem?: string };
+    return { a, titulo: p.titulo ?? a.chave, detalhe: p.detalhe, abrir: p.onClick, atrasada: p.atrasada || a.atrasada, quem: p.quem };
   });
+  // Pendências (04/11, Davi: "não sei o que preciso revisar"): uma linha por coisa, com título sem códigos,
+  // quem fez, setor, prioridade e "Ver agora" (abre a mesma tela de antes). "Aprovar N entregas" vira N linhas.
+  const nomeMembro = new Map(membros.map((m) => [m.id, m.nome]));
+  const setorDoMembro = new Map(membros.map((m) => [m.id, m.setor_id]));
+  const pendencias: Pendencia[] = decisoes.flatMap((dc): Pendencia[] => {
+    const ts = tarefas.filter((t) => dc.a.tarefaIds?.includes(t.id));
+    const Icone = ICONE_CATEGORIA[dc.a.categoria] ?? ClipboardList;
+    const abrir = () => { focarAcao(dc.a); dc.abrir?.(); };
+    if (dc.a.chave === "aprovar" && ts.length > 1) {
+      return ts.map((t) => ({
+        chave: `aprovar-${t.id}`, titulo: limparTitulo(t.titulo), quem: t.responsavel_id ? nomeMembro.get(t.responsavel_id) ?? null : null,
+        setorId: t.setor_id ?? (t.responsavel_id ? setorDoMembro.get(t.responsavel_id) ?? null : null) ?? dc.a.setorId, Icone, alta: tarefaAtrasada(t, hoje), abrir,
+      }));
+    }
+    const t0 = ts[0];
+    const quem = dc.quem ?? (t0?.responsavel_id ? nomeMembro.get(t0.responsavel_id) : dc.a.chave.startsWith("ia-") ? nomeMembro.get(dc.a.chave.slice(3)) : undefined) ?? null;
+    return [{ chave: dc.a.chave, titulo: limparTitulo(dc.titulo, dc.detalhe), quem, setorId: dc.a.setorId, Icone, alta: !!dc.atrasada || (t0 ? tarefaAtrasada(t0, hoje) : false), abrir }];
+  }).sort((x, y) => Number(y.alta) - Number(x.alta));
+  const setorPorId = (id: string | null) => rede.find((x) => x.id === id) ?? null;
 
   const agenteSel = rede.flatMap((s) => s.agentes.map((a) => ({ a, s }))).find((x) => x.a.pessoa.membro.id === agenteAberto) ?? null;
   const setorSel = rede.find((s) => s.id === setorFoco) ?? null;
@@ -514,34 +538,21 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
             );
           }))}
 
-          {/* Minhas decisões: extensão do Atlas (arrastável, recolhível) */}
-          {decisoes.length > 0 && (
-            <div data-no="" className="absolute left-0 top-0 rounded-2xl border border-cyan-400/40 bg-[#0a1322]/90 shadow-[0_0_30px_rgba(34,211,238,0.12)] backdrop-blur"
-              style={{ transform: `translate(${posDecisoes.x}px, ${posDecisoes.y}px)`, width: DECISOES_W }}>
-              <div className="flex cursor-grab items-center gap-2 px-3 py-2 active:cursor-grabbing" onPointerDown={(e) => comecarNo(e, "decisoes", () => setDecisoesAbertas((x) => !x))}>
+          {/* Minhas decisões: preso ao Atlas (arrastável); abre o cartão com todas as pendências */}
+          {pendencias.length > 0 && (
+            <div data-no="" className={cn("absolute left-0 top-0 cursor-grab rounded-2xl border bg-[#0a1322]/90 px-3 py-2.5 shadow-[0_0_30px_rgba(34,211,238,0.12)] backdrop-blur active:cursor-grabbing",
+              cartao === "todas" ? "border-cyan-300" : "border-cyan-400/40 hover:border-cyan-300/70")}
+              style={{ transform: `translate(${posDecisoes.x}px, ${posDecisoes.y}px)`, width: DECISOES_W }}
+              onPointerDown={(e) => comecarNo(e, "decisoes", () => setCartao((c) => (c === "todas" ? null : "todas")))}>
+              <div className="flex items-center gap-2">
                 <ClipboardList className="h-4 w-4 text-cyan-300" />
                 <p className="flex-1 text-[13px] font-semibold">Minhas decisões</p>
-                <span className="rounded-full bg-rose-500 px-1.5 text-[11px] font-bold">{decisoes.length}</span>
-                <ChevronDown className={cn("h-4 w-4 text-white/50 transition-transform", !decisoesAbertas && "-rotate-90")} />
+                <span className="rounded-full bg-amber-400 px-1.5 text-[11px] font-bold text-black">{pendencias.length}</span>
+                <ChevronRight className="h-4 w-4 text-white/50" />
               </div>
-              {decisoesAbertas && (
-                <div data-rolavel="" className="max-h-[260px] space-y-0.5 overflow-y-auto border-t border-white/[0.06] p-1.5">
-                  {(todasDecisoes ? decisoes : decisoes.slice(0, 4)).map(({ a, titulo, detalhe, abrir, atrasada }) => (
-                    <button key={a.chave} type="button" title={detalhe ?? titulo}
-                      onClick={() => { focarAcao(a); abrir?.(); }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[12px] hover:bg-white/[0.06]">
-                      {a.aprovacao ? <Hourglass className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : atrasada ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-rose-400" /> : <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-400" />}
-                      <span className="min-w-0 flex-1 truncate">{titulo}</span>
-                      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/40" />
-                    </button>
-                  ))}
-                  {decisoes.length > 4 && (
-                    <button type="button" onClick={() => setTodasDecisoes((x) => !x)} className="w-full py-1 text-center text-[11px] text-cyan-300 hover:underline">
-                      {todasDecisoes ? "Mostrar menos" : `Ver todas (${decisoes.length})`}
-                    </button>
-                  )}
-                </div>
-              )}
+              <p className="mt-1 text-[11px] text-white/55">
+                {pendencias.filter((x) => x.alta).length ? <span className="text-rose-300">{pendencias.filter((x) => x.alta).length} com prioridade alta · </span> : null}clique para ver
+              </p>
             </div>
           )}
         </div>
@@ -583,24 +594,16 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
           );
         })()}
 
-        {/* Foco no setor: um resumo pequeno do grupo */}
-        {setorSel && !agenteSel && (
-          <div data-no="" data-rolavel="" className="absolute left-3 top-3 max-h-[60%] w-60 overflow-y-auto rounded-2xl border bg-[#0a0f1a]/90 p-3 backdrop-blur" style={{ borderColor: `${setorSel.cor}55` }}>
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: setorSel.cor }} />
-              <p className="flex-1 font-bold">{setorSel.nome}</p>
-              <button type="button" onClick={visaoGeral} className="rounded p-0.5 text-white/50 hover:bg-white/10 hover:text-white"><X className="h-4 w-4" /></button>
-            </div>
-            <div className="mt-2 grid grid-cols-3 gap-1 text-center text-[10px]">
-              <span className="rounded-lg bg-white/5 py-1"><b className="block text-sm">{setorSel.abertas.length - setorSel.esperando.length}</b>em produção</span>
-              <span className="rounded-lg bg-amber-400/10 py-1 text-amber-200"><b className="block text-sm">{setorSel.esperando.length}</b>aguardando</span>
-              <span className="rounded-lg bg-rose-500/10 py-1 text-rose-200"><b className="block text-sm">{setorSel.atrasadas.length}</b>atrasadas</span>
-            </div>
-            <ListaTarefas titulo="Aguardando você" itens={setorSel.esperando} onTarefa={onTarefa} />
-            <ListaTarefas titulo="Atrasadas" itens={setorSel.atrasadas} onTarefa={onTarefa} />
-            <ListaTarefas titulo="Últimas entregas" itens={setorSel.feitas} onTarefa={onTarefa} />
-          </div>
-        )}
+        {/* Pendências para revisar: todas (pelo Atlas) ou só as do setor clicado */}
+        {cartao && !agenteSel && (() => {
+          const doSetor = cartao === "todas" ? null : setorPorId(cartao);
+          const itens = doSetor ? pendencias.filter((x) => x.setorId === doSetor.id) : pendencias;
+          return (
+            <CartaoPendencias itens={itens} setorPorId={setorPorId} setor={doSetor}
+              onFechar={() => (doSetor ? visaoGeral() : setCartao(null))}
+              rodape={doSetor && doSetor.feitas.length > 0 ? <UltimasEntregas itens={doSetor.feitas} onTarefa={onTarefa} /> : null} />
+          );
+        })()}
 
         {/* Conversa por voz com o Atlas */}
         {falando && <PainelConversa conversa={conversa} />}
@@ -647,6 +650,98 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
           <p className="min-w-0 flex-1 truncate text-[11px] text-white/55">{insights.length ? insights.slice(0, 3).join(" · ") : "Tudo em dia"}</p>
         </div>
       </div>
+    </div>
+  );
+}
+
+interface Pendencia {
+  chave: string; titulo: string; quem: string | null; setorId: string | null;
+  Icone: ComponentType<{ className?: string }>; alta: boolean; abrir: () => void;
+}
+const ICONE_CATEGORIA: Record<string, ComponentType<{ className?: string }>> = {
+  video: Clapperboard, carrossel: Layers, copy: FileText, programar: CalendarClock, gravar: Camera, outros: ClipboardList,
+};
+/** Título legível: tira códigos (uuid, "Bruto 71a0…") e completa o que ficou vazio. */
+function limparTitulo(titulo: string, detalhe?: string): string {
+  let t = titulo
+    .replace(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b/gi, "")
+    .replace(/\bbruto\s+[0-9a-f-]{6,}/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/[\s:·-]+$/, "")
+    .trim();
+  if (/^revisar edição$/i.test(t)) t = "Revisar edição do vídeo";
+  const versao = detalhe?.match(/versão (\d+)/i);
+  if (versao && /edição/i.test(t) && !/\bv\d/.test(t)) t += ` v${versao[1]}`;
+  return t || titulo;
+}
+
+function CartaoPendencias({ itens, setor, setorPorId, onFechar, rodape }: {
+  itens: Pendencia[]; setor: NoSetor | null; setorPorId: (id: string | null) => NoSetor | null; onFechar: () => void; rodape?: ReactNode;
+}) {
+  return (
+    <div data-no="" data-rolavel="" className="absolute left-3 top-3 z-20 flex max-h-[calc(100%-90px)] w-[min(680px,calc(100%-24px))] flex-col rounded-2xl border border-cyan-400/40 bg-[#07101c]/95 shadow-[0_0_40px_rgba(34,211,238,0.15)] backdrop-blur">
+      <div className="flex items-start gap-3 p-4 pb-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/30"><ClipboardList className="h-5 w-5" /></span>
+        <div className="min-w-0 flex-1">
+          <p className="text-lg font-bold leading-tight">Pendências para revisar{setor ? <span className="font-semibold" style={{ color: setor.cor }}> · {setor.nome}</span> : null}</p>
+          <p className="text-[12px] text-white/55">
+            {itens.length ? `${itens.length} ${itens.length === 1 ? "item aguardando" : "itens aguardando"} sua análise e aprovação.` : "Nada esperando por você aqui."}
+          </p>
+        </div>
+        {itens.length > 0 && (
+          <span className="flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-400/60 bg-amber-400/10 px-2.5 py-1 text-[12px] font-semibold text-amber-200">
+            <AlertTriangle className="h-3.5 w-3.5" />{itens.length} para revisar
+          </span>
+        )}
+        <button type="button" onClick={onFechar} className="rounded-lg p-1 text-white/50 hover:bg-white/10 hover:text-white" title="Fechar"><X className="h-4 w-4" /></button>
+      </div>
+      <div className="min-h-0 flex-1 divide-y divide-white/[0.06] overflow-y-auto border-t border-white/[0.06]">
+        {itens.map((x) => {
+          const st = setorPorId(x.setorId);
+          return (
+            <div key={x.chave} className="flex items-center gap-3 px-4 py-2.5">
+              <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1",
+                x.alta ? "bg-rose-500/10 text-rose-300 ring-rose-500/30" : "bg-amber-400/10 text-amber-300 ring-amber-400/30")}><x.Icone className="h-5 w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[13.5px] font-semibold" title={x.titulo}>{x.titulo}</p>
+                <p className="flex items-center gap-1 text-[11.5px] text-white/55"><User className="h-3 w-3" />{x.quem ?? "Equipe"}</p>
+              </div>
+              {st && (
+                <span className="hidden shrink-0 rounded-lg border px-2.5 py-0.5 text-[11.5px] font-medium sm:inline" style={{ color: st.cor, borderColor: `${st.cor}55`, background: `${st.cor}14` }}>{st.nome}</span>
+              )}
+              <span className={cn("flex w-[70px] shrink-0 items-center justify-center gap-1 rounded-lg border py-0.5 text-[11.5px] font-medium",
+                x.alta ? "border-rose-500/50 bg-rose-500/10 text-rose-300" : "border-amber-400/50 bg-amber-400/10 text-amber-200")}>
+                <ChevronsUp className="h-3 w-3" />{x.alta ? "Alta" : "Média"}
+              </span>
+              <button type="button" onClick={x.abrir}
+                className="flex shrink-0 items-center gap-1 rounded-lg bg-cyan-400 px-3 py-1.5 text-[12px] font-bold text-[#04121a] hover:bg-cyan-300">
+                Ver agora<ChevronRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {rodape}
+    </div>
+  );
+}
+
+function UltimasEntregas({ itens, onTarefa }: { itens: TarefaResumo[]; onTarefa: (t: TarefaResumo) => void }) {
+  const [aberto, setAberto] = useState(false);
+  return (
+    <div className="border-t border-white/[0.06] px-4 py-2">
+      <button type="button" onClick={() => setAberto((x) => !x)} className="flex items-center gap-1 text-[11px] text-white/50 hover:text-white">
+        <ChevronRight className={cn("h-3 w-3 transition-transform", aberto && "rotate-90")} />Últimas entregas ({itens.length})
+      </button>
+      {aberto && (
+        <div className="mt-1 max-h-28 space-y-0.5 overflow-y-auto">
+          {itens.slice(0, 10).map((t) => (
+            <button key={t.id} type="button" onClick={() => onTarefa(t)} className="flex w-full items-center gap-1.5 truncate rounded px-1.5 py-0.5 text-left text-[11px] text-white/70 hover:bg-white/10">
+              <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" /><span className="truncate">{limparTitulo(t.titulo)}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
