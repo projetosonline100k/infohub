@@ -6,7 +6,7 @@ import {
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { useVideoNoMac } from "@/lib/empresa/videoNoMac";
+import { preCarregarVideos, useVideoNoMac } from "@/lib/empresa/videoNoMac";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
 import { EVENTO_DESFAZER, EVENTO_REFAZER } from "@/lib/desktop/desfazer";
@@ -682,19 +682,27 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
 
   // Elementos ativos no instante atual (pra desenhar por cima do player).
   const legAtivas = web ? [] : projeto?.legendas.filter((l) => tFonte >= l.inicio && tFonte < l.fim) ?? [];
-  const midAtivas = web ? [] : projeto?.midias.filter((m) => tFonte >= m.inicio && tFonte < m.fim) ?? [];
+  // Vídeos por cima entram montados 3 s antes (escondidos, parados no começo): já carregados e decodificados
+  // quando chegam, em vez de começar a baixar na hora e o GIF/quadro travar na entrada (26/10).
+  // As animações do papel vêm todas ao abrir (são leves): nenhuma chega atrasada na hora de entrar.
+  const srcsAlfa = (projeto?.midias ?? []).filter((m) => m.tipo === "video" && (m.chroma || m.alfa) && relativo(m.arquivo))
+    .map((m) => url(`arquivo/${relativo(m.arquivo)!.replace(/[^/]+$/, (n) => `_alfa/${n.replace(/\.[^.]+$/, "")}.empilhado.mp4`)}`)).join("|");
+  useEffect(() => { if (srcsAlfa) preCarregarVideos(srcsAlfa.split("|")); }, [srcsAlfa]);
+  const midAtivas = web ? [] : projeto?.midias.filter((m) => tFonte >= m.inicio - (m.tipo === "video" ? 3 : 0) && tFonte < m.fim) ?? [];
   const noBuraco = projeto && !web ? !!lacunaEm(projeto, tFonte) : false;
   const nivelZoom = zoomNoFinal(zoomsFinais, tFinal);
   const cor = previaCor(projeto?.cor ?? "cinema", projeto?.ajuste_cor);
-  const td = projeto?.tela_dividida;
-  const naDivisao = !!td && tFonte >= td.inicio && tFonte < td.fim;
-  // Tela dividida (igual ao motor): do quadro já com zoom, a faixa 230–1190 desce pra metade de baixo.
+  const naDivisao = !!projeto && telasDivididas(projeto).some((td) => tFonte >= td.inicio && tFonte < td.fim);
+  // Tela dividida (igual ao motor): do quadro já com zoom, a faixa recorte–recorte+960 (padrão 230–1190) desce pra metade de baixo.
+  const recorte = Math.round(1920 * (projeto?.recorte_dividida ?? 0.12));
   const antesDoZoom = (y: number) => 1920 * 0.32 + (y - 1920 * 0.32) / nivelZoom;
   const estiloVideo: React.CSSProperties = web ? {} : {
     filter: cor.filtro || undefined, transformOrigin: "50% 32%",
-    transform: naDivisao ? `translateY(${(960 - 230) * escala}px) scale(${nivelZoom})` : `scale(${nivelZoom})`,
-    ...(naDivisao && { clipPath: `inset(${(antesDoZoom(230) / 19.2).toFixed(3)}% 0 ${(100 - antesDoZoom(1190) / 19.2).toFixed(3)}% 0)` }),
+    transform: naDivisao ? `translateY(${(960 - recorte) * escala}px) scale(${nivelZoom})` : `scale(${nivelZoom})`,
+    ...(naDivisao && { clipPath: `inset(${(antesDoZoom(recorte) / 19.2).toFixed(3)}% 0 ${(100 - antesDoZoom(recorte + 960) / 19.2).toFixed(3)}% 0)` }),
   };
+  // Legenda na divisão (legenda_dividida): na tela dividida a legenda fica nesse y e a headline centrada nele.
+  const yDivisao = naDivisao ? projeto?.legenda_dividida : undefined;
   const unico = selecao.length === 1 ? selecao[0] : null;
   const legSel = unico?.tipo === "legenda" ? projeto?.legendas.find((l) => l.id === unico.id) : undefined;
   const midSel = unico?.tipo === "midia" ? projeto?.midias.find((m) => m.id === unico.id) : undefined;
@@ -1548,7 +1556,11 @@ function VideoSobreposto({ src: original, t, tocando, style, cobrir, vel = 1, em
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     };
     desenhar();
-    return () => cancelAnimationFrame(pedido);
+    return () => {
+      cancelAnimationFrame(pedido);
+      // Cada trecho abre um contexto e o limite é 16: sem devolver, os mais antigos paravam de desenhar.
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+    };
   }, [empilhado]);
   const ultimoPulo = useRef(0);
   useEffect(() => {
@@ -1568,7 +1580,8 @@ function VideoSobreposto({ src: original, t, tocando, style, cobrir, vel = 1, em
   }, [t, tocando, vel]);
   if (empilhado) {
     return <>
-      <video ref={ref} src={src} crossOrigin="anonymous" muted playsInline preload="auto" onLoadedMetadata={(e) => { e.currentTarget.currentTime = Math.max(0, t); }} className="pointer-events-none absolute h-px w-px opacity-0" />
+      {/* Do tamanho do quadro e quase transparente: o WebKit pausa vídeo mudo invisível, e aí o papel parava. */}
+      <video ref={ref} src={src} crossOrigin="anonymous" muted playsInline preload="auto" onLoadedMetadata={(e) => { e.currentTarget.currentTime = Math.max(0, t); }} className="pointer-events-none absolute" style={{ ...style, opacity: 0.01 }} />
       <canvas ref={tela} className={cn("pointer-events-none absolute", cobrir ? "object-cover" : "object-contain")} style={style} />
     </>;
   }

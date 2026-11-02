@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 // salto do player pedia um pedaço do vídeo pela internet (120 ms de ida e volta). O arquivo leve (540p) vem inteiro
 // para a memória logo ao abrir, em poucos segundos; aí tocar e pular é instantâneo. Até chegar, toca pelo servidor
 // (a troca volta ao mesmo ponto: onLoadedMetadata do player).
-const MAX = 4;   // uns 100 MB no máximo
+const MAX = 24;   // os do player (uns 20 MB cada) e as animações do papel (1 MB cada)
 const prontos = new Map<string, string>();
 const baixando = new Map<string, Promise<string | null>>();
 
@@ -30,6 +30,11 @@ function baixar(src: string): Promise<string | null> {
     .finally(() => { baixando.delete(src); });
   baixando.set(src, p);
   return p;
+}
+
+/** Já traz os arquivos (animações do papel): quando cada uma entra na tela, ela já está aqui e não atrasa. */
+export function preCarregarVideos(srcs: string[]) {
+  for (const s of srcs) if (s) void baixar(s);
 }
 
 /** Devolve a cópia local de `src` quando ela chegar; até lá, o próprio `src`. `ligado`: só para os arquivos leves. */
