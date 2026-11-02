@@ -19,6 +19,18 @@ DO $$
 BEGIN
   IF (SELECT user_id FROM public.quizzes WHERE id = '10000000-0000-0000-0000-000000000396') <> auth.uid() THEN RAISE EXCEPTION 'dono não carimbado'; END IF;
   IF public.quiz_publico('exame-teste') IS NOT NULL THEN RAISE EXCEPTION 'quiz em esboço apareceu como público'; END IF;
+  -- Pronto para testar: o link abre, mas não grava resposta nem visita (20261103010000).
+  UPDATE public.quizzes SET status = 'revisar' WHERE id = '10000000-0000-0000-0000-000000000396';
+  IF public.quiz_publico('exame-teste') IS NULL THEN RAISE EXCEPTION 'link de teste não abriu'; END IF;
+  BEGIN
+    PERFORM public.responder_quiz('exame-teste', '[]'::jsonb, NULL, 'Teste', NULL, NULL);
+    RAISE EXCEPTION 'quiz em teste gravou resposta';
+  EXCEPTION WHEN raise_exception THEN
+    IF SQLERRM = 'quiz em teste gravou resposta' THEN RAISE; END IF;
+  END;
+  PERFORM public.registrar_evento_quiz('exame-teste', gen_random_uuid(), 'visita');
+  IF EXISTS (SELECT 1 FROM public.quiz_eventos WHERE quiz_id = '10000000-0000-0000-0000-000000000396') THEN RAISE EXCEPTION 'quiz em teste contou visita'; END IF;
+  UPDATE public.quizzes SET status = 'esboco' WHERE id = '10000000-0000-0000-0000-000000000396';
 END $$;
 
 DO $$

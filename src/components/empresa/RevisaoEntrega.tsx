@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart3, CheckCircle2, FileText, GalleryHorizontal, GitBranch, List, Loader2, MessageSquare, Monitor, PanelRightClose, PanelRightOpen, Pencil, Play, Smartphone, Workflow } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, GalleryHorizontal, ExternalLink, GitBranch, Link2, List, Loader2, MessageSquare, Monitor, PanelRightClose, PanelRightOpen, Pencil, Play, Smartphone, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,8 @@ import { MetricasDoQuiz } from "@/components/quiz/QuizMetricas";
 import { faltasDoQuiz } from "@/lib/quiz/faltas";
 import { AndamentoEntrega } from "./AndamentoEntrega";
 import type { Andamento } from "./ConversaEntrega";
-import { laminasDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type StatusQuiz } from "@/lib/quiz/quiz";
+import { abrirLinkExterno } from "@/lib/abrirLink";
+import { laminasDoQuiz, linkDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type StatusQuiz } from "@/lib/quiz/quiz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const db = supabase as unknown as SupabaseClient;   // quizzes ainda não está nos tipos gerados
@@ -59,7 +60,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
-  const [quiz, setQuiz] = useState<{ id: string; titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
   const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
   // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
   // 02/11 (Davi: "mais fácil de usar, ver em qual etapa é cada coisa"): Editar (estrutura, tela grande e ajustes) é o
@@ -118,7 +119,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     void (async () => {
       const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
-        db.from("quizzes").select("id, titulo, status, estrutura").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+        db.from("quizzes").select("id, titulo, slug, status, estrutura").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
           .then((r) => {
             if (!vivo) return;
             const novo = (r.data as typeof quiz) ?? null;
@@ -233,6 +234,14 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", faltasQuiz.length ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", verEsboco && "ring-1 ring-current")}>
                   {andamento?.esperando && <Loader2 className="h-3 w-3 animate-spin" />}{faltasQuiz.length ? `Pendências: ${faltasQuiz.length}` : "Sem pendências"}
                 </button>
+                {/* Link de teste (03/11): o mesmo do quiz publicado; antes de aprovar abre, mas não conta nas métricas. */}
+                {(quiz.status === "revisar" || noAr) && (
+                  <span className="flex items-center gap-1">
+                    <button type="button" onClick={() => void navigator.clipboard.writeText(linkDoQuiz(quiz.slug)).then(() => toast.success("Link copiado: mande para o seu celular"))}
+                      title={linkDoQuiz(quiz.slug)} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"><Link2 className="h-3.5 w-3.5" />{noAr ? "Copiar link" : "Copiar link de teste"}</button>
+                    <button type="button" onClick={() => void abrirLinkExterno(linkDoQuiz(quiz.slug))} title="Abrir no navegador" className="rounded-full border p-1 hover:bg-muted"><ExternalLink className="h-3.5 w-3.5" /></button>
+                  </span>
+                )}
                 <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                   {telasProntas} de {laminas.length} telas prontas
                   <span className="h-1.5 w-28 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${laminas.length ? (telasProntas / laminas.length) * 100 : 0}%` }} /></span>
