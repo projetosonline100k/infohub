@@ -35,7 +35,6 @@ import { NovoFuncionario, type MembroParaEditar } from "./NovoFuncionario";
 import { NovoEscritorio } from "./NovoEscritorio";
 import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
-import { FabricaConteudo } from "./FabricaConteudo";
 import { OrbitaEmpresa } from "./OrbitaEmpresa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
@@ -127,12 +126,6 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [abaCentral, setAbaCentral] = useState<"precisa" | "andamento">("precisa");
   const usarPixel = import.meta.env.DEV && !pixelFalhou;
   // 03/11 (Davi): o Escritório virou "Fábrica de Conteúdo" (esteiras por setor); o mapa continua a um clique.
-  // 04/11: a órbita (Atlas no centro, setores e agentes em volta) passou a ser a visão principal.
-  const [visao, setVisao] = useState<"orbita" | "fabrica" | "mapa">(() => {
-    try { const v = localStorage.getItem("escritorio:visao2"); return v === "mapa" || v === "fabrica" ? v : "orbita"; } catch { return "orbita"; }
-  });
-  const [numerosAbertos, setNumerosAbertos] = useState(false);
-  const trocarVisao = (v: "orbita" | "fabrica" | "mapa") => { setVisao(v); try { localStorage.setItem("escritorio:visao2", v); } catch { /* sem storage */ } };
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
   // Tarefa "Escolher data do reel" (tipo agendar_reel): mesma coisa, para o vídeo do Danilo.
@@ -761,32 +754,9 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
         </div>
       ))}
 
-      {setores.length > 0 && (
-        <div className="flex items-center gap-1 rounded-lg border bg-card p-1 text-xs font-semibold w-fit">
-          {([["orbita", "Órbita"], ["fabrica", "Fábrica"], ["mapa", "Mapa do escritório"]] as const).map(([v, r]) => (
-            <button key={v} type="button" onClick={() => trocarVisao(v)}
-              className={cn("rounded-md px-3 py-1", visao === v ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{r}</button>
-          ))}
-        </div>
-      )}
-
-      {visao === "orbita" && setores.length > 0 ? (
+      {/* 04/11 (Davi): o Escritório é só a órbita; sem setores ainda, o passo a passo para criar o primeiro. */}
+      {setores.length > 0 ? (
         <OrbitaEmpresa clienteId={clienteId} setores={setores} membros={membros} tarefas={tarefas}
-          pessoas={pessoasChat.filter((p) => !ehCoordenador(p.membro))} acoes={acoesFabrica}
-          categorias={[...CATEGORIAS]} rotuloCategoria={ROTULO_CATEGORIA} hoje={hoje}
-          onTarefa={(t) => {
-            const m = membros.find((x) => x.id === t.responsavel_id);
-            setAoVivo({ atividadeId: t.id, titulo: t.titulo, nome: m?.nome ?? "", ehIa: !!m?.eh_ia, progresso: t.progresso ?? null });
-          }}
-          onPessoa={(m) => { if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m); }}
-          topo={<div className="flex gap-2">
-            <button type="button" onClick={() => setEscritorio({ editando: null })}
-              className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Setor</button>
-            <button type="button" onClick={() => setCadastro({ editando: null })}
-              className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Funcionário</button>
-          </div>} />
-      ) : visao === "fabrica" && setores.length > 0 ? (
-        <FabricaConteudo clienteId={clienteId} setores={setores} membros={membros} tarefas={tarefas}
           pessoas={pessoasChat.filter((p) => !ehCoordenador(p.membro))} acoes={acoesFabrica}
           categorias={[...CATEGORIAS]} rotuloCategoria={ROTULO_CATEGORIA} hoje={hoje}
           onTarefa={(t) => {
@@ -879,28 +849,6 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       </div>
       )}
 
-      {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). Na fábrica ficam recolhidos (secundários). */}
-      {visao !== "mapa" && setores.length > 0 && (
-        <button type="button" onClick={() => setNumerosAbertos((x) => !x)}
-          className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-          <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", numerosAbertos && "rotate-90")} />Números do conteúdo (ideias, roteiros, postados…)
-        </button>
-      )}
-      <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6", visao !== "mapa" && setores.length > 0 && !numerosAbertos && "hidden")}>
-        {CARTOES.map(({ rotulo, valor, icone: Icone, cor, ir }) => (
-          <button key={rotulo} type="button" onClick={() => onIrPara(ir)}
-            className="group flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
-            <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-lg", cor)}><Icone className="h-5 w-5" /></span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-xl font-bold leading-none">{valor}</span>
-              <span className="text-xs text-muted-foreground">{rotulo}</span>
-            </span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-          </button>
-        ))}
-      </div>
-
-
       <KanbanEsteira clienteId={clienteId} setorId={esteiraAberta} aberto={!!esteiraAberta} onFechar={() => setEsteiraAberta(null)} />
       <EditorVideo edicao={edicaoAberta} onFechar={() => { setEdicaoAberta(null); void carregar(); }} />
       <EscolherFormato edicao={formatoAberto} onFechar={(escolheu) => { setFormatoAberto(null); if (escolheu) void carregar(); }} />
@@ -933,72 +881,6 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <RevisaoEntrega clienteId={clienteId} tarefas={paraAprovar} aberto={revisaoAberta} onFechar={() => setRevisaoAberta(false)} onMudou={() => { void carregar(); }} />
       <ProgramarLote clienteId={clienteId} tarefaIds={idsAgendar} aberto={loteAberto} onFechar={() => { setLoteAberto(false); void carregar(); }} />
 
-      {/* 4. O que vai ser publicado. */}
-      <section className="rounded-xl border bg-card p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <CalendarClock className="h-5 w-5 text-primary" />
-          <h2 className="font-semibold">Programados</h2>
-          <button type="button" onClick={() => onIrPara("cronograma")} className="ml-auto flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs hover:bg-muted">
-            Ver cronograma completo <ChevronRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-        {programados.length === 0 && postsDalila.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">Nada com data de postagem daqui pra frente. Marque a data no Cronograma.</p>
-        ) : (
-          <div className="flex w-0 min-w-full snap-x gap-3 overflow-x-auto overscroll-x-contain pb-2">
-            {postsDalila.map(({ tipo, item }) => tipo === "carrossel" ? (
-              <button key={item.id} type="button" disabled={!item.tarefa_data_id || item.status !== "programado"} onClick={() => setAgendarAberto(item.tarefa_data_id)}
-                title="Mudar o dia, a hora ou a legenda"
-                className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2 text-left transition-colors enabled:hover:border-emerald-600">
-                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-muted">
-                  {item.paginas?.[0] && <img src={item.paginas[0]} alt="" className="h-full w-full object-cover" loading="lazy" />}
-                  <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white"><Instagram className="h-3 w-3" /></span>
-                </div>
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-medium leading-snug">Carrossel {String(item.numero ?? "").padStart(3, "0")} · {item.tema}</p>
-                  <p className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                    <CalendarDays className="h-3 w-3" />
-                    {item.status === "publicando" ? "Publicando agora…" : item.programado_para ? `Programado · ${quandoPublica(item.programado_para)}` : "Programado"}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">{item.programado_pela_dalila_em ? "A Dalila escolheu o dia · clique para mudar" : "A Dalila publica sozinha"}</p>
-                </div>
-              </button>
-            ) : (
-              <button key={item.id} type="button" disabled={!item.tarefa_data_id || item.status !== "programado"} onClick={() => setAgendarReelAberto(item.tarefa_data_id)}
-                title="Mudar o dia, a hora ou a legenda"
-                className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border border-emerald-600/40 bg-emerald-600/5 p-2 text-left transition-colors enabled:hover:border-emerald-600">
-                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-primary/30 to-fuchsia-600/30">
-                  {/* Capa = o quadro que a Dalila escolheu (27/10), ou o início do vídeo nos antigos. */}
-                  {item.video_url && <video src={`${item.video_url}#t=${item.capa_ms != null ? item.capa_ms / 1000 : 0.5}`} muted playsInline preload="metadata" className="h-full w-full object-cover" />}
-                  <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white"><Clapperboard className="h-3 w-3" /></span>
-                </div>
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-medium leading-snug">Reel · {item.titulo}</p>
-                  <p className="mt-1 flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                    <CalendarDays className="h-3 w-3" />
-                    {item.status === "publicando" ? "Publicando agora…" : item.programado_para ? `Programado · ${quandoPublica(item.programado_para)}` : "Programado"}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">{item.programado_pela_dalila_em ? "A Dalila escolheu o dia e a capa · clique para mudar" : "A Dalila publica sozinha · clique para mudar a capa"}</p>
-                </div>
-              </button>
-            ))}
-            {programados.map((v) => (
-              <div key={v.id} className="flex w-[260px] shrink-0 snap-start gap-3 rounded-lg border p-2">
-                <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-primary/30 to-fuchsia-600/30">
-                  {v.capa && <img src={v.capa} alt="" className="h-full w-full object-cover" loading="lazy" />}
-                  <span className="absolute left-1 top-1 rounded bg-black/60 p-0.5 text-white">
-                    {v.plataforma === "youtube" ? <Youtube className="h-3 w-3" /> : <Instagram className="h-3 w-3" />}
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <p className="line-clamp-2 text-sm font-medium leading-snug">{v.titulo}</p>
-                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground"><CalendarDays className="h-3 w-3" />{dataCurta(v.data_postagem!)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
     </div>
   );
 }
