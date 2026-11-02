@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CheckCircle2, FileText, GalleryHorizontal, Loader2, Monitor, Pencil, Smartphone } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, GalleryHorizontal, Loader2, Monitor, Pencil, Play, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -17,10 +17,12 @@ import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
+import { AjustesDaTela, EstruturaDoQuiz, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
+import { MetricasDoQuiz } from "@/components/quiz/QuizMetricas";
 import { faltasDoQuiz } from "@/lib/quiz/faltas";
 import { AndamentoEntrega } from "./AndamentoEntrega";
 import type { Andamento } from "./ConversaEntrega";
-import type { EstruturaQuiz, StatusQuiz } from "@/lib/quiz/quiz";
+import { laminasDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type StatusQuiz } from "@/lib/quiz/quiz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const db = supabase as unknown as SupabaseClient;   // quizzes ainda não está nos tipos gerados
@@ -58,8 +60,22 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [quiz, setQuiz] = useState<{ id: string; titulo: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
   const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
   // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
-  const [abaQuiz, setAbaQuiz] = useState<"testar" | "andamento" | "esboco">("testar");
-  const verEsboco = abaQuiz !== "testar";
+  // 02/11 (Davi: "mais fácil de usar, ver em qual etapa é cada coisa"): Editar (estrutura, tela grande e ajustes) é o
+  // padrão; Visão geral é a fileira; Testar roda o quiz; Métricas funciona mesmo antes de aprovar.
+  const [abaQuiz, setAbaQuiz] = useState<"editar" | "geral" | "testar" | "metricas" | "andamento" | "esboco">("editar");
+  const verEsboco = abaQuiz === "andamento" || abaQuiz === "esboco";
+  const [telaSel, setTelaSel] = useState<string | null>(null);
+  const [lateralQuiz, setLateralQuiz] = useState<"ajustes" | "conversa">("ajustes");
+  const [respostasQuiz, setRespostasQuiz] = useState<{ perfil: string | null }[]>([]);
+  const laminas = useMemo(() => (quiz?.estrutura ? laminasDoQuiz(quiz.estrutura) : []), [quiz?.estrutura]);
+  const iTela = Math.max(0, laminas.findIndex((l) => l.chave === telaSel));
+  const tela = laminas[iTela];
+  const telasProntas = useMemo(() => (quiz?.estrutura ? laminas.filter((l) => !faltasDaLamina(l, quiz.estrutura!, faltasQuiz).length).length : 0), [laminas, quiz?.estrutura, faltasQuiz]);
+  const quizId = quiz?.id;
+  useEffect(() => {
+    if (abaQuiz !== "metricas" || !quizId) return;
+    void db.from("quiz_respostas").select("perfil").eq("quiz_id", quizId).then(({ data }) => setRespostasQuiz((data ?? []) as { perfil: string | null }[]));
+  }, [abaQuiz, quizId]);
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   // 25/10 (Davi): ver o quiz como no celular (é onde o lead abre). Fica lembrado neste navegador.
   // 25/10: e "em fileira" (todas as telas lado a lado, cada uma com editar e pedido ao agente), que é o padrão.
@@ -68,11 +84,10 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     try { const v = localStorage.getItem("revisao:quiz-vista"); return v === "computador" || v === "celular" || v === "fileira" ? v : "fileira"; } catch { return "fileira"; }
   });
   const mudarVista = (v: Vista) => { setVista(v); try { localStorage.setItem("revisao:quiz-vista", v); } catch { /* sem armazenamento */ } };
-  const noCelular = vista === "celular";
+  const noCelular = vista !== "computador";
   const [pedidoTela, setPedidoTela] = useState<{ id: number; texto: string } | null>(null);
   // Editar o quiz aqui mesmo (pedido do Davi, 15/10): clica no texto ou na imagem.
   // O quiz só recomeça quando a estrutura muda por fora (o Roy salvou).
-  const [editandoQuiz, setEditandoQuiz] = useState(false);
   const [chaveQuiz, setChaveQuiz] = useState(0);
   const estruturaConhecida = useRef("");
   const [info, setInfo] = useState<{ observacao: string | null; responsavel: string | null; responsavelId: string | null } | null>(null);
@@ -124,7 +139,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     })();
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
-  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setAbaQuiz("testar"); setAndamento(null); setEditandoQuiz(false); estruturaConhecida.current = ""; }, [tarefaId]);
+  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setAbaQuiz("editar"); setTelaSel(null); setLateralQuiz("ajustes"); setAndamento(null); estruturaConhecida.current = ""; }, [tarefaId]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
@@ -164,6 +179,12 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     if (error) { toast.error(arquivo.type.startsWith("audio/") ? "Não consegui enviar o áudio (até 20 MB, mp3/m4a/wav)" : "Não consegui enviar a imagem (até 20 MB)"); throw error; }
     return supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
   };
+  const pedirAoAgente = (texto: string) => {
+    if (!info?.responsavelId) { toast.error("Esta entrega não tem chat com o agente"); return; }
+    setPedidoTela({ id: Date.now(), texto });
+    setLateralQuiz("conversa");
+    toast.success("Pedido mandado para o chat");
+  };
   // Esboço de quiz de outro funcionário (sem quiz ligado ainda): dá pra mandar pro Roy criar.
   const esbocoParaRoy = !quiz && !/^roy$/i.test(info?.responsavel ?? "") && pareceEsbocoDeQuiz(tarefa?.titulo, docs[0]?.titulo);
   let marcouPrimeira = false;
@@ -172,7 +193,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     <Dialog open={aberto && !!tarefa} onOpenChange={(a) => { if (!a) onFechar(); }}>
       <DialogContent className={cn("flex flex-col gap-3 overflow-hidden",
         // Em fileira a revisão ocupa quase a tela toda: cabem mais celulares, inteiros (25/10).
-        quiz?.estrutura && abaQuiz === "testar" && vista === "fileira" ? "h-[96vh] w-[98vw] max-w-[98vw]" : "h-[92vh] max-w-6xl")}>
+        quiz?.estrutura ? "h-[96vh] w-[98vw] max-w-[98vw]" : "h-[92vh] max-w-6xl")}>
         {tarefa && (
           <>
             <style>{ESTILO_REVISAO}</style>
@@ -192,54 +213,64 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 ))}
               </div>
             )}
+            {quiz?.estrutura && (
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <div className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
+                  {([["editar", Pencil, "Editar quiz"], ["geral", GalleryHorizontal, "Visão geral"], ["testar", Play, "Testar"], ["metricas", BarChart3, "Métricas"]] as const).map(([a, Icone, rotulo]) => (
+                    <button key={a} type="button" onClick={() => setAbaQuiz(a)}
+                      className={cn("flex items-center gap-1.5 rounded-md px-3 py-1", abaQuiz === a ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
+                  ))}
+                </div>
+                <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">{ROTULO_STATUS[quiz.status]}</span>
+                <button type="button" onClick={() => setAbaQuiz("andamento")} title="O que ainda falta e o que o agente está fazendo"
+                  className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", faltasQuiz.length ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", verEsboco && "ring-1 ring-current")}>
+                  {andamento?.esperando && <Loader2 className="h-3 w-3 animate-spin" />}{faltasQuiz.length ? `Pendências: ${faltasQuiz.length}` : "Sem pendências"}
+                </button>
+                <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+                  {telasProntas} de {laminas.length} telas prontas
+                  <span className="h-1.5 w-28 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${laminas.length ? (telasProntas / laminas.length) * 100 : 0}%` }} /></span>
+                </span>
+              </div>
+            )}
             <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden">
-              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && vista !== "computador" && "flex flex-col")}>
-                {quiz?.estrutura && (
-                  <div className="mb-4 flex shrink-0 gap-1 rounded-lg bg-muted p-1 text-sm">
-                    <button type="button" onClick={() => setAbaQuiz("testar")} className={cn("flex-1 rounded-md px-3 py-1", !verEsboco && "bg-background font-medium shadow-sm")}>Testar o quiz</button>
-                    <button type="button" onClick={() => setAbaQuiz("andamento")} className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1", verEsboco && "bg-background font-medium shadow-sm")}>
-                      {andamento?.esperando && <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-600 dark:text-amber-300" />}Em andamento
-                      {!!faltasQuiz.length && <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[10px] tabular-nums" title="Coisas que ainda faltam no quiz">{faltasQuiz.length}</span>}
-                    </button>
-                    {!verEsboco && (
-                      <button type="button" onClick={() => setEditandoQuiz((v) => !v)} title="Clique num texto pra mudar a palavra, ou numa imagem pra enviar"
-                        className={cn("flex items-center gap-1 rounded-md px-3 py-1", editandoQuiz && "bg-amber-500/20 font-medium text-amber-700 dark:text-amber-300")}>
-                        <Pencil className="h-3.5 w-3.5" />{editandoQuiz ? "Editando" : "Editar"}
-                      </button>
-                    )}
-                    {!verEsboco && (
-                      <span className="flex shrink-0 rounded-md bg-background/60 p-0.5">
-                        {(["fileira", "celular", "computador"] as const).map((c) => {
-                          const Icone = c === "fileira" ? GalleryHorizontal : c === "celular" ? Smartphone : Monitor;
-                          return (
-                            <button key={c} type="button" onClick={() => mudarVista(c)}
-                              title={c === "fileira" ? "Todas as telas em fileira" : c === "celular" ? "Uma tela por vez, como no celular" : "Uma tela por vez, como no computador"}
-                              className={cn("rounded px-2 py-1", vista === c ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-                              <Icone className="h-3.5 w-3.5" />
-                            </button>
-                          );
-                        })}
-                      </span>
-                    )}
+              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && abaQuiz !== "metricas" && vista !== "computador" && "flex flex-col", quiz?.estrutura && abaQuiz === "editar" && "!flex-row gap-4 overflow-hidden p-3")}>
+                {quiz?.estrutura && abaQuiz === "testar" && (
+                  <div className="mb-3 flex shrink-0 justify-center gap-1">
+                    {(["celular", "computador"] as const).map((c) => {
+                      const Icone = c === "celular" ? Smartphone : Monitor;
+                      return (
+                        <button key={c} type="button" onClick={() => mudarVista(c)}
+                          className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs", (c === "celular") === noCelular ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted")}><Icone className="h-3.5 w-3.5" />{c === "celular" ? "Celular" : "Computador"}</button>
+                      );
+                    })}
                   </div>
                 )}
-                {quiz?.estrutura && !verEsboco ? (
-                  vista === "fileira" ? (
-                    <FileiraQuiz quizId={quiz.id} titulo={quiz.titulo} estrutura={quiz.estrutura} editarTudo={editandoQuiz}
-                      agente={andamento?.quem ?? info?.responsavel ?? "o agente"}
-                      onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
-                      onPedir={(texto) => { if (!info?.responsavelId) { toast.error("Esta entrega não tem chat com o agente"); return; } setPedidoTela({ id: Date.now(), texto }); toast.success("Pedido mandado no chat"); }} />
-                  ) : noCelular ? (
+                {quiz?.estrutura && abaQuiz === "editar" && tela ? (
+                  <>
+                    <div className="flex w-[280px] shrink-0 flex-col"><EstruturaDoQuiz laminas={laminas} estrutura={quiz.estrutura} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={setTelaSel} /></div>
+                    <PreviaDaTela titulo={quiz.titulo} estrutura={quiz.estrutura} lamina={tela} numero={iTela + 1} total={laminas.length}
+                      onAnterior={() => setTelaSel(laminas[iTela - 1]?.chave ?? tela.chave)} onProxima={() => setTelaSel(laminas[iTela + 1]?.chave ?? tela.chave)}
+                      onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                  </>
+                ) : quiz?.estrutura && abaQuiz === "geral" ? (
+                  <FileiraQuiz quizId={quiz.id} titulo={quiz.titulo} estrutura={quiz.estrutura} editarTudo={false}
+                    agente={andamento?.quem ?? info?.responsavel ?? "o agente"}
+                    onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} onPedir={pedirAoAgente} />
+                ) : quiz?.estrutura && abaQuiz === "metricas" ? (
+                  <div className="mx-auto max-w-3xl">
+                    {quiz.status !== "publicado" && <p className="mb-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
+                    <MetricasDoQuiz quiz={quiz} respostas={respostasQuiz} />
+                  </div>
+                ) : quiz?.estrutura && abaQuiz === "testar" ? (
+                  noCelular ? (
                     <MolduraCelular escuro={quiz.estrutura.tema === "escuro"}>
-                      <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia
-                        editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                      <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia />
                     </MolduraCelular>
                   ) : (
-                    <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste
-                      editar={editandoQuiz} onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} />
+                    <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste />
                   )
                 ) : quiz?.estrutura && abaQuiz === "andamento" ? (
-                  <AndamentoEntrega andamento={andamento} faltas={faltasQuiz} onTestar={() => setAbaQuiz("testar")} onVerEsboco={() => setAbaQuiz("esboco")} />
+                  <AndamentoEntrega andamento={andamento} faltas={faltasQuiz} onTestar={() => setAbaQuiz("editar")} onVerEsboco={() => setAbaQuiz("esboco")} />
                 ) : carregando ? (
                   <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
                 ) : docs.length === 0 ? (
@@ -282,10 +313,27 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   </div>
                 ))}
               </div>
-              {info?.responsavelId && (
-                <div className="h-[420px] shrink-0 md:h-auto md:w-[340px]">
-                  <ConversaEntrega key={tarefaId} clienteId={clienteId} tarefaId={tarefa.id} membroId={info.responsavelId}
-                    nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} onAndamento={setAndamento} pedidoExterno={pedidoTela} />
+              {(info?.responsavelId || (quiz?.estrutura && abaQuiz === "editar")) && (
+                <div className="flex h-[420px] shrink-0 flex-col gap-2 md:h-auto md:w-[360px]">
+                  {quiz?.estrutura && abaQuiz === "editar" && tela && (
+                    <>
+                      <div className="flex shrink-0 gap-1 rounded-lg bg-muted p-1 text-sm">
+                        <button type="button" onClick={() => setLateralQuiz("ajustes")} className={cn("flex-1 rounded-md px-3 py-1", lateralQuiz === "ajustes" ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}>Ajustes</button>
+                        <button type="button" onClick={() => setLateralQuiz("conversa")} className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1", lateralQuiz === "conversa" ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}>
+                          {andamento?.esperando && <Loader2 className="h-3 w-3 animate-spin" />}Conversa
+                        </button>
+                      </div>
+                      {lateralQuiz === "ajustes" && (
+                        <div className="min-h-0 flex-1">
+                          <AjustesDaTela estrutura={quiz.estrutura} lamina={tela} numero={iTela + 1} chavePedido={`quiz-tela:${quiz.id}:${tela.chave}`}
+                            agente={andamento?.quem ?? info?.responsavel ?? "o agente"} faltas={faltasQuiz} onMudar={(e) => void salvarQuiz(e)} onPedir={pedirAoAgente} />
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {/* Fica montada mesmo escondida: o chat não perde o andamento nem o rascunho. */}
+                  {info?.responsavelId && <div className={cn("min-h-0 flex-1", quiz?.estrutura && abaQuiz === "editar" && lateralQuiz !== "conversa" && "hidden")}><ConversaEntrega key={tarefaId} clienteId={clienteId} tarefaId={tarefa.id} membroId={info.responsavelId}
+                    nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} onAndamento={setAndamento} pedidoExterno={pedidoTela} /></div>}
                 </div>
               )}
             </div>

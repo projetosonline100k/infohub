@@ -122,6 +122,19 @@ export function rotuloDoPasso(e: EstruturaQuiz, p: Passo): string {
   return "Resultado e oferta";
 }
 
+// Cada tela que o Davi vê na revisão: um passo do quiz; o resultado vira uma tela por perfil.
+export interface Lamina { chave: string; passo: number; tipo: Passo["tipo"]; indice?: number; perfil?: string; rotulo: string }
+export function laminasDoQuiz(e: EstruturaQuiz): Lamina[] {
+  const pedir = e.captura?.ativa === false ? [] : (e.captura?.pedir ?? []);
+  return montarPassos(e, pedir.length > 0).flatMap((p, i): Lamina[] => {
+    const indice = "indice" in p ? p.indice : undefined;
+    if (p.tipo === "fim" && e.perfis.length > 1) {
+      return e.perfis.map((pf) => ({ chave: `${i}:${pf.id}`, passo: i, tipo: p.tipo, perfil: pf.id, rotulo: `Resultado: ${pf.nome}` }));
+    }
+    return [{ chave: String(i), passo: i, tipo: p.tipo, indice, rotulo: rotuloDoPasso(e, p) }];
+  });
+}
+
 export function montarPassos(e: EstruturaQuiz, temCaptura: boolean): Passo[] {
   const telas = e.telas ?? [];
   const passos: Passo[] = [{ tipo: "intro" }];

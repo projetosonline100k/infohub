@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, Send } from "lucide-react";
 import { useRascunho } from "@/hooks/useRascunho";
-import { montarPassos, rotuloDoPasso, type EstruturaQuiz } from "@/lib/quiz/quiz";
+import { laminasDoQuiz, type EstruturaQuiz } from "@/lib/quiz/quiz";
 import { cn } from "@/lib/utils";
 import { MolduraCelular } from "./MolduraCelular";
 import { QuizPlayer } from "./QuizPlayer";
@@ -12,9 +12,8 @@ import { QuizPlayer } from "./QuizPlayer";
 // e o campo manda o pedido daquela tela para o chat com o agente.
 // Cabeçalho (28) + celular (820: 800 de tela + moldura) + campo do pedido (56) + espaços.
 const ALTURA_LAMINA = 28 + 8 + 820 + 8 + 56;
-interface Lamina { chave: string; passo: number; perfil?: string; rotulo: string }
 
-function PedidoDaLamina({ chave, rotulo, numero, agente, onPedir }: {
+export function PedidoDaLamina({ chave, rotulo, numero, agente, onPedir }: {
   chave: string; rotulo: string; numero: number; agente: string; onPedir: (texto: string) => void;
 }) {
   const [texto, setTexto] = useRascunho(chave);
@@ -53,16 +52,7 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
-  const laminas = useMemo<Lamina[]>(() => {
-    const pedir = estrutura.captura?.ativa === false ? [] : (estrutura.captura?.pedir ?? []);
-    const passos = montarPassos(estrutura, pedir.length > 0);
-    return passos.flatMap((p, i): Lamina[] => {
-      if (p.tipo === "fim" && estrutura.perfis.length > 1) {
-        return estrutura.perfis.map((pf) => ({ chave: `${i}:${pf.id}`, passo: i, perfil: pf.id, rotulo: `Resultado: ${pf.nome}` }));
-      }
-      return [{ chave: String(i), passo: i, rotulo: rotuloDoPasso(estrutura, p) }];
-    });
-  }, [estrutura]);
+  const laminas = useMemo(() => laminasDoQuiz(estrutura), [estrutura]);
 
   return (
     <div ref={caixa} className="-mx-4 flex min-h-0 flex-1 items-start gap-5 overflow-x-auto overflow-y-hidden px-4 pb-3">

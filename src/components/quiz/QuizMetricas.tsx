@@ -20,6 +20,23 @@ interface Evento { sessao: string; tipo: "visita" | "passo" | "fim" | "cta"; pas
 export function QuizMetricas({ quiz, respostas, onFechar }: {
   quiz: QuizResumo | null; respostas: { perfil: string | null }[]; onFechar: () => void;
 }) {
+  return (
+    <Dialog open={!!quiz} onOpenChange={(a) => { if (!a) onFechar(); }}>
+      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Métricas · {quiz?.titulo}</DialogTitle>
+          <DialogDescription>Contadas desde que o link passou a registrar (15/10). Cada aba aberta conta como uma visita.</DialogDescription>
+        </DialogHeader>
+        <MetricasDoQuiz quiz={quiz} respostas={respostas} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Os números do quiz (também na revisão, antes de aprovar: mostra zerado até o link receber visitas). */
+export function MetricasDoQuiz({ quiz, respostas }: {
+  quiz: Pick<QuizResumo, "id" | "estrutura"> | null; respostas: { perfil: string | null }[];
+}) {
   const [eventos, setEventos] = useState<Evento[] | null>(null);
   useEffect(() => {
     setEventos(null);
@@ -63,16 +80,8 @@ export function QuizMetricas({ quiz, respostas, onFechar }: {
 
   const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
 
+  if (!m) return <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   return (
-    <Dialog open={!!quiz} onOpenChange={(a) => { if (!a) onFechar(); }}>
-      <DialogContent className="max-h-[92vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Métricas · {quiz?.titulo}</DialogTitle>
-          <DialogDescription>Contadas desde que o link passou a registrar (15/10). Cada aba aberta conta como uma visita.</DialogDescription>
-        </DialogHeader>
-        {!m ? (
-          <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-        ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
@@ -147,8 +156,5 @@ export function QuizMetricas({ quiz, respostas, onFechar }: {
               </section>
             )}
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
