@@ -151,7 +151,8 @@ export function FabricaConteudo({ clienteId, setores, membros, tarefas, pessoas,
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
         {/* A fábrica: um ambiente por setor */}
         <div className="fab-anima min-w-0 space-y-3">
-          {setores.map((s) => {
+          {/* 04/11 (Davi): a Diretoria não entra na fábrica (as pendências dela seguem em "Ações para você"). */}
+          {setores.filter((s) => tipoDoSetor(s.nome) !== "diretoria").map((s) => {
             const v = VISUAL[tipoDoSetor(s.nome)];
             const equipe = pessoas.filter((p) => p.membro.setor_id === s.id && !ehCoordenador(p.membro));
             const doSetor = abertas.filter((t) => setorDa(t) === s.id);
