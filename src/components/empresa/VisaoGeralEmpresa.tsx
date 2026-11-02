@@ -129,6 +129,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [visao, setVisao] = useState<"fabrica" | "mapa">(() => {
     try { return localStorage.getItem("escritorio:visao") === "mapa" ? "mapa" : "fabrica"; } catch { return "fabrica"; }
   });
+  const [numerosAbertos, setNumerosAbertos] = useState(false);
   const trocarVisao = (v: "fabrica" | "mapa") => { setVisao(v); try { localStorage.setItem("escritorio:visao", v); } catch { /* sem storage */ } };
   // Tarefa "Escolher data do carrossel" (tipo agendar) aberta: o Davi programa a Dalila.
   const [agendarAberto, setAgendarAberto] = useState<string | null>(null);
@@ -507,7 +508,14 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
     const membro = l.chave.startsWith("ia-") ? membros.find((m) => `ia-${m.id}` === l.chave) : undefined;
     const setorId = tarefa ? (tarefa.setor_id ?? membros.find((m) => m.id === tarefa.responsavel_id)?.setor_id ?? null)
       : membro ? membro.setor_id : SETOR_DA_CATEGORIA[l.categoria];
-    return { ...l, setorId, atrasada: !!tarefa && tarefaAtrasada(tarefa, hoje) };
+    // Tarefas da ação (acendem na fábrica) e se é uma aprovação (acende a estação de aprovação).
+    const item = precisa.find((x) => (x.tipo === "aprovar" ? l.chave === "aprovar" : x.tipo === "levar_ia" ? l.chave === `ia-${x.membro.id}` : x.tipo !== "gravar" && x.tarefa.id === l.chave));
+    const edicao = l.chave.startsWith("ed-") ? edicoes.find((e) => `ed-${e.id}` === l.chave) : undefined;
+    const tarefaIds = tarefa ? [tarefa.id]
+      : item && "tarefas" in item ? item.tarefas.map((t) => t.id)
+        : edicao ? [atividadeDaEdicao(edicao)].filter((x): x is string => !!x) : [];
+    const aprovacao = l.chave === "aprovar" || l.chave.startsWith("ed-") || l.chave.startsWith("car-") || tarefa?.situacao === "aguardando_aprovacao";
+    return { ...l, setorId, tarefaIds, aprovacao, atrasada: !!tarefa && tarefaAtrasada(tarefa, hoje) };
   });
 
   // Setores com as pessoas e o estado de cada uma: o mesmo para o mapa e para o escritório 3D.
@@ -854,8 +862,14 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       </div>
       )}
 
-      {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+      {/* 6 indicadores, calculados dos vídeos (Vertical + YouTube). Na fábrica ficam recolhidos (secundários). */}
+      {visao === "fabrica" && setores.length > 0 && (
+        <button type="button" onClick={() => setNumerosAbertos((x) => !x)}
+          className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+          <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", numerosAbertos && "rotate-90")} />Números do conteúdo (ideias, roteiros, postados…)
+        </button>
+      )}
+      <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6", visao === "fabrica" && setores.length > 0 && !numerosAbertos && "hidden")}>
         {CARTOES.map(({ rotulo, valor, icone: Icone, cor, ir }) => (
           <button key={rotulo} type="button" onClick={() => onIrPara(ir)}
             className="group flex items-center gap-3 rounded-xl border bg-card p-3 text-left transition-colors hover:border-primary/40">
