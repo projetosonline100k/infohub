@@ -2,12 +2,14 @@ import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronDown, ChevronRight, CircleDashed, ClipboardList, Crosshair, Factory, FlaskConical, Hand,
-  Headphones, HeartPulse, Hourglass, Layers, LayoutGrid, Megaphone, Minus, Play, Plus, X,
+  Headphones, HeartPulse, Hourglass, Layers, LayoutGrid, Megaphone, Mic, MicOff, Minus, Play, Plus, Square, X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { ehCoordenador, tarefaAtrasada, type MembroResumo, type TarefaResumo } from "@/lib/empresa/visaoGeral";
 import type { AcaoFabrica, PessoaFabrica } from "./FabricaConteudo";
+import { useConversaAtlas, type EstadoConversa } from "@/hooks/useConversaAtlas";
+import { VOZES_ATLAS, lerVozAtlas, salvarVozAtlas } from "@/lib/atlas/falaAtlas";
 
 // Escritório em órbita (04/11, Davi: "um mapa mental operacional vivo").
 // Atlas no centro → setores dos dois lados (orbe médio, ícone e nome dentro) → agentes em coluna do lado de fora
@@ -96,6 +98,8 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
   const salvarLayout = (x: Deslocamentos) => { try { localStorage.setItem(chaveLayout, JSON.stringify(x)); } catch { /* sem storage */ } };
   const d = (k: string): Ponto => desloc[k] ?? { x: 0, y: 0 };
 
+  const conversa = useConversaAtlas();
+  const falando = conversa.estado !== "desligada";
   const abertas = useMemo(() => tarefas.filter((t) => !t.concluida), [tarefas]);
   const atlas = membros.find((m) => ehCoordenador(m)) ?? null;
 
@@ -411,8 +415,9 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
               <circle r={R_ATLAS + 26} fill="#22d3ee" opacity=".16" filter="url(#orb-glow)" className="orb-brilho" />
               <g className="orb-gira"><ellipse rx={R_ATLAS + 22} ry={R_ATLAS * 0.32} fill="none" stroke="#a78bfa" strokeOpacity=".35" strokeWidth="1.2" transform="rotate(-16)" />
                 <circle cx={R_ATLAS + 18} cy="-26" r="2.6" fill="#c4b5fd" /></g>
-              <g className="orb-pulso">
-                <circle r={R_ATLAS} fill="url(#orb-esfera)" stroke="#22d3ee" strokeWidth="2.4" />
+              {falando && <circle r={R_ATLAS + 14 + conversa.nivel * 30} fill="none" stroke={conversa.estado === "falando" ? "#a78bfa" : "#22d3ee"} strokeOpacity={0.25 + conversa.nivel * 0.6} strokeWidth="2" />}
+              <g className={falando ? undefined : "orb-pulso"} style={falando ? { transform: `scale(${1 + conversa.nivel * 0.06})`, transformOrigin: "center", transition: "transform 80ms" } : undefined}>
+                <circle r={R_ATLAS} fill="url(#orb-esfera)" stroke={conversa.estado === "falando" ? "#a78bfa" : "#22d3ee"} strokeWidth="2.4" />
                 <circle r={R_ATLAS - 3} fill="none" stroke="#38bdf8" strokeOpacity=".25" strokeWidth="5" />
                 <g className="orb-olho"><circle cx="-17" cy="-38" r="9" fill="#67e8f9" /><circle cx="17" cy="-38" r="9" fill="#67e8f9" /></g>
               </g>
@@ -462,9 +467,16 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
             <p className="mt-1 text-[11px] text-white/60">Orquestrador da operação</p>
             <p className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-cyan-400/10 px-2 py-0.5 text-[10px] text-cyan-300">
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-300" style={{ animation: "orb-brilho 2s infinite" }} />
-              {trabalhando ? `Coordenando ${trabalhando}` : acoes.length ? "Analisando" : "Ativo"}
+              {falando ? ROTULO_CONVERSA[conversa.estado] : trabalhando ? `Coordenando ${trabalhando}` : acoes.length ? "Analisando" : "Ativo"}
             </p>
           </div>
+          {/* Falar com o Atlas */}
+          <button type="button" data-no="" onClick={() => (falando ? conversa.desligar() : void conversa.ligar())}
+            className={cn("absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] font-semibold shadow-lg backdrop-blur transition-colors",
+              falando ? "border-rose-400/60 bg-rose-500/20 text-rose-100 hover:bg-rose-500/30" : "border-cyan-400/50 bg-cyan-400/10 text-cyan-100 hover:bg-cyan-400/20")}
+            style={{ transform: `translate(-50%, ${R_ATLAS + 22}px)` }}>
+            {falando ? <><MicOff className="h-3.5 w-3.5" />Encerrar conversa</> : <><Mic className="h-3.5 w-3.5" />Falar com o Atlas</>}
+          </button>
 
           {rede.map((s) => {
             const Icone = ICONE[s.tipo];
@@ -590,6 +602,9 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
           </div>
         )}
 
+        {/* Conversa por voz com o Atlas */}
+        {falando && <PainelConversa conversa={conversa} />}
+
         {/* Controles, dica e legenda */}
         <div data-no="" className="absolute bottom-3 left-3 flex items-center gap-0.5 rounded-xl border border-white/10 bg-black/60 p-1 backdrop-blur">
           <button type="button" onClick={() => { setSuave(true); zoomEm(1.25); }} className="rounded-lg p-1.5 hover:bg-white/10" title="Aproximar"><Plus className="h-4 w-4" /></button>
@@ -631,6 +646,48 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
           <p className="text-lg font-bold tabular-nums">{saude}%</p>
           <p className="min-w-0 flex-1 truncate text-[11px] text-white/55">{insights.length ? insights.slice(0, 3).join(" · ") : "Tudo em dia"}</p>
         </div>
+      </div>
+    </div>
+  );
+}
+
+const ROTULO_CONVERSA: Record<EstadoConversa, string> = {
+  desligada: "", ouvindo: "Ouvindo você", gravando: "Ouvindo você…", entendendo: "Entendendo…", pensando: "Trabalhando nisso…", falando: "Falando",
+};
+
+function PainelConversa({ conversa }: { conversa: ReturnType<typeof useConversaAtlas> }) {
+  const [voz, setVoz] = useState(lerVozAtlas().id);
+  const fim = useRef<HTMLDivElement>(null);
+  useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [conversa.falas.length]);
+  const e = conversa.estado;
+  return (
+    <div data-no="" className="absolute bottom-16 left-1/2 z-20 w-[min(560px,calc(100%-24px))] -translate-x-1/2 rounded-2xl border border-cyan-400/30 bg-[#08101d]/92 p-3 shadow-[0_0_40px_rgba(34,211,238,0.15)] backdrop-blur">
+      <div className="flex items-center gap-2">
+        <span className="flex h-6 items-end gap-[3px]">
+          {[0.6, 1, 0.75, 0.9, 0.5].map((f, i) => (
+            <span key={i} className={cn("w-[3px] rounded-full", e === "falando" ? "bg-violet-300" : "bg-cyan-300")}
+              style={{ height: `${Math.max(3, (e === "pensando" || e === "entendendo" ? 0.25 : conversa.nivel) * f * 24)}px`, transition: "height 80ms" }} />
+          ))}
+        </span>
+        <p className="flex-1 text-[13px] font-semibold">{ROTULO_CONVERSA[e]}</p>
+        <select value={voz} onChange={(ev) => { setVoz(ev.target.value); salvarVozAtlas(ev.target.value); }}
+          className="rounded-md border border-white/10 bg-black/40 px-1.5 py-0.5 text-[11px] text-white/80" title="Voz do Atlas">
+          {VOZES_ATLAS.map((v) => <option key={v.id} value={v.id}>{v.nome}</option>)}
+        </select>
+        {e === "falando" && (
+          <button type="button" onClick={conversa.pararDeFalar} className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-[11px] hover:bg-white/15"><Square className="h-3 w-3" />Parar</button>
+        )}
+        <button type="button" onClick={conversa.desligar} className="rounded-md p-1 text-white/60 hover:bg-white/10 hover:text-white" title="Encerrar conversa"><X className="h-4 w-4" /></button>
+      </div>
+      <div data-rolavel="" className="mt-2 max-h-48 space-y-1.5 overflow-y-auto pr-1">
+        {conversa.falas.length === 0 && <p className="py-2 text-center text-[12px] text-white/50">Fale normalmente: "por que a Dalila não está programando?", "vê se o Danilo travou"… Quando você parar de falar, eu entendo e faço.</p>}
+        {conversa.falas.map((f) => (
+          <div key={f.id} className={cn("max-w-[85%] whitespace-pre-wrap rounded-xl px-2.5 py-1.5 text-[12px] leading-snug",
+            f.quem === "davi" ? "ml-auto bg-cyan-400/15 text-cyan-50" : "bg-white/[0.06] text-white/90")}>
+            {f.quem === "atlas" ? f.texto.trim().split(/\n\s*\n/)[0] : f.texto}
+          </div>
+        ))}
+        <div ref={fim} />
       </div>
     </div>
   );

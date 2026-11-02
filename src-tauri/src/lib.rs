@@ -104,6 +104,7 @@ pub fn run() {
             voz::voz_falar,
             voz::voz_parar,
             voz::voz_listar,
+            voz::voz_gerar,
             creator::creator_transcrever,
             creator::voz_transcrever,
             whatsapp::whatsapp_enviar,

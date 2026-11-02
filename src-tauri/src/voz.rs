@@ -151,3 +151,36 @@ pub fn voz_listar() -> Vec<String> {
     vozes.extend(mac);
     vozes
 }
+
+/// Gera a fala (voz neural da Microsoft, pelo edge-tts) e devolve o MP3 para a página tocar — a conversa
+/// com o Atlas (04/11) toca no Web Audio, com o efeito de "IA" e sabendo a hora exata em que a fala acaba.
+#[tauri::command]
+pub async fn voz_gerar(texto: String, voz: String, velocidade: Option<i32>) -> Result<tauri::ipc::Response, String> {
+    let texto = texto.trim().to_string();
+    if texto.is_empty() {
+        return Err("texto vazio".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let (py, pasta) = match (python(), pasta_edge_tts()) {
+            (Some(py), Some(pasta)) if pasta.exists() => (py, pasta),
+            _ => return Err("edge-tts não instalado".to_string()),
+        };
+        let nome = voz.strip_prefix("edge:").unwrap_or(&voz).to_string();
+        let pct = velocidade.unwrap_or(0).clamp(-50, 50);
+        let arquivo = std::env::temp_dir().join(format!("atlas-fala-{}.mp3", std::process::id() as u128 * 1_000_000 + std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() % 1_000_000).unwrap_or(0)));
+        let ok = Command::new(py)
+            .env("PYTHONPATH", &pasta)
+            .args(["-m", "edge_tts", "--voice", &nome, &format!("--rate={pct:+}%"), "--text", &texto, "--write-media"])
+            .arg(&arquivo)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false);
+        let bytes = if ok { std::fs::read(&arquivo).map_err(|e| e.to_string()) } else { Err("edge-tts falhou (sem internet?)".to_string()) };
+        let _ = std::fs::remove_file(&arquivo);
+        bytes.map(tauri::ipc::Response::new)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
