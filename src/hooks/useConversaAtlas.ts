@@ -18,6 +18,18 @@ export type EstadoConversa = "desligada" | "ouvindo" | "gravando" | "entendendo"
 export interface FalaConversa { id: string; quem: "davi" | "atlas"; texto: string }
 
 const SILENCIO_MS = 1200;
+
+// O Whisper "alucina" com silêncio ou ruído: repete a mesma palavra ("Extra Extra Extra…") ou solta frases de
+// legenda do YouTube. Isso não é fala do Davi: descarta. Repetições seguidas viram uma só.
+const FANTASMAS = /^(inscreva-se.*|obrigad[oa] (por|pela) assist.*|legendas? (pela|por) .*|.*amara\.org.*|tchau\W*|\.+|música\W*|\[.*\])$/i;
+export function limparTranscricao(bruto: string): string | null {
+  const texto = bruto.replace(/\s+/g, " ").trim();
+  const palavras = texto.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").split(" ").filter(Boolean);
+  if (palavras.join("").length < 2 || FANTASMAS.test(texto)) return null;
+  if (palavras.length >= 6 && new Set(palavras).size / palavras.length < 0.3) return null;   // "Extra Extra Extra…"
+  // Mesma palavra 4+ vezes seguidas: provavelmente alucinação no fim do trecho; corta a repetição.
+  return texto.replace(/(\b[\p{L}\p{N}']+\b)(?:[\s,.]+\1\b){3,}/giu, "$1").slice(0, 1500);
+}
 const CONFIRMACOES = ["Deixa comigo.", "Certo, já vejo isso.", "Entendido. Um instante.", "Vou verificar agora.", "Pode deixar."];
 
 export function useConversaAtlas() {
@@ -31,7 +43,7 @@ export function useConversaAtlas() {
   const fila = useRef<string[]>([]);          // respostas esperando a vez de falar
   const recursos = useRef<{ stream: MediaStream; analisador: AnalyserNode; timer: number } | null>(null);
   const gravador = useRef<MediaRecorder | null>(null);
-  const vad = useRef({ piso: 0.01, quadrosVoz: 0, falou: false, ultimaVoz: 0, inicioGravador: 0, descartar: false });
+  const vad = useRef({ piso: 0.01, quadrosVoz: 0, vozNoTrecho: 0, falou: false, ultimaVoz: 0, inicioGravador: 0, descartar: false });
 
   const ocioso = () => (pendentes.current.size ? "pensando" : "ouvindo") as EstadoConversa;
 
@@ -85,8 +97,8 @@ export function useConversaAtlas() {
         r.readAsDataURL(audio);
       });
       const extensao = audio.type.includes("mp4") ? "m4a" : "webm";
-      const texto = (await invoke<string>("voz_transcrever", { base64, extensao })).trim();
-      if (texto.replace(/[^\p{L}\p{N}]/gu, "").length < 2) { if (estadoRef.current === "entendendo") setEstado(ocioso()); return; }
+      const texto = limparTranscricao(await invoke<string>("voz_transcrever", { base64, extensao }));
+      if (!texto) { if (estadoRef.current === "entendendo") setEstado(ocioso()); return; }
       const { data, error } = await supabase.from("jarvis_conversa").insert({ papel: "davi", texto: PREFIXO_VOZ + texto, status: "enviada" }).select("id").single();
       if (error || !data) throw error ?? new Error("sem id");
       pendentes.current.add(data.id);
@@ -128,7 +140,7 @@ export function useConversaAtlas() {
     analisador.fftSize = 1024;
     ctx.createMediaStreamSource(stream).connect(analisador);
     const dados = new Uint8Array(analisador.fftSize);
-    vad.current = { piso: 0.01, quadrosVoz: 0, falou: false, ultimaVoz: 0, inicioGravador: 0, descartar: false };
+    vad.current = { piso: 0.01, quadrosVoz: 0, vozNoTrecho: 0, falou: false, ultimaVoz: 0, inicioGravador: 0, descartar: false };
     const timer = window.setInterval(() => {
       analisador.getByteTimeDomainData(dados);
       let soma = 0;
@@ -143,18 +155,23 @@ export function useConversaAtlas() {
       const agora = Date.now();
       if (rms > limiar) {
         v.quadrosVoz++;
+        v.vozNoTrecho++;
         v.ultimaVoz = agora;
         if (!v.falou && v.quadrosVoz >= 3) { v.falou = true; setEstado("gravando"); }
       } else {
         v.quadrosVoz = 0;
         if (v.falou && agora - v.ultimaVoz > SILENCIO_MS) {
           v.falou = false;
-          reiniciarGravador(false);            // fecha o trecho (vai para a transcrição) e já começa outro
+          // Menos de ~0,5 s de voz no trecho = barulho (tosse, porta, eco): nem manda transcrever.
+          reiniciarGravador(v.vozNoTrecho < 10);   // fecha o trecho (vai para a transcrição) e já começa outro
+          v.vozNoTrecho = 0;
           return;
         }
       }
+      // Falando sem parar há mais de 40 s: fecha o trecho assim mesmo (o Whisper erra em áudio longo).
+      if (v.falou && agora - v.inicioGravador > 40000) { reiniciarGravador(false); v.vozNoTrecho = 0; v.falou = false; setEstado(ocioso()); return; }
       // Muito tempo em silêncio: recomeça a gravação (não acumula áudio à toa).
-      if (!v.falou && agora - v.inicioGravador > 15000) reiniciarGravador(true);
+      if (!v.falou && agora - v.inicioGravador > 15000) { reiniciarGravador(true); v.vozNoTrecho = 0; }
     }, 50);
     recursos.current = { stream, analisador, timer };
     novoGravador();
