@@ -12,6 +12,8 @@ pub async fn destacar_aba(app: AppHandle, caminho: String, titulo: String, x: Op
         .title(format!("Infopro Hub — {titulo}"))
         .inner_size(1280.0, 800.0)
         .min_inner_size(400.0, 450.0)
+        // Arquivo arrastado do Finder vai para a página (desenho, documentos), não para o Tauri (02/11).
+        .disable_drag_drop_handler()
         .focused(true);
     // Guias na barra de título, como a janela principal (tauri.conf.json, 18/10).
     #[cfg(target_os = "macos")]
@@ -113,6 +115,7 @@ pub async fn abrir_notas(app: AppHandle, focar: Option<bool>) -> Result<(), Stri
         .title("Notas")
         .inner_size(1100.0, 760.0)
         .min_inner_size(520.0, 420.0)
+        .disable_drag_drop_handler()
         .focused(focar.unwrap_or(true));
     #[cfg(target_os = "macos")]
     {

@@ -14,6 +14,7 @@
     "windows": [
       {
         "label": "main",
+        "dragDropEnabled": false,
         "title": "Infopro Hub",
         "url": "/",
         "width": 1280,
