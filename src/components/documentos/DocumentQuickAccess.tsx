@@ -48,7 +48,7 @@ export function DocumentQuickAccess({ clienteId }: { clienteId: string }) {
 
   const close = () => setSelected(null);
   return <>
-    <button className="mt-4 px-3 text-xs text-muted-foreground hover:text-foreground" onClick={() => setOpen(true)}>Acesso rápido · Tab</button>
+    {/* 04/11 (Davi): sem o rótulo "Acesso rápido · Tab" no canto; o atalho Tab continua abrindo a busca. */}
     <CommandDialog open={open} onOpenChange={setOpen}>
       <DialogTitle className="sr-only">Abrir documento</DialogTitle>
       <DialogDescription className="sr-only">Busque e selecione um documento, caderno ou mapa mental.</DialogDescription>

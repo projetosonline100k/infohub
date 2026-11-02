@@ -2,7 +2,7 @@ import { isValidElement, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle, BarChart3, CalendarClock, Camera, CheckCircle2, ChevronDown, ChevronRight, ChevronsUp, CircleDashed, Clapperboard, ClipboardList, FileText, User, Crosshair, Factory, FlaskConical, Hand,
-  Headphones, HeartPulse, Hourglass, Layers, LayoutGrid, Megaphone, Mic, MicOff, Minus, Play, Plus, Square, X,
+  Headphones, Hourglass, Layers, LayoutGrid, Megaphone, Mic, MicOff, Minus, Play, Plus, Square, X,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -292,7 +292,6 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
   const agenteSel = rede.flatMap((s) => s.agentes.map((a) => ({ a, s }))).find((x) => x.a.pessoa.membro.id === agenteAberto) ?? null;
   const setorSel = rede.find((s) => s.id === setorFoco) ?? null;
   const trabalhando = rede.reduce((n, s) => n + s.agentes.filter((a) => a.estado === "trabalhando").length, 0);
-  const totalEsperando = abertas.filter((t) => t.situacao === "aguardando_aprovacao").length;
   const totalAtrasadas = abertas.filter((t) => tarefaAtrasada(t, hoje)).length;
   const hojeFeitas = feitas.filter((t) => (t.concluida_em ?? "").slice(0, 10) === hoje).length;
   const apagado = (setorId: string) => !!setorFoco && setorFoco !== setorId;
@@ -303,13 +302,6 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
     { rotulo: "Aguardando você", valor: acoes.length, Icone: AlertTriangle, cor: "text-amber-400 bg-amber-500/15" },
     { rotulo: "Atrasadas", valor: totalAtrasadas, Icone: AlertTriangle, cor: "text-rose-400 bg-rose-500/15" },
     { rotulo: "Concluídas na semana", valor: feitas.length, Icone: BarChart3, cor: "text-violet-400 bg-violet-500/15" },
-  ];
-  const saude = Math.max(0, Math.round(100 - (abertas.length ? (totalAtrasadas / abertas.length) * 70 : 0) - Math.min(totalEsperando, 10) * 1.5));
-  const insights = [
-    ...rede.filter((s) => s.feitas.length >= 3).sort((a, b) => b.feitas.length - a.feitas.length).slice(0, 1).map((s) => `${s.nome} avançando bem (${s.feitas.length} entregas)`),
-    ...(totalEsperando ? [`${totalEsperando} ${totalEsperando === 1 ? "item aguardando" : "itens aguardando"} sua aprovação`] : []),
-    ...(totalAtrasadas ? [`${totalAtrasadas} ${totalAtrasadas === 1 ? "entrega atrasada" : "entregas atrasadas"}`] : []),
-    ...rede.flatMap((s) => s.agentes.filter((a) => a.estado === "bloqueado").map((a) => `${a.pessoa.membro.nome} está bloqueado`)).slice(0, 2),
   ];
 
   // Ponto de tela de um ponto do mundo (o cartão do agente abre ao lado dele).
@@ -627,29 +619,6 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
         </div>
       </div>
 
-      {/* Fluxo geral e saúde (secundários) */}
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white/[0.03] px-3 py-2.5">
-          <p className="mr-1 text-xs font-semibold text-white/60">Fluxo geral</p>
-          {[
-            ["Ideia / fila", abertas.filter((t) => t.situacao !== "andamento" && t.situacao !== "aguardando_aprovacao").length, "text-white"],
-            ["Em produção", abertas.filter((t) => t.situacao === "andamento").length, "text-sky-300"],
-            ["Aprovação", totalEsperando, "text-amber-300"],
-            ["Concluído (7 dias)", feitas.length, "text-emerald-300"],
-          ].map(([r, n, c], i) => (
-            <span key={r as string} className="flex items-center gap-1.5 text-xs">
-              {i > 0 && <span className="text-white/30">→</span>}
-              <span className="rounded-lg bg-white/5 px-2.5 py-1">{r} <b className={cn("tabular-nums", c as string)}>{n}</b></span>
-            </span>
-          ))}
-        </div>
-        <div className="flex items-center gap-3 rounded-2xl bg-white/[0.03] px-3 py-2.5">
-          <HeartPulse className={cn("h-5 w-5 shrink-0", saude >= 75 ? "text-emerald-400" : saude >= 50 ? "text-amber-400" : "text-rose-400")} />
-          <p className="text-xs font-semibold text-white/60">Saúde</p>
-          <p className="text-lg font-bold tabular-nums">{saude}%</p>
-          <p className="min-w-0 flex-1 truncate text-[11px] text-white/55">{insights.length ? insights.slice(0, 3).join(" · ") : "Tudo em dia"}</p>
-        </div>
-      </div>
     </div>
   );
 }
