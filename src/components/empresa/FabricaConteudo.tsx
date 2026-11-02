@@ -27,9 +27,10 @@ export interface AcaoFabrica {
 }
 export interface PessoaFabrica { membro: MembroResumo; sinal: Sinal; atual: string | null }
 
-type Tipo = "audiovisual" | "marketing" | "vendas" | "sac" | "outro";
+type Tipo = "audiovisual" | "marketing" | "vendas" | "sac" | "diretoria" | "outro";
 const tipoDoSetor = (nome: string): Tipo =>
-  /audiovisual|v[ií]deo|edi[cç]|est[uú]dio/i.test(nome) ? "audiovisual"
+  /diretoria|gest[aã]o|lideran/i.test(nome) ? "diretoria"
+  : /audiovisual|v[ií]deo|edi[cç]|est[uú]dio/i.test(nome) ? "audiovisual"
     : /venda|sales|comercial/i.test(nome) ? "vendas"
       : /sucesso|sac|suporte|atendimento|cliente/i.test(nome) ? "sac"
         : /marketing|conte[uú]do|copy|viral|lab|tr[aá]fego/i.test(nome) ? "marketing" : "outro";
@@ -47,6 +48,8 @@ const VISUAL: Record<Tipo, Visual> = {
     fundo: "from-orange-950/80 via-[#1d1109] to-[#120a05]", borda: "border-orange-500/35", texto: "text-orange-300", luz: "rgba(251,146,60,0.3)", trilho: "#ea580c" },
   sac: { entrada: ["Chamados", Mail], aprovacao: "Aguardando", saida: ["Resolvido", CheckCircle2], Icone: Headphones, descricao: "Atendimento, suporte e relacionamento.",
     fundo: "from-sky-950/80 via-[#0a1622] to-[#060e16]", borda: "border-sky-500/35", texto: "text-sky-300", luz: "rgba(56,189,248,0.3)", trilho: "#0284c7" },
+  diretoria: { entrada: ["Na fila", Inbox], aprovacao: "Aprovação", saida: ["Concluído", CheckCircle2], Icone: Layers, descricao: "Prioridades, estratégia e decisões.",
+    fundo: "from-[#0f1d33] via-[#0c1524] to-[#080d16]", borda: "border-blue-400/30", texto: "text-blue-300", luz: "rgba(96,165,250,0.25)", trilho: "#3b82f6" },
   outro: { entrada: ["Na fila", Inbox], aprovacao: "Aprovação", saida: ["Concluído", CheckCircle2], Icone: Factory, descricao: "Tarefas do setor.",
     fundo: "from-slate-900/90 via-[#0f141d] to-[#090c12]", borda: "border-slate-500/35", texto: "text-slate-300", luz: "rgba(148,163,184,0.25)", trilho: "#475569" },
 };
@@ -176,35 +179,31 @@ export function FabricaConteudo({ clienteId, setores, membros, tarefas, pessoas,
             const alternar = () => setRecolhidos((r) => { const n = new Set(r); if (n.has(s.id)) n.delete(s.id); else n.add(s.id); return n; });
             return (
               <div key={s.id} ref={(el) => { if (el) faixas.current.set(s.id, el); }}
-                className={cn("relative flex overflow-hidden rounded-2xl border bg-gradient-to-r", v.fundo, v.borda)}
+                className={cn("relative flex flex-col overflow-hidden rounded-2xl border bg-gradient-to-r", v.fundo, v.borda)}
                 style={focado ? { animation: "fab-foco 1.6s ease-in-out infinite" } : undefined}>
                 {/* Iluminação do teto */}
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-24" style={{ background: `radial-gradient(60% 100% at 50% 0%, ${v.luz}, transparent)` }} />
 
-                {/* Placa da área */}
+                {/* Cabeçalho do setor: nome forte, descrição ao lado, situação à direita (04/11: sem a coluna lateral) */}
                 <button type="button" onClick={alternar}
-                  className="relative z-10 flex w-48 shrink-0 flex-col justify-between gap-3 border-r border-white/[0.07] bg-black/20 p-3 text-left hover:bg-black/30">
-                  <span className="flex items-start gap-2.5">
-                    <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/10", v.texto)}><v.Icone className="h-6 w-6" /></span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1 text-base font-bold leading-tight">{s.nome}<ChevronDown className={cn("h-3.5 w-3.5 shrink-0 text-white/40 transition-transform", recolhido && "-rotate-90")} /></span>
-                      {!recolhido && <span className="mt-0.5 block text-[11px] leading-snug text-white/55">{s.descricao || v.descricao}</span>}
-                    </span>
-                  </span>
-                  <span className="grid grid-cols-3 divide-x divide-white/10 rounded-xl bg-black/30 py-1.5 text-center">
-                    <span><b className="block text-lg leading-tight tabular-nums">{naFila.length + fazendo.length}</b><span className="text-[9px] text-white/55">em produção</span></span>
-                    <span><b className={cn("block text-lg leading-tight tabular-nums", esperando.length ? "text-amber-300" : "text-white/40")}>{esperando.length}</b><span className="text-[9px] text-white/55">aguardando</span></span>
-                    <span><b className={cn("block text-lg leading-tight tabular-nums", atrasadas ? "text-rose-400" : "text-white/40")}>{atrasadas}</b><span className="text-[9px] text-white/55">atrasadas</span></span>
+                  className={cn("relative z-10 flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-left hover:bg-white/[0.03]", !recolhido && "border-b border-white/[0.06]")}>
+                  <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/10", v.texto)}><v.Icone className="h-[18px] w-[18px]" /></span>
+                  <span className="text-lg font-bold leading-none tracking-tight">{s.nome}</span>
+                  <ChevronDown className={cn("-ml-1.5 h-4 w-4 shrink-0 text-white/40 transition-transform", recolhido && "-rotate-90")} />
+                  {!recolhido && <span className="hidden min-w-0 flex-1 truncate text-xs text-white/50 md:block">{s.descricao || v.descricao}</span>}
+                  {recolhido && <span className="flex-1" />}
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5 text-xs">
+                    <span className="rounded-lg bg-black/30 px-2 py-1"><b className="tabular-nums">{naFila.length + fazendo.length}</b> <span className="text-white/55">em produção</span></span>
+                    <span className={cn("rounded-lg px-2 py-1", esperando.length ? "bg-amber-400/15 text-amber-200 ring-1 ring-amber-400/40" : "bg-black/30 text-white/45")}>
+                      <b className="tabular-nums">{esperando.length}</b> aguardando você</span>
+                    <span className={cn("rounded-lg px-2 py-1", atrasadas ? "bg-rose-500/15 text-rose-200 ring-1 ring-rose-500/40" : "bg-black/30 text-white/45")}>
+                      <b className="tabular-nums">{atrasadas}</b> {atrasadas === 1 ? "atrasada" : "atrasadas"}</span>
                   </span>
                 </button>
 
-                {recolhido ? (
-                  <p className="relative flex flex-1 flex-wrap items-center gap-2 px-4 text-xs text-white/55">
-                    {estacoes.map((e, i) => <span key={e.chave} className="flex items-center gap-2">{i > 0 && <span className={v.texto}>→</span>}{e.nome} <b className="text-white/80">{e.itens.length}</b></span>)}
-                  </p>
-                ) : (
-                  <div className="relative min-w-0 flex-1 overflow-x-auto [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,.15)_transparent]">
-                    <div className="relative flex px-2 pb-2 pt-3">
+                {recolhido ? null : (
+                  <div className="relative min-w-0 overflow-x-auto [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,.15)_transparent]">
+                    <div className="relative flex px-1 pb-2 pt-2.5">
                       {estacoes.map((e, i) => (
                         <EstacaoFabrica key={e.chave} e={e} v={v} ultima={i === estacoes.length - 1} hoje={hoje} nomeDe={nomeDe}
                           acesa={focado && (foco.aprovacao ? e.tipo === "aprovacao"
