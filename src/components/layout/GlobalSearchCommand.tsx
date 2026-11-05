@@ -1,7 +1,8 @@
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, User, Gauge, CalendarDays, Zap, CheckSquare, FileText, Loader2, Radio } from "lucide-react";
+import { LayoutDashboard, Users, Activity, StickyNote, ShieldCheck, User, Gauge, CalendarDays, Zap, CheckSquare, FileText, Loader2, Radio, ArrowLeft, ChevronRight, Clapperboard, FolderOpen, Workflow, BookOpen } from "lucide-react";
+import { SECOES, SECOES_ESCRITORIO } from "@/lib/projeto/secoes";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -24,6 +25,12 @@ interface ResultadosBusca {
   documentos: ItemBusca[];
   notas: ItemBusca[];
 }
+
+// Dentro de um projeto (04/11, Davi: "no ⌘K quero entrar no projeto e acessar tudo: Vertical, Documentos, os
+// documentos em si"): escolher um projeto entra nele em vez de abrir — mostra as seções, todos os documentos e
+// os vídeos do Vertical. ⌫ com a busca vazia (ou a seta) volta. Fora dele, "core vertical" já acha a seção.
+const SECOES_TODAS = [...SECOES, ...SECOES_ESCRITORIO];
+interface ConteudoProjeto { documentos: { id: string; titulo: string | null; tipo: string | null }[]; videos: { id: string; titulo: string | null; status: string | null }[] }
 
 const SEM_RESULTADOS: ResultadosBusca = { atividades: [], documentos: [], notas: [] };
 
@@ -49,6 +56,22 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
   const [buscando, setBuscando] = useState(false);
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [projetoAberto, setProjetoAberto] = useState<ProjetoBusca | null>(null);
+  const [conteudo, setConteudo] = useState<ConteudoProjeto | null>(null);
+  useEffect(() => {
+    if (!projetoAberto) { setConteudo(null); return; }
+    let vivo = true;
+    void Promise.all([
+      supabase.from("documentos").select("id, titulo, tipo").eq("cliente_id", projetoAberto.id).is("deleted_at", null)
+        .or(`conteudo.is.null,conteudo.not.like.${NOTA_PREFIX}*`).order("updated_at", { ascending: false }).limit(500),
+      supabase.from("videos_vertical").select("id, titulo, status").eq("cliente_id", projetoAberto.id).order("created_at", { ascending: false }).limit(300),
+    ]).then(([docs, videos]) => {
+      if (!vivo) return;
+      setConteudo({ documentos: (docs.data ?? []) as ConteudoProjeto["documentos"], videos: (videos.data ?? []) as ConteudoProjeto["videos"] });
+    });
+    return () => { vivo = false; };
+  }, [projetoAberto]);
+  const entrar = (p: ProjetoBusca) => { setProjetoAberto(p); setBusca(""); };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -72,12 +95,12 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
   }, [open, projetos.length]);
 
   useEffect(() => {
-    if (!open) setBusca("");
+    if (!open) { setBusca(""); setProjetoAberto(null); }
   }, [open]);
 
   useEffect(() => {
     const termo = busca.trim();
-    if (termo.length < 2) {
+    if (termo.length < 2 || projetoAberto) {
       setResultados(SEM_RESULTADOS);
       setBuscando(false);
       return;
@@ -126,7 +149,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
       cancelado = true;
       window.clearTimeout(timer);
     };
-  }, [busca]);
+  }, [busca, projetoAberto]);
 
   const nomeProjeto = (clienteId: string | null) =>
     clienteId ? projetos.find((p) => p.id === clienteId)?.nome_especialista : undefined;
@@ -180,11 +203,59 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     },
   ];
 
+  const base = projetoAberto ? `/clientes/${projetoAberto.id}` : "";
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Buscar páginas, projetos, tarefas, documentos e notas..." value={busca} onValueChange={setBusca} />
-      <CommandList>
-        <CommandEmpty>{buscando ? "Buscando..." : "Nada encontrado."}</CommandEmpty>
+      {projetoAberto && (
+        <div className="flex items-center gap-1.5 border-b px-3 py-2 text-sm">
+          <button type="button" onClick={() => { setProjetoAberto(null); setBusca(""); }} className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <ArrowLeft className="h-3.5 w-3.5" />Tudo
+          </button>
+          <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="font-semibold">{projetoAberto.nome_especialista}</span>
+        </div>
+      )}
+      <CommandInput placeholder={projetoAberto ? `Buscar em ${projetoAberto.nome_especialista}: seções, documentos, vídeos...` : "Buscar páginas, projetos, tarefas, documentos e notas..."}
+        value={busca} onValueChange={setBusca}
+        onKeyDown={(e) => { if (e.key === "Backspace" && !busca && projetoAberto) { e.preventDefault(); setProjetoAberto(null); } }} />
+      {projetoAberto ? (
+        <CommandList>
+          <CommandEmpty>{conteudo ? "Nada encontrado neste projeto." : "Carregando..."}</CommandEmpty>
+          <CommandGroup heading="Seções">
+            <CommandItem value="Abrir o projeto" onSelect={() => ir(base)}>
+              <FolderOpen className="mr-2 h-4 w-4" />Abrir o projeto
+            </CommandItem>
+            {SECOES_TODAS.map((sc) => (
+              <CommandItem key={sc.secao} value={`seção ${sc.titulo}`} onSelect={() => ir(`${base}?secao=${sc.secao}`)}>
+                <sc.icone className="mr-2 h-4 w-4" />{sc.titulo}
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          {conteudo && conteudo.documentos.length > 0 && (
+            <CommandGroup heading={`Documentos (${conteudo.documentos.length})`}>
+              {conteudo.documentos.map((d) => {
+                const Icone = d.tipo === "mapa" ? Workflow : d.tipo === "caderno" ? BookOpen : FileText;
+                return (
+                  <CommandItem key={d.id} value={`doc ${d.titulo ?? ""} ${d.id}`} onSelect={() => ir(`${base}?documento=${d.id}`)}>
+                    <Icone className="mr-2 h-4 w-4 shrink-0" /><span className="truncate">{d.titulo || "Sem título"}</span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          )}
+          {conteudo && conteudo.videos.length > 0 && (
+            <CommandGroup heading={`Vídeos do Vertical (${conteudo.videos.length})`}>
+              {conteudo.videos.map((v) => (
+                <CommandItem key={v.id} value={`video ${v.titulo ?? ""} ${v.id}`} onSelect={() => ir(`${base}?secao=conteudo:vertical&video=${v.id}`)}>
+                  <Clapperboard className="mr-2 h-4 w-4 shrink-0" /><span className="truncate">{v.titulo || "Sem título"}</span>
+                  {v.status && <span className="ml-auto shrink-0 pl-2 text-xs text-muted-foreground">{v.status}</span>}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          )}
+        </CommandList>
+      ) : (
+      <CommandList>        <CommandEmpty>{buscando ? "Buscando..." : "Nada encontrado."}</CommandEmpty>
         <CommandGroup heading="Navegação">
           {paginas.map((p) => (
             <CommandItem key={p.rota} onSelect={() => ir(p.rota)}>
@@ -196,11 +267,23 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
         {projetos.length > 0 && (
           <CommandGroup heading="Projetos">
             {projetos.map((p) => (
-              <CommandItem key={p.id} onSelect={() => ir(`/clientes/${p.id}`)}>
+              <CommandItem key={p.id} value={`projeto ${p.nome_especialista}`} onSelect={() => entrar(p)}>
                 <User className="mr-2 h-4 w-4" />
                 {p.nome_especialista}
+                <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">entrar<ChevronRight className="h-3.5 w-3.5" /></span>
               </CommandItem>
             ))}
+          </CommandGroup>
+        )}
+        {/* "core vertical", "instalivros documentos": a seção de um projeto direto */}
+        {busca.trim().length >= 2 && projetos.length > 0 && (
+          <CommandGroup heading="Seções dos projetos">
+            {projetos.flatMap((p) => SECOES_TODAS.map((sc) => (
+              <CommandItem key={`${p.id}:${sc.secao}`} value={`${p.nome_especialista} ${sc.titulo}`} onSelect={() => ir(`/clientes/${p.id}?secao=${sc.secao}`)}>
+                <sc.icone className="mr-2 h-4 w-4" />
+                <span className="truncate">{p.nome_especialista} › {sc.titulo}</span>
+              </CommandItem>
+            )))}
           </CommandGroup>
         )}
         {grupos.map(
@@ -226,6 +309,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
           </div>
         )}
       </CommandList>
+      )}
     </CommandDialog>
   );
 }

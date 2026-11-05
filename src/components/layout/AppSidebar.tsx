@@ -16,6 +16,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { useExcluirDesenho } from "@/hooks/useExcluirDesenho";
 import { useWorkspaceTabs } from "@/components/workspace/WorkspaceTabs";
 import { createEmptyMindMapContent } from "@/components/documentos/MindMapEditor";
+import { SECOES, SECOES_ESCRITORIO } from "@/lib/projeto/secoes";
 
 // Barra lateral em árvore, no jeito do Obsidian (23/10, Davi: "clicar no item e ter subcategorias, com as
 // funções e projetos que já temos"). Pastas abrem e fecham (o que fica aberto é lembrado); cada projeto
@@ -99,25 +100,6 @@ async function desenhosSoltos(): Promise<No[]> {
     chave: `desenho:${d.id}`, titulo: d.titulo || "Desenho sem título", icone: Workflow, ir: `/desenho/${d.id}`, desenhoId: d.id,
   }));
 }
-
-// Seções de um projeto (as mesmas da página do projeto).
-const SECOES: { secao: string; titulo: string; icone: LucideIcon }[] = [
-  { secao: "conteudo:visao-geral", titulo: "Escritório", icone: Building2 },
-  { secao: "atividades", titulo: "Atividades", icone: ListChecks },
-  { secao: "documentos", titulo: "Documentos", icone: FileText },
-  { secao: "cerebro", titulo: "Cérebro", icone: Brain },
-];
-// 24/10 (Davi): dentro do Escritório, os mesmos itens das abas de cima, na mesma ordem.
-const SECOES_ESCRITORIO: { secao: string; titulo: string; icone: LucideIcon }[] = [
-  { secao: "informacoes", titulo: "Informações gerais", icone: Info },
-  { secao: "conteudo:vertical", titulo: "Vertical", icone: Video },
-  { secao: "conteudo:youtube", titulo: "Youtube", icone: Youtube },
-  { secao: "conteudo:brainstorm", titulo: "Brainstorm", icone: Lightbulb },
-  { secao: "conteudo:cronograma", titulo: "Cronograma", icone: CalendarRange },
-  { secao: "conteudo:conhecimento", titulo: "Fonte de conhecimento", icone: BookOpen },
-  { secao: "conteudo:quiz", titulo: "Quiz", icone: HelpCircle },
-  { secao: "conteudo:whatsapp", titulo: "WhatsApp", icone: MessageCircle },
-];
 
 interface ClienteMenu { id: string; nome_especialista: string; arquivado: boolean | null }
 
