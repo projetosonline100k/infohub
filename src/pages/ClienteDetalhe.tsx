@@ -6,7 +6,8 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Edit, Trash, ShoppingCart, TrendingUp, Layers, ChevronRight } from "lucide-react";
+import { Plus, Edit, Trash, ShoppingCart, Layers, ChevronRight, Settings } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { CerebroView } from "@/components/cerebro/CerebroView";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
@@ -16,7 +17,6 @@ import { AtividadesView } from "@/components/atividades/AtividadesView";
 import { DocumentQuickAccess } from "@/components/documentos/DocumentQuickAccess";
 import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
-import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
 import { PainelVendas } from "@/components/produtos/PainelVendas";
 import { MetaAtual } from "@/components/produtos/MetaAtual";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
@@ -79,6 +79,7 @@ export default function ClienteDetalhe() {
     if (idDaAba.current !== id) { idDaAba.current = id; return; }
     try { localStorage.setItem(`projeto-aba:${id}`, JSON.stringify({ aba: abaAtiva, sub: subAbaConteudo })); } catch { /* sem storage */ }
   }, [id, abaAtiva, subAbaConteudo]);
+  const [equipeAberta, setEquipeAberta] = useState(false);
   const [mostrarFormProduto, setMostrarFormProduto] = useState(false);
   const [produtoEditando, setProdutoEditando] = useState<Produto | null>(null);
   const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
@@ -305,23 +306,15 @@ export default function ClienteDetalhe() {
               </div>
 
               <div className="min-w-0 space-y-5">
-                {acesso.proprietario && <div className="painel-suave"><EquipeCard key={id} clienteId={id!} permissoesDisponiveis={permissoesDisponiveis} /></div>}
+                {/* Equipe: some da tela; a engrenagem abre a equipe para configurar (07/11, Davi) */}
+                {acesso.proprietario && <div className="flex justify-end">
+                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" title="Equipe do projeto" aria-label="Equipe do projeto"
+                    onClick={() => setEquipeAberta(true)}>
+                    <Settings className="h-4 w-4" />
+                  </Button>
+                </div>}
 
                 {pode("produtos") && <>
-                  <div className="painel-suave">
-                    <Card className="rounded-2xl">
-                      <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600"><TrendingUp className="h-4 w-4" /></span>
-                          Receita
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <ReceitaGraficoCliente clienteId={id!} />
-                      </CardContent>
-                    </Card>
-                  </div>
-
                   {/* Esteira de produtos */}
                   <div className="painel-suave">
                     <Card className="rounded-2xl">
@@ -449,6 +442,19 @@ export default function ClienteDetalhe() {
           onClose={() => setProdutoSelecionado(null)}
           onUpdate={carregarDados}
         />
+      )}
+
+      {/* Equipe do projeto (engrenagem da aba Informações gerais) */}
+      {acesso.proprietario && (
+        <Dialog open={equipeAberta} onOpenChange={setEquipeAberta}>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="sr-only">Equipe do projeto</DialogTitle>
+              <DialogDescription className="sr-only">Membros da equipe e o que cada um pode acessar</DialogDescription>
+            </DialogHeader>
+            {equipeAberta && <EquipeCard key={id} clienteId={id!} permissoesDisponiveis={permissoesDisponiveis} />}
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
