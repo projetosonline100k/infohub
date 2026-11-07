@@ -284,39 +284,35 @@ export default function ClienteDetalhe() {
             </div>
           )}
           {abaAtiva === "informacoes" && (
-            // 07/11 (Davi): duas colunas — Meta e Vendas à esquerda; Equipe, Receita e Esteira à direita.
-            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
-              <div className="min-w-0 space-y-5">
-                <MetaAtual clienteId={id!} meta={cliente.meta_atual} />
+            // 07/11 (Davi): coluna única — Meta, Vendas e, embaixo, a Esteira de produtos (ocupava espaço sem precisar).
+            <div className="space-y-5">
+              {/* Equipe some da tela; a engrenagem abre a equipe para configurar */}
+              {acesso.proprietario && <div className="flex justify-end">
+                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" title="Equipe do projeto" aria-label="Equipe do projeto"
+                  onClick={() => setEquipeAberta(true)}>
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </div>}
 
-                {/* Vendas das plataformas (Eduzz, Kiwify, Hotmart): funil e origem */}
-                {pode("produtos") && <div className="painel-suave">
-                  <Card className="rounded-2xl">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-lg">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShoppingCart className="h-4 w-4" /></span>
-                        Vendas
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <PainelVendas clienteId={id!} />
-                    </CardContent>
-                  </Card>
-                </div>}
-              </div>
+              <MetaAtual clienteId={id!} meta={cliente.meta_atual} />
 
-              <div className="min-w-0 space-y-5">
-                {/* Equipe: some da tela; a engrenagem abre a equipe para configurar (07/11, Davi) */}
-                {acesso.proprietario && <div className="flex justify-end">
-                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" title="Equipe do projeto" aria-label="Equipe do projeto"
-                    onClick={() => setEquipeAberta(true)}>
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </div>}
+              {/* Vendas das plataformas (Eduzz, Kiwify, Hotmart): funil e origem */}
+              {pode("produtos") && <div className="painel-suave">
+                <Card className="rounded-2xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShoppingCart className="h-4 w-4" /></span>
+                      Vendas
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <PainelVendas clienteId={id!} />
+                  </CardContent>
+                </Card>
+              </div>}
 
-                {pode("produtos") && <>
-                  {/* Esteira de produtos */}
-                  <div className="painel-suave">
+              {/* Esteira de produtos */}
+              {pode("produtos") && <div className="painel-suave">
                     <Card className="rounded-2xl">
                       <CardHeader className="flex flex-row items-center justify-between pb-2">
                         <CardTitle className="flex items-center gap-2 text-lg">
@@ -336,7 +332,7 @@ export default function ClienteDetalhe() {
                       </CardHeader>
                       <CardContent>
                         {produtos.length > 0 ? (
-                          <div className="space-y-2">
+                          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                             {produtos.map((produto) => (
                               <div
                                 key={produto.id}
@@ -394,9 +390,7 @@ export default function ClienteDetalhe() {
                         )}
                       </CardContent>
                     </Card>
-                  </div>
-                </>}
-              </div>
+              </div>}
             </div>
           )}
 
