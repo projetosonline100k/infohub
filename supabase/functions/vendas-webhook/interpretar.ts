@@ -149,7 +149,7 @@ function tipoPorTexto(t: string): TipoEvento | null {
 }
 export const ehEduzz = (corpo: Json) =>
   !!corpo && typeof corpo === "object" && (
-    /eduzz/i.test(String(corpo.event ?? corpo.type ?? "")) || "trans_cod" in corpo || "edz_fat_cod" in corpo
+    /eduzz|^(myeduzz|sun)\./i.test(String(corpo.event ?? corpo.type ?? "")) || "trans_cod" in corpo || "edz_fat_cod" in corpo
     || (!/^PURCHASE_/.test(String(corpo.event ?? "")) && corpo.data && typeof corpo.data === "object" && ("buyer" in corpo.data || "invoice" in corpo.data || "items" in corpo.data) && !corpo.data.purchase)
   );
 
@@ -158,10 +158,10 @@ function eduzz(corpo: Json, agora: Date): EventoVenda | null {
   const evento = String(corpo.event ?? corpo.type ?? "");
   const legado = corpo.trans_status != null ? EDUZZ_STATUS[String(corpo.trans_status)] : undefined;
   const tipo = legado ?? tipoPorTexto(evento) ?? tipoPorTexto(String(d.status ?? d.invoice?.status ?? ""));
-  const id = d.id ?? d.invoiceId ?? d.invoice_id ?? d.invoice?.id ?? corpo.trans_cod ?? corpo.edz_fat_cod
+  const id = d.id ?? d.invoiceId ?? d.invoice_id ?? d.invoice?.id ?? d.transactionId ?? corpo.trans_cod ?? corpo.edz_fat_cod
     ?? (tipo === "abandono" ? `${achar(d, /email$/i) ?? ""}:${corpo.sentDate ?? corpo.createdAt ?? agora.toISOString()}` : null);
   if (!tipo || !id) return null;
-  const valor = numero(d.paid?.value ?? d.price?.value ?? d.total?.value ?? d.value ?? d.amount ?? d.invoice?.value
+  const valor = numero(d.price?.paid?.value ?? d.paid?.value ?? d.price?.value ?? d.total?.value ?? d.value ?? d.amount ?? d.invoice?.value
     ?? corpo.trans_paid ?? corpo.trans_value ?? achar(d, /^(paid|total|price|value|amount)$/i));
   const quando = d.paidAt ?? d.paid_at ?? d.paymentDate ?? d.createdAt ?? d.created_at ?? corpo.trans_paiddate ?? corpo.trans_createdate ?? corpo.sentDate;
   const produto = d.items?.[0]?.name ?? d.items?.[0]?.product?.name ?? d.product?.name ?? corpo.product_name ?? null;
@@ -174,6 +174,11 @@ function eduzz(corpo: Json, agora: Date): EventoVenda | null {
     produto_plataforma: produto ? String(produto) : null,
     ...utmAgrupada(d.utm ?? d.utms ?? d.tracker ?? d.tracking ?? corpo.utm),
     ...extras(corpo),
+    // Comprador: o "buyer" da fatura (ou o "customer" do carrinho), não o aluno nem o produtor.
+    ...(d.buyer?.email || d.customer?.email ? {
+      comprador_email: String(d.buyer?.email ?? d.customer?.email),
+      ...(d.buyer?.name || d.customer?.name ? { comprador_nome: String(d.buyer?.name ?? d.customer?.name) } : {}),
+    } : {}),
   };
 }
 
@@ -182,7 +187,7 @@ function utmAgrupada(u: Json): Partial<EventoVenda> {
   if (!u || typeof u !== "object") return {};
   const e: Partial<EventoVenda> = {};
   for (const k of ["source", "medium", "campaign", "content", "term"] as const) {
-    const v = u[k] ?? u[`utm_${k}`];
+    const v = u[k] ?? u[`utm_${k}`] ?? u[`utm${k[0].toUpperCase()}${k.slice(1)}`];
     if (typeof v === "string" && v.trim()) e[`utm_${k}`] = v.trim();
   }
   return e;

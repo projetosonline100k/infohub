@@ -99,3 +99,22 @@ test('Eduzz: aguardando pagamento é pendente; cancelada e reembolso; postback a
   const antigo = interpretarWebhook({ trans_cod: '999', trans_status: '3', trans_value: '97,00', trans_paiddate: '2026-11-06', cus_email: 'c@x.com', utm_source: 'youtube' }, agora);
   assert.deepEqual([antigo.plataforma, antigo.tipo, antigo.valor, antigo.data, antigo.utm_source], ['eduzz', 'venda', 97, '2026-11-06', 'youtube']);
 });
+
+test('Eduzz Developer Hub: abandono do Checkout Sun e chargeback', () => {
+  const a = interpretarWebhook({ id: 'e9', event: 'sun.cart_abandonment', data: { id: 'CART1', customer: { email: 'z@x.com' } } }, agora);
+  assert.deepEqual([a.plataforma, a.tipo, a.transacao_id], ['eduzz', 'abandono', 'CART1']);
+  assert.equal(interpretarWebhook({ event: 'myeduzz.invoice_chargeback', data: { id: 'F7' } }, agora).tipo, 'reembolso');
+  assert.equal(interpretarWebhook({ event: 'myeduzz.invoice_recovering', data: { id: 'F8' } }, agora).tipo, 'pendente');
+  assert.equal(interpretarWebhook({ event: 'myeduzz.invoice_expired', data: { id: 'F9' } }, agora).tipo, 'cancelada');
+});
+
+test('Eduzz real (exemplo do Developer Hub): fatura paga usa price.paid, buyer e utm; abandono usa transactionId e tracker', () => {
+  const v = interpretarWebhook({ id: 'x', event: 'myeduzz.invoice_paid', data: {
+    id: '12345678', utm: { source: 'instagram', campaign: 'bio' }, buyer: { name: 'Alice', email: 'alice@x.com' },
+    items: [{ name: 'Widget X', price: { value: 150.75 } }], price: { paid: { value: 301.5 }, value: 320 }, paidAt: '2024-01-10T17:45:00.000Z',
+    student: { name: 'Rick', email: 'rick@x.com' }, paymentMethod: 'creditCard' } }, agora);
+  assert.deepEqual([v.valor, v.comprador_email, v.comprador_nome, v.utm_source, v.data, v.produto_plataforma], [301.5, 'alice@x.com', 'Alice', 'instagram', '2024-01-10', 'Widget X']);
+  const a = interpretarWebhook({ event: 'sun.cart_abandonment', data: { tracker: { utmSource: 'google', utmCampaign: 'summer' },
+    customer: { name: 'John', email: 'j@x.com' }, transactionId: 'T1', paymentMethod: 'creditcard' } }, agora);
+  assert.deepEqual([a.tipo, a.transacao_id, a.utm_source, a.utm_campaign, a.comprador_nome], ['abandono', 'T1', 'google', 'summer', 'John']);
+});
