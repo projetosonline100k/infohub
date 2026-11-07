@@ -6,7 +6,7 @@ import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Plus, Edit, Trash } from "lucide-react";
+import { Plus, Edit, Trash, ShoppingCart, TrendingUp, Layers, ChevronRight } from "lucide-react";
 import { CerebroView } from "@/components/cerebro/CerebroView";
 import { toast } from "@/hooks/use-toast";
 import { ProdutoForm } from "@/components/ProdutoForm";
@@ -18,6 +18,7 @@ import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
 import { PainelVendas } from "@/components/produtos/PainelVendas";
+import { MetaAtual } from "@/components/produtos/MetaAtual";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
 import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { confirmar } from "@/components/DialogosGlobais";
@@ -282,122 +283,127 @@ export default function ClienteDetalhe() {
             </div>
           )}
           {abaAtiva === "informacoes" && (
-            <div className="space-y-6">
-              {/* Bloco superior: Meta e Equipe */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Meta atual */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Meta atual</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-muted-foreground">
-                      {cliente.meta_atual || "Nenhuma meta definida"}
-                    </p>
-                  </CardContent>
-                </Card>
+            // 07/11 (Davi): duas colunas — Meta e Vendas à esquerda; Equipe, Receita e Esteira à direita.
+            <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_400px]">
+              <div className="min-w-0 space-y-5">
+                <MetaAtual clienteId={id!} meta={cliente.meta_atual} />
 
-                {acesso.proprietario && <EquipeCard key={id} clienteId={id!} permissoesDisponiveis={permissoesDisponiveis} />}
+                {/* Vendas das plataformas (Eduzz, Kiwify, Hotmart): funil e origem */}
+                {pode("produtos") && <div className="painel-suave">
+                  <Card className="rounded-2xl">
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10 text-primary"><ShoppingCart className="h-4 w-4" /></span>
+                        Vendas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <PainelVendas clienteId={id!} />
+                    </CardContent>
+                  </Card>
+                </div>}
               </div>
 
-              {/* Vendas das plataformas (Eduzz, Kiwify, Hotmart): funil e origem — 07/11 */}
-              {pode("produtos") && <Card>
-                <CardHeader>
-                  <CardTitle>Vendas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <PainelVendas clienteId={id!} />
-                </CardContent>
-              </Card>}
+              <div className="min-w-0 space-y-5">
+                {acesso.proprietario && <div className="painel-suave"><EquipeCard key={id} clienteId={id!} permissoesDisponiveis={permissoesDisponiveis} /></div>}
 
-              {/* Receita */}
-              {pode("produtos") && <><Card>
-                <CardHeader>
-                  <CardTitle>Receita</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ReceitaGraficoCliente clienteId={id!} />
-                </CardContent>
-              </Card>
+                {pode("produtos") && <>
+                  <div className="painel-suave">
+                    <Card className="rounded-2xl">
+                      <CardHeader className="pb-2">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600"><TrendingUp className="h-4 w-4" /></span>
+                          Receita
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ReceitaGraficoCliente clienteId={id!} />
+                      </CardContent>
+                    </Card>
+                  </div>
 
-              {/* Esteira de produtos */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Esteira de produtos</CardTitle>
-                  {acesso.permissoes.produtos.criar && <Button
-                    size="sm"
-                    onClick={() => {
-                      setProdutoEditando(null);
-                      setMostrarFormProduto(true);
-                    }}
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Adicionar
-                  </Button>}
-                </CardHeader>
-                <CardContent>
-                  {produtos.length > 0 ? (
-                    <div className="flex gap-4 overflow-x-auto pb-4">
-                      {produtos.map((produto) => (
-                        <div
-                          key={produto.id}
-                          onClick={() => setProdutoSelecionado(produto)}
-                          className="min-w-[200px] border border-border rounded-lg p-4 bg-card relative group cursor-pointer hover:border-primary/50 transition-colors"
+                  {/* Esteira de produtos */}
+                  <div className="painel-suave">
+                    <Card className="rounded-2xl">
+                      <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="flex items-center gap-2 text-lg">
+                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600"><Layers className="h-4 w-4" /></span>
+                          Esteira de produtos
+                        </CardTitle>
+                        {acesso.permissoes.produtos.criar && <Button
+                          size="sm"
+                          onClick={() => {
+                            setProdutoEditando(null);
+                            setMostrarFormProduto(true);
+                          }}
                         >
-                          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                            {acesso.permissoes.produtos.editar && <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setProdutoEditando(produto);
-                                setMostrarFormProduto(true);
-                              }}
-                            >
-                              <Edit className="h-3 w-3" />
-                            </Button>}
-                            {acesso.proprietario && <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                excluirProduto(produto.id);
-                              }}
-                            >
-                              <Trash className="h-3 w-3" />
-                            </Button>}
+                          <Plus className="h-4 w-4 mr-1" />
+                          Adicionar
+                        </Button>}
+                      </CardHeader>
+                      <CardContent>
+                        {produtos.length > 0 ? (
+                          <div className="space-y-2">
+                            {produtos.map((produto) => (
+                              <div
+                                key={produto.id}
+                                onClick={() => setProdutoSelecionado(produto)}
+                                className="group flex cursor-pointer items-center gap-3 rounded-xl border bg-background/60 p-3 transition-colors hover:border-primary/50"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="truncate text-sm font-semibold">{produto.nome_produto}</h4>
+                                  {produto.preco && <p className="text-sm text-muted-foreground">{produto.preco}</p>}
+                                </div>
+                                <span
+                                  className={`shrink-0 rounded-lg px-2 py-1 text-xs font-medium ${
+                                    produto.status === "Ativo"
+                                      ? "bg-green-500/15 text-green-700 dark:text-green-400"
+                                      : produto.status === "Pausado"
+                                      ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400"
+                                      : "bg-blue-500/20 text-blue-700 dark:text-blue-400"
+                                  }`}
+                                >
+                                  {produto.status}
+                                </span>
+                                <div className="flex shrink-0 gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+                                  {acesso.permissoes.produtos.editar && <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setProdutoEditando(produto);
+                                      setMostrarFormProduto(true);
+                                    }}
+                                  >
+                                    <Edit className="h-3.5 w-3.5" />
+                                  </Button>}
+                                  {acesso.proprietario && <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      excluirProduto(produto.id);
+                                    }}
+                                  >
+                                    <Trash className="h-3.5 w-3.5" />
+                                  </Button>}
+                                </div>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                              </div>
+                            ))}
                           </div>
-                          <h4 className="font-semibold text-sm mb-2">
-                            {produto.nome_produto}
-                          </h4>
-                          {produto.preco && (
-                            <p className="text-sm text-muted-foreground mb-1">
-                              {produto.preco}
-                            </p>
-                          )}
-                          <span
-                            className={`inline-block text-xs px-2 py-1 rounded ${
-                              produto.status === "Ativo"
-                                ? "bg-green-500/20 text-green-700 dark:text-green-400"
-                                : produto.status === "Pausado"
-                                ? "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400"
-                                : "bg-blue-500/20 text-blue-700 dark:text-blue-400"
-                            }`}
-                          >
-                            {produto.status}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Nenhum produto cadastrado
-                    </p>
-                  )}
-                </CardContent>
-              </Card></>}
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum produto cadastrado
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
+                </>}
+              </div>
             </div>
           )}
 

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Banknote, Filter, Megaphone, Package, RotateCcw, Ticket, Wallet } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { format, parseISO, subDays } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -88,11 +89,14 @@ export function PainelVendas({ clienteId }: { clienteId: string }) {
     [e.comprador_email, e.comprador_nome, e.produto_plataforma, e.transacao_id, e.utm_source, e.utm_campaign].some((x) => x?.toLowerCase().includes(busca.trim().toLowerCase()))));
 
   if (eventos === null) return <p className="text-sm text-muted-foreground">Carregando vendas…</p>;
-  const cartao = (rotulo: string, valor: string, sub?: string) => (
-    <div className="rounded-xl border bg-card p-3">
-      <p className="text-xs text-muted-foreground">{rotulo}</p>
-      <p className="text-xl font-bold tabular-nums">{valor}</p>
-      {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
+  const cartao = (rotulo: string, valor: string, sub: string | undefined, Icone: typeof Wallet, cor: string) => (
+    <div className="flex items-center gap-3 rounded-2xl border bg-background/60 p-3">
+      <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", cor)}><Icone className="h-5 w-5" /></span>
+      <div className="min-w-0">
+        <p className="truncate text-xs text-muted-foreground">{rotulo}</p>
+        <p className="text-xl font-bold leading-tight tabular-nums">{valor}</p>
+        {sub && <p className="truncate text-[11px] text-muted-foreground">{sub}</p>}
+      </div>
     </div>
   );
 
@@ -101,7 +105,7 @@ export function PainelVendas({ clienteId }: { clienteId: string }) {
       <div className="flex flex-wrap items-center gap-2">
         {[7, 30, 90].map((d) => (
           <button key={d} type="button" onClick={() => setDias(d)}
-            className={cn("rounded-lg border px-3 py-1 text-sm", dias === d ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>{d} dias</button>
+            className={cn("rounded-full border px-3.5 py-1 text-sm font-medium", dias === d ? "border-primary bg-primary text-primary-foreground" : "hover:bg-muted")}>{d} dias</button>
         ))}
         {eventos.length === 0 && (
           <p className="ml-2 text-sm text-muted-foreground">
@@ -114,15 +118,15 @@ export function PainelVendas({ clienteId }: { clienteId: string }) {
       <GeradorUtm />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {cartao("Caixa (vendas − reembolsos)", moeda(receita - devolvido), `${vendas.length} vendas · ${reembolsos.length} reembolsos`)}
-        {cartao("Receita do período", moeda(receita), `${vendas.length} vendas aprovadas`)}
-        {cartao("Ticket médio", moeda(vendas.length ? receita / vendas.length : 0))}
-        {cartao("Reembolsos", moeda(devolvido), `${reembolsos.length} pedidos`)}
+        {cartao("Caixa (vendas − reembolsos)", moeda(receita - devolvido), `${vendas.length} vendas · ${reembolsos.length} reembolsos`, Wallet, "bg-sky-500/10 text-sky-600")}
+        {cartao("Receita do período", moeda(receita), `${vendas.length} vendas aprovadas`, Banknote, "bg-emerald-500/10 text-emerald-600")}
+        {cartao("Ticket médio", moeda(vendas.length ? receita / vendas.length : 0), undefined, Ticket, "bg-violet-500/10 text-violet-600")}
+        {cartao("Reembolsos", moeda(devolvido), `${reembolsos.length} pedidos`, RotateCcw, "bg-rose-500/10 text-rose-600")}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <div className="rounded-xl border bg-card p-4">
-          <p className="font-semibold">Receita por dia</p>
+        <div className="rounded-2xl border bg-background/60 p-4">
+          <p className="flex items-center gap-2 font-semibold"><Banknote className="h-4 w-4 text-primary" />Receita por dia</p>
           <p className="text-xs text-muted-foreground">{moeda(receita)} em {vendas.length} vendas nos últimos {dias} dias</p>
           <div className="mt-3 h-44">
             <ResponsiveContainer width="100%" height="100%">
@@ -134,8 +138,8 @@ export function PainelVendas({ clienteId }: { clienteId: string }) {
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="rounded-xl border bg-card p-4">
-          <p className="font-semibold">Funil de vendas</p>
+        <div className="rounded-2xl border bg-background/60 p-4">
+          <p className="flex items-center gap-2 font-semibold"><Filter className="h-4 w-4 text-primary" />Funil de vendas</p>
           <p className="text-xs text-muted-foreground">Últimos {dias} dias · pedidos únicos</p>
           <div className="mt-3 space-y-2.5">
             {funil.map((f) => (
@@ -150,8 +154,10 @@ export function PainelVendas({ clienteId }: { clienteId: string }) {
 
       <div className="grid gap-3 md:grid-cols-3">
         {([["De onde vêm as vendas", porOrigem], ["Campanhas / criativos", porCampanha], ["Por produto", porProduto]] as const).map(([titulo, linhas]) => (
-          <div key={titulo} className="rounded-xl border bg-card p-4">
-            <p className="font-semibold">{titulo}</p>
+          <div key={titulo} className="rounded-2xl border bg-background/60 p-4">
+            <p className="flex items-center gap-2 font-semibold">
+              {titulo === "Campanhas / criativos" ? <Megaphone className="h-4 w-4 text-primary" /> : titulo === "Por produto" ? <Package className="h-4 w-4 text-primary" /> : <Filter className="h-4 w-4 text-primary" />}{titulo}
+            </p>
             {linhas.length === 0 ? <p className="mt-2 text-xs text-muted-foreground">Sem vendas no período{titulo === "Campanhas / criativos" ? " com campanha na UTM" : ""}.</p> : (
               <div className="mt-2 space-y-1.5">
                 {linhas.slice(0, 8).map(([k, v]) => (
@@ -167,7 +173,7 @@ export function PainelVendas({ clienteId }: { clienteId: string }) {
         ))}
       </div>
 
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-2xl border bg-background/60 p-4">
         <p className="font-semibold">Atividade das plataformas</p>
         <p className="text-xs text-muted-foreground">{lista.length} eventos · do mais recente ao mais antigo</p>
         <div className="mt-3 flex flex-wrap gap-2">
