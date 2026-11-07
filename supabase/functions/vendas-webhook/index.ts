@@ -1,5 +1,5 @@
-// Faturamento entrando sozinho. Migração 20261016004000_vendas_plataforma.
-// A Kiwify ou a Hotmart chamam POST /vendas-webhook?chave=<chave do produto>
+// Faturamento entrando sozinho. Migração 20261016004000_vendas_plataforma (+ 20261107010000: Eduzz e funil).
+// A Kiwify, a Hotmart ou a Eduzz chamam POST /vendas-webhook?chave=<chave do produto>
 // a cada evento de compra. A chave (produto_vendas_webhook) diz de qual
 // produto é; a venda ou o reembolso vira uma linha em vendas_plataforma_eventos
 // e o trigger soma no dia em produto_financeiro_diario. O reenvio da mesma
@@ -25,10 +25,14 @@ Deno.serve(async (req) => {
   // deno-lint-ignore no-explicit-any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let corpo: any;
+  // JSON (Kiwify, Hotmart, Eduzz nova) ou formulário (postback antigo da Eduzz).
+  const texto = await req.text();
   try {
-    corpo = await req.json();
+    corpo = JSON.parse(texto);
   } catch {
-    return json({ erro: "corpo não é JSON" }, 400);
+    const campos = Object.fromEntries(new URLSearchParams(texto));
+    if (!Object.keys(campos).length) return json({ erro: "corpo vazio" }, 400);
+    corpo = campos;
   }
 
   const evento = interpretarWebhook(corpo);

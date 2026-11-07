@@ -84,13 +84,15 @@ export function VendasAutomaticas({ produtoId, onMudou }: VendasAutomaticasProps
       <CardHeader className="pb-2">
         <CardTitle className="text-base flex items-center gap-2">
           <Zap className="h-4 w-4 text-primary" />
-          Vendas automáticas (Kiwify ou Hotmart)
+          Vendas automáticas (Eduzz, Kiwify ou Hotmart)
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
           Cole este link no webhook da plataforma, escolhendo só este produto. Cada venda aprovada e cada
-          reembolso entra sozinho no dia certo daqui e do Dash geral.
+          reembolso entra sozinho no dia certo daqui e do Dash geral. Na Eduzz: MyEduzz → Webhook → novo, tipo
+          "Fatura" (e "Carrinho abandonado", se quiser o funil completo), formato JSON. Pix/boleto gerado, recusa
+          e carrinho abandonado aparecem no painel de Vendas do projeto, sem mexer no faturamento.
         </p>
         {link ? (
           <div className="flex gap-2">
@@ -114,8 +116,8 @@ export function VendasAutomaticas({ produtoId, onMudou }: VendasAutomaticasProps
             {eventos.map((e) => (
               <div key={e.id} className="flex items-center gap-3 text-sm py-1 border-b last:border-0">
                 <span className="w-12 text-muted-foreground">{format(parseISO(e.data), "dd/MM")}</span>
-                <span className={e.tipo === "venda" ? "text-green-600 w-24" : "text-red-500 w-24"}>
-                  {e.tipo === "venda" ? "Venda" : "Reembolso"}
+                <span className={e.tipo === "venda" ? "text-green-600 w-24" : e.tipo === "reembolso" ? "text-red-500 w-24" : "text-muted-foreground w-24"}>
+                  {({ venda: "Venda", reembolso: "Reembolso", pendente: "Pix/boleto", recusada: "Recusada", cancelada: "Cancelada", abandono: "Abandono" } as Record<string, string>)[e.tipo] ?? e.tipo}
                 </span>
                 <span className="w-24">{moeda(Number(e.valor))}</span>
                 <span className="flex-1 truncate text-muted-foreground capitalize">

@@ -17,6 +17,7 @@ import { DocumentQuickAccess } from "@/components/documentos/DocumentQuickAccess
 import { DocumentosView } from "@/components/documentos/DocumentosView";
 import { ProdutoDetalheModal } from "@/components/produtos/ProdutoDetalheModal";
 import { ReceitaGraficoCliente } from "@/components/produtos/ReceitaGraficoCliente";
+import { PainelVendas } from "@/components/produtos/PainelVendas";
 import { usePresencaProjeto } from "@/hooks/usePresencaProjeto";
 import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { confirmar } from "@/components/DialogosGlobais";
@@ -298,6 +299,16 @@ export default function ClienteDetalhe() {
 
                 {acesso.proprietario && <EquipeCard key={id} clienteId={id!} permissoesDisponiveis={permissoesDisponiveis} />}
               </div>
+
+              {/* Vendas das plataformas (Eduzz, Kiwify, Hotmart): funil e origem — 07/11 */}
+              {pode("produtos") && <Card>
+                <CardHeader>
+                  <CardTitle>Vendas</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PainelVendas clienteId={id!} />
+                </CardContent>
+              </Card>}
 
               {/* Receita */}
               {pode("produtos") && <><Card>
