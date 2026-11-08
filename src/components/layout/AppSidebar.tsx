@@ -231,12 +231,33 @@ export function AppSidebar() {
   // Escritório, Produtividade… Fica aberta só a lista de Projetos Milionários, com cada projeto fechado.
   // No app do Mac vem pelo menu "Janela > Encolher a lateral" (evento "recolher-lateral"; vale mesmo com o
   // navegador de uma guia em foco). No navegador vale a tecla direto.
+  // 08/11 (Davi): o mesmo atalho alterna. Aberto → guarda como estava e encolhe; já encolhido → volta ao que estava.
+  const abertosRef = useRef(abertos);
+  abertosRef.current = abertos;
+  const antesDeEncolher = useRef<string[] | null>((() => {
+    try { const v = localStorage.getItem("sidebar:antes-de-encolher"); return v ? (JSON.parse(v) as string[]) : null; } catch { return null; }
+  })());
   useEffect(() => {
     const recolher = () => {
-      const novo = new Set(["projetos"]);
+      const atual = [...abertosRef.current];
+      const encolhida = atual.every((k) => k === "projetos");
+      let novo: Set<string>;
+      if (encolhida) {
+        // Reabre como estava antes de encolher (ou, sem lembrança, o padrão + o caminho da tela aberta).
+        const lembrado = antesDeEncolher.current?.filter((k) => k !== "projetos") ?? [];
+        // Sem lembrança (app aberto já encolhido): abre o caminho até a tela atual (projeto, documentos…).
+        const m = window.location.pathname.match(/^\/clientes\/([^/]+)/);
+        const caminho = m ? [`projeto:${m[1]}`, ...(window.location.search.includes("documento=") ? [`${m[1]}:documentos`] : [])] : [];
+        novo = new Set(["projetos", ...(lembrado.length ? lembrado : caminho)]);
+        toast("Lateral aberta", { duration: 1200 });
+      } else {
+        antesDeEncolher.current = atual;
+        try { localStorage.setItem("sidebar:antes-de-encolher", JSON.stringify(atual)); } catch { /* sem storage */ }
+        novo = new Set(["projetos"]);
+        toast("Lateral encolhida", { duration: 1200 });
+      }
       try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
       setAbertos(novo);
-      toast("Lateral encolhida", { duration: 1200 });
     };
     const tecla = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
