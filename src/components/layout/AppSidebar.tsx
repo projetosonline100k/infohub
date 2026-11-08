@@ -297,14 +297,19 @@ export function AppSidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abertos, arvore, carregados]);
 
-  // Documento aberto: abre também a pasta dele (quando os documentos já carregaram).
+  // Documento aberto: abre também a pasta dele (quando os documentos já carregaram). Só uma vez por documento:
+  // a lista recarrega ao salvar e ao voltar o foco, e isso reabria a pasta logo depois do ⌘⇧E (08/11, Davi:
+  // "as pastas não estão se fechando").
+  const docComPastaAberta = useRef("");
   useEffect(() => {
     const doc = new URLSearchParams(location.search).get("documento");
-    if (!doc) return;
+    if (!doc || docComPastaAberta.current === doc) return;
     for (const filhos of Object.values(carregados)) {
       if (!Array.isArray(filhos)) continue;
       const pasta = filhos.find((f) => f.filhos?.some((d) => d.chave === `doc:${doc}`));
-      if (pasta && !abertos.has(pasta.chave)) alternar(pasta.chave, true);
+      if (!pasta) continue;
+      docComPastaAberta.current = doc;
+      if (!abertos.has(pasta.chave)) alternar(pasta.chave, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.search, carregados]);
