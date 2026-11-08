@@ -236,6 +236,7 @@ export function AppSidebar() {
       const novo = new Set(["projetos"]);
       try { localStorage.setItem("sidebar:abertos", JSON.stringify([...novo])); } catch { /* sem storage */ }
       setAbertos(novo);
+      toast("Lateral encolhida", { duration: 1200 });
     };
     const tecla = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "e" || !(e.metaKey || e.ctrlKey) || !e.shiftKey || e.altKey) return;
