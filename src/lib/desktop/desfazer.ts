@@ -35,6 +35,11 @@ export async function ligarDesfazerDoMenu() {
     // (29/10, Davi: "⌘Z não faz nada"). Recebe o próprio atalho, como se a tecla tivesse chegado nele.
     const editor = el instanceof HTMLElement ? el.closest(".ProseMirror") : null;
     if (editor) {
+      // 08/11 (Davi: "⌘Z e ⇧⌘Z não funcionam"): primeiro o desfazer do próprio editor (direto, sem depender de a
+      // tecla simulada chegar); se ele não tem mais nada a desfazer, vale o histórico guardado do documento
+      // (o handleKeyDown do DocumentEditor), pela tecla simulada.
+      const tiptap = (editor as Element & { editor?: { commands: { undo: () => boolean; redo: () => boolean } } }).editor;
+      try { if (tiptap && (refazer ? tiptap.commands.redo() : tiptap.commands.undo())) return; } catch { /* segue para a tecla simulada */ }
       editor.dispatchEvent(new KeyboardEvent("keydown", { key: "z", code: "KeyZ", metaKey: true, shiftKey: refazer, bubbles: true, cancelable: true }));
       return;
     }
