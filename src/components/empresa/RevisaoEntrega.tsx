@@ -247,8 +247,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 </span>
               </div>
             )}
-            <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden">
-              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && abaQuiz !== "metricas" && vista !== "computador" && "flex flex-col", editorQuiz && "!flex-row overflow-hidden p-2")}>
+            <div className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden", editorQuiz && "dark rounded-2xl bg-[#060a12] p-3 text-foreground")}>
+              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && abaQuiz !== "metricas" && vista !== "computador" && "flex flex-col", editorQuiz && "!flex-row gap-3 overflow-hidden !border-0 !bg-transparent !p-0")}>
                 {quiz?.estrutura && abaQuiz === "testar" && (
                   <div className="mb-3 flex shrink-0 justify-center gap-1">
                     {(["celular", "computador"] as const).map((c) => {
@@ -262,7 +262,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 )}
                 {quiz?.estrutura && abaQuiz === "editar" && tela ? (
                   <div className="flex min-h-0 min-w-0 flex-1 gap-3">
-                  <div className="flex min-h-0 min-w-0 flex-col gap-2 md:w-[38%] md:max-w-[460px] md:flex-none">
+                  <div className="flex min-h-0 min-w-0 flex-col gap-2 rounded-2xl border border-white/10 bg-[#0a1019] p-3 md:w-[38%] md:max-w-[460px] md:flex-none">
+                    <p className="flex shrink-0 items-center gap-2 text-base font-semibold text-white"><Workflow className="h-4 w-4 text-cyan-300" />Fluxo do quiz</p>
                     <div className="flex shrink-0 gap-1 self-start rounded-lg bg-muted p-0.5 text-xs">
                       {([["fluxo", Workflow, "Fluxo do quiz"], ["lista", List, "Lista de telas"]] as const).map(([m, Icone, rotulo]) => (
                         <button key={m} type="button" onClick={() => setMapaQuiz(m)} className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1", mapaQuiz === m ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
@@ -347,7 +348,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 ))}
               </div>
               {(info?.responsavelId || editorQuiz) && (
-                <div className={cn("flex h-[420px] shrink-0 flex-col gap-2 md:h-auto", "md:w-[360px]")}>
+                <div className={cn("flex h-[420px] shrink-0 flex-col gap-2 md:h-auto md:w-[360px]", editorQuiz && "rounded-2xl border border-white/10 bg-[#0a1019] p-3")}>
                   {editorQuiz && (
                     <div className="flex shrink-0 gap-1 rounded-lg bg-muted p-0.5 text-xs">
                       {([["conversa", MessageSquare, "Conversa com o agente"], ["logica", Pencil, "Editar a tela"]] as const).map(([a, Icone, rotulo]) => (

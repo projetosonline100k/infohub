@@ -101,7 +101,7 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
   }, []);
   const botao = "flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs hover:bg-muted disabled:opacity-40";
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_40%,#0f1c33,#0a1019_70%)] p-3">
       <div className="flex items-center justify-between gap-2">
         <button type="button" className={botao} onClick={onAnterior} disabled={numero <= 1}><ChevronLeft className="h-3.5 w-3.5" />Anterior</button>
         <span className="text-sm font-medium tabular-nums">Tela {numero} de {total}</span>
@@ -114,7 +114,7 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
       <div ref={caixa} className="flex min-h-0 flex-1 justify-center overflow-hidden">
         {modo === "celular" ? (
           // transform em vez de zoom: no app do Mac o zoom encolhia o iframe duas vezes.
-          <div className="shrink-0" style={{ width: 395 * escala, height: 820 * escala }}>
+          <div className="shrink-0" style={{ width: 395 * escala, height: 820 * escala, filter: "drop-shadow(0 0 2px rgba(34,211,238,.9)) drop-shadow(0 0 28px rgba(34,211,238,.35))" }}>
             <div className="flex h-[820px] w-[395px] origin-top-left flex-col" style={{ transform: `scale(${escala})` }}>
               <MolduraCelular escuro={estrutura.tema === "escuro"}>
                 <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} />
@@ -130,7 +130,7 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
       <div className="flex justify-center gap-1">
         {([["celular", Smartphone, "Prévia mobile"], ["computador", Monitor, "Prévia desktop"]] as const).map(([m, Icone, rotulo]) => (
           <button key={m} type="button" onClick={() => setModo(m)}
-            className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs", modo === m ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
+            className={cn("flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs", modo === m ? "border-cyan-300/70 bg-cyan-400/10 font-medium text-cyan-200" : "border-white/10 text-white/60 hover:bg-white/5")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
         ))}
       </div>
     </div>
