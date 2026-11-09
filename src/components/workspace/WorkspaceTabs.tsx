@@ -177,6 +177,18 @@ export function WorkspaceTabsProvider({ children }: { children: React.ReactNode 
     });
   }, [setActiveId]);
 
+  // Renomear pela tela (ex.: o nome do desenho) muda o título da guia na hora (09/11, Davi). Quem renomeia avisa
+  // com o evento "guia:renomear" { path, titulo }; vale para toda guia que está nesse endereço.
+  useEffect(() => {
+    const ouvir = (e: Event) => {
+      const { path, titulo } = (e as CustomEvent<{ path: string; titulo: string }>).detail ?? {};
+      if (!path || !titulo) return;
+      setTabs((atual) => (atual.some((t) => t.path === path && t.title !== titulo) ? atual.map((t) => (t.path === path ? { ...t, title: titulo } : t)) : atual));
+    };
+    window.addEventListener("guia:renomear", ouvir);
+    return () => window.removeEventListener("guia:renomear", ouvir);
+  }, []);
+
   // Guia de projeto aberta pelo ⌘K, por atalho ou restaurada mostrava só "Projeto" (19/10, Davi):
   // troca pelo nome do projeto assim que ele chega do banco.
   const nomesProjeto = useRef<Record<string, string>>({});

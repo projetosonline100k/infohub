@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import {
   Excalidraw,
   MainMenu,
@@ -579,6 +579,16 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     obs.observe(raiz, { childList: true, subtree: true });
     return () => obs.disconnect();
   }, [loading, initialData]);   // o contêiner só existe depois de carregar o desenho
+  // Estável (useCallback + ref): uma função nova a cada desenho faz o Excalidraw redesenhar e, com o túnel do menu,
+  // entra em loop ("Maximum update depth exceeded", 09/11).
+  const guiasRef = useRef(guias);
+  guiasRef.current = guias;
+  const aoAbrirLink = useCallback<NonNullable<ComponentProps<typeof Excalidraw>["onLinkOpen"]>>((element, event) => {
+    const id = idDoLink(element.link);
+    if (!id) return;   // site: segue o comportamento normal do Excalidraw
+    event.preventDefault();
+    void abrirDocumentoLinkado(id, guiasRef.current?.abrirNovaGuia);
+  }, []);
   const aplicarLink = (d: { id: string; titulo: string }) => {
     const api = excalidrawApiRef.current;
     const alvos = new Set(alvosLink ?? []);
@@ -1377,6 +1387,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
 
   const salvarTitulo = useCallback(async () => {
     await supabase.from("documentos").update({ titulo }).eq("id", documentoId);
+    window.dispatchEvent(new CustomEvent("documentos:mudou"));   // a lateral mostra o nome novo
   }, [titulo, documentoId]);
 
   // Qualquer mudança (mover, criar, apagar, conectar, digitar, colorir)
@@ -1818,7 +1829,11 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
           )}
           <Input
             value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
+            onChange={(e) => {
+              setTitulo(e.target.value);
+              // Na guia de desenho, o nome da guia acompanha o que se digita.
+              if (pagina) window.dispatchEvent(new CustomEvent("guia:renomear", { detail: { path: `/desenho/${documentoId}`, titulo: e.target.value.trim() || "Desenho" } }));
+            }}
             onBlur={salvarTitulo}
             className="h-7 w-40 border-none bg-transparent px-1.5 text-sm font-medium shadow-none focus-visible:ring-0"
           />
@@ -2097,12 +2112,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         <Excalidraw
           excalidrawAPI={handleApiReady}
           handleKeyboardGlobally={false}
-          onLinkOpen={(element, event) => {
-            const id = idDoLink(element.link);
-            if (!id) return;   // site: segue o comportamento normal do Excalidraw
-            event.preventDefault();
-            void abrirDocumentoLinkado(id, guias?.abrirNovaGuia);
-          }}
+          onLinkOpen={aoAbrirLink}
           initialData={initialData}
           onChange={handleChange}
           onPointerUpdate={handlePointerUpdate}

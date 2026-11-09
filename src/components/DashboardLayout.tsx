@@ -59,21 +59,10 @@ export const DashboardLayout = () => {
     return () => window.removeEventListener("keydown", tecla);
   }, []);
 
-  // Janela própria de Notas (20/10, Davi: "sempre que abrir o Infopro, já abrir uma parte separada,
-  // igual o Notas"): a janela principal abre a de Notas ao ligar (sem roubar o foco; se já está
-  // aberta, nada muda) e ⌘⌥N traz ela pra frente.
+  // Janelas próprias de Notas (⌘⌥N) e Agenda (⌘⌥A). Antes abriam sozinhas ao ligar o app (20/10 e 23/10); em 09/11
+  // o Davi pediu para parar ("não vou mais precisar dessa função"): agora só abrem pelo atalho.
   useEffect(() => {
     if (!isDesktop()) return;
-    void (async () => {
-      try {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        if (getCurrentWindow().label === "main") {
-          await abrirJanelaNotas(false);
-          // 23/10: a Agenda também abre na própria janela, junto com o app (⌘⌥A traz pra frente).
-          await abrirJanelaAgenda(false);
-        }
-      } catch { /* sem janela nativa */ }
-    })();
     const tecla = (e: KeyboardEvent) => {
       if (!e.metaKey || !e.altKey || e.shiftKey || e.ctrlKey || (e.code !== "KeyN" && e.code !== "KeyA")) return;
       e.preventDefault();

@@ -94,8 +94,9 @@ async function documentosDoProjeto(clienteId: string): Promise<No[]> {
 
 // Desenhos sem projeto (24/10, "New drawing"): os com projeto ficam nos Documentos dele.
 async function desenhosSoltos(): Promise<No[]> {
-  const { data } = await supabase.from("documentos").select("id, titulo").eq("tipo", "mapa").is("cliente_id", null)
-    .is("deleted_at", null).order("updated_at", { ascending: false }).limit(50);
+  // Todos os desenhos, com ou sem projeto (09/11, Davi: "mesmo dentro de um projeto, não quero que suma daqui").
+  const { data } = await supabase.from("documentos").select("id, titulo").eq("tipo", "mapa")
+    .is("deleted_at", null).order("updated_at", { ascending: false }).limit(100);
   return ((data ?? []) as { id: string; titulo: string | null }[]).map((d) => ({
     chave: `desenho:${d.id}`, titulo: d.titulo || "Desenho sem título", icone: Workflow, ir: `/desenho/${d.id}`, desenhoId: d.id,
   }));
