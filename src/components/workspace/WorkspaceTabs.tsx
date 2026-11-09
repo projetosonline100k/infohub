@@ -504,7 +504,9 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
   irParaGuiaRef.current = (n: number) => {
     const alvo = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
     // Diagnóstico (09/11, "⌘2 não troca"): mostra que o comando chegou e para onde vai.
-    toast(`Guia ${n}${alvo ? `: ${alvo.title}` : " (não existe)"}`, { duration: 1500 });
+    toast(alvo ? `Guia ${n}: ${alvo.title}` : `Guia ${n} (não existe)`, {
+      description: alvo ? `${alvo.id === activeId ? "já é a guia ativa" : "indo para"} ${alvo.path}` : `há ${tabs.length} guia(s)`, duration: 3500,
+    });
     if (!alvo) return;
     if (alvo.id !== activeId) onNavigate(alvo.path);
   };
