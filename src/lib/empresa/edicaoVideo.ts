@@ -7,13 +7,16 @@ export interface Remocao { id: string; inicio: number; fim: number; origem: "aut
  * padrão 960; as linhas quebram sozinhas nela, além das quebras do texto) só valem na headline. */
 export interface Legenda { id: string; inicio: number; fim: number; texto: string; tipo: "head" | "leg"; tamanho?: number; entrelinhas?: number; largura?: number }
 /** `chroma`: vídeo com fundo verde (o motor tira o verde; o editor mostra a cópia com transparência). */
-export interface Midia { id: string; tipo: "imagem" | "video"; arquivo: string; inicio: number; fim: number; x: number; y: number; w: number; h: number; chroma?: boolean }
+export interface Midia { id: string; tipo: "imagem" | "video"; arquivo: string; inicio: number; fim: number; x: number; y: number; w: number; h: number; chroma?: boolean;
+  /** Canto arredondado (padrão 34; 0 no Instalivros). alfa: PNG transparente (papel rasgado, LIVRO x/y) ou vídeo com transparência (folhas rasgadas, cópia leve em _alfa/). */
+  raio?: number; alfa?: boolean }
 /** Trecho que continua no tempo do vídeo, mas fica preto e mudo (apagado
  * com "Juntar ao apagar" desligado). */
 export interface Lacuna { id: string; inicio: number; fim: number }
 /** Zoom como camada de ajuste por cima do vídeo (tempo do bruto).
- * suave: entra e sai devagar · seco: corte seco (punch) · lento: vai aproximando o bloco todo. */
-export interface BlocoZoom { id: string; inicio: number; fim: number; z: number; tipo: "suave" | "seco" | "lento" }
+ * suave: entra e sai devagar · seco: corte seco (punch) · lento: vai aproximando o bloco todo.
+ * de: zoom de onde o bloco parte (padrão 1); com de > z o lento vira zoom out. */
+export interface BlocoZoom { id: string; inicio: number; fim: number; z: number; tipo: "suave" | "seco" | "lento"; de?: number }
 /** Cor no estilo Lumetri: cada ajuste vai de -100 a 100 (0 = sem mudança). */
 export interface AjusteCor { exposicao: number; contraste: number; saturacao: number; temperatura: number }
 export interface ProjetoEdicao {
@@ -33,6 +36,22 @@ export interface ProjetoEdicao {
   divisoes?: number[];
   zooms?: BlocoZoom[];
   ajuste_cor?: AjusteCor;
+  /** Instalivros: nesse trecho (ou trechos) o apresentador desce pra metade de baixo (vídeo de apoio ou animação em cima). */
+  tela_dividida?: { inicio: number; fim: number } | { inicio: number; fim: number }[] | null;
+  /** Tela dividida (Eu.davi, 26/10): de que altura do quadro (fração, padrão 0,12) sai a faixa que desce pra
+   * metade de baixo; e o y (px) das legendas e do meio da headline nesses trechos (sem isso: 1080 e 1110 de sempre). */
+  recorte_dividida?: number;
+  legenda_dividida?: number;
+  /** 1,2 = vídeo 20% mais rápido (a versão gerada e o player da montagem). */
+  velocidade?: number;
+  /** Efeitos sonoros no tempo do bruto (som de papel nas trocas de cena, scripts/danilo/transicao.py). */
+  efeitos?: { id: string; arquivo: string; inicio: number; volume?: number }[];
+}
+
+/** tela_dividida sempre como lista (igual ao motor.telas_divididas). */
+export function telasDivididas(p: Pick<ProjetoEdicao, "tela_dividida">): { inicio: number; fim: number }[] {
+  const td = p.tela_dividida;
+  return !td ? [] : Array.isArray(td) ? td : [td];
 }
 
 export function trechosMantidos(p: Pick<ProjetoEdicao, "remocoes" | "duracao_fonte">): [number, number][] {
@@ -219,15 +238,15 @@ export function blocosZoom(p: Pick<ProjetoEdicao, "zoom" | "zooms" | "duracao_fo
 const suavizar = (x: number) => { const c = Math.min(1, Math.max(0, x)); return c * c * (3 - 2 * c); };
 
 /** Nível de zoom no instante tf do vídeo final (igual ao motor). Blocos já no tempo final. */
-export function zoomNoFinal(blocos: { a: number; b: number; z: number; tipo: BlocoZoom["tipo"] }[], tf: number): number {
+export function zoomNoFinal(blocos: { a: number; b: number; z: number; tipo: BlocoZoom["tipo"]; de?: number }[], tf: number): number {
   const k = blocos.find((x) => tf >= x.a && tf < x.b);
   if (!k) return 1;
-  const len = k.b - k.a;
+  const len = k.b - k.a, de = k.de ?? 1;
   if (k.tipo === "seco") return k.z;
-  if (k.tipo === "lento") return 1 + (k.z - 1) * suavizar((tf - k.a) / len);
+  if (k.tipo === "lento") return de + (k.z - de) * suavizar((tf - k.a) / len);
   const r = Math.min(1.2, len / 3);
-  if (tf < k.a + r) return 1 + (k.z - 1) * suavizar((tf - k.a) / r);
-  if (tf > k.b - r) return 1 + (k.z - 1) * suavizar((k.b - tf) / r);
+  if (tf < k.a + r) return de + (k.z - de) * suavizar((tf - k.a) / r);
+  if (tf > k.b - r) return de + (k.z - de) * suavizar((k.b - tf) / r);
   return k.z;
 }
 

@@ -16,7 +16,7 @@ import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { cn } from "@/lib/utils";
 import {
   COR_NEUTRA, PRESETS_COR, apagarIntervalo, blocosZoom, clipes, dividirLegenda, dividirMidia, dividirZoom, duracaoFinal, fecharLacuna, lacunaEm,
-  curvaMusica, nivelVoz, paraBruto, paraFinal, previaCor, restaurarIntervalo, trechosMantidos, zoomNoFinal,
+  curvaMusica, nivelVoz, paraBruto, paraFinal, previaCor, restaurarIntervalo, telasDivididas, trechosMantidos, zoomNoFinal,
   type AjusteCor, type BlocoZoom, type Clipe, type ProjetoEdicao,
 } from "@/lib/empresa/edicaoVideo";
 
@@ -40,7 +40,7 @@ const segsDaPrevia = (p: ProjetoEdicao) =>
 type Item =
   | { tipo: "clipe"; inicio: number; fim: number; lacuna?: string }
   | { tipo: "legenda"; id: string } | { tipo: "midia"; id: string } | { tipo: "zoom"; id: string }
-  | { tipo: "musica" } | { tipo: "cor" };
+  | { tipo: "musica" } | { tipo: "cor" } | { tipo: "efeito"; id: string };
 type Onda = { por_segundo: number; picos: number[] };
 const mesmoItem = (a: Item, b: Item) => {
   if (a.tipo !== b.tipo) return false;
@@ -165,10 +165,12 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const escala = larguraTela / 1080;
   const ativo = () => (ativoRef.current === 0 ? vidA.current : vidB.current);
   const reserva = () => (ativoRef.current === 0 ? vidB.current : vidA.current);
+  // Velocidade do projeto (Instalivros 1,2×, 22/10): o player toca nela, igual à versão gerada.
+  const velRef = useRef(1);
   const mostrarAtivo = () => {
     const a = ativo(), r = reserva();
-    if (a) a.style.zIndex = "0";
-    if (r) { r.style.zIndex = "-1"; r.muted = true; r.playbackRate = 1; }
+    if (a) { a.style.zIndex = "0"; a.playbackRate = velRef.current; }
+    if (r) { r.style.zIndex = "-1"; r.muted = true; r.playbackRate = velRef.current; }
   };
 
   useEffect(() => { setEstado(edicao); setMudou(false); setHistorico([]); setFuturo([]); setSelecao([]); setVerVersao(false); setOnda(null); setOndaMusica(null); setProxyPronto(false); setProjetoNuvem(null); setOndasNuvem(null); }, [edicao]);
@@ -306,6 +308,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     return () => ro.disconnect();
   }, [projeto, verVersao]);
 
+  velRef.current = projeto?.velocidade || 1;
   const segs = useMemo(() => (projeto ? trechosMantidos(projeto) : []), [projeto]);
   const listaClipes = useMemo(() => (projeto ? clipes(projeto, projeto.divisoes ?? []) : []), [projeto]);
   const durFinal = duracaoFinal(segs);
@@ -412,6 +415,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       if (modoMontagem) {
         const m = vidA.current;
         if (m && m.readyState >= 1) {
+          if (m.playbackRate !== velRef.current) m.playbackRate = velRef.current;
           const tb = paraBruto(segsQ, m.currentTime);
           m.muted = !!lacunaEm(projeto, tb);
           setTFonte(tb);
@@ -443,12 +447,12 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                 void r.play().catch(() => {});
                 preparadoRef.current = prox[0];
               } else if (!r.paused) {
-                r.playbackRate = Math.min(2, Math.max(0.5, 1 - (r.currentTime - alvo) * 3));
+                r.playbackRate = velRef.current * Math.min(2, Math.max(0.5, 1 - (r.currentTime - alvo) * 3));
               }
             }
             if (falta <= 0.02) {
               if (r.paused || Math.abs(r.currentTime - prox[0]) > 0.15) { r.currentTime = prox[0]; void r.play().catch(() => {}); }
-              r.playbackRate = 1;
+              r.playbackRate = velRef.current;
               r.muted = !!lacunaEm(projeto, r.currentTime);
               v.muted = true;
               v.pause();
@@ -478,7 +482,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     const v = ativoRef.current === 0 ? vidA.current : vidB.current;
     const r = ativoRef.current === 0 ? vidB.current : vidA.current;
     if (v) v.currentTime = t;
-    if (r && !r.paused) { r.pause(); r.playbackRate = 1; }   // cancela o preroll da reserva
+    if (r && !r.paused) { r.pause(); r.playbackRate = velRef.current; }   // cancela o preroll da reserva
     preparadoRef.current = null;
     setTFonte(t);
   }, [segs, durFinal]);
@@ -504,9 +508,29 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (!a) return;
     if (!tocando || !srcMusica) { a.pause(); return; }
     const alvo = a.duration > 0 ? tFinal % a.duration : tFinal;
+    a.playbackRate = velRef.current;
     if (Math.abs(a.currentTime - alvo) > 0.3) a.currentTime = alvo;
     if (a.paused) void a.play().catch(() => {});
   }, [tocando, tFinal, srcMusica]);
+  // Efeitos sonoros (papel nas trocas de cena, 22/10): tocam quando a agulha passa por eles, igual ao motor.
+  const efeitosFinais = useMemo(() => (web ? [] : (projeto?.efeitos ?? []).flatMap((e) => {
+    const a = paraFinal(segs, e.inicio, "inicio"), rel = relativo(e.arquivo);
+    return a != null && rel ? [{ a, src: url(`arquivo/${rel}`), vol: e.volume ?? 0.5 }] : [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  })), [projeto, segs, web, url]);
+  const tAnterior = useRef(0);
+  useEffect(() => {
+    const antes = tAnterior.current;
+    tAnterior.current = tFinal;
+    if (!tocando || tFinal < antes || tFinal - antes > 0.5) return;   // pulo da agulha não dispara
+    for (const e of efeitosFinais) {
+      if (e.a <= antes || e.a > tFinal) continue;
+      const som = new Audio(e.src);
+      som.volume = Math.min(1, e.vol);
+      som.playbackRate = velRef.current;
+      void som.play().catch(() => {});
+    }
+  }, [tFinal, tocando, efeitosFinais]);
   const alternarPlay = useCallback(() => {
     const v = ativo();
     if (!v || !projeto) return;
@@ -514,6 +538,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (v.paused) {
       if (modoRef.current) { if (v.ended || v.currentTime >= v.duration - 0.05) v.currentTime = 0; }
       else if (!segs.some(([a, b]) => v.currentTime >= a - 0.08 && v.currentTime < b - 0.03)) irParaFinal(tFinal >= durFinal - 0.05 ? 0 : tFinal);
+      v.playbackRate = velRef.current;
       void v.play(); setTocando(true);
     } else { vidA.current?.pause(); vidB.current?.pause(); setTocando(false); }
      
@@ -548,6 +573,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
       else if (it.tipo === "midia") p = { ...p, midias: p.midias.filter((m) => m.id !== it.id) };
       else if (it.tipo === "zoom") p = { ...p, zooms: blocosZoom(p).filter((z) => z.id !== it.id) };
       else if (it.tipo === "musica") p = { ...p, musica: null };
+      else if (it.tipo === "efeito") p = { ...p, efeitos: (p.efeitos ?? []).filter((e) => e.id !== it.id) };
     }
     alterar(p);
     setSelecao([]);
@@ -812,8 +838,9 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                       style={{
                         zIndex: 100,
                         // Headline: caixa de `largura` px centrada; as linhas quebram nela (o motor quebra igual).
-                        ...(l.tipo === "head" ? { bottom: (1920 - 1110) * escala, left: ((1080 - (l.largura ?? 960)) / 2) * escala, width: (l.largura ?? 960) * escala }
-                          : { top: 1080 * escala, transform: "translateY(-50%)" }),
+                        ...(l.tipo === "head" ? { left: ((1080 - (l.largura ?? 960)) / 2) * escala, width: (l.largura ?? 960) * escala,
+                            ...(yDivisao === undefined ? { bottom: (1920 - 1110) * escala } : { top: yDivisao * escala, transform: "translateY(-50%)" }) }
+                          : { top: (yDivisao ?? 1080) * escala, transform: "translateY(-50%)" }),
                         fontSize: (l.tipo === "head" ? l.tamanho ?? 74 : 58) * escala * 0.92,
                         // Mesma conta do motor: entre uma linha e outra da headline vão tamanho × 1,2 × entrelinhas.
                         ...(l.tipo === "head" && { lineHeight: (1.2 * (l.entrelinhas ?? 1)) / 0.92 }),
@@ -1088,7 +1115,7 @@ type TipoArraste = "agulha" | "borda-esq" | "borda-dir" | "mover-midia" | "borda
 type Arraste = { tipo: TipoArraste; alvo: string | Clipe | null; x0: number; base: number; dt: number; limite?: number };
 const ROT = 88;   // largura da coluna com o nome das faixas
 const TRAVA_PX = 30;   // quanto precisa "insistir" pra passar da legenda vizinha
-const ALTURAS = { leg: 36, zoom: 26, v2: 36, v1: 48, a1: 64, a2: 44 };
+const ALTURAS = { leg: 36, zoom: 26, v2: 36, v1: 48, a1: 64, a2: 44, a3: 26 };
 type Faixas = typeof ALTURAS;
 
 function LinhaDoTempo({
@@ -1106,7 +1133,8 @@ function LinhaDoTempo({
   const [arraste, setArraste] = useState<Arraste | null>(null);
   const [guia, setGuia] = useState<number | null>(null);          // linha amarela do ímã
   const [mira, setMira] = useState<number | null>(null);          // onde a navalha vai cortar
-  const [alt, setAlt] = usePref<Faixas>("editor-video-faixas", ALTURAS);
+  const [altSalva, setAlt] = usePref<Faixas>("editor-video-faixas", ALTURAS);
+  const alt = { ...ALTURAS, ...altSalva };   // faixa nova (A3) entra mesmo com alturas salvas antes dela
   const largura = Math.max(durFinal * pps + 200, 600);
   const lamina = ferramenta === "lamina";
   const zooms = projeto.zooms ?? [];
@@ -1456,6 +1484,20 @@ function LinhaDoTempo({
               <span className="pointer-events-none absolute left-1 top-0.5 text-[10px] text-white drop-shadow">{projeto.musica.arquivo.split("/").pop()}</span>
             </div>
           ))}
+          {faixa("a3", "A3 · Efeitos", (projeto.efeitos ?? []).map((ef) => {
+            const a = paraFinal(segs, ef.inicio, "inicio");
+            if (a == null) return null;
+            const it: Item = { tipo: "efeito", id: ef.id };
+            const nome = (ef.arquivo.split("/").pop() ?? "").replace(/^som-/, "").replace(/\.\w+$/, "");
+            return (
+              <div key={ef.id} title={`${nome} · ${timecode(a)}`}
+                className={cn("absolute bottom-1 top-1 flex items-center overflow-hidden rounded-sm border border-amber-900 bg-amber-600/80 text-[10px] text-white", selecionado(it) && "ring-2 ring-white")}
+                style={{ left: a * pps, width: Math.max(8, 0.5 * pps) }}
+                onPointerDown={(e) => { if (!lamina) clicarItem(e, it); }}>
+                <span className="pointer-events-none truncate px-1">{nome}</span>
+              </div>
+            );
+          }))}
           {/* Navalha: onde vai cortar */}
           {lamina && mira != null && <div className="pointer-events-none absolute bottom-0 top-7 z-30 w-px bg-rose-400" style={{ left: ROT + mira * pps }} />}
           {/* Ímã / trava: linha de encaixe */}

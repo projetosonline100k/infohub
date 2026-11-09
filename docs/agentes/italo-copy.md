@@ -137,6 +137,13 @@ python3 scripts/inteligencia/ler.py --cliente <cliente_id> --agente ítalo --sai
 - **Inteligência do Ítalo:** os 2 vídeos do YouTube sobre quiz ("Quiz, metodo" e "10 Hacks Para Aumentar a Conversão do Seu Quiz") foram transcritos, com ~27 mil e ~29 mil caracteres.
   - Ainda faltam os livros ($100M Offers e Palavras que vendem).
 
+**15/10/2026:**
+- **Quiz do Desafio Presença Total** (tarefa `3a3d13b3`, briefing confirmado): entregue a v1 no documento "Exame da Presença: esboço do quiz do Desafio Presença Total (v1)", que foi para `aguardando_aprovacao`.
+  - "Diagnóstico" é palavra proibida para o Matheus. A recomendação foi **Exame da Presença**, com a palavra **PRESENÇA** para comentar.
+  - 25 telas e 4 perfis (Canivete Suíço, Amanhã Eu Começo, Atenção Emprestada, Recomeço do Zero), ligados ao Método do Dia Intencional.
+  - As provas usam estudos reais (Ward 2017 "Brain Drain"; Gloria Mark, 47 s). Não foi criada notícia falsa.
+  - Faltam: depoimentos reais, áudio do Matheus, preço e as conversas do Davi com o Matheus no Claude, que não estão na Inteligência.
+
 ## A combinar com o Davi (primeira conversa)
 
 1. ~~O Ítalo passa a ser IA?~~ **Decidido em 14/10: sim, IA operária (o Davi ou o Pedro levam a atividade).**

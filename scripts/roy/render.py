@@ -100,10 +100,14 @@ def assets_da_pagina(estilo, slide):
     """(arquivo local, nome no Storage) de tudo que a página carrega: fontes
     e ilustrações. Usado pra prévia ao vivo no Infopro (modelos)."""
     saida = [(FONTES / f["arquivo"], _nome_asset(f["arquivo"], f"fonte-{k}-")) for k, f in estilo["fontes"].items()]
-    for chave in ("capa", "ilustracao", "icone"):
+    # Caderno: os rabiscos vão no próprio HTML; da página só a capa real é imagem.
+    for chave in ("capa",) if estilo.get("tipo") in ("caderno", "caderno-claro") else ("capa", "ilustracao", "icone"):
         if slide.get(chave):
             p = _ilustracao(slide[chave])
             saida.append((p, _nome_asset(p)))
+    if estilo.get("tipo") == "caderno-claro":  # logo, app e capas da capa (caderno_claro.py)
+        import caderno_claro
+        saida += [(p, _nome_asset(p)) for p in caderno_claro.assets_extras(estilo, slide)]
     return saida
 
 
@@ -114,6 +118,12 @@ def pagina_html(estilo, slide, n, total, assets=None, marcadores=False):
         return f"{assets}/{nome}" if assets else f"file://{arquivo}"
     nomes = dict((str(a), n_) for a, n_ in assets_da_pagina(estilo, slide)) if assets else {}
     src = lambda p: url(p, nomes.get(str(p)))  # noqa: E731
+    if estilo.get("tipo") == "caderno":  # "Caderno preto" (Davi, 20/10/2026): caderno.py
+        import caderno
+        return caderno.pagina_html(estilo, slide, n, total, src, marcadores)
+    if estilo.get("tipo") == "caderno-claro":  # "Caderno Instalivros" (Davi, 22/10/2026): caderno_claro.py
+        import caderno_claro
+        return caderno_claro.pagina_html(estilo, slide, n, total, src, marcadores)
     L = estilo["layout"]
     C = estilo["cores"]
     F = estilo["fontes"]
@@ -131,6 +141,14 @@ def pagina_html(estilo, slide, n, total, assets=None, marcadores=False):
                       "paisagem": True}
     ic = _ilustracao(slide.get("icone"))
     circ = L["ilustracao"]["circulo"]
+    # Capa variada (Davi, 16/10/2026): "layout": "grande" põe a ilustração do
+    # tema grande embaixo do título, ocupando o resto da página.
+    grande = bool(il) and slide.get("layout") == "grande"
+    hmax_reserva = None
+    if grande:  # título mais baixo para sobrar espaço; headline longa volta à altura normal
+        hmax_reserva = t["altura_max"]
+        t = {**t, "altura_max": t.get("altura_max_grande", 520)}
+        tx = {**tx, "largura": t["largura"]}
     largura_titulo = t["largura_com_icone"] if ic else t["largura"]
     fontes_css = "\n".join(
         f'@font-face {{ font-family: "{f["familia"]}"; src: url("{src(FONTES / f["arquivo"])}"); font-weight: 100 900; }}'
@@ -193,7 +211,8 @@ const cfg = {json.dumps({"tmax": t["tamanho_max"], "tmin": t["tamanho_min"], "hm
                           "contorno": contorno(il) if il else ([0] * 60 if capa else None),
                           "circ_capa": lc.get("circulo", {"rel_x": 0.15, "rel_y": 0.2}),
                           "capa_min": lc.get("largura_min", 300), "paisagem": bool(lc.get("paisagem")),
-                          "ilu_min": L["ilustracao"].get("altura_min", 480), "folga": 24})};
+                          "ilu_min": L["ilustracao"].get("altura_min", 480), "folga": 24,
+                          "grande": grande, "altura": H, "hmax_reserva": hmax_reserva})};
 function cabe() {{
   return T.scrollHeight <= cfg.hmax && T.scrollWidth <= T.clientWidth + 1;
 }}
@@ -201,6 +220,10 @@ function ajustar() {{
   let s = cfg.tmax;
   T.style.fontSize = s + "px";
   while (s > cfg.tmin && !cabe()) {{ s -= 2; T.style.fontSize = s + "px"; }}
+  if (!cabe() && cfg.hmax_reserva) {{
+    cfg.hmax = cfg.hmax_reserva; s = cfg.tmax; T.style.fontSize = s + "px";
+    while (s > cfg.tmin && !cabe()) {{ s -= 2; T.style.fontSize = s + "px"; }}
+  }}
   const fim = T.offsetTop + T.scrollHeight;
   X.style.top = (fim + cfg.esp) + "px";
   let x = cfg.xt;
@@ -214,6 +237,18 @@ function ajustar() {{
     }}
   }}
   while (x > cfg.xmin && X.offsetTop + X.scrollHeight > cfg.lim) {{ x -= 1; X.style.fontSize = x + "px"; }}
+  // Ilustração deitada (ex.: estátua reclinada): limita a largura.
+  const G = document.getElementById("escultura");
+  const proporcao = G && G.naturalHeight ? G.naturalWidth / G.naturalHeight : 1, largMax = cfg.grande ? 860 : 700;  // grande: não chega na paginação
+  if (G && G.getBoundingClientRect().height * proporcao > largMax) G.style.height = Math.round(largMax / proporcao) + "px";
+  if (cfg.grande) {{  // ilustração grande: do fim do texto até o pé da página, círculo proporcional
+    const K0 = document.getElementById("circulo");
+    const fimTexto = X.textContent.trim() ? X.offsetTop + X.scrollHeight : T.offsetTop + T.scrollHeight;
+    const h = Math.min(largMax / proporcao, Math.max(cfg.ilu_min, Math.min(980, cfg.altura - fimTexto - 30)));
+    G.style.height = h + "px";
+    cfg.circ = {{ ...cfg.circ, diametro: Math.round(Math.min(640, h * 0.78 * Math.max(1, proporcao * 0.7))) }};
+    if (K0) {{ K0.style.width = K0.style.height = cfg.circ.diametro + "px"; }}
+  }}
   // Texto por cima da escultura? Diminui a escultura; se não bastar, a letra.
   const E0 = document.getElementById("escultura") || document.getElementById("capa");
   const linhasDe = (el) => {{ const r = document.createRange(); r.selectNodeContents(el); return [...r.getClientRects()]; }};

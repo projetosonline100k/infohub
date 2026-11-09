@@ -177,10 +177,15 @@ def montar(pasta, escolhas=None):
         "musica": esc.get("musica"),
         "formato": esc.get("formato", "classico"),   # 'papel': tela dividida (papel.py, papel_cenas.py)
         "destaques": esc.get("destaques", []),
+        "estilo": esc.get("estilo"),                  # 'instalivros': papel rasgado, legenda pequena (motor.py)
+        "tela_dividida": esc.get("tela_dividida"),    # {inicio, fim}: apresentador na metade de baixo
         "cor": "cinema",
         "zoom": [],
         "palavras": [{"t": w["word"], "s": round(w["start"], 3), "e": round(w["end"], 3)} for w in palavras],
     }
+    td = projeto["tela_dividida"]
+    if td:   # na abertura dividida a headline (papel) fala sozinha: legenda só depois
+        projeto["legendas"] = [l for l in projeto["legendas"] if l["tipo"] == "head" or l["inicio"] >= td["fim"] - 0.05]
     # Zoom em Davi: alterna perto/longe a cada ~15 s do vídeo final + ênfases secas.
     from motor import Mapa, trechos_mantidos
     mapa = Mapa(trechos_mantidos(projeto))
@@ -191,7 +196,7 @@ def montar(pasta, escolhas=None):
                 return a + (tf - acc)
             acc += b - a
     z, tf = 1.0, 12.0
-    while tf < mapa.duracao - 5:
+    while tf < mapa.duracao - 5 and not projeto["estilo"]:   # Instalivros: quase sem zoom
         z = 1.08 if z == 1.0 else 1.0
         projeto["zoom"].append({"t": round(no_bruto(tf), 3), "z": z, "d": 2.6})
         tf += 15.0

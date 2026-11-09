@@ -100,7 +100,8 @@ def andamento(id_, texto):
 def gerar_previa(id_):
     with _fila:
         try:
-            if not (pasta_de(id_) / "proxy.mp4").exists():
+            dark = json.loads((pasta_de(id_) / "projeto.json").read_text()).get("formato") == "dark"
+            if not dark and not (pasta_de(id_) / "proxy.mp4").exists():   # dark: a fonte é só a voz, sem vídeo
                 status(id_, "renderizando", "Preparando a cópia leve do vídeo…")
                 while pasta_de(id_) in _gerando_proxy:     # o player já está gerando: espera
                     __import__("time").sleep(2)

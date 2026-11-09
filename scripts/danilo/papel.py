@@ -32,6 +32,15 @@ VERMELHO = (196, 52, 40)
 AZUL = (70, 120, 190)
 FPS = 30
 PW, PH = 940, 560                       # folha em unidades de desenho
+PALETA = {}                             # troca de cores na hora de desenhar (ex.: lousa preta → giz)
+GIZ = {GRAFITE: (238, 234, 224), VERMELHO: (244, 96, 80), AZUL: (120, 178, 242)}
+AZUL_IL = (0, 88, 154)                  # azul do Instalivros (#00589A)
+AZUL_MEDIO = (64, 146, 214)
+MARCA = {GRAFITE: (248, 249, 252), VERMELHO: AMARELO, AZUL: (150, 200, 245)}   # dark do Instalivros: traço branco
+
+
+def tinta(cor):
+    return PALETA.get(tuple(cor), cor)
 
 
 def suave(x):
@@ -59,6 +68,30 @@ def papel(W=1080, H=1920):
     ImageDraw.Draw(vin).ellipse([-W * 0.25, -H * 0.15, W * 1.25, H * 1.15], fill=255)
     vin = vin.filter(ImageFilter.GaussianBlur(160))
     return Image.composite(base, Image.new("RGB", (W, H), (205, 192, 168)), vin)
+
+
+def lousa(W=1080, H=1920):
+    """Fundo preto (o 'dark' do Davi, 19/10): quase preto, com grão e pó de giz bem leve e vinheta."""
+    base = Image.new("RGB", (W, H), (22, 22, 24))
+    grao = Image.effect_noise((W, H), 18).convert("RGB")
+    base = ImageChops.add(base, grao.point(lambda v: max(0, v - 118) // 6))
+    po = Image.effect_noise((W // 8, H // 8), 50).resize((W, H), Image.BICUBIC).filter(ImageFilter.GaussianBlur(6))
+    base = ImageChops.add(base, po.convert("RGB").point(lambda v: max(0, v - 128) // 10))
+    vin = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(vin).ellipse([-W * 0.25, -H * 0.15, W * 1.25, H * 1.15], fill=255)
+    vin = vin.filter(ImageFilter.GaussianBlur(160))
+    return Image.composite(base, Image.new("RGB", (W, H), (8, 8, 9)), vin)
+
+
+def azul(W=1080, H=1920):
+    """Fundo do dark do Instalivros (25/10): azul #00589A com grão leve, centro mais claro e vinheta."""
+    base = Image.new("RGB", (W, H), (0, 96, 166))
+    grao = Image.effect_noise((W, H), 14).convert("RGB")
+    base = Image.blend(base, ImageChops.multiply(base, grao.point(lambda v: 225 + v // 9)), 0.6)
+    vin = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(vin).ellipse([-W * 0.25, -H * 0.15, W * 1.25, H * 1.15], fill=255)
+    vin = vin.filter(ImageFilter.GaussianBlur(170))
+    return Image.composite(base, Image.new("RGB", (W, H), (0, 58, 104)), vin)
 
 
 # ---------------------------------------------------------------- traço à mão
@@ -94,6 +127,7 @@ def parcial(pts, frac):
 
 def traco(d, pts, frac, semente, boil, cor=GRAFITE, larg=7, amp=2.2):
     p = parcial(tremido(pts, semente * 100 + boil, amp), frac)
+    cor = tinta(cor)
     if len(p) > 1:
         sp = [(x * S, y * S) for x, y in p]
         d.line(sp, fill=cor + (235,), width=max(1, int(larg * S)), joint="curve")
@@ -139,16 +173,16 @@ def texto(base, t, a, b, frase, xy, tam, cor=GRAFITE, ang=0.0):
     mask.paste(cam.crop((0, 0, corte, cam.size[1])), (0, 0))
     if ang:
         mask = mask.rotate(ang, expand=True, resample=Image.BICUBIC)
-    tinta = Image.new("RGBA", mask.size, cor + (0,))
-    tinta.putalpha(mask.point(lambda v: v * 0.93))
-    base.alpha_composite(tinta, (int(xy[0] * S), int(xy[1] * S)))
+    camada = Image.new("RGBA", mask.size, tuple(tinta(cor)) + (0,))
+    camada.putalpha(mask.point(lambda v: v * 0.93))
+    base.alpha_composite(camada, (int(xy[0] * S), int(xy[1] * S)))
 
 
-def marcatexto(d, t, a, b, x0, x1, y, semente, boil):
+def marcatexto(d, t, a, b, x0, x1, y, semente, boil, larg=46):
     pts = tremido([(x0, y), (x1, y + 4)], semente * 10 + boil // 2, amp=3, passo=30)
     p = parcial(pts, prog(t, a, b))
     if len(p) > 1:
-        d.line([(x * S, y_ * S) for x, y_ in p], fill=AMARELO + (150,), width=int(46 * S))
+        d.line([(x * S, y_ * S) for x, y_ in p], fill=AMARELO + (90 if PALETA else 150,), width=int(larg * S))
 
 
 

@@ -189,7 +189,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const pedirAoAgente = (texto: string) => {
     if (!info?.responsavelId) { toast.error("Esta entrega não tem chat com o agente"); return; }
     setPedidoTela({ id: Date.now(), texto });
-    setLateralQuiz("conversa"); setPainelQuiz(true);
+    setLateralQuiz("conversa");
     toast.success("Pedido mandado para o chat");
   };
   // Esboço de quiz de outro funcionário (sem quiz ligado ainda): dá pra mandar pro Roy criar.

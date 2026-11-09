@@ -30,7 +30,11 @@ def registrar(atividade, pasta):
     numero = (roy.db("SELECT coalesce(max(numero), 0) + 1 FROM public.carrosseis WHERE cliente_id = %s", (cliente,)) or [[1]])[0][0]
     if ja:
         id_ = str(ja[0][0])
-        roy.db("UPDATE public.carrosseis SET status = 'produzindo', atualizado_em = now() WHERE id = %s", (id_,))
+        # Ajuste de texto (página ou legenda) também tem que chegar na tela e no que a Dalila posta.
+        roy.db("""UPDATE public.carrosseis SET status = 'produzindo', slides = coalesce(%s::jsonb, slides),
+                         legenda = coalesce(%s, legenda), atualizado_em = now() WHERE id = %s""",
+               (json.dumps(conteudo["slides"], ensure_ascii=False) if conteudo.get("slides") else None,
+                conteudo.get("caption"), id_))
     else:
         # fonte_id: o código do reel de origem (único por projeto); sem link, o nome da pasta.
         import re

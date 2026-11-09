@@ -8,6 +8,11 @@ Pasta da edição (<pasta>):
     legendas.json      [{"ini", "fim", "texto"}] no tempo da voz
     dark_cenas.py      from papel import *;  HEADLINE = (texto, fim);  DESTAQUE = (texto, ini) ou None;
                        CENAS = [(início, função)]  — tela 940 x 1671 unidades (x pra direita, y pra baixo).
+                       FUNDO = "preto" (opcional): fundo quase preto e traço de giz (papel.GIZ); sem ele, papel bege.
+                       FUNDO = "azul" (Instalivros, 25/10): azul #00589A, traço branco, destaque amarelo (papel.MARCA).
+                       EFEITOS = [(t, "som.wav", volume)] (opcional): sons no tempo da voz (arquivo do acervo ou caminho).
+                       LEGENDA_TAM = 56 (opcional; padrão 66).  MUSICA_VOLUME = 0.22 (opcional; padrão 0.16).
+                       TREMER = True (opcional): traço "fervendo" (muda a cada 4 quadros). Padrão: parado (Davi, 25/10).
                        Deixe livre: em cima (y < 450) enquanto a headline está na tela; embaixo (y > 1180) é das legendas.
 
     python3 dark.py contato <pasta>                → <pasta>/_dark_contato.jpg (cenas perto do fim de cada uma)
@@ -37,7 +42,7 @@ def carregar(pasta):
     spec = importlib.util.spec_from_file_location(f"dark_cenas_{abs(hash(str(pasta)))}", Path(pasta) / "dark_cenas.py")
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
-    return sorted(m.CENAS, key=lambda c: c[0]), getattr(m, "HEADLINE", None), getattr(m, "DESTAQUE", None)
+    return m, sorted(m.CENAS, key=lambda c: c[0]), getattr(m, "HEADLINE", None), getattr(m, "DESTAQUE", None), getattr(m, "FUNDO", None)
 
 
 def _quebrar(texto, fonte, largura):
@@ -86,8 +91,11 @@ class Tela:
         self.k = 1440 / W if W >= 1000 else 1080 / W              # desenha maior e reduz (traço liso)
         papel.S = W / UW * self.k
         self.tam = (int(self.W * self.k), int(self.H * self.k))
-        self.fundo = papel.papel(*self.tam).convert("RGBA")
-        self.cenas, self.headline, self.destaque = carregar(pasta)
+        self.mod, self.cenas, self.headline, self.destaque, fundo = carregar(pasta)
+        papel.PALETA = {"preto": papel.GIZ, "azul": papel.MARCA}.get(fundo, {})
+        self.fundo = {"preto": papel.lousa, "azul": papel.azul}.get(fundo, papel.papel)(*self.tam).convert("RGBA")
+        self.tam_leg = getattr(self.mod, "LEGENDA_TAM", 66)
+        self.tremer = getattr(self.mod, "TREMER", False)
         leg = self.pasta / "legendas.json"
         self.legendas = json.loads(leg.read_text()) if leg.exists() else []
         e = W / 1080
@@ -99,7 +107,7 @@ class Tela:
     def _desenho(self, f, u, n):
         letras = Image.new("RGBA", self.tam, (0, 0, 0, 0))
         camada = Image.new("RGBA", self.tam, (0, 0, 0, 0))
-        f(letras, ImageDraw.Draw(camada, "RGBA"), u, n // 4)
+        f(letras, ImageDraw.Draw(camada, "RGBA"), u, n // 4 if self.tremer else 0)
         camada.alpha_composite(letras)
         return camada
 
@@ -133,7 +141,7 @@ class Tela:
         if leg:
             chave = leg["texto"]
             if chave not in self._cache:
-                self._cache[chave] = _texto_amarelo(self.W, chave, int(66 * e), int(900 * e), 1.2)
+                self._cache[chave] = _texto_amarelo(self.W, chave, int(self.tam_leg * e), int(900 * e), 1.2)
             li = self._cache[chave]
             img.alpha_composite(li, (0, int(1420 * e) - li.size[1] // 2))
         return img
@@ -161,14 +169,22 @@ def render(pasta, previa=False, musica="gymnopedie-1.ogg"):
     saida = pasta / ("dark-previa.mp4" if previa else "dark.mp4")
     # voz na frente; música baixa que abaixa sozinha quando o Davi fala, com saída suave
     filtro = (f"[0:a]aformat=channel_layouts=stereo,highpass=f=70,loudnorm=I=-15:TP=-1.5:LRA=9,asplit=2[voz][sc];"
-              f"[2:a]aformat=channel_layouts=stereo,volume=0.16,atrim=0:{dur:.2f},"
+              f"[2:a]aformat=channel_layouts=stereo,volume={getattr(tela.mod, 'MUSICA_VOLUME', 0.16)},atrim=0:{dur:.2f},"
               f"afade=t=in:d=1.2,afade=t=out:st={dur - 2.0:.2f}:d=2.0[mus];"
               f"[mus][sc]sidechaincompress=threshold=0.03:ratio=5:attack=40:release=500[musb];"
-              f"[voz][musb]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95,aresample=48000[a]")
+              f"[voz][musb]amix=inputs=2:duration=first:normalize=0[vm]")
+    efeitos = getattr(tela.mod, "EFEITOS", [])
+    ent_ef = []
+    for i, (t, arq, vol) in enumerate(efeitos):
+        arq = Path(arq) if Path(arq).is_absolute() else ACERVO / arq
+        ent_ef += ["-i", str(arq)]
+        filtro += f";[{3 + i}:a]aformat=channel_layouts=stereo,aresample=48000,volume={vol},adelay={int(t * 1000)}:all=1[e{i}]"
+    filtro += (f";[vm]{''.join(f'[e{i}]' for i in range(len(efeitos)))}amix=inputs={1 + len(efeitos)}:duration=first:normalize=0,"
+               f"alimiter=limit=0.95,aresample=48000[a]")
     p = subprocess.Popen([FF, "-hide_banner", "-loglevel", "error", "-y",
                           "-i", str(voz),
                           "-f", "rawvideo", "-pix_fmt", "rgba", "-s", f"{W}x{tela.H}", "-r", str(FPS), "-i", "-",
-                          "-stream_loop", "-1", "-i", str(ACERVO / musica),
+                          "-stream_loop", "-1", "-i", str(ACERVO / musica), *ent_ef,
                           "-filter_complex", filtro, "-map", "1:v", "-map", "[a]",
                           "-c:v", "libx264", "-preset", "medium" if not previa else "veryfast",
                           "-crf", "18" if not previa else "26", "-pix_fmt", "yuv420p",

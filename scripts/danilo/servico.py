@@ -156,7 +156,7 @@ Faça a edição assim:
    - "cortes": as retomadas que você achou, com o motivo.
    - "correcoes": nomes próprios ("David"→"Davi"), "InstaLivros"→"INSTALIVROS" etc.
 {formato_midias}
-   - "musica": {{"arquivo": "{pasta}/imagens/musica.ogg", "volume": 0.07}}.
+   - "musica": {{"arquivo": "{pasta}/imagens/musica.ogg", "volume": 0.12, "abaixar": 0.35}}.
    - "enfases": 2 ou 3 tempos de frases de impacto (zoom seco).
    - "destaques": se falar INSTALIVROS: [{{"texto": "INSTALIVROS", "inicio": <1ª menção>}}].
 {formato_passo}4. `danilo.py montar {id}` e depois `danilo.py conferir {id}`: leia a transcrição da PRÉVIA (a fala tem que correr inteira, sem tomada repetida, sem palavra cortada) e olhe {pasta}/_conferir.jpg (headline, legendas e pinturas sem cobrir o rosto). Corrija e repita até ficar certo.
@@ -180,6 +180,20 @@ def _referencia(e):
 MIDIAS_CLASSICO = """   - "midias": 2 pinturas lado a lado na abertura (logo depois da headline, ~10 s: x 95/560, y 1180, w 425, h 450) e UMA pintura diferente por tópico (~7 s a partir do começo do tópico, centralizada: x=(1080-w)/2, y 1180, w 480–660, h 450–480). Escolha pinturas clássicas que traduzam a ideia daquele trecho: `danilo.py pintura buscar "<termos em inglês>"` e `danilo.py pintura baixar {id} abertura1 "File:..."` (só baixa domínio público/CC e registra a fonte). Olhe a imagem baixada antes de usar. Nada repetido.
    - "formato": "classico"."""
 MIDIAS_PAPEL = """   - FORMATO PAPEL ANIMADO (o Davi escolheu): "formato": "papel" e "midias": [] (sem pinturas). A tela fica dividida: em cima um papel onde cenas são desenhadas à mão acompanhando a fala, embaixo o vídeo (só a parte de cima do quadro aparece; legendas e headline continuam no lugar de sempre)."""
+# Padrão do Eu.davi desde o piloto IMG_2106 aprovado em 26/10 (o Davi: "piloto aprovado vira o padrão";
+# os 7 brutos seguintes saíram no papel antigo e tiveram de ser refeitos): quadro preto com giz em cima,
+# ele embaixo, só nos trechos que pedem, alternando com ele em tela cheia com zoom. É o "classico" do Eu.davi.
+PILOTO_QUADRO = Path.home() / ".infopro-hub/danilo/edicoes/56786f92-5149-4664-9097-ece7cb77a639"
+MIDIAS_QUADRO = """   - PADRÃO APROVADO (piloto IMG_2106, 26/10; pasta """ + str(PILOTO_QUADRO) + """): SEM pinturas. "formato": "classico" e "midias": [] no escolhas.json (os desenhos e GIFs entram no passo 3b). Abra o folhas_cenas.py e o projeto.json do piloto e copie o jeito.
+   - "palavras_head" = a frase do gancho inteira, "blocos_head": [<o mesmo número>] (aparece inteira de uma vez; vale no lugar dos blocos de 2–4)."""
+PASSO_QUADRO = """3b. QUADRO PRETO ANIMADO (o padrão aprovado; NUNCA o papel antigo nem pinturas). Leia o topo de scripts/danilo/folhas.py e o folhas_cenas.py do piloto (""" + str(PILOTO_QUADRO) + """/folhas_cenas.py). Escreva {pasta}/folhas_cenas.py com FUNDO = "preto" e BLOCOS = [(ini, fim, [(t, cena), …]), …] (tempos no BRUTO, ver transcricao.json):
+   - O 1º bloco começa no 1º instante da fala (abertura no quadro: a headline animada desenhada, com o "salva/segue" do gancho se houver). O ÚLTIMO bloco é o final/CTA (quem ele é, seguir, comenta a palavra, direct), também desenhado.
+   - No meio, tela dividida SÓ nos trechos que pedem (cada tópico/ideia forte, uns 8–20 s), alternando com ele em tela cheia (uns 30–40% do vídeo em tela cheia). Os blocos não podem começar nem terminar dentro de um corte.
+   - Cada bloco tem 1 a 3 cenas; na troca o quadro é limpo sozinho (sem apagador). O que repete igual (número no círculo e título do tópico) fica. Palavra-chave escrita no instante em que ele fala (T(t_bruto)), vermelho na conclusão, grifar() na ênfase, número centralizado pelo getbbox (função numero do piloto). Desenhe só em y < 760 (embaixo fica a legenda).
+   - GIF por cima (opcional, como no piloto): à direita (x 565, y ~240, w 460, raio 28) e o desenho à esquerda (x < 460). MP4 com `-g 10 -keyint_min 10 -sc_threshold 0 -movflags +faststart -an` em {pasta}/midias/gif-<nome>.mp4, fonte em {pasta}/imagens/gifs_fontes.json; ponha os GIFs em "midias" do projeto.json DEPOIS do montar (tipo video). Sem GIF que case, só o desenho.
+   - ORDEM: escolhas.json → `danilo.py montar <id>` → folhas_cenas.py → contato → aplicar → GIFs e zooms → `conferir`. O `montar` refaz o projeto.json do escolhas.json e APAGA o quadro: se precisar rodar de novo, rode o `aplicar` (e ponha os GIFs) depois dele. No passo 4, só o `conferir`.
+   - Depois do `montar`, rode `python3 scripts/danilo/folhas.py contato {pasta}` e olhe {pasta}/_folhas_contato.jpg (nada cortado, encavalado ou fora do centro; corrija até ficar limpo) e então `python3 scripts/danilo/folhas.py aplicar {pasta}` (desenha os blocos e põe no projeto.json a tela dividida, a legenda na divisão, o clique de entrada e tira o zoom dos trechos divididos). Ponha 2–4 zooms suaves/secos nos trechos de tela cheia (projeto.json "zooms", como no piloto) e rode o `conferir`. Se mudar cortes ou cenas, rode o `aplicar` de novo.
+"""
 PASSO_PAPEL = """3b. Escreva {pasta}/papel_cenas.py com as cenas do papel. Leia antes o topo de scripts/danilo/papel.py (primitivas: traco, texto, circulo, marcatexto, boneco, prog; folha 940x560) e scripts/danilo/papel_exemplo.py (as 9 cenas do vídeo dos 4 hábitos que o Davi aprovou: copie o jeito). Uma cena por ideia da fala (gancho, cada tópico, a virada), cada uma começando no TEMPO DO BRUTO em que ele começa a falar dela (veja na transcricao.json); FIM = começo do CTA do INSTALIVROS, se houver (ali volta a tela cheia). Palavra-chave escrita à mão no instante em que ele fala; marca-texto amarelo na ênfase; vermelho na conclusão. Confira com `python3 scripts/danilo/papel.py contato {pasta}` e olhe {pasta}/_papel_contato.jpg: nada cortado na borda, nada encavalado; corrija até ficar limpo.
 """
 
@@ -191,7 +205,8 @@ ESTILOS = {
         "topo": ("Você é o Danilo, o editor de vídeos (IA) do projeto Instalivros (Infopro Hub, cliente {cliente}). "
                  "Está rodando em segundo plano: o Davi não vê este terminal. Nada do Eu.davi/Davi Queiroz vale aqui "
                  "(voz, CTA, pinturas, música clássica): o manual vale só como técnica de edição.\n"),
-        "midias": """   - PADRÃO INSTALIVROS (reel Dd4zAcSiWmV, aprovado pelo Davi em 19/10; aprendizado SIGA SEMPRE): sem pinturas, sem cantos arredondados, sem música clássica, sem zoom forte.
+        "midias": """   - PADRÃO INSTALIVROS (reel Dd4zAcSiWmV, aprovado pelo Davi em 19/10; aprendizado SIGA SEMPRE): sem pinturas, sem cantos arredondados, sem música clássica.
+     * Zooms (pedido do Davi em 20/10): o expert sempre mais perto e vários zooms. Em "zooms", blocos colados cobrindo o vídeo TODO, base z=1.18 ({{"tipo":"seco","z":1.18}}); zoom in = {{"tipo":"lento","de":1.18,"z":1.28–1.30}} em frase que cresce; zoom out = {{"tipo":"lento","de":1.30,"z":1.18}} logo depois; zoom seco = {{"tipo":"seco","z":1.32–1.36}} de 2–4 s nas frases fortes (CTA, lista, conclusão). Um movimento a cada ~6–10 s, máximo 1.36.
      * "estilo": "instalivros" e "formato": "classico" no escolhas.json (o montar leva pro projeto.json; se não levar, ponha no projeto.json).
      * Abertura (~5 s, enquanto fala o gancho): "tela_dividida": {{"inicio": <t>, "fim": <t>}} (o apresentador desce pra metade de baixo) + em "midias" um VÍDEO de apoio ligado ao tema na metade de cima: {{"tipo":"video","arquivo":...,"inicio","fim","x":0,"y":0,"w":1080,"h":960,"raio":0}}. Vídeo livre (Wikimedia Commons, Pexels/Pixabay se der pra baixar sem login), fonte em imagens/fontes.json. Se não achar vídeo, use uma FOTO realista (tipo imagem, raio 0) no mesmo lugar.
      * Headline em PAPEL RASGADO no meio da tela: `python3 scripts/danilo/instalivros.py papel {pasta}/imagens/headline.png "linha 1" "linha 2" "linha 3"` (fala exata do gancho, 3 linhas) e em "midias" {{"tipo":"imagem","alfa":true,"arquivo":".../headline.png","inicio","fim" (= tela dividida),"x":40,"y":960-h/2,"w":1000,"h":<o 2º número que o comando imprime>}}. Com o papel, ponha "palavras_head": 0 (sem headline amarela por cima) ou apague as legendas tipo head do projeto.json; as legendas normais só entram depois da abertura.
@@ -216,8 +231,15 @@ def editar(arquivo, e):
                   (id_,))
         log("na fila para editar no estilo", danilo.ESTILO + ":", titulo)
         return id_
-    danilo.perguntar_formato(id_)              # o Davi escolhe: clássico ou papel animado (18/10)
-    log("esperando o Davi escolher o formato:", titulo)
+    if not danilo.PRINCIPAL:
+        danilo.perguntar_formato(id_)          # outros projetos: o Davi escolhe clássico ou papel animado (18/10)
+        log("esperando o Davi escolher o formato:", titulo)
+        return id_
+    # Eu.davi: desde o piloto IMG_2106 aprovado (26/10) não pergunta mais o formato: "classico" = quadro preto
+    # animado (PASSO_QUADRO). O papel antigo só se o Davi pedir (formato 'papel' na edição).
+    danilo.db("UPDATE public.edicoes_video SET formato = 'classico', status = 'na_fila', atualizado_em = now() WHERE id = %s",
+              (id_,))
+    log("na fila para editar no padrão aprovado (quadro preto):", titulo)
     return id_
 
 
@@ -228,21 +250,24 @@ def editar_no_formato(id_, e):
     nome = ctx.get("bruto") or id_
     titulo = (ctx.get("card") or {}).get("titulo") or nome
     formato = danilo.db("SELECT formato FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] or "classico"
-    log("editando", titulo, "no formato", formato)
-    danilo._msg(id_, "Danilo editando: retomadas, headline, " + ("cenas do papel…" if formato == "papel" else "pinturas…"))
     estilo = ESTILOS.get(danilo.ESTILO)
+    quadro = formato == "classico" and not estilo and danilo.PRINCIPAL     # Eu.davi: o padrão do piloto IMG_2106
+    log("editando", titulo, "no formato", "quadro" if quadro else formato)
+    danilo._msg(id_, "Danilo editando: retomadas, headline, " + ("cenas do papel…" if formato == "papel" else
+                                                                 "quadro preto animado…" if quadro else "pinturas…"))
     prompt = PROMPT_EDICAO.format(
         id=id_, pasta=pasta, cliente=danilo.CLIENTE, referencia=_referencia(e),
         formato_midias=(estilo["midias"].format(id=id_, pasta=pasta) if estilo else
-                        MIDIAS_PAPEL if formato == "papel" else MIDIAS_CLASSICO.format(id=id_)),
-        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" and not estilo else ""))
+                        MIDIAS_PAPEL if formato == "papel" else MIDIAS_QUADRO if quadro else MIDIAS_CLASSICO.format(id=id_)),
+        formato_passo=(PASSO_PAPEL.format(pasta=pasta) if formato == "papel" and not estilo else
+                       PASSO_QUADRO.format(pasta=pasta) if quadro else ""))
     if estilo:
         prompt = estilo["topo"].format(cliente=danilo.CLIENTE) + prompt.split("\n", 1)[1].replace(
             ", imagens/musica.ogg (Gymnopédie nº 1, CC0, já aprovada)", "").replace(
-            '   - "musica": {{"arquivo": "{pasta}/imagens/musica.ogg", "volume": 0.07}}.\n'.format(pasta=pasta), "").replace(
+            '   - "musica": {{"arquivo": "{pasta}/imagens/musica.ogg", "volume": 0.12, "abaixar": 0.35}}.\n'.format(pasta=pasta), "").replace(
             '   - "enfases": 2 ou 3 tempos de frases de impacto (zoom seco).\n', "").replace(
             '   - "destaques": se falar INSTALIVROS: [{"texto": "INSTALIVROS", "inicio": <1ª menção>}].\n', "")
-    ok, texto = rodar_claude(prompt, minutos=90,
+    ok, texto = rodar_claude(prompt, minutos=150 if quadro else 90,
         atividade=danilo.db("SELECT atividade_id FROM public.edicoes_video WHERE id = %s", (id_,))[0][0] or e.get("atividade"))
     if not ok or f"PRONTO: {id_}" not in texto:
         raise RuntimeError(f"o Claude não terminou a edição: {(texto or '')[-250:]}")
@@ -252,6 +277,8 @@ def editar_no_formato(id_, e):
     if proj.get("formato") != formato:               # garante o formato escolhido (o motor decide por ele)
         proj["formato"] = formato
         (pasta / "projeto.json").write_text(json.dumps(proj, ensure_ascii=False, indent=1))
+    if quadro and not (proj.get("tela_dividida") and any(m["id"].startswith("folhas-") for m in proj.get("midias", []))):
+        raise RuntimeError("a edição saiu sem o quadro preto animado (padrão do IMG_2106): faltou o folhas.py aplicar")
     st = danilo.nova_versao(id_)
     if st[0] == "erro":
         raise RuntimeError(st[1] or "a prévia falhou")

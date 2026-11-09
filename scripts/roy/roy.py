@@ -409,6 +409,7 @@ def renderizar(alvo, estilo="classico-marfim", drive=True, nova_versao=False):
     if nova_versao or status in ("revisar", "ajuste"):  # nova versão depois de um pedido de ajuste
         versao += 1
     conteudo = json.loads((pasta / "conteudo.json").read_text())
+    estilo = conteudo.get("estilo") or estilo  # o carrossel guarda o estilo (ex.: caderno-preto): ajustes mantêm
     db("UPDATE public.carrosseis SET status = 'produzindo', mensagem = 'Montando as páginas…', atualizado_em = now() WHERE id = %s", (id_,))
     render.renderizar(pasta, estilo)
     prob = revisar(pasta, estilo)

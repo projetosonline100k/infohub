@@ -23,6 +23,9 @@ projeto.json:
                  (projeto antigo: zoom [{t, z, d}] em pontos, convertido por blocos_zoom)
   cor            "cinema" | "natural" | "quente" | "frio" | "vibrante" | "pb"
   ajuste_cor     {exposicao, contraste, saturacao, temperatura} de -100 a 100 (estilo Lumetri)
+  tela_dividida  [{inicio, fim, saida?}] (Instalivros; saida = s da metade de baixo descendo no fim)
+  velocidade     1,2 = vídeo pronto 20% mais rápido (o editor toca a montagem na mesma velocidade)
+  efeitos        [{id, arquivo, inicio, volume}]: efeito sonoro no tempo do bruto (papel nas trocas, transicao.py)
 
 Uso: python3 motor.py <pasta-do-projeto> [--previa]
   --previa: 720p e mais rápido, pra conferir no mini editor.
@@ -52,6 +55,12 @@ def trechos_mantidos(projeto):
     if pos < projeto["duracao_fonte"]:
         mant.append((pos, projeto["duracao_fonte"]))
     return [(a, b) for a, b in mant if b - a >= 0.05]
+
+
+def telas_divididas(projeto):
+    """tela_dividida do projeto sempre como lista de {inicio, fim} (aceita um trecho só)."""
+    td = projeto.get("tela_dividida")
+    return [td] if isinstance(td, dict) else list(td or [])
 
 
 class Mapa:
@@ -120,16 +129,21 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Head,Arial,74,&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,4.5,2,2,60,60,0,1
-Style: Leg,Arial,58,&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
+Style: Leg,Arial,{46 if projeto.get("estilo") == "instalivros" else 58},&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
 Style: Dest,Arial,88,&H00101010,&H00101010,&H000AD6FF,&H64000000,-1,0,0,0,100,100,3,0,3,18,0,5,60,60,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+    # legenda_dividida (Eu.davi, 26/10): na tela dividida a legenda fica nesse y (a linha do meio)
+    # e a headline centrada nele, em vez de 1080/1110 (que caía no rosto dele).
+    y_div = projeto.get("legenda_dividida")
+    tds = [iv for iv in (mapa.intervalo(t["inicio"], t["fim"]) for t in telas_divididas(projeto)) if iv]
     for l in sorted(projeto["legendas"], key=lambda l: l["inicio"]):
         iv = mapa.intervalo(l["inicio"], l["fim"])
         if not iv or not l["texto"].strip():
             continue
+        dividida = y_div is not None and any(a - 0.05 <= iv[0] < b for a, b in tds)
         texto = l["texto"].replace("\n", "\\N")
         if l.get("tipo") == "head":
             # Uma linha por vez (o ASS não tem entrelinha): a última fica em y=1110 e as
@@ -137,16 +151,17 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             tam = l.get("tamanho") or 74
             passo = tam * 1.2 * (l.get("entrelinhas") or 1)
             linhas = quebrar_linhas(l["texto"], tam, l.get("largura") or 960)
+            base = y_div + len(linhas) * passo / 2 if dividida else 1110
             for i, lin in enumerate(linhas):
-                y = 1110 - (len(linhas) - 1 - i) * passo
+                y = base - (len(linhas) - 1 - i) * passo
                 ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Head,,0,0,0,,{{\\an2\\pos(540,{y:.0f})\\fs{tam:.0f}\\fad(120,80)}}{lin}\n"
         else:
-            ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Leg,,0,0,0,,{{\\an5\\pos(540,1080)}}{texto}\n"
+            ass += f"Dialogue: 0,{ts(iv[0])},{ts(iv[1])},Leg,,0,0,0,,{{\\an5\\pos(540,{y_div if dividida else 1080})}}{texto}\n"
     for d in projeto.get("destaques", []):
         a = mapa.para_final(d["inicio"], "inicio")
         b = mapa.para_final(d["fim"], "fim") if d.get("fim") else mapa.duracao
         if a is not None and b is not None and b - a > 0.15 and d.get("texto", "").strip():
-            ass += f"Dialogue: 1,{ts(a)},{ts(b)},Dest,,0,0,0,,{{\\an5\\pos(540,1400)\\fad(150,0)\\fscx70\\fscy70\\t(0,180,\\fscx108\\fscy108)\\t(180,320,\\fscx100\\fscy100)}}{d['texto']}\n"
+            ass += f"Dialogue: 1,{ts(a)},{ts(b)},Dest,,0,0,0,,{{\\an5\\pos(540,{projeto.get('destaque_y', 1400)})\\fad(150,0)\\fscx70\\fscy70\\t(0,180,\\fscx108\\fscy108)\\t(180,320,\\fscx100\\fscy100)}}{d['texto']}\n"
     Path(destino).write_text(ass, encoding="utf-8")
 
 
@@ -250,15 +265,16 @@ def expressao_zoom(projeto, mapa):
         if not iv:
             continue
         a, b = iv
-        z, dz, n = k["z"], k["z"] - 1, b - a
+        de = k.get("de", 1)     # zoom de onde o bloco parte (e volta, no suave); de > z = zoom out
+        z, dz, n = k["z"], k["z"] - de, b - a
         if k.get("tipo") == "seco":
             dentro = f"{z}"
         elif k.get("tipo") == "lento":
-            dentro = f"(1+{dz:.4f}*{s(f'min(max((t-{a:.3f})/{n:.3f},0),1)')})"
+            dentro = f"({de}+{dz:.4f}*{s(f'min(max((t-{a:.3f})/{n:.3f},0),1)')})"
         else:
             r = min(1.2, n / 3)
             ent, sai = f"min(max((t-{a:.3f})/{r:.3f},0),1)", f"min(max(({b:.3f}-t)/{r:.3f},0),1)"
-            dentro = f"if(lt(t,{a + r:.3f}),1+{dz:.4f}*{s(ent)},if(gt(t,{b - r:.3f}),1+{dz:.4f}*{s(sai)},{z}))"
+            dentro = f"if(lt(t,{a + r:.3f}),{de}+{dz:.4f}*{s(ent)},if(gt(t,{b - r:.3f}),{de}+{dz:.4f}*{s(sai)},{z}))"
         expr = f"if(between(t,{a:.3f},{b:.3f}),{dentro},{expr})"
     return expr
 
@@ -342,7 +358,11 @@ def renderizar(pasta, previa=False, progresso=None):
     if projeto.get("formato") == "dark":
         # Formato dark (19/10): só a voz, a tela inteira é o papel desenhado (dark.py,
         # com dark_cenas.py e legendas.json na pasta da edição).
+        import importlib
         import dark
+        import papel
+        importlib.reload(papel)            # o servidor fica de pé: pega mudanças no papel.py/dark.py sem reiniciar
+        importlib.reload(dark)
         if progresso:
             progresso(0.02)
         saida = Path(dark.render(pasta, previa=previa))
@@ -375,14 +395,39 @@ def renderizar(pasta, previa=False, progresso=None):
     fc.append(f"[vc]fps={FPS},scale=w='{LW}*({z})':h='{LH}*({z})':eval=frame:flags={'bilinear' if previa else 'lanczos'},"
               f"crop={LW}:{LH}:(iw-{LW})/2:(ih-{LH})*0.32,setsar=1,{cor}[vbase]")
     ultimo, entrada = "vbase", 1
+    # Instalivros: nesses trechos o apresentador desce pra metade de baixo (a abertura e,
+    # desde 21/10, as animações em papel rasgado do meio do vídeo). Um trecho só ou uma lista.
+    tds = [(iv, t.get("saida", 0)) for iv, t in ((mapa.intervalo(t["inicio"], t["fim"]), t) for t in telas_divididas(projeto)) if iv]
+    if tds:
+        quando = "+".join(f"between(t,{a:.2f},{b:.2f})" for (a, b), _ in tds)
+        # saida (22/10): nos últimos `saida` s a metade de baixo desce e sai da tela, mostrando ele em
+        # tela cheia por trás (junto com a folha sendo arrancada pra cima), em vez de voltar seco.
+        y = f"{LH // 2}"
+        for (a, b), s in tds:
+            if s:
+                p = f"min(max((t-{b - s:.3f})/{s:.3f},0),1)"
+                y = f"if(gt(t,{b - s:.3f})*lt(t,{b:.3f}),{LH // 2}+{LH // 2}*{p}*{p}*(3-2*{p}),{y})"
+        fc.append(f"[vbase]split[vb1][vb2]")
+        # faixa do rosto; recorte_dividida (fração do quadro, 26/10) desce ele quando a cabeça ficava sob o rasgo
+        fc.append(f"[vb2]crop={LW}:{LH // 2}:0:{int(LH * projeto.get('recorte_dividida', 0.12))}[vmeio]")
+        fc.append(f"[vb1][vmeio]overlay=x=0:y='{y}':eval=frame:enable='{quando}'[vtd]")
+        ultimo = "vtd"
     for n, m in enumerate(projeto.get("midias", [])):
         iv = mapa.intervalo(m["inicio"], m["fim"])
         if not iv:
             continue
         a, b = iv
         w, h, x, y = (int(m[c] * k) for c in ("w", "h", "x", "y"))
+        raio = int(m.get("raio", 34) * k)      # 0 = sem canto arredondado (Instalivros)
+        if m["tipo"] == "imagem" and m.get("alfa"):   # PNG com transparência (papel rasgado, LIVRO 1/3): sem zoom nem moldura
+            args += ["-loop", "1", "-framerate", str(FPS), "-t", f"{min(dur, b + 0.5):.2f}", "-i", m["arquivo"]]
+            fc.append(f"[{entrada}:v]scale={w}:{h},format=rgba,fade=t=in:st={a:.2f}:d=0.2:alpha=1,"
+                      f"fade=t=out:st={max(a, b - 0.2):.2f}:d=0.2:alpha=1[im{n}]")
+            fc.append(f"[{ultimo}][im{n}]overlay={x}:{y}:eof_action=pass:enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
+            ultimo, entrada = f"ov{n}", entrada + 1
+            continue
         if m["tipo"] == "imagem":
-            png, msk, (iw, ih) = moldura_imagem(m["arquivo"], w, h, pasta, raio=int(34 * k))
+            png, msk, (iw, ih) = moldura_imagem(m["arquivo"], w, h, pasta, raio=raio)
             fim = f"{min(dur, b + 0.5):.2f}"   # a imagem só existe até sair da tela
             args += ["-loop", "1", "-framerate", str(FPS), "-t", fim, "-i", png,
                      "-loop", "1", "-framerate", str(FPS), "-t", fim, "-i", msk]
@@ -402,10 +447,16 @@ def renderizar(pasta, previa=False, progresso=None):
                       f"enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
             ultimo, entrada = f"ov{n}", entrada + 1
             continue
+        elif m.get("alfa"):   # vídeo com transparência (folhas rasgadas do Instalivros, ProRes 4444): sem moldura nem fade
+            args += ["-itsoffset", f"{a:.3f}", "-i", m["arquivo"]]
+            fc.append(f"[{entrada}:v]fps={FPS},scale={w}:{h},format=rgba[im{n}]")
+            fc.append(f"[{ultimo}][im{n}]overlay={x}:{y}:eof_action=pass:enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
+            ultimo, entrada = f"ov{n}", entrada + 1
+            continue
         else:   # vídeo: entra no tempo dele, sem áudio, recortado na moldura
             msk = pasta / "_tmp" / f"mask_{n}.png"
             msk.parent.mkdir(exist_ok=True)
-            mascara(w, h, msk, int(34 * k))
+            mascara(w, h, msk, raio)
             args += ["-itsoffset", f"{a:.3f}", "-i", m["arquivo"],
                      "-loop", "1", "-framerate", str(FPS), "-t", f"{dur:.2f}", "-i", str(msk)]
             fc.append(f"[{entrada}:v]fps={FPS},scale={w}:{h}:force_original_aspect_ratio=increase,"
@@ -416,7 +467,24 @@ def renderizar(pasta, previa=False, progresso=None):
         fc.append(f"[{ultimo}][im{n}]overlay={x}:{y}:eof_action=pass:enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
         ultimo, entrada = f"ov{n}", entrada + 2
     fc.append(f"[{ultimo}]subtitles={pasta / '_tmp_legendas.ass'}:fontsdir={FONTES},format=yuv420p[vout]")
-    fc.append("[ac]highpass=f=70,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000[voz]")
+    fc.append("[ac]highpass=f=70,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000[voz0]")
+    # efeitos sonoros (22/10, Instalivros): som de papel em cada troca de cena (transicao.py)
+    efs = []
+    for e in projeto.get("efeitos", []):
+        a = mapa.para_final(e["inicio"], "inicio")
+        if a is None or not Path(e["arquivo"]).exists():
+            continue
+        ms = int(a * 1000)
+        args += ["-i", e["arquivo"]]
+        fc.append(f"[{entrada}:a]aresample=48000,aformat=sample_fmts=flt:channel_layouts=stereo,"
+                  f"volume={e.get('volume', 0.5)},adelay={ms}|{ms}[ef{len(efs)}]")
+        efs.append(f"[ef{len(efs)}]")
+        entrada += 1
+    if efs:
+        fc.append("[voz0]aformat=sample_fmts=flt:channel_layouts=stereo[voz1]")
+        fc.append(f"[voz1]{''.join(efs)}amix=inputs={len(efs) + 1}:normalize=0:duration=first[voz]")
+    else:
+        fc.append("[voz0]anull[voz]")
     mus = projeto.get("musica")
     if mus and Path(mus["arquivo"]).exists():
         # Abaixa sozinha quando o Davi fala: a curva vira um áudio de ganho multiplicado na música.
@@ -432,6 +500,14 @@ def renderizar(pasta, previa=False, progresso=None):
         fc.append(f"[voz][mus]amix=inputs=2:normalize=0:duration=first,afade=t=out:st={max(0, dur - 0.4):.2f}:d=0.4[aout]")
     else:
         fc.append(f"[voz]afade=t=out:st={max(0, dur - 0.4):.2f}:d=0.4[aout]")
+    # velocidade (22/10, Instalivros 1,2×): acelera o vídeo pronto, imagem e voz juntas (atempo não
+    # muda o tom). Tudo antes daqui segue no tempo normal; o mini editor toca a montagem a 1×.
+    vel = projeto.get("velocidade") or 1
+    if vel != 1 and projeto.get("formato") != "papel":
+        fc = [f.replace("[vout]", "[vnormal]").replace("[aout]", "[anormal]") for f in fc]
+        fc.append(f"[vnormal]setpts=PTS/{vel}[vout]")
+        fc.append(f"[anormal]atempo={vel}[aout]")
+        dur = dur / vel
     (pasta / "_tmp_filtro.txt").write_text(";\n".join(fc))
     saida = pasta / ("previa.mp4" if previa else "final.mp4")
     temp = saida.with_suffix(".tmp.mp4")
