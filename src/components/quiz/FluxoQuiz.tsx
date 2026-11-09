@@ -108,6 +108,24 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
     instancia.current?.setCenter(n.position.x + 125, n.position.y + 60, { zoom: 0.9, duration: animar ? 300 : 0 });
   }, []);
   useEffect(() => { irPara(selecionada, true); }, [selecionada, irPara]);
+  // Pinça no trackpad: o WebKit (app do Mac) manda eventos "gesture*" em vez de roda+ctrl, que o React Flow não
+  // entende; aqui a pinça vira zoom no mapa (e não da página inteira).
+  const caixa = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    let base = 1;
+    type Gesto = Event & { scale: number; clientX?: number; clientY?: number };
+    const inicio = (e: Event) => { e.preventDefault(); base = instancia.current?.getZoom() ?? 1; };
+    const muda = (e: Event) => {
+      e.preventDefault();
+      const g = e as Gesto;
+      instancia.current?.zoomTo(Math.min(1.6, Math.max(0.2, base * g.scale)));
+    };
+    el.addEventListener("gesturestart", inicio);
+    el.addEventListener("gesturechange", muda);
+    return () => { el.removeEventListener("gesturestart", inicio); el.removeEventListener("gesturechange", muda); };
+  }, []);
   const onNodesChange = useCallback((ch: NodeChange[]) => setNodes((n) => applyNodeChanges(ch, n)), []);
 
   const edges = useMemo<Edge[]>(() => {
@@ -129,7 +147,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
   }, [laminas, estrutura]);
 
   return (
-    <div className="dark relative h-full min-h-0 w-full overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_0%,#101c33,#080d17_70%)]">
+    <div ref={caixa} className="dark relative h-full min-h-0 w-full overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_0%,#101c33,#080d17_70%)]">
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={tiposDeBloco} onNodesChange={onNodesChange} onInit={(i) => { instancia.current = i; setTimeout(() => irPara(selecionada, false), 50); }} minZoom={0.2} maxZoom={1.6}
         panOnScroll zoomOnScroll={false} zoomOnPinch nodesConnectable={false} proOptions={{ hideAttribution: true }}
         onNodeClick={(_, n) => { const l = (n.data as Dados).lamina; if (l) onEscolher(l.chave); }}

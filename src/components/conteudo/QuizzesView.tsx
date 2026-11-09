@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BarChart3, CheckCircle2, ClipboardList, Copy, ExternalLink, Eye, Loader2, Pause, Pencil, Play, Send, Users, X } from "lucide-react";
+import { BarChart3, CheckCircle2, ClipboardList, Copy, ExternalLink, Eye, Loader2, Pause, Pencil, Play, Plus, Send, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
+import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import { confirmar } from "@/components/DialogosGlobais";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
@@ -40,9 +41,7 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
   const [tarefas, setTarefas] = useState<Record<string, Tarefa>>({});
   const [respostas, setRespostas] = useState<Resposta[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [titulo, setTitulo] = useState("");
-  const [pedido, setPedido] = useState("");
-  const [enviando, setEnviando] = useState(false);
+  const [criando, setCriando] = useState(false);
   const [revisando, setRevisando] = useState<{ id: string; titulo: string } | null>(null);
   const [testando, setTestando] = useState<QuizResumo | null>(null);
   const [vendoRespostas, setVendoRespostas] = useState<QuizResumo | null>(null);
@@ -82,21 +81,19 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
     return m;
   }, [respostas]);
 
-  const pedir = async () => {
-    if (!roy || !titulo.trim() || enviando) return;
-    setEnviando(true);
+  const pedir = async (titulo: string, pedido: string) => {
+    if (!roy || !titulo.trim()) return;
     try {
       const descricao = `Quiz pedido pela aba Quiz.\nNome provisório: ${titulo.trim()}\n\nO que o quiz precisa fazer:\n${pedido.trim() || "(sem detalhes: pergunte na entrega do esboço o que faltar)"}\n\nFluxo e formato: docs/QUIZ.md (etapa 1: esboço em documento).`;
       const tarefaId = await criarTarefaParaMembro(clienteId, roy.id, { titulo: `Quiz: ${titulo.trim()}`, tipo: "quiz", prazo: null, descricao });
       const { error } = await db.from("quizzes").insert({ id: crypto.randomUUID(), cliente_id: clienteId, titulo: titulo.trim(), pedido: pedido.trim() || null, atividade_id: tarefaId });
       if (error) throw error;
-      setTitulo(""); setPedido("");
       toast.success(`${roy.nome} começa o esboço e te traz para aprovar`);
       void carregar();
+      setCriando(false);
+      setRevisando({ id: tarefaId, titulo: titulo.trim() });
     } catch {
       toast.error("Não consegui pedir o quiz");
-    } finally {
-      setEnviando(false);
     }
   };
 
@@ -126,21 +123,14 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
         </p>
       </header>
 
-      <form className="space-y-2 rounded-xl border bg-card p-3" onSubmit={(e) => { e.preventDefault(); void pedir(); }}>
-        <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} disabled={!roy} placeholder="Nome provisório do quiz (ex.: Exame da Presença)" />
-        <Textarea value={pedido} onChange={(e) => setPedido(e.target.value)} disabled={!roy} rows={3} className="text-sm"
-          placeholder="Para que é o quiz? Produto, público, palavra para comentar, link da oferta, documentos de referência…" />
-        <div className="flex justify-end">
-          <Button type="submit" className="gap-1.5" disabled={!roy || !titulo.trim() || enviando}>
-            {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Pedir ao {roy?.nome ?? "Roy"}
-          </Button>
-        </div>
-      </form>
+      <div className="flex justify-end">
+        <Button className="gap-1.5" disabled={!roy} onClick={() => setCriando(true)}><Plus className="h-4 w-4" />Criar novo quiz</Button>
+      </div>
 
       {carregando ? (
         <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
       ) : quizzes.length === 0 ? (
-        <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">Nenhum quiz ainda. Peça o primeiro aí em cima.</div>
+        <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">Nenhum quiz ainda. Clique em “Criar novo quiz”.</div>
       ) : (
         <div className="space-y-2">
           {quizzes.map((q) => {
@@ -205,6 +195,8 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
         </div>
       )}
 
+      <NovoQuiz aberto={criando} roy={roy} onFechar={() => setCriando(false)} onPedir={pedir} />
+
       <RevisaoEntrega clienteId={clienteId} tarefas={revisando ? [revisando] : []} aberto={!!revisando}
         onFechar={() => setRevisando(null)} onMudou={() => void carregar()} />
 
@@ -249,5 +241,58 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+// Quiz novo (09/11, Davi): o mesmo desenho do editor, mas vazio — sem fluxo, celular em branco e o chat com o Roy
+// sem conversa. A primeira mensagem vira o pedido: o Roy começa o esboço e a tela passa para a revisão dele.
+function NovoQuiz({ aberto, roy, onFechar, onPedir }: {
+  aberto: boolean; roy: { id: string; nome: string } | null; onFechar: () => void; onPedir: (titulo: string, pedido: string) => Promise<void>;
+}) {
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  useEffect(() => { if (!aberto) setTexto(""); }, [aberto]);
+  const nome = roy?.nome ?? "Roy";
+  const mandar = async () => {
+    const t = texto.trim();
+    if (!t || enviando) return;
+    setEnviando(true);
+    const primeira = t.split("\n")[0].replace(/\s+/g, " ");
+    try { await onPedir(primeira.length > 60 ? `${primeira.slice(0, 57)}…` : primeira, t); } finally { setEnviando(false); }
+  };
+  return (
+    <Dialog open={aberto} onOpenChange={(a) => { if (!a) onFechar(); }}>
+      <DialogContent className="dark flex h-[92vh] w-[98vw] max-w-[98vw] flex-col gap-3 border-white/10 bg-[#060a12] p-3 text-foreground">
+        <DialogHeader className="px-1"><DialogTitle>Novo quiz</DialogTitle><DialogDescription>Conte para o {nome} o que o quiz precisa fazer: ele monta o fluxo e as telas.</DialogDescription></DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
+          <div className="flex min-h-[200px] flex-col gap-2 rounded-2xl border border-white/10 bg-[#0a1019] p-3 md:w-[30%] md:flex-none">
+            <p className="text-base font-semibold text-white">Fluxo do quiz</p>
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-white/10 p-4 text-center text-xs text-white/40">O fluxo aparece aqui quando o {nome} criar o quiz.</div>
+          </div>
+          <div className="flex min-h-[260px] flex-1 items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_40%,#0f1c33,#0a1019_70%)] p-3">
+            <div className="flex h-full max-h-[760px] w-full justify-center" style={{ filter: "drop-shadow(0 0 2px rgba(34,211,238,.9)) drop-shadow(0 0 28px rgba(34,211,238,.35))" }}>
+              <MolduraCelular escuro={false}><div className="flex flex-1 items-center justify-center text-center text-xs text-neutral-400">A prévia do celular aparece aqui.</div></MolduraCelular>
+            </div>
+          </div>
+          <div className="flex min-h-[260px] flex-col rounded-2xl border border-white/10 bg-[#0a1019] p-3 md:w-[360px] md:flex-none">
+            <div className="flex items-center gap-2 border-b border-white/10 pb-2">
+              <span className="h-8 w-8 overflow-hidden rounded-full"><CabecaBoneco nome={nome} ehIa className="h-full w-full" /></span>
+              <div><p className="text-sm font-semibold">{nome}</p><p className="text-[11px] text-muted-foreground">Assistente do seu quiz</p></div>
+            </div>
+            <div className="flex-1" />
+            <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void mandar(); }}>
+              <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={4} className="text-sm" autoFocus
+                placeholder={`Fale com o ${nome}: para que é o quiz? Produto, público, palavra para comentar, link da oferta, referências…`}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mandar(); } }} />
+              <div className="flex justify-end">
+                <Button type="submit" className="gap-1.5" disabled={!texto.trim() || enviando}>
+                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Pedir ao {nome}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
