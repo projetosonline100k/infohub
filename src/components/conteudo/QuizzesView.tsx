@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { CabecaBoneco } from "@/components/empresa/BonecoMesa";
+import { useMencaoDocumentos } from "@/components/empresa/MencaoDocumentos";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import { confirmar } from "@/components/DialogosGlobais";
 import { cn } from "@/lib/utils";
@@ -251,6 +252,7 @@ function NovoQuiz({ aberto, roy, onFechar, onPedir }: {
 }) {
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const mencao = useMencaoDocumentos(texto, setTexto);
   useEffect(() => { if (!aberto) setTexto(""); }, [aberto]);
   const nome = roy?.nome ?? "Roy";
   const mandar = async () => {
@@ -258,7 +260,7 @@ function NovoQuiz({ aberto, roy, onFechar, onPedir }: {
     if (!t || enviando) return;
     setEnviando(true);
     const primeira = t.split("\n")[0].replace(/\s+/g, " ");
-    try { await onPedir(primeira.length > 60 ? `${primeira.slice(0, 57)}…` : primeira, t); } finally { setEnviando(false); }
+    try { await onPedir(primeira.length > 60 ? `${primeira.slice(0, 57)}…` : primeira, mencao.comAnexos(t)); mencao.limpar(); } finally { setEnviando(false); }
   };
   return (
     <Dialog open={aberto} onOpenChange={(a) => { if (!a) onFechar(); }}>
@@ -280,10 +282,11 @@ function NovoQuiz({ aberto, roy, onFechar, onPedir }: {
               <div><p className="text-sm font-semibold">{nome}</p><p className="text-[11px] text-muted-foreground">Assistente do seu quiz</p></div>
             </div>
             <div className="flex-1" />
-            <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); void mandar(); }}>
-              <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={4} className="text-sm" autoFocus
-                placeholder={`Fale com o ${nome}: para que é o quiz? Produto, público, palavra para comentar, link da oferta, referências…`}
-                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mandar(); } }} />
+            <form className="relative space-y-2" onSubmit={(e) => { e.preventDefault(); void mandar(); }}>
+              {mencao.lista}
+              <Textarea ref={mencao.campoRef} value={texto} onChange={(e) => mencao.aoDigitar(e.target.value, e.target.selectionStart ?? e.target.value.length)} rows={4} className="text-sm" autoFocus
+                placeholder={`Fale com o ${nome}: para que é o quiz? Produto, público, palavra para comentar, link da oferta, referências… (@ para um documento)`}
+                onKeyDown={(e) => { if (mencao.tecla(e)) return; if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void mandar(); } }} />
               <div className="flex justify-end">
                 <Button type="submit" className="gap-1.5" disabled={!texto.trim() || enviando}>
                   {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Pedir ao {nome}

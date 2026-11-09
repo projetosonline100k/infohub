@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AtSign, CheckCircle2, FileText, Loader2, MessageSquare, Mic, Send, Square, X } from "lucide-react";
+import { CheckCircle2, FileText, Loader2, MessageSquare, Mic, Send, Square, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useMencaoDocumentos } from "./MencaoDocumentos";
 import { LINHA_IMAGEM } from "@/lib/empresa/imagemChat";
 import { useImagensChat } from "@/hooks/useImagensChat";
 import {
@@ -29,7 +30,6 @@ const AVISO_SEM_OUVINTE = 120; // segundos
 // "@" na conversa: escolher um documento do projeto pro funcionário ler. Vai
 // na mensagem como linha "📎 … (documento <id>)" (o ouvinte manda ler pelo id);
 // na bolha aparece só o nome.
-interface DocProjeto { id: string; titulo: string }
 const LINHA_ANEXO = /^📎 Para ler: "(.+)" \(documento [0-9a-f-]{36}\)$/;
 const PREFIXO_AUDIO = "🎙️ ";
 
@@ -77,6 +77,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const [proposta, setProposta] = useState<Proposta | null>(null);
   const [mensagens, setMensagens] = useState<MensagemBriefing[]>([]);
   const [texto, setTexto] = useState("");
+  const mencao = useMencaoDocumentos(texto, setTexto);
   const fotos = useImagensChat();
   const [enviando, setEnviando] = useState(false);
   const [confirmando, setConfirmando] = useState(false);
@@ -85,12 +86,6 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const abaAtiva = useAbaAtiva();
   const abaAtivaRef = useRef(abaAtiva);
   abaAtivaRef.current = abaAtiva;
-  const campoRef = useRef<HTMLTextAreaElement>(null);
-  // @ → documentos do projeto
-  const [docs, setDocs] = useState<DocProjeto[] | null>(null);
-  const [mencao, setMencao] = useState<{ inicio: number; busca: string } | null>(null);
-  const [mencaoIdx, setMencaoIdx] = useState(0);
-  const [anexos, setAnexos] = useState<DocProjeto[]>([]);
   // Áudio (só no app do Mac: transcreve com o Whisper local, como a voz da orbe)
   const [gravando, setGravando] = useState<number | null>(null);
   const [transcrevendo, setTranscrevendo] = useState(false);
@@ -130,8 +125,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
   const enviar = async (falado?: string) => {
     const digitado = falado ?? texto.trim();
     if ((!digitado && !fotos.imagens.length) || enviando || fotos.subindo) return;
-    const usados = falado ? [] : anexos.filter((a) => digitado.includes(`@${a.titulo}`));
-    const valor = fotos.comImagens(usados.length ? `${digitado}\n\n${usados.map((a) => `📎 Para ler: "${a.titulo}" (documento ${a.id})`).join("\n")}` : digitado);
+    const valor = fotos.comImagens(falado ? digitado : mencao.comAnexos(digitado));
     setEnviando(true);
     try {
       let id = briefingId;
@@ -143,7 +137,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
       }
       const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: valor });
       if (error) throw error;
-      if (!falado) { setTexto(""); setAnexos([]); setMencao(null); }
+      if (!falado) { setTexto(""); mencao.limpar(); }
       fotos.limpar();
       setAgora(Date.now());
       await carregar(id);
@@ -152,36 +146,6 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
     } finally {
       setEnviando(false);
     }
-  };
-
-  const sugestoes = mencao && docs
-    ? docs.filter((d) => d.titulo.toLowerCase().includes(mencao.busca.toLowerCase())).slice(0, 8)
-    : [];
-
-  const aoDigitar = (valor: string, cursor: number) => {
-    setTexto(valor);
-    const antes = valor.slice(0, cursor);
-    const m = antes.match(/(^|\s)@([^\n@]{0,40})$/);
-    if (!m) { setMencao(null); return; }
-    setMencao({ inicio: cursor - m[2].length - 1, busca: m[2] });
-    setMencaoIdx(0);
-    if (!docs) {
-      setDocs([]);
-      void supabase.from("documentos").select("id, titulo").eq("cliente_id", clienteId).is("deleted_at", null)
-        .order("updated_at", { ascending: false }).limit(300)
-        .then(({ data }) => setDocs(((data || []) as DocProjeto[]).filter((d) => d.titulo?.trim())));
-    }
-  };
-
-  const escolherDoc = (d: DocProjeto) => {
-    if (!mencao) return;
-    const fim = mencao.inicio + 1 + mencao.busca.length;
-    const inserido = `@${d.titulo} `;
-    setTexto(texto.slice(0, mencao.inicio) + inserido + texto.slice(fim));
-    setAnexos((a) => (a.some((x) => x.id === d.id) ? a : [...a, d]));
-    setMencao(null);
-    const pos = mencao.inicio + inserido.length;
-    requestAnimationFrame(() => { campoRef.current?.focus(); campoRef.current?.setSelectionRange(pos, pos); });
   };
 
   const gravarOuParar = async () => {
@@ -335,33 +299,14 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
       <fotos.Pendentes />
       <form className="relative flex items-end gap-1.5 rounded-lg"
         onSubmit={(e) => { e.preventDefault(); void enviar(); }} title="Cole (⌘V) ou arraste um print aqui">
-        {mencao && (
-          <div className="absolute bottom-full left-0 right-0 z-10 mb-1 max-h-64 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg">
-            <p className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground"><AtSign className="h-3 w-3" />Documento para {membro.nome} ler</p>
-            {docs === null || (docs.length === 0 && !mencao.busca) ? (
-              <p className="px-2 py-2 text-xs text-muted-foreground">{docs === null ? "Carregando…" : "Nenhum documento neste projeto."}</p>
-            ) : sugestoes.length === 0 ? (
-              <p className="px-2 py-2 text-xs text-muted-foreground">Nenhum documento com “{mencao.busca}”.</p>
-            ) : sugestoes.map((d, i) => (
-              <button key={d.id} type="button" onMouseDown={(e) => { e.preventDefault(); escolherDoc(d); }}
-                className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm", i === mencaoIdx ? "bg-accent" : "hover:bg-muted")}>
-                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="truncate">{d.titulo}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <Textarea ref={campoRef} value={texto} rows={messenger ? 2 : mensagens.length ? 2 : 3}
-          onChange={(e) => aoDigitar(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+        {mencao.lista}
+        <Textarea ref={mencao.campoRef} value={texto} rows={messenger ? 2 : mensagens.length ? 2 : 3}
+          onChange={(e) => mencao.aoDigitar(e.target.value, e.target.selectionStart ?? e.target.value.length)}
           placeholder={gravando != null ? "Gravando… clique no quadrado para enviar" : transcrevendo ? "Transcrevendo o áudio…"
             : mensagens.length ? "Responder… (@ para mandar um documento)" : `O que ${membro.nome} precisa fazer? Objetivo, produto, prazo, referências… (@ para um documento)`}
           className="min-h-0 text-sm" disabled={gravando != null || transcrevendo}
           onKeyDown={(e) => {
-            if (mencao && sugestoes.length) {
-              if (e.key === "ArrowDown") { e.preventDefault(); setMencaoIdx((i) => (i + 1) % sugestoes.length); return; }
-              if (e.key === "ArrowUp") { e.preventDefault(); setMencaoIdx((i) => (i - 1 + sugestoes.length) % sugestoes.length); return; }
-              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); escolherDoc(sugestoes[mencaoIdx] ?? sugestoes[0]); return; }
-            }
-            if (mencao && e.key === "Escape") { e.preventDefault(); setMencao(null); return; }
+            if (mencao.tecla(e)) return;
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey || (messenger && !e.shiftKey))) { e.preventDefault(); void enviar(); }
           }} />
         {isDesktop() && !texto.trim() && !fotos.imagens.length ? (

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRascunho } from "@/hooks/useRascunho";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AtSign, FileText, Loader2, MessageCircle, Send, StickyNote, UserPlus, Workflow } from "lucide-react";
+import { Loader2, MessageCircle, Send, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,13 +16,12 @@ import { CabecaBoneco } from "./BonecoMesa";
 import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { marcarConversaLida } from "@/lib/empresa/notificacoes";
 import { ehCoordenador } from "@/lib/empresa/visaoGeral";
-import { NOTA_PREFIX } from "@/hooks/useAssistantDocumentos";
+import { useMencaoDocumentos } from "./MencaoDocumentos";
 
 const db = supabase as unknown as SupabaseClient;   // participantes e membro_id ainda não estão nos tipos gerados
 type Mensagem = MensagemBriefing & { membro_id?: string | null };
 export interface PedidoAndamento { id: string; texto: string; quando: string; feito: boolean; resposta: { quem: string; texto: string; quando: string } | null }
 export interface Andamento { esperando: boolean; fazendo: string | null; desde: string | null; quem: string; pedidos: PedidoAndamento[] }
-interface DocMencao { id: string; titulo: string; tipo: string | null; nota: boolean }
 interface Colega { id: string; nome: string; eh_ia: boolean }
 
 // Chat sobre a entrega (pedido do Davi, 15/10): na tela "Ver e aprovar" ele
@@ -55,13 +54,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const [chamando, setChamando] = useState(false);
   const [texto, setTexto] = useRascunho(`entrega:${sobre.id}:${membroId}`);
   const fotos = useImagensChat();
-  // @ → documento, nota ou desenho (09/11, Davi): o escolhido vai junto na mensagem como "📎 Para ler", que quem
-  // responde abre pelo id (mesmo costume do chat do funcionário).
-  const campoRef = useRef<HTMLTextAreaElement>(null);
-  const [mencao, setMencao] = useState<{ inicio: number; busca: string } | null>(null);
-  const [mencaoIdx, setMencaoIdx] = useState(0);
-  const [sugestoes, setSugestoes] = useState<DocMencao[] | null>(null);
-  const [anexos, setAnexos] = useState<DocMencao[]>([]);
+  const mencao = useMencaoDocumentos(texto, setTexto);
   const [enviando, setEnviando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
   const fimRef = useRef<HTMLDivElement>(null);
@@ -142,36 +135,6 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   // Texto que o Davi já tinha escrito na caixa de baixo vem pro chat.
   useEffect(() => { if (textoInicial) setTexto(textoInicial); }, [textoInicial, setTexto]);
 
-  const termoMencao = mencao?.busca;
-  useEffect(() => {
-    if (termoMencao === undefined) { setSugestoes(null); return; }
-    let vivo = true;
-    const t = window.setTimeout(async () => {
-      let q = supabase.from("documentos").select("id, titulo, tipo, conteudo").is("deleted_at", null).order("updated_at", { ascending: false }).limit(8);
-      if (termoMencao.trim()) q = q.ilike("titulo", `%${termoMencao.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-      const { data } = await q;
-      if (!vivo) return;
-      setSugestoes(((data ?? []) as { id: string; titulo: string | null; tipo: string | null; conteudo: string | null }[])
-        .filter((d) => d.titulo?.trim()).map((d) => ({ id: d.id, titulo: d.titulo!, tipo: d.tipo, nota: !!d.conteudo?.startsWith(NOTA_PREFIX) })));
-      setMencaoIdx(0);
-    }, 150);
-    return () => { vivo = false; window.clearTimeout(t); };
-  }, [termoMencao]);
-  const aoDigitar = (valor: string, cursor: number) => {
-    setTexto(valor);
-    const m = valor.slice(0, cursor).match(/(^|\s)@([^\n@]{0,40})$/);
-    setMencao(m ? { inicio: cursor - m[2].length - 1, busca: m[2] } : null);
-  };
-  const escolherDoc = (d: DocMencao) => {
-    if (!mencao) return;
-    const inserido = `@${d.titulo} `;
-    setTexto(texto.slice(0, mencao.inicio) + inserido + texto.slice(mencao.inicio + 1 + mencao.busca.length));
-    setAnexos((a) => (a.some((x) => x.id === d.id) ? a : [...a, d]));
-    setMencao(null);
-    const pos = mencao.inicio + inserido.length;
-    requestAnimationFrame(() => { campoRef.current?.focus(); campoRef.current?.setSelectionRange(pos, pos); });
-  };
-
   const esperando = esperandoResposta(mensagens);
   useEffect(() => { onEsperando?.(esperando); }, [esperando, onEsperando]);
   useEffect(() => () => onEsperando?.(false), [onEsperando]);
@@ -183,9 +146,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   useEffect(() => { fimRef.current?.scrollIntoView({ block: "nearest" }); }, [mensagens.length, esperando]);
 
   const enviar = async (externo?: string) => {
-    const usados = externo ? [] : anexos.filter((a) => texto.includes(`@${a.titulo}`));
-    const digitado = usados.length ? `${texto.trim()}\n\n${usados.map((a) => `📎 Para ler: "${a.titulo}" (documento ${a.id})`).join("\n")}` : texto.trim();
-    const valor = externo?.trim() || fotos.comImagens(digitado);
+    const valor = externo?.trim() || fotos.comImagens(mencao.comAnexos(texto.trim()));
     if (!valor || (!externo && (enviando || fotos.subindo))) return;
     setEnviando(true);
     try {
@@ -193,7 +154,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
       const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: valor });
       if (error) throw error;
       onEnviou?.();
-      if (!externo) { setTexto(""); fotos.limpar(); setAnexos([]); setMencao(null); }
+      if (!externo) { setTexto(""); fotos.limpar(); mencao.limpar(); }
       setAgora(Date.now());
       await carregar(id);
     } catch {
@@ -297,32 +258,11 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
       <fotos.Pendentes />
       <form className="relative flex items-end gap-1.5 border-t p-2"
         onSubmit={(e) => { e.preventDefault(); void enviar(); }} title="Cole (⌘V) ou arraste um print aqui">
-        {mencao && (
-          <div className="absolute bottom-full left-2 right-2 z-20 mb-1 max-h-64 overflow-y-auto rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg">
-            <p className="flex items-center gap-1 px-2 py-1 text-[11px] text-muted-foreground"><AtSign className="h-3 w-3" />Documento, nota ou desenho para {nome} ler</p>
-            {sugestoes === null ? <p className="px-2 py-2 text-xs text-muted-foreground">Buscando…</p>
-              : sugestoes.length === 0 ? <p className="px-2 py-2 text-xs text-muted-foreground">Nada com “{mencao.busca}”.</p>
-              : sugestoes.map((d, i) => {
-                const Icone = d.nota ? StickyNote : d.tipo === "mapa" ? Workflow : FileText;
-                return (
-                  <button key={d.id} type="button" onMouseDown={(e) => { e.preventDefault(); escolherDoc(d); }}
-                    className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm", i === mencaoIdx ? "bg-accent" : "hover:bg-muted")}>
-                    <Icone className="h-3.5 w-3.5 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 truncate">{d.titulo}</span>
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{d.nota ? "Nota" : d.tipo === "mapa" ? "Desenho" : "Doc"}</span>
-                  </button>
-                );
-              })}
-          </div>
-        )}
-        <Textarea ref={campoRef} value={texto} onChange={(e) => aoDigitar(e.target.value, e.target.selectionStart ?? e.target.value.length)} rows={2} className="min-h-0 text-sm"
+        {mencao.lista}
+        <Textarea ref={mencao.campoRef} value={texto} onChange={(e) => mencao.aoDigitar(e.target.value, e.target.selectionStart ?? e.target.value.length)} rows={2} className="min-h-0 text-sm"
           placeholder={emGrupo ? "Fale com o grupo… (@ para um documento)" : `Fale com ${nome}… (@ para um documento)`}
           onKeyDown={(e) => {
-            if (mencao && sugestoes?.length) {
-              if (e.key === "ArrowDown") { e.preventDefault(); setMencaoIdx((i) => (i + 1) % sugestoes.length); return; }
-              if (e.key === "ArrowUp") { e.preventDefault(); setMencaoIdx((i) => (i - 1 + sugestoes.length) % sugestoes.length); return; }
-              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); escolherDoc(sugestoes[mencaoIdx] ?? sugestoes[0]); return; }
-            }
-            if (mencao && e.key === "Escape") { e.preventDefault(); setMencao(null); return; }
+            if (mencao.tecla(e)) return;
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); }
           }} />
         <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !fotos.imagens.length) || enviando || fotos.subindo > 0}>
