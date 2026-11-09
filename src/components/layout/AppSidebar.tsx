@@ -3,8 +3,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity, Archive, Brain, Building2, CalendarDays, CalendarRange, ChevronRight, FileText, Folder, FolderOpen,
   Gauge, Info, Lightbulb, LayoutDashboard, ListChecks, MessageCircle, Moon, ShieldCheck, Sparkles, StickyNote, Target, Users,
-  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, MoreHorizontal, Trash2, Timer, type LucideIcon, } from "lucide-react";
-import { Sidebar, SidebarContent, SidebarHeader, useSidebar } from "@/components/ui/sidebar";
+  Video, Youtube, Zap, BookOpen, HelpCircle, Workflow, Loader2, Plus, FolderPlus, PenTool, Radio, MoreHorizontal, Trash2, Timer, LogOut, type LucideIcon, } from "lucide-react";
+import { Sidebar, SidebarContent, SidebarHeader, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+import { AvisosEquipe } from "@/components/layout/AvisosEquipe";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { ehAdmin } from "@/lib/admin";
@@ -130,7 +134,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { openTab } = useWorkspaceTabs();
   const excluirDesenhoComConfirmacao = useExcluirDesenho();
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { state } = useSidebar();
   const recolhida = state === "collapsed";
   const [abertos, setAbertos] = useState<Set<string>>(lerAbertos);
@@ -523,8 +527,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
         <div className="flex items-center gap-2 overflow-hidden">
-          <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+          {/* Sem a barra de cima (09/11): o botão da lateral mora aqui (recolhida, o ícone abre). */}
+          {recolhida
+            ? <SidebarTrigger className="-ml-1 h-7 w-7 shrink-0" title="Abrir a lateral (⌘⇧B)" />
+            : <Sparkles className="h-5 w-5 shrink-0 text-primary" />}
           <span className="truncate text-base font-bold text-sidebar-foreground group-data-[collapsible=icon]:hidden">Infopro Hub</span>
+          {!recolhida && <SidebarTrigger className="ml-auto h-7 w-7 shrink-0" title="Fechar a lateral (⌘⇧B)" />}
         </div>
       </SidebarHeader>
       <SidebarContent className="px-2 py-2">
@@ -545,6 +553,29 @@ export function AppSidebar() {
           <ul className="space-y-px">{raiz.map((n) => <Linha key={n.chave} no={n} nivel={0} grupo="raiz" irmaos={idsRaiz} />)}</ul>
         )}
       </SidebarContent>
+      {/* Sino, tema e conta: vieram da barra de cima, que saiu (09/11, Davi: "espaço desnecessário"). A busca segue no ⌘K. */}
+      <div className={cn("flex shrink-0 items-center gap-1 border-t border-sidebar-border p-2", recolhida && "flex-col")}>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" title={user?.email ?? "Conta"} className="flex min-w-0 items-center gap-2 rounded-lg p-1 hover:bg-sidebar-accent">
+              <Avatar className="h-7 w-7 shrink-0">
+                <AvatarFallback className="bg-primary/15 text-xs font-semibold text-primary">{(user?.email || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+              </Avatar>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" className="w-56">
+            <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{user?.email}</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => void signOut()} className="text-destructive focus:text-destructive">
+              <LogOut className="mr-2 h-4 w-4" />Sair
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div className={cn("flex items-center gap-1", !recolhida && "ml-auto")}>
+          <AvisosEquipe />
+          <ThemeToggle />
+        </div>
+      </div>
     </Sidebar>
   );
 }

@@ -498,27 +498,30 @@ export function WorkspaceTabs({ onNavigate }: { onNavigate: (path: string) => vo
   // ⌘1…⌘8 vão para a aba daquela posição e ⌘9 para a última, como no
   // navegador (pedido do Davi, 15/10). Com a conversa do Atlas aberta, o ⌘1
   // é dela (AssistantConversaTab pega antes, na captura).
+  // 09/11 ("cliquei ⌘2 e não foi"): um registro só, lendo as guias pelas refs. Antes o ouvinte do menu era
+  // refeito a cada mudança de guia (e agora a cada letra do nome do desenho), e um evento podia cair no meio.
+  const irParaGuiaRef = useRef<(n: number) => void>(() => undefined);
+  irParaGuiaRef.current = (n: number) => {
+    const alvo = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
+    if (!alvo) return;
+    if (alvo.id !== activeId) onNavigate(alvo.path);
+  };
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => {
       if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || !/^[1-9]$/.test(e.key)) return;
-      const n = Number(e.key);
-      const alvo = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
-      if (!alvo) return;
       e.preventDefault();
-      if (alvo.id !== activeId) onNavigate(alvo.path);
+      irParaGuiaRef.current(Number(e.key));
     };
     window.addEventListener("keydown", tecla);
     // No app do Mac vem pelo menu "Janela > Ir para a guia" (27/10).
     let parar: (() => void) | undefined;
     let vivo = true;
     if (isDesktop()) {
-      void import("@tauri-apps/api/event").then(({ listen }) => listen<number>("menu-guia", ({ payload: n }) => {
-        const alvo = n === 9 ? tabs[tabs.length - 1] : tabs[n - 1];
-        if (alvo && alvo.id !== activeId) onNavigate(alvo.path);
-      })).then((f) => { if (vivo) parar = f; else f(); });
+      void import("@tauri-apps/api/event").then(({ listen }) => listen<number>("menu-guia", ({ payload: n }) => irParaGuiaRef.current(n)))
+        .then((f) => { if (vivo) parar = f; else f(); });
     }
     return () => { vivo = false; window.removeEventListener("keydown", tecla); parar?.(); };
-  }, [tabs, activeId, onNavigate]);
+  }, []);
 
   // ⌘T: guia nova, como no navegador (19/10). 27/10 (Davi: "quero que me pergunte se eu quero navegar"): ela
   // abre na "Nova guia" (/navegar), que pesquisa/abre um site ali mesmo ou volta para o Painel. No app do Mac o

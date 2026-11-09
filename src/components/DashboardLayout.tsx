@@ -3,7 +3,6 @@ import { AtalhoWhatsapp } from "@/components/layout/AtalhoWhatsapp";
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar";
-import { AppTopbar } from "@/components/layout/AppTopbar";
 import { GlobalSearchCommand } from "@/components/layout/GlobalSearchCommand";
 import { Assistant } from "@/components/assistant/Assistant";
 import { DesktopUpdateBanner } from "@/components/DesktopUpdateBanner";
@@ -144,9 +143,7 @@ export const DashboardLayout = () => {
           {/* min-w-0/min-h-0: a área da página não estica além da janela — quem
               rola (inclusive pro lado, em janela estreita) é o <main>. */}
           <SidebarInset data-sem-rolagem="" className="min-h-0 min-w-0">
-            {/* Guia de navegador (28/10, Davi: "tira a parte de buscar clientes, ocupa espaço do navegador"): só a
-                barra de endereço dela, que traz o botão da lateral. A busca segue no ⌘K. */}
-            {!isClienteDetalhe && location.pathname !== "/navegar" && <AppTopbar onAbrirBusca={() => setBuscaAberta(true)} />}
+            {/* 09/11 (Davi: "espaço desnecessário"): a barra de busca/sino/tema/conta saiu; o que importava foi para o rodapé da lateral e a busca segue no ⌘K. */}
             <DesktopUpdateBanner />
             {/* Quem rola é cada guia (ou cada metade, com a tela dividida) —
                 ver WorkspacePages. */}
