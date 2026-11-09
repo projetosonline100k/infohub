@@ -85,11 +85,14 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
   const pedir = async (titulo: string, pedido: string) => {
     if (!roy || !titulo.trim()) return;
     try {
-      const descricao = `Quiz pedido pela aba Quiz.\nNome provisório: ${titulo.trim()}\n\nO que o quiz precisa fazer:\n${pedido.trim() || "(sem detalhes: pergunte na entrega do esboço o que faltar)"}\n\nFluxo e formato: docs/QUIZ.md (etapa 1: esboço em documento).`;
+      const descricao = `Quiz pedido pela aba Quiz.\nNome provisório: ${titulo.trim()}\n\nO que o quiz precisa fazer:\n${pedido.trim() || "(sem detalhes: monte com o que existe no projeto e deixe o que faltar destacado)"}\n\n`
+        + "NÃO faça esboço em documento: o Davi quer VER o quiz. Vá direto para a etapa 2 de docs/QUIZ.md: monte a estrutura e salve com "
+        + "scripts/quiz/quiz.py salvar, para ele testar no celular da tela. O que não souber (foto, link, preço) fica como lugar reservado "
+        + "com nota; só pergunte na entrega o que impedir de montar.";
       const tarefaId = await criarTarefaParaMembro(clienteId, roy.id, { titulo: `Quiz: ${titulo.trim()}`, tipo: "quiz", prazo: null, descricao });
-      const { error } = await db.from("quizzes").insert({ id: crypto.randomUUID(), cliente_id: clienteId, titulo: titulo.trim(), pedido: pedido.trim() || null, atividade_id: tarefaId });
+      const { error } = await db.from("quizzes").insert({ id: crypto.randomUUID(), cliente_id: clienteId, titulo: titulo.trim(), pedido: pedido.trim() || null, atividade_id: tarefaId, status: "criando" });
       if (error) throw error;
-      toast.success(`${roy.nome} começa o esboço e te traz para aprovar`);
+      toast.success(`${roy.nome} começa a montar o quiz e te traz para testar`);
       void carregar();
       setCriando(false);
       setRevisando({ id: tarefaId, titulo: titulo.trim() });
