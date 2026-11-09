@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
-  Background, Controls, Handle, MarkerType, MiniMap, Position, applyNodeChanges,
+  Background, Controls, Handle, MarkerType, Position, applyNodeChanges, type ReactFlowInstance,
   type Edge, type Node, type NodeChange, type NodeProps,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -28,9 +28,9 @@ function Bloco({ data }: NodeProps<Dados>) {
   const c = CORES[data.cor];
   const { Icone } = data;
   return (
-    <div className={cn("w-[190px] cursor-pointer rounded-2xl border bg-[#0d131c] p-3 text-white shadow-lg transition-shadow", c.borda,
+    <div className={cn("w-[230px] cursor-pointer rounded-2xl border bg-[#0d131c] p-3 text-white shadow-lg transition-shadow", c.borda,
       data.selecionado && "!border-cyan-300 shadow-[0_0_0_2px_rgba(103,232,249,0.5),0_0_24px_rgba(34,211,238,0.35)]")}>
-      <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-white/30" />
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !border-0 !bg-white/30" />
       <div className="flex items-center gap-1.5">
         <span className={cn("flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide", c.fundo, c.texto)}><Icone className="h-3 w-3" />{data.subtitulo}</span>
         {data.numero != null && <span className="ml-auto text-[10px] tabular-nums text-white/40">{data.numero}</span>}
@@ -41,7 +41,7 @@ function Bloco({ data }: NodeProps<Dados>) {
           ? <span className="flex items-center gap-1 text-[11px] font-medium text-amber-400"><AlertTriangle className="h-3.5 w-3.5" />{data.pend} {data.pend === 1 ? "pendência" : "pendências"}</span>
           : <CheckCircle2 className="h-4 w-4 text-emerald-400" />}
       </div>
-      <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-white/30" />
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-0 !bg-white/30" />
     </div>
   );
 }
@@ -51,13 +51,15 @@ const VISUAL: Record<Lamina["tipo"], { cor: string; Icone: LucideIcon; nome: str
   intro: { cor: "cinza", Icone: Home, nome: "Abertura" }, pergunta: { cor: "ciano", Icone: ListChecks, nome: "Pergunta" },
   tela: { cor: "amarelo", Icone: Clock, nome: "Respiro" }, captura: { cor: "cinza", Icone: Contact, nome: "Contato" }, fim: { cor: "roxo", Icone: Trophy, nome: "Perfil" },
 };
-const PASSO_X = 250, ALTURA_PERFIL = 170, MEIO_Y = 260;
+// Fluxo de cima para baixo (09/11, Davi: "um mapa mental no sentido para baixo"): uma tela embaixo da outra; os perfis
+// abrem em leque no fim e a oferta vem depois deles.
+const PASSO_Y = 150, LARGURA_PERFIL = 260;
 
 export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onEscolher, onAdicionar }: {
   quizId: string; estrutura: EstruturaQuiz; laminas: Lamina[]; faltas: FaltaQuiz[]; selecionada: string;
   onEscolher: (chave: string) => void; onAdicionar: () => void;
 }) {
-  const chaveMapa = `quiz:fluxo:${quizId}`;
+  const chaveMapa = `quiz:fluxo-v:${quizId}`;
   const [movidos, setMovidos] = useState<Record<string, { x: number; y: number }>>(() => {
     try { return JSON.parse(localStorage.getItem(chaveMapa) || "{}"); } catch { return {}; }
   });
@@ -69,24 +71,24 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       const v = VISUAL[l.tipo];
       if (l.tipo === "pergunta") pergunta++;
       return {
-        id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: i * PASSO_X, y: MEIO_Y },
+        id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: 0, y: i * PASSO_Y },
         data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^P\d+\.\s*/, ""), subtitulo: l.tipo === "pergunta" ? `Pergunta ${pergunta}` : v.nome,
           pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: v.cor, Icone: v.Icone },
       };
     });
-    const xFim = antes.length * PASSO_X;
+    const yFim = antes.length * PASSO_Y;
     fins.forEach((l, i) => {
-      const y = MEIO_Y + (i - (fins.length - 1) / 2) * ALTURA_PERFIL;
+      const x = (i - (fins.length - 1) / 2) * LARGURA_PERFIL;
       const fimUnico = fins.length === 1;
       lista.push({
-        id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: xFim, y },
+        id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x, y: yFim },
         data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^Resultado:\s*/, ""), subtitulo: fimUnico ? "Resultado" : `Perfil ${i + 1}`,
           pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: "roxo", Icone: Trophy },
       });
     });
     if (estrutura.oferta && fins[0]) {
       lista.push({
-        id: "oferta", type: "bloco", position: movidos.oferta ?? { x: xFim + PASSO_X + 40, y: MEIO_Y }, selectable: true,
+        id: "oferta", type: "bloco", position: movidos.oferta ?? { x: 0, y: yFim + PASSO_Y + 20 }, selectable: true,
         data: { lamina: fins[0], rotulo: estrutura.oferta.titulo || estrutura.oferta.produto || "Oferta", subtitulo: "Oferta",
           pend: faltas.filter((f) => f.caminho.startsWith("oferta")).length, selecionado: false, cor: "laranja", Icone: Tag },
       });
@@ -100,6 +102,14 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
     const v = atuais.find((x) => x.id === n.id);
     return v ? { ...v, data: n.data, position: movidos[n.id] ? v.position : n.position } : n;
   })), [montar, movidos]);
+  // Em vez de encolher o quiz inteiro (31 telas viram risco), a vista acompanha a tela escolhida.
+  const instancia = useRef<ReactFlowInstance | null>(null);
+  const irPara = useCallback((chave: string, animar: boolean) => {
+    const n = instancia.current?.getNode(chave);
+    if (!n) return;
+    instancia.current?.setCenter(n.position.x + 115, n.position.y + 60, { zoom: 0.9, duration: animar ? 300 : 0 });
+  }, []);
+  useEffect(() => { irPara(selecionada, true); }, [selecionada, irPara]);
   const onNodesChange = useCallback((ch: NodeChange[]) => setNodes((n) => applyNodeChanges(ch, n)), []);
 
   const edges = useMemo<Edge[]>(() => {
@@ -122,7 +132,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
 
   return (
     <div className="dark relative h-full min-h-0 w-full overflow-hidden rounded-lg bg-[#090e15]">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={tiposDeBloco} onNodesChange={onNodesChange} fitView fitViewOptions={{ padding: 0.12 }} minZoom={0.2} maxZoom={1.6}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={tiposDeBloco} onNodesChange={onNodesChange} onInit={(i) => { instancia.current = i; setTimeout(() => irPara(selecionada, false), 50); }} minZoom={0.2} maxZoom={1.6}
         nodesConnectable={false} proOptions={{ hideAttribution: true }}
         onNodeClick={(_, n) => { const l = (n.data as Dados).lamina; if (l) onEscolher(l.chave); }}
         onNodeDragStop={(_, n) => {
@@ -131,7 +141,6 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
           try { localStorage.setItem(chaveMapa, JSON.stringify(novo)); } catch { /* sem armazenamento */ }
         }}>
         <Background color="#ffffff14" gap={22} />
-        <MiniMap pannable zoomable className="!bg-[#0d131c]" maskColor="rgba(0,0,0,0.5)" nodeColor={(n) => ({ ciano: "#38bdf8", roxo: "#a78bfa", laranja: "#fb923c", amarelo: "#fbbf24" } as Record<string, string>)[(n.data as Dados).cor] ?? "#71717a"} />
         <Controls showInteractive={false} />
       </ReactFlow>
       <button type="button" onClick={onAdicionar} className="absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-lg border border-white/15 bg-[#0d131c] px-3 py-1.5 text-xs font-medium text-white hover:bg-white/10">
