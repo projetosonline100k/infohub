@@ -206,7 +206,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             <style>{ESTILO_REVISAO}</style>
             <DialogHeader>
               <DialogTitle className="break-words pr-6 text-lg leading-snug">{tarefa.titulo}</DialogTitle>
-              <DialogDescription className="line-clamp-2 break-words">
+              <DialogDescription className={cn("line-clamp-2 break-words", quiz?.estrutura && "sr-only")}>
                 {info?.responsavel ? `${info.responsavel} entregou` : "Entrega"}{info?.observacao ? ` · ${info.observacao}` : ""}
               </DialogDescription>
             </DialogHeader>
@@ -370,7 +370,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               )}
             </div>
             <div className="flex flex-wrap items-center justify-end gap-2">
-              <p className="mr-auto text-xs text-muted-foreground">
+              <p className={cn("mr-auto text-xs text-muted-foreground", quiz?.estrutura && "hidden")}>
                 {escrevendo ? `${info?.responsavel ?? "Ele"} está trabalhando: o documento muda aqui na hora.`
                   : noAr ? "Quiz publicado: o que você ou o Roy mudarem aqui vale direto no link."
                   : quiz?.status === "esboco" ? "Aprovar o esboço: o Roy começa a criar o quiz no Infopro."

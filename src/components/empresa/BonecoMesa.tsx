@@ -273,12 +273,23 @@ export const BonecoMesa = memo(function BonecoMesa({ nome, ehIa, sinal, classNam
 const ROTULO: Record<Sinal, string> = { trabalhando: "trabalhando", parado: "parado", esperando: "precisa de você", problema: "com problema" };
 
 // Só a cabeça do boneco (lista da equipe / chat).
+// Funcionário de IA = a bolinha da Órbita (09/11, Davi: "manter igual o sistema, com o visual dos bonequinhos do
+// Grok"): esfera escura, anel colorido e dois olhos. A cor é fixa por nome; o Atlas é ciano.
+const CORES_ORBE = ["#22d3ee", "#a78bfa", "#fbbf24", "#f472b6", "#34d399", "#fb923c", "#60a5fa", "#f87171"];
+function corDoOrbe(nome: string) {
+  if (ehNomeCoordenador(nome)) return "#22d3ee";
+  let h = 0;
+  for (const c of nome) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return CORES_ORBE[h % CORES_ORBE.length];
+}
 export function CabecaBoneco({ nome, ehIa, className }: { nome: string; ehIa: boolean; className?: string }) {
-  if (ehIa && ehNomeCoordenador(nome)) {
+  if (ehIa) {
+    const cor = corDoOrbe(nome);
     return (
-      <svg viewBox="40 16 40 34" className={className} aria-hidden="true">
-        <rect x="44" y="20" width="32" height="26" rx="12" fill="#0f172a" stroke="#22d3ee" strokeWidth="1.4" />
-        <rect x="51" y="29" width="6" height="8" rx="3" fill="#67e8f9" /><rect x="63" y="29" width="6" height="8" rx="3" fill="#67e8f9" />
+      <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
+        <circle cx="20" cy="20" r="17" fill="#0b1220" stroke={cor} strokeWidth="2.6" />
+        <circle cx="20" cy="20" r="14" fill="none" stroke={cor} strokeOpacity=".25" strokeWidth="3" />
+        <circle cx="14.5" cy="19" r="3" fill={cor} /><circle cx="25.5" cy="19" r="3" fill={cor} />
       </svg>
     );
   }
