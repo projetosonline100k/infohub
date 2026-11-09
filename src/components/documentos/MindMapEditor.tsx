@@ -557,6 +557,46 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     return () => document.removeEventListener("keydown", repassar);
   }, []);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  // Botão direito num texto que está sendo editado (com palavras selecionadas): o menu do Excalidraw não abre
+  // (é o campo de texto do navegador). Mostra um menu próprio com "Linkar…" que linka o bloco de texto inteiro.
+  useEffect(() => {
+    const raiz = wrapperRef.current;
+    if (!raiz) return;
+    let menu: HTMLDivElement | null = null;
+    const fechar = () => { menu?.remove(); menu = null; };
+    const aoMenu = (e: MouseEvent) => {
+      const alvo = e.target instanceof HTMLElement ? e.target : null;
+      if (!alvo?.matches("textarea.excalidraw-wysiwyg")) return;
+      const id = excalidrawApiRef.current?.getAppState().editingTextElement?.id;
+      if (!id) return;
+      e.preventDefault();
+      fechar();
+      const ta = alvo as HTMLTextAreaElement;
+      const m = document.createElement("div");
+      m.className = "fixed z-[100] min-w-[240px] rounded-lg border bg-popover p-1 text-popover-foreground shadow-lg";
+      m.style.left = `${Math.min(e.clientX, window.innerWidth - 260)}px`;
+      m.style.top = `${Math.min(e.clientY, window.innerHeight - 120)}px`;
+      const botao = (rotulo: string, fn: () => void) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm hover:bg-accent";
+        b.textContent = rotulo;
+        b.addEventListener("pointerdown", (ev) => ev.preventDefault());   // não tira o foco do texto
+        b.addEventListener("click", () => { fechar(); fn(); });
+        m.appendChild(b);
+      };
+      botao("Linkar a documento, nota ou desenho…", () => setAlvosLink([id]));
+      botao("Copiar", () => { ta.focus(); document.execCommand("copy"); });
+      botao("Recortar", () => { ta.focus(); document.execCommand("cut"); });
+      document.body.appendChild(m);
+      menu = m;
+    };
+    const fora = (e: Event) => { if (menu && !(e.target instanceof Node && menu.contains(e.target))) fechar(); };
+    raiz.addEventListener("contextmenu", aoMenu, true);
+    window.addEventListener("pointerdown", fora, true);
+    window.addEventListener("blur", fechar);
+    return () => { raiz.removeEventListener("contextmenu", aoMenu, true); window.removeEventListener("pointerdown", fora, true); window.removeEventListener("blur", fechar); fechar(); };
+  }, [loading, initialData]);
   // O menu do botão direito do Excalidraw não aceita itens novos: quando ele abre com algo selecionado, entra
   // "Linkar a documento…" no topo dele (o Excalidraw seleciona o que está sob o mouse antes de abrir o menu).
   useEffect(() => {
