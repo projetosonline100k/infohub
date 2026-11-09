@@ -32,6 +32,7 @@ import { useDocumentoColaboracao } from "@/hooks/useDocumentoColaboracao";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCaracteresSelecao } from "@/hooks/useCaracteresSelecao";
 import { usePersistentHistory } from "@/hooks/usePersistentHistory";
+import { LinkarNoDocumento } from "./LinkarNoDocumento";
 import { supabase } from "@/integrations/supabase/client";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -116,8 +117,10 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
       Placeholder.configure({
         placeholder: "Comece a escrever...",
       }),
+      // O clique no link é tratado por LinkarNoDocumento (links internos abrem numa guia nova, sites no navegador).
       Link.configure({
-        openOnClick: true,
+        openOnClick: false,
+        protocols: [{ scheme: "infopro", optionalSlashes: true }],
       }),
       ...extensoesEstiloTexto,
       QuadroKanban,   // quadro com colunas (Kanban) dentro do documento (24/10)
@@ -427,6 +430,7 @@ export function DocumentEditor({ documentoId, onClose }: DocumentEditorProps) {
               <EditorContent editor={editor} className="prose prose-base md:prose-lg max-w-none dark:prose-invert document-editor" />
               {editor && <EscolherModelo editor={editor} nome={titulo === "Documento sem título" ? "" : titulo} />}
             {editor && <MenuSelecaoTexto editor={editor} onComentar={() => setPedidoComentario((n) => n + 1)} />}
+            {editor && <LinkarNoDocumento editor={editor} documentoId={docAtualId} />}
             {editor && <ComentariosNoDocumento editor={editor} documentoId={docAtualId} pedido={pedidoComentario} />}
             {editor && <BancoViraisDoc editor={editor} clienteId={clienteId} />}
             {editor && <MicrofoneNoCursor editor={editor} />}

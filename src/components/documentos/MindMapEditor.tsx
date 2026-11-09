@@ -37,6 +37,9 @@ import { useCanvasAutoSave, canvasBackupKey } from "@/hooks/useCanvasAutoSave";
 import { usePersistentHistory } from "@/hooks/usePersistentHistory";
 import { mergeCanvas } from "@/lib/canvasPersistence";
 import { toast } from "sonner";
+import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
+import { abrirDocumentoLinkado, idDoLink, linkDoDocumento } from "@/lib/linksInternos";
+import { EscolherDocumento } from "./EscolherDocumento";
 import { useTheme } from "@/hooks/useTheme";
 import { useMapaMentalColaboracao } from "@/hooks/useMapaMentalColaboracao";
 import { PresencaAvatares } from "./PresencaAvatares";
@@ -444,6 +447,9 @@ interface MindMapEditorProps {
 
 export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocarDocumento, onAtividadesAlteradas, pagina = false, extraTopo, onExcluir }: MindMapEditorProps) {
   const abaAtiva = useAbaAtiva();
+  const guias = useWorkspaceTabsOpcional();
+  // Linkar elementos do desenho a outro documento/nota/desenho (09/11/2026, Davi).
+  const [alvosLink, setAlvosLink] = useState<string[] | null>(null);
   // O MainMenu entra no Excalidraw por um "túnel" (tunnel-rat, um store do zustand): um elemento novo a cada
   // render faz o túnel se atualizar, o Excalidraw redesenhar e o túnel se atualizar de novo, até o React
   // derrubar a tela ("Maximum update depth exceeded", 24/10). Por isso o menu é criado UMA vez e o Excluir
@@ -551,6 +557,38 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     return () => document.removeEventListener("keydown", repassar);
   }, []);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  // O menu do botão direito do Excalidraw não aceita itens novos: quando ele abre com algo selecionado, entra
+  // "Linkar a documento…" no topo dele (o Excalidraw seleciona o que está sob o mouse antes de abrir o menu).
+  useEffect(() => {
+    const raiz = wrapperRef.current;
+    if (!raiz) return;
+    const obs = new MutationObserver(() => {
+      const ul = raiz.querySelector<HTMLUListElement>("ul.context-menu");
+      if (!ul || ul.querySelector("[data-linkar-infopro]")) return;
+      const ids = Object.keys(excalidrawApiRef.current?.getAppState().selectedElementIds ?? {});
+      if (!ids.length) return;
+      const li = document.createElement("li");
+      li.dataset.linkarInfopro = "1";
+      li.innerHTML = '<button type="button" class="context-menu-item"><div class="context-menu-item__label">Linkar a documento, nota ou desenho…</div><kbd class="context-menu-item__shortcut"></kbd></button>';
+      li.addEventListener("click", () => {
+        setAlvosLink(ids);
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));   // fecha o menu
+      });
+      ul.insertBefore(li, ul.firstChild);
+    });
+    obs.observe(raiz, { childList: true, subtree: true });
+    return () => obs.disconnect();
+  }, [loading, initialData]);   // o contêiner só existe depois de carregar o desenho
+  const aplicarLink = (d: { id: string; titulo: string }) => {
+    const api = excalidrawApiRef.current;
+    const alvos = new Set(alvosLink ?? []);
+    if (!api || !alvos.size) return;
+    api.updateScene({
+      elements: api.getSceneElementsIncludingDeleted().map((e) => (alvos.has(e.id) ? newElementWith(e, { link: linkDoDocumento(d.id) }) : e)),
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+    toast.success(`Linkado a "${d.titulo}" — clique no ícone de link do elemento para abrir`);
+  };
   const previousContentRef = useRef<string | null>(null);
   // Histórico que sobrevive a sair do mapa e voltar (localStorage). O
   // Excalidraw já desfaz sozinho dentro da sessão atual (Ctrl+Z nativo), mas
@@ -2059,6 +2097,12 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         <Excalidraw
           excalidrawAPI={handleApiReady}
           handleKeyboardGlobally={false}
+          onLinkOpen={(element, event) => {
+            const id = idDoLink(element.link);
+            if (!id) return;   // site: segue o comportamento normal do Excalidraw
+            event.preventDefault();
+            void abrirDocumentoLinkado(id, guias?.abrirNovaGuia);
+          }}
           initialData={initialData}
           onChange={handleChange}
           onPointerUpdate={handlePointerUpdate}
@@ -2068,6 +2112,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         >
           {menuPrincipal}
         </Excalidraw>
+        <EscolherDocumento aberto={alvosLink !== null} aoFechar={() => setAlvosLink(null)} aoEscolher={aplicarLink} excluirId={documentoId} />
 
         {/* Cor/fonte recolhidos num ícone de caneta — só aparece o painel
             quando a pessoa clica, em vez de ficar sempre ocupando espaço. */}
