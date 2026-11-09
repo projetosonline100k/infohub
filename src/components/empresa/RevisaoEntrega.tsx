@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart3, CheckCircle2, FileText, GalleryHorizontal, ExternalLink, Link2, List, Loader2, MessageSquare, Monitor, Pencil, Play, Smartphone, Workflow } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, ExternalLink, Link2, List, Loader2, MessageSquare, Monitor, Pencil, Play, Smartphone, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -223,7 +223,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             {quiz?.estrutura && (
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <div className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
-                  {([["editar", Pencil, "Editar quiz"], ["geral", GalleryHorizontal, "Visão geral"], ["testar", Play, "Testar"], ["metricas", BarChart3, "Métricas"]] as const).map(([a, Icone, rotulo]) => (
+                  {([["editar", Pencil, "Editar quiz"], ["testar", Play, "Testar"], ["metricas", BarChart3, "Métricas"]] as const).map(([a, Icone, rotulo]) => (
                     <button key={a} type="button" onClick={() => setAbaQuiz(a)}
                       className={cn("flex items-center gap-1.5 rounded-md px-3 py-1", abaQuiz === a ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
                   ))}
