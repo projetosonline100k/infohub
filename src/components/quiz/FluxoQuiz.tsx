@@ -133,7 +133,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
   return (
     <div className="dark relative h-full min-h-0 w-full overflow-hidden rounded-lg bg-[#090e15]">
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={tiposDeBloco} onNodesChange={onNodesChange} onInit={(i) => { instancia.current = i; setTimeout(() => irPara(selecionada, false), 50); }} minZoom={0.2} maxZoom={1.6}
-        nodesConnectable={false} proOptions={{ hideAttribution: true }}
+        panOnScroll zoomOnScroll={false} zoomOnPinch nodesConnectable={false} proOptions={{ hideAttribution: true }}
         onNodeClick={(_, n) => { const l = (n.data as Dados).lamina; if (l) onEscolher(l.chave); }}
         onNodeDragStop={(_, n) => {
           const novo = { ...movidos, [n.id]: n.position };
