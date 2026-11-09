@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart3, CheckCircle2, FileText, GalleryHorizontal, ExternalLink, GitBranch, Link2, List, Loader2, MessageSquare, Monitor, PanelRightClose, PanelRightOpen, Pencil, Play, Smartphone, Workflow } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, GalleryHorizontal, ExternalLink, Link2, List, Loader2, MessageSquare, Monitor, Pencil, Play, Smartphone, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -69,8 +69,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const verEsboco = abaQuiz === "andamento" || abaQuiz === "esboco";
   const [telaSel, setTelaSel] = useState<string | null>(null);
   // 03/11: canvas do fluxo (ou lista) + o celular editável à direita; "logica" é o formulário da tela.
-  const [lateralQuiz, setLateralQuiz] = useState<"editar" | "logica" | "conversa">("editar");
-  const [painelQuiz, setPainelQuiz] = useState(true);
+  const [lateralQuiz, setLateralQuiz] = useState<"logica" | "conversa">("conversa");
   const [mapaQuiz, setMapaQuiz] = useState<"fluxo" | "lista">("fluxo");
   const [respostasQuiz, setRespostasQuiz] = useState<{ perfil: string | null }[]>([]);
   const laminas = useMemo(() => (quiz?.estrutura ? laminasDoQuiz(quiz.estrutura) : []), [quiz?.estrutura]);
@@ -146,7 +145,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     })();
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
-  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setAbaQuiz("editar"); setTelaSel(null); setLateralQuiz("editar"); setAndamento(null); estruturaConhecida.current = ""; }, [tarefaId]);
+  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setAbaQuiz("editar"); setTelaSel(null); setLateralQuiz("conversa"); setAndamento(null); estruturaConhecida.current = ""; }, [tarefaId]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
@@ -186,7 +185,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     if (error) { toast.error(arquivo.type.startsWith("audio/") ? "Não consegui enviar o áudio (até 20 MB, mp3/m4a/wav)" : "Não consegui enviar a imagem (até 20 MB)"); throw error; }
     return supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
   };
-  const escolherTela = (chave: string) => { setTelaSel(chave); setLateralQuiz((l) => (l === "conversa" ? "editar" : l)); };
+  const escolherTela = (chave: string) => setTelaSel(chave);
   const pedirAoAgente = (texto: string) => {
     if (!info?.responsavelId) { toast.error("Esta entrega não tem chat com o agente"); return; }
     setPedidoTela({ id: Date.now(), texto });
@@ -262,7 +261,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   </div>
                 )}
                 {quiz?.estrutura && abaQuiz === "editar" && tela ? (
-                  <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex min-h-0 min-w-0 flex-1 gap-3">
+                  <div className="flex min-h-0 min-w-0 flex-col gap-2 md:w-[38%] md:max-w-[460px] md:flex-none">
                     <div className="flex shrink-0 gap-1 self-start rounded-lg bg-muted p-0.5 text-xs">
                       {([["fluxo", Workflow, "Fluxo do quiz"], ["lista", List, "Lista de telas"]] as const).map(([m, Icone, rotulo]) => (
                         <button key={m} type="button" onClick={() => setMapaQuiz(m)} className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-1", mapaQuiz === m ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
@@ -276,6 +276,14 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                         <div className="mx-auto flex h-full max-w-xl flex-col"><EstruturaDoQuiz laminas={laminas} estrutura={quiz.estrutura} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={escolherTela} /></div>
                       )}
                     </div>
+                  </div>
+                    <PreviaDaTela titulo={quiz!.titulo} estrutura={quiz!.estrutura!} lamina={tela!} numero={iTela + 1} total={laminas.length}
+                      onAnterior={() => setTelaSel(laminas[iTela - 1]?.chave ?? tela!.chave)} onProxima={() => setTelaSel(laminas[iTela + 1]?.chave ?? tela!.chave)}
+                      onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
+                      onDuplicar={tela!.tipo === "pergunta" ? () => { const n = duplicarPergunta(quiz!.estrutura!, tela!.indice!); void salvarQuiz(n.estrutura); if (n.chave) setTelaSel(n.chave); } : undefined}
+                      onExcluir={tela!.tipo === "pergunta" && quiz!.estrutura!.perguntas.length > 1 ? () => {
+                        void confirmar(`Excluir "${tela!.rotulo}"?`, { botao: "Excluir", destrutivo: true }).then((ok) => { if (ok) { void salvarQuiz(excluirPergunta(quiz!.estrutura!, tela!.indice!)); setTelaSel(laminas[iTela - 1]?.chave ?? null); } });
+                      } : undefined} />
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "geral" ? (
                   <FileiraQuiz quizId={quiz.id} titulo={quiz.titulo} estrutura={quiz.estrutura} editarTudo={false}
@@ -338,28 +346,15 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   </div>
                 ))}
               </div>
-              {editorQuiz && (
-                // Barra fina do editor: o que o painel mostra. Recolher deixa o canvas com a tela toda.
-                <div className="hidden shrink-0 flex-col gap-1 md:order-last md:flex">
-                  {([["editar", Pencil, "Editar"], ["logica", GitBranch, "Lógica"], ["conversa", MessageSquare, "Comentários"]] as const).map(([a, Icone, rotulo]) => (
-                    <button key={a} type="button" title={rotulo} onClick={() => { setLateralQuiz(a); setPainelQuiz(true); }}
-                      className={cn("flex w-14 flex-col items-center gap-1 rounded-lg py-2 text-[10px]", painelQuiz && lateralQuiz === a ? "bg-primary/15 font-medium text-primary" : "text-muted-foreground hover:bg-muted")}><Icone className="h-4 w-4" />{rotulo}</button>
-                  ))}
-                  <button type="button" title={painelQuiz ? "Recolher o painel" : "Abrir o painel"} onClick={() => setPainelQuiz((a) => !a)} className="mt-auto flex w-14 justify-center rounded-lg py-2 text-muted-foreground hover:bg-muted">
-                    {painelQuiz ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
-                  </button>
-                </div>
-              )}
               {(info?.responsavelId || editorQuiz) && (
-                <div className={cn("flex h-[420px] shrink-0 flex-col gap-2 md:h-auto", editorQuiz ? "md:w-[32%] md:min-w-[340px]" : "md:w-[360px]", editorQuiz && !painelQuiz && "hidden")}>
-                  {editorQuiz && lateralQuiz === "editar" && (
-                    <PreviaDaTela titulo={quiz!.titulo} estrutura={quiz!.estrutura!} lamina={tela!} numero={iTela + 1} total={laminas.length}
-                      onAnterior={() => setTelaSel(laminas[iTela - 1]?.chave ?? tela!.chave)} onProxima={() => setTelaSel(laminas[iTela + 1]?.chave ?? tela!.chave)}
-                      onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
-                      onDuplicar={tela!.tipo === "pergunta" ? () => { const n = duplicarPergunta(quiz!.estrutura!, tela!.indice!); void salvarQuiz(n.estrutura); if (n.chave) setTelaSel(n.chave); } : undefined}
-                      onExcluir={tela!.tipo === "pergunta" && quiz!.estrutura!.perguntas.length > 1 ? () => {
-                        void confirmar(`Excluir "${tela!.rotulo}"?`, { botao: "Excluir", destrutivo: true }).then((ok) => { if (ok) { void salvarQuiz(excluirPergunta(quiz!.estrutura!, tela!.indice!)); setTelaSel(laminas[iTela - 1]?.chave ?? null); } });
-                      } : undefined} />
+                <div className={cn("flex h-[420px] shrink-0 flex-col gap-2 md:h-auto", "md:w-[360px]")}>
+                  {editorQuiz && (
+                    <div className="flex shrink-0 gap-1 rounded-lg bg-muted p-0.5 text-xs">
+                      {([["conversa", MessageSquare, "Conversa com o agente"], ["logica", Pencil, "Editar a tela"]] as const).map(([a, Icone, rotulo]) => (
+                        <button key={a} type="button" onClick={() => setLateralQuiz(a)}
+                          className={cn("flex flex-1 items-center justify-center gap-1.5 rounded-md px-2.5 py-1", lateralQuiz === a ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
+                      ))}
+                    </div>
                   )}
                   {editorQuiz && lateralQuiz === "logica" && (
                     <div className="min-h-0 flex-1">
