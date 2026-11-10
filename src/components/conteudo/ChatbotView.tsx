@@ -179,7 +179,7 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
   const link = linkDoChatbot(bot.slug);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-3 sm:p-4">
+    <div className="flex h-[calc(100svh-110px)] min-h-[640px] flex-col gap-3 p-3 sm:p-4">
       <header className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" className="gap-1" onClick={onVoltar}><ArrowLeft className="h-4 w-4" />Chatbots</Button>
         <Input value={nome} onChange={(e) => setNome(e.target.value)} className="h-9 max-w-xs font-semibold" />
@@ -267,7 +267,7 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
               {modo === "testar" && <button type="button" onClick={() => setReinicio((n) => n + 1)} className="flex items-center gap-1 rounded-md px-2 py-1 text-muted-foreground hover:bg-muted"><RotateCcw className="h-3 w-3" />Recomeçar</button>}
               {modo === "vivo" && <span className="text-muted-foreground">segue a etapa escolhida</span>}
             </div>
-            <div className="flex min-h-[560px] w-full flex-1 justify-center lg:min-h-0 lg:max-h-[780px]">
+            <div className="flex min-h-[560px] w-full flex-1 justify-center lg:min-h-0">
               <MolduraCelular escuro={false}>
                 <PreviaIframe>{modo === "vivo" ? <PreviaChatbot config={config} foco={focoValido} /> : <ChatbotPlayer key={reinicio} config={config} rapido />}</PreviaIframe>
               </MolduraCelular>
