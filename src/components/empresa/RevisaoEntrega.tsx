@@ -199,7 +199,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     if (error) { toast.error(arquivo.type.startsWith("audio/") ? "Não consegui enviar o áudio (até 20 MB, mp3/m4a/wav)" : "Não consegui enviar a imagem (até 20 MB)"); throw error; }
     return supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
   };
-  const escolherTela = (chave: string) => setTelaSel(chave);
+  // Caminho escolhido no mapa (ex.: gênero Mulher): a prévia mostra as imagens daquele caminho.
+  const [variante, setVariante] = useState<{ pid: string; idx: number; nome: string } | null>(null);
+  const escolherTela = (chave: string, v?: { pid: string; idx: number; nome: string }) => { setTelaSel(chave); setVariante(v ?? null); };
   // Apagar uma lâmina pelo fluxo (lixeira no bloco ou Delete) ou pelo botão da prévia; pede confirmação e dá para voltar pelo aviso.
   const excluirLamina = (l: Lamina) => {
     const est = quiz?.estrutura;
@@ -310,7 +312,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     </div>
                     <div className="min-h-0 flex-1">
                       {mapaQuiz === "fluxo" ? (
-                        <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={escolherTela}
+                        <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={tela.chave} varianteSel={variante} onEscolher={escolherTela}
                           onAdicionar={() => { const n = adicionarPergunta(quiz.estrutura!, tela); void salvarQuiz(n.estrutura); if (n.chave) escolherTela(n.chave); }} onExcluir={excluirLamina}
                           onReordenar={(origem, depoisDe) => {
                             const est = quiz.estrutura!;
@@ -326,8 +328,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     </div>
                   </div>
                     <PreviaDaTela titulo={quiz!.titulo} estrutura={quiz!.estrutura!} lamina={tela!} numero={iTela + 1} total={laminas.length}
-                      onAnterior={() => setTelaSel(laminas[iTela - 1]?.chave ?? tela!.chave)} onProxima={() => setTelaSel(laminas[iTela + 1]?.chave ?? tela!.chave)}
+                      onAnterior={() => escolherTela(laminas[iTela - 1]?.chave ?? tela!.chave)} onProxima={() => escolherTela(laminas[iTela + 1]?.chave ?? tela!.chave)}
                       onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
+                      respostas={variante ? { [variante.pid]: variante.idx } : undefined} caminho={variante?.nome}
                       onDuplicar={tela!.tipo === "pergunta" ? () => { const n = duplicarPergunta(quiz!.estrutura!, tela!.indice!); void salvarQuiz(n.estrutura); if (n.chave) setTelaSel(n.chave); } : undefined}
                       onExcluir={(tela!.tipo === "pergunta" && quiz!.estrutura!.perguntas.length > 1) || tela!.tipo === "tela" ? () => excluirLamina(tela!) : undefined} />
                   </div>

@@ -15,7 +15,7 @@ import { faltasDaLamina } from "./EditorQuiz";
 // três segundos responde onde a tela está, para onde leva e, com o celular ao lado, como ela aparece. A ordem real
 // continua a do quiz; mover um bloco só muda o desenho, guardado neste Mac.
 
-type Dados = { variavel?: string; usa?: string; apagar?: () => void; lamina?: Lamina; numero?: number; rotulo: string; subtitulo: string; pend: number; selecionado: boolean; cor: string; Icone: LucideIcon };
+type Dados = { variante?: { pid: string; idx: number; nome: string }; variavel?: string; usa?: string; apagar?: () => void; lamina?: Lamina; numero?: number; rotulo: string; subtitulo: string; pend: number; selecionado: boolean; cor: string; Icone: LucideIcon };
 
 const CORES: Record<string, { borda: string; icone: string; ponto: string }> = {
   cinza: { borda: "border-cyan-400/60", icone: "border-cyan-300 text-cyan-200", ponto: "#22d3ee" },
@@ -60,9 +60,11 @@ const VISUAL: Record<Lamina["tipo"], { cor: string; Icone: LucideIcon; nome: str
 // abrem em leque no fim e a oferta vem depois deles.
 const PASSO_Y = 120, LARGURA_PERFIL = 260;
 
-export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onEscolher, onAdicionar, onExcluir, onReordenar }: {
+export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, varianteSel, onEscolher, onAdicionar, onExcluir, onReordenar }: {
   quizId: string; estrutura: EstruturaQuiz; laminas: Lamina[]; faltas: FaltaQuiz[]; selecionada: string;
-  onEscolher: (chave: string) => void; onAdicionar: () => void; onExcluir?: (l: Lamina) => void;
+  /** Caminho escolhido (ex.: gênero Mulher) quando a tela tem variações por resposta. */
+  varianteSel?: { pid: string; idx: number } | null;
+  onEscolher: (chave: string, variante?: { pid: string; idx: number; nome: string }) => void; onAdicionar: () => void; onExcluir?: (l: Lamina) => void;
   /** Davi, 10/11: clicar na linha corta ela; o próximo bloco clicado passa a vir logo depois do bloco de cima da linha. */
   onReordenar?: (origem: Lamina, depoisDe: Lamina) => void;
 }) {
@@ -99,13 +101,13 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
   // Caminhos (Davi, 10/11: "deveriam ser dois caminhos diferentes"): se as imagens de uma pergunta dependem da resposta de outra,
   // o mapa a desenha como uma tela por resposta (Homem / Mulher / Outro), ligadas à pergunta de origem.
   const variantes = useMemo(() => {
-    const m = new Map<string, string[]>();
+    const m = new Map<string, { pid: string; nomes: string[] }>();
     laminas.forEach((l) => {
       if (l.tipo !== "pergunta") return;
       const q = estrutura.perguntas[l.indice!];
       const chave = q?.opcoes.flatMap((o) => Object.keys(o.imagens ?? {}))[0];
       const origem = chave ? estrutura.perguntas.find((x) => x.id === chave.split("=")[0]) : undefined;
-      if (origem && origem.opcoes.length > 1) m.set(l.chave, origem.opcoes.map((o) => o.texto));
+      if (origem && origem.opcoes.length > 1) m.set(l.chave, { pid: origem.id, nomes: origem.opcoes.map((o) => o.texto) });
     });
     return m;
   }, [laminas, estrutura.perguntas]);
@@ -123,12 +125,13 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
         usa: l.tipo === "pergunta" ? variaveis.usa.get(estrutura.perguntas[l.indice!]?.id) : undefined,
         apagar: onExcluir && podeApagar(l) ? () => onExcluir(l) : undefined,
       };
-      const nomes = variantes.get(l.chave);
+      const vi = variantes.get(l.chave), nomes = vi?.nomes;
       if (!nomes) return [{ id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: i % 2 ? 70 : 0, y: i * PASSO_Y }, data: base }];
       return nomes.map((nome, k) => {
         const id = `${l.chave}~${k}`;
         return { id, type: "bloco", position: movidos[id] ?? { x: (k - (nomes.length - 1) / 2) * 270 + (i % 2 ? 70 : 0), y: i * PASSO_Y },
-          data: { ...base, subtitulo: `${base.subtitulo} · ${nome}`, usa: `foto de ${nome}`, apagar: k === 0 ? base.apagar : undefined } };
+          data: { ...base, subtitulo: `${base.subtitulo} · ${nome}`, usa: `foto de ${nome}`, apagar: k === 0 ? base.apagar : undefined,
+            variante: { pid: vi!.pid, idx: k, nome }, selecionado: l.chave === selecionada && (varianteSel ? varianteSel.idx === k : k === 0) } };
       });
     });
     const yFim = antes.length * PASSO_Y;
@@ -149,7 +152,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       });
     }
     return lista;
-  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar, variaveis, variantes]);
+  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar, variaveis, variantes, varianteSel]);
 
   const [nodes, setNodes] = useState<Node<Dados>[]>(montar);
   // Atualiza por cima dos blocos que já existem: recriá-los perderia o tamanho medido, e as setas sumiriam.
@@ -205,7 +208,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
     const fins = laminas.filter((l) => l.tipo === "fim");
     const seta = { type: MarkerType.ArrowClosed, color: "#7dd3fc" };   // só nos perfis/oferta
     // Linha cortada some do mapa (só volta se o corte for cancelado ou depois que um bloco for encaixado).
-    const ids = (l: Lamina) => (variantes.get(l.chave)?.map((_, k) => `${l.chave}~${k}`) ?? [l.chave]);
+    const ids = (l: Lamina) => (variantes.get(l.chave)?.nomes.map((_, k) => `${l.chave}~${k}`) ?? [l.chave]);
     const lista: Edge[] = antes.slice(1).flatMap((l, i): Edge[] => {
       const origem = antes[i], de = ids(origem), para = ids(l);
       if (de.length === 1 && para.length === 1) {
@@ -214,7 +217,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
           style: { stroke: i % 2 ? "#a78bfa" : "#22d3ee", strokeWidth: 2 } }];
       }
       // caminhos por resposta: abre em leque (um por resposta) e volta a se juntar na tela seguinte
-      const nomes = variantes.get(l.chave);
+      const nomes = variantes.get(l.chave)?.nomes;
       const pares: [string, string, string | undefined][] = de.length > 1 && para.length > 1 ? de.map((s, k) => [s, para[k], undefined]) : de.length > 1 ? de.map((s) => [s, para[0], undefined]) : para.map((t, k) => [de[0], t, nomes?.[k]]);
       return pares.map(([source, target, nome], k) => ({
         id: `v${i}-${k}`, source, target, type: "smoothstep", label: nome, labelStyle: { fill: "#f5d0fe", fontSize: 11, fontWeight: 600 }, labelBgStyle: { fill: "#0d131c" },
@@ -263,7 +266,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
             if (l.chave === corte.chave) { toast.error("Esse bloco já é o de cima da linha"); return; }
             onReordenar(l, corte); setCortes([]); return;
           }
-          onEscolher(l.chave);
+          onEscolher(l.chave, (n.data as Dados).variante);
         }}
         onNodeDragStop={(_, n) => {
           const novo = { ...movidos, [n.id]: n.position };

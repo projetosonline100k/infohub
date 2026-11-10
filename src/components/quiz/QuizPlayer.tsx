@@ -400,7 +400,7 @@ function Botao({ children, onClick, href }: { children: React.ReactNode; onClick
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
-export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, passoFixo, perfilFixo }: {
+export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, passoFixo, perfilFixo, respostas }: {
   titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; teste?: boolean;
   editar?: boolean; onMudar?: (e: EstruturaQuiz) => void; onImagem?: (arquivo: File) => Promise<string>;
   // Link público no celular (15/10): ocupa a tela toda, barra de progresso fixa no
@@ -410,6 +410,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   onEvento?: (tipo: "passo" | "cta", passo?: number) => void;
   /** Vista em fileira da revisão (25/10): mostra só esta tela, sem avançar; no fim, o resultado deste perfil. */
   passoFixo?: number; perfilFixo?: string;
+  /** Respostas já dadas (ex.: { genero: 1 }) para mostrar um caminho do quiz no editor: as imagens que dependem delas já aparecem. */
+  respostas?: Record<string, number>;
 }) {
   const e = estrutura;
   const cor = corDoQuiz(e);
@@ -423,7 +425,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   // Só no quiz rodando; nas vistas fixas e no editor a abertura continua existindo como lâmina.
   const [pos, setPos] = useState(passoFixo ?? (estrutura.intro?.pular && !editar ? 1 : 0));
   useEffect(() => { if (passoFixo != null) setPos(passoFixo); }, [passoFixo]);
-  const [escolhas, setEscolhas] = useState<Record<string, number>>({});
+  const [escolhas, setEscolhas] = useState<Record<string, number>>(respostas ?? {});
+  const respostasChave = JSON.stringify(respostas ?? {});
+  useEffect(() => { if (respostas) setEscolhas((x) => ({ ...x, ...respostas })); }, [respostasChave]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [marcadas, setMarcadas] = useState<Record<string, number[]>>({});   // perguntas de "escolha quantas quiser"
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);

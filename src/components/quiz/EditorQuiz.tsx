@@ -134,9 +134,10 @@ export function EstruturaDoQuiz({ laminas, estrutura, faltas, selecionada, onEsc
 }
 
 /** A tela selecionada, grande: texto e imagem editáveis no lugar. */
-export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnterior, onProxima, onMudar, onImagem, onDuplicar, onExcluir }: {
+export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnterior, onProxima, onMudar, onImagem, onDuplicar, onExcluir, respostas, caminho }: {
   titulo: string; estrutura: EstruturaQuiz; lamina: Lamina; numero: number; total: number; onAnterior: () => void; onProxima: () => void;
   onMudar: (e: EstruturaQuiz) => void; onImagem: (arquivo: File) => Promise<string>; onDuplicar?: () => void; onExcluir?: () => void;
+  respostas?: Record<string, number>; caminho?: string;   // caminho escolhido no mapa (ex.: gênero Mulher): mostra as imagens daquele caminho
 }) {
   const [modo, setModo] = useState<"celular" | "computador">("celular");
   const caixa = useRef<HTMLDivElement>(null);
@@ -154,6 +155,7 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_40%,#0f1c33,#0a1019_70%)] p-3">
       <div className="flex items-center justify-between gap-2">
+        {caminho && <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-300">Caminho: {caminho}</span>}
         <button type="button" className={botao} onClick={onAnterior} disabled={numero <= 1}><ChevronLeft className="h-3.5 w-3.5" />Anterior</button>
         <span className="text-sm font-medium tabular-nums">Tela {numero} de {total}</span>
         <span className="flex items-center gap-1">
@@ -168,13 +170,13 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
           <div className="shrink-0" style={{ width: 395 * escala, height: 820 * escala, filter: "drop-shadow(0 0 2px rgba(34,211,238,.9)) drop-shadow(0 0 28px rgba(34,211,238,.35))" }}>
             <div className="flex h-[820px] w-[395px] origin-top-left flex-col" style={{ transform: `scale(${escala})` }}>
               <MolduraCelular escuro={estrutura.tema === "escuro"}>
-                <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} />
+                <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} respostas={respostas} />
               </MolduraCelular>
             </div>
           </div>
         ) : (
           <div className="min-h-0 w-full overflow-y-auto rounded-lg border">
-            <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} />
+            <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} respostas={respostas} />
           </div>
         )}
       </div>
