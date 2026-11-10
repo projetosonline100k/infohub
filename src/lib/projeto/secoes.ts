@@ -1,5 +1,5 @@
 import {
-  BookOpen, Brain, Building2, CalendarRange, FileText, HelpCircle, Info, Lightbulb, ListChecks, MessageCircle, Video, Youtube, type LucideIcon,
+  BookOpen, Brain, Building2, CalendarRange, FileText, HelpCircle, Info, Lightbulb, ListChecks, Bot, MessageCircle, Video, Youtube, type LucideIcon,
 } from "lucide-react";
 
 // Seções de um projeto (as mesmas da página do projeto): usadas pela barra lateral em árvore e pelo ⌘K.
@@ -20,4 +20,5 @@ export const SECOES_ESCRITORIO: SecaoProjeto[] = [
   { secao: "conteudo:conhecimento", titulo: "Fonte de conhecimento", icone: BookOpen },
   { secao: "conteudo:quiz", titulo: "Quiz", icone: HelpCircle },
   { secao: "conteudo:whatsapp", titulo: "WhatsApp", icone: MessageCircle },
+  { secao: "conteudo:chatbot", titulo: "Chatbot", icone: Bot },
 ];

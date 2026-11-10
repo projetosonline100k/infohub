@@ -6,6 +6,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-route
 import { DashboardLayout } from "./components/DashboardLayout";
 import FormularioPublico from "./pages/FormularioPublico";
 import QuizPublico from "./pages/QuizPublico";
+import ChatbotPublico from "./pages/ChatbotPublico";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import DocumentoCompartilhado from "./pages/DocumentoCompartilhado";
@@ -44,6 +45,7 @@ const App = () => (
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
           <Route path="/quiz/:slug" element={<QuizPublico />} />
+          <Route path="/chatbot/:slug" element={<ChatbotPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
           <Route path="/privacidade" element={<Privacidade />} />
           <Route path="/instagram/conectado" element={<InstagramConectado />} />

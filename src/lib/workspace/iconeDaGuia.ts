@@ -1,5 +1,5 @@
 import {
-  BookOpen, Brain, Building2, CalendarDays, CalendarRange, Clapperboard, FileText, Folder, HelpCircle, Info, LayoutDashboard,
+  BookOpen, Bot, Brain, Building2, CalendarDays, CalendarRange, Clapperboard, FileText, Folder, HelpCircle, Info, LayoutDashboard,
   Globe, Lightbulb, ListChecks, MessageCircle, PenTool, Timer, ShieldCheck, StickyNote, Target, Users, Youtube, Zap, type LucideIcon,
 } from "lucide-react";
 
@@ -9,7 +9,7 @@ import {
 const SECOES: Record<string, LucideIcon> = {
   "conteudo:visao-geral": Building2, informacoes: Info, atividades: ListChecks, documentos: Folder, pesquisa: HelpCircle,
   cerebro: Brain, "conteudo:vertical": Clapperboard, "conteudo:youtube": Youtube, "conteudo:brainstorm": Lightbulb,
-  "conteudo:cronograma": CalendarRange, "conteudo:conhecimento": BookOpen, "conteudo:quiz": HelpCircle, "conteudo:whatsapp": MessageCircle,
+  "conteudo:cronograma": CalendarRange, "conteudo:conhecimento": BookOpen, "conteudo:quiz": HelpCircle, "conteudo:whatsapp": MessageCircle, "conteudo:chatbot": Bot,
 };
 const PAGINAS: [RegExp, LucideIcon][] = [
   [/^\/$/, LayoutDashboard], [/^\/agenda/, CalendarDays], [/^\/atividades/, ListChecks], [/^\/notas/, StickyNote],
@@ -38,7 +38,7 @@ export function nomeDaSecao(caminho: string): string | null {
     "conteudo:visao-geral": "Escritório", informacoes: "Informações", atividades: "Atividades", documentos: "Documentos",
     pesquisa: "Pesquisa", cerebro: "Cérebro", "conteudo:vertical": "Vertical", "conteudo:youtube": "Youtube",
     "conteudo:brainstorm": "Brainstorm", "conteudo:cronograma": "Cronograma", "conteudo:conhecimento": "Fonte",
-    "conteudo:quiz": "Quiz", "conteudo:whatsapp": "WhatsApp",
+    "conteudo:quiz": "Quiz", "conteudo:whatsapp": "WhatsApp", "conteudo:chatbot": "Chatbot",
   };
   return nomes[params.get("secao") ?? "conteudo:visao-geral"] ?? null;
 }
