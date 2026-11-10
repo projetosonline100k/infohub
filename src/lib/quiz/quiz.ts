@@ -24,6 +24,7 @@ export interface TelaQuiz {
   tipo: "respiro" | "especialista" | "carregando" | "resultado";
   titulo?: string; texto?: string; botao?: string;
   imagem?: string; imagem_nota?: string;
+  animada?: boolean; fala?: string; quadros?: string[];   // quadros: parado, piscando, aceno A, aceno B, falando, pulo   // mascote animado (estilo Duolingo) com balão de fala
   citacao?: { texto: string; autor?: string };
   grafico?: { titulo?: string; barras: BarraFixa[] };
   depoimentos?: Depoimento[]; depoimentos_nota?: string;

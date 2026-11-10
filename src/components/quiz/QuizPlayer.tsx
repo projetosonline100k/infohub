@@ -89,6 +89,49 @@ function Img({ caminho, url, nota, className, redonda, inteira }: { caminho: str
   );
 }
 
+// Mascote animado (estilo Duolingo): entra pulando, acena, fala no balão, pisca de tempos em tempos e fica
+// respirando. `quadros` = [parado, piscando, aceno A, aceno B, falando, pulo]; sem eles, só flutua.
+// No editor fica estático (a imagem tem que ser clicável); quem pede menos movimento vê só o quadro parado.
+const [Q_PARADO, Q_PISCA, Q_ACENO_A, Q_ACENO_B, Q_FALA, Q_PULO] = [0, 1, 2, 3, 4, 5];
+function Mascote({ caminho, url, nota, fala, quadros }: { caminho: string; url?: string; nota?: string; fala?: string; quadros?: string[] }) {
+  const { editar } = useContext(QuizCtx);
+  const [q, setQ] = useState(quadros?.length ? Q_PULO : Q_PARADO);
+  const temQuadros = !!quadros && quadros.length >= 6;
+  useEffect(() => {
+    if (!temQuadros || editar || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setQ(Q_PARADO); return; }
+    quadros!.forEach((u) => { const i = new Image(); i.src = u; });   // todos os quadros já carregados: a troca não pisca
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const em = (ms: number, k: number) => { timers.push(setTimeout(() => setQ(k), ms)); };
+    const ciclo = (t0: number) => {
+      // aceno (alterna A/B) → fala (alterna falando/parado) → parado, com piscadas
+      for (let i = 0; i < 8; i++) em(t0 + i * 260, i % 2 ? Q_ACENO_B : Q_ACENO_A);
+      for (let i = 0; i < 6; i++) em(t0 + 2200 + i * 190, i % 2 ? Q_PARADO : Q_FALA);
+      em(t0 + 3400, Q_PARADO);
+      em(t0 + 4300, Q_PISCA); em(t0 + 4450, Q_PARADO);
+      em(t0 + 5800, Q_PISCA); em(t0 + 5950, Q_PARADO);
+    };
+    em(800, Q_PARADO); ciclo(900);                                   // entrou pulando (quadro de pulo) e depois acena
+    const repete = setInterval(() => ciclo(0), 8000);
+    return () => { timers.forEach(clearTimeout); clearInterval(repete); };
+  }, [temQuadros, editar, quadros?.join("|")]);   // eslint-disable-line react-hooks/exhaustive-deps
+  if (editar || !url) return <Img caminho={caminho} url={url} nota={nota} inteira className="mx-auto h-48 w-48" />;
+  const src = temQuadros ? quadros![q] : url;
+  return (
+    <div className="relative mx-auto flex w-56 flex-col items-center">
+      {fala && (
+        <div className="relative mb-3 rounded-2xl border-2 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm motion-safe:animate-balao-entra">
+          {fala}
+          <span className="absolute -bottom-[9px] left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b-2 border-r-2 bg-white" />
+        </div>
+      )}
+      <div className="motion-safe:animate-mascote-entra">
+        <img src={src} alt={nota ?? ""} className="h-52 w-52 object-contain motion-safe:animate-mascote-flutua" draggable={false} />
+      </div>
+      <div className="-mt-2 h-3 w-32 rounded-[50%] bg-black motion-safe:animate-mascote-sombra" style={{ opacity: 0.2 }} />
+    </div>
+  );
+}
+
 function Depoimentos({ caminho, lista, nota }: { caminho: string; lista?: Depoimento[]; nota?: string }) {
   const { mostrarFaltas, editar, escuro } = useContext(QuizCtx);
   const validos = (lista ?? []).filter((d) => d.texto);
@@ -412,7 +455,8 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const maior = Math.max(1, ...(t.grafico?.barras ?? []).map((b) => b.valor));
   return (
     <div className={cn("space-y-5 py-2", especialista && "text-center")}>
-      {(t.imagem || t.imagem_nota) && (
+      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={t.fala} quadros={t.quadros} />
+      : (t.imagem || t.imagem_nota) && (
         <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
           className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] max-h-[30dvh] w-full"} />
       )}

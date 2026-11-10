@@ -102,6 +102,26 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        // Mascote do quiz (estilo Duolingo): entra quicando, depois respira e balança sem parar.
+        "mascote-entra": {
+          "0%": { transform: "translateY(40px) scale(0.6)", opacity: "0" },
+          "55%": { transform: "translateY(-14px) scale(1.06, 0.96)", opacity: "1" },
+          "75%": { transform: "translateY(0) scale(0.97, 1.04)" },
+          "100%": { transform: "translateY(0) scale(1)", opacity: "1" },
+        },
+        "mascote-flutua": {
+          "0%, 100%": { transform: "translateY(0) rotate(-2deg) scale(1, 1)" },
+          "50%": { transform: "translateY(-10px) rotate(2deg) scale(0.99, 1.02)" },
+        },
+        "mascote-sombra": {
+          "0%, 100%": { transform: "scaleX(1)", opacity: "0.25" },
+          "50%": { transform: "scaleX(0.82)", opacity: "0.15" },
+        },
+        "balao-entra": {
+          "0%": { transform: "scale(0.4)", opacity: "0" },
+          "70%": { transform: "scale(1.08)", opacity: "1" },
+          "100%": { transform: "scale(1)", opacity: "1" },
+        },
         // Shirley brava (16/10): o balão chacoalha.
         shake: {
           "0%, 100%": { transform: "translateX(0)" },
@@ -155,6 +175,10 @@ export default {
         },
       },
       animation: {
+        "mascote-entra": "mascote-entra 0.8s cubic-bezier(0.34, 1.4, 0.64, 1) both",
+        "mascote-flutua": "mascote-flutua 3.2s ease-in-out 0.8s infinite",
+        "mascote-sombra": "mascote-sombra 3.2s ease-in-out 0.8s infinite",
+        "balao-entra": "balao-entra 0.45s ease-out 0.7s both",
         shake: "shake 0.5s ease-in-out 3",
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
