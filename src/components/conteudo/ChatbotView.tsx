@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowDown, ArrowLeft, ArrowUp, Bot, Copy, ExternalLink, Loader2, Pause, Play, Plus, RotateCcw, Trash2, Users } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Bot, Copy, ExternalLink, Loader2, ListChecks, Palette, Pause, Play, Plus, RotateCcw, Sparkles, Trash2, Trophy, Users, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,9 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { ChatbotPlayer } from "@/components/chatbot/ChatbotPlayer";
+import { PreviaChatbot } from "@/components/chatbot/PreviaChatbot";
+import { FluxoChatbot } from "@/components/chatbot/FluxoChatbot";
+import { AssistenteChatbot } from "@/components/chatbot/AssistenteChatbot";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import {
   ROTULO_TIPO, linkDoChatbot, modeloDiagnostico, modeloEmBranco, novoId, pontuacaoMaxima,
@@ -125,11 +128,15 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
   const [config, setConfig] = useState<ConfigChatbot>(bot.config);
   const [status, setStatus] = useState(bot.status);
   const [aba, setAba] = useState<"montar" | "leads">("montar");
+  const [painel, setPainel] = useState<"assistente" | "etapas" | "final" | "aparencia">(bot.config.etapas.length > 1 ? "etapas" : "assistente");
+  const [modo, setModo] = useState<"vivo" | "testar">("vivo");
+  const [foco, setFoco] = useState<string>(bot.config.etapas[0]?.id ?? "");
   const [reinicio, setReinicio] = useState(0);
   const [salvando, setSalvando] = useState(false);
   const primeiro = useRef(true);
+  const cartoes = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Salva sozinho, meio segundo depois da última mudança.
+  // Salva sozinho, meio segundo depois da última mudança (o link já mostra o que está salvo).
   useEffect(() => {
     if (primeiro.current) { primeiro.current = false; return; }
     setSalvando(true);
@@ -142,11 +149,20 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
   }, [nome, config, bot.id, bot.nome]);
 
   const mudar = (f: (c: ConfigChatbot) => void) => setConfig((atual) => { const n = structuredClone(atual); f(n); return n; });
+  // O foco sempre aponta para uma etapa que existe (apagar ou trocar tudo pelo assistente não deixa a prévia vazia).
+  const focoValido = foco.startsWith("final-") || config.etapas.some((e) => e.id === foco) ? foco : (config.etapas[0]?.id ?? "");
+  const escolher = (id: string, doFluxo = false) => {
+    setFoco(id);
+    if (doFluxo) {
+      setPainel(id.startsWith("final-") ? "final" : "etapas");
+      requestAnimationFrame(() => cartoes.current[id]?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+    }
+  };
   const mudarStatus = async (s: "publicado" | "pausado") => {
     const { error } = await db.from("chatbots").update({ status: s }).eq("id", bot.id);
     if (error) { toast.error(error.message); return; }
     setStatus(s);
-    toast.success(s === "publicado" ? "No ar: o link já funciona" : "Pausado: o link para de funcionar");
+    toast.success(s === "publicado" ? "No ar: quem responder vira lead" : "Pausado: o link para de funcionar");
   };
   const link = linkDoChatbot(bot.slug);
 
@@ -155,6 +171,7 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
       <header className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" className="gap-1" onClick={onVoltar}><ArrowLeft className="h-4 w-4" />Chatbots</Button>
         <Input value={nome} onChange={(e) => setNome(e.target.value)} className="h-9 max-w-xs font-semibold" />
+        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", status === "publicado" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-zinc-500/15 text-muted-foreground")}>{status === "publicado" ? "No ar" : status === "pausado" ? "Pausado" : "Rascunho"}</span>
         {salvando && <span className="flex items-center gap-1 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" />salvando</span>}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <div className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
@@ -162,56 +179,86 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
               <button key={a} type="button" onClick={() => setAba(a)} className={cn("rounded-md px-3 py-1", aba === a ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}>{r}</button>
             ))}
           </div>
-          {status === "publicado" && (
+          {status !== "pausado" && (
             <>
-              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => { void navigator.clipboard.writeText(link); toast.success("Link copiado"); }}><Copy className="h-4 w-4" />Copiar link</Button>
-              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Abrir" onClick={() => void abrirLinkExterno(link)}><ExternalLink className="h-4 w-4" /></Button>
-              <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => void mudarStatus("pausado")}><Pause className="h-4 w-4" />Pausar</Button>
+              <Button size="sm" variant="outline" className="h-8 gap-1.5" disabled={salvando} title="Abre exatamente o que a pessoa vai ver (o que está salvo agora)" onClick={() => void abrirLinkExterno(link)}><ExternalLink className="h-4 w-4" />Ver link</Button>
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" title="Copiar link" onClick={() => { void navigator.clipboard.writeText(link); toast.success("Link copiado"); }}><Copy className="h-4 w-4" /></Button>
             </>
           )}
+          {status === "publicado" && <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => void mudarStatus("pausado")}><Pause className="h-4 w-4" />Pausar</Button>}
           {status !== "publicado" && <Button size="sm" className="h-8 gap-1.5" onClick={() => void mudarStatus("publicado")}><Play className="h-4 w-4" />{status === "pausado" ? "Publicar de novo" : "Publicar"}</Button>}
         </div>
       </header>
 
       {aba === "leads" ? <LeadsChatbot bot={bot} /> : (
-        <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-            <Secao titulo="Aparência">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Rotulo r="Título no topo"><input className={campo} value={config.marca.titulo} onChange={(e) => mudar((c) => { c.marca.titulo = e.target.value; })} /></Rotulo>
-                <Rotulo r="Cor"><input type="color" className="h-9 w-full rounded-lg border bg-background p-1" value={config.marca.cor || "#7c3aed"} onChange={(e) => mudar((c) => { c.marca.cor = e.target.value; })} /></Rotulo>
-                <Rotulo r="Foto do bot (link da imagem)"><input className={campo} placeholder="https://…" value={config.marca.avatar_url ?? ""} onChange={(e) => mudar((c) => { c.marca.avatar_url = e.target.value; })} /></Rotulo>
-                <Rotulo r="Logo (link da imagem)"><input className={campo} placeholder="https://…" value={config.marca.logo_url ?? ""} onChange={(e) => mudar((c) => { c.marca.logo_url = e.target.value; })} /></Rotulo>
-              </div>
-              <Rotulo r="Aviso de privacidade (embaixo do campo)"><Textarea rows={2} className="text-sm" value={config.lgpd ?? ""} onChange={(e) => mudar((c) => { c.lgpd = e.target.value; })} /></Rotulo>
-            </Secao>
-
-            <Secao titulo={`Conversa (${config.etapas.length} etapas)`} dica="O bot fala as mensagens e depois espera a resposta. Use {primeiro} para o primeiro nome, {chave} para qualquer resposta e **negrito**.">
-              {config.etapas.map((e, i) => (
-                <CartaoEtapa key={e.id} etapa={e} indice={i} total={config.etapas.length}
-                  onMudar={(f) => mudar((c) => f(c.etapas[i]))}
-                  onMover={(d) => mudar((c) => { const j = i + d; if (j < 0 || j >= c.etapas.length) return; [c.etapas[i], c.etapas[j]] = [c.etapas[j], c.etapas[i]]; })}
-                  onExcluir={() => mudar((c) => { c.etapas.splice(i, 1); })} />
-              ))}
-              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => mudar((c) => { c.etapas.push({ id: novoId(), chave: `pergunta${c.etapas.length + 1}`, tipo: "texto", mensagens: ["Nova pergunta?"] }); })}><Plus className="h-4 w-4" />Adicionar etapa</Button>
-            </Secao>
-
-            <Secao titulo="Pontuação e final" dica={`Soma os pontos das respostas (máximo possível: ${pontuacaoMaxima(config)}). Quem chega no mínimo é “alto potencial”; os outros veem o outro final.`}>
-              <Rotulo r="Pontuação mínima para qualificar"><input type="number" min={0} className={cn(campo, "w-28")} value={config.pontuacao.minimo} onChange={(e) => mudar((c) => { c.pontuacao.minimo = Number(e.target.value) || 0; })} /></Rotulo>
-              {(["qualificado", "nao_qualificado"] as const).map((k) => (
-                <FimEditor key={k} titulo={k === "qualificado" ? "Final de quem se qualificou" : "Final de quem não se qualificou"} d={config.desfechos[k]}
-                  onMudar={(f) => mudar((c) => f(c.desfechos[k]))} />
-              ))}
-            </Secao>
+        <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
+          <div className="flex h-[360px] shrink-0 flex-col gap-2 rounded-2xl border border-white/10 bg-[#0a1019] p-3 lg:h-auto lg:w-[300px] xl:w-[330px]">
+            <p className="flex shrink-0 items-center gap-2 text-base font-semibold text-white"><Workflow className="h-4 w-4 text-cyan-300" />Fluxo do chatbot</p>
+            <div className="min-h-0 flex-1"><FluxoChatbot config={config} selecionada={focoValido} onEscolher={(id) => escolher(id, true)} /></div>
           </div>
 
-          <div className="flex shrink-0 flex-col items-center gap-2 md:w-[400px]">
-            <div className="flex w-full items-center justify-between text-xs text-muted-foreground">
-              <span>Prévia ao vivo (não grava lead)</span>
-              <button type="button" onClick={() => setReinicio((n) => n + 1)} className="flex items-center gap-1 rounded-md px-2 py-1 hover:bg-muted"><RotateCcw className="h-3 w-3" />Recomeçar</button>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+            <div className="flex shrink-0 flex-wrap gap-1 rounded-lg bg-muted p-1 text-sm">
+              {([["assistente", "Assistente", Sparkles], ["etapas", "Etapas", ListChecks], ["final", "Final e pontos", Trophy], ["aparencia", "Aparência", Palette]] as const).map(([p, r, Icone]) => (
+                <button key={p} type="button" onClick={() => setPainel(p)} className={cn("flex items-center gap-1.5 rounded-md px-3 py-1", painel === p ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}><Icone className="h-3.5 w-3.5" />{r}</button>
+              ))}
             </div>
-            <div className="flex min-h-0 w-full flex-1 justify-center md:max-h-[780px]">
-              <MolduraCelular escuro={false}><PreviaIframe key={`${reinicio}-${config.etapas.length}`} config={config} /></MolduraCelular>
+            <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+              {painel === "assistente" && <AssistenteChatbot config={config} onAplicar={setConfig} />}
+              {painel === "etapas" && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">O bot fala as mensagens e espera a resposta. Use {"{primeiro}"} para o primeiro nome, {"{chave}"} para outra resposta e **negrito**. A prévia mostra o que você está escrevendo.</p>
+                  {config.etapas.map((e, i) => (
+                    <div key={e.id} ref={(el) => { cartoes.current[e.id] = el; }} onFocusCapture={() => setFoco(e.id)} onClick={() => setFoco(e.id)}
+                      className={cn("rounded-xl", focoValido === e.id && "ring-2 ring-primary/60")}>
+                      <CartaoEtapa etapa={e} indice={i} total={config.etapas.length}
+                        onMudar={(f) => mudar((c) => f(c.etapas[i]))}
+                        onMover={(d) => mudar((c) => { const j = i + d; if (j < 0 || j >= c.etapas.length) return; [c.etapas[i], c.etapas[j]] = [c.etapas[j], c.etapas[i]]; })}
+                        onExcluir={() => mudar((c) => { c.etapas.splice(i, 1); })} />
+                    </div>
+                  ))}
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { const id = novoId(); mudar((c) => { c.etapas.push({ id, chave: `pergunta${c.etapas.length + 1}`, tipo: "texto", mensagens: ["Nova pergunta?"] }); }); setFoco(id); }}><Plus className="h-4 w-4" />Adicionar etapa</Button>
+                </div>
+              )}
+              {painel === "final" && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Soma os pontos das respostas (máximo possível: {pontuacaoMaxima(config)}). Quem chega no mínimo é “alto potencial”; os outros veem o outro final.</p>
+                  <Rotulo r="Pontuação mínima para qualificar"><input type="number" min={0} className={cn(campo, "w-28")} value={config.pontuacao.minimo} onChange={(e) => mudar((c) => { c.pontuacao.minimo = Number(e.target.value) || 0; })} /></Rotulo>
+                  {(["qualificado", "nao_qualificado"] as const).map((k) => (
+                    <div key={k} onFocusCapture={() => setFoco(`final-${k}`)} className={cn("rounded-xl", focoValido === `final-${k}` && "ring-2 ring-primary/60")}>
+                      <FimEditor titulo={k === "qualificado" ? "Final de quem se qualificou" : "Final de quem não se qualificou"} d={config.desfechos[k]} onMudar={(f) => mudar((c) => f(c.desfechos[k]))} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              {painel === "aparencia" && (
+                <div className="space-y-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <Rotulo r="Título no topo"><input className={campo} value={config.marca.titulo} onChange={(e) => mudar((c) => { c.marca.titulo = e.target.value; })} /></Rotulo>
+                    <Rotulo r="Cor"><input type="color" className="h-9 w-full rounded-lg border bg-background p-1" value={config.marca.cor || "#7c3aed"} onChange={(e) => mudar((c) => { c.marca.cor = e.target.value; })} /></Rotulo>
+                    <Rotulo r="Foto do bot (link da imagem)"><input className={campo} placeholder="https://…" value={config.marca.avatar_url ?? ""} onChange={(e) => mudar((c) => { c.marca.avatar_url = e.target.value; })} /></Rotulo>
+                    <Rotulo r="Logo (link da imagem)"><input className={campo} placeholder="https://…" value={config.marca.logo_url ?? ""} onChange={(e) => mudar((c) => { c.marca.logo_url = e.target.value; })} /></Rotulo>
+                  </div>
+                  <Rotulo r="Aviso de privacidade (embaixo do campo)"><Textarea rows={2} className="text-sm" value={config.lgpd ?? ""} onChange={(e) => mudar((c) => { c.lgpd = e.target.value; })} /></Rotulo>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex shrink-0 flex-col items-center gap-2 lg:w-[380px]">
+            <div className="flex w-full items-center justify-between gap-2 text-xs">
+              <div className="flex gap-1 rounded-lg bg-muted p-0.5">
+                {([["vivo", "Ao vivo"], ["testar", "Testar"]] as const).map(([m, r]) => (
+                  <button key={m} type="button" onClick={() => setModo(m)} className={cn("rounded-md px-3 py-1", modo === m ? "bg-background font-medium shadow-sm" : "text-muted-foreground")}>{r}</button>
+                ))}
+              </div>
+              {modo === "testar" && <button type="button" onClick={() => setReinicio((n) => n + 1)} className="flex items-center gap-1 rounded-md px-2 py-1 text-muted-foreground hover:bg-muted"><RotateCcw className="h-3 w-3" />Recomeçar</button>}
+              {modo === "vivo" && <span className="text-muted-foreground">segue a etapa escolhida</span>}
+            </div>
+            <div className="flex min-h-[560px] w-full flex-1 justify-center lg:min-h-0 lg:max-h-[780px]">
+              <MolduraCelular escuro={false}>
+                <PreviaIframe>{modo === "vivo" ? <PreviaChatbot config={config} foco={focoValido} /> : <ChatbotPlayer key={reinicio} config={config} rapido />}</PreviaIframe>
+              </MolduraCelular>
             </div>
           </div>
         </div>
@@ -220,10 +267,9 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
   );
 }
 
-// A prévia roda dentro do iframe do celular: o player enche a altura da tela.
-function PreviaIframe({ config }: { config: ConfigChatbot }) {
-  const memo = useMemo(() => config, [config]);
-  return <div className="-mx-5 -mb-6 -mt-7 flex h-screen flex-1 flex-col"><ChatbotPlayer config={memo} rapido /></div>;
+// A prévia roda dentro do iframe do celular: ocupa a altura toda da tela.
+function PreviaIframe({ children }: { children: React.ReactNode }) {
+  return <div className="-mx-5 -mb-6 -mt-7 flex h-screen flex-1 flex-col">{children}</div>;
 }
 
 function Secao({ titulo, dica, children }: { titulo: string; dica?: string; children: React.ReactNode }) {

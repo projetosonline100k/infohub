@@ -138,3 +138,58 @@ export function modeloEmBranco(): ConfigChatbot {
     desfechos: { qualificado: { mensagens: ["Obrigado, **{primeiro}**! Recebi tudo."] }, nao_qualificado: { mensagens: ["Obrigado, **{primeiro}**! Recebi tudo."] } },
   };
 }
+
+const TIPOS: TipoEtapa[] = ["nenhum", "texto", "whatsapp", "email", "escolha", "lista"];
+const texto = (v: unknown, max = 600) => (typeof v === "string" ? v.slice(0, max) : "");
+const lista = (v: unknown, max = 20) => (Array.isArray(v) ? v.slice(0, max).map((x) => texto(x)).filter((x) => x.trim()) : []);
+
+/** Aceita o que a IA devolveu (ou qualquer JSON) e entrega um chatbot válido; o que faltar vem do atual. */
+export function sanitizarConfig(bruto: unknown, atual: ConfigChatbot): ConfigChatbot {
+  const b = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
+  const marca = (b.marca && typeof b.marca === "object" ? b.marca : {}) as Record<string, unknown>;
+  const usados = new Set<string>();
+  const etapas: EtapaChatbot[] = (Array.isArray(b.etapas) ? b.etapas : []).slice(0, 40).map((x, i) => {
+    const e = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    const tipo = TIPOS.includes(e.tipo as TipoEtapa) ? (e.tipo as TipoEtapa) : "texto";
+    let id = texto(e.id, 20).replace(/\W/g, "") || novoId();
+    while (usados.has(id)) id = novoId();
+    usados.add(id);
+    const opcoes = Array.isArray(e.opcoes) ? e.opcoes.slice(0, 30).map((o) => {
+      const r = (o && typeof o === "object" ? o : { texto: o }) as Record<string, unknown>;
+      return { texto: texto(r.texto, 120), pontos: Number.isFinite(Number(r.pontos)) ? Math.round(Number(r.pontos)) : 0 };
+    }).filter((o) => o.texto.trim()) : [];
+    const etapa: EtapaChatbot = {
+      id, chave: texto(e.chave, 30).replace(/[^a-z0-9_]/gi, "").toLowerCase() || `etapa${i + 1}`, tipo,
+      mensagens: lista(e.mensagens),
+    };
+    if (e.rotulo) etapa.rotulo = texto(e.rotulo, 80);
+    if (e.placeholder) etapa.placeholder = texto(e.placeholder, 120);
+    if (tipo === "escolha" || tipo === "lista") etapa.opcoes = opcoes.length >= 2 ? opcoes : [{ texto: "Opção 1", pontos: 0 }, { texto: "Opção 2", pontos: 0 }];
+    return etapa;
+  });
+  const fim = (k: "qualificado" | "nao_qualificado"): DesfechoChatbot => {
+    const d = ((b.desfechos as Record<string, unknown> | undefined)?.[k] ?? {}) as Record<string, unknown>;
+    const antes = atual.desfechos[k];
+    const mensagens = lista(d.mensagens);
+    return { mensagens: mensagens.length ? mensagens : antes.mensagens, botao_texto: texto(d.botao_texto, 80) || antes.botao_texto, botao_url: /^https?:\/\//i.test(texto(d.botao_url, 500)) ? texto(d.botao_url, 500) : (d.botao_url === "" ? "" : antes.botao_url) };
+  };
+  const min = Number((b.pontuacao as Record<string, unknown> | undefined)?.minimo);
+  return {
+    marca: { ...atual.marca, titulo: texto(marca.titulo, 100) || atual.marca.titulo, subtitulo: texto(marca.subtitulo, 100) || atual.marca.subtitulo, cor: /^#[0-9a-f]{6}$/i.test(texto(marca.cor)) ? texto(marca.cor) : atual.marca.cor, avatar_url: atual.marca.avatar_url, logo_url: atual.marca.logo_url },
+    pontuacao: { minimo: Number.isFinite(min) && min >= 0 ? Math.round(min) : atual.pontuacao.minimo },
+    lgpd: texto(b.lgpd, 500) || atual.lgpd,
+    etapas: etapas.length ? etapas : atual.etapas,
+    desfechos: { qualificado: fim("qualificado"), nao_qualificado: fim("nao_qualificado") },
+  };
+}
+
+/** Resposta de exemplo para a prévia estática (o que "alguém" teria respondido nesta etapa). */
+export function respostaDeExemplo(e: EtapaChatbot): string {
+  if (e.tipo === "nenhum") return "";
+  if (e.opcoes?.length) return e.opcoes[0].texto;
+  if (e.tipo === "whatsapp") return "(11) 99999-8888";
+  if (e.tipo === "email") return "maria@gmail.com";
+  if (e.chave === "nome") return "Maria Souza";
+  if (e.chave === "instagram") return "mariasouza";
+  return e.placeholder?.replace(/\.\.\.$/, "") || "Resposta";
+}

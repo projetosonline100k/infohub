@@ -9,14 +9,14 @@ import { utmDaUrl, type ConfigChatbot } from "@/lib/chatbot/chatbot";
 // (RPC chatbot_salvar_lead), então quem sai no meio também fica registrado; a origem (UTM) vai junto.
 export default function ChatbotPublico() {
   const { slug = "" } = useParams();
-  const [bot, setBot] = useState<{ nome: string; config: ConfigChatbot } | null>(null);
+  const [bot, setBot] = useState<{ nome: string; config: ConfigChatbot; status?: string } | null>(null);
   const [carregando, setCarregando] = useState(true);
   const lead = useRef(crypto.randomUUID());
   const utm = useRef(utmDaUrl(window.location.search));
 
   useEffect(() => {
     void supabase.rpc("chatbot_publico" as never, { p_slug: slug } as never).then(({ data }) => {
-      const b = data as { nome: string; config: ConfigChatbot } | null;
+      const b = data as { nome: string; config: ConfigChatbot; status?: string } | null;
       setBot(b?.config?.etapas?.length ? b : null);
       setCarregando(false);
       if (b?.config?.marca?.titulo) document.title = b.config.marca.titulo;
@@ -32,5 +32,11 @@ export default function ChatbotPublico() {
 
   if (carregando) return <div className="flex h-[100dvh] items-center justify-center bg-[#f7f7fb]"><Loader2 className="h-5 w-5 animate-spin text-neutral-400" /></div>;
   if (!bot) return <div className="flex h-[100dvh] items-center justify-center bg-[#f7f7fb] p-6 text-center text-sm text-neutral-500">Este diagnóstico não está disponível.</div>;
-  return <div className="h-[100dvh]"><ChatbotPlayer config={bot.config} onProgresso={salvar} /></div>;
+  const rascunho = bot.status === "rascunho";
+  return (
+    <div className="flex h-[100dvh] flex-col">
+      {rascunho && <p className="shrink-0 bg-amber-100 px-3 py-1 text-center text-xs font-medium text-amber-900">Rascunho: é assim que vai ficar. Ainda não está no ar, então as respostas não são gravadas.</p>}
+      <div className="min-h-0 flex-1"><ChatbotPlayer config={bot.config} onProgresso={rascunho ? undefined : salvar} /></div>
+    </div>
+  );
 }

@@ -43,3 +43,27 @@ test('modelo do diagnóstico: pontuação e desfecho como o original', () => {
 test('utm da url', () => {
   assert.deepEqual(m.utmDaUrl('?utm_source=ig&utm_campaign=BIO&fbclid=x'), { utm_source: 'ig', utm_campaign: 'BIO' });
 });
+
+test('sanitizar: aceita o que a IA devolveu, corrige tipos e mantém o resto do atual', () => {
+  const atual = m.modeloDiagnostico();
+  const r = m.sanitizarConfig({
+    etapas: [{ id: 'a', chave: 'Nome Completo!', tipo: 'xyz', mensagens: ['Oi', '', 5] }, { id: 'a', chave: 'x', tipo: 'escolha', mensagens: ['?'], opcoes: [{ texto: 'Sim', pontos: '3' }] }],
+    pontuacao: { minimo: -4 },
+    desfechos: { qualificado: { mensagens: ['Boa!'], botao_url: 'javascript:alert(1)' } },
+  }, atual);
+  assert.equal(r.etapas.length, 2);
+  assert.equal(r.etapas[0].tipo, 'texto');
+  assert.equal(r.etapas[0].chave, 'nomecompleto');
+  assert.deepEqual(r.etapas[0].mensagens, ['Oi']);
+  assert.notEqual(r.etapas[0].id, r.etapas[1].id);
+  assert.equal(r.etapas[1].opcoes.length, 2);   // menos de 2 opções volta ao padrão
+  assert.equal(r.pontuacao.minimo, atual.pontuacao.minimo);
+  assert.deepEqual(r.desfechos.qualificado.mensagens, ['Boa!']);
+  assert.equal(r.desfechos.qualificado.botao_url, atual.desfechos.qualificado.botao_url);   // link estranho é ignorado
+  assert.deepEqual(r.desfechos.nao_qualificado, atual.desfechos.nao_qualificado);
+  assert.equal(m.sanitizarConfig(null, atual).etapas.length, atual.etapas.length);
+});
+test('resposta de exemplo', () => {
+  assert.equal(m.respostaDeExemplo({ id: 'a', chave: 'nome', tipo: 'texto', mensagens: [] }), 'Maria Souza');
+  assert.equal(m.respostaDeExemplo({ id: 'a', chave: 'x', tipo: 'escolha', mensagens: [], opcoes: [{ texto: 'A' }, { texto: 'B' }] }), 'A');
+});

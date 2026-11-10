@@ -11,11 +11,13 @@ INSERT INTO public.chatbots(id, cliente_id, nome, slug, config) VALUES
 
 DO $$
 BEGIN
-  IF public.chatbot_publico('bot-teste-a') IS NOT NULL THEN RAISE EXCEPTION 'rascunho apareceu no público'; END IF;
+  IF public.chatbot_publico('bot-teste-a')->>'status' <> 'rascunho' THEN RAISE EXCEPTION 'rascunho não abre pelo link'; END IF;
   BEGIN
     PERFORM public.chatbot_salvar_lead('bot-teste-a', '10000000-0000-0000-0000-000000000266', '{}', 0, 0, null, '{}');
     RAISE EXCEPTION 'salvou lead de chatbot não publicado';
   EXCEPTION WHEN raise_exception THEN IF SQLERRM NOT LIKE 'chatbot não encontrado' THEN RAISE; END IF; END;
+  UPDATE public.chatbots SET status = 'pausado' WHERE id = '10000000-0000-0000-0000-000000000265';
+  IF public.chatbot_publico('bot-teste-b') IS NOT NULL THEN RAISE EXCEPTION 'pausado abriu pelo link'; END IF;
   UPDATE public.chatbots SET status = 'publicado' WHERE id IN ('10000000-0000-0000-0000-000000000264', '10000000-0000-0000-0000-000000000265');
   IF public.chatbot_publico('bot-teste-a')->>'nome' <> 'A' THEN RAISE EXCEPTION 'não achou o publicado'; END IF;
   PERFORM public.chatbot_salvar_lead('bot-teste-a', '10000000-0000-0000-0000-000000000266', '{"nome":"Ana","whatsapp":"11999"}', 1, 2, null, '{"utm_source":"ig"}');
