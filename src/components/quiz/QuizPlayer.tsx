@@ -864,6 +864,25 @@ function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string
           </div>
         </div>
       )}
+      {!onPronto && !!t.pausas?.length && (
+        <div className="space-y-3 text-left">
+          <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Perguntas que aparecem durante o carregamento</p>
+          {t.pausas.map((ps, k) => (
+            <div key={k} className="space-y-2 rounded-2xl border-2 p-3" style={{ borderColor: `${cor}55` }}>
+              <p className={cn("text-[11px]", suave)}>Aparece em {ps.pct}%{itens[k] ? `, enquanto “${itens[k]}” carrega` : ""}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Para seguir em frente, responda</p>
+              <Txt caminho={`${base}.pausas.${k}.texto`} valor={ps.texto} as="p" className="block text-base font-bold leading-snug" />
+              <div className="grid grid-cols-2 gap-2">
+                {ps.opcoes.map((o, j) => (
+                  <div key={j} className="rounded-xl border-2 px-3 py-2 text-center text-sm font-semibold" style={{ borderColor: cor }}>
+                    <Txt caminho={`${base}.pausas.${k}.opcoes.${j}`} valor={o} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {!onPronto && <p className={cn("text-xs", suave)}>(editando: esta tela passa sozinha no quiz de verdade)</p>}
     </div>
   );

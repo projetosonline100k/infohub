@@ -96,21 +96,40 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
     });
     return { origem, usa };
   }, [estrutura.perguntas]);
+  // Caminhos (Davi, 10/11: "deveriam ser dois caminhos diferentes"): se as imagens de uma pergunta dependem da resposta de outra,
+  // o mapa a desenha como uma tela por resposta (Homem / Mulher / Outro), ligadas à pergunta de origem.
+  const variantes = useMemo(() => {
+    const m = new Map<string, string[]>();
+    laminas.forEach((l) => {
+      if (l.tipo !== "pergunta") return;
+      const q = estrutura.perguntas[l.indice!];
+      const chave = q?.opcoes.flatMap((o) => Object.keys(o.imagens ?? {}))[0];
+      const origem = chave ? estrutura.perguntas.find((x) => x.id === chave.split("=")[0]) : undefined;
+      if (origem && origem.opcoes.length > 1) m.set(l.chave, origem.opcoes.map((o) => o.texto));
+    });
+    return m;
+  }, [laminas, estrutura.perguntas]);
   const montar = useCallback((): Node<Dados>[] => {
     const antes = laminas.filter((l) => l.tipo !== "fim");
     const fins = laminas.filter((l) => l.tipo === "fim");
     let pergunta = 0;
-    const lista: Node<Dados>[] = antes.map((l, i) => {
+    const lista: Node<Dados>[] = antes.flatMap((l, i): Node<Dados>[] => {
       const v = VISUAL[l.tipo];
       if (l.tipo === "pergunta") pergunta++;
-      return {
-        id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: i % 2 ? 70 : 0, y: i * PASSO_Y },
-        data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^P\d+\.\s*/, ""), subtitulo: l.tipo === "pergunta" ? `Pergunta ${pergunta}` : v.nome,
-          pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: v.cor, Icone: v.Icone,
-          variavel: l.tipo === "pergunta" ? variaveis.origem.get(estrutura.perguntas[l.indice!]?.id) : undefined,
-          usa: l.tipo === "pergunta" ? variaveis.usa.get(estrutura.perguntas[l.indice!]?.id) : undefined,
-          apagar: onExcluir && podeApagar(l) ? () => onExcluir(l) : undefined },
+      const base: Dados = {
+        lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^P\d+\.\s*/, ""), subtitulo: l.tipo === "pergunta" ? `Pergunta ${pergunta}` : v.nome,
+        pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: v.cor, Icone: v.Icone,
+        variavel: l.tipo === "pergunta" ? variaveis.origem.get(estrutura.perguntas[l.indice!]?.id) : undefined,
+        usa: l.tipo === "pergunta" ? variaveis.usa.get(estrutura.perguntas[l.indice!]?.id) : undefined,
+        apagar: onExcluir && podeApagar(l) ? () => onExcluir(l) : undefined,
       };
+      const nomes = variantes.get(l.chave);
+      if (!nomes) return [{ id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: i % 2 ? 70 : 0, y: i * PASSO_Y }, data: base }];
+      return nomes.map((nome, k) => {
+        const id = `${l.chave}~${k}`;
+        return { id, type: "bloco", position: movidos[id] ?? { x: (k - (nomes.length - 1) / 2) * 270 + (i % 2 ? 70 : 0), y: i * PASSO_Y },
+          data: { ...base, subtitulo: `${base.subtitulo} · ${nome}`, usa: `foto de ${nome}`, apagar: k === 0 ? base.apagar : undefined } };
+      });
     });
     const yFim = antes.length * PASSO_Y;
     fins.forEach((l, i) => {
@@ -130,7 +149,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       });
     }
     return lista;
-  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar, variaveis]);
+  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar, variaveis, variantes]);
 
   const [nodes, setNodes] = useState<Node<Dados>[]>(montar);
   // Atualiza por cima dos blocos que já existem: recriá-los perderia o tamanho medido, e as setas sumiriam.
@@ -141,7 +160,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
   // Em vez de encolher o quiz inteiro (31 telas viram risco), a vista acompanha a tela escolhida.
   const instancia = useRef<ReactFlowInstance | null>(null);
   const irPara = useCallback((chave: string, animar: boolean) => {
-    const n = instancia.current?.getNode(chave);
+    const n = instancia.current?.getNode(chave) ?? instancia.current?.getNode(`${chave}~1`) ?? instancia.current?.getNode(`${chave}~0`);
     if (!n) return;
     instancia.current?.setCenter(n.position.x + 125, n.position.y + 60, { zoom: 0.9, duration: animar ? 300 : 0 });
   }, []);
@@ -186,10 +205,22 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
     const fins = laminas.filter((l) => l.tipo === "fim");
     const seta = { type: MarkerType.ArrowClosed, color: "#7dd3fc" };   // só nos perfis/oferta
     // Linha cortada some do mapa (só volta se o corte for cancelado ou depois que um bloco for encaixado).
-    const lista: Edge[] = antes.slice(1).flatMap((l, i): Edge[] => cortes.some((c) => c.chave === antes[i].chave) ? [] : [{
-      id: `e${i}`, source: antes[i].chave, target: l.chave, interactionWidth: 30, className: onReordenar ? "cursor-pointer" : undefined,
-      style: { stroke: i % 2 ? "#a78bfa" : "#22d3ee", strokeWidth: 2 },
-    }]);
+    const ids = (l: Lamina) => (variantes.get(l.chave)?.map((_, k) => `${l.chave}~${k}`) ?? [l.chave]);
+    const lista: Edge[] = antes.slice(1).flatMap((l, i): Edge[] => {
+      const origem = antes[i], de = ids(origem), para = ids(l);
+      if (de.length === 1 && para.length === 1) {
+        if (cortes.some((c) => c.chave === origem.chave)) return [];
+        return [{ id: `e${i}`, source: origem.chave, target: l.chave, interactionWidth: 30, className: onReordenar ? "cursor-pointer" : undefined,
+          style: { stroke: i % 2 ? "#a78bfa" : "#22d3ee", strokeWidth: 2 } }];
+      }
+      // caminhos por resposta: abre em leque (um por resposta) e volta a se juntar na tela seguinte
+      const nomes = variantes.get(l.chave);
+      const pares: [string, string, string | undefined][] = de.length > 1 && para.length > 1 ? de.map((s, k) => [s, para[k], undefined]) : de.length > 1 ? de.map((s) => [s, para[0], undefined]) : para.map((t, k) => [de[0], t, nomes?.[k]]);
+      return pares.map(([source, target, nome], k) => ({
+        id: `v${i}-${k}`, source, target, type: "smoothstep", label: nome, labelStyle: { fill: "#f5d0fe", fontSize: 11, fontWeight: 600 }, labelBgStyle: { fill: "#0d131c" },
+        style: { stroke: "#e879f9", strokeWidth: 2 },
+      }));
+    });
     const ultimo = antes[antes.length - 1];
     const porPerfil = (id?: string) => estrutura.perguntas.reduce((s, q) => s + q.opcoes.filter((o) => o.perfil === id).length, 0);
     fins.forEach((l) => {
@@ -201,7 +232,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       if (estrutura.oferta && !estrutura.sem_resultado) lista.push({ id: `o${l.chave}`, source: l.chave, target: "oferta", type: "smoothstep", markerEnd: { ...seta, color: "#fb923c" }, style: { stroke: "#fb923c", strokeWidth: 2 } });
     });
     return lista;
-  }, [laminas, estrutura, cortes, onReordenar]);
+  }, [laminas, estrutura, cortes, onReordenar, variantes]);
 
   return (
     <div ref={caixa} onMouseEnter={() => { sobre.current = true; }} onMouseLeave={() => { sobre.current = false; }} className="dark relative h-full min-h-0 w-full overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_0%,#101c33,#080d17_70%)]">
