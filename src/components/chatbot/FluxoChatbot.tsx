@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, { Background, Controls, Handle, MarkerType, Position, applyNodeChanges, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance } from "reactflow";
 import "reactflow/dist/style.css";
-import { GitFork, List, ListChecks, Mail, MessageSquare, Phone, Trash2, Trophy, Type, XCircle, type LucideIcon } from "lucide-react";
+import { GitFork, List, ListChecks, Mail, MessageSquare, Phone, Plus, Trash2, Trophy, Type, XCircle, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROTULO_TIPO, pontuacaoMaxima, type ConfigChatbot, type TipoEtapa } from "@/lib/chatbot/chatbot";
 
 // Fluxo do chatbot (10/11/2026, Davi: "me mostrar um fluxo igual o do quiz"): as etapas descem em zigue-zague, e no
 // fim a pontuação separa quem se qualificou de quem não. Clicar num bloco escolhe a etapa (editor e prévia seguem).
-interface Dados { apagar?: () => void; titulo: string; sub: string; selecionado: boolean; cor: string; Icone: LucideIcon; vazio?: boolean; extra?: string }
+interface Dados { apagar?: () => void; adicionar?: () => void; titulo: string; sub: string; selecionado: boolean; cor: string; Icone: LucideIcon; vazio?: boolean; extra?: string }
 const CORES: Record<string, { borda: string; icone: string; ponto: string }> = {
   ciano: { borda: "border-cyan-400/60", icone: "border-cyan-300 text-cyan-200", ponto: "#22d3ee" },
   roxo: { borda: "border-violet-400/60", icone: "border-violet-300 text-violet-200", ponto: "#a78bfa" },
@@ -33,6 +33,10 @@ function Bloco({ data }: NodeProps<Dados>) {
         <button type="button" title="Apagar esta etapa (Delete)" onClick={(e) => { e.stopPropagation(); data.apagar!(); }}
           className="nodrag absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full border border-rose-400/60 bg-[#0b1220] text-rose-300 shadow-lg hover:bg-rose-500 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
       )}
+      {data.adicionar && (data.selecionado || data.sub.startsWith("máximo")) && (
+        <button type="button" title="Adicionar uma etapa nova depois desta" onClick={(e) => { e.stopPropagation(); data.adicionar!(); }}
+          className="nodrag absolute -bottom-3.5 left-1/2 z-10 flex h-7 w-7 -translate-x-1/2 items-center justify-center rounded-full border border-cyan-300/70 bg-[#0b1220] text-cyan-200 shadow-lg hover:bg-cyan-400 hover:text-black"><Plus className="h-4 w-4" /></button>
+      )}
       {data.extra && <span className="shrink-0 self-start rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">{data.extra}</span>}
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !border-0" style={{ background: c.ponto }} />
     </div>
@@ -42,7 +46,7 @@ const tipos = { bloco: Bloco };
 const limpa = (s: string) => s.replace(/\*\*/g, "").replace(/\{(\w+)\}/g, "…");
 const PASSO = 120;
 
-export function FluxoChatbot({ config, selecionada, onEscolher, onApagar }: { config: ConfigChatbot; selecionada: string; onEscolher: (id: string) => void; onApagar?: (id: string) => void }) {
+export function FluxoChatbot({ config, selecionada, onEscolher, onApagar, onAdicionar }: { config: ConfigChatbot; selecionada: string; onEscolher: (id: string) => void; onApagar?: (id: string) => void; onAdicionar?: (depoisDe: string | null) => void }) {
   const montar = useCallback((): Node<Dados>[] => {
     const n = config.etapas.length;
     const lista: Node<Dados>[] = config.etapas.map((e, i) => ({
@@ -50,20 +54,21 @@ export function FluxoChatbot({ config, selecionada, onEscolher, onApagar }: { co
       data: {
         titulo: limpa(e.mensagens[e.mensagens.length - 1] ?? e.rotulo ?? ""), sub: e.tipo === "nenhum" ? "Só mensagem" : `${ROTULO_TIPO[e.tipo]} · ${e.chave}`,
         selecionado: e.id === selecionada, cor: e.tipo === "nenhum" ? "amarelo" : e.opcoes?.some((o) => o.pontos) ? "roxo" : "ciano", Icone: ICONE[e.tipo],
-        apagar: onApagar && config.etapas.length > 1 ? () => onApagar(e.id) : undefined,
+        apagar: onApagar ? () => onApagar(e.id) : undefined,
+        adicionar: onAdicionar ? () => onAdicionar(e.id) : undefined,
         extra: e.opcoes?.length ? `até ${Math.max(0, ...e.opcoes.map((o) => o.pontos ?? 0))} pts` : undefined,
       },
     }));
     lista.push({
       id: "decisao", type: "bloco", position: { x: 35, y: n * PASSO },
-      data: { titulo: `Pontuação ≥ ${config.pontuacao.minimo}?`, sub: `máximo ${pontuacaoMaxima(config)} pontos`, selecionado: false, cor: "amarelo", Icone: GitFork },
+      data: { titulo: `Pontuação ≥ ${config.pontuacao.minimo}?`, sub: `máximo ${pontuacaoMaxima(config)} pontos`, selecionado: false, cor: "amarelo", Icone: GitFork, adicionar: onAdicionar ? () => onAdicionar(null) : undefined },
     });
     lista.push(
       { id: "final-qualificado", type: "bloco", position: { x: -150, y: (n + 1) * PASSO + 20 }, data: { titulo: "Alto potencial", sub: limpa(config.desfechos.qualificado.mensagens[0] ?? ""), selecionado: selecionada === "final-qualificado", cor: "verde", Icone: Trophy } },
       { id: "final-nao_qualificado", type: "bloco", position: { x: 230, y: (n + 1) * PASSO + 20 }, data: { titulo: "Não qualificado", sub: limpa(config.desfechos.nao_qualificado.mensagens[0] ?? ""), selecionado: selecionada === "final-nao_qualificado", cor: "rosa", Icone: XCircle } },
     );
     return lista;
-  }, [config, selecionada, onApagar]);
+  }, [config, selecionada, onApagar, onAdicionar]);
 
   const [nodes, setNodes] = useState<Node<Dados>[]>(montar);
   useEffect(() => setNodes((atuais) => montar().map((x) => {
@@ -101,7 +106,7 @@ export function FluxoChatbot({ config, selecionada, onEscolher, onApagar }: { co
   useEffect(() => {
     const tecla = (ev: KeyboardEvent) => {
       const a = apagarRef.current;
-      if (!sobre.current || !a.onApagar || !a.ehEtapa || a.total < 2 || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
+      if (!sobre.current || !a.onApagar || !a.ehEtapa || a.total < 1 || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
       const alvo = ev.target instanceof HTMLElement ? ev.target : null;
       if (alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName))) return;
       ev.preventDefault();

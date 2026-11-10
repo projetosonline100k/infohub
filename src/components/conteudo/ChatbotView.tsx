@@ -158,14 +158,31 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
       requestAnimationFrame(() => cartoes.current[id]?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     }
   };
-  // Apagar pelo fluxo (clicar no bloco → lixeira ou Delete). Sempre sobra uma etapa; dá para desfazer pelo aviso.
+  // "+" do fluxo: abre uma etapa zerada depois da escolhida (ou no fim) e já deixa o cursor na mensagem.
+  const [autoFoco, setAutoFoco] = useState<string | null>(null);
+  const adicionarEtapa = useCallback((depoisDe: string | null) => {
+    const id = novoId();
+    setConfig((atual) => {
+      const novo = structuredClone(atual);
+      const usadas = new Set(novo.etapas.map((e) => e.chave));
+      let n = novo.etapas.length + 1;
+      while (usadas.has(`pergunta${n}`)) n++;
+      const nova: EtapaChatbot = { id, chave: `pergunta${n}`, tipo: "texto", mensagens: [] };
+      const i = depoisDe ? novo.etapas.findIndex((e) => e.id === depoisDe) : -1;
+      novo.etapas.splice(i >= 0 ? i + 1 : novo.etapas.length, 0, nova);
+      return novo;
+    });
+    setFoco(id); setPainel("etapas"); setAutoFoco(id);
+    requestAnimationFrame(() => requestAnimationFrame(() => cartoes.current[id]?.scrollIntoView({ block: "nearest", behavior: "smooth" })));
+  }, []);
+  // Apagar pelo fluxo (clicar no bloco → lixeira ou Delete). Dá para desfazer pelo aviso.
   const apagarEtapa = useCallback((id: string) => {
     setConfig((atual) => {
-      if (atual.etapas.length < 2 || !atual.etapas.some((e) => e.id === id)) return atual;
+      if (!atual.etapas.some((e) => e.id === id)) return atual;
       const i = atual.etapas.findIndex((e) => e.id === id);
       const novo = structuredClone(atual);
       novo.etapas.splice(i, 1);
-      setFoco(novo.etapas[Math.min(i, novo.etapas.length - 1)].id);
+      setFoco(novo.etapas[Math.min(i, novo.etapas.length - 1)]?.id ?? "");
       toast("Etapa apagada", { action: { label: "Desfazer", onClick: () => setConfig(atual) }, duration: 6000 });
       return novo;
     });
@@ -206,7 +223,7 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
           <div className="flex h-[360px] shrink-0 flex-col gap-2 rounded-2xl border border-white/10 bg-[#0a1019] p-3 lg:h-auto lg:w-[300px] xl:w-[330px]">
             <p className="flex shrink-0 items-center gap-2 text-base font-semibold text-white"><Workflow className="h-4 w-4 text-cyan-300" />Fluxo do chatbot</p>
-            <div className="min-h-0 flex-1"><FluxoChatbot config={config} selecionada={focoValido} onEscolher={(id) => escolher(id, true)} onApagar={apagarEtapa} /></div>
+            <div className="min-h-0 flex-1"><FluxoChatbot config={config} selecionada={focoValido} onEscolher={(id) => escolher(id, true)} onApagar={apagarEtapa} onAdicionar={adicionarEtapa} /></div>
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
@@ -223,13 +240,14 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
                   {config.etapas.map((e, i) => (
                     <div key={e.id} ref={(el) => { cartoes.current[e.id] = el; }} onFocusCapture={() => setFoco(e.id)} onClick={() => setFoco(e.id)}
                       className={cn("rounded-xl", focoValido === e.id && "ring-2 ring-primary/60")}>
-                      <CartaoEtapa etapa={e} indice={i} total={config.etapas.length}
+                      <CartaoEtapa etapa={e} indice={i} total={config.etapas.length} autoFoco={autoFoco === e.id} aoFocar={() => setAutoFoco(null)}
+                        variaveis={["primeiro", ...config.etapas.slice(0, i).filter((x) => x.tipo !== "nenhum").map((x) => x.chave)]}
                         onMudar={(f) => mudar((c) => f(c.etapas[i]))}
                         onMover={(d) => mudar((c) => { const j = i + d; if (j < 0 || j >= c.etapas.length) return; [c.etapas[i], c.etapas[j]] = [c.etapas[j], c.etapas[i]]; })}
                         onExcluir={() => mudar((c) => { c.etapas.splice(i, 1); })} />
                     </div>
                   ))}
-                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { const id = novoId(); mudar((c) => { c.etapas.push({ id, chave: `pergunta${c.etapas.length + 1}`, tipo: "texto", mensagens: ["Nova pergunta?"] }); }); setFoco(id); }}><Plus className="h-4 w-4" />Adicionar etapa</Button>
+                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => adicionarEtapa(config.etapas[config.etapas.length - 1]?.id ?? null)}><Plus className="h-4 w-4" />Adicionar etapa</Button>
                 </div>
               )}
               {painel === "final" && (
@@ -297,18 +315,32 @@ function Rotulo({ r, children }: { r: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="text-xs font-medium text-muted-foreground">{r}</span>{children}</label>;
 }
 
-function CartaoEtapa({ etapa, indice, total, onMudar, onMover, onExcluir }: {
-  etapa: EtapaChatbot; indice: number; total: number; onMudar: (f: (e: EtapaChatbot) => void) => void; onMover: (d: -1 | 1) => void; onExcluir: () => void;
+function CartaoEtapa({ etapa, indice, total, variaveis, autoFoco, aoFocar, onMudar, onMover, onExcluir }: {
+  etapa: EtapaChatbot; indice: number; total: number; variaveis: string[]; autoFoco: boolean; aoFocar: () => void;
+  onMudar: (f: (e: EtapaChatbot) => void) => void; onMover: (d: -1 | 1) => void; onExcluir: () => void;
 }) {
   const temOpcoes = etapa.tipo === "escolha" || etapa.tipo === "lista";
+  const caixa = useRef<HTMLTextAreaElement>(null);
+  const [opcoesEmTexto, setOpcoesEmTexto] = useState(false);
+  useEffect(() => { if (autoFoco) { caixa.current?.focus(); aoFocar(); } }, [autoFoco, aoFocar]);
+  // Insere no cursor da mensagem: {variável} ou **negrito** em volta da seleção.
+  const inserir = (antes: string, depois = "") => {
+    const t = caixa.current;
+    const atual = etapa.mensagens.join("\n");
+    const ini = t?.selectionStart ?? atual.length, fim = t?.selectionEnd ?? atual.length;
+    const novo = atual.slice(0, ini) + antes + atual.slice(ini, fim) + depois + atual.slice(fim);
+    onMudar((x) => { x.mensagens = novo.split("\n"); });
+    const pos = ini + antes.length + (fim - ini) + depois.length;
+    requestAnimationFrame(() => { t?.focus(); t?.setSelectionRange(pos, pos); });
+  };
+  const chip = "rounded-full border bg-background px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10";
   return (
     <div className="space-y-2 rounded-lg border bg-background p-2.5">
       <div className="flex items-center gap-1.5">
         <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-primary/10 px-1.5 text-xs font-bold text-primary">{indice + 1}</span>
-        <select className={cn(campo, "w-auto")} value={etapa.tipo} onChange={(e) => onMudar((x) => { x.tipo = e.target.value as TipoEtapa; if ((x.tipo === "escolha" || x.tipo === "lista") && !x.opcoes?.length) x.opcoes = [{ texto: "Opção 1", pontos: 0 }, { texto: "Opção 2", pontos: 0 }]; })}>
+        <select className={cn(campo, "w-auto")} title="O que o bot pede nesta etapa" value={etapa.tipo} onChange={(e) => onMudar((x) => { x.tipo = e.target.value as TipoEtapa; if ((x.tipo === "escolha" || x.tipo === "lista") && !x.opcoes?.length) x.opcoes = [{ texto: "Opção 1", pontos: 0 }, { texto: "Opção 2", pontos: 0 }]; })}>
           {(Object.keys(ROTULO_TIPO) as TipoEtapa[]).map((t) => <option key={t} value={t}>{ROTULO_TIPO[t]}</option>)}
         </select>
-        {etapa.tipo !== "nenhum" && <input className={cn(campo, "w-32")} title="Nome da resposta (usada em {chave})" value={etapa.chave} onChange={(e) => onMudar((x) => { x.chave = e.target.value.replace(/[^a-z0-9_]/gi, "").toLowerCase(); })} />}
         <span className="ml-auto flex">
           <button type="button" disabled={indice === 0} onClick={() => onMover(-1)} className="rounded p-1 hover:bg-muted disabled:opacity-30"><ArrowUp className="h-4 w-4" /></button>
           <button type="button" disabled={indice === total - 1} onClick={() => onMover(1)} className="rounded p-1 hover:bg-muted disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
@@ -316,9 +348,21 @@ function CartaoEtapa({ etapa, indice, total, onMudar, onMover, onExcluir }: {
         </span>
       </div>
       <Rotulo r="Mensagens do bot (uma por linha; cada linha vira um balão)">
-        <Textarea rows={Math.min(6, Math.max(2, etapa.mensagens.length + 1))} className="text-sm" value={etapa.mensagens.join("\n")}
+        <Textarea ref={caixa} rows={Math.min(6, Math.max(3, etapa.mensagens.length + 1))} className="text-sm" placeholder="Escreva aqui o que o bot vai dizer…" value={etapa.mensagens.join("\n")}
           onChange={(e) => onMudar((x) => { x.mensagens = e.target.value.split("\n"); })} onBlur={() => onMudar((x) => { x.mensagens = x.mensagens.filter((m) => m.trim()); })} />
       </Rotulo>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-[11px] text-muted-foreground">Inserir:</span>
+        <button type="button" className={cn(chip, "text-foreground")} title="Negrito (selecione o trecho antes)" onMouseDown={(e) => e.preventDefault()} onClick={() => inserir("**", "**")}><b>B</b> negrito</button>
+        {variaveis.map((v) => (
+          <button key={v} type="button" className={chip} title={v === "primeiro" ? "Primeiro nome da pessoa" : `Resposta da etapa "${v}"`} onMouseDown={(e) => e.preventDefault()} onClick={() => inserir(`{${v}}`)}>{`{${v}}`}</button>
+        ))}
+      </div>
+      {etapa.tipo !== "nenhum" && (
+        <Rotulo r="Variável: guarda a resposta desta etapa (use depois como {nome_da_variável})">
+          <input className={cn(campo, "w-48")} value={etapa.chave} onChange={(e) => onMudar((x) => { x.chave = e.target.value.replace(/[^a-z0-9_]/gi, "").toLowerCase(); })} />
+        </Rotulo>
+      )}
       {(etapa.tipo === "texto" || etapa.tipo === "whatsapp" || etapa.tipo === "email" || etapa.tipo === "lista") && (
         <div className="grid gap-2 sm:grid-cols-2">
           <Rotulo r="Rótulo do campo"><input className={campo} value={etapa.rotulo ?? ""} onChange={(e) => onMudar((x) => { x.rotulo = e.target.value; })} /></Rotulo>
@@ -327,15 +371,29 @@ function CartaoEtapa({ etapa, indice, total, onMudar, onMover, onExcluir }: {
       )}
       {temOpcoes && (
         <div className="space-y-1">
-          <p className="text-xs font-medium text-muted-foreground">Opções (e os pontos que cada uma dá)</p>
-          {(etapa.opcoes ?? []).map((o, k) => (
-            <div key={k} className="flex items-center gap-1.5">
-              <input className={campo} value={o.texto} onChange={(e) => onMudar((x) => { x.opcoes![k].texto = e.target.value; })} />
-              <input type="number" title="Pontos" className={cn(campo, "w-16 shrink-0")} value={o.pontos ?? 0} onChange={(e) => onMudar((x) => { x.opcoes![k].pontos = Number(e.target.value) || 0; })} />
-              <button type="button" disabled={(etapa.opcoes?.length ?? 0) <= 2} onClick={() => onMudar((x) => { x.opcoes!.splice(k, 1); })} className="rounded p-1 text-muted-foreground hover:text-rose-600 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => onMudar((x) => { x.opcoes!.push({ texto: `Opção ${(x.opcoes?.length ?? 0) + 1}`, pontos: 0 }); })}><Plus className="h-3.5 w-3.5" />Opção</Button>
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-medium text-muted-foreground">Opções (e os pontos que cada uma dá)</p>
+            <button type="button" className="text-[11px] text-primary hover:underline" onClick={() => setOpcoesEmTexto((v) => !v)}>{opcoesEmTexto ? "Editar uma a uma" : "Colar lista de opções"}</button>
+          </div>
+          {opcoesEmTexto ? (
+            <Textarea rows={Math.min(10, (etapa.opcoes?.length ?? 2) + 2)} className="font-mono text-xs" placeholder={"Uma opção por linha. Pontos depois de |\nMenos de 1 mil | 1\n1 a 5 mil | 2"}
+              defaultValue={(etapa.opcoes ?? []).map((o) => (o.pontos ? `${o.texto} | ${o.pontos}` : o.texto)).join("\n")}
+              onChange={(e) => {
+                const linhas = e.target.value.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { const [t, p] = l.split("|"); return { texto: t.trim(), pontos: Number(p) || 0 }; }).filter((o) => o.texto);
+                if (linhas.length >= 2) onMudar((x) => { x.opcoes = linhas; });
+              }} />
+          ) : (
+            <>
+              {(etapa.opcoes ?? []).map((o, k) => (
+                <div key={k} className="flex items-center gap-1.5">
+                  <input className={campo} value={o.texto} onChange={(e) => onMudar((x) => { x.opcoes![k].texto = e.target.value; })} />
+                  <input type="number" title="Pontos" className={cn(campo, "w-16 shrink-0")} value={o.pontos ?? 0} onChange={(e) => onMudar((x) => { x.opcoes![k].pontos = Number(e.target.value) || 0; })} />
+                  <button type="button" disabled={(etapa.opcoes?.length ?? 0) <= 2} onClick={() => onMudar((x) => { x.opcoes!.splice(k, 1); })} className="rounded p-1 text-muted-foreground hover:text-rose-600 disabled:opacity-30"><Trash2 className="h-4 w-4" /></button>
+                </div>
+              ))}
+              <Button variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={() => onMudar((x) => { x.opcoes!.push({ texto: `Opção ${(x.opcoes?.length ?? 0) + 1}`, pontos: 0 }); })}><Plus className="h-3.5 w-3.5" />Opção</Button>
+            </>
+          )}
         </div>
       )}
     </div>
