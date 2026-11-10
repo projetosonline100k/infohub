@@ -53,6 +53,22 @@ export function excluirPergunta(e: EstruturaQuiz, indice: number) {
   return n;
 }
 
+/** Tira uma tela de respiro/especialista/carregando; o que vinha depois dela passa a vir depois da que ela seguia. */
+export function excluirTelaExtra(e: EstruturaQuiz, indice: number) {
+  const n = structuredClone(e);
+  const [fora] = (n.telas ?? []).splice(indice, 1);
+  for (const t of n.telas ?? []) if (t.depois_de === fora.id) t.depois_de = fora.depois_de;
+  if (n.captura?.depois_de === fora.id) n.captura.depois_de = fora.depois_de;
+  return n;
+}
+
+/** Tira o pedido de contato (nome/WhatsApp): a captura fica desligada. */
+export function desligarCaptura(e: EstruturaQuiz) {
+  const n = structuredClone(e);
+  if (n.captura) n.captura.ativa = false;
+  return n;
+}
+
 export function EstruturaDoQuiz({ laminas, estrutura, faltas, selecionada, onEscolher }: {
   laminas: Lamina[]; estrutura: EstruturaQuiz; faltas: FaltaQuiz[]; selecionada: string; onEscolher: (chave: string) => void;
 }) {

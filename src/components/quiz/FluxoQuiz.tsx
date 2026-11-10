@@ -4,7 +4,7 @@ import ReactFlow, {
   type Edge, type Node, type NodeChange, type NodeProps,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Clock, Contact, Home, ListChecks, Tag, Trophy, Plus, type LucideIcon } from "lucide-react";
+import { Clock, Contact, Home, ListChecks, Tag, Trash2, Trophy, Plus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { EstruturaQuiz, Lamina } from "@/lib/quiz/quiz";
 import type { FaltaQuiz } from "@/lib/quiz/faltas";
@@ -14,7 +14,7 @@ import { faltasDaLamina } from "./EditorQuiz";
 // três segundos responde onde a tela está, para onde leva e, com o celular ao lado, como ela aparece. A ordem real
 // continua a do quiz; mover um bloco só muda o desenho, guardado neste Mac.
 
-type Dados = { lamina?: Lamina; numero?: number; rotulo: string; subtitulo: string; pend: number; selecionado: boolean; cor: string; Icone: LucideIcon };
+type Dados = { apagar?: () => void; lamina?: Lamina; numero?: number; rotulo: string; subtitulo: string; pend: number; selecionado: boolean; cor: string; Icone: LucideIcon };
 
 const CORES: Record<string, { borda: string; icone: string; ponto: string }> = {
   cinza: { borda: "border-cyan-400/60", icone: "border-cyan-300 text-cyan-200", ponto: "#22d3ee" },
@@ -29,7 +29,7 @@ function Bloco({ data }: NodeProps<Dados>) {
   const { Icone } = data;
   const ponta = "!h-2 !w-2 !border-0";
   return (
-    <div className={cn("flex w-[250px] cursor-pointer items-center gap-3 rounded-[28px] border bg-[#0b1220] py-2.5 pl-2.5 pr-4 text-white transition-shadow", c.borda,
+    <div className={cn("relative flex w-[250px] cursor-pointer items-center gap-3 rounded-[28px] border bg-[#0b1220] py-2.5 pl-2.5 pr-4 text-white transition-shadow", c.borda,
       data.selecionado && "!border-cyan-300 shadow-[0_0_0_2px_rgba(103,232,249,0.45),0_0_26px_rgba(34,211,238,0.4)]")}>
       <Handle type="target" position={Position.Top} className={ponta} style={{ background: c.ponto }} />
       <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 bg-white/5", c.icone)}><Icone className="h-5 w-5" /></span>
@@ -37,6 +37,10 @@ function Bloco({ data }: NodeProps<Dados>) {
         <span className="block truncate text-[13px] font-semibold leading-tight">{data.subtitulo}</span>
         <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-white/55">{data.rotulo}</span>
       </span>
+      {data.apagar && data.selecionado && (
+        <button type="button" title="Apagar esta lâmina (Delete)" onClick={(e) => { e.stopPropagation(); data.apagar!(); }}
+          className="nodrag absolute -right-2 -top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-rose-400/60 bg-[#0b1220] text-rose-300 shadow-lg hover:bg-rose-500 hover:text-white"><Trash2 className="h-3.5 w-3.5" /></button>
+      )}
       <span title={data.pend ? `${data.pend} ${data.pend === 1 ? "pendência" : "pendências"}` : "Pronta"}
         className={cn("h-2.5 w-2.5 shrink-0 self-start rounded-full", data.pend ? "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.9)]" : "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]")} />
       <Handle type="source" position={Position.Bottom} className={ponta} style={{ background: c.ponto }} />
@@ -53,14 +57,16 @@ const VISUAL: Record<Lamina["tipo"], { cor: string; Icone: LucideIcon; nome: str
 // abrem em leque no fim e a oferta vem depois deles.
 const PASSO_Y = 120, LARGURA_PERFIL = 260;
 
-export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onEscolher, onAdicionar }: {
+export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onEscolher, onAdicionar, onExcluir }: {
   quizId: string; estrutura: EstruturaQuiz; laminas: Lamina[]; faltas: FaltaQuiz[]; selecionada: string;
-  onEscolher: (chave: string) => void; onAdicionar: () => void;
+  onEscolher: (chave: string) => void; onAdicionar: () => void; onExcluir?: (l: Lamina) => void;
 }) {
   const chaveMapa = `quiz:fluxo-v:${quizId}`;
   const [movidos, setMovidos] = useState<Record<string, { x: number; y: number }>>(() => {
     try { return JSON.parse(localStorage.getItem(chaveMapa) || "{}"); } catch { return {}; }
   });
+  // Só se apaga o que dá para tirar sem quebrar o quiz: pergunta (sobrando pelo menos uma), tela de respiro e o pedido de contato.
+  const podeApagar = useCallback((l: Lamina) => l.tipo === "tela" || l.tipo === "captura" || (l.tipo === "pergunta" && estrutura.perguntas.length > 1), [estrutura.perguntas.length]);
   const montar = useCallback((): Node<Dados>[] => {
     const antes = laminas.filter((l) => l.tipo !== "fim");
     const fins = laminas.filter((l) => l.tipo === "fim");
@@ -71,7 +77,8 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       return {
         id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: i % 2 ? 70 : 0, y: i * PASSO_Y },
         data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^P\d+\.\s*/, ""), subtitulo: l.tipo === "pergunta" ? `Pergunta ${pergunta}` : v.nome,
-          pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: v.cor, Icone: v.Icone },
+          pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: v.cor, Icone: v.Icone,
+          apagar: onExcluir && podeApagar(l) ? () => onExcluir(l) : undefined },
       };
     });
     const yFim = antes.length * PASSO_Y;
@@ -92,7 +99,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       });
     }
     return lista;
-  }, [laminas, estrutura, faltas, selecionada, movidos]);
+  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar]);
 
   const [nodes, setNodes] = useState<Node<Dados>[]>(montar);
   // Atualiza por cima dos blocos que já existem: recriá-los perderia o tamanho medido, e as setas sumiriam.
@@ -111,6 +118,21 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
   // Pinça no trackpad: o WebKit (app do Mac) manda eventos "gesture*" em vez de roda+ctrl, que o React Flow não
   // entende; aqui a pinça vira zoom no mapa (e não da página inteira).
   const caixa = useRef<HTMLDivElement>(null);
+  // Delete/Backspace apaga a lâmina escolhida quando o mouse está sobre o fluxo (e não se está digitando).
+  const sobre = useRef(false);
+  const apagarRef = useRef<() => void>(() => undefined);
+  apagarRef.current = () => { const l = laminas.find((x) => x.chave === selecionada); if (l && onExcluir && podeApagar(l)) onExcluir(l); };
+  useEffect(() => {
+    const tecla = (ev: KeyboardEvent) => {
+      if (!sobre.current || (ev.key !== "Delete" && ev.key !== "Backspace")) return;
+      const alvo = ev.target instanceof HTMLElement ? ev.target : null;
+      if (alvo && (alvo.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(alvo.tagName))) return;
+      ev.preventDefault();
+      apagarRef.current();
+    };
+    document.addEventListener("keydown", tecla);
+    return () => document.removeEventListener("keydown", tecla);
+  }, []);
   useEffect(() => {
     const el = caixa.current;
     if (!el) return;
@@ -147,7 +169,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
   }, [laminas, estrutura]);
 
   return (
-    <div ref={caixa} className="dark relative h-full min-h-0 w-full overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_0%,#101c33,#080d17_70%)]">
+    <div ref={caixa} onMouseEnter={() => { sobre.current = true; }} onMouseLeave={() => { sobre.current = false; }} className="dark relative h-full min-h-0 w-full overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_0%,#101c33,#080d17_70%)]">
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={tiposDeBloco} onNodesChange={onNodesChange} onInit={(i) => { instancia.current = i; setTimeout(() => irPara(selecionada, false), 50); }} minZoom={0.2} maxZoom={1.6}
         panOnScroll zoomOnScroll={false} zoomOnPinch nodesConnectable={false} proOptions={{ hideAttribution: true }}
         onNodeClick={(_, n) => { const l = (n.data as Dados).lamina; if (l) onEscolher(l.chave); }}

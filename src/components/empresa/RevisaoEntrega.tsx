@@ -17,7 +17,7 @@ import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
-import { adicionarPergunta, AjustesDaTela, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
+import { adicionarPergunta, AjustesDaTela, desligarCaptura, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, excluirTelaExtra, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
 import { FluxoQuiz } from "@/components/quiz/FluxoQuiz";
 import { confirmar } from "@/components/DialogosGlobais";
 import { MetricasDoQuiz } from "@/components/quiz/QuizMetricas";
@@ -25,7 +25,7 @@ import { faltasDoQuiz } from "@/lib/quiz/faltas";
 import { AndamentoEntrega } from "./AndamentoEntrega";
 import type { Andamento } from "./ConversaEntrega";
 import { abrirLinkExterno } from "@/lib/abrirLink";
-import { laminasDoQuiz, linkDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type StatusQuiz } from "@/lib/quiz/quiz";
+import { laminasDoQuiz, linkDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type Lamina, type StatusQuiz } from "@/lib/quiz/quiz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const db = supabase as unknown as SupabaseClient;   // quizzes ainda não está nos tipos gerados
@@ -200,6 +200,22 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     return supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
   };
   const escolherTela = (chave: string) => setTelaSel(chave);
+  // Apagar uma lâmina pelo fluxo (lixeira no bloco ou Delete) ou pelo botão da prévia; pede confirmação e dá para voltar pelo aviso.
+  const excluirLamina = (l: Lamina) => {
+    const est = quiz?.estrutura;
+    if (!est) return;
+    const i = laminas.findIndex((x) => x.chave === l.chave);
+    const proxima = laminas[i + 1]?.chave ?? laminas[i - 1]?.chave ?? null;
+    const nome = l.tipo === "captura" ? "o pedido de contato (nome e WhatsApp)" : `"${l.rotulo}"`;
+    void confirmar(`Excluir ${nome}?`, { botao: "Excluir", destrutivo: true }).then((ok) => {
+      if (!ok) return;
+      const novo = l.tipo === "pergunta" ? excluirPergunta(est, l.indice!) : l.tipo === "tela" ? excluirTelaExtra(est, l.indice!) : l.tipo === "captura" ? desligarCaptura(est) : est;
+      if (novo === est) return;
+      void salvarQuiz(novo);
+      setTelaSel(proxima);
+      toast("Lâmina excluída", { action: { label: "Desfazer", onClick: () => void salvarQuiz(est) }, duration: 8000 });
+    });
+  };
   const pedirAoAgente = (texto: string) => {
     if (!info?.responsavelId) { toast.error("Esta entrega não tem chat com o agente"); return; }
     setPedidoTela({ id: Date.now(), texto });
@@ -295,7 +311,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <div className="min-h-0 flex-1">
                       {mapaQuiz === "fluxo" ? (
                         <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={escolherTela}
-                          onAdicionar={() => { const n = adicionarPergunta(quiz.estrutura!, tela); void salvarQuiz(n.estrutura); if (n.chave) escolherTela(n.chave); }} />
+                          onAdicionar={() => { const n = adicionarPergunta(quiz.estrutura!, tela); void salvarQuiz(n.estrutura); if (n.chave) escolherTela(n.chave); }} onExcluir={excluirLamina} />
                       ) : (
                         <div className="mx-auto flex h-full max-w-xl flex-col"><EstruturaDoQuiz laminas={laminas} estrutura={quiz.estrutura} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={escolherTela} /></div>
                       )}
@@ -305,9 +321,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                       onAnterior={() => setTelaSel(laminas[iTela - 1]?.chave ?? tela!.chave)} onProxima={() => setTelaSel(laminas[iTela + 1]?.chave ?? tela!.chave)}
                       onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
                       onDuplicar={tela!.tipo === "pergunta" ? () => { const n = duplicarPergunta(quiz!.estrutura!, tela!.indice!); void salvarQuiz(n.estrutura); if (n.chave) setTelaSel(n.chave); } : undefined}
-                      onExcluir={tela!.tipo === "pergunta" && quiz!.estrutura!.perguntas.length > 1 ? () => {
-                        void confirmar(`Excluir "${tela!.rotulo}"?`, { botao: "Excluir", destrutivo: true }).then((ok) => { if (ok) { void salvarQuiz(excluirPergunta(quiz!.estrutura!, tela!.indice!)); setTelaSel(laminas[iTela - 1]?.chave ?? null); } });
-                      } : undefined} />
+                      onExcluir={(tela!.tipo === "pergunta" && quiz!.estrutura!.perguntas.length > 1) || tela!.tipo === "tela" ? () => excluirLamina(tela!) : undefined} />
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "geral" ? (
                   <FileiraQuiz quizId={quiz.id} titulo={quiz.titulo} estrutura={quiz.estrutura} editarTudo={false}
