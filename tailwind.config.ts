@@ -102,6 +102,14 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        // Abertura do quiz: foguete chega com o mascote, ele pula, o foguete vai embora e ele desce de paraquedas.
+        "foguete-entra": { from: { transform: "translateY(220px)", opacity: "0" }, to: { transform: "translateY(0)", opacity: "1" } },
+        "foguete-flutua": { "0%, 100%": { transform: "translateY(0) rotate(-1deg)" }, "50%": { transform: "translateY(-8px) rotate(1deg)" } },
+        "foguete-voa": { from: { transform: "translateY(0)", opacity: "1" }, "80%": { opacity: "1" }, to: { transform: "translateY(-720px)", opacity: "0" } },
+        "mascote-pula": { "0%": { transform: "translateY(0) scale(1)", opacity: "1" }, "60%": { transform: "translateY(-70px) scale(1.04)", opacity: "1" }, "100%": { transform: "translateY(-40px) scale(1)", opacity: "0" } },
+        "paraquedas-desce": { from: { transform: "translateY(-250px)", opacity: "0" }, "12%": { opacity: "1" }, to: { transform: "translateY(-30px)", opacity: "1" } },
+        "paraquedas-balanca": { "0%, 100%": { transform: "rotate(-4deg)" }, "50%": { transform: "rotate(4deg)" } },
+        "paraquedas-some": { from: { transform: "translateY(-30px) scaleY(1)", opacity: "1" }, to: { transform: "translateY(30px) scaleY(0.7)", opacity: "0" } },
         // Mascote do quiz (estilo Duolingo): entra quicando, depois respira e balança sem parar.
         "mascote-entra": {
           "0%": { transform: "translateY(40px) scale(0.6)", opacity: "0" },
@@ -110,8 +118,8 @@ export default {
           "100%": { transform: "translateY(0) scale(1)", opacity: "1" },
         },
         "mascote-flutua": {
-          "0%, 100%": { transform: "translateY(0) rotate(-2deg) scale(1, 1)" },
-          "50%": { transform: "translateY(-10px) rotate(2deg) scale(0.99, 1.02)" },
+          "0%, 100%": { transform: "translateY(0) rotate(-1.2deg) scale(1, 1)" },
+          "50%": { transform: "translateY(-7px) rotate(1.2deg) scale(0.995, 1.015)" },
         },
         "mascote-sombra": {
           "0%, 100%": { transform: "scaleX(1)", opacity: "0.25" },
@@ -175,9 +183,16 @@ export default {
         },
       },
       animation: {
+        "foguete-entra": "foguete-entra 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both",
+        "foguete-flutua": "foguete-flutua 0.7s ease-in-out infinite",
+        "foguete-voa": "foguete-voa 1s cubic-bezier(0.5, 0, 0.9, 0.4) forwards",
+        "mascote-pula": "mascote-pula 0.8s ease-out forwards",
+        "paraquedas-desce": "paraquedas-desce 2.4s cubic-bezier(0.25, 0.6, 0.35, 1) both",
+        "paraquedas-balanca": "paraquedas-balanca 1.6s ease-in-out infinite",
+        "paraquedas-some": "paraquedas-some 0.35s ease-in forwards",
         "mascote-entra": "mascote-entra 0.8s cubic-bezier(0.34, 1.4, 0.64, 1) both",
-        "mascote-flutua": "mascote-flutua 3.2s ease-in-out 0.8s infinite",
-        "mascote-sombra": "mascote-sombra 3.2s ease-in-out 0.8s infinite",
+        "mascote-flutua": "mascote-flutua 4.5s ease-in-out 0.8s 1",
+        "mascote-sombra": "mascote-sombra 4.5s ease-in-out 0.8s 1",
         "balao-entra": "balao-entra 0.45s ease-out 0.7s both",
         shake: "shake 0.5s ease-in-out 3",
         "accordion-down": "accordion-down 0.2s ease-out",

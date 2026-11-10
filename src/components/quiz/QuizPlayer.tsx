@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,49 +91,76 @@ function Img({ caminho, url, nota, className, redonda, inteira }: { caminho: str
 
 // Mascote animado (estilo Duolingo): entra pulando, acena devagar, fala no balão, pisca e fica respirando.
 // `quadros` (19) = rosto [0 neutro, 1 meio piscado, 2 piscado, 3 boca leve, 4 boca aberta, 5 "o"],
-// aceno [6 braço baixo … 11 braço descendo], [12 pulo] e gestos do outro braço enquanto fala
-// [13 baixo, 14 sobe, 15 abre a palma, 16 abre mais alto, 17 mão na cintura, 18 dedo da ideia].
+// aceno [6 braço baixo … 11 braço descendo], [12 pulo] e gestos do outro braço [13…18, sem uso: não ficou bom].
 // Os quadros ficam empilhados e só muda a opacidade (transição de 110 ms), então a troca é suave.
-// Sem quadros: uma imagem só, flutuando. No editor fica estático (a imagem tem que ser clicável);
-// quem pede menos movimento vê só o quadro parado.
-const Q = { PARADO: 0, PISCA_MEIO: 1, PISCA: 2, BOCA_LEVE: 3, BOCA_ABERTA: 4, BOCA_O: 5, ACENO: 6, PULO: 12, GESTO: 13 };
+// Sem quadros: uma imagem só, flutuando. Anima em qualquer vista (inclusive no editor); lá, um botão sobre o
+// mascote troca a imagem. Quem pede menos movimento vê só o quadro parado.
+const Q = { PARADO: 0, PISCA_MEIO: 1, PISCA: 2, BOCA_LEVE: 3, BOCA_ABERTA: 4, BOCA_O: 5, ACENO: 6, PULO: 12 };
 const N_QUADROS = 19;
-// [ms, quadro]: aceno lento → fala gesticulando com o outro braço → piscadas; o ciclo todo dura 8,5 s e se repete
+// [ms, quadro]: aceno lento → fala (só a boca) → parado. Toca UMA vez; depois ele só pisca (veja `piscar`).
 const ROTEIRO: [number, number][] = [
   [0, Q.ACENO], [140, Q.ACENO + 1], [280, Q.ACENO + 2], [420, Q.ACENO + 3], [600, Q.ACENO + 4], [780, Q.ACENO + 3],
-  [960, Q.ACENO + 4], [1140, Q.ACENO + 3], [1320, Q.ACENO + 4], [1500, Q.ACENO + 5], [1650, Q.ACENO + 2], [1800, Q.ACENO + 1],
-  [1950, Q.GESTO], [2100, Q.GESTO + 1], [2250, Q.GESTO + 2], [2500, Q.GESTO + 3], [2750, Q.GESTO + 2], [3000, Q.GESTO + 3],
-  [3250, Q.GESTO + 2], [3500, Q.GESTO + 4], [4200, Q.GESTO + 5], [4900, Q.GESTO + 4], [5300, Q.GESTO + 1], [5450, Q.GESTO],
-  [5600, Q.PARADO], [6000, Q.PISCA_MEIO], [6090, Q.PISCA], [6200, Q.PISCA_MEIO], [6290, Q.PARADO],
-  [7400, Q.PISCA_MEIO], [7490, Q.PISCA], [7600, Q.PISCA_MEIO], [7690, Q.PARADO],
+  [960, Q.ACENO + 4], [1140, Q.ACENO + 3], [1320, Q.ACENO + 4], [1500, Q.ACENO + 5], [1650, Q.ACENO + 2], [1800, Q.ACENO + 1], [1950, Q.PARADO],
+  [2300, Q.BOCA_LEVE], [2450, Q.BOCA_ABERTA], [2600, Q.BOCA_LEVE], [2750, Q.BOCA_O], [2900, Q.BOCA_ABERTA], [3050, Q.BOCA_LEVE],
+  [3200, Q.BOCA_ABERTA], [3350, Q.BOCA_LEVE], [3500, Q.PARADO],
 ];
-const CICLO_MS = 8500;
-function Mascote({ caminho, url, nota, fala, quadros }: { caminho: string; url?: string; nota?: string; fala?: string; quadros?: string[] }) {
-  const { editar } = useContext(QuizCtx);
+const FIM_ROTEIRO_MS = 4200;
+const FALA_MS = 3200;   // tempo de cada fala antes de emendar a próxima
+function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, onAberto }: { caminho: string; url?: string; nota?: string; fala?: string; falas?: string[]; onFala?: (i: number) => void; quadros?: string[]; abertura?: TelaQuiz["abertura"]; onAberto?: () => void }) {
+  const { editar, mudarImagem } = useContext(QuizCtx);
+  const trocar = useRef<HTMLInputElement>(null);
+  const reduzido = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const comAbertura = !!abertura?.paraquedas && !!quadros && quadros.length >= N_QUADROS && !reduzido;
+  // fases da abertura: 2 desce de paraquedas · 3 pouso · 4 acabou (fala + animação normal)
+  const [fase, setFase] = useState(comAbertura ? 2 : 4);
+  useEffect(() => {
+    if (!comAbertura) return;
+    const t = [setTimeout(() => setFase(3), 2500), setTimeout(() => { setFase(4); onAberto?.(); }, 2850)];
+    return () => t.forEach(clearTimeout);
+  }, [comAbertura]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const aberto = fase >= 4;
+  const lista = falas?.length ? falas : fala ? [fala] : [];
+  const [iFala, setIFala] = useState(0);
+  useEffect(() => {
+    if (!aberto) return;
+    onFala?.(iFala);
+    if (iFala >= lista.length - 1) return;
+    const t = setTimeout(() => setIFala(iFala + 1), iFala === 0 ? FALA_MS + 700 : FALA_MS);   // a 1ª espera o balão entrar
+    return () => clearTimeout(t);
+  }, [iFala, lista.length, aberto]);   // eslint-disable-line react-hooks/exhaustive-deps
   const temQuadros = !!quadros && quadros.length >= N_QUADROS;
   // atual + anterior: o anterior fica opaco por baixo enquanto o novo aparece por cima. Se os dois fossem
   // meio transparentes ao mesmo tempo, o fundo branco apareceria entre eles (o "flash" na troca).
-  const [par, setPar] = useState({ atual: temQuadros ? Q.PULO : Q.PARADO, antes: -1 });
+  const [par, setPar] = useState({ atual: temQuadros && !comAbertura ? Q.PULO : Q.PARADO, antes: -1 });
   const setQ = (k: number) => setPar((p) => (p.atual === k ? p : { atual: k, antes: p.atual }));
   useEffect(() => {
-    if (!temQuadros || editar || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setQ(Q.PARADO); return; }
+    if (!temQuadros || reduzido) { setQ(Q.PARADO); return; }
+    if (!aberto) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const toca = (t0: number) => ROTEIRO.forEach(([ms, k]) => timers.push(setTimeout(() => setQ(k), t0 + ms)));
-    toca(1000);                                              // entrou pulando (~1 s) e então começa o aceno
-    const repete = setInterval(() => toca(0), CICLO_MS);
-    return () => { timers.forEach(clearTimeout); clearInterval(repete); };
-  }, [temQuadros, editar]);
-  if (editar || !url) return <Img caminho={caminho} url={url} nota={nota} inteira className="mx-auto h-48 w-48" />;
+    let vivo = true;
+    const em = (ms: number, fn: () => void) => { timers.push(setTimeout(() => { if (vivo) fn(); }, ms)); };
+    ROTEIRO.forEach(([ms, k]) => em(600 + ms, () => setQ(k)));      // 0,6 s: espera o mascote terminar de entrar
+    // depois do roteiro ele não repete nada: só pisca, de tempos em tempos
+    const piscar = () => {
+      setQ(Q.PISCA_MEIO); em(90, () => setQ(Q.PISCA)); em(200, () => setQ(Q.PISCA_MEIO)); em(290, () => setQ(Q.PARADO));
+      em(2800 + Math.random() * 2600, piscar);
+    };
+    em(600 + FIM_ROTEIRO_MS, piscar);
+    return () => { vivo = false; timers.forEach(clearTimeout); };
+  }, [temQuadros, aberto]);
+  if (!url) return <Img caminho={caminho} url={url} nota={nota} inteira className="mx-auto h-48 w-48" />;
   return (
-    <div className="relative mx-auto flex w-64 flex-col items-center">
-      {fala && (
-        <div className="relative mb-3 rounded-2xl border-2 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm motion-safe:animate-balao-entra">
-          {fala}
+    <div className="group relative mx-auto flex w-64 flex-col items-center">
+      {!!lista.length && (
+        <div className="mb-3 flex min-h-[84px] items-end">   {/* altura fixa: o balão maior da 2ª fala não empurra o mascote */}
+        <div key={iFala} className={cn("relative rounded-2xl border-2 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm", !aberto && "invisible", iFala === 0 ? "motion-safe:animate-balao-entra" : "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-90 motion-safe:duration-300")}>
+          {lista[iFala]}
           <span className="absolute -bottom-[9px] left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b-2 border-r-2 bg-white" />
         </div>
+        </div>
       )}
-      <div className="motion-safe:animate-mascote-entra">
-        <div className="relative h-64 w-64 motion-safe:animate-mascote-flutua">
+      <div key={fase < 4 ? "antes" : "depois"} className={cn("motion-safe:animate-mascote-entra", fase < 4 && "invisible")}>
+        <div data-voo className="relative h-64 w-64 motion-safe:animate-mascote-flutua">
           {temQuadros ? quadros!.map((u, k) => (
             <img key={k} src={u} alt={k === 0 ? (nota ?? "") : ""} draggable={false}
               decoding="sync"
@@ -142,6 +169,70 @@ function Mascote({ caminho, url, nota, fala, quadros }: { caminho: string; url?:
         </div>
       </div>
       <div className="-mt-2 h-3 w-32 rounded-[50%] bg-black motion-safe:animate-mascote-sombra" style={{ opacity: 0.2 }} />
+      {comAbertura && fase < 4 && (
+        <div className="pointer-events-none absolute bottom-0 left-1/2 z-30 h-[380px] w-64 -translate-x-1/2">
+          {fase >= 2 && (
+            <div className={cn("absolute inset-0", fase === 2 ? "animate-paraquedas-desce" : "animate-paraquedas-some")}>
+              <div className="h-full w-full origin-top animate-paraquedas-balanca"><img src={abertura!.paraquedas} alt="" className="h-full w-full object-contain" draggable={false} /></div>
+            </div>
+          )}
+        </div>
+      )}
+      {editar && (
+        <>
+          <input ref={trocar} type="file" accept="image/*" className="hidden"
+            onChange={(ev) => { const f = ev.target.files?.[0]; if (f) mudarImagem(caminho, f); ev.target.value = ""; }} />
+          <button type="button" onClick={(ev) => { ev.stopPropagation(); trocar.current?.click(); }}
+            className="absolute right-0 top-0 z-20 rounded-md bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition-opacity hover:opacity-100 focus:opacity-100 group-hover:opacity-100">
+            Trocar imagem
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Voo do mascote (estilo Duolingo): ao avançar da tela do mascote grande, ele "voa" até o canto superior esquerdo
+// da pergunta e o título passa a ser falado no balão ao lado dele. A tela grande guarda onde o mascote estava
+// (retângulo na tela); o mascote pequeno, ao nascer, parte dali e anima até o seu lugar (técnica FLIP).
+let ORIGEM_MASCOTE: { rect: DOMRect; em: number } | null = null;
+
+function MascoteCanto({ quadros, children }: { quadros: string[]; children: ReactNode }) {
+  const caixa = useRef<HTMLDivElement>(null);
+  const [par, setPar] = useState({ atual: Q.PARADO, antes: -1 });
+  const setQ = (k: number) => setPar((p) => (p.atual === k ? p : { atual: k, antes: p.atual }));
+  useLayoutEffect(() => {
+    const el = caixa.current; const o = ORIGEM_MASCOTE; ORIGEM_MASCOTE = null;
+    if (!el || !o || performance.now() - o.em > 1500 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = el.getBoundingClientRect();
+    el.style.transformOrigin = "0 0"; el.style.transition = "none";
+    el.style.transform = `translate(${o.rect.left - r.left}px, ${o.rect.top - r.top}px) scale(${o.rect.width / r.width})`;
+    void el.offsetWidth;   // fixa o ponto de partida antes de animar
+    el.style.transition = "transform 650ms cubic-bezier(0.4, 0, 0.2, 1)";
+    el.style.transform = "none";
+  }, []);
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const timers: ReturnType<typeof setTimeout>[] = []; let vivo = true;
+    const em = (ms: number, fn: () => void) => { timers.push(setTimeout(() => { if (vivo) fn(); }, ms)); };
+    [Q.BOCA_LEVE, Q.BOCA_ABERTA, Q.BOCA_LEVE, Q.BOCA_O, Q.BOCA_ABERTA, Q.BOCA_LEVE, Q.BOCA_ABERTA, Q.BOCA_LEVE, Q.PARADO]
+      .forEach((k, i) => em(800 + i * 150, () => setQ(k)));          // fala o título logo que o balão aparece
+    const piscar = () => { setQ(Q.PISCA_MEIO); em(90, () => setQ(Q.PISCA)); em(200, () => setQ(Q.PISCA_MEIO)); em(290, () => setQ(Q.PARADO)); em(2800 + Math.random() * 2600, piscar); };
+    em(3000, piscar);
+    return () => { vivo = false; timers.forEach(clearTimeout); };
+  }, []);
+  return (
+    <div className="flex items-center gap-1">
+      <div ref={caixa} className="relative z-10 h-24 w-24 shrink-0">
+        {quadros.slice(0, 6).map((u, k) => (
+          <img key={k} src={u} alt="" draggable={false} decoding="sync"
+            className={cn("absolute inset-0 h-full w-full object-contain", k === par.atual ? "z-10 opacity-100 transition-opacity duration-100" : k === par.antes ? "opacity-100" : "opacity-0")} />
+        ))}
+      </div>
+      <div className="relative min-w-0 flex-1 rounded-2xl border-2 bg-white px-4 py-3 text-gray-800 shadow-sm motion-safe:animate-balao-entra" style={{ transformOrigin: "left center" }}>
+        <span className="absolute -left-[9px] top-1/2 h-4 w-4 -translate-y-1/2 rotate-45 border-b-2 border-l-2 bg-white" />
+        {children}
+      </div>
     </div>
   );
 }
@@ -194,7 +285,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const pedir = e.captura?.ativa === false ? [] : (e.captura?.pedir ?? []);
   const passos = useMemo(() => montarPassos(e, pedir.length > 0), [e, pedir.length]);
   const travado = passoFixo != null;
-  const [pos, setPos] = useState(passoFixo ?? 0);
+  // intro.pular: o quiz já abre na primeira tela seguinte (pedido do Davi, 10/11: abre direto na cena do foguete).
+  // Só no quiz rodando; nas vistas fixas e no editor a abertura continua existindo como lâmina.
+  const [pos, setPos] = useState(passoFixo ?? (estrutura.intro?.pular && !editar ? 1 : 0));
   useEffect(() => { if (passoFixo != null) setPos(passoFixo); }, [passoFixo]);
   const [escolhas, setEscolhas] = useState<Record<string, number>>({});
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
@@ -321,11 +414,14 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             const base = `perguntas.${passo.indice}`;
             const fotos = q.estilo === "fotos";   // rostos em grade de 3, nome embaixo (como o 12min)
             const cartoes = q.estilo === "cartoes" || fotos;
-            const livro = q.estilo === "livro";   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
+            const livro = q.estilo === "livro";
+            const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
             return (
               <div className="space-y-4">
                 <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Pergunta {nPergunta} de {perguntas.length}</p>
-                <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />
+                {quadrosM && !livro
+                  ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
+                  : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
                 <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />
                 {(q.imagem || q.imagem_nota) && (livro
                   ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[42dvh] max-h-[420px] shadow-lg" />
@@ -467,9 +563,18 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const { cor } = useContext(QuizCtx);
   const especialista = t.tipo === "especialista";
   const maior = Math.max(1, ...(t.grafico?.barras ?? []).map((b) => b.valor));
+  const [iFala, setIFala] = useState(0);
+  const raiz = useRef<HTMLDivElement>(null);
+  const seguir = () => {
+    const v = t.animada ? raiz.current?.querySelector("[data-voo]") : null;
+    if (v) ORIGEM_MASCOTE = { rect: v.getBoundingClientRect(), em: performance.now() };
+    onSeguir();
+  };
+  const [aberto, setAberto] = useState(!t.abertura);   // com abertura, o botão só aparece quando a cena termina
+  const ultimaFala = !t.falas?.length || iFala >= t.falas.length - 1;
   return (
-    <div className={cn("space-y-5 py-2", especialista && "text-center")}>
-      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={t.fala} quadros={t.quadros} />
+    <div ref={raiz} className={cn("space-y-5 py-2", especialista && "text-center")}>
+      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={t.fala} falas={t.falas} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} />
       : (t.imagem || t.imagem_nota) && (
         <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
           className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] max-h-[30dvh] w-full"} />
@@ -505,7 +610,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
       <AudioDaTela caminho={`${base}.audio`} url={t.audio} nota={t.audio_nota} />
       <Depoimentos caminho={`${base}.depoimentos`} lista={t.depoimentos} nota={t.depoimentos_nota} />
       <Txt caminho={`${base}.fonte`} valor={t.fonte} as="p" className={cn("block text-left text-[11px]", suave)} />
-      <Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>
+      <div className={cn(!aberto && "invisible")}><Botao onClick={seguir}>{ultimaFala ? <Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /> : <span>{t.botao_inicial || "Continuar"}</span>}</Botao></div>
     </div>
   );
 }

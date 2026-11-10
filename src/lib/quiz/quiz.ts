@@ -24,7 +24,9 @@ export interface TelaQuiz {
   tipo: "respiro" | "especialista" | "carregando" | "resultado";
   titulo?: string; texto?: string; botao?: string;
   imagem?: string; imagem_nota?: string;
-  animada?: boolean; fala?: string; quadros?: string[];   // quadros: parado, piscando, aceno A, aceno B, falando, pulo   // mascote animado (estilo Duolingo) com balão de fala
+  animada?: boolean; fala?: string; quadros?: string[];
+  abertura?: { paraquedas: string };   // cena de entrada: o mascote desce de paraquedas e pousa
+  falas?: string[]; botao_inicial?: string;   // várias falas em sequência no mesmo balão (sem clicar); o botão começa como botao_inicial e vira `botao` na última   // quadros: parado, piscando, aceno A, aceno B, falando, pulo   // mascote animado (estilo Duolingo) com balão de fala
   citacao?: { texto: string; autor?: string };
   grafico?: { titulo?: string; barras: BarraFixa[] };
   depoimentos?: Depoimento[]; depoimentos_nota?: string;
@@ -51,7 +53,7 @@ export interface CapturaQuiz {
   pedir?: CampoCaptura[]; rotulos?: Partial<Record<CampoCaptura, string>>; depois_de?: string;
 }
 export interface EstruturaQuiz {
-  intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[] };
+  intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };
   perguntas: PerguntaQuiz[];
   perfis: PerfilQuiz[];
   telas?: TelaQuiz[];
@@ -128,6 +130,7 @@ export interface Lamina { chave: string; passo: number; tipo: Passo["tipo"]; ind
 export function laminasDoQuiz(e: EstruturaQuiz): Lamina[] {
   const pedir = e.captura?.ativa === false ? [] : (e.captura?.pedir ?? []);
   return montarPassos(e, pedir.length > 0).flatMap((p, i): Lamina[] => {
+    if (p.tipo === "intro" && e.intro?.pular) return [];   // abertura pulada: não aparece como tela no editor/fluxo
     const indice = "indice" in p ? p.indice : undefined;
     if (p.tipo === "fim" && e.perfis.length > 1) {
       return e.perfis.map((pf) => ({ chave: `${i}:${pf.id}`, passo: i, tipo: p.tipo, perfil: pf.id, rotulo: `Resultado: ${pf.nome}` }));
