@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Loader2, Power, Send, X } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { toast } from "sonner";
@@ -54,6 +55,11 @@ function Orbe({ vivo, aberto, onAbrir, onDesligou }: { vivo: Vivo; aberto: boole
   const ultimoVisto = useRef<string | null>(null);
   const fim = useRef<HTMLDivElement>(null);
 
+  // Com um diálogo aberto (revisão do quiz, documento…), o painel entra DENTRO dele: assim o foco do teclado funciona
+  // (o diálogo prende o foco) e interagir com o painel não conta como clicar fora dele.
+  const dialogo = aberto ? (Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"][data-state="open"]')).pop() ?? null) : null;
+  const dentroDe = (el: React.ReactElement) => (dialogo ? createPortal(el, dialogo) : el);
+
   const trabalhando = msgs.some((m) => m.papel === "davi" && (m.status === "enviada" || m.status === "lida")) ;
 
   const carregar = useCallback(async () => {
@@ -91,9 +97,11 @@ function Orbe({ vivo, aberto, onAbrir, onDesligou }: { vivo: Vivo; aberto: boole
   };
 
   return (
-    <div className="pointer-events-none flex flex-col items-end gap-2">
-      {aberto && (
-        <div className="pointer-events-auto flex h-[420px] w-[340px] flex-col overflow-hidden rounded-2xl border border-emerald-400/30 bg-[#0b1220] text-white shadow-2xl">
+    // O clique aqui NÃO pode contar como "clicar fora" de um diálogo aberto (a revisão do quiz, um documento…): o
+    // Radix fecharia a tela em que você está. Por isso o pointerdown não sobe até o documento (10/11, Davi).
+    <div className="pointer-events-none flex flex-col items-end gap-2" onPointerDown={(e) => e.stopPropagation()}>
+      {aberto && dentroDe(
+        <div className={cn("pointer-events-auto flex h-[420px] w-[340px] flex-col overflow-hidden rounded-2xl border border-emerald-400/30 bg-[#0b1220] text-white shadow-2xl", dialogo && "absolute bottom-4 right-4 z-[70] max-h-[85%]")} onPointerDown={(e) => e.stopPropagation()}>
           <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
             <span className="h-7 w-7 overflow-hidden rounded-full"><CabecaBoneco nome={vivo.nome} ehIa className="h-full w-full" /></span>
             <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{vivo.nome}</p><p className="flex items-center gap-1 text-[11px] text-emerald-300"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />ao vivo no seu Mac</p></div>
