@@ -60,7 +60,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
-  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; estrutura: EstruturaQuiz | null } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null } | null>(null);
   const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
   // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
   // 02/11 (Davi: "mais fácil de usar, ver em qual etapa é cada coisa"): Editar (estrutura, tela grande e ajustes) é o
@@ -118,7 +118,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     void (async () => {
       const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
-        db.from("quizzes").select("id, titulo, slug, status, estrutura").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+        db.from("quizzes").select("id, titulo, slug, status, estrutura, estrutura_publicada").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
           .then((r) => {
             if (!vivo) return;
             const novo = (r.data as typeof quiz) ?? null;
@@ -164,6 +164,20 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     setSalvando(true);
     try { depois(await aprovarEntrega(tarefa.id, clienteId)); }
     catch { toast.error("Não consegui aprovar"); } finally { setSalvando(false); }
+  };
+  // Publicar (10/11, Davi): quiz em teste → publica (aprova); quiz no ar → leva as alterações ao mesmo link.
+  const alteracoesNaoPublicadas = !!quiz && quiz.status === "publicado" && JSON.stringify(quiz.estrutura) !== JSON.stringify(quiz.estrutura_publicada ?? quiz.estrutura);
+  const publicar = async () => {
+    if (!quiz) return;
+    if (quiz.status === "revisar") { await aprovar(); return; }
+    setSalvando(true);
+    try {
+      const { error } = await db.from("quizzes").update({ estrutura_publicada: quiz.estrutura }).eq("id", quiz.id);
+      if (error) throw error;
+      setQuiz({ ...quiz, estrutura_publicada: quiz.estrutura });
+      toast.success("Publicado: as alterações já estão no link");
+      onMudou?.();
+    } catch { toast.error("Não consegui publicar"); } finally { setSalvando(false); }
   };
   const passarParaRoy = async () => {
     setSalvando(true);
@@ -241,6 +255,15 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <button type="button" onClick={() => void abrirLinkExterno(linkDoQuiz(quiz.slug))} title="Abrir no navegador" className="rounded-full border p-1 hover:bg-muted"><ExternalLink className="h-3.5 w-3.5" /></button>
                   </span>
                 )}
+                {(quiz.status === "revisar" || (quiz.status === "publicado")) && (
+                  <Button size="sm" className="h-7 gap-1.5 rounded-full px-3 text-xs" disabled={salvando || escrevendo || (quiz.status === "publicado" && !alteracoesNaoPublicadas)}
+                    title={quiz.status === "publicado" ? (alteracoesNaoPublicadas ? "Levar as alterações para o link do quiz" : "O link já está igual a esta versão") : "Publicar o quiz: o link passa a valer e a contar respostas"}
+                    onClick={() => void publicar()}>
+                    {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    {quiz.status === "revisar" ? "Publicar" : alteracoesNaoPublicadas ? "Publicar alterações" : "Publicado"}
+                  </Button>
+                )}
+                {alteracoesNaoPublicadas && <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" />alterações ainda não publicadas</span>}
                 <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                   {telasProntas} de {laminas.length} telas prontas
                   <span className="h-1.5 w-28 overflow-hidden rounded-full bg-muted"><span className="block h-full rounded-full bg-primary" style={{ width: `${laminas.length ? (telasProntas / laminas.length) * 100 : 0}%` }} /></span>
@@ -372,7 +395,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             <div className="flex flex-wrap items-center justify-end gap-2">
               <p className={cn("mr-auto text-xs text-muted-foreground", quiz?.estrutura && "hidden")}>
                 {escrevendo ? `${info?.responsavel ?? "Ele"} está trabalhando: o documento muda aqui na hora.`
-                  : noAr ? "Quiz publicado: o que você ou o Roy mudarem aqui vale direto no link."
+                  : noAr ? "Quiz publicado: o que você ou o Roy mudarem fica em rascunho até você clicar em Publicar (no topo)."
                   : quiz?.status === "esboco" ? "Aprovar o esboço: o Roy começa a criar o quiz no Infopro."
                   : quiz?.status === "revisar" ? "Teste o quiz. Aprovar publica e libera o link."
                   : "Converse com ele: elogio, ajuste ou refazer, ele entende pela conversa."}

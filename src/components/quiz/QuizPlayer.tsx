@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ElementType } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -53,7 +53,7 @@ function Txt({ caminho, valor, mostrar, as: Tag = "span", className }: {
 }
 
 // Imagem do quiz. Sem URL: no teste aparece o espaço reservado (com o que vai ali); no link público some.
-function Img({ caminho, url, nota, className, redonda }: { caminho: string; url?: string; nota?: string; className?: string; redonda?: boolean }) {
+function Img({ caminho, url, nota, className, redonda, inteira }: { caminho: string; url?: string; nota?: string; className?: string; redonda?: boolean; inteira?: boolean }) {
   const { editar: editando, mostrarFaltas, mudarImagem, podeEnviar } = useContext(QuizCtx);
   const editar = editando || (mostrarFaltas && podeEnviar);
   const input = useRef<HTMLInputElement>(null);
@@ -65,7 +65,7 @@ function Img({ caminho, url, nota, className, redonda }: { caminho: string; url?
   if (url) {
     return (
       <div className={cn("group relative overflow-hidden", redonda ? "rounded-full" : "rounded-xl", className)}>
-        <img src={url} alt={nota ?? ""} className="h-full w-full object-cover" />
+        <img src={url} alt={nota ?? ""} className={cn("h-full w-full", inteira ? "object-contain" : "object-cover")} />
         {editando && (
           <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
             <button type="button" onClick={escolher} className="rounded-md bg-white/90 px-2 py-1 text-xs text-black">Trocar</button>
@@ -262,14 +262,18 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           {passo.tipo === "pergunta" && (() => {
             const q = perguntas[passo.indice];
             const base = `perguntas.${passo.indice}`;
-            const cartoes = q.estilo === "cartoes";
+            const fotos = q.estilo === "fotos";   // rostos em grade de 3, nome embaixo (como o 12min)
+            const cartoes = q.estilo === "cartoes" || fotos;
+            const livro = q.estilo === "livro";   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
             return (
               <div className="space-y-4">
                 <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Pergunta {nPergunta} de {perguntas.length}</p>
                 <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />
                 <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />
-                {(q.imagem || q.imagem_nota) && <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />}
-                <div className={cn(cartoes ? "grid grid-cols-2 gap-2" : "space-y-2")}>
+                {(q.imagem || q.imagem_nota) && (livro
+                  ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[42dvh] max-h-[420px] shadow-lg" />
+                  : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
+                <div className={cn(fotos ? "grid grid-cols-3 gap-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
                     const marcada = escolhas[q.id] === k;
                     const Opcao = editar ? "div" : "button";
@@ -277,15 +281,16 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                       <Opcao key={k} type={editar ? undefined : "button"} onClick={() => escolher(q.id, k)}
                         className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md",
                           escuro ? "border-white/15 bg-white/5 hover:border-white/40" : "hover:border-foreground/30",
-                          cartoes && "flex-col justify-center text-center", marcada && "scale-[1.02] text-white")}
+                          (cartoes || livro) && "flex-col justify-center text-center", livro && "py-4 text-base font-semibold", marcada && "scale-[1.02] text-white")}
                         style={marcada ? { background: cor, borderColor: cor } : undefined}>
-                        {cartoes && (o.imagem !== undefined) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={o.imagem} className="aspect-square w-full" />}
-                        {editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji ? <span className="text-xl">{o.emoji}</span> : !cartoes && (
+                        {cartoes && (o.imagem !== undefined) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={o.imagem} redonda={fotos} className="aspect-square w-full" />}
+                        {livro ? (k === 0 ? <X className={cn("h-7 w-7", marcada ? "text-white" : "text-orange-500")} /> : <Check className={cn("h-7 w-7", marcada ? "text-white" : "text-green-600")} />)
+                          : editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji ? <span className="text-xl">{o.emoji}</span> : !cartoes && (
                           <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold", marcada ? "bg-white/25" : escuro ? "bg-white/10" : "bg-black/5")}>
                             {marcada ? <Check className="h-4 w-4" /> : LETRAS[k]}
                           </span>
                         )}
-                        <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className="flex-1" />
+                        <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className={livro ? "" : "flex-1"} />
                         {editar && (
                           // 03/11 (Davi: "editar direto no que estou vendo"): as ações da opção, só ao passar o mouse.
                           <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">

@@ -10,7 +10,7 @@ export type StatusQuiz = "esboco" | "criando" | "revisar" | "publicado" | "pausa
 export interface OpcaoQuiz { texto: string; perfil?: string | null; pontos?: number; imagem?: string; emoji?: string; resumo?: string }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
-  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes";
+  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos";
 }
 export interface PerfilQuiz {
   id: string; nome: string; descricao?: string; cta_texto?: string; cta_url?: string;

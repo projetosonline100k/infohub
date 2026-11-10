@@ -15,6 +15,7 @@ Pedido do Davi (15/10/2026): quiz dentro do Infopro, com o **Roy de cada projeto
 3. O Davi lê e conversa em "Ver e aprovar". **Aprovar o esboço** muda o quiz para `criando` e devolve a tarefa para a fila do Roy.
 4. **Etapa 2, criar.** O Roy monta a estrutura (JSON abaixo) a partir do esboço aprovado e da conversa, e salva com `scripts/quiz/quiz.py salvar`. O quiz vai para `revisar` e a tarefa para a aprovação.
 5. O Davi testa o quiz na tela e conversa (o Roy ajusta com `salvar` de novo). **Aprovar** muda o quiz para `publicado` e conclui a tarefa.
+5b. **Publicar (10/11/2026):** depois de publicado, o que se edita (pelo Davi na tela ou pelo Roy com `salvar`) é RASCUNHO: o link só muda quando o Davi clica em **Publicar** (botão no topo de "Ver e aprovar"/Editar), que copia `quizzes.estrutura` para `quizzes.estrutura_publicada`. Quiz em teste (`revisar`) mostra a edição direto no link de teste.
 6. Link público: `https://infopro-hub.vercel.app/quiz/<slug>`. As respostas vão para `quiz_respostas` e aparecem na aba Quiz.
 
 ## Estrutura (JSON salvo em `quizzes.estrutura`)
