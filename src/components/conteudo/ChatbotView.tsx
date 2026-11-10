@@ -64,7 +64,7 @@ export function ChatbotView({ clienteId }: { clienteId: string }) {
   };
 
   const atual = bots.find((b) => b.id === aberto);
-  if (atual) return <EditorChatbot key={atual.id} bot={atual} onVoltar={() => { setAberto(null); void carregar(); }} />;
+  if (atual) return <EditorChatbot key={atual.id} bot={atual} clienteId={clienteId} onVoltar={() => { setAberto(null); void carregar(); }} />;
 
   return (
     <div className="mx-auto max-w-4xl space-y-5 p-4 sm:p-6">
@@ -123,7 +123,7 @@ function NovoChatbot({ aberto, onFechar, onCriar }: { aberto: boolean; onFechar:
   );
 }
 
-function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => void }) {
+function EditorChatbot({ bot, clienteId, onVoltar }: { bot: ChatbotResumo; clienteId: string; onVoltar: () => void }) {
   const [nome, setNome] = useState(bot.nome);
   const [config, setConfig] = useState<ConfigChatbot>(bot.config);
   const [status, setStatus] = useState(bot.status);
@@ -233,7 +233,7 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
               ))}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-              {painel === "assistente" && <AssistenteChatbot config={config} onAplicar={setConfig} />}
+              {painel === "assistente" && <AssistenteChatbot chatbotId={bot.id} clienteId={clienteId} config={config} onAplicar={setConfig} />}
               {painel === "etapas" && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">O bot fala as mensagens e espera a resposta. Use {"{primeiro}"} para o primeiro nome, {"{chave}"} para outra resposta e **negrito**. A prévia mostra o que você está escrevendo.</p>

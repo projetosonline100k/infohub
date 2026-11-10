@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Send, Sparkles, Undo2 } from "lucide-react";
 import { toast } from "sonner";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,18 +9,24 @@ import { cn } from "@/lib/utils";
 import { sanitizarConfig, type ConfigChatbot } from "@/lib/chatbot/chatbot";
 
 // Chat do assistente (10/11/2026, Davi: "um chat onde eu jogo as mensagens e você já adapta para o chatbot").
-// Cola um roteiro, uma lista de perguntas ou um pedido ("troca o tom", "adiciona pergunta de idade"): a IA devolve
+// Cola um roteiro, uma lista de perguntas ou um pedido ("troca o tom", "adiciona pergunta de idade"): o Claude devolve
 // o chatbot inteiro ajustado, que entra na hora (fluxo, editor e prévia mudam) e dá para desfazer.
 interface Msg { id: number; papel: "user" | "assistant"; texto: string; antes?: ConfigChatbot; desfeito?: boolean }
 
-export function AssistenteChatbot({ config, onAplicar }: { config: ConfigChatbot; onAplicar: (c: ConfigChatbot) => void }) {
+const db = supabase as unknown as SupabaseClient;   // chatbot_pedidos ainda não está nos tipos gerados
+const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+export function AssistenteChatbot({ chatbotId, clienteId, config, onAplicar }: { chatbotId: string; clienteId: string; config: ConfigChatbot; onAplicar: (c: ConfigChatbot) => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const n = useRef(0);
+  const vivo = useRef(true);
+  useEffect(() => { vivo.current = true; return () => { vivo.current = false; }; }, []);
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs.length, enviando]);
 
+  // O pedido vai para o Claude do Davi (ouvinte do Atlas, plano dele, sem chave de API): grava aqui, espera a resposta.
   const enviar = async () => {
     const t = texto.trim();
     if (!t || enviando) return;
@@ -27,25 +34,32 @@ export function AssistenteChatbot({ config, onAplicar }: { config: ConfigChatbot
     setMsgs((m) => [...m, { id: ++n.current, papel: "user", texto: t }]);
     setEnviando(true);
     try {
-      const { data, error } = await supabase.functions.invoke("chatbot-adaptar", {
-        body: { mensagem: t, config, historico: msgs.map((m) => ({ papel: m.papel, texto: m.texto })) },
-      });
-      if (error) {
-        // Em erro da função, o corpo da resposta vem no contexto (ex.: "falta a chave da IA").
-        const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null) as { error?: string } | null;
-        throw new Error(corpo?.error || error.message);
+      const { data: criado, error } = await db.from("chatbot_pedidos").insert({
+        chatbot_id: chatbotId, cliente_id: clienteId, mensagem: t, config_atual: config,
+        historico: msgs.map((m) => ({ papel: m.papel, texto: m.texto.slice(0, 2000) })).slice(-6),
+      }).select("id").single();
+      if (error || !criado) throw new Error("Não consegui enviar o pedido.");
+      const id = (criado as { id: string }).id;
+      for (let i = 0; i < 100; i++) {   // até ~5 min
+        await espera(3000);
+        if (!vivo.current) return;
+        const { data } = await db.from("chatbot_pedidos").select("status, resposta, config, erro").eq("id", id).maybeSingle();
+        const r = data as { status: string; resposta: string | null; config: unknown; erro: string | null } | null;
+        if (r?.status === "respondido" && r.config) {
+          onAplicar(sanitizarConfig(r.config, config));
+          setMsgs((m) => [...m, { id: ++n.current, papel: "assistant", texto: r.resposta || "Pronto, já ajustei.", antes: config }]);
+          return;
+        }
+        if (r?.status === "erro") throw new Error(r.erro || "O Claude não conseguiu responder.");
       }
-      if (!data?.config) throw new Error("A IA não devolveu o chatbot.");
-      const nova = sanitizarConfig(data.config, config);
-      onAplicar(nova);
-      setMsgs((m) => [...m, { id: ++n.current, papel: "assistant", texto: String(data.resposta ?? "Pronto, já ajustei."), antes: config }]);
+      throw new Error("Demorou demais. Confira se o ouvinte do Atlas está ligado e tente de novo.");
     } catch (e) {
-      const motivo = e instanceof Error ? e.message : "";
-      toast.error(motivo && !/non-2xx|Failed to send/i.test(motivo) ? motivo : "Não consegui adaptar agora. Tente de novo.");
+      if (!vivo.current) return;
+      toast.error(e instanceof Error ? e.message : "Não consegui adaptar agora.");
       setTexto(t);
       setMsgs((m) => m.slice(0, -1));
     } finally {
-      setEnviando(false);
+      if (vivo.current) setEnviando(false);
     }
   };
   const desfazer = (m: Msg) => {
@@ -81,7 +95,7 @@ export function AssistenteChatbot({ config, onAplicar }: { config: ConfigChatbot
             </div>
           </div>
         ))}
-        {enviando && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />Adaptando o chatbot…</p>}
+        {enviando && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />O Claude está adaptando o chatbot… (pode levar até 1 minuto)</p>}
         <div ref={fim} />
       </div>
       <form className="flex items-end gap-1.5" onSubmit={(e) => { e.preventDefault(); void enviar(); }}>

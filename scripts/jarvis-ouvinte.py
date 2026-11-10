@@ -50,6 +50,7 @@ sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
 import briefing  # noqa: E402
 import passos  # noqa: E402  (linha do tempo da tarefa: o que o funcionário já fez, 19/10)
 import execucao  # noqa: E402
+import chatbot_assistente  # noqa: E402  (assistente do Chatbot: pedido do app → Claude do Davi, 10/11)
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
 PASTA = Path.home() / ".infopro-hub" / "ouvinte"
@@ -257,6 +258,10 @@ def chat_atendendo():
         return time.time() - json.loads(SINAL_CHAT.read_text()).get("quando", 0) < 5 * 60
     except (OSError, ValueError):
         return False
+
+
+def atender_chatbot():
+    chatbot_assistente.atender(rodar_claude, log)
 
 
 def atender_conversa():
@@ -864,7 +869,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, melhorias, cobranca_rodada, esteira, vigia):
+        for m in (briefing, execucao, chatbot_assistente, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -971,6 +976,7 @@ if __name__ == "__main__":
                   ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"))
     else:
         fluxos = (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
+                  ("chatbot", chatbot_assistente.reenfileirar, "pedido(s) do assistente do chatbot"),
                   ("execucao", lambda: execucao.reenfileirar(sistema=False if SEM_CODIGO else None), "tarefa(s) interrompida(s)"))
         if not SEM_CODIGO:
             fluxos += (("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"),)
@@ -989,6 +995,8 @@ if __name__ == "__main__":
     threading.Thread(target=laco, args=("sinal", gravar_sinal, 60), daemon=True).start()
     threading.Thread(target=laco, args=("whatsapp", atender_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("briefing", atender_briefings, 3), daemon=True).start()
+    if not SO_CODIGO:
+        threading.Thread(target=laco, args=("chatbot", atender_chatbot, 2), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     if not SEM_CODIGO:
         threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()

@@ -32,7 +32,3 @@ verify_jwt = false
 [functions.vendas-webhook]
 # Webhook da Kiwify/Hotmart: chega sem JWT; a chave secreta do produto vai na URL (?chave=).
 verify_jwt = false
-
-[functions.chatbot-adaptar]
-# A função confere a sessão do app (Authorization) antes de chamar a IA.
-verify_jwt = false
