@@ -42,6 +42,8 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   try {
     const { mensagem, config, historico } = await req.json();
+    // Chave da IA: Anthropic (preferida) ou, se existir, a do gateway antigo do Lovable.
+    const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY");
@@ -52,7 +54,9 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { headers: { Authorization: authorization } } });
     const { data: auth, error: authError } = await supabase.auth.getUser();
     if (authError || !auth.user) return new Response(JSON.stringify({ error: "Sessão inválida" }), { status: 401, headers: corsHeaders });
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    if (!ANTHROPIC_API_KEY && !LOVABLE_API_KEY) {
+      return new Response(JSON.stringify({ error: "A IA ainda não está ligada neste projeto: falta a chave ANTHROPIC_API_KEY no Supabase." }), { status: 503, headers: corsHeaders });
+    }
     if (typeof mensagem !== "string" || !mensagem.trim() || mensagem.length > 30000 || typeof config !== "object" || !config) {
       return new Response(JSON.stringify({ error: "Pedido inválido" }), { status: 400, headers: corsHeaders });
     }
@@ -60,27 +64,39 @@ serve(async (req) => {
     const conversa = (Array.isArray(historico) ? historico : []).slice(-6)
       .filter((m: { papel?: string; texto?: string }) => (m.papel === "user" || m.papel === "assistant") && typeof m.texto === "string")
       .map((m: { papel: string; texto: string }) => ({ role: m.papel, content: m.texto.slice(0, 2000) }));
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SISTEMA },
-          ...conversa,
-          { role: "user", content: `CHATBOT ATUAL:\n${JSON.stringify(config)}\n\nPEDIDO / MENSAGENS DO USUÁRIO:\n${mensagem}` },
-        ],
-      }),
-    });
-    if (!response.ok) {
-      const status = response.status === 429 || response.status === 402 ? response.status : 502;
-      return new Response(JSON.stringify({ error: status === 429 ? "Muitos pedidos, tente de novo em instantes." : status === 402 ? "Sem créditos de IA." : "A IA não respondeu." }), { status, headers: corsHeaders });
+    const pedido = `CHATBOT ATUAL:\n${JSON.stringify(config)}\n\nPEDIDO / MENSAGENS DO USUÁRIO:\n${mensagem}`;
+    let texto = "";
+    if (ANTHROPIC_API_KEY) {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-5-5", max_tokens: 16000, system: SISTEMA,
+          messages: [...conversa, { role: "user", content: pedido }],
+        }),
+      });
+      if (!response.ok) {
+        console.error("anthropic", response.status, await response.text());
+        const status = response.status === 429 ? 429 : 502;
+        return new Response(JSON.stringify({ error: status === 429 ? "Muitos pedidos, tente de novo em instantes." : "A IA não respondeu." }), { status, headers: corsHeaders });
+      }
+      const data = await response.json();
+      texto = (data.content ?? []).map((c: { type: string; text?: string }) => (c.type === "text" ? c.text ?? "" : "")).join("");
+    } else {
+      const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${LOVABLE_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "google/gemini-2.5-pro", response_format: { type: "json_object" }, messages: [{ role: "system", content: SISTEMA }, ...conversa, { role: "user", content: pedido }] }),
+      });
+      if (!response.ok) {
+        const status = response.status === 429 || response.status === 402 ? response.status : 502;
+        return new Response(JSON.stringify({ error: status === 429 ? "Muitos pedidos, tente de novo em instantes." : status === 402 ? "Sem créditos de IA." : "A IA não respondeu." }), { status, headers: corsHeaders });
+      }
+      const data = await response.json();
+      texto = data.choices?.[0]?.message?.content ?? "";
     }
-    const data = await response.json();
-    const texto: string = data.choices?.[0]?.message?.content ?? "";
     let saida: { resposta?: string; config?: unknown };
-    try { saida = JSON.parse(texto.replace(/^```json\s*|\s*```$/g, "")); } catch { return new Response(JSON.stringify({ error: "A IA devolveu algo que não consegui ler. Tente de novo." }), { status: 502, headers: corsHeaders }); }
+    try { const i = texto.indexOf("{"), f = texto.lastIndexOf("}"); saida = JSON.parse(texto.slice(i, f + 1)); } catch { return new Response(JSON.stringify({ error: "A IA devolveu algo que não consegui ler. Tente de novo." }), { status: 502, headers: corsHeaders }); }
     return new Response(JSON.stringify({ resposta: saida.resposta ?? "Pronto.", config: saida.config }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
     console.error(e);

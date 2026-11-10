@@ -30,7 +30,12 @@ export function AssistenteChatbot({ config, onAplicar }: { config: ConfigChatbot
       const { data, error } = await supabase.functions.invoke("chatbot-adaptar", {
         body: { mensagem: t, config, historico: msgs.map((m) => ({ papel: m.papel, texto: m.texto })) },
       });
-      if (error || !data?.config) throw new Error((data as { error?: string } | null)?.error || error?.message || "sem resposta");
+      if (error) {
+        // Em erro da função, o corpo da resposta vem no contexto (ex.: "falta a chave da IA").
+        const corpo = await (error as { context?: Response }).context?.json?.().catch(() => null) as { error?: string } | null;
+        throw new Error(corpo?.error || error.message);
+      }
+      if (!data?.config) throw new Error("A IA não devolveu o chatbot.");
       const nova = sanitizarConfig(data.config, config);
       onAplicar(nova);
       setMsgs((m) => [...m, { id: ++n.current, papel: "assistant", texto: String(data.resposta ?? "Pronto, já ajustei."), antes: config }]);
