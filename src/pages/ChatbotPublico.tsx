@@ -24,9 +24,10 @@ export default function ChatbotPublico() {
   }, [slug]);
 
   const salvar = useCallback((p: { dados: Record<string, string>; etapa: number; score: number; desfecho: string | null }) => {
+    // .then(): o builder do Supabase só envia a chamada quando alguém consome o resultado
     void supabase.rpc("chatbot_salvar_lead" as never, {
       p_slug: slug, p_lead: lead.current, p_dados: p.dados, p_etapa: p.etapa, p_score: p.score, p_desfecho: p.desfecho, p_utm: utm.current,
-    } as never);
+    } as never).then(() => undefined);
   }, [slug]);
 
   if (carregando) return <div className="flex h-[100dvh] items-center justify-center bg-[#f7f7fb]"><Loader2 className="h-5 w-5 animate-spin text-neutral-400" /></div>;
