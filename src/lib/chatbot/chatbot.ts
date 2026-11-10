@@ -23,7 +23,7 @@ export interface ConfigChatbot {
   desfechos: { qualificado: DesfechoChatbot; nao_qualificado: DesfechoChatbot };
   lgpd?: string;
 }
-export interface ChatbotResumo { id: string; nome: string; slug: string; status: "rascunho" | "publicado" | "pausado"; config: ConfigChatbot; criado_em: string }
+export interface ChatbotResumo { id: string; nome: string; slug: string; status: "rascunho" | "publicado" | "pausado"; config: ConfigChatbot; criado_em: string; modo_vivo?: boolean }
 export interface LeadChatbot { id: string; chatbot_id: string; dados: Record<string, string>; etapa: number; score: number; desfecho: string | null; nome: string | null; email: string | null; whatsapp: string | null; utm: Record<string, string>; criada_em: string; atualizada_em: string }
 
 export const linkDoChatbot = (slug: string) => `https://infopro-hub.vercel.app/chatbot/${slug}`;

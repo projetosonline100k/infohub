@@ -37,7 +37,7 @@ export function ChatbotView({ clienteId }: { clienteId: string }) {
 
   const carregar = useCallback(async () => {
     const [{ data: b }, { data: l }] = await Promise.all([
-      db.from("chatbots").select("id, nome, slug, status, config, criado_em").eq("cliente_id", clienteId).order("criado_em", { ascending: false }),
+      db.from("chatbots").select("id, nome, slug, status, config, criado_em, modo_vivo").eq("cliente_id", clienteId).order("criado_em", { ascending: false }),
       db.from("chatbot_leads").select("chatbot_id").eq("cliente_id", clienteId).limit(5000),
     ]);
     setBots((b ?? []) as ChatbotResumo[]);
@@ -127,6 +127,7 @@ function EditorChatbot({ bot, clienteId, onVoltar }: { bot: ChatbotResumo; clien
   const [nome, setNome] = useState(bot.nome);
   const [config, setConfig] = useState<ConfigChatbot>(bot.config);
   const [status, setStatus] = useState(bot.status);
+  const [vivo, setVivo] = useState(!!bot.modo_vivo);
   const [aba, setAba] = useState<"montar" | "leads">("montar");
   const [painel, setPainel] = useState<"assistente" | "etapas" | "final" | "aparencia">(bot.config.etapas.length > 1 ? "etapas" : "assistente");
   const [modo, setModo] = useState<"vivo" | "testar">("vivo");
@@ -233,7 +234,7 @@ function EditorChatbot({ bot, clienteId, onVoltar }: { bot: ChatbotResumo; clien
               ))}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pr-1">
-              {painel === "assistente" && <AssistenteChatbot chatbotId={bot.id} clienteId={clienteId} config={config} onAplicar={setConfig} />}
+              {painel === "assistente" && <AssistenteChatbot chatbotId={bot.id} clienteId={clienteId} config={config} onAplicar={setConfig} aoVivo={vivo} onVivo={setVivo} />}
               {painel === "etapas" && (
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">O bot fala as mensagens e espera a resposta. Use {"{primeiro}"} para o primeiro nome, {"{chave}"} para outra resposta e **negrito**. A prévia mostra o que você está escrevendo.</p>

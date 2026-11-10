@@ -265,6 +265,10 @@ def atender_vivo():
     vivo.atender(rodar_claude, log)
 
 
+def atender_chatbot_vivo():
+    chatbot_assistente.atender_vivo(rodar_claude, log)
+
+
 def atender_chatbot():
     chatbot_assistente.atender(rodar_claude, log)
 
@@ -979,6 +983,7 @@ if __name__ == "__main__":
     if SO_CODIGO:
         fluxos = (("execucao", lambda: execucao.reenfileirar(sistema=True), "tarefa(s) de programação interrompida(s)"),
                   ("vivo", vivo.reenfileirar, "mensagem(ns) do modo vivo interrompida(s)"),
+                  ("chatbot-vivo", chatbot_assistente.reenfileirar_vivo, "pedido(s) do chatbot ao vivo"),
                   ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"))
     else:
         fluxos = (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
@@ -996,6 +1001,7 @@ if __name__ == "__main__":
     if SO_CODIGO:
         threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
         threading.Thread(target=laco, args=("vivo", atender_vivo, 2), daemon=True).start()   # só o Mac tem Chrome e é do Davi
+        threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
         laco("melhorias", atender_melhorias, 20)
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
