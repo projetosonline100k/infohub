@@ -158,6 +158,18 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
       requestAnimationFrame(() => cartoes.current[id]?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
     }
   };
+  // Apagar pelo fluxo (clicar no bloco → lixeira ou Delete). Sempre sobra uma etapa; dá para desfazer pelo aviso.
+  const apagarEtapa = useCallback((id: string) => {
+    setConfig((atual) => {
+      if (atual.etapas.length < 2 || !atual.etapas.some((e) => e.id === id)) return atual;
+      const i = atual.etapas.findIndex((e) => e.id === id);
+      const novo = structuredClone(atual);
+      novo.etapas.splice(i, 1);
+      setFoco(novo.etapas[Math.min(i, novo.etapas.length - 1)].id);
+      toast("Etapa apagada", { action: { label: "Desfazer", onClick: () => setConfig(atual) }, duration: 6000 });
+      return novo;
+    });
+  }, []);
   const mudarStatus = async (s: "publicado" | "pausado") => {
     const { error } = await db.from("chatbots").update({ status: s }).eq("id", bot.id);
     if (error) { toast.error(error.message); return; }
@@ -194,7 +206,7 @@ function EditorChatbot({ bot, onVoltar }: { bot: ChatbotResumo; onVoltar: () => 
         <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
           <div className="flex h-[360px] shrink-0 flex-col gap-2 rounded-2xl border border-white/10 bg-[#0a1019] p-3 lg:h-auto lg:w-[300px] xl:w-[330px]">
             <p className="flex shrink-0 items-center gap-2 text-base font-semibold text-white"><Workflow className="h-4 w-4 text-cyan-300" />Fluxo do chatbot</p>
-            <div className="min-h-0 flex-1"><FluxoChatbot config={config} selecionada={focoValido} onEscolher={(id) => escolher(id, true)} /></div>
+            <div className="min-h-0 flex-1"><FluxoChatbot config={config} selecionada={focoValido} onEscolher={(id) => escolher(id, true)} onApagar={apagarEtapa} /></div>
           </div>
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
