@@ -17,7 +17,7 @@ import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
 import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
-import { adicionarPergunta, AjustesDaTela, desligarCaptura, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, excluirTelaExtra, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
+import { moverBloco, adicionarPergunta, AjustesDaTela, desligarCaptura, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, excluirTelaExtra, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
 import { FluxoQuiz } from "@/components/quiz/FluxoQuiz";
 import { confirmar } from "@/components/DialogosGlobais";
 import { MetricasDoQuiz } from "@/components/quiz/QuizMetricas";
@@ -311,7 +311,15 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <div className="min-h-0 flex-1">
                       {mapaQuiz === "fluxo" ? (
                         <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={escolherTela}
-                          onAdicionar={() => { const n = adicionarPergunta(quiz.estrutura!, tela); void salvarQuiz(n.estrutura); if (n.chave) escolherTela(n.chave); }} onExcluir={excluirLamina} />
+                          onAdicionar={() => { const n = adicionarPergunta(quiz.estrutura!, tela); void salvarQuiz(n.estrutura); if (n.chave) escolherTela(n.chave); }} onExcluir={excluirLamina}
+                          onReordenar={(origem, depoisDe) => {
+                            const est = quiz.estrutura!;
+                            const r = moverBloco(est, origem, depoisDe);
+                            if (!r) { toast("Esse bloco já está nessa posição"); return; }
+                            void salvarQuiz(r.estrutura);
+                            if (r.chave) escolherTela(r.chave);
+                            toast.success(`“${origem.rotulo.replace(/^P\d+\.\s*/, "").slice(0, 30)}” mudou de lugar`, { action: { label: "Desfazer", onClick: () => void salvarQuiz(est) }, duration: 8000 });
+                          }} />
                       ) : (
                         <div className="mx-auto flex h-full max-w-xl flex-col"><EstruturaDoQuiz laminas={laminas} estrutura={quiz.estrutura} faltas={faltasQuiz} selecionada={tela.chave} onEscolher={escolherTela} /></div>
                       )}

@@ -4,7 +4,8 @@ import ReactFlow, {
   type Edge, type Node, type NodeChange, type NodeProps,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { Clock, Contact, Home, ListChecks, Tag, Trash2, Trophy, Plus, type LucideIcon } from "lucide-react";
+import { Clock, Contact, Home, ListChecks, Scissors, Tag, Trash2, Trophy, Plus, X, type LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { EstruturaQuiz, Lamina } from "@/lib/quiz/quiz";
 import type { FaltaQuiz } from "@/lib/quiz/faltas";
@@ -14,7 +15,7 @@ import { faltasDaLamina } from "./EditorQuiz";
 // três segundos responde onde a tela está, para onde leva e, com o celular ao lado, como ela aparece. A ordem real
 // continua a do quiz; mover um bloco só muda o desenho, guardado neste Mac.
 
-type Dados = { apagar?: () => void; lamina?: Lamina; numero?: number; rotulo: string; subtitulo: string; pend: number; selecionado: boolean; cor: string; Icone: LucideIcon };
+type Dados = { variavel?: string; usa?: string; apagar?: () => void; lamina?: Lamina; numero?: number; rotulo: string; subtitulo: string; pend: number; selecionado: boolean; cor: string; Icone: LucideIcon };
 
 const CORES: Record<string, { borda: string; icone: string; ponto: string }> = {
   cinza: { borda: "border-cyan-400/60", icone: "border-cyan-300 text-cyan-200", ponto: "#22d3ee" },
@@ -27,7 +28,7 @@ const CORES: Record<string, { borda: string; icone: string; ponto: string }> = {
 function Bloco({ data }: NodeProps<Dados>) {
   const c = CORES[data.cor];
   const { Icone } = data;
-  const ponta = "!h-2 !w-2 !border-0";
+  const ponta = "!h-3.5 !w-3.5 !border-2 !border-[#0b1220]";
   return (
     <div className={cn("relative flex w-[250px] cursor-pointer items-center gap-3 rounded-[28px] border bg-[#0b1220] py-2.5 pl-2.5 pr-4 text-white transition-shadow", c.borda,
       data.selecionado && "!border-cyan-300 shadow-[0_0_0_2px_rgba(103,232,249,0.45),0_0_26px_rgba(34,211,238,0.4)]")}>
@@ -36,6 +37,8 @@ function Bloco({ data }: NodeProps<Dados>) {
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold leading-tight">{data.subtitulo}</span>
         <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-white/55">{data.rotulo}</span>
+        {data.variavel && <span title="Esta resposta muda o que aparece depois" className="mt-1 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-200">◆ variável: {data.variavel}</span>}
+        {data.usa && <span title="As imagens desta pergunta mudam conforme a resposta" className="mt-1 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-200">◆ foto muda com {data.usa}</span>}
       </span>
       {data.apagar && data.selecionado && (
         <button type="button" title="Apagar esta lâmina (Delete)" onClick={(e) => { e.stopPropagation(); data.apagar!(); }}
@@ -57,16 +60,42 @@ const VISUAL: Record<Lamina["tipo"], { cor: string; Icone: LucideIcon; nome: str
 // abrem em leque no fim e a oferta vem depois deles.
 const PASSO_Y = 120, LARGURA_PERFIL = 260;
 
-export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onEscolher, onAdicionar, onExcluir }: {
+export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onEscolher, onAdicionar, onExcluir, onReordenar }: {
   quizId: string; estrutura: EstruturaQuiz; laminas: Lamina[]; faltas: FaltaQuiz[]; selecionada: string;
   onEscolher: (chave: string) => void; onAdicionar: () => void; onExcluir?: (l: Lamina) => void;
+  /** Davi, 10/11: clicar na linha corta ela; o próximo bloco clicado passa a vir logo depois do bloco de cima da linha. */
+  onReordenar?: (origem: Lamina, depoisDe: Lamina) => void;
 }) {
+  // Linha cortada: guarda o bloco de cima dela (o novo bloco entra logo depois dele). Esc ou clique no fundo cancela.
+  // Várias linhas podem ficar cortadas ao mesmo tempo (Davi, 10/11); elas só voltam ao cancelar ou quando um bloco é ligado.
+  const [cortes, setCortes] = useState<Lamina[]>([]);
+  useEffect(() => {
+    if (!cortes.length) return;
+    const esc = (ev: KeyboardEvent) => { if (ev.key === "Escape") setCortes([]); };
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [cortes.length]);
   const chaveMapa = `quiz:fluxo-v:${quizId}`;
   const [movidos, setMovidos] = useState<Record<string, { x: number; y: number }>>(() => {
     try { return JSON.parse(localStorage.getItem(chaveMapa) || "{}"); } catch { return {}; }
   });
   // Só se apaga o que dá para tirar sem quebrar o quiz: pergunta (sobrando pelo menos uma), tela de respiro e o pedido de contato.
   const podeApagar = useCallback((l: Lamina) => l.tipo === "tela" || l.tipo === "captura" || (l.tipo === "pergunta" && estrutura.perguntas.length > 1), [estrutura.perguntas.length]);
+  // Variáveis (Davi, 10/11): "já que as fotos mudam conforme o gênero, a variável tem que aparecer no mapa". Se as opções de
+  // uma pergunta têm `imagens` ligadas a outra pergunta, a de origem mostra "variável" e a que depende mostra "foto muda com …".
+  const variaveis = useMemo(() => {
+    const origem = new Map<string, string>(), usa = new Map<string, string>();
+    estrutura.perguntas.forEach((q, i) => {
+      q.opcoes.forEach((o) => Object.keys(o.imagens ?? {}).forEach((k) => {
+        const pid = k.split("=")[0], j = estrutura.perguntas.findIndex((x) => x.id === pid);
+        if (j < 0) return;
+        const nome = pid === "genero" ? "gênero" : `P${j + 1}`;
+        origem.set(pid, nome); usa.set(q.id, `${nome} (P${j + 1})`);
+      }));
+      void i;
+    });
+    return { origem, usa };
+  }, [estrutura.perguntas]);
   const montar = useCallback((): Node<Dados>[] => {
     const antes = laminas.filter((l) => l.tipo !== "fim");
     const fins = laminas.filter((l) => l.tipo === "fim");
@@ -78,6 +107,8 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
         id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x: i % 2 ? 70 : 0, y: i * PASSO_Y },
         data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^P\d+\.\s*/, ""), subtitulo: l.tipo === "pergunta" ? `Pergunta ${pergunta}` : v.nome,
           pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: v.cor, Icone: v.Icone,
+          variavel: l.tipo === "pergunta" ? variaveis.origem.get(estrutura.perguntas[l.indice!]?.id) : undefined,
+          usa: l.tipo === "pergunta" ? variaveis.usa.get(estrutura.perguntas[l.indice!]?.id) : undefined,
           apagar: onExcluir && podeApagar(l) ? () => onExcluir(l) : undefined },
       };
     });
@@ -87,11 +118,11 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       const fimUnico = fins.length === 1;
       lista.push({
         id: l.chave, type: "bloco", position: movidos[l.chave] ?? { x, y: yFim },
-        data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^Resultado:\s*/, ""), subtitulo: fimUnico ? "Resultado" : `Perfil ${i + 1}`,
+        data: { lamina: l, numero: laminas.indexOf(l) + 1, rotulo: l.rotulo.replace(/^Resultado:\s*/, ""), subtitulo: estrutura.sem_resultado ? "Oferta" : fimUnico ? "Resultado" : `Perfil ${i + 1}`,
           pend: faltasDaLamina(l, estrutura, faltas).length, selecionado: l.chave === selecionada, cor: "roxo", Icone: Trophy },
       });
     });
-    if (estrutura.oferta && fins[0]) {
+    if (estrutura.oferta && fins[0] && !estrutura.sem_resultado) {
       lista.push({
         id: "oferta", type: "bloco", position: movidos.oferta ?? { x: 0, y: yFim + PASSO_Y + 20 }, selectable: true,
         data: { lamina: fins[0], rotulo: estrutura.oferta.titulo || estrutura.oferta.produto || "Oferta", subtitulo: "Oferta",
@@ -99,7 +130,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
       });
     }
     return lista;
-  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar]);
+  }, [laminas, estrutura, faltas, selecionada, movidos, onExcluir, podeApagar, variaveis]);
 
   const [nodes, setNodes] = useState<Node<Dados>[]>(montar);
   // Atualiza por cima dos blocos que já existem: recriá-los perderia o tamanho medido, e as setas sumiriam.
@@ -154,7 +185,11 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
     const antes = laminas.filter((l) => l.tipo !== "fim");
     const fins = laminas.filter((l) => l.tipo === "fim");
     const seta = { type: MarkerType.ArrowClosed, color: "#7dd3fc" };   // só nos perfis/oferta
-    const lista: Edge[] = antes.slice(1).map((l, i) => ({ id: `e${i}`, source: antes[i].chave, target: l.chave, style: { stroke: i % 2 ? "#a78bfa" : "#22d3ee", strokeWidth: 2 } }));
+    // Linha cortada some do mapa (só volta se o corte for cancelado ou depois que um bloco for encaixado).
+    const lista: Edge[] = antes.slice(1).flatMap((l, i): Edge[] => cortes.some((c) => c.chave === antes[i].chave) ? [] : [{
+      id: `e${i}`, source: antes[i].chave, target: l.chave, interactionWidth: 30, className: onReordenar ? "cursor-pointer" : undefined,
+      style: { stroke: i % 2 ? "#a78bfa" : "#22d3ee", strokeWidth: 2 },
+    }]);
     const ultimo = antes[antes.length - 1];
     const porPerfil = (id?: string) => estrutura.perguntas.reduce((s, q) => s + q.opcoes.filter((o) => o.perfil === id).length, 0);
     fins.forEach((l) => {
@@ -163,16 +198,42 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
         id: `p${l.chave}`, source: ultimo.chave, target: l.chave, type: "smoothstep", label: n ? `${n} respostas` : undefined,
         labelStyle: { fill: "#ddd6fe", fontSize: 10 }, labelBgStyle: { fill: "#0d131c" }, markerEnd: { ...seta, color: "#a78bfa" }, style: { stroke: "#a78bfa", strokeWidth: 2 },
       });
-      if (estrutura.oferta) lista.push({ id: `o${l.chave}`, source: l.chave, target: "oferta", type: "smoothstep", markerEnd: { ...seta, color: "#fb923c" }, style: { stroke: "#fb923c", strokeWidth: 2 } });
+      if (estrutura.oferta && !estrutura.sem_resultado) lista.push({ id: `o${l.chave}`, source: l.chave, target: "oferta", type: "smoothstep", markerEnd: { ...seta, color: "#fb923c" }, style: { stroke: "#fb923c", strokeWidth: 2 } });
     });
     return lista;
-  }, [laminas, estrutura]);
+  }, [laminas, estrutura, cortes, onReordenar]);
 
   return (
     <div ref={caixa} onMouseEnter={() => { sobre.current = true; }} onMouseLeave={() => { sobre.current = false; }} className="dark relative h-full min-h-0 w-full overflow-hidden rounded-xl bg-[radial-gradient(circle_at_50%_0%,#101c33,#080d17_70%)]">
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={tiposDeBloco} onNodesChange={onNodesChange} onInit={(i) => { instancia.current = i; setTimeout(() => irPara(selecionada, false), 50); }} minZoom={0.2} maxZoom={1.6}
-        panOnScroll zoomOnScroll={false} zoomOnPinch nodesConnectable={false} proOptions={{ hideAttribution: true }}
-        onNodeClick={(_, n) => { const l = (n.data as Dados).lamina; if (l) onEscolher(l.chave); }}
+        panOnScroll zoomOnScroll={false} zoomOnPinch nodesConnectable={!!onReordenar} proOptions={{ hideAttribution: true }}
+        onEdgeClick={(_, ed) => {
+          if (!onReordenar || !/^e\d+$/.test(ed.id)) return;
+          const de = laminas.find((x) => x.chave === ed.source);
+          if (!de || de.tipo === "captura") { toast.error("Depois do pedido de contato não dá para encaixar outro bloco"); return; }
+          setCortes((c) => (c.some((x) => x.chave === de.chave) ? c : [...c, de]));
+        }}
+        onPaneClick={() => setCortes([])}
+        onConnect={(c) => {
+          // Arrastar do ponto de baixo de um bloco até o ponto de cima de outro: o de destino passa a vir logo depois do de origem.
+          const de = laminas.find((x) => x.chave === c.source), para = laminas.find((x) => x.chave === c.target);
+          if (!onReordenar || !de || !para) return;
+          if (de.tipo === "captura" || de.tipo === "fim" || (para.tipo !== "pergunta" && para.tipo !== "tela")) { toast.error("Só dá para ligar perguntas e telas de respiro depois de outro bloco"); return; }
+          if (de.chave === para.chave) return;
+          onReordenar(para, de); setCortes([]);
+        }}
+        onNodeClick={(_, n) => {
+          const l = (n.data as Dados).lamina;
+          if (!l) return;
+          if (cortes.length && onReordenar && n.id !== "oferta") {
+            if (cortes.length > 1) { toast("Com várias linhas cortadas, arraste do ponto de baixo de um bloco até o ponto de cima do bloco que deve vir depois"); return; }
+            const corte = cortes[0];
+            if (l.tipo !== "pergunta" && l.tipo !== "tela") { toast.error("Só dá para mover perguntas e telas de respiro"); return; }
+            if (l.chave === corte.chave) { toast.error("Esse bloco já é o de cima da linha"); return; }
+            onReordenar(l, corte); setCortes([]); return;
+          }
+          onEscolher(l.chave);
+        }}
         onNodeDragStop={(_, n) => {
           const novo = { ...movidos, [n.id]: n.position };
           setMovidos(novo);
@@ -181,6 +242,15 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, onE
         <Background color="#ffffff10" gap={26} />
         <Controls showInteractive={false} />
       </ReactFlow>
+      {cortes.length > 0 && (
+        <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-rose-400/50 bg-[#0d131c] px-4 py-2 text-xs text-rose-100 shadow-lg">
+          <Scissors className="h-3.5 w-3.5 text-rose-300" />
+          {cortes.length === 1
+            ? `Linha cortada depois de “${cortes[0].rotulo.replace(/^P\d+\.\s*/, "").slice(0, 26)}”. Clique no bloco que entra ali, ou corte outras linhas.`
+            : `${cortes.length} linhas cortadas. Arraste do ponto de baixo de um bloco até o ponto de cima de outro para ligar.`}
+          <button type="button" onClick={() => setCortes([])} title="Cancelar tudo (Esc)" className="ml-1 rounded-full p-0.5 hover:bg-white/10"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
       <button type="button" onClick={onAdicionar} className="absolute bottom-3 left-3 z-10 flex items-center gap-1.5 rounded-full border border-white/15 bg-[#0d131c] px-4 py-2 text-xs font-medium text-white hover:bg-white/10">
         <Plus className="h-3.5 w-3.5" />Adicionar nó
       </button>

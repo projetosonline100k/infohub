@@ -3,7 +3,7 @@ import {
   AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Clock, Contact, Copy, Home, ListChecks, Monitor, Plus, Smartphone, Sparkles, Trash2, Trophy, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { laminasDoQuiz, type EstruturaQuiz, type Lamina, type OpcaoQuiz } from "@/lib/quiz/quiz";
+import { laminasDoQuiz, montarPassos, type EstruturaQuiz, type Lamina, type OpcaoQuiz } from "@/lib/quiz/quiz";
 import type { FaltaQuiz } from "@/lib/quiz/faltas";
 import { MolduraCelular } from "./MolduraCelular";
 import { QuizPlayer } from "./QuizPlayer";
@@ -41,6 +41,41 @@ export function duplicarPergunta(e: EstruturaQuiz, indice: number) {
   const n = structuredClone(e);
   n.perguntas.splice(indice + 1, 0, { ...structuredClone(n.perguntas[indice]), id: idNovo() });
   return { estrutura: n, chave: laminasDoQuiz(n).find((x) => x.tipo === "pergunta" && x.indice === indice + 1)?.chave };
+}
+
+/**
+ * Religa o fluxo (Davi, 10/11: "clicar na linha, cortar e conectar outro bloco"): tira `origem` de onde está e
+ * coloca logo depois de `depoisDe`. Trabalha sobre a sequência real do quiz (perguntas e telas, na ordem em que
+ * aparecem) e depois refaz a ordem das perguntas e a "tela que segue a pergunta X" de cada tela de respiro.
+ * Devolve null se não dá para fazer ou se nada mudaria.
+ */
+export function moverBloco(e: EstruturaQuiz, origem: Lamina, depoisDe: Lamina) {
+  if ((origem.tipo !== "pergunta" && origem.tipo !== "tela") || (depoisDe.tipo !== "intro" && depoisDe.tipo !== "pergunta" && depoisDe.tipo !== "tela")) return null;
+  const n = structuredClone(e);
+  const pedir = n.captura?.ativa === false ? [] : (n.captura?.pedir ?? []);
+  type Item = { tipo: "pergunta" | "tela"; indice: number };
+  const seq: Item[] = montarPassos(n, pedir.length > 0).flatMap((p): Item[] => (p.tipo === "pergunta" || p.tipo === "tela" ? [{ tipo: p.tipo, indice: p.indice }] : []));
+  const igual = (a: Item, l: Lamina) => a.tipo === l.tipo && a.indice === l.indice;
+  const de = seq.findIndex((x) => igual(x, origem));
+  if (de < 0 || (depoisDe.tipo !== "intro" && igual(seq[de], depoisDe))) return null;
+  const [item] = seq.splice(de, 1);
+  const ref = depoisDe.tipo === "intro" ? -1 : seq.findIndex((x) => igual(x, depoisDe));
+  if (depoisDe.tipo !== "intro" && ref < 0) return null;
+  seq.splice(ref + 1, 0, item);
+  const perguntas = n.perguntas, telas = n.telas ?? [];
+  const novasPerguntas = seq.filter((x) => x.tipo === "pergunta").map((x) => perguntas[x.indice]);
+  const novasTelas: typeof telas = [];
+  let ultima = "intro";
+  for (const x of seq) {
+    if (x.tipo === "pergunta") { ultima = perguntas[x.indice].id; continue; }
+    const t = telas[x.indice]; t.depois_de = ultima; novasTelas.push(t);
+  }
+  const usadas = new Set(seq.filter((x) => x.tipo === "tela").map((x) => x.indice));
+  n.perguntas = novasPerguntas;
+  n.telas = [...novasTelas, ...telas.filter((_, i) => !usadas.has(i))];
+  if (JSON.stringify(n.perguntas) === JSON.stringify(e.perguntas) && JSON.stringify(n.telas) === JSON.stringify(e.telas)) return null;
+  const novoIndice = item.tipo === "pergunta" ? seq.filter((x) => x.tipo === "pergunta").indexOf(item) : seq.filter((x) => x.tipo === "tela").indexOf(item);
+  return { estrutura: n, chave: laminasDoQuiz(n).find((x) => x.tipo === item.tipo && x.indice === novoIndice)?.chave };
 }
 
 /** Tira a pergunta; o que vinha depois dela passa a vir depois da anterior. */

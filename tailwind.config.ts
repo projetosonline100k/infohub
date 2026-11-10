@@ -102,6 +102,10 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       keyframes: {
+        empolgado: { "0%, 100%": { transform: "translateY(0) rotate(-2deg) scale(1)" }, "50%": { transform: "translateY(-8px) rotate(2deg) scale(1.05)" } },
+        "desenhar-linha": { from: { strokeDashoffset: "1" }, to: { strokeDashoffset: "0" } },
+        "ponto-entra": { from: { transform: "scale(0)", opacity: "0" }, to: { transform: "scale(1)", opacity: "1" } },
+        "fluxo-traco": { to: { strokeDashoffset: "-12" } },
         // Abertura do quiz: foguete chega com o mascote, ele pula, o foguete vai embora e ele desce de paraquedas.
         "foguete-entra": { from: { transform: "translateY(220px)", opacity: "0" }, to: { transform: "translateY(0)", opacity: "1" } },
         "foguete-flutua": { "0%, 100%": { transform: "translateY(0) rotate(-1deg)" }, "50%": { transform: "translateY(-8px) rotate(1deg)" } },
@@ -183,6 +187,10 @@ export default {
         },
       },
       animation: {
+        empolgado: "empolgado 1.1s ease-in-out infinite",
+        "desenhar-linha": "desenhar-linha 1.8s ease-out 0.3s both",
+        "ponto-entra": "ponto-entra 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both",
+        "fluxo-traco": "fluxo-traco 1.2s linear infinite",
         "foguete-entra": "foguete-entra 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both",
         "foguete-flutua": "foguete-flutua 0.7s ease-in-out infinite",
         "foguete-voa": "foguete-voa 1s cubic-bezier(0.5, 0, 0.9, 0.4) forwards",

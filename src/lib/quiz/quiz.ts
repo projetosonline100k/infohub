@@ -7,10 +7,15 @@ import { PUBLIC_SITE_URL } from "@/lib/shareUrl";
 // oferta no fim. Imagem com URL vazia é um lugar reservado: aparece no teste
 // (pra lembrar que falta) e some no link público.
 export type StatusQuiz = "esboco" | "criando" | "revisar" | "publicado" | "pausado" | "cancelado";
-export interface OpcaoQuiz { texto: string; perfil?: string | null; pontos?: number; imagem?: string; emoji?: string; resumo?: string }
+export interface OpcaoQuiz {
+  texto: string; perfil?: string | null; pontos?: number; imagem?: string; emoji?: string; resumo?: string;
+  /** Imagem que depende de uma resposta anterior: chave "<id da pergunta>=<nº da opção>" (ex.: "genero=1" → foto de mulher). Sem resposta, vale `imagem`. */
+  imagens?: Record<string, string>;
+}
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
-  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos";
+  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones";
+  multipla?: boolean;   // "escolha quantas quiser": marca várias e segue no botão Continuar (conta a 1ª escolhida no perfil)
 }
 export interface PerfilQuiz {
   id: string; nome: string; descricao?: string; cta_texto?: string; cta_url?: string;
@@ -25,10 +30,15 @@ export interface TelaQuiz {
   titulo?: string; texto?: string; botao?: string;
   imagem?: string; imagem_nota?: string;
   animada?: boolean; fala?: string; quadros?: string[];
+  pose?: number;   // mostra só este quadro (ex.: 12 = comemorando), sem o ciclo de aceno e fala
   abertura?: { paraquedas: string };   // cena de entrada: o mascote desce de paraquedas e pousa
   falas?: string[]; botao_inicial?: string;   // várias falas em sequência no mesmo balão (sem clicar); o botão começa como botao_inicial e vira `botao` na última   // quadros: parado, piscando, aceno A, aceno B, falando, pulo   // mascote animado (estilo Duolingo) com balão de fala
   citacao?: { texto: string; autor?: string };
-  grafico?: { titulo?: string; barras: BarraFixa[] };
+  grafico?: { titulo?: string; barras: BarraFixa[]; tipo?: "curva"; aqui?: string };   // curva: linha subindo mês a mês, com "você está aqui" no 1º ponto
+  loop?: string[];            // quadros que se alternam em sequência (ex.: o mascote de fone fazendo várias coisas)
+  imagem_mascote?: boolean;   // imagem do mascote inteira (sem recorte), com pulinho de empolgado
+  mapa?: { pontos: [number, number][] };   // mapa com setas ligando os pontos (% da imagem)
+  pausas?: { pct: number; texto: string; opcoes: string[] }[];   // carregando: perguntas que param o carregamento
   depoimentos?: Depoimento[]; depoimentos_nota?: string;
   audio?: string; audio_nota?: string;
   credenciais?: string[];
@@ -63,6 +73,10 @@ export interface EstruturaQuiz {
   captura?: CapturaQuiz;
   cor?: string;
   tema?: "claro" | "escuro";
+  /** Barra de progresso por fases (como a do 12min): cada fase começa na pergunta/tela de id `de` (a 1ª fase começa na primeira tela). */
+  fases?: { nome: string; de: string }[];
+  /** Sem tela de perfil: depois do plano vem direto a oferta (Davi, 10/11: "não existe perfil na minha copy"). */
+  sem_resultado?: boolean;
 }
 export interface QuizResumo {
   id: string; titulo: string; slug: string; status: StatusQuiz; pedido: string | null;
@@ -122,7 +136,7 @@ export function rotuloDoPasso(e: EstruturaQuiz, p: Passo): string {
   if (p.tipo === "pergunta") return `P${p.indice + 1}. ${e.perguntas[p.indice]?.texto ?? ""}`;
   if (p.tipo === "tela") return e.telas?.[p.indice]?.titulo || "Tela de respiro";
   if (p.tipo === "captura") return "Contato (nome/WhatsApp)";
-  return "Resultado e oferta";
+  return e.sem_resultado ? "Oferta" : "Resultado e oferta";
 }
 
 // Cada tela que o Davi vê na revisão: um passo do quiz; o resultado vira uma tela por perfil.
@@ -132,6 +146,7 @@ export function laminasDoQuiz(e: EstruturaQuiz): Lamina[] {
   return montarPassos(e, pedir.length > 0).flatMap((p, i): Lamina[] => {
     if (p.tipo === "intro" && e.intro?.pular) return [];   // abertura pulada: não aparece como tela no editor/fluxo
     const indice = "indice" in p ? p.indice : undefined;
+    if (p.tipo === "fim" && e.sem_resultado) return [{ chave: String(i), passo: i, tipo: p.tipo, rotulo: "Oferta" }];
     if (p.tipo === "fim" && e.perfis.length > 1) {
       return e.perfis.map((pf) => ({ chave: `${i}:${pf.id}`, passo: i, tipo: p.tipo, perfil: pf.id, rotulo: `Resultado: ${pf.nome}` }));
     }

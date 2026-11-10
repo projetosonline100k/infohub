@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher, primeiroNome,
-  type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
+  type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
 } from "@/lib/quiz/quiz";
 import { cn } from "@/lib/utils";
 
@@ -90,13 +90,13 @@ function Img({ caminho, url, nota, className, redonda, inteira }: { caminho: str
 }
 
 // Mascote animado (estilo Duolingo): entra pulando, acena devagar, fala no balão, pisca e fica respirando.
-// `quadros` (19) = rosto [0 neutro, 1 meio piscado, 2 piscado, 3 boca leve, 4 boca aberta, 5 "o"],
+// `quadros` (13) = rosto [0 neutro, 1 meio piscado, 2 piscado, 3 boca leve, 4 boca aberta, 5 "o"],
 // aceno [6 braço baixo … 11 braço descendo], [12 pulo] e gestos do outro braço [13…18, sem uso: não ficou bom].
 // Os quadros ficam empilhados e só muda a opacidade (transição de 110 ms), então a troca é suave.
 // Sem quadros: uma imagem só, flutuando. Anima em qualquer vista (inclusive no editor); lá, um botão sobre o
 // mascote troca a imagem. Quem pede menos movimento vê só o quadro parado.
 const Q = { PARADO: 0, PISCA_MEIO: 1, PISCA: 2, BOCA_LEVE: 3, BOCA_ABERTA: 4, BOCA_O: 5, ACENO: 6, PULO: 12 };
-const N_QUADROS = 19;
+const N_QUADROS = 13;   // quadros em 320 px (leves): 6 de rosto, 6 de aceno e 1 de pulo
 // [ms, quadro]: aceno lento → fala (só a boca) → parado. Toca UMA vez; depois ele só pisca (veja `piscar`).
 const ROTEIRO: [number, number][] = [
   [0, Q.ACENO], [140, Q.ACENO + 1], [280, Q.ACENO + 2], [420, Q.ACENO + 3], [600, Q.ACENO + 4], [780, Q.ACENO + 3],
@@ -106,7 +106,7 @@ const ROTEIRO: [number, number][] = [
 ];
 const FIM_ROTEIRO_MS = 4200;
 const FALA_MS = 3200;   // tempo de cada fala antes de emendar a próxima
-function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, onAberto }: { caminho: string; url?: string; nota?: string; fala?: string; falas?: string[]; onFala?: (i: number) => void; quadros?: string[]; abertura?: TelaQuiz["abertura"]; onAberto?: () => void }) {
+function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, onAberto, pose }: { caminho: string; url?: string; nota?: string; fala?: string; falas?: string[]; onFala?: (i: number) => void; quadros?: string[]; abertura?: TelaQuiz["abertura"]; onAberto?: () => void; pose?: number }) {
   const { editar, mudarImagem } = useContext(QuizCtx);
   const trocar = useRef<HTMLInputElement>(null);
   const reduzido = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -131,9 +131,10 @@ function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, o
   const temQuadros = !!quadros && quadros.length >= N_QUADROS;
   // atual + anterior: o anterior fica opaco por baixo enquanto o novo aparece por cima. Se os dois fossem
   // meio transparentes ao mesmo tempo, o fundo branco apareceria entre eles (o "flash" na troca).
-  const [par, setPar] = useState({ atual: temQuadros && !comAbertura ? Q.PULO : Q.PARADO, antes: -1 });
+  const [par, setPar] = useState({ atual: pose !== undefined ? pose : temQuadros && !comAbertura ? Q.PULO : Q.PARADO, antes: -1 });
   const setQ = (k: number) => setPar((p) => (p.atual === k ? p : { atual: k, antes: p.atual }));
   useEffect(() => {
+    if (pose !== undefined) return;   // pose fixa (ex.: comemorando): sem ciclo de aceno/fala/piscada
     if (!temQuadros || reduzido) { setQ(Q.PARADO); return; }
     if (!aberto) return;
     const timers: ReturnType<typeof setTimeout>[] = [];
@@ -160,7 +161,7 @@ function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, o
         </div>
       )}
       <div key={fase < 4 ? "antes" : "depois"} className={cn("motion-safe:animate-mascote-entra", fase < 4 && "invisible")}>
-        <div data-voo className="relative h-64 w-64 motion-safe:animate-mascote-flutua">
+        <div data-voo className={cn("relative h-64 w-64", pose !== undefined ? "motion-safe:animate-empolgado" : "motion-safe:animate-mascote-flutua")}>
           {temQuadros ? quadros!.map((u, k) => (
             <img key={k} src={u} alt={k === 0 ? (nota ?? "") : ""} draggable={false}
               decoding="sync"
@@ -237,6 +238,139 @@ function MascoteCanto({ quadros, children }: { quadros: string[]; children: Reac
   );
 }
 
+// Mascote com várias poses que se alternam sem parar (ex.: de fone, fazendo várias coisas). Mesma regra de troca
+// suave do mascote principal: o quadro anterior fica opaco por baixo e o novo entra por cima.
+function MascoteLoop({ frames }: { frames: string[] }) {
+  const [par, setPar] = useState({ atual: 0, antes: -1 });
+  useEffect(() => {
+    if (frames.length < 2 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = setInterval(() => setPar((p) => ({ atual: (p.atual + 1) % frames.length, antes: p.atual })), 1300);
+    return () => clearInterval(id);
+  }, [frames.length]);
+  return (
+    <div className="relative mx-auto h-60 w-60 motion-safe:animate-mascote-entra">
+      <div className="relative h-full w-full motion-safe:animate-[mascote-flutua_4.5s_ease-in-out_infinite]">
+        {frames.map((u, k) => (
+          <img key={k} src={u} alt="" draggable={false} decoding="sync"
+            className={cn("absolute inset-0 h-full w-full object-contain", k === par.atual ? "z-10 opacity-100 transition-opacity duration-300" : k === par.antes ? "opacity-100" : "opacity-0")} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Mapa com os leitores ligados por setas: arcos tracejados que correm, setinhas indo e voltando e pontos pulsando.
+function MapaConectado({ url, pontos, cor }: { url: string; pontos: [number, number][]; cor: string }) {
+  const arcos = useMemo(() => {
+    const par = new Set<string>(), lista: [number, number][] = [];
+    pontos.forEach((a, i) => {
+      pontos.map((b, j) => ({ j, d: Math.hypot(a[0] - b[0], a[1] - b[1]) })).filter((x) => x.j !== i).sort((x, y) => x.d - y.d).slice(0, 2).forEach(({ j }) => {
+        const k = [Math.min(i, j), Math.max(i, j)].join("-");
+        if (!par.has(k)) { par.add(k); lista.push(i % 2 ? [i, j] : [j, i]); }
+      });
+    });
+    return lista;
+  }, [pontos]);
+  return (
+    <div className="relative mx-auto aspect-square w-full max-w-xs">
+      <img src={url} alt="" className="absolute inset-0 h-full w-full object-contain opacity-50" draggable={false} />
+      <svg viewBox="0 0 100 100" className="absolute inset-0 h-full w-full">
+        {arcos.map(([a, b], k) => {
+          const [x1, y1] = pontos[a], [x2, y2] = pontos[b];
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 - Math.hypot(x2 - x1, y2 - y1) * 0.22;
+          const d = `M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`;
+          return (
+            <g key={k}>
+              <path id={`arco${k}`} d={d} fill="none" stroke={cor} strokeOpacity=".5" strokeWidth=".5" strokeDasharray="2 2" className="motion-safe:animate-fluxo-traco" />
+              <path d="M-1.3 -1.1 L1.5 0 L-1.3 1.1 Z" fill={cor}>
+                <animateMotion dur={`${2.4 + (k % 4) * 0.4}s`} repeatCount="indefinite" rotate="auto" begin={`${(k % 5) * 0.3}s`}><mpath href={`#arco${k}`} /></animateMotion>
+              </path>
+            </g>
+          );
+        })}
+        {pontos.map(([x, y], k) => (
+          <g key={k}>
+            <circle cx={x} cy={y} r="1.6" fill="none" stroke={cor} strokeWidth=".5">
+              <animate attributeName="r" values="1.6;6" dur="2.2s" begin={`${(k % 6) * 0.35}s`} repeatCount="indefinite" />
+              <animate attributeName="opacity" values=".7;0" dur="2.2s" begin={`${(k % 6) * 0.35}s`} repeatCount="indefinite" />
+            </circle>
+            <circle cx={x} cy={y} r="1.7" fill={cor} />
+          </g>
+        ))}
+      </svg>
+    </div>
+  );
+}
+
+// Gráfico de curva do plano: linha que se desenha subindo mês a mês, "você está aqui" no primeiro ponto.
+function GraficoCurva({ barras, aqui, cor }: { barras: BarraFixa[]; aqui?: string; cor: string }) {
+  const n = barras.length, L = 300, A = 170, ml = 28, mr = 28, topo = 44, base = 128;
+  const max = Math.max(1, ...barras.map((b) => b.valor));
+  const pt = barras.map((b, i) => ({ x: ml + (i * (L - ml - mr)) / Math.max(1, n - 1), y: base - (b.valor / max) * (base - topo), b }));
+  const linha = pt.map((q, i) => { if (!i) return `M${q.x} ${q.y}`; const a = pt[i - 1], dx = (q.x - a.x) * 0.45; return `C${a.x + dx} ${a.y} ${q.x - dx} ${q.y} ${q.x} ${q.y}`; }).join(" ");
+  const area = `${linha} L${pt[n - 1].x} ${base} L${pt[0].x} ${base} Z`;
+  const gid = useMemo(() => `g${Math.random().toString(36).slice(2, 7)}`, []);
+  return (
+    <svg viewBox={`0 0 ${L} ${A}`} className="w-full overflow-visible">
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={cor} stopOpacity=".28" /><stop offset="100%" stopColor={cor} stopOpacity="0" /></linearGradient></defs>
+      <line x1={ml - 8} x2={L - mr + 8} y1={base} y2={base} stroke="currentColor" strokeOpacity=".15" />
+      <path d={area} fill={`url(#${gid})`} className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-1000" />
+      <path d={linha} fill="none" stroke={cor} strokeWidth="3.5" strokeLinecap="round" pathLength={1} strokeDasharray={1} className="motion-safe:animate-desenhar-linha" />
+      {pt.map((q, i) => {
+        const ultimo = i === n - 1, atraso = `${0.3 + (i * 1.8) / n}s`;
+        return (
+          <g key={i} className="motion-safe:animate-ponto-entra" style={{ animationDelay: atraso, transformOrigin: `${q.x}px ${q.y}px` }}>
+            <circle cx={q.x} cy={q.y} r={ultimo ? 6.5 : 5} fill={ultimo ? cor : "white"} stroke={cor} strokeWidth="3" />
+            <text x={q.x} y={q.y - (i === 0 ? 30 : 12)} textAnchor="middle" fontSize="10" fontWeight="700" fill="currentColor">{q.b.legenda ?? q.b.valor}</text>
+            <text x={q.x} y={base + 16} textAnchor="middle" fontSize="9" fill="currentColor" fillOpacity=".6">{q.b.rotulo}</text>
+            {i === 0 && (
+              <g>
+                <rect x={q.x - 30} y={q.y - 27} width="60" height="14" rx="7" fill={cor} />
+                <text x={q.x} y={q.y - 17.5} textAnchor="middle" fontSize="8" fontWeight="700" fill="white">{aqui ?? "Você está aqui"}</text>
+              </g>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// Barra de progresso por fases, como a do 12min: "← Voltar" arredondado, a marca no meio e uma linha com uma
+// bolinha por fase (✓ nas que já passaram, anel escuro na atual) e o nome da fase embaixo.
+function BarraFases({ fases, atual, frac, cor, escuro, onVoltar }: { fases: string[]; atual: number; frac: number; cor: string; escuro: boolean; onVoltar?: () => void }) {
+  const n = fases.length;
+  const fill = Math.min(100, ((atual + frac) / n) * 100);
+  const claro = escuro ? "rgba(255,255,255,.14)" : `${cor}26`;
+  return (
+    <div className="shrink-0 space-y-1.5">
+      <div className="relative flex h-9 items-center justify-center">
+        <button type="button" onClick={onVoltar} disabled={!onVoltar} aria-label="Voltar"
+          className={cn("absolute left-0 flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-opacity", !onVoltar && "invisible")}
+          style={{ background: claro, color: cor }}><ArrowLeft className="h-4 w-4" />Voltar</button>
+        <span className="text-xl font-extrabold tracking-tight" style={{ color: cor }}>Instalivros</span>
+      </div>
+      <div className="relative mx-1 pb-5 pt-1">
+        <div className="relative h-5">
+          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ background: claro }} />
+          <div className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full transition-all duration-500" style={{ width: `${fill}%`, background: cor }} />
+          <span className="absolute left-0 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full" style={{ background: cor }} />
+          {fases.map((nome, i) => {
+            const feito = i < atual, ativo = i === atual;
+            return (
+              <span key={nome} className="absolute top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] transition-colors duration-500"
+                style={{ left: `${((i + 1) / n) * 100}%`, borderColor: feito || ativo ? cor : `${cor}55`, background: feito ? cor : escuro ? "#0a0a0a" : "#fff" }}>
+                {feito && <Check className="h-3 w-3 text-white" strokeWidth={4} />}
+              </span>
+            );
+          })}
+        </div>
+        <span className="absolute top-8 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.14em]" style={{ left: `${Math.min(Math.max(((atual + 1) / n) * 100, 14), 86)}%`, color: cor }}>{fases[atual]}</span>
+      </div>
+    </div>
+  );
+}
+
 function Depoimentos({ caminho, lista, nota }: { caminho: string; lista?: Depoimento[]; nota?: string }) {
   const { mostrarFaltas, editar, escuro } = useContext(QuizCtx);
   const validos = (lista ?? []).filter((d) => d.texto);
@@ -290,6 +424,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const [pos, setPos] = useState(passoFixo ?? (estrutura.intro?.pular && !editar ? 1 : 0));
   useEffect(() => { if (passoFixo != null) setPos(passoFixo); }, [passoFixo]);
   const [escolhas, setEscolhas] = useState<Record<string, number>>({});
+  const [marcadas, setMarcadas] = useState<Record<string, number[]>>({});   // perguntas de "escolha quantas quiser"
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);
   const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
@@ -356,11 +491,33 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     setEscolhas((x) => ({ ...x, [qid]: k }));
     if (!editar && !travado) window.setTimeout(avancar, 280);
   };
-  const reiniciar = () => { setPos(0); setEscolhas({}); setContato({}); enviado.current = false; };
+  // Múltipla escolha: marca/desmarca e só segue no botão Continuar; no perfil conta a 1ª opção marcada.
+  const alternar = (qid: string, k: number) => {
+    const atual = marcadas[qid] ?? [];
+    const nova = atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k];
+    setMarcadas((m) => ({ ...m, [qid]: nova }));
+    setEscolhas((x) => { const y = { ...x }; if (nova.length) y[qid] = nova[0]; else delete y[qid]; return y; });
+  };
+  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setContato({}); enviado.current = false; };
 
   const meio = passos.filter((p) => p.tipo !== "intro" && p.tipo !== "fim").length;
   const progresso = passo.tipo === "intro" ? 0 : passo.tipo === "fim" ? 100 : Math.round((pos / (meio + 1)) * 100);
   const nPergunta = passo.tipo === "pergunta" ? passo.indice + 1 : 0;
+  // Fase atual (barra do 12min): a fase começa no passo cujo id (pergunta ou tela) é `fases[i].de`; a 1ª, na primeira tela.
+  const fasesInfo = useMemo(() => {
+    const lista = e.fases ?? [];
+    if (!lista.length) return null;
+    const idDoPasso = (pp: (typeof passos)[number]) => (pp.tipo === "pergunta" ? perguntas[pp.indice]?.id : pp.tipo === "tela" ? telas[pp.indice]?.id : undefined);
+    const inicios = lista.map((fz, i) => (i === 0 ? 0 : Math.max(0, passos.findIndex((pp) => idDoPasso(pp) === fz.de))));
+    return { nomes: lista.map((fz) => fz.nome), inicios };
+  }, [e.fases, passos, perguntas, telas]);
+  let faseAtual = 0, fracFase = 0;
+  if (fasesInfo) {
+    fasesInfo.inicios.forEach((ini, i) => { if (pos >= ini && ini >= (fasesInfo.inicios[faseAtual] ?? 0)) faseAtual = i; });
+    const ini = fasesInfo.inicios[faseAtual], fim = fasesInfo.inicios[faseAtual + 1] ?? passos.length - 1;
+    fracFase = Math.min(1, Math.max(0, (pos - ini) / Math.max(1, fim - ini)));
+  }
+
   const contatoOk = pedir.every((c) => {
     const v = (contato[c] ?? "").trim();
     if (c === "whatsapp") return v.replace(/\D/g, "").length >= 10;   // com DDD
@@ -383,7 +540,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             <button type="button" onClick={() => setPos((p) => Math.min(passos.length - 1, p + 1))} disabled={pos >= passos.length - 1} className="flex items-center gap-1 disabled:opacity-40">Próxima<ArrowRight className="h-3 w-3" /></button>
           </div>
         )}
-        {passo.tipo !== "intro" && passo.tipo !== "fim" ? (
+        {passo.tipo !== "intro" && passo.tipo !== "fim" && fasesInfo ? (
+          <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
+        ) : passo.tipo !== "intro" && passo.tipo !== "fim" ? (
           <div className={cn("h-2 shrink-0 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progresso}%`, background: cor, boxShadow: `0 0 12px ${cor}` }} />
           </div>
@@ -413,7 +572,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             const q = perguntas[passo.indice];
             const base = `perguntas.${passo.indice}`;
             const fotos = q.estilo === "fotos";   // rostos em grade de 3, nome embaixo (como o 12min)
-            const cartoes = q.estilo === "cartoes" || fotos;
+            const avatares = q.estilo === "avatares";   // cartões com rosto redondo; o rosto pode depender de uma resposta anterior (o.imagens)
+            const icones = q.estilo === "icones";   // cartões com ícone 3D pequeno em cima do nome
+            const cartoes = q.estilo === "cartoes" || fotos || avatares || icones;
+            const imagemDe = (o: (typeof q.opcoes)[number]) => {
+              for (const [chave, url] of Object.entries(o.imagens ?? {})) { const [pid, i] = chave.split("="); if (escolhas[pid] === Number(i)) return url; }
+              return o.imagem;
+            };
             const livro = q.estilo === "livro";
             const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
             return (
@@ -421,22 +586,27 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Pergunta {nPergunta} de {perguntas.length}</p>
                 {quadrosM && !livro
                   ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
-                  : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
-                <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />
+                  : quadrosM && livro
+                    ? <>
+                        <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.subtitulo`} valor={q.subtitulo || "Este livro é interessante para você?"} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
+                        <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-center text-2xl font-bold leading-snug" />
+                      </>
+                    : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
+                {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />}
                 {(q.imagem || q.imagem_nota) && (livro
                   ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[42dvh] max-h-[420px] shadow-lg" />
                   : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
                 <div className={cn(fotos ? "grid grid-cols-3 gap-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
-                    const marcada = escolhas[q.id] === k;
+                    const marcada = q.multipla ? (marcadas[q.id] ?? []).includes(k) : escolhas[q.id] === k;
                     const Opcao = editar ? "div" : "button";
                     return (
-                      <Opcao key={k} type={editar ? undefined : "button"} onClick={() => escolher(q.id, k)}
+                      <Opcao key={k} type={editar ? undefined : "button"} onClick={() => (q.multipla ? alternar(q.id, k) : escolher(q.id, k))}
                         className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md",
                           escuro ? "border-white/15 bg-white/5 hover:border-white/40" : "hover:border-foreground/30",
                           (cartoes || livro) && "flex-col justify-center text-center", livro && "py-4 text-base font-semibold", marcada && "scale-[1.02] text-white")}
                         style={marcada ? { background: cor, borderColor: cor } : undefined}>
-                        {cartoes && (o.imagem !== undefined) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={o.imagem} redonda={fotos} className="aspect-square w-full" />}
+                        {cartoes && (o.imagem !== undefined || !!o.imagens) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={imagemDe(o)} redonda={fotos || avatares} className={avatares ? "mx-auto aspect-square w-24" : icones ? "mx-auto aspect-square w-16" : "aspect-square w-full"} />}
                         {livro ? (k === 0 ? <X className={cn("h-7 w-7", marcada ? "text-white" : "text-orange-500")} /> : <Check className={cn("h-7 w-7", marcada ? "text-white" : "text-green-600")} />)
                           : editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji ? <span className="text-xl">{o.emoji}</span> : !cartoes && (
                           <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold", marcada ? "bg-white/25" : escuro ? "bg-white/10" : "bg-black/5")}>
@@ -463,6 +633,11 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                       className={cn("flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-3 py-2.5 text-sm", suave)}><Plus className="h-4 w-4" />Adicionar opção</button>
                   )}
                 </div>
+                {q.multipla && (
+                  <div className={cn(!editar && !marcadas[q.id]?.length && "pointer-events-none opacity-40")}>
+                    <Botao onClick={avancar}>Continuar</Botao>
+                  </div>
+                )}
                 {pos > 1 && !editar && !travado && (
                   <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                 )}
@@ -506,7 +681,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
           {passo.tipo === "fim" && (
             <div className="space-y-8">
-              {!temTelaResultado && (
+              {!temTelaResultado && !e.sem_resultado && (
                 <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
               {e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
@@ -574,7 +749,10 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const ultimaFala = !t.falas?.length || iFala >= t.falas.length - 1;
   return (
     <div ref={raiz} className={cn("space-y-5 py-2", especialista && "text-center")}>
-      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={t.fala} falas={t.falas} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} />
+      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={t.fala} falas={t.falas} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} pose={t.pose} />
+      : t.loop?.length ? <MascoteLoop frames={t.loop} />
+      : t.mapa && t.imagem ? <MapaConectado url={t.imagem} pontos={t.mapa.pontos} cor={cor} />
+      : t.imagem_mascote && t.imagem ? <img src={t.imagem} alt="" draggable={false} className="mx-auto h-52 w-52 object-contain motion-safe:animate-empolgado" />
       : (t.imagem || t.imagem_nota) && (
         <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
           className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] max-h-[30dvh] w-full"} />
@@ -592,7 +770,13 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
           <Txt caminho={`${base}.citacao.autor`} valor={t.citacao.autor} as="figcaption" className={cn("mt-1 block text-sm", suave)} />
         </figure>
       )}
-      {t.grafico && (
+      {t.grafico?.tipo === "curva" && (
+        <div className="space-y-1 text-left">
+          <Txt caminho={`${base}.grafico.titulo`} valor={t.grafico.titulo} as="p" className={cn("block text-xs font-semibold uppercase tracking-wider", suave)} />
+          <GraficoCurva barras={t.grafico.barras} aqui={t.grafico.aqui} cor={cor} />
+        </div>
+      )}
+      {t.grafico && t.grafico.tipo !== "curva" && (
         <div className="space-y-2 text-left">
           <Txt caminho={`${base}.grafico.titulo`} valor={t.grafico.titulo} as="p" className={cn("block text-xs font-semibold uppercase tracking-wider", suave)} />
           {t.grafico.barras.map((b, k) => (
@@ -610,7 +794,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
       <AudioDaTela caminho={`${base}.audio`} url={t.audio} nota={t.audio_nota} />
       <Depoimentos caminho={`${base}.depoimentos`} lista={t.depoimentos} nota={t.depoimentos_nota} />
       <Txt caminho={`${base}.fonte`} valor={t.fonte} as="p" className={cn("block text-left text-[11px]", suave)} />
-      <div className={cn(!aberto && "invisible")}><Botao onClick={seguir}>{ultimaFala ? <Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /> : <span>{t.botao_inicial || "Continuar"}</span>}</Botao></div>
+      <div className={cn((!aberto || !ultimaFala) && "invisible")}><Botao onClick={seguir}>{ultimaFala ? <Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /> : <span>{t.botao_inicial || "Continuar"}</span>}</Botao></div>
     </div>
   );
 }
@@ -619,17 +803,28 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
 function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string; f: (s?: string) => string; onPronto?: () => void; suave: string }) {
   const { cor } = useContext(QuizCtx);
   const [pct, setPct] = useState(0);
+  // Perguntas que param o carregamento (como no 12min): ao chegar em `pct`, aparece "Para seguir em frente, responda".
+  // No editor (sem onPronto) o carregamento só anda, sem parar.
+  const pausas = onPronto ? (t.pausas ?? []) : [];
+  const [pausa, setPausa] = useState<number | null>(null);
+  const feitas = useRef(0);
+  const decorrido = useRef(0);
   const pronto = useRef(onPronto);
   pronto.current = onPronto;
   useEffect(() => {
-    const inicio = Date.now(), dur = 4200;
+    if (pausa !== null) return;
+    const dur = 4200;
     const id = window.setInterval(() => {
-      const p = Math.min(100, Math.round(((Date.now() - inicio) / dur) * 100));
+      decorrido.current += 60;
+      const p = Math.min(100, Math.round((decorrido.current / dur) * 100));
+      const prox = pausas[feitas.current];
+      if (prox && p >= prox.pct) { window.clearInterval(id); setPct(prox.pct); setPausa(feitas.current); return; }
       setPct(p);
       if (p >= 100) { window.clearInterval(id); window.setTimeout(() => pronto.current?.(), 500); }
     }, 60);
     return () => window.clearInterval(id);
-  }, []);
+  }, [pausa]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const responder = () => { feitas.current += 1; setPausa(null); };
   const itens = t.itens ?? [];
   return (
     <div className="space-y-6 py-8 text-center">
@@ -655,6 +850,20 @@ function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string
           );
         })}
       </ul>
+      {pausa !== null && pausas[pausa] && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-6 animate-in fade-in duration-200">
+          <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 text-center text-gray-900 shadow-2xl animate-in zoom-in-95 duration-300">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Para seguir em frente, responda</p>
+            <p className="text-lg font-bold leading-snug">{pausas[pausa].texto}</p>
+            <div className="grid grid-cols-2 gap-2">
+              {pausas[pausa].opcoes.map((o, k) => (
+                <button key={k} type="button" onClick={responder} className="rounded-xl border-2 px-3 py-3 text-sm font-semibold transition-colors hover:text-white" style={{ borderColor: cor }}
+                  onMouseEnter={(ev) => { ev.currentTarget.style.background = cor; }} onMouseLeave={(ev) => { ev.currentTarget.style.background = ""; }}>{o}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {!onPronto && <p className={cn("text-xs", suave)}>(editando: esta tela passa sozinha no quiz de verdade)</p>}
     </div>
   );
