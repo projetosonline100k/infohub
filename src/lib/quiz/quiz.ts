@@ -54,6 +54,8 @@ export interface OfertaQuiz {
   garantia?: string; preco?: string; preco_detalhe?: string; fechamento?: string;
   imagem?: string; imagem_nota?: string;
   cta_texto?: string; cta_url?: string;
+  // Oferta no visual do 12min (Davi, 10/11): lista do que recebe, cupom, preço De/Por, botão, garantia, depoimentos, perguntas e o bloco de compra repetido no fim.
+  depoimentos_titulo?: string; recebe_titulo?: string; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
   faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
 }
 export type CampoCaptura = "nome" | "email" | "whatsapp";

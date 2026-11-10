@@ -982,68 +982,92 @@ function Resultado({ e, t, base, perfil, iPerfil, escolhas, nome, f, onSeguir, s
   );
 }
 
-// A oferta no fim do quiz (a página de vendas dentro do quiz).
-function Oferta({ e, perfil, iPerfil, f, suave }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; iPerfil: number; f: (s?: string) => string; suave: string }) {
-  const { cor, escuro, editar } = useContext(QuizCtx);
+// A oferta no fim do quiz (a página de vendas dentro do quiz), no visual escuro do 12min (Davi, 10/11): o que a pessoa
+// recebe, o plano pronto com o cupom e o preço De/Por, o botão, a garantia, depoimentos, perguntas frequentes e o
+// bloco de compra repetido no fim.
+function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; iPerfil?: number; f: (s?: string) => string; suave?: string }) {
+  const { aoClicarOferta, editar } = useContext(QuizCtx);
   const o = e.oferta!;
   const url = o.cta_url || perfil?.cta_url;
-  const texto = o.cta_texto || perfil?.cta_texto || "Quero começar";
-  const caixa = cn("rounded-2xl p-4", escuro ? "bg-white/5" : "bg-black/[0.03]");
-  return (
-    <div className="space-y-5">
-      <div className="space-y-2 text-center">
-        <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="block text-3xl font-extrabold leading-tight" />
-        <Txt caminho="oferta.subtitulo" valor={o.subtitulo} mostrar={f(o.subtitulo)} as="p" className={cn("block text-base", suave)} />
-      </div>
-      <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />
-      <Txt caminho="oferta.texto" valor={o.texto} mostrar={f(o.texto)} as="p" className="block text-base leading-relaxed" />
-      <div className="rounded-2xl border-2 p-4 text-center" style={{ borderColor: cor }}>
-        <Txt caminho="oferta.produto" valor={o.produto} as="p" className="block text-lg font-bold" />
-        {perfil?.virada && <Txt caminho={`perfis.${iPerfil}.virada`} valor={perfil.virada} as="p" className="mt-2 block text-sm" />}
-      </div>
-      {!!o.dias?.length && (
-        <ol className="grid grid-cols-7 gap-1 text-center">
-          {o.dias.map((d, k) => (
-            <li key={k} className="space-y-1">
-              <span className="mx-auto flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold text-white" style={{ background: cor, opacity: 0.55 + (k / o.dias!.length) * 0.45 }}>{k + 1}</span>
-              <Txt caminho={`oferta.dias.${k}`} valor={d} className="block text-[10px] leading-tight sm:text-xs" />
-            </li>
-          ))}
-        </ol>
+  const texto = o.cta_texto || perfil?.cta_texto || "Ativar meu plano";
+  const verde = "#34d399", roxo = "#9aa7ff";
+  const de = o.preco_de, por = o.preco_por ?? o.preco;
+  const compra = (k: number) => (
+    <div key={k} className="space-y-4">
+      <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />
+      {(o.cupom || o.subtitulo) && (
+        <div className="space-y-1">
+          <p className="text-center text-sm font-semibold" style={{ color: verde }}>Seu cupom foi aplicado!</p>
+          <div className="flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5" style={{ borderColor: `${verde}66`, background: `${verde}14` }}>
+            <span className="flex items-center gap-2 text-sm font-semibold"><Check className="h-4 w-4" style={{ color: verde }} /><Txt caminho="oferta.cupom.codigo" valor={o.cupom?.codigo ?? o.subtitulo} /></span>
+            {o.cupom?.desconto && <span className="rounded-md px-2 py-0.5 text-xs font-extrabold text-[#0a1020]" style={{ background: verde }}><Txt caminho="oferta.cupom.desconto" valor={o.cupom.desconto} /></span>}
+          </div>
+        </div>
       )}
+      <div className="text-center">
+        {de && <p className="text-sm text-white/60">De <s><Txt caminho="oferta.preco_de" valor={de} /></s> por</p>}
+        <Txt caminho="oferta.preco_por" valor={por} as="p" className="block text-4xl font-extrabold" />
+        <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe && !de ? o.preco_detalhe : undefined} as="p" className="block text-sm text-white/60" />
+      </div>
+      {url
+        ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: roxo, boxShadow: `0 8px 24px -8px ${roxo}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
+        : <div className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] opacity-90" style={{ background: roxo }}><Txt caminho="oferta.cta_texto" valor={texto} />{!editar && <span className="ml-2 text-xs font-medium">(link ainda não definido)</span>}</div>}
+      {o.garantia && (
+        <div className="flex items-start gap-3 rounded-2xl border p-4 text-sm" style={{ borderColor: `${verde}55`, background: `${verde}10` }}>
+          <ShieldCheck className="mt-0.5 h-6 w-6 shrink-0" style={{ color: verde }} />
+          <Txt caminho="oferta.garantia" valor={o.garantia} className="font-semibold" />
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div className="space-y-7 rounded-3xl bg-[#0a1020] p-5 text-white shadow-xl">
       {!!o.itens?.length && (
-        <div className={caixa}>
-          <p className={cn("mb-2 text-xs font-semibold uppercase tracking-wider", suave)}>O que você recebe</p>
-          <ul className="space-y-1.5 text-sm">
+        <section className="space-y-3">
+          <Txt caminho="oferta.recebe_titulo" valor={o.recebe_titulo ?? "O que você recebe com o Instalivros"} as="h3" className="block text-lg font-extrabold" />
+          <ul className="space-y-2.5">
             {o.itens.map((it, k) => (
-              <li key={k} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0" style={{ color: cor }} /><Txt caminho={`oferta.itens.${k}`} valor={it} /></li>
+              <li key={k} className="flex items-start gap-2.5 text-sm leading-snug">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ background: verde }}><Check className="h-3.5 w-3.5 text-[#0a1020]" strokeWidth={3.5} /></span>
+                <Txt caminho={`oferta.itens.${k}`} valor={it} />
+              </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
-      <Depoimentos caminho="oferta.depoimentos" lista={o.depoimentos} nota={o.depoimentos_nota} />
-      {o.garantia && (
-        <div className={cn(caixa, "flex gap-3 text-sm")}><ShieldCheck className="h-6 w-6 shrink-0" style={{ color: cor }} /><Txt caminho="oferta.garantia" valor={o.garantia} /></div>
+      <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />
+      {compra(0)}
+      {(!!o.depoimentos?.length || editar) && (
+        <section className="space-y-3">
+          <Txt caminho="oferta.depoimentos_titulo" valor={o.depoimentos_titulo ?? "Os usuários adoram o Instalivros!"} as="h3" className="block text-center text-lg font-extrabold" />
+          <div className="space-y-2.5">
+            {(o.depoimentos ?? []).map((d, k) => (
+              <figure key={k} className="space-y-1.5 rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
+                <p className="text-sm tracking-widest" style={{ color: "#fbbf24" }}>★★★★★</p>
+                <Txt caminho={`oferta.depoimentos.${k}.texto`} valor={d.texto} as="blockquote" className="block text-sm italic leading-relaxed text-white/90" />
+                <Txt caminho={`oferta.depoimentos.${k}.nome`} valor={d.nome} as="figcaption" className="block text-xs font-semibold text-white/60" />
+              </figure>
+            ))}
+          </div>
+          {!o.depoimentos?.length && !!o.depoimentos_nota && <p className="rounded-xl border-2 border-dashed border-white/20 p-3 text-center text-xs text-white/60">Falta: {o.depoimentos_nota}</p>}
+        </section>
       )}
       {!!o.faq?.length && (
-        <div className="space-y-2">
-          <p className={cn("text-center text-xs font-semibold uppercase tracking-wider", suave)}>Perguntas frequentes</p>
+        <section className="space-y-2">
+          <h3 className="text-center text-lg font-extrabold">Perguntas frequentes</h3>
           {o.faq.map((q, k) => (
-            <details key={k} open={editar || undefined} className={cn(caixa, "group py-3 text-left")}>
+            <details key={k} open={editar || undefined} className="group rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-left">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
                 <Txt caminho={`oferta.faq.${k}.pergunta`} valor={q.pergunta} />
-                <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" style={{ color: cor }} />
+                <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" style={{ color: roxo }} />
               </summary>
-              <Txt caminho={`oferta.faq.${k}.resposta`} valor={q.resposta} as="p" className={cn("mt-2 block text-sm leading-relaxed", suave)} />
+              <Txt caminho={`oferta.faq.${k}.resposta`} valor={q.resposta} as="p" className="mt-2 block text-sm leading-relaxed text-white/70" />
             </details>
           ))}
-        </div>
+        </section>
       )}
-      <Txt caminho="oferta.preco" valor={o.preco} as="p" className="block text-center text-2xl font-extrabold" />
-      <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe} as="p" className={cn("-mt-3 block text-center text-sm", suave)} />
-      {url ? <Botao href={url}><Txt caminho="oferta.cta_texto" valor={texto} /></Botao>
-        : <Button size="lg" className="h-auto min-h-12 w-full whitespace-normal text-white" style={{ background: cor }} disabled>{texto} (link ainda não definido)</Button>}
-      <Txt caminho="oferta.fechamento" valor={o.fechamento} mostrar={f(o.fechamento)} as="p" className={cn("block text-center text-sm italic", suave)} />
+      {o.repetir !== false && compra(1)}
+      <Txt caminho="oferta.fechamento" valor={o.fechamento} mostrar={f(o.fechamento)} as="p" className="block text-center text-sm italic text-white/60" />
     </div>
   );
 }
