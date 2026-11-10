@@ -50,6 +50,7 @@ sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))
 import briefing  # noqa: E402
 import passos  # noqa: E402  (linha do tempo da tarefa: o que o funcionário já fez, 19/10)
 import execucao  # noqa: E402
+import vivo  # noqa: E402  (modo vivo do chat: só no Mac, com Chrome e comandos, 10/11)
 import chatbot_assistente  # noqa: E402  (assistente do Chatbot: pedido do app → Claude do Davi, 10/11)
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
@@ -258,6 +259,10 @@ def chat_atendendo():
         return time.time() - json.loads(SINAL_CHAT.read_text()).get("quando", 0) < 5 * 60
     except (OSError, ValueError):
         return False
+
+
+def atender_vivo():
+    vivo.atender(rodar_claude, log)
 
 
 def atender_chatbot():
@@ -869,7 +874,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, chatbot_assistente, melhorias, cobranca_rodada, esteira, vigia):
+        for m in (briefing, execucao, vivo, chatbot_assistente, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -973,6 +978,7 @@ if __name__ == "__main__":
     log("ouvinte iniciado" + (" (só código)" if SO_CODIGO else " (sem código)" if SEM_CODIGO else "") + "; claude =", claude_bin())
     if SO_CODIGO:
         fluxos = (("execucao", lambda: execucao.reenfileirar(sistema=True), "tarefa(s) de programação interrompida(s)"),
+                  ("vivo", vivo.reenfileirar, "mensagem(ns) do modo vivo interrompida(s)"),
                   ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"))
     else:
         fluxos = (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
@@ -989,6 +995,7 @@ if __name__ == "__main__":
             log(f"{nome_fluxo}: não reenfileirei —", repr(e)[:200])
     if SO_CODIGO:
         threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
+        threading.Thread(target=laco, args=("vivo", atender_vivo, 2), daemon=True).start()   # só o Mac tem Chrome e é do Davi
         laco("melhorias", atender_melhorias, 20)
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.

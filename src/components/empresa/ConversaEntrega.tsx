@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRascunho } from "@/hooks/useRascunho";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Loader2, MessageCircle, Send, UserPlus } from "lucide-react";
+import { Loader2, MessageCircle, Radio, Send, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -17,6 +17,9 @@ import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { marcarConversaLida } from "@/lib/empresa/notificacoes";
 import { ehCoordenador } from "@/lib/empresa/visaoGeral";
 import { useMencaoDocumentos } from "./MencaoDocumentos";
+import { useAuth } from "@/auth/AuthProvider";
+import { ehAdmin } from "@/lib/admin";
+import { confirmar } from "@/components/DialogosGlobais";
 
 const db = supabase as unknown as SupabaseClient;   // participantes e membro_id ainda não estão nos tipos gerados
 type Mensagem = MensagemBriefing & { membro_id?: string | null };
@@ -54,6 +57,10 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const [chamando, setChamando] = useState(false);
   const [texto, setTexto] = useRascunho(`entrega:${sobre.id}:${membroId}`);
   const fotos = useImagensChat();
+  // Modo vivo (10/11, Davi): a conversa passa a ser atendida por um Claude no Mac dele (Chrome, comandos). Só o Davi liga.
+  const { user } = useAuth();
+  const podeVivo = ehAdmin(user?.email);
+  const [vivo, setVivo] = useState(false);
   const mencao = useMencaoDocumentos(texto, setTexto);
   const [enviando, setEnviando] = useState(false);
   const [agora, setAgora] = useState(Date.now());
@@ -70,9 +77,10 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   const carregar = useCallback(async (id: string) => {
     const [{ data }, { data: b }] = await Promise.all([
       db.from("briefing_mensagens").select("id, papel, texto, status, criada_em, membro_id").eq("briefing_id", id).order("criada_em"),
-      db.from("briefings").select("proposta, participantes").eq("id", id).maybeSingle(),
+      db.from("briefings").select("proposta, participantes, modo_vivo").eq("id", id).maybeSingle(),
     ]);
     setParticipantes(((b as { participantes?: string[] } | null)?.participantes) ?? []);
+    setVivo(!!(b as { modo_vivo?: boolean } | null)?.modo_vivo);
     const agora = (b?.proposta as { agora?: string } | null)?.agora;
     setFazendo(typeof agora === "string" && agora.trim() ? agora.trim() : null);
     const lista = (data || []) as Mensagem[];
@@ -116,6 +124,21 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
     setConversaId(id);
     respostas.current = Math.max(respostas.current, 1);
     return id;
+  };
+
+  const alternarVivo = async () => {
+    if (!vivo && !(await confirmar(
+      `Ligar o modo vivo com ${nome}? As mensagens passam a ser atendidas por um Claude que roda NESTE Mac, ao vivo: ele pode usar o seu Chrome (com as suas contas abertas), rodar comandos e mexer em arquivos do projeto. Só as suas mensagens são obedecidas, e ele não publica nem envia nada sem você confirmar no chat. O Mac precisa estar ligado, com o ouvinte do Atlas rodando.`,
+      { botao: "Ligar modo vivo" }))) return;
+    try {
+      const id = await garantirConversa();
+      const { error } = await db.from("briefings").update({ modo_vivo: !vivo }).eq("id", id);
+      if (error) throw error;
+      setVivo(!vivo);
+      toast.success(!vivo ? `${nome} está ao vivo no seu Mac` : "Modo vivo desligado: volta ao chat normal");
+    } catch {
+      toast.error("Não consegui mudar o modo vivo");
+    }
   };
 
   const chamar = async (c: Colega) => {
@@ -205,6 +228,13 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
         <p className="min-w-0 flex-1 truncate text-sm font-semibold">
           {emGrupo ? `${nome} + ${participantes.map((p) => nomeDe(p)).join(", ")}` : `Conversar com ${nome}`}
         </p>
+        {(podeVivo || vivo) && (
+          <button type="button" onClick={() => void (podeVivo ? alternarVivo() : undefined)} disabled={!podeVivo}
+            title={vivo ? `${nome} está ao vivo no seu Mac (Chrome, comandos). Clique para desligar.` : `Ligar o modo vivo: ${nome} passa a responder ao vivo, no seu Mac, com Chrome e comandos`}
+            className={cn("flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs", vivo ? "bg-emerald-500/15 font-semibold text-emerald-600 dark:text-emerald-300" : "text-muted-foreground hover:bg-muted hover:text-foreground")}>
+            <Radio className={cn("h-3.5 w-3.5", vivo && "animate-pulse")} />{vivo ? "Ao vivo" : "Modo vivo"}
+          </button>
+        )}
         {paraChamar.length > 0 && (
           <button type="button" onClick={() => setChamando(!chamando)} title="Chamar alguém da equipe pra esta conversa"
             className="flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
