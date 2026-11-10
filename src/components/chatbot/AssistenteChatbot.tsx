@@ -11,7 +11,7 @@ import { sanitizarConfig, type ConfigChatbot } from "@/lib/chatbot/chatbot";
 // Chat do assistente (10/11/2026, Davi: "um chat onde eu jogo as mensagens e você já adapta para o chatbot").
 // Cola um roteiro, uma lista de perguntas ou um pedido ("troca o tom", "adiciona pergunta de idade"): o Claude devolve
 // o chatbot inteiro ajustado, que entra na hora (fluxo, editor e prévia mudam) e dá para desfazer.
-interface Msg { id: number; papel: "user" | "assistant"; texto: string; antes?: ConfigChatbot; desfeito?: boolean }
+interface Msg { id: number; aberta?: boolean; papel: "user" | "assistant"; texto: string; antes?: ConfigChatbot; desfeito?: boolean }
 
 const db = supabase as unknown as SupabaseClient;   // chatbot_pedidos ainda não está nos tipos gerados
 const espera = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -36,7 +36,7 @@ export function AssistenteChatbot({ chatbotId, clienteId, config, onAplicar }: {
     try {
       const { data: criado, error } = await db.from("chatbot_pedidos").insert({
         chatbot_id: chatbotId, cliente_id: clienteId, mensagem: t, config_atual: config,
-        historico: msgs.map((m) => ({ papel: m.papel, texto: m.texto.slice(0, 2000) })).slice(-6),
+        historico: msgs.map((m) => ({ papel: m.papel, texto: m.texto.slice(0, 4000) })).slice(-6),
       }).select("id").single();
       if (error || !criado) throw new Error("Não consegui enviar o pedido.");
       const id = (criado as { id: string }).id;
@@ -86,7 +86,12 @@ export function AssistenteChatbot({ chatbotId, clienteId, config, onAplicar }: {
         {msgs.map((m) => (
           <div key={m.id} className={cn("flex", m.papel === "user" ? "justify-end" : "justify-start")}>
             <div className={cn("max-w-[92%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted")}>
-              {m.papel === "user" && m.texto.length > 600 ? `${m.texto.slice(0, 600)}…` : m.texto}
+              {m.papel === "user" && m.texto.length > 600 && !m.aberta ? `${m.texto.slice(0, 600)}…` : m.texto}
+              {m.papel === "user" && m.texto.length > 600 && (
+                <button type="button" onClick={() => setMsgs((l) => l.map((x) => (x.id === m.id ? { ...x, aberta: !x.aberta } : x)))} className="mt-1 block text-xs font-medium underline opacity-90">
+                  {m.aberta ? "Mostrar menos" : `Ver a mensagem inteira (${m.texto.length.toLocaleString("pt-BR")} caracteres)`}
+                </button>
+              )}
               {m.papel === "assistant" && m.antes && (
                 <button type="button" disabled={m.desfeito} onClick={() => desfazer(m)} className="mt-1.5 flex items-center gap-1 text-xs font-medium text-primary hover:underline disabled:text-muted-foreground disabled:no-underline">
                   <Undo2 className="h-3 w-3" />{m.desfeito ? "Desfeito" : "Desfazer"}

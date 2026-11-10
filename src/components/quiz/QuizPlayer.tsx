@@ -89,35 +89,43 @@ function Img({ caminho, url, nota, className, redonda, inteira }: { caminho: str
   );
 }
 
-// Mascote animado (estilo Duolingo): entra pulando, acena, fala no balão, pisca de tempos em tempos e fica
-// respirando. `quadros` = [parado, piscando, aceno A, aceno B, falando, pulo]; sem eles, só flutua.
-// No editor fica estático (a imagem tem que ser clicável); quem pede menos movimento vê só o quadro parado.
-const [Q_PARADO, Q_PISCA, Q_ACENO_A, Q_ACENO_B, Q_FALA, Q_PULO] = [0, 1, 2, 3, 4, 5];
+// Mascote animado (estilo Duolingo): entra pulando, acena devagar, fala no balão, pisca e fica respirando.
+// `quadros` (19) = rosto [0 neutro, 1 meio piscado, 2 piscado, 3 boca leve, 4 boca aberta, 5 "o"],
+// aceno [6 braço baixo … 11 braço descendo], [12 pulo] e gestos do outro braço enquanto fala
+// [13 baixo, 14 sobe, 15 abre a palma, 16 abre mais alto, 17 mão na cintura, 18 dedo da ideia].
+// Os quadros ficam empilhados e só muda a opacidade (transição de 110 ms), então a troca é suave.
+// Sem quadros: uma imagem só, flutuando. No editor fica estático (a imagem tem que ser clicável);
+// quem pede menos movimento vê só o quadro parado.
+const Q = { PARADO: 0, PISCA_MEIO: 1, PISCA: 2, BOCA_LEVE: 3, BOCA_ABERTA: 4, BOCA_O: 5, ACENO: 6, PULO: 12, GESTO: 13 };
+const N_QUADROS = 19;
+// [ms, quadro]: aceno lento → fala gesticulando com o outro braço → piscadas; o ciclo todo dura 8,5 s e se repete
+const ROTEIRO: [number, number][] = [
+  [0, Q.ACENO], [140, Q.ACENO + 1], [280, Q.ACENO + 2], [420, Q.ACENO + 3], [600, Q.ACENO + 4], [780, Q.ACENO + 3],
+  [960, Q.ACENO + 4], [1140, Q.ACENO + 3], [1320, Q.ACENO + 4], [1500, Q.ACENO + 5], [1650, Q.ACENO + 2], [1800, Q.ACENO + 1],
+  [1950, Q.GESTO], [2100, Q.GESTO + 1], [2250, Q.GESTO + 2], [2500, Q.GESTO + 3], [2750, Q.GESTO + 2], [3000, Q.GESTO + 3],
+  [3250, Q.GESTO + 2], [3500, Q.GESTO + 4], [4200, Q.GESTO + 5], [4900, Q.GESTO + 4], [5300, Q.GESTO + 1], [5450, Q.GESTO],
+  [5600, Q.PARADO], [6000, Q.PISCA_MEIO], [6090, Q.PISCA], [6200, Q.PISCA_MEIO], [6290, Q.PARADO],
+  [7400, Q.PISCA_MEIO], [7490, Q.PISCA], [7600, Q.PISCA_MEIO], [7690, Q.PARADO],
+];
+const CICLO_MS = 8500;
 function Mascote({ caminho, url, nota, fala, quadros }: { caminho: string; url?: string; nota?: string; fala?: string; quadros?: string[] }) {
   const { editar } = useContext(QuizCtx);
-  const [q, setQ] = useState(quadros?.length ? Q_PULO : Q_PARADO);
-  const temQuadros = !!quadros && quadros.length >= 6;
+  const temQuadros = !!quadros && quadros.length >= N_QUADROS;
+  // atual + anterior: o anterior fica opaco por baixo enquanto o novo aparece por cima. Se os dois fossem
+  // meio transparentes ao mesmo tempo, o fundo branco apareceria entre eles (o "flash" na troca).
+  const [par, setPar] = useState({ atual: temQuadros ? Q.PULO : Q.PARADO, antes: -1 });
+  const setQ = (k: number) => setPar((p) => (p.atual === k ? p : { atual: k, antes: p.atual }));
   useEffect(() => {
-    if (!temQuadros || editar || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setQ(Q_PARADO); return; }
-    quadros!.forEach((u) => { const i = new Image(); i.src = u; });   // todos os quadros já carregados: a troca não pisca
+    if (!temQuadros || editar || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { setQ(Q.PARADO); return; }
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const em = (ms: number, k: number) => { timers.push(setTimeout(() => setQ(k), ms)); };
-    const ciclo = (t0: number) => {
-      // aceno (alterna A/B) → fala (alterna falando/parado) → parado, com piscadas
-      for (let i = 0; i < 8; i++) em(t0 + i * 260, i % 2 ? Q_ACENO_B : Q_ACENO_A);
-      for (let i = 0; i < 6; i++) em(t0 + 2200 + i * 190, i % 2 ? Q_PARADO : Q_FALA);
-      em(t0 + 3400, Q_PARADO);
-      em(t0 + 4300, Q_PISCA); em(t0 + 4450, Q_PARADO);
-      em(t0 + 5800, Q_PISCA); em(t0 + 5950, Q_PARADO);
-    };
-    em(800, Q_PARADO); ciclo(900);                                   // entrou pulando (quadro de pulo) e depois acena
-    const repete = setInterval(() => ciclo(0), 8000);
+    const toca = (t0: number) => ROTEIRO.forEach(([ms, k]) => timers.push(setTimeout(() => setQ(k), t0 + ms)));
+    toca(1000);                                              // entrou pulando (~1 s) e então começa o aceno
+    const repete = setInterval(() => toca(0), CICLO_MS);
     return () => { timers.forEach(clearTimeout); clearInterval(repete); };
-  }, [temQuadros, editar, quadros?.join("|")]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [temQuadros, editar]);
   if (editar || !url) return <Img caminho={caminho} url={url} nota={nota} inteira className="mx-auto h-48 w-48" />;
-  const src = temQuadros ? quadros![q] : url;
   return (
-    <div className="relative mx-auto flex w-56 flex-col items-center">
+    <div className="relative mx-auto flex w-64 flex-col items-center">
       {fala && (
         <div className="relative mb-3 rounded-2xl border-2 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm motion-safe:animate-balao-entra">
           {fala}
@@ -125,7 +133,13 @@ function Mascote({ caminho, url, nota, fala, quadros }: { caminho: string; url?:
         </div>
       )}
       <div className="motion-safe:animate-mascote-entra">
-        <img src={src} alt={nota ?? ""} className="h-52 w-52 object-contain motion-safe:animate-mascote-flutua" draggable={false} />
+        <div className="relative h-64 w-64 motion-safe:animate-mascote-flutua">
+          {temQuadros ? quadros!.map((u, k) => (
+            <img key={k} src={u} alt={k === 0 ? (nota ?? "") : ""} draggable={false}
+              decoding="sync"
+              className={cn("absolute inset-0 h-full w-full object-contain", k === par.atual ? "z-10 opacity-100 transition-opacity duration-100" : k === par.antes ? "opacity-100" : "opacity-0")} />
+          )) : <img src={url} alt={nota ?? ""} className="h-full w-full object-contain" draggable={false} />}
+        </div>
       </div>
       <div className="-mt-2 h-3 w-32 rounded-[50%] bg-black motion-safe:animate-mascote-sombra" style={{ opacity: 0.2 }} />
     </div>
