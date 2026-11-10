@@ -507,6 +507,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const meio = passos.filter((p) => p.tipo !== "intro" && p.tipo !== "fim").length;
   const progresso = passo.tipo === "intro" ? 0 : passo.tipo === "fim" ? 100 : Math.round((pos / (meio + 1)) * 100);
   const nPergunta = passo.tipo === "pergunta" ? passo.indice + 1 : 0;
+  const quadrosMascote = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;
   // Fase atual (barra do 12min): a fase começa no passo cujo id (pergunta ou tela) é `fases[i].de`; a 1ª, na primeira tela.
   const fasesInfo = useMemo(() => {
     const lista = e.fases ?? [];
@@ -554,7 +555,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
         {/* Tela cheia: a pergunta começa sempre na mesma altura (título fixo, imagem abaixo dele);
             abertura, respiro e "analisando" ficam no centro da tela. */}
-        <div key={pos} className={cn(ENTRA, telaCheia && (passo.tipo === "pergunta" ? "mt-[6dvh] w-full" : "my-auto w-full"))}>
+        <div key={pos} className={cn(ENTRA, telaCheia && (passo.tipo === "pergunta" ? "mt-[2dvh] w-full" : "my-auto w-full"))}>
           {passo.tipo === "intro" && (
             <div className="space-y-5 py-4 text-center">
               <Img caminho="intro.imagem" url={e.intro?.imagem} nota={e.intro?.imagem_nota} redonda className="mx-auto h-24 w-24" />
@@ -583,11 +584,14 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               for (const [chave, url] of Object.entries(o.imagens ?? {})) { const [pid, i] = chave.split("="); if (escolhas[pid] === Number(i)) return url; }
               return o.imagem;
             };
+            const emojiDe = (o: (typeof q.opcoes)[number]) => {
+              for (const [chave, em] of Object.entries(o.emojis ?? {})) { const [pid, i] = chave.split("="); if (escolhas[pid] === Number(i)) return em; }
+              return undefined;
+            };
             const livro = q.estilo === "livro";
             const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
             return (
-              <div className="space-y-4">
-                <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Pergunta {nPergunta} de {perguntas.length}</p>
+              <div className="space-y-3">
                 {quadrosM && !livro
                   ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
                   : quadrosM && livro
@@ -598,9 +602,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
                 {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />}
                 {(q.imagem || q.imagem_nota) && (livro
-                  ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[42dvh] max-h-[420px] shadow-lg" />
+                  ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
                   : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
-                <div className={cn(fotos ? "grid grid-cols-3 gap-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
+                <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
                     const marcada = q.multipla ? (marcadas[q.id] ?? []).includes(k) : escolhas[q.id] === k;
                     const Opcao = editar ? "div" : "button";
@@ -608,16 +612,21 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                       <Opcao key={k} type={editar ? undefined : "button"} onClick={() => (q.multipla ? alternar(q.id, k) : escolher(q.id, k))}
                         className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md",
                           escuro ? "border-white/15 bg-white/5 hover:border-white/40" : "hover:border-foreground/30",
-                          (cartoes || livro) && "flex-col justify-center text-center", livro && "py-4 text-base font-semibold", marcada && "scale-[1.02] text-white")}
-                        style={marcada ? { background: cor, borderColor: cor } : undefined}>
-                        {cartoes && (o.imagem !== undefined || !!o.imagens) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={imagemDe(o)} redonda={fotos || avatares} className={avatares ? "mx-auto aspect-square w-24" : icones ? "mx-auto aspect-square w-16" : "aspect-square w-full"} />}
+                          (cartoes || livro) && "flex-col justify-center text-center", livro && "py-3 text-base font-semibold", fotos && "gap-1 border-0 px-0 py-1 hover:translate-y-0 hover:shadow-none", marcada && !fotos && "scale-[1.02] text-white")}
+                        style={marcada ? (fotos ? { color: cor, fontWeight: 700 } : { background: cor, borderColor: cor }) : undefined}>
+                        {cartoes && emojiDe(o) && <span className="flex h-24 w-24 items-center justify-center text-6xl leading-none">{emojiDe(o)}</span>}
+                        {cartoes && !emojiDe(o) && (o.imagem !== undefined || !!o.imagens) && (
+                          <span className={cn("rounded-full", fotos && "p-[3px]")} style={fotos && marcada ? { boxShadow: `0 0 0 3px ${cor}` } : undefined}>
+                            <Img caminho={`${base}.opcoes.${k}.imagem`} url={imagemDe(o)} redonda={fotos || avatares} className={avatares ? "mx-auto aspect-square w-24" : icones ? "mx-auto aspect-square w-14" : fotos ? "mx-auto aspect-square w-20" : "aspect-square w-full"} />
+                          </span>
+                        )}
                         {livro ? (k === 0 ? <X className={cn("h-7 w-7", marcada ? "text-white" : "text-orange-500")} /> : <Check className={cn("h-7 w-7", marcada ? "text-white" : "text-green-600")} />)
                           : editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji ? <span className="text-xl">{o.emoji}</span> : !cartoes && (
                           <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold", marcada ? "bg-white/25" : escuro ? "bg-white/10" : "bg-black/5")}>
                             {marcada ? <Check className="h-4 w-4" /> : LETRAS[k]}
                           </span>
                         )}
-                        <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className={livro ? "" : "flex-1"} />
+                        <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className={livro ? "" : fotos ? "text-xs leading-tight" : "flex-1"} />
                         {editar && (
                           // 03/11 (Davi: "editar direto no que estou vendo"): as ações da opção, só ao passar o mouse.
                           <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
@@ -638,7 +647,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   )}
                 </div>
                 {q.multipla && (
-                  <div className={cn(!editar && !marcadas[q.id]?.length && "pointer-events-none opacity-40")}>
+                  <div className={cn("sticky bottom-3 z-10 pt-1", !editar && !marcadas[q.id]?.length && "pointer-events-none opacity-40")}>
                     <Botao onClick={avancar}>Continuar</Botao>
                   </div>
                 )}
@@ -659,6 +668,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
           {passo.tipo === "captura" && (
             <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
+              {quadrosMascote && (e.captura?.fala || editar) && (
+                <MascoteCanto key="captura" quadros={quadrosMascote}><Txt caminho="captura.fala" valor={e.captura?.fala} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
+              )}
               <div className="space-y-2 text-center">
                 <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} mostrar={f(e.captura?.titulo || "Para onde enviamos o seu resultado?")} as="h2" className="block text-2xl font-bold leading-snug" />
                 <Txt caminho="captura.texto" valor={e.captura?.texto} mostrar={f(e.captura?.texto)} as="p" className={cn("block text-base", suave)} />
@@ -679,6 +691,20 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 <p className={cn("flex items-center justify-center gap-1.5 text-center text-xs", suave)}>
                   <Lock className="h-3 w-3 shrink-0" /><Txt caminho="captura.nota" valor={e.captura?.nota} />
                 </p>
+              )}
+              {!!e.captura?.selos?.length && (
+                // Quadro de selos embaixo do botão (como o do 12min): só fatos reais da oferta, dentro de um ramo de louro.
+                <div className={cn("flex flex-wrap justify-center gap-2 rounded-2xl border p-3", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]")}>
+                  {e.captura.selos.map((sl, k) => (
+                    <div key={k} className={cn("relative", k === 0 ? "w-full" : "w-[48%]")}>
+                      {e.captura?.louro && <img src={e.captura.louro} alt="" draggable={false} className="mx-auto w-full max-w-[220px] object-contain" />}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center px-[22%] text-center leading-tight text-amber-600">
+                        <span className={cn("font-extrabold", k === 0 ? "text-2xl" : "text-lg")}>{sl.destaque}</span>
+                        <span className="text-[11px] font-medium opacity-90">{sl.texto}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </form>
           )}
@@ -806,44 +832,70 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
 // "Analisando…": barra enchendo e as etapas sendo marcadas; passa sozinha.
 function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string; f: (s?: string) => string; onPronto?: () => void; suave: string }) {
   const { cor } = useContext(QuizCtx);
+  const itens = t.itens ?? [];
+  const jogando = !!onPronto;   // no editor ele não anda: dá para ver cada etapa e editar a pergunta daquela etapa
+  const pausas = jogando ? (t.pausas ?? []) : (t.pausas ?? []);
   const [pct, setPct] = useState(0);
-  // Perguntas que param o carregamento (como no 12min): ao chegar em `pct`, aparece "Para seguir em frente, responda".
-  // No editor (sem onPronto) o carregamento só anda, sem parar.
-  const pausas = onPronto ? (t.pausas ?? []) : [];
+  // Perguntas que param o carregamento (como no 12min): ao chegar em `pct`, espera um pouco (para dar tempo de ler o item
+  // que está carregando) e abre o cartão "Para seguir em frente, responda" por cima da tela.
   const [pausa, setPausa] = useState<number | null>(null);
   const feitas = useRef(0);
   const decorrido = useRef(0);
   const pronto = useRef(onPronto);
   pronto.current = onPronto;
   useEffect(() => {
-    if (pausa !== null) return;
-    const dur = 4200;
+    if (!jogando || pausa !== null) return;
+    const dur = 9500;   // devagar: dá para ler cada etapa (Davi, 10/11: "as perguntas estão aparecendo rápido demais")
+    let espera: number | undefined;
     const id = window.setInterval(() => {
       decorrido.current += 60;
       const p = Math.min(100, Math.round((decorrido.current / dur) * 100));
       const prox = pausas[feitas.current];
-      if (prox && p >= prox.pct) { window.clearInterval(id); setPct(prox.pct); setPausa(feitas.current); return; }
+      if (prox && p >= prox.pct) {
+        window.clearInterval(id); setPct(prox.pct);
+        espera = window.setTimeout(() => setPausa(feitas.current), 1600);
+        return;
+      }
       setPct(p);
-      if (p >= 100) { window.clearInterval(id); window.setTimeout(() => pronto.current?.(), 500); }
+      if (p >= 100) { window.clearInterval(id); window.setTimeout(() => pronto.current?.(), 900); }
     }, 60);
-    return () => window.clearInterval(id);
+    return () => { window.clearInterval(id); if (espera) window.clearTimeout(espera); };
   }, [pausa]);   // eslint-disable-line react-hooks/exhaustive-deps
   const responder = () => { feitas.current += 1; setPausa(null); };
-  const itens = t.itens ?? [];
+  // Editor: escolhe a etapa para ver (0..n-1 = com a pergunta; n = 100%).
+  const [etapa, setEtapa] = useState(0);
+  const pctMostrado = jogando ? pct : (etapa < pausas.length ? pausas[etapa].pct : 100);
+  const pergunta = jogando ? (pausa !== null ? pausas[pausa] : undefined) : (etapa < pausas.length ? pausas[etapa] : undefined);
+  const iPergunta = jogando ? pausa : (etapa < pausas.length ? etapa : null);
+  const cartao = pergunta && iPergunta !== null && (
+    <div className={cn("flex items-center justify-center bg-black/45 p-6", jogando ? "fixed inset-0 z-50 animate-in fade-in duration-200" : "absolute inset-0 z-10 rounded-2xl")}>
+      <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 text-center text-gray-900 shadow-2xl animate-in zoom-in-95 duration-300">
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Para seguir em frente, responda</p>
+        <Txt caminho={`${base}.pausas.${iPergunta}.texto`} valor={pergunta.texto} as="p" className="block text-lg font-bold leading-snug" />
+        <div className="grid grid-cols-2 gap-2">
+          {pergunta.opcoes.map((o, k) => (jogando
+            ? <button key={k} type="button" onClick={responder} className="rounded-xl border-2 px-3 py-3 text-sm font-semibold transition-colors hover:text-white" style={{ borderColor: cor }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.background = cor; }} onMouseLeave={(ev) => { ev.currentTarget.style.background = ""; }}>{o}</button>
+            : <div key={k} className="rounded-xl border-2 px-3 py-3 text-sm font-semibold" style={{ borderColor: cor }}><Txt caminho={`${base}.pausas.${iPergunta}.opcoes.${k}`} valor={o} /></div>))}
+        </div>
+      </div>
+    </div>
+  );
   return (
-    <div className="space-y-6 py-8 text-center">
+    <div className="relative space-y-5 py-6 text-center">
       <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className="block text-xl font-bold" />
+      {t.imagem && <img src={t.imagem} alt="" draggable={false} className="mx-auto h-36 object-contain motion-safe:animate-[mascote-flutua_4s_ease-in-out_infinite]" />}
       <div className="relative mx-auto h-28 w-28">
         <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
           <circle cx="50" cy="50" r="44" fill="none" stroke="currentColor" strokeOpacity=".1" strokeWidth="8" />
           <circle cx="50" cy="50" r="44" fill="none" stroke={cor} strokeWidth="8" strokeLinecap="round"
-            strokeDasharray={2 * Math.PI * 44} strokeDashoffset={2 * Math.PI * 44 * (1 - pct / 100)} />
+            strokeDasharray={2 * Math.PI * 44} strokeDashoffset={2 * Math.PI * 44 * (1 - pctMostrado / 100)} />
         </svg>
-        <span className="absolute inset-0 flex items-center justify-center text-2xl font-extrabold">{pct}%</span>
+        <span className="absolute inset-0 flex items-center justify-center text-2xl font-extrabold">{pctMostrado}%</span>
       </div>
       <ul className="mx-auto max-w-sm space-y-2 text-left text-sm">
         {itens.map((it, k) => {
-          const feito = pct >= ((k + 1) / (itens.length + 0.5)) * 100;
+          const feito = pctMostrado >= ((k + 1) / (itens.length + 0.5)) * 100;
           return (
             <li key={k} className={cn("flex items-center gap-2 transition-opacity duration-500", feito ? "opacity-100" : "opacity-35")}>
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white" style={{ background: feito ? cor : "transparent", border: feito ? "none" : "1px solid currentColor" }}>
@@ -854,40 +906,17 @@ function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string
           );
         })}
       </ul>
-      {pausa !== null && pausas[pausa] && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-6 animate-in fade-in duration-200">
-          <div className="w-full max-w-sm space-y-4 rounded-2xl bg-white p-5 text-center text-gray-900 shadow-2xl animate-in zoom-in-95 duration-300">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Para seguir em frente, responda</p>
-            <p className="text-lg font-bold leading-snug">{pausas[pausa].texto}</p>
-            <div className="grid grid-cols-2 gap-2">
-              {pausas[pausa].opcoes.map((o, k) => (
-                <button key={k} type="button" onClick={responder} className="rounded-xl border-2 px-3 py-3 text-sm font-semibold transition-colors hover:text-white" style={{ borderColor: cor }}
-                  onMouseEnter={(ev) => { ev.currentTarget.style.background = cor; }} onMouseLeave={(ev) => { ev.currentTarget.style.background = ""; }}>{o}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-      {!onPronto && !!t.pausas?.length && (
-        <div className="space-y-3 text-left">
-          <p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>Perguntas que aparecem durante o carregamento</p>
-          {t.pausas.map((ps, k) => (
-            <div key={k} className="space-y-2 rounded-2xl border-2 p-3" style={{ borderColor: `${cor}55` }}>
-              <p className={cn("text-[11px]", suave)}>Aparece em {ps.pct}%{itens[k] ? `, enquanto “${itens[k]}” carrega` : ""}</p>
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Para seguir em frente, responda</p>
-              <Txt caminho={`${base}.pausas.${k}.texto`} valor={ps.texto} as="p" className="block text-base font-bold leading-snug" />
-              <div className="grid grid-cols-2 gap-2">
-                {ps.opcoes.map((o, j) => (
-                  <div key={j} className="rounded-xl border-2 px-3 py-2 text-center text-sm font-semibold" style={{ borderColor: cor }}>
-                    <Txt caminho={`${base}.pausas.${k}.opcoes.${j}`} valor={o} />
-                  </div>
-                ))}
-              </div>
-            </div>
+      {!jogando && !!pausas.length && (
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-xs">
+          <span className={suave}>Etapa:</span>
+          {[...pausas.map((x) => `${x.pct}%`), "100%"].map((r, k) => (
+            <button key={k} type="button" onClick={() => setEtapa(k)} className={cn("rounded-full border px-2.5 py-0.5 font-semibold", etapa === k ? "text-white" : "opacity-70")}
+              style={etapa === k ? { background: cor, borderColor: cor } : undefined}>{r}</button>
           ))}
         </div>
       )}
-      {!onPronto && <p className={cn("text-xs", suave)}>(editando: esta tela passa sozinha no quiz de verdade)</p>}
+      {!jogando && <p className={cn("text-xs", suave)}>(editando: no quiz de verdade esta tela passa sozinha e a pergunta abre por cima)</p>}
+      {cartao}
     </div>
   );
 }

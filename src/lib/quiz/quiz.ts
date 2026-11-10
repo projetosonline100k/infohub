@@ -11,6 +11,8 @@ export interface OpcaoQuiz {
   texto: string; perfil?: string | null; pontos?: number; imagem?: string; emoji?: string; resumo?: string;
   /** Imagem que depende de uma resposta anterior: chave "<id da pergunta>=<nº da opção>" (ex.: "genero=1" → foto de mulher). Sem resposta, vale `imagem`. */
   imagens?: Record<string, string>;
+  /** Igual a `imagens`, mas com emoji (ex.: "genero=2" → "🧑‍🎓"): aparece no lugar do desenho. */
+  emojis?: Record<string, string>;
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
@@ -61,7 +63,10 @@ export type CampoCaptura = "nome" | "email" | "whatsapp";
 export interface CapturaQuiz {
   ativa?: boolean; titulo?: string; texto?: string; nota?: string; botao?: string;
   pedir?: CampoCaptura[]; rotulos?: Partial<Record<CampoCaptura, string>>; depois_de?: string;
+  fala?: string;            // o Instalivros fala no topo do formulário (balão)
+  selos?: SeloQuiz[]; louro?: string;   // quadro de selos embaixo do botão (só com fatos reais da oferta); `louro` = imagem do ramo de louro
 }
+export interface SeloQuiz { texto: string; destaque?: string }
 export interface EstruturaQuiz {
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };
   perguntas: PerguntaQuiz[];
