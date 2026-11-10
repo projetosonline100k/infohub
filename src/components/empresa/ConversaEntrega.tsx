@@ -135,6 +135,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
       const { error } = await db.from("briefings").update({ modo_vivo: !vivo }).eq("id", id);
       if (error) throw error;
       setVivo(!vivo);
+      window.dispatchEvent(new Event("modo-vivo:mudou"));   // o boneco flutuante aparece/some na hora
       toast.success(!vivo ? `${nome} está ao vivo no seu Mac` : "Modo vivo desligado: volta ao chat normal");
     } catch {
       toast.error("Não consegui mudar o modo vivo");
