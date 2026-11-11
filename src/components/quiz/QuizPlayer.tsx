@@ -1007,7 +1007,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
       <div className="text-center">
         {o.parcelas ? (
           <>
-            <p className="text-sm text-white/60">por apenas</p>
+            {de && <p className="text-sm text-white/60">De <s><Txt caminho="oferta.preco_de" valor={de} /></s> por apenas</p>}
             <p className="text-4xl font-extrabold"><span className="text-xl font-bold text-white/80">{o.parcelas.n}x de </span><Txt caminho="oferta.parcelas.valor" valor={o.parcelas.valor} /></p>
           </>
         ) : (
@@ -1044,7 +1044,9 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
           </ul>
         </section>
       )}
-      <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />
+      {o.video?.url
+        ? <video src={o.video.url} poster={o.video.poster} controls playsInline preload="none" className="mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] rounded-2xl bg-black object-cover" />
+        : <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />}
       {compra(0)}
       {(!!o.depoimentos?.length || editar) && (
         <section className="space-y-3">
@@ -1073,12 +1075,6 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
               <Txt caminho={`oferta.faq.${k}.resposta`} valor={q.resposta} as="p" className="mt-2 block text-sm leading-relaxed text-white/70" />
             </details>
           ))}
-        </section>
-      )}
-      {o.video?.url && (
-        <section className="space-y-3">
-          <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja o Instalivros por dentro"} as="h3" className="block text-center text-lg font-extrabold" />
-          <video src={o.video.url} poster={o.video.poster} controls playsInline preload="none" className="mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] rounded-2xl bg-black object-cover" />
         </section>
       )}
       {o.repetir !== false && compra(1)}
