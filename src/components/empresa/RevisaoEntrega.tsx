@@ -333,8 +333,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     agente={andamento?.quem ?? info?.responsavel ?? "o agente"}
                     onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} onPedir={pedirAoAgente} />
                 ) : quiz?.estrutura && abaQuiz === "metricas" ? (
-                  <div className="mx-auto max-w-3xl">
-                    {quiz.status !== "publicado" && <p className="mb-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
+                  <div className="w-full">
                     <MetricasDoQuiz quiz={quiz} />
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "testar" ? (
@@ -390,7 +389,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 ))}
               </div>
               {(info?.responsavelId || editorQuiz) && (
-                <div className={cn("flex h-[420px] shrink-0 flex-col gap-2 md:h-auto md:w-[360px]", editorQuiz && "rounded-2xl border border-white/10 bg-[#0a1019] p-3")}>
+                <div className={cn("flex h-[420px] shrink-0 flex-col gap-2 md:h-auto md:w-[360px]", editorQuiz && "rounded-2xl border border-white/10 bg-[#0a1019] p-3", quiz?.estrutura && abaQuiz === "metricas" && "hidden")}>
                   {editorQuiz && (
                     <div className="flex shrink-0 gap-1 rounded-lg bg-muted p-0.5 text-xs">
                       {([["conversa", MessageSquare, "Conversa com o agente"], ["logica", Pencil, "Editar a tela"]] as const).map(([a, Icone, rotulo]) => (
