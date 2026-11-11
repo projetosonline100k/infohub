@@ -21,6 +21,7 @@ SET LOCAL ROLE anon;
 DO $$
 BEGIN
   IF public.resolver_link_curto(' BIO-IG ') <> 'https://infopro-hub.vercel.app/quiz/abc?utm_source=ig' THEN RAISE EXCEPTION 'não resolveu'; END IF;
+  IF public.resolver_link_curto('bio-ig', false) IS NULL THEN RAISE EXCEPTION 'não resolveu sem contar'; END IF;
   IF public.resolver_link_curto('nao-existe') IS NOT NULL THEN RAISE EXCEPTION 'resolveu código inexistente'; END IF;
 END $$;
 RESET ROLE;
