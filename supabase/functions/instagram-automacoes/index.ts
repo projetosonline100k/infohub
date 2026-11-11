@@ -108,12 +108,21 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // A Meta abre o link para montar a prévia na DM; isso não é clique de gente.
 const ROBO_RE = /facebookexternalhit|meta-externalagent|facebot|bot\b|crawler|spider|preview|slurp/i;
 
-/** Troca cada link da mensagem pelo redirecionador que conta o clique. */
+/** Link curto do próprio Hub (APP_URL/r/<código>): já é bonito e conta o clique sozinho, então a DM o leva como está. */
+function ehLinkCurtoDoHub(link: string): boolean {
+  try {
+    const u = new URL(link);
+    return u.host === new URL(APP_URL).host && /^\/r\/[a-z0-9-]+\/?$/i.test(u.pathname);
+  } catch { return false; }
+}
+
+/** Troca cada link da mensagem pelo redirecionador que conta o clique (menos os links curtos do Hub, que contam sozinhos). */
 export function rastrearLinks(texto: string, base: string, disparoId: string) {
   const links: string[] = [];
   const mensagem = texto.replace(URL_RE, (bruto) => {
     const link = limparLink(bruto);
     const resto = bruto.slice(link.length);
+    if (ehLinkCurtoDoHub(link)) return bruto;
     links.push(link);
     // Curto (11/11, Davi: "o link da DM está comprido"): os 8 primeiros caracteres do envio + o número do link.
     return `${base}/l/${disparoId.slice(0, 8)}-${links.length - 1}${resto}`;
