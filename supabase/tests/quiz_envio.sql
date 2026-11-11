@@ -26,6 +26,10 @@ BEGIN
    RAISE EXCEPTION 'token vencido foi aceito'; END IF;
  IF public.quiz_envio_permitido(base || '10000000-0000-0000-0000-000000000494/x.svg') THEN
    RAISE EXCEPTION 'svg aceito'; END IF;
+ IF NOT public.quiz_envio_permitido(base || '10000000-0000-0000-0000-000000000494/oferta-leve.mp4') THEN
+   RAISE EXCEPTION 'mp4 recusado'; END IF;
+ IF public.quiz_envio_permitido(base || '10000000-0000-0000-0000-000000000494/x.exe') THEN
+   RAISE EXCEPTION 'exe aceito'; END IF;
  IF public.quiz_envio_permitido('outro/10000000-0000-0000-0000-000000000493/10000000-0000-0000-0000-000000000494/q1.jpg') THEN
    RAISE EXCEPTION 'pasta fora de roy/ aceita'; END IF;
  IF public.quiz_envio_permitido(base || 'nao-e-uuid/q1.jpg') THEN RAISE EXCEPTION 'caminho inválido aceito'; END IF;

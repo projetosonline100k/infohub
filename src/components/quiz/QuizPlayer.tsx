@@ -1005,9 +1005,18 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
         </div>
       )}
       <div className="text-center">
-        {de && <p className="text-sm text-white/60">De <s><Txt caminho="oferta.preco_de" valor={de} /></s> por</p>}
-        <Txt caminho="oferta.preco_por" valor={por} as="p" className="block text-4xl font-extrabold" />
-        <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe && !de ? o.preco_detalhe : undefined} as="p" className="block text-sm text-white/60" />
+        {o.parcelas ? (
+          <>
+            <p className="text-sm text-white/60">por apenas</p>
+            <p className="text-4xl font-extrabold"><span className="text-xl font-bold text-white/80">{o.parcelas.n}x de </span><Txt caminho="oferta.parcelas.valor" valor={o.parcelas.valor} /></p>
+          </>
+        ) : (
+          <>
+            {de && <p className="text-sm text-white/60">De <s><Txt caminho="oferta.preco_de" valor={de} /></s> por</p>}
+            <Txt caminho="oferta.preco_por" valor={por} as="p" className="block text-4xl font-extrabold" />
+            <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe && !de ? o.preco_detalhe : undefined} as="p" className="block text-sm text-white/60" />
+          </>
+        )}
       </div>
       {url
         ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: roxo, boxShadow: `0 8px 24px -8px ${roxo}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
@@ -1064,6 +1073,12 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
               <Txt caminho={`oferta.faq.${k}.resposta`} valor={q.resposta} as="p" className="mt-2 block text-sm leading-relaxed text-white/70" />
             </details>
           ))}
+        </section>
+      )}
+      {o.video?.url && (
+        <section className="space-y-3">
+          <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja o Instalivros por dentro"} as="h3" className="block text-center text-lg font-extrabold" />
+          <video src={o.video.url} poster={o.video.poster} controls playsInline preload="none" className="mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] rounded-2xl bg-black object-cover" />
         </section>
       )}
       {o.repetir !== false && compra(1)}
