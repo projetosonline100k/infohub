@@ -9,6 +9,10 @@
       "destination": "https://ucjyobemrxqfcoopkcgb.supabase.co/functions/v1/instagram-automacoes/l/:disparo/:n"
     },
     {
+      "source": "/l/:codigo",
+      "destination": "https://ucjyobemrxqfcoopkcgb.supabase.co/functions/v1/instagram-automacoes/l/:codigo"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -8,7 +8,7 @@
 //   - `messaging`: DM com a palavra-chave ou resposta de story → DM de volta.
 // POST /posts           → (JWT do usuário) posts recentes da conta conectada,
 //                         para a tela /automacoes escolher onde vale.
-// GET  /l/<disparo>/<n>  → redirecionador dos links da DM: conta o clique e
+// GET  /l/<disparo>/<n> ou /l/<8 primeiros do disparo>-<n>  → redirecionador dos links da DM: conta o clique e
 //                         manda para o destino original (funil da tela).
 // POST /link             → (JWT) gera o link de conexão de uma conta (sua ou
 //                         de um cliente) — OAuth do Instagram, vale 7 dias.
@@ -115,7 +115,8 @@ export function rastrearLinks(texto: string, base: string, disparoId: string) {
     const link = limparLink(bruto);
     const resto = bruto.slice(link.length);
     links.push(link);
-    return `${base}/l/${disparoId}/${links.length - 1}${resto}`;
+    // Curto (11/11, Davi: "o link da DM está comprido"): os 8 primeiros caracteres do envio + o número do link.
+    return `${base}/l/${disparoId.slice(0, 8)}-${links.length - 1}${resto}`;
   });
   return { mensagem, links };
 }
@@ -280,10 +281,14 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
 
 // deno-lint-ignore no-explicit-any
 async function redirecionar(req: Request, admin: any, disparoId: string, indice: number) {
+  // O id inteiro (links antigos) ou só os 8 primeiros caracteres (links novos, curtos): o uuid é ordenável, então o prefixo vira uma faixa.
+  const prefixo = /^[0-9a-f]{8}$/i.test(disparoId) ? disparoId.toLowerCase() : null;
+  const consulta = admin.from("instagram_automacao_disparos").select("id, links, cliques, clicou_em");
   const { data: disparo } = UUID_RE.test(disparoId)
-    ? await admin.from("instagram_automacao_disparos")
-      .select("id, links, cliques, clicou_em").eq("id", disparoId).maybeSingle()
-    : { data: null };
+    ? await consulta.eq("id", disparoId).maybeSingle()
+    : prefixo
+      ? await consulta.gte("id", `${prefixo}-0000-0000-0000-000000000000`).lte("id", `${prefixo}-ffff-ffff-ffff-ffffffffffff`).limit(1).maybeSingle()
+      : { data: null };
   const destino: string | undefined = disparo?.links?.[indice];
   if (!destino) return new Response("Link não encontrado.", { status: 404 });
 
@@ -458,7 +463,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const url = new URL(req.url);
 
-  const link = url.pathname.match(/\/l\/([^/]+)\/(\d+)\/?$/);
+  const link = url.pathname.match(/\/l\/([^/]+)\/(\d+)\/?$/) ?? url.pathname.match(/\/l\/([0-9a-f]{8})-(\d+)\/?$/i);
   if (req.method === "GET" && link) {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
