@@ -1045,7 +1045,12 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
         </section>
       )}
       {o.video?.url
-        ? <video src={o.video.url} poster={o.video.poster} controls playsInline preload="none" className="mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] rounded-2xl bg-black object-cover" />
+        ? (
+          <div className="space-y-3">
+            <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
+            <video src={o.video.url} poster={o.video.poster} controls playsInline preload="none" className="mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] rounded-2xl bg-black object-cover" />
+          </div>
+        )
         : <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />}
       {compra(0)}
       {(!!o.depoimentos?.length || editar) && (
