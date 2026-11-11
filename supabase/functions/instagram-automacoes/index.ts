@@ -235,7 +235,8 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
 
   const token = await tokenAtual(admin, conexao as Conexao);
   const erros: string[] = [];
-  const base = `${Deno.env.get("SUPABASE_URL")}/functions/v1/instagram-automacoes`;
+  // Link bonito na DM (11/11, Davi): o endereço do Hub (APP_URL/l/…) — o vercel.json repassa para esta função, que conta o clique.
+  const base = APP_URL.replace(/\/$/, "");
   const { mensagem, links } = automacao.rastrear_links
     ? rastrearLinks(automacao.mensagem_dm, base, disparo.id)
     : { mensagem: automacao.mensagem_dm, links: [] as string[] };

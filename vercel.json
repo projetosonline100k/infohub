@@ -5,6 +5,10 @@
       "destination": "/api/r?c=:codigo"
     },
     {
+      "source": "/l/:disparo/:n",
+      "destination": "https://ucjyobemrxqfcoopkcgb.supabase.co/functions/v1/instagram-automacoes/l/:disparo/:n"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
