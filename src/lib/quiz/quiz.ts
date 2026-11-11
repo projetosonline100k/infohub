@@ -17,6 +17,7 @@ export interface OpcaoQuiz {
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
   imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones";
+  botao?: boolean;      // marca a resposta e só segue no botão Continuar (sem avançar sozinho)
   multipla?: boolean;   // "escolha quantas quiser": marca várias e segue no botão Continuar (conta a 1ª escolhida no perfil)
 }
 export interface PerfilQuiz {

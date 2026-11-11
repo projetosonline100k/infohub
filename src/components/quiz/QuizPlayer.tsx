@@ -216,8 +216,6 @@ function MascoteCanto({ quadros, children }: { quadros: string[]; children: Reac
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const timers: ReturnType<typeof setTimeout>[] = []; let vivo = true;
     const em = (ms: number, fn: () => void) => { timers.push(setTimeout(() => { if (vivo) fn(); }, ms)); };
-    [Q.BOCA_LEVE, Q.BOCA_ABERTA, Q.BOCA_LEVE, Q.BOCA_O, Q.BOCA_ABERTA, Q.BOCA_LEVE, Q.BOCA_ABERTA, Q.BOCA_LEVE, Q.PARADO]
-      .forEach((k, i) => em(800 + i * 150, () => setQ(k)));          // fala o título logo que o balão aparece
     const piscar = () => { setQ(Q.PISCA_MEIO); em(90, () => setQ(Q.PISCA)); em(200, () => setQ(Q.PISCA_MEIO)); em(290, () => setQ(Q.PARADO)); em(2800 + Math.random() * 2600, piscar); };
     em(3000, piscar);
     return () => { vivo = false; timers.forEach(clearTimeout); };
@@ -230,7 +228,7 @@ function MascoteCanto({ quadros, children }: { quadros: string[]; children: Reac
             className={cn("absolute inset-0 h-full w-full object-contain", k === par.atual ? "z-10 opacity-100 transition-opacity duration-100" : k === par.antes ? "opacity-100" : "opacity-0")} />
         ))}
       </div>
-      <div className="relative min-w-0 flex-1 rounded-2xl border-2 bg-white px-4 py-3 text-gray-800 shadow-sm motion-safe:animate-balao-entra" style={{ transformOrigin: "left center" }}>
+      <div className="relative min-w-0 flex-1 rounded-2xl border-2 bg-white px-4 py-3 text-gray-800 shadow-sm">
         <span className="absolute -left-[9px] top-1/2 h-4 w-4 -translate-y-1/2 rotate-45 border-b-2 border-l-2 bg-white" />
         {children}
       </div>
@@ -609,7 +607,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     const marcada = q.multipla ? (marcadas[q.id] ?? []).includes(k) : escolhas[q.id] === k;
                     const Opcao = editar ? "div" : "button";
                     return (
-                      <Opcao key={k} type={editar ? undefined : "button"} onClick={() => (q.multipla ? alternar(q.id, k) : escolher(q.id, k))}
+                      <Opcao key={k} type={editar ? undefined : "button"} onClick={() => (q.multipla ? alternar(q.id, k) : q.botao ? setEscolhas((x) => ({ ...x, [q.id]: k })) : escolher(q.id, k))}
                         className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md",
                           escuro ? "border-white/15 bg-white/5 hover:border-white/40" : "hover:border-foreground/30",
                           (cartoes || livro) && "flex-col justify-center text-center", livro && "py-3 text-base font-semibold", fotos && "gap-1 border-0 px-0 py-1 hover:translate-y-0 hover:shadow-none", marcada && !fotos && "scale-[1.02] text-white")}
@@ -646,8 +644,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                       className={cn("flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-3 py-2.5 text-sm", suave)}><Plus className="h-4 w-4" />Adicionar opção</button>
                   )}
                 </div>
-                {q.multipla && (
-                  <div className={cn("sticky bottom-3 z-10 pt-1", !editar && !marcadas[q.id]?.length && "pointer-events-none opacity-40")}>
+                {(q.multipla || q.botao) && (
+                  <div className={cn("sticky bottom-3 z-10 pt-1", !editar && (q.multipla ? !marcadas[q.id]?.length : escolhas[q.id] === undefined) && "pointer-events-none opacity-40")}>
                     <Botao onClick={avancar}>Continuar</Botao>
                   </div>
                 )}
