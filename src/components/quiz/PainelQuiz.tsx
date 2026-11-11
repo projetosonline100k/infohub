@@ -11,7 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
-import { linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
+import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
 import {
   agruparRespostas, calcularPainel, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, variacao, vendasDoLink,
   type EventoQuiz, type LeadQuiz, type PassoInfo, type StatusLead,
@@ -407,15 +407,17 @@ export function Config({ quiz, total }: { quiz: Pick<QuizResumo, "slug" | "statu
 const ORIGENS = ["instagram", "tiktok", "youtube", "whatsapp", "facebook", "google", "email", "site"];
 const MEIOS = ["bio", "story", "reels", "post", "anuncio", "direct", "grupo", "email", "link"];
 const moeda = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+interface Curto { codigo: string; quiz_link_id: string; cliques: number }
 interface VendaUtm { utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; valor: number | null }
 
 export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string; slug: string; onSlug: (s: string) => void; eventos: EventoQuiz[]; leads: LeadQuiz[] }) {
   const [links, setLinks] = useState<LinkQuiz[] | null>(null);
   const [vendas, setVendas] = useState<VendaUtm[]>([]);
+  const [curtos, setCurtos] = useState<Curto[]>([]);
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [novoSlug, setNovoSlug] = useState(slug);
   const [salvandoSlug, setSalvandoSlug] = useState(false);
-  const [f, setF] = useState({ nome: "", origem: "instagram", meio: "bio", campanha: "", conteudo: "" });
+  const [f, setF] = useState({ nome: "", origem: "instagram", meio: "bio", campanha: "", conteudo: "", curto: "" });
   const base = linkDoQuiz(slug);
   const campo = "rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-400/50";
 
@@ -425,6 +427,11 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
     setClienteId(cid);
     const { data: l } = await db.from("quiz_links").select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").eq("quiz_id", quizId).order("criado_em");
     setLinks((l ?? []) as LinkQuiz[]);
+    const ids = ((l ?? []) as { id: string }[]).map((x) => x.id);
+    if (ids.length) {
+      const { data: c } = await db.from("links_curtos").select("codigo, quiz_link_id, cliques").in("quiz_link_id", ids);
+      setCurtos((c ?? []) as Curto[]);
+    } else setCurtos([]);
     if (cid) {
       const { data: ps } = await db.from("produtos_cliente").select("id").eq("cliente_id", cid);
       const ids = ((ps ?? []) as { id: string }[]).map((x) => x.id);
@@ -454,14 +461,28 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
     if (!f.nome.trim() || !clienteId) return;
     const origem = normalizarUtm(f.origem);
     if (!origem) { toast.error("Escolha a origem (instagram, tiktok…)"); return; }
-    const { error } = await db.from("quiz_links").insert({
+    const { data: criado, error } = await db.from("quiz_links").insert({
       quiz_id: quizId, cliente_id: clienteId, nome: f.nome.trim(), utm_source: origem, utm_medium: normalizarUtm(f.meio) || null,
       utm_campaign: normalizarUtm(f.campanha || f.nome) || null, utm_content: normalizarUtm(f.conteudo) || null,
-    });
-    if (error) { toast.error("Não consegui criar o link"); return; }
-    setF({ ...f, nome: "", campanha: "", conteudo: "" });
-    toast.success("Link criado: copie e use onde quiser divulgar");
+    }).select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").single();
+    if (error || !criado) { toast.error("Não consegui criar o link"); return; }
+    const curto = await criarCurto(criado as LinkQuiz, f.curto || f.nome);
+    setF({ ...f, nome: "", campanha: "", conteudo: "", curto: "" });
+    toast.success(curto ? "Link criado: copie o link curto e use onde quiser divulgar" : "Link criado (o link curto não saiu: tente criar de novo na lista)");
     void carregar();
+  };
+  // Link curto bonito para divulgar (infopro-hub.vercel.app/r/<código>): leva ao endereço completo com UTM e conta os cliques.
+  const criarCurto = async (l: LinkQuiz, desejado: string): Promise<boolean> => {
+    if (!clienteId) return false;
+    const base = codigoCurto(desejado) ?? codigoCurto(l.nome) ?? "link";
+    const destino = linkRastreado(linkDoQuiz(slug), l);
+    for (let i = 0; i < 4; i++) {
+      const codigo = i === 0 ? base : `${base.slice(0, 35)}-${Math.random().toString(36).slice(2, 5)}`;
+      const { error } = await db.from("links_curtos").insert({ codigo, destino, cliente_id: clienteId, quiz_link_id: l.id });
+      if (!error) return true;
+      if (!/duplicate|unique|23505/i.test(error.message + (error.code ?? ""))) return false;
+    }
+    return false;
   };
   const apagar = async (l: LinkQuiz) => {
     const { error } = await db.from("quiz_links").delete().eq("id", l.id);
@@ -484,12 +505,13 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
 
       <section className={cn(cartao, "space-y-3")}>
         <div><h3 className="text-lg font-bold text-white">Links com nome (UTM)</h3><p className="text-xs text-white/55">Crie um link para cada lugar onde você divulga (bio, story, anúncio…). Quem entrar por ele fica marcado, e você vê aqui de onde vêm as visitas, os leads e as vendas.</p></div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_auto]">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_1.1fr_auto]">
           <input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do link (ex.: Bio do Instagram)" className={campo} />
           <label className="block"><input list="origens-quiz" value={f.origem} onChange={(e) => setF({ ...f, origem: e.target.value })} placeholder="Origem" title="Origem (utm_source)" className={cn(campo, "w-full")} /><datalist id="origens-quiz">{ORIGENS.map((o) => <option key={o} value={o} />)}</datalist></label>
           <label className="block"><input list="meios-quiz" value={f.meio} onChange={(e) => setF({ ...f, meio: e.target.value })} placeholder="Meio" title="Meio (utm_medium)" className={cn(campo, "w-full")} /><datalist id="meios-quiz">{MEIOS.map((o) => <option key={o} value={o} />)}</datalist></label>
           <input value={f.campanha} onChange={(e) => setF({ ...f, campanha: e.target.value })} placeholder={`Campanha (padrão: ${normalizarUtm(f.nome) || "o nome"})`} title="Campanha (utm_campaign)" className={campo} />
           <input value={f.conteudo} onChange={(e) => setF({ ...f, conteudo: e.target.value })} placeholder="Conteúdo (opcional)" title="Conteúdo (utm_content): ex. o vídeo ou o criativo" className={campo} />
+          <input value={f.curto} onChange={(e) => setF({ ...f, curto: e.target.value })} placeholder={`Link curto (padrão: ${codigoCurto(f.nome) ?? "o nome"})`} title="Fim do link curto: infopro-hub.vercel.app/r/…" className={campo} />
           <button type="button" disabled={!f.nome.trim() || !clienteId} onClick={() => void criar()} className="flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40"><Plus className="h-4 w-4" />Criar</button>
         </div>
         {links === null ? <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-white/50" /></div>
@@ -498,17 +520,22 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
             <div className="space-y-2">
               {links.map((l) => {
                 const url = linkRastreado(base, l);
+                const curto = curtos.find((c) => c.quiz_link_id === l.id);
+                const urlCurta = curto ? enderecoCurto(new URL(base).origin, curto.codigo) : null;
                 const e = estatisticaDoLink(l, linhas), v = vendasDoLink(l, vendas);
                 return (
                   <div key={l.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="min-w-0 flex-1 truncate font-semibold text-white">{l.nome}</p>
                       <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/60">{[l.utm_source, l.utm_medium, l.utm_campaign, l.utm_content].filter(Boolean).join(" · ")}</span>
-                      <button type="button" onClick={() => { void navigator.clipboard.writeText(url); toast.success("Link copiado"); }} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs text-white/80 hover:bg-white/5"><Copy className="h-3.5 w-3.5" />Copiar link</button>
+                      <button type="button" onClick={() => { void navigator.clipboard.writeText(urlCurta ?? url); toast.success(urlCurta ? "Link curto copiado" : "Link copiado"); }} className="flex items-center gap-1.5 rounded-lg bg-cyan-500 px-2.5 py-1 text-xs font-semibold text-black hover:bg-cyan-400"><Copy className="h-3.5 w-3.5" />{urlCurta ? "Copiar link curto" : "Copiar link"}</button>
                       <button type="button" onClick={() => void abrirLinkExterno(url)} title="Abrir" className="rounded-lg border border-white/10 p-1.5 text-white/70 hover:bg-white/5"><ExternalLink className="h-3.5 w-3.5" /></button>
                       <button type="button" onClick={() => void apagar(l)} title="Apagar este link (os números já contados ficam)" className="rounded-lg p-1.5 text-white/40 hover:bg-rose-500/15 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
-                    <code className="mt-1.5 block truncate text-[11px] text-cyan-200/80" title={url}>{url}</code>
+                    {urlCurta
+                      ? <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm"><code className="rounded bg-black/40 px-2 py-0.5 text-cyan-200">{urlCurta}</code><span className="text-xs text-white/50">{curto!.cliques} {curto!.cliques === 1 ? "clique" : "cliques"}</span></p>
+                      : <button type="button" onClick={() => void criarCurto(l, l.nome).then((ok) => { toast[ok ? "success" : "error"](ok ? "Link curto criado" : "Não consegui criar o link curto"); void carregar(); })} className="mt-1.5 rounded-lg border border-cyan-400/40 px-2.5 py-1 text-xs text-cyan-200 hover:bg-cyan-400/10">Criar link curto (bonito para divulgar)</button>}
+                    <code className="mt-1.5 block truncate text-[11px] text-white/35" title={url}>{url}</code>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
                       {[["Visitas", String(e.visitas)], ["Leads", String(e.leads)], ["Conversão", `${e.conversao}%`], ["Vendas", v.n ? `${v.n} · ${moeda(v.total)}` : "0"]].map(([r, n]) => (
                         <div key={r} className="rounded-lg bg-white/5 px-2 py-1.5"><p className="text-[10px] uppercase tracking-wide text-white/45">{r}</p><p className="text-sm font-bold tabular-nums text-white">{n}</p></div>

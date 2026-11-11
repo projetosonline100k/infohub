@@ -46,3 +46,12 @@ test('origens, estatística por link e vendas', () => {
   const vendas = [{ utm_source: 'instagram', utm_medium: 'bio', utm_campaign: null, utm_content: null, valor: 47 }, { utm_source: 'google', utm_medium: null, utm_campaign: null, utm_content: null, valor: 10 }];
   assert.deepEqual(p.vendasDoLink({ utm_source: 'instagram', utm_medium: 'bio' }, vendas), { n: 1, total: 47 });
 });
+
+test('código do link curto', () => {
+  assert.equal(u.codigoCurto('Bio do Instagram!'), 'bio-do-instagram');
+  assert.equal(u.codigoCurto('Reels · ManyChat'), 'reels-manychat');
+  assert.equal(u.codigoCurto('ab'), null);
+  assert.equal(u.codigoCurto('---'), null);
+  assert.equal(u.codigoCurto('x'.repeat(60)).length, 40);
+  assert.equal(u.enderecoCurto('https://infopro-hub.vercel.app/', 'reels'), 'https://infopro-hub.vercel.app/r/reels');
+});

@@ -48,3 +48,10 @@ export function linkRastreado(base: string, l: Pick<LinkQuiz, "utm_source" | "ut
   for (const k of UTM_CHAVES) { const v = l[k]; if (v) u.searchParams.set(k, v); }
   return u.toString();
 }
+
+/** Código do link curto (infopro-hub.vercel.app/r/<código>): a-z, 0-9 e hífen, 3 a 40, sem hífen nas pontas. null se não sobra nada. */
+export function codigoCurto(v: string): string | null {
+  const s = v.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/g, "");
+  return /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(s) ? s : null;
+}
+export const enderecoCurto = (baseDoSite: string, codigo: string) => `${baseDoSite.replace(/\/$/, "")}/r/${codigo}`;

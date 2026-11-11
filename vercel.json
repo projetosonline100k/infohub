@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/r/:codigo",
+      "destination": "/api/r?c=:codigo"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
