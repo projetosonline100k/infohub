@@ -5,7 +5,9 @@ const CHAVE = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_Dk8OE
 
 // Quem monta a prévia do link (Instagram, WhatsApp, etc.) não é gente: em vez de seguir até o site (e mostrar a imagem do
 // sistema, "Painel do Infoprodutor"), recebe uma página só com o título do quiz e, se tiver, a imagem do próprio quiz.
-const ROBO = /facebookexternalhit|meta-externalagent|facebot|instagram|whatsapp|twitterbot|telegrambot|slackbot|linkedinbot|discordbot|skypeuripreview|bot\b|crawler|spider|preview/i;
+// Atenção: o navegador do próprio Instagram/WhatsApp (quando a pessoa clica) também diz "Instagram" no user-agent: por isso NÃO
+// se procura essa palavra, só os robôs que montam a prévia (facebookexternalhit, meta-externalagent…).
+const ROBO = /facebookexternalhit|meta-external(agent|fetcher)|facebot|^whatsapp|twitterbot|telegrambot|slackbot|linkedinbot|discordbot|skypeuripreview|crawler|spider|\bbot\b/i;
 const esc = (t) => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 async function paginaDePrevia(destino) {
