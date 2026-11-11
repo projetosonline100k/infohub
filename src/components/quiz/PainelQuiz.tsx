@@ -4,15 +4,16 @@ import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Copy, ExternalLink, Eye, Filter, Lightbulb, ListChecks, Loader2, Mail, MessageCircle,
-  MoreHorizontal, MousePointerClick, Play, RefreshCw, Search, Settings, TrendingUp, Users,
+  Link2, MoreHorizontal, MousePointerClick, Play, Plus, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
+import { linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
 import {
-  agruparRespostas, calcularPainel, etapaDoLead, insightDoPior, leadsParaCsv, porcento, variacao,
+  agruparRespostas, calcularPainel, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, variacao, vendasDoLink,
   type EventoQuiz, type LeadQuiz, type PassoInfo, type StatusLead,
 } from "@/lib/quiz/painel";
 
@@ -20,8 +21,8 @@ import {
 // tendência, funil, maior abandono, insight, leads e visitas por dia), Leads (busca, filtro, status, planilha),
 // Respostas (o que as pessoas escolheram em cada pergunta), Funil e Configurações. Sempre escuro, como o editor.
 const db = supabase as unknown as SupabaseClient;
-type Aba = "metricas" | "leads" | "respostas" | "funil" | "config";
-const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["config", "Configurações", Settings]];
+type Aba = "metricas" | "leads" | "respostas" | "funil" | "links" | "config";
+const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["config", "Configurações", Settings]];
 const STATUS: Record<StatusLead, { rotulo: string; cor: string }> = {
   novo: { rotulo: "Novo", cor: "border-sky-400/50 bg-sky-500/15 text-sky-200" },
   em_contato: { rotulo: "Em contato", cor: "border-violet-400/50 bg-violet-500/15 text-violet-200" },
@@ -36,12 +37,13 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
   const [leads, setLeads] = useState<LeadQuiz[] | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [slug, setSlug] = useState(quiz.slug);   // o endereço pode ser trocado na aba Links
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     const [e, l] = await Promise.all([
-      db.from("quiz_eventos").select("sessao, tipo, passo, criado_em").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).limit(50000),
-      db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).limit(5000),
+      db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).limit(50000),
+      db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).limit(5000),
     ]);
     setEventos((e.data ?? []) as EventoQuiz[]);
     setLeads(((l.data ?? []) as LeadQuiz[]).map((x) => ({ ...x, respostas: x.respostas ?? [], status: x.status ?? "novo" })));
@@ -95,7 +97,8 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {aba === "leads" && <Leads leads={leads} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
-      {aba === "config" && <Config quiz={quiz} total={leads.length} />}
+      {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
+      {aba === "config" && <Config quiz={{ ...quiz, slug }} total={leads.length} />}
     </div>
   );
 }
@@ -395,5 +398,153 @@ export function Config({ quiz, total }: { quiz: Pick<QuizResumo, "slug" | "statu
       </div>
       <p className="text-xs text-white/50">Para publicar ou levar alterações ao link, use o botão Publicar no topo da edição do quiz. Para pausar o link, use a aba Quiz do projeto.</p>
     </section>
+  );
+}
+
+
+// ---------------------------------------------------------------- Links rastreados
+
+const ORIGENS = ["instagram", "tiktok", "youtube", "whatsapp", "facebook", "google", "email", "site"];
+const MEIOS = ["bio", "story", "reels", "post", "anuncio", "direct", "grupo", "email", "link"];
+const moeda = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+interface VendaUtm { utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; valor: number | null }
+
+export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string; slug: string; onSlug: (s: string) => void; eventos: EventoQuiz[]; leads: LeadQuiz[] }) {
+  const [links, setLinks] = useState<LinkQuiz[] | null>(null);
+  const [vendas, setVendas] = useState<VendaUtm[]>([]);
+  const [clienteId, setClienteId] = useState<string | null>(null);
+  const [novoSlug, setNovoSlug] = useState(slug);
+  const [salvandoSlug, setSalvandoSlug] = useState(false);
+  const [f, setF] = useState({ nome: "", origem: "instagram", meio: "bio", campanha: "", conteudo: "" });
+  const base = linkDoQuiz(slug);
+  const campo = "rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-400/50";
+
+  const carregar = useCallback(async () => {
+    const { data: q } = await db.from("quizzes").select("cliente_id").eq("id", quizId).maybeSingle();
+    const cid = (q as { cliente_id: string } | null)?.cliente_id ?? null;
+    setClienteId(cid);
+    const { data: l } = await db.from("quiz_links").select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").eq("quiz_id", quizId).order("criado_em");
+    setLinks((l ?? []) as LinkQuiz[]);
+    if (cid) {
+      const { data: ps } = await db.from("produtos_cliente").select("id").eq("cliente_id", cid);
+      const ids = ((ps ?? []) as { id: string }[]).map((x) => x.id);
+      if (ids.length) {
+        const { data: v } = await db.from("vendas_plataforma_eventos").select("utm_source, utm_medium, utm_campaign, utm_content, valor").in("produto_id", ids).eq("tipo", "venda").limit(5000);
+        setVendas((v ?? []) as VendaUtm[]);
+      }
+    }
+  }, [quizId]);
+  useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => setNovoSlug(slug), [slug]);
+
+  const linhas = useMemo(() => origens(eventos, leads), [eventos, leads]);
+
+  const salvarSlug = async () => {
+    const v = slugValido(novoSlug);
+    if (!v) { toast.error("Use de 4 a 60 letras, números ou hífen."); return; }
+    if (v === slug) return;
+    setSalvandoSlug(true);
+    const { error } = await db.from("quizzes").update({ slug: v }).eq("id", quizId);
+    setSalvandoSlug(false);
+    if (error) { toast.error(/em uso/.test(error.message) ? "Esse endereço já está em uso. Escolha outro." : "Não consegui trocar o endereço"); return; }
+    onSlug(v);
+    toast.success("Endereço trocado. O link antigo continua funcionando.");
+  };
+  const criar = async () => {
+    if (!f.nome.trim() || !clienteId) return;
+    const origem = normalizarUtm(f.origem);
+    if (!origem) { toast.error("Escolha a origem (instagram, tiktok…)"); return; }
+    const { error } = await db.from("quiz_links").insert({
+      quiz_id: quizId, cliente_id: clienteId, nome: f.nome.trim(), utm_source: origem, utm_medium: normalizarUtm(f.meio) || null,
+      utm_campaign: normalizarUtm(f.campanha || f.nome) || null, utm_content: normalizarUtm(f.conteudo) || null,
+    });
+    if (error) { toast.error("Não consegui criar o link"); return; }
+    setF({ ...f, nome: "", campanha: "", conteudo: "" });
+    toast.success("Link criado: copie e use onde quiser divulgar");
+    void carregar();
+  };
+  const apagar = async (l: LinkQuiz) => {
+    const { error } = await db.from("quiz_links").delete().eq("id", l.id);
+    if (error) { toast.error("Não consegui apagar"); return; }
+    setLinks((ls) => (ls ?? []).filter((x) => x.id !== l.id));
+  };
+
+  return (
+    <div className="space-y-4">
+      <section className={cn(cartao, "space-y-2")}>
+        <h3 className="text-lg font-bold text-white">Endereço do quiz</h3>
+        <p className="text-xs text-white/55">É o que aparece no link que as pessoas veem. Se você trocar, o endereço antigo continua abrindo o quiz (links já divulgados não quebram).</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-lg bg-black/40 px-3 py-1.5 text-sm text-white/60">{base.replace(slug, "")}</span>
+          <input value={novoSlug} onChange={(e) => setNovoSlug(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void salvarSlug(); }} className={cn(campo, "min-w-[200px] flex-1")} placeholder="meu-quiz" />
+          <button type="button" disabled={salvandoSlug || !slugValido(novoSlug) || slugValido(novoSlug) === slug} onClick={() => void salvarSlug()} className="rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40">{salvandoSlug ? "Salvando…" : "Salvar endereço"}</button>
+        </div>
+        {novoSlug && slugValido(novoSlug) && slugValido(novoSlug) !== novoSlug && <p className="text-xs text-white/50">Vai ficar: <b className="text-cyan-200">{slugValido(novoSlug)}</b></p>}
+      </section>
+
+      <section className={cn(cartao, "space-y-3")}>
+        <div><h3 className="text-lg font-bold text-white">Links com nome (UTM)</h3><p className="text-xs text-white/55">Crie um link para cada lugar onde você divulga (bio, story, anúncio…). Quem entrar por ele fica marcado, e você vê aqui de onde vêm as visitas, os leads e as vendas.</p></div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_auto]">
+          <input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do link (ex.: Bio do Instagram)" className={campo} />
+          <label className="block"><input list="origens-quiz" value={f.origem} onChange={(e) => setF({ ...f, origem: e.target.value })} placeholder="Origem" title="Origem (utm_source)" className={cn(campo, "w-full")} /><datalist id="origens-quiz">{ORIGENS.map((o) => <option key={o} value={o} />)}</datalist></label>
+          <label className="block"><input list="meios-quiz" value={f.meio} onChange={(e) => setF({ ...f, meio: e.target.value })} placeholder="Meio" title="Meio (utm_medium)" className={cn(campo, "w-full")} /><datalist id="meios-quiz">{MEIOS.map((o) => <option key={o} value={o} />)}</datalist></label>
+          <input value={f.campanha} onChange={(e) => setF({ ...f, campanha: e.target.value })} placeholder={`Campanha (padrão: ${normalizarUtm(f.nome) || "o nome"})`} title="Campanha (utm_campaign)" className={campo} />
+          <input value={f.conteudo} onChange={(e) => setF({ ...f, conteudo: e.target.value })} placeholder="Conteúdo (opcional)" title="Conteúdo (utm_content): ex. o vídeo ou o criativo" className={campo} />
+          <button type="button" disabled={!f.nome.trim() || !clienteId} onClick={() => void criar()} className="flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40"><Plus className="h-4 w-4" />Criar</button>
+        </div>
+        {links === null ? <div className="flex justify-center py-4"><Loader2 className="h-4 w-4 animate-spin text-white/50" /></div>
+          : links.length === 0 ? <p className="py-4 text-center text-sm text-white/45">Nenhum link ainda. Crie o primeiro acima.</p>
+          : (
+            <div className="space-y-2">
+              {links.map((l) => {
+                const url = linkRastreado(base, l);
+                const e = estatisticaDoLink(l, linhas), v = vendasDoLink(l, vendas);
+                return (
+                  <div key={l.id} className="rounded-xl border border-white/10 bg-black/20 p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="min-w-0 flex-1 truncate font-semibold text-white">{l.nome}</p>
+                      <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/60">{[l.utm_source, l.utm_medium, l.utm_campaign, l.utm_content].filter(Boolean).join(" · ")}</span>
+                      <button type="button" onClick={() => { void navigator.clipboard.writeText(url); toast.success("Link copiado"); }} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-xs text-white/80 hover:bg-white/5"><Copy className="h-3.5 w-3.5" />Copiar link</button>
+                      <button type="button" onClick={() => void abrirLinkExterno(url)} title="Abrir" className="rounded-lg border border-white/10 p-1.5 text-white/70 hover:bg-white/5"><ExternalLink className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => void apagar(l)} title="Apagar este link (os números já contados ficam)" className="rounded-lg p-1.5 text-white/40 hover:bg-rose-500/15 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
+                    </div>
+                    <code className="mt-1.5 block truncate text-[11px] text-cyan-200/80" title={url}>{url}</code>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">
+                      {[["Visitas", String(e.visitas)], ["Leads", String(e.leads)], ["Conversão", `${e.conversao}%`], ["Vendas", v.n ? `${v.n} · ${moeda(v.total)}` : "0"]].map(([r, n]) => (
+                        <div key={r} className="rounded-lg bg-white/5 px-2 py-1.5"><p className="text-[10px] uppercase tracking-wide text-white/45">{r}</p><p className="text-sm font-bold tabular-nums text-white">{n}</p></div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        <p className="text-[11px] text-white/45">As vendas só aparecem se o botão de compra do quiz levar a UTM adiante (o quiz já faz isso sozinho) e a plataforma (Eduzz, Kiwify, Hotmart) estiver ligada ao produto.</p>
+      </section>
+
+      <section className={cartao}>
+        <h3 className="text-lg font-bold text-white">De onde vem o tráfego</h3>
+        <p className="text-xs text-white/55">Todas as origens que já entraram, mesmo de links que você não criou aqui. “Sem origem” é quem abriu o endereço puro.</p>
+        {linhas.length === 0 ? <p className="py-6 text-center text-sm text-white/45">Ainda sem visitas.</p> : (
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="text-left text-xs text-white/50"><tr><th className="py-1.5 font-medium">Origem</th><th className="font-medium">Meio</th><th className="font-medium">Campanha</th><th className="text-right font-medium">Visitas</th><th className="text-right font-medium">Leads</th><th className="text-right font-medium">Conversão</th></tr></thead>
+              <tbody>
+                {linhas.map((o, i) => (
+                  <tr key={i} className="border-t border-white/5">
+                    <td className="py-1.5 font-medium text-white">{o.source || <span className="text-white/45">Sem origem (direto)</span>}</td>
+                    <td className="text-white/70">{o.medium || "—"}</td>
+                    <td className="text-white/70">{[o.campaign, o.content].filter(Boolean).join(" · ") || "—"}</td>
+                    <td className="text-right tabular-nums text-white/80">{o.visitas}</td>
+                    <td className="text-right tabular-nums text-white/80">{o.leads}</td>
+                    <td className="text-right tabular-nums text-white/60">{porcento(o.leads, o.visitas)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }

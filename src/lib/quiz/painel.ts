@@ -1,11 +1,12 @@
 // Painel do quiz (11/11/2026, Davi: "uma visualização desse tipo, com essas funções"): as contas por trás dos números
 // (visitas, funil, tendência contra o período anterior, insight, leads por etapa). Sem React nem importações: testável.
 
-export interface EventoQuiz { sessao: string; tipo: "visita" | "passo" | "fim" | "cta"; passo: number; criado_em: string }
+export type UtmLida = { utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string } | null;
+export interface EventoQuiz { sessao: string; tipo: "visita" | "passo" | "fim" | "cta"; passo: number; criado_em: string; utm?: UtmLida }
 export type StatusLead = "novo" | "em_contato" | "convertido";
 export interface LeadQuiz {
   id: string; perfil: string | null; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string;
-  respostas: { pergunta: string; resposta: string | null }[]; status: StatusLead;
+  respostas: { pergunta: string; resposta: string | null }[]; status: StatusLead; utm?: UtmLida;
 }
 export interface PassoInfo { rotulo: string; tipo: "intro" | "pergunta" | "tela" | "captura" | "fim" }
 export interface Janela { visitas: number; comecaram: number; terminaram: number; leads: number; cta: number }
@@ -113,4 +114,44 @@ export function leadsParaCsv(leads: LeadQuiz[], perguntas: string[]): string {
   const cab = ["Data", "Nome", "E-mail", "WhatsApp", "Perfil", "Etapa", "Status"];
   const linhas = leads.map((l) => [l.criada_em.slice(0, 16).replace("T", " "), l.nome ?? "", l.email ?? "", l.whatsapp ?? "", l.perfil ?? "", etapaDoLead(l, perguntas), l.status].map(aspas).join(","));
   return [cab.map(aspas).join(","), ...linhas].join("\n");
+}
+
+
+// ---------------------------------------------------------------- Origem do tráfego (UTM)
+
+export interface LinhaOrigem { source: string; medium: string; campaign: string; content: string; visitas: number; leads: number; terminaram: number }
+const chaveOrigem = (u: UtmLida | undefined) => [u?.utm_source ?? "", u?.utm_medium ?? "", u?.utm_campaign ?? "", u?.utm_content ?? ""] as const;
+
+/** Visitas, terminaram e leads por origem (source/medium/campaign/content). Sem UTM = tudo vazio ("direto"). */
+export function origens(eventos: EventoQuiz[], leads: Pick<LeadQuiz, "utm">[]): LinhaOrigem[] {
+  const mapa = new Map<string, LinhaOrigem>();
+  const linha = (u: UtmLida | undefined) => {
+    const [source, medium, campaign, content] = chaveOrigem(u);
+    const k = [source, medium, campaign, content].join("|");
+    let l = mapa.get(k);
+    if (!l) { l = { source, medium, campaign, content, visitas: 0, leads: 0, terminaram: 0 }; mapa.set(k, l); }
+    return l;
+  };
+  const utmDaSessao = new Map<string, UtmLida | undefined>();
+  for (const e of eventos) if (e.tipo === "visita") utmDaSessao.set(e.sessao, e.utm);
+  for (const [, u] of utmDaSessao) linha(u).visitas++;
+  for (const e of eventos) if (e.tipo === "fim" && utmDaSessao.has(e.sessao)) linha(utmDaSessao.get(e.sessao)).terminaram++;
+  for (const l of leads) linha(l.utm).leads++;
+  return [...mapa.values()].sort((a, b) => b.visitas - a.visitas || b.leads - a.leads);
+}
+
+interface LinkUtm { utm_source: string; utm_medium?: string | null; utm_campaign?: string | null; utm_content?: string | null }
+/** A linha da origem é deste link? Compara só o que o link define (source sempre; o resto, se preenchido). */
+export function ehDoLink(l: LinkUtm, o: { source: string; medium: string; campaign: string; content: string }): boolean {
+  return o.source === l.utm_source && (!l.utm_medium || o.medium === l.utm_medium) && (!l.utm_campaign || o.campaign === l.utm_campaign) && (!l.utm_content || o.content === l.utm_content);
+}
+export function estatisticaDoLink(l: LinkUtm, linhas: LinhaOrigem[]) {
+  const d = linhas.filter((o) => ehDoLink(l, o));
+  const visitas = d.reduce((s, o) => s + o.visitas, 0), leads = d.reduce((s, o) => s + o.leads, 0), terminaram = d.reduce((s, o) => s + o.terminaram, 0);
+  return { visitas, leads, terminaram, conversao: porcento(leads, visitas) };
+}
+/** Vendas (da Eduzz/Kiwify/Hotmart) que vieram com a UTM deste link. */
+export function vendasDoLink(l: LinkUtm, vendas: { utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; valor: number | null }[]) {
+  const d = vendas.filter((v) => ehDoLink(l, { source: v.utm_source ?? "", medium: v.utm_medium ?? "", campaign: v.utm_campaign ?? "", content: v.utm_content ?? "" }));
+  return { n: d.length, total: d.reduce((s, v) => s + Number(v.valor ?? 0), 0) };
 }

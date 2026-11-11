@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import type { EstruturaQuiz } from "@/lib/quiz/quiz";
+import { propagarUtm, utmDaUrl, type Utm } from "@/lib/quiz/utm";
 
 // /quiz/:slug — o quiz publicado, aberto pra qualquer pessoa (sem login).
 // Lê pelo RPC quiz_publico e grava a resposta pelo responder_quiz.
@@ -58,10 +59,20 @@ export default function QuizPublico() {
     try { sessao.current = sessionStorage.getItem(chave) || crypto.randomUUID(); sessionStorage.setItem(chave, sessao.current); }
     catch { sessao.current = crypto.randomUUID(); }
   }
+  // Origem do clique (UTM): vem no link e fica guardada nesta aba; vai junto da visita, do lead e do botão de compra.
+  const utm = useRef<Utm>((() => {
+    const chave = `quiz-utm:${slug}`;
+    const da = utmDaUrl(window.location.search);
+    try {
+      if (Object.keys(da).length) { sessionStorage.setItem(chave, JSON.stringify(da)); return da; }
+      return JSON.parse(sessionStorage.getItem(chave) || "{}") as Utm;
+    } catch { return da; }
+  })());
+  const estrutura = useMemo(() => (quiz ? propagarUtm(quiz.estrutura, utm.current) : null), [quiz]);
   const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number) => {
     // O .then é o que envia: a consulta do Supabase só sai quando alguém espera a resposta. Sem ele (15–25/10)
     // nenhuma visita/tela/fim foi gravada e as métricas ficaram zeradas.
-    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1 } as never).then(() => undefined);
+    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1, p_utm: utm.current } as never).then(() => undefined);
   }, [slug]);
   useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
 
@@ -75,11 +86,11 @@ export default function QuizPublico() {
         ) : !quiz ? (
           <p className="my-auto text-center opacity-70">Este quiz não está disponível.</p>
         ) : (
-          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={quiz.estrutura} onFim={async ({ escolhas, perfil, contato }) => {
+          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={estrutura ?? quiz.estrutura} onFim={async ({ escolhas, perfil, contato }) => {
             const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: q.opcoes[escolhas[q.id]]?.texto ?? null }));
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,
-              p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null,
+              p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current,
             } as never);
             registrar("fim");
           }} />
