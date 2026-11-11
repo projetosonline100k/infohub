@@ -71,17 +71,11 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   // 03/11: canvas do fluxo (ou lista) + o celular editável à direita; "logica" é o formulário da tela.
   const [lateralQuiz, setLateralQuiz] = useState<"logica" | "conversa">("conversa");
   const [mapaQuiz, setMapaQuiz] = useState<"fluxo" | "lista">("fluxo");
-  const [respostasQuiz, setRespostasQuiz] = useState<{ perfil: string | null }[]>([]);
   const laminas = useMemo(() => (quiz?.estrutura ? laminasDoQuiz(quiz.estrutura) : []), [quiz?.estrutura]);
   const iTela = Math.max(0, laminas.findIndex((l) => l.chave === telaSel));
   const tela = laminas[iTela];
   const telasProntas = useMemo(() => (quiz?.estrutura ? laminas.filter((l) => !faltasDaLamina(l, quiz.estrutura!, faltasQuiz).length).length : 0), [laminas, quiz?.estrutura, faltasQuiz]);
-  const quizId = quiz?.id;
   const editorQuiz = !!quiz?.estrutura && abaQuiz === "editar" && !!tela;
-  useEffect(() => {
-    if (abaQuiz !== "metricas" || !quizId) return;
-    void db.from("quiz_respostas").select("perfil").eq("quiz_id", quizId).then(({ data }) => setRespostasQuiz((data ?? []) as { perfil: string | null }[]));
-  }, [abaQuiz, quizId]);
   const [andamento, setAndamento] = useState<Andamento | null>(null);
   // 25/10 (Davi): ver o quiz como no celular (é onde o lead abre). Fica lembrado neste navegador.
   // 25/10: e "em fileira" (todas as telas lado a lado, cada uma com editar e pedido ao agente), que é o padrão.
@@ -341,7 +335,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                 ) : quiz?.estrutura && abaQuiz === "metricas" ? (
                   <div className="mx-auto max-w-3xl">
                     {quiz.status !== "publicado" && <p className="mb-4 rounded-lg bg-muted p-3 text-xs text-muted-foreground">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
-                    <MetricasDoQuiz quiz={quiz} respostas={respostasQuiz} />
+                    <MetricasDoQuiz quiz={quiz} />
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "testar" ? (
                   noCelular ? (
