@@ -15,19 +15,18 @@ async function paginaDePrevia(destino) {
   try {
     const m = new URL(destino).pathname.match(/^\/quiz\/([a-z0-9-]+)\/?$/i);
     if (m) {
-      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/quiz_publico`, {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/rpc/quiz_previa`, {
         method: "POST", headers: { apikey: CHAVE, Authorization: `Bearer ${CHAVE}`, "Content-Type": "application/json" }, body: JSON.stringify({ p_slug: m[1] }),
       });
-      const q = r.ok ? await r.json() : null;
-      titulo = q?.estrutura?.intro?.titulo || q?.titulo || "";
-      descricao = q?.estrutura?.intro?.subtitulo || "";
-      const img = q?.estrutura?.intro?.imagem;
-      if (typeof img === "string" && /^https:\/\//i.test(img)) imagem = img;
+      const q = r.ok ? await r.json() : null;   // título/descrição/imagem escolhidos na aba Links (ou os da abertura do quiz)
+      titulo = q?.titulo || "";
+      descricao = q?.descricao || "";
+      if (typeof q?.imagem === "string" && /^https:\/\//i.test(q.imagem)) imagem = q.imagem;
     }
   } catch { /* segue sem título */ }
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo || "Abrir")}</title>
 <meta property="og:type" content="website"><meta property="og:title" content="${esc(titulo || "Abrir")}">
-${descricao ? `<meta property="og:description" content="${esc(descricao)}">` : ""}${imagem ? `<meta property="og:image" content="${esc(imagem)}">` : ""}
+${descricao ? `<meta property="og:description" content="${esc(descricao)}">` : ""}${imagem ? `<meta property="og:image" content="${esc(imagem)}"><meta name="twitter:card" content="summary_large_image">` : ""}
 <meta property="og:url" content="${esc(destino)}"><meta name="robots" content="noindex"></head><body></body></html>`;
 }
 

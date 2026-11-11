@@ -4,7 +4,7 @@ import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Copy, ExternalLink, Eye, Filter, Lightbulb, ListChecks, Loader2, Mail, MessageCircle,
-  Link2, MoreHorizontal, MousePointerClick, Play, Plus, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
+  ImagePlus, Link2, MoreHorizontal, MousePointerClick, Play, Plus, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -503,6 +503,8 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
         {novoSlug && slugValido(novoSlug) && slugValido(novoSlug) !== novoSlug && <p className="text-xs text-white/50">Vai ficar: <b className="text-cyan-200">{slugValido(novoSlug)}</b></p>}
       </section>
 
+      <PreviaDoLink quizId={quizId} slug={slug} />
+
       <section className={cn(cartao, "space-y-3")}>
         <div><h3 className="text-lg font-bold text-white">Links com nome (UTM)</h3><p className="text-xs text-white/55">Crie um link para cada lugar onde você divulga (bio, story, anúncio…). Quem entrar por ele fica marcado, e você vê aqui de onde vêm as visitas, os leads e as vendas.</p></div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_1.1fr_auto]">
@@ -573,5 +575,75 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
         )}
       </section>
     </div>
+  );
+}
+
+
+// ---------------------------------------------------------------- Prévia do link (imagem do cartão no Instagram/WhatsApp)
+
+function PreviaDoLink({ quizId, slug }: { quizId: string; slug: string }) {
+  const [v, setV] = useState({ titulo: "", descricao: "", imagem: "" });
+  const [carregou, setCarregou] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const campo = "w-full rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-400/50";
+  useEffect(() => {
+    void db.from("quizzes").select("compartilhar").eq("id", quizId).maybeSingle().then(({ data }) => {
+      const c = (data as { compartilhar: { titulo?: string; descricao?: string; imagem?: string } | null } | null)?.compartilhar;
+      setV({ titulo: c?.titulo ?? "", descricao: c?.descricao ?? "", imagem: c?.imagem ?? "" });
+      setCarregou(true);
+    });
+  }, [quizId]);
+  const enviarImagem = async (arquivo: File) => {
+    setEnviando(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const ext = (arquivo.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const caminho = `${u.user?.id}/${quizId}/previa-${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from("quiz-imagens").upload(caminho, arquivo, { contentType: arquivo.type || undefined });
+      if (error) throw error;
+      setV((x) => ({ ...x, imagem: supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl }));
+      toast.success("Imagem enviada: clique em Salvar prévia");
+    } catch { toast.error("Não consegui enviar a imagem (até 20 MB)"); } finally { setEnviando(false); }
+  };
+  const salvar = async () => {
+    setSalvando(true);
+    const limpo = { titulo: v.titulo.trim(), descricao: v.descricao.trim(), imagem: v.imagem.trim() };
+    const { error } = await db.from("quizzes").update({ compartilhar: limpo.titulo || limpo.descricao || limpo.imagem ? limpo : null }).eq("id", quizId);
+    setSalvando(false);
+    if (error) { toast.error("Não consegui salvar"); return; }
+    toast.success("Prévia salva. Vale para os links novos que você mandar (o Instagram guarda a prévia dos que já mandou).");
+  };
+  const dominio = new URL(linkDoQuiz(slug)).host;
+  return (
+    <section className={cn(cartao, "space-y-3")}>
+      <div><h3 className="text-lg font-bold text-white">Prévia do link (a imagem que aparece na DM)</h3>
+        <p className="text-xs text-white/55">É o cartão que o Instagram e o WhatsApp montam quando você manda o link curto. Sem escolher nada, usa o título e a imagem de abertura do quiz. Vale sem precisar publicar o quiz de novo.</p></div>
+      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <div className="space-y-2">
+          <input value={v.titulo} onChange={(e) => setV({ ...v, titulo: e.target.value })} placeholder="Título do cartão" className={campo} disabled={!carregou} />
+          <input value={v.descricao} onChange={(e) => setV({ ...v, descricao: e.target.value })} placeholder="Descrição (opcional)" className={campo} disabled={!carregou} />
+          <div className="flex flex-wrap items-center gap-2">
+            <label className={cn("flex cursor-pointer items-center gap-1.5 rounded-lg border border-cyan-400/40 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-400/10", enviando && "opacity-50")}>
+              {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}Enviar imagem
+              <input type="file" accept="image/*" className="hidden" disabled={enviando} onChange={(e) => { const f = e.target.files?.[0]; if (f) void enviarImagem(f); e.target.value = ""; }} />
+            </label>
+            <input value={v.imagem} onChange={(e) => setV({ ...v, imagem: e.target.value })} placeholder="ou cole o link de uma imagem (https://…)" className={cn(campo, "min-w-[200px] flex-1")} disabled={!carregou} />
+          </div>
+          <p className="text-[11px] text-white/45">Melhor tamanho: <b>1200 × 630</b> (retangular, mais larga que alta). Formatos JPG ou PNG, até 5 MB. Aparece como foto grande em cima do título.</p>
+          <div className="flex gap-2">
+            <button type="button" disabled={salvando || !carregou} onClick={() => void salvar()} className="rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40">{salvando ? "Salvando…" : "Salvar prévia"}</button>
+            {v.imagem && <button type="button" onClick={() => setV({ ...v, imagem: "" })} className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-white/70 hover:bg-white/5">Tirar a imagem</button>}
+          </div>
+        </div>
+        <div>
+          <p className="mb-1 text-xs text-white/50">Como aparece (aproximado)</p>
+          <div className="max-w-[300px] overflow-hidden rounded-2xl bg-[#1f2630] text-white">
+            {v.imagem ? <img src={v.imagem} alt="" className="aspect-[1.91/1] w-full object-cover" /> : <div className="flex aspect-[1.91/1] w-full items-center justify-center bg-black/30 text-xs text-white/35">sem imagem</div>}
+            <div className="space-y-0.5 p-3"><p className="line-clamp-2 text-sm font-semibold">{v.titulo || "Título do quiz"}</p>{v.descricao && <p className="line-clamp-2 text-xs text-white/65">{v.descricao}</p>}<p className="text-xs text-white/45">{dominio}</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
