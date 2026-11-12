@@ -16,7 +16,7 @@ type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string };
 // O agente pode mandar várias mensagens seguidas: ele as separa com uma linha "---" e cada uma vira um balão (como seriam enviadas).
 const partirMensagens = (t: string) => t.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter(Boolean);
 const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
-const AJUDA = "Oi! Vamos montar o seu agente de vendas. Conta do jeito que quiser: qual é o produto, para quem é, quanto custa e onde se compra. Pode colar a página de vendas também. Eu organizo ao lado e te pergunto o que faltar.";
+const AJUDA = "Oi, aqui é a Gabriela, a agente que cuida da inteligência do seu agente de vendas. Fico aqui o tempo todo e lembro de tudo que você pedir: ordens, ajustes, regras. Conta do jeito que quiser: qual é o produto, para quem é, quanto custa e onde se compra. Pode colar a página de vendas também. Eu organizo ao lado e te pergunto o que faltar.";
 
 export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: string; perfis: string[] }) {
   const [clienteId, setClienteId] = useState<string | null>(null);
@@ -151,7 +151,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     <div className="grid h-[calc(100svh-560px)] min-h-[440px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <section className="flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-1 border-b border-white/10 bg-[#111b21] p-2">
-          {([["construir", "Montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (
+          {([["construir", "Gabriela · montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (
             <button key={m} type="button" onClick={() => setModo(m)} className={cn("flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm", modo === m ? "bg-white/10 font-semibold" : "text-white/60 hover:text-white")}><I className="h-4 w-4" />{r}</button>
           ))}
           <button type="button" onClick={() => void zerar()} title="Zerar esta conversa" className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>

@@ -19,13 +19,15 @@ FORMATO = """{
  "chamar_humano": ["quando passar para o Davi"], "extras": ""
 }"""
 
-PROMPT_CONSTRUIR = """Você ajuda o Davi a montar a INTELIGÊNCIA de um agente de vendas que vai conversar no WhatsApp com leads de um quiz.
-É uma entrevista: ele conta, você organiza e pergunta o que falta. Português simples, sem enrolação.
+PROMPT_CONSTRUIR = """Você é a GABRIELA, a agente que o Davi deixou viva neste setor para montar e manter a INTELIGÊNCIA do agente de vendas que vai conversar no WhatsApp com leads de um quiz.
+Você continua a mesma conversa de sempre: lembra de tudo que ele já pediu, ajustou e decidiu, e cada pedido novo é uma ordem que você implementa na hora, sem esquecer as anteriores. Ele fala com você como com uma colega de equipe.
+Português simples, sem enrolação. Quando precisar, pergunte; quando for ordem clara, cumpra e diga o que mudou.
 
 Regras:
 - Atualize a inteligência SÓ com o que o Davi disse (ou com o que está no contexto do quiz: título e perfis). NUNCA invente preço, prazo, garantia, bônus, link, resultado ou promessa. O que não souber, deixe vazio e pergunte.
 - Responda em até 4 frases e faça UMA pergunta por vez, sobre o que mais falta. Ordem de prioridade: produto, oferta (preço e link de compra), objetivo, o que o agente NÃO pode fazer, tom de voz, caminho da conversa, respostas às objeções, quando chamar o Davi.
 - Se ele colar um texto grande (página de vendas, roteiro, FAQ), extraia o que couber em produto, ofertas, objeções e caminho; diga em uma frase o que entendeu e o que ainda falta.
+- Toda ordem permanente do Davi ("sempre faça X", "nunca Y", "mande em mensagens separadas") deve ficar escrita na inteligência (pode, nao_pode, etapas, tom, apresentacao, objecoes ou extras) com as palavras dele, para valer mesmo que esta conversa seja zerada. Antes de responder, confira se as ordens anteriores continuam lá.
 - Mantenha tudo o que já estava preenchido e ele não pediu para mudar. Listas (pode, nao_pode, etapas, objecoes, perfis, chamar_humano) devolva completas, não só o item novo.
 - SE VIRE para descobrir as coisas, em vez de perguntar o que dá para achar: antes de perguntar, consulte. Você pode (SOMENTE LEITURA):
   * o quiz: python3 scripts/consulta.py "select titulo, slug, estrutura from quizzes where id = '{quiz_id}'" (a estrutura traz oferta, preços, bônus, depoimentos, perguntas, perfis e textos);
@@ -79,7 +81,7 @@ Responda apenas com o texto da(s) mensagem(ns) do agente."""
 
 def _historico(h):
     linhas = []
-    for m in (h or [])[-12:]:
+    for m in (h or [])[-40:]:
         quem = {"user": "Davi", "assistant": "Você", "lead": "Lead", "agente": "Agente"}.get(m.get("papel"), "?")
         linhas.append(f"- {quem}: {str(m.get('texto', ''))[:1500]}")
     return "\n".join(linhas) or "(começo)"
@@ -133,8 +135,19 @@ def atender(rodar_claude, log=print):
         log("agente:", p["tipo"], str(p["id"])[:8], f"({len(p['mensagem'])} caracteres)")
         if p["tipo"] == "simular":
             ok, texto = rodar_claude(_prompt(p), minutos=4, turnos=3, ferramentas=["Read"])
-        else:   # montar: pode consultar o quiz, o banco (só leitura) e a internet
-            ok, texto = rodar_claude(_prompt(p), minutos=12, turnos=30, ferramentas=["Bash(python3 scripts/consulta.py:*)", "Read", "Grep", "Glob", "WebFetch", "WebSearch"])
+        else:   # montar: a Gabriela (sessão contínua) pode consultar o quiz, o banco (só leitura) e a internet
+            ferr = ["Bash(python3 scripts/consulta.py:*)", "Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+            q.execute("SELECT sessao_construir FROM public.agentes_whatsapp WHERE cliente_id = %s", (p["cliente_id"],))
+            linha = q.fetchone()
+            sessao = linha[0] if linha else None
+            info = {}
+            ok, texto = rodar_claude(_prompt(p), minutos=12, turnos=30, sessao=sessao, info=info, ferramentas=ferr)
+            if not ok and sessao:   # sessão guardada expirou: recomeça (a inteligência e o histórico vão no prompt)
+                info = {}
+                ok, texto = rodar_claude(_prompt(p), minutos=12, turnos=30, info=info, ferramentas=ferr)
+            if ok and info.get("session_id"):
+                q.execute("""INSERT INTO public.agentes_whatsapp (cliente_id, user_id, sessao_construir) SELECT id, user_id, %s FROM public.clientes WHERE id = %s
+                             ON CONFLICT (cliente_id) DO UPDATE SET sessao_construir = EXCLUDED.sessao_construir""", (info["session_id"], p["cliente_id"]))
         if not ok or not texto.strip():
             q.execute("UPDATE public.agente_whatsapp_pedidos SET status='erro', erro=%s, respondido_em=now() WHERE id=%s", ((texto or "sem resposta")[:300], p["id"]))
             log("agente: erro —", (texto or "")[:120])
