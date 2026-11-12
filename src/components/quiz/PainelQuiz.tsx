@@ -16,6 +16,7 @@ import { X1Quiz } from "./X1Quiz";
 import { AgenteX1 } from "./AgenteX1";
 import { VendasUtm } from "./VendasUtm";
 import { AfiliadosQuiz } from "./AfiliadosQuiz";
+import { RenomearLink } from "./RenomearLink";
 import { Funil } from "./FunilConversao";
 import type { VendaUtm as VendaCompleta } from "@/lib/quiz/vendasUtm";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
@@ -606,7 +607,7 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
                       <button type="button" onClick={() => void apagar(l)} title="Apagar este link (os números já contados ficam)" className="rounded-lg p-1.5 text-white/40 hover:bg-rose-500/15 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                     {urlCurta
-                      ? <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm"><code className="rounded bg-black/40 px-2 py-0.5 text-cyan-200">{urlCurta}</code><span className="text-xs text-white/50">{curto!.cliques} {curto!.cliques === 1 ? "clique" : "cliques"}</span></p>
+                      ? <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm"><code className="rounded bg-black/40 px-2 py-0.5 text-cyan-200">{urlCurta}</code><span className="text-xs text-white/50">{curto!.cliques} {curto!.cliques === 1 ? "clique" : "cliques"}</span><RenomearLink codigo={curto!.codigo} base={new URL(base).origin} onRenomeado={() => void carregar()} /></p>
                       : <button type="button" onClick={() => void criarCurto(l, l.nome).then((ok) => { toast[ok ? "success" : "error"](ok ? "Link curto criado" : "Não consegui criar o link curto"); void carregar(); })} className="mt-1.5 rounded-lg border border-cyan-400/40 px-2.5 py-1 text-xs text-cyan-200 hover:bg-cyan-400/10">Criar link curto (bonito para divulgar)</button>}
                     <code className="mt-1.5 block truncate text-[11px] text-white/35" title={url}>{url}</code>
                     <div className="mt-2 grid grid-cols-2 gap-2 text-center sm:grid-cols-4">

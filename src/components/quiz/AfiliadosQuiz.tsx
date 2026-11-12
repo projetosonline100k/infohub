@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/DialogosGlobais";
+import { RenomearLink } from "./RenomearLink";
 import { linkDoQuiz, type EstruturaQuiz } from "@/lib/quiz/quiz";
 import { codigoCurto, enderecoCurto, linkRastreado, propagarUtm, type LinkQuiz } from "@/lib/quiz/utm";
 import type { EventoQuiz, LeadQuiz } from "@/lib/quiz/painel";
@@ -151,11 +152,12 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
         return (
           <div key={a.id} className={cn(cartao, !a.ativo && "opacity-60")}>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-lg font-bold">{a.nome}</p>
+              <input defaultValue={a.nome} onBlur={(e) => { const v = e.target.value.trim().slice(0, 80); if (v && v !== a.nome) void atualizar(a, { nome: v }); else e.target.value = a.nome; }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} title="Clique para renomear o afiliado" className="min-w-0 rounded bg-transparent px-1 text-lg font-bold outline-none hover:bg-white/5 focus:bg-white/10" />
               <span className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-white/70">{a.codigo}</span>
               {!a.ativo && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">pausado</span>}
               <div className="ml-auto flex items-center gap-1.5">
                 {curto && <button type="button" onClick={() => copiar(enderecoCurto(base, curto.codigo), "Link curto copiado")} className="flex items-center gap-1.5 rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-black"><Copy className="h-3.5 w-3.5" />Copiar link curto</button>}
+                {curto && <RenomearLink codigo={curto.codigo} base={base} onRenomeado={() => void carregar()} />}
                 {completo && <button type="button" onClick={() => copiar(completo, "Link completo copiado")} className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white">Link completo</button>}
                 <button type="button" onClick={() => void atualizar(a, { ativo: !a.ativo })} className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white">{a.ativo ? "Pausar" : "Reativar"}</button>
                 <button type="button" onClick={() => void apagar(a)} title="Apagar afiliado" className="rounded-full border border-white/15 p-1.5 text-white/50 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
