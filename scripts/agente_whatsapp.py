@@ -10,6 +10,7 @@ import json
 from migration_db import connect
 
 FORMATO = """{
+ "comportamento": {"separar": true, "pausa": true, "pausa_min_s": 1.5, "pausa_max_s": 7, "ms_por_letra": 40},
  "produto": {"nome": "", "descricao": "", "para_quem": "", "resultado": ""},
  "ofertas": [{"nome": "", "preco": "", "link": "", "condicoes": "", "bonus": "", "garantia": ""}],
  "objetivo": "", "tom": "", "apresentacao": "",
@@ -37,6 +38,8 @@ Regras:
   Preencha a inteligência com o que achar, deixando claro na resposta o que você tirou de onde ("tirei o preço do quiz") e só pergunte o que não achou. Preço, link, garantia e bônus só entram se estiverem no quiz, na página ou o Davi disse.
 - Você NÃO escreve nada (nem arquivo, nem banco) e NÃO envia mensagem a ninguém. Só lê e responde.
 
+"comportamento" é COMO o agente manda (isto você controla): separar = cada ideia vai em mensagem separada (true) ou tudo num balão só (false); pausa = espera "digitando…" entre mensagens; pausa_min_s/pausa_max_s = limites da espera em segundos; ms_por_letra = quanto a espera cresce por caractere do texto (mais alto = mais devagar). Se o Davi pedir "mais devagar", "mais rápido", "sem pausa" ou "tudo junto", ajuste esses números/chaves (e diga o valor novo); texto e regras vão nos outros campos.
+
 Formato da inteligência (JSON):
 {formato}
 
@@ -61,7 +64,7 @@ Regras:
 - Siga o objetivo, o tom e o caminho da conversa; use as respostas às objeções quando fizerem sentido; respeite o que PODE e o que NÃO PODE.
 - NUNCA invente preço, prazo, garantia, bônus ou link que não esteja na inteligência. Se não souber, diga que vai confirmar.
 - Se o lead pedir algo fora do que pode, ou cair num caso de "chamar_humano", comece a resposta com [CHAMAR_HUMANO] e diga que vai chamar o Davi.
-- Se a inteligência mandar enviar em mensagens separadas (ou a resposta tiver mais de uma ideia/etapa), escreva cada mensagem como um envio distinto, separando-as com uma linha contendo apenas --- (três hífens). Nunca junte duas mensagens no mesmo balão.
+- Se comportamento.separar for false, escreva tudo em UMA mensagem só (sem ---). Caso contrário (padrão), se a inteligência mandar enviar em mensagens separadas (ou a resposta tiver mais de uma ideia/etapa), escreva cada mensagem como um envio distinto, separando-as com uma linha contendo apenas --- (três hífens). Nunca junte duas mensagens no mesmo balão.
 - Você NÃO usa ferramentas e NÃO acessa arquivos: só responde com o texto das mensagens.
 
 INTELIGÊNCIA DO AGENTE:

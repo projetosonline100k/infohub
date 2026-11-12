@@ -108,9 +108,9 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       const r = p as { status: string; resposta: string | null; config: unknown; erro: string | null } | null;
       if (r?.status === "respondido") {
         // O agente de teste manda uma mensagem de cada vez, com a pausa de "digitando…" entre elas (como no WhatsApp de verdade).
-        const partes = tipo === "construir" ? [r.resposta ?? ""] : partirMensagens(r.resposta ?? "");
+        const partes = tipo === "construir" ? [r.resposta ?? ""] : configRef.current?.comportamento.separar === false ? [(r.resposta ?? "").replace(/\n\s*-{3,}\s*\n/g, "\n\n")] : partirMensagens(r.resposta ?? "");
         for (let k = 0; k < partes.length; k++) {
-          if (k > 0) { setDigitando(true); await new Promise((ok) => setTimeout(ok, pausaDigitando(partes[k]))); setDigitando(false); }
+          if (k > 0) { setDigitando(true); await new Promise((ok) => setTimeout(ok, pausaDigitando(partes[k], configRef.current?.comportamento))); setDigitando(false); }
           setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: (tipo === "construir" ? "assistant" : "agente") as Msg["papel"], texto: partes[k] }] }));
         }
         if (tipo === "construir" && r.config && configRef.current) {

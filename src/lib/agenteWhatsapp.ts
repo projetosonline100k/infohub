@@ -4,7 +4,11 @@
 export interface OfertaAgente { nome: string; preco: string; link: string; condicoes: string; bonus: string; garantia: string }
 export interface ObjecaoAgente { objecao: string; resposta: string }
 export interface PerfilAgente { perfil: string; abordagem: string }
+/** Como o agente "se comporta" ao mandar: a Gabriela ajusta isto quando o Davi pede ("mais devagar", "tudo numa mensagem só"). */
+export interface ComportamentoAgente { separar: boolean; pausa: boolean; pausa_min_s: number; pausa_max_s: number; ms_por_letra: number }
+export const comportamentoPadrao = (): ComportamentoAgente => ({ separar: true, pausa: true, pausa_min_s: 1.5, pausa_max_s: 7, ms_por_letra: 40 });
 export interface ConfigAgente {
+  comportamento: ComportamentoAgente;
   produto: { nome: string; descricao: string; para_quem: string; resultado: string };
   ofertas: OfertaAgente[];
   objetivo: string;
@@ -20,6 +24,7 @@ export interface ConfigAgente {
 }
 
 export const configVazia = (): ConfigAgente => ({
+  comportamento: comportamentoPadrao(),
   produto: { nome: "", descricao: "", para_quem: "", resultado: "" }, ofertas: [], objetivo: "", tom: "", apresentacao: "",
   etapas: [], pode: [], nao_pode: [], objecoes: [], perfis: [], chamar_humano: [], extras: "",
 });
@@ -34,7 +39,12 @@ export function sanitizarAgente(bruto: unknown, atual: ConfigAgente): ConfigAgen
   const lst = <T>(v: unknown, f: (x: Record<string, unknown>) => T | null, max = 30): T[] =>
     (Array.isArray(v) ? v : []).slice(0, max).map((x) => (x && typeof x === "object" ? f(x as Record<string, unknown>) : null)).filter((x): x is T => x !== null);
   const tem = (k: string) => k in b;
+  const cp = (b.comportamento && typeof b.comportamento === "object" ? b.comportamento : {}) as Record<string, unknown>;
+  const num = (v: unknown, min: number, max: number, padrao: number) => (typeof v === "number" && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : padrao);
+  const at = atual.comportamento ?? comportamentoPadrao();
+  const pmin = num(cp.pausa_min_s, 0, 30, at.pausa_min_s);
   return {
+    comportamento: { separar: typeof cp.separar === "boolean" ? cp.separar : at.separar, pausa: typeof cp.pausa === "boolean" ? cp.pausa : at.pausa, pausa_min_s: pmin, pausa_max_s: Math.max(pmin, num(cp.pausa_max_s, 0, 60, at.pausa_max_s)), ms_por_letra: num(cp.ms_por_letra, 0, 400, at.ms_por_letra) },
     produto: { nome: t(p.nome, 200) || atual.produto.nome, descricao: t(p.descricao) || atual.produto.descricao, para_quem: t(p.para_quem) || atual.produto.para_quem, resultado: t(p.resultado) || atual.produto.resultado },
     ofertas: tem("ofertas") ? lst(b.ofertas, (o) => (t(o.nome, 200) ? { nome: t(o.nome, 200), preco: t(o.preco, 100), link: /^https?:\/\//i.test(t(o.link, 600)) ? t(o.link, 600) : "", condicoes: t(o.condicoes), bonus: t(o.bonus), garantia: t(o.garantia) } : null)) : atual.ofertas,
     objetivo: t(b.objetivo) || atual.objetivo, tom: t(b.tom) || atual.tom, apresentacao: t(b.apresentacao) || atual.apresentacao,
@@ -60,5 +70,6 @@ export function completude(c: ConfigAgente): { pct: number; faltando: string[] }
 /** Pode simular/usar com segurança? Sem produto, oferta com link e as regras do que não pode, melhor não soltar o agente. */
 export const prontoParaUsar = (c: ConfigAgente) => !!c.produto.nome && c.ofertas.some((o) => !!o.preco && !!o.link) && c.nao_pode.length > 0 && !!c.objetivo;
 
-/** Pausa (ms) "digitando…" antes de cada mensagem do agente, como numa conversa de verdade: ~1,2 s + 40 ms por caractere, entre 1,5 s e 7 s. */
-export const pausaDigitando = (texto: string) => Math.min(7000, Math.max(1500, 1200 + texto.length * 40));
+/** Pausa (ms) "digitando…" antes de cada mensagem do agente, como numa conversa de verdade: ~1,2 s + ms_por_letra por caractere, entre o mínimo e o máximo (padrão 1,5 a 7 s). */
+export const pausaDigitando = (texto: string, c: ComportamentoAgente = comportamentoPadrao()) =>
+  !c.pausa ? 0 : Math.min(c.pausa_max_s * 1000, Math.max(c.pausa_min_s * 1000, 1200 + texto.length * c.ms_por_letra));
