@@ -27,7 +27,13 @@ Regras:
 - Responda em até 4 frases e faça UMA pergunta por vez, sobre o que mais falta. Ordem de prioridade: produto, oferta (preço e link de compra), objetivo, o que o agente NÃO pode fazer, tom de voz, caminho da conversa, respostas às objeções, quando chamar o Davi.
 - Se ele colar um texto grande (página de vendas, roteiro, FAQ), extraia o que couber em produto, ofertas, objeções e caminho; diga em uma frase o que entendeu e o que ainda falta.
 - Mantenha tudo o que já estava preenchido e ele não pediu para mudar. Listas (pode, nao_pode, etapas, objecoes, perfis, chamar_humano) devolva completas, não só o item novo.
-- Você NÃO usa ferramentas, NÃO lê nem escreve arquivos e NÃO acessa o banco: só responde.
+- SE VIRE para descobrir as coisas, em vez de perguntar o que dá para achar: antes de perguntar, consulte. Você pode (SOMENTE LEITURA):
+  * o quiz: python3 scripts/consulta.py "select titulo, slug, estrutura from quizzes where id = '{quiz_id}'" (a estrutura traz oferta, preços, bônus, depoimentos, perguntas, perfis e textos);
+  * as respostas/leads do quiz: tabela quiz_respostas (perfil, respostas) e vendas/eventos; python3 scripts/consulta.py --tabelas e --colunas <tabela> mostram o que existe;
+  * o projeto (cliente_id = '{cliente_id}'): clientes, produtos_cliente, nucleo_influencia, agentes_ia/conhecimentos_agente, documentos, ideias_conteudo etc.;
+  * páginas na internet (WebFetch/WebSearch), por exemplo a página de vendas ou o checkout cujo link o Davi passar.
+  Preencha a inteligência com o que achar, deixando claro na resposta o que você tirou de onde ("tirei o preço do quiz") e só pergunte o que não achou. Preço, link, garantia e bônus só entram se estiverem no quiz, na página ou o Davi disse.
+- Você NÃO escreve nada (nem arquivo, nem banco) e NÃO envia mensagem a ninguém. Só lê e responde.
 
 Formato da inteligência (JSON):
 {formato}
@@ -78,7 +84,7 @@ def _historico(h):
 
 
 def _prompt(p):
-    base = dict(config=json.dumps(p["config_atual"], ensure_ascii=False), contexto=json.dumps(p["contexto"], ensure_ascii=False),
+    base = dict(quiz_id=p["contexto"].get("quiz_id", ""), cliente_id=p["cliente_id"], config=json.dumps(p["config_atual"], ensure_ascii=False), contexto=json.dumps(p["contexto"], ensure_ascii=False),
                 historico=_historico(p["historico"]), mensagem=p["mensagem"])
     if p["tipo"] == "simular":
         return PROMPT_SIMULAR.format(**base)
@@ -106,14 +112,17 @@ def atender(rodar_claude, log=print):
         q = c.cursor()
         q.execute("""UPDATE public.agente_whatsapp_pedidos SET status = 'processando'
                      WHERE id = (SELECT id FROM public.agente_whatsapp_pedidos WHERE status = 'pendente' ORDER BY criado_em LIMIT 1 FOR UPDATE SKIP LOCKED)
-                     RETURNING id, tipo, mensagem, contexto, historico, config_atual""")
+                     RETURNING id, tipo, mensagem, contexto, historico, config_atual, cliente_id""")
         r = q.fetchone()
         c.commit()
         if not r:
             return
-        p = {"id": r[0], "tipo": r[1], "mensagem": r[2], "contexto": r[3], "historico": r[4], "config_atual": r[5]}
+        p = {"id": r[0], "tipo": r[1], "mensagem": r[2], "contexto": r[3], "historico": r[4], "config_atual": r[5], "cliente_id": str(r[6])}
         log("agente:", p["tipo"], str(p["id"])[:8], f"({len(p['mensagem'])} caracteres)")
-        ok, texto = rodar_claude(_prompt(p), minutos=6, turnos=3, ferramentas=["Read"])
+        if p["tipo"] == "simular":
+            ok, texto = rodar_claude(_prompt(p), minutos=4, turnos=3, ferramentas=["Read"])
+        else:   # montar: pode consultar o quiz, o banco (só leitura) e a internet
+            ok, texto = rodar_claude(_prompt(p), minutos=12, turnos=30, ferramentas=["Bash(python3 scripts/consulta.py:*)", "Read", "Grep", "Glob", "WebFetch", "WebSearch"])
         if not ok or not texto.strip():
             q.execute("UPDATE public.agente_whatsapp_pedidos SET status='erro', erro=%s, respondido_em=now() WHERE id=%s", ((texto or "sem resposta")[:300], p["id"]))
             log("agente: erro —", (texto or "")[:120])

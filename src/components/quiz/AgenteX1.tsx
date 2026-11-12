@@ -34,7 +34,22 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       if (!cid) return;
       const { data } = await db.from("agentes_whatsapp").select("config").eq("cliente_id", cid).maybeSingle();
       setConfig(sanitizarAgente((data as { config: unknown } | null)?.config ?? {}, configVazia()));
+      // A conversa fica guardada: volta do jeito que estava (e retoma uma resposta que ainda estava sendo preparada).
+      const { data: ps } = await db.from("agente_whatsapp_pedidos").select("id, tipo, mensagem, status, resposta, criado_em").eq("cliente_id", cid).order("criado_em", { ascending: false }).limit(60);
+      const lista = ((ps ?? []) as { id: string; tipo: "construir" | "simular"; mensagem: string; status: string; resposta: string | null; criado_em: string }[]).reverse();
+      const m: Record<"construir" | "simular", Msg[]> = { construir: [{ papel: "assistant", texto: AJUDA }], simular: [] };
+      for (const p of lista) {
+        m[p.tipo].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
+        if (p.status === "respondido" && p.resposta) m[p.tipo].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: p.resposta });
+      }
+      setMsgs(m);
+      const ultimo = lista[lista.length - 1];
+      if (ultimo && (ultimo.status === "pendente" || ultimo.status === "processando") && Date.now() - new Date(ultimo.criado_em).getTime() < 12 * 60_000) {
+        setModo(ultimo.tipo);
+        void aguardar(ultimo.id, ultimo.tipo, cid);
+      }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quizId]);
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs, esperando, modo]);
 
@@ -59,20 +74,24 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t }] }));
     setTexto("");
     setEsperando(true);
-    const contexto = modo === "construir" ? { quiz: titulo, perfis } : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" } };
+    const contexto = modo === "construir" ? { quiz: titulo, quiz_id: quizId, perfis } : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" } };
     const { data, error } = await db.from("agente_whatsapp_pedidos").insert({
       cliente_id: clienteId, tipo: modo, mensagem: t, contexto, config_atual: config,
       historico: hist.filter((h) => h !== hist[0] || modo !== "construir").map((h) => ({ papel: h.papel, texto: h.texto })),
     }).select("id").single();
     if (error || !data) { setEsperando(false); toast.error("Não consegui enviar"); return; }
-    const id = (data as { id: string }).id;
-    for (let i = 0; i < 150; i++) {
+    await aguardar((data as { id: string }).id, modo, clienteId);
+  };
+
+  async function aguardar(id: string, modo: "construir" | "simular", clienteId: string) {
+    setEsperando(true);
+    for (let i = 0; i < 330; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const { data: p } = await db.from("agente_whatsapp_pedidos").select("status, resposta, config, erro").eq("id", id).maybeSingle();
       const r = p as { status: string; resposta: string | null; config: unknown; erro: string | null } | null;
       if (r?.status === "respondido") {
         setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: modo === "construir" ? "assistant" : "agente", texto: r.resposta ?? "" }] }));
-        if (modo === "construir" && r.config && clienteId && configRef.current) {
+        if (modo === "construir" && r.config && configRef.current) {
           const novo = sanitizarAgente(r.config, configRef.current);
           setConfig(novo);
           gravar(novo, clienteId);
@@ -84,7 +103,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     }
     setEsperando(false);
     toast.error("Demorou demais. Tente de novo.");
-  };
+  }
 
   if (!config) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   const { pct, faltando } = completude(config);
