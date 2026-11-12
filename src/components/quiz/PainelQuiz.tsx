@@ -4,7 +4,7 @@ import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Copy, DollarSign, ExternalLink, Eye, Filter, Lightbulb, ListChecks, Loader2, Mail, MessageCircle,
-  ImagePlus, Flame, Link2, MoreHorizontal, MousePointerClick, Play, Plus, ShoppingCart, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
+  ImagePlus, Flame, Link2, MoreHorizontal, MousePointerClick, Percent, Play, Plus, ShoppingCart, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
 import { X1Quiz } from "./X1Quiz";
 import { VendasUtm } from "./VendasUtm";
+import { Funil } from "./FunilConversao";
 import type { VendaUtm as VendaCompleta } from "@/lib/quiz/vendasUtm";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
 import {
@@ -31,12 +32,14 @@ const STATUS: Record<StatusLead, { rotulo: string; cor: string }> = {
   em_contato: { rotulo: "Em contato", cor: "border-violet-400/50 bg-violet-500/15 text-violet-200" },
   convertido: { rotulo: "Convertido", cor: "border-emerald-400/50 bg-emerald-500/15 text-emerald-200" },
 };
-const PERIODOS = [[7, "7 dias"], [14, "14 dias"], [30, "30 dias"], [0, "Tudo"]] as const;
+const PERIODOS = [["hoje", "Hoje"], [7, "7 dias"], [14, "14 dias"], [30, "30 dias"], [0, "Tudo"]] as const;
+/** "Hoje" como fração de dia: da meia-noite (de agora, no fuso do Mac) até este momento. */
+const fracaoDeHoje = () => { const i = new Date(); i.setHours(0, 0, 0, 0); return Math.max(0.01, (Date.now() - i.getTime()) / 86_400_000); };
 const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
 
 export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> }) {
   const [aba, setAba] = useState<Aba>("metricas");
-  const [dias, setDias] = useState<number>(14);
+  const [periodo, setPeriodo] = useState<number | "hoje">(14);
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
   const [leads, setLeads] = useState<LeadQuiz[] | null>(null);
   const [vendas, setVendas] = useState<VendaCompleta[]>([]);
@@ -77,6 +80,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
     return montarPassos(estrutura, (estrutura.captura?.ativa !== false) && !!estrutura.captura?.pedir?.length).map((p) => ({ rotulo: rotuloDoPasso(estrutura, p), tipo: p.tipo }));
   }, [estrutura]);
   const perguntas = useMemo(() => (estrutura?.perguntas ?? []).map((q) => q.texto), [estrutura]);
+  const dias = useMemo(() => (periodo === "hoje" ? fracaoDeHoje() : periodo), [periodo, eventos]);   // eslint-disable-line react-hooks/exhaustive-deps
   const painel = useMemo(() => (eventos && leads ? calcularPainel({ passos, eventos, leads, dias }) : null), [passos, eventos, leads, dias]);
   const estados = useMemo(() => (eventos && leads ? estadoDosLeads(leads, eventos, vendas) : new Map<string, EstadoCompra>()), [eventos, leads, vendas]);
   const conversao = useMemo(() => (leads ? resumoConversao(leads, estados, dias) : null), [leads, estados, dias]);
@@ -102,7 +106,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <div className="flex rounded-full border border-white/10 bg-[#0a1520] p-0.5 text-xs">
-            {PERIODOS.map(([d, r]) => <button key={d} type="button" onClick={() => setDias(d)} className={cn("rounded-full px-3 py-1", dias === d ? "bg-cyan-400/15 font-semibold text-cyan-200" : "text-white/55 hover:text-white")}>{r}</button>)}
+            {PERIODOS.map(([d, r]) => <button key={d} type="button" onClick={() => setPeriodo(d)} className={cn("rounded-full px-3 py-1", periodo === d ? "bg-cyan-400/15 font-semibold text-cyan-200" : "text-white/55 hover:text-white")}>{r}</button>)}
           </div>
           <button type="button" onClick={() => void carregar()} title="Atualizar agora" className="rounded-full border border-white/10 p-2 text-white/60 hover:text-white"><RefreshCw className={cn("h-3.5 w-3.5", carregando && "animate-spin")} /></button>
         </div>
@@ -113,7 +117,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
       {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} />}
-      {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} estados={estados} vendas={vendas} dias={dias} />}
+      {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
       {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
@@ -144,7 +148,7 @@ export function Metricas({ painel, leads, dias, perguntas, conversao, onFunil, o
   const perdeu = pior ? painel.funil[painel.pior - 1].n - pior.n : 0;
   const insight = insightDoPior(painel);
   const lista = todas ? painel.funil : painel.funil.slice(0, 9);
-  const vs = dias ? `vs. ${dias} dias anteriores` : "desde o início";
+  const vs = dias > 0 && dias < 1 ? "vs. ontem até esta hora" : dias ? `vs. ${dias} dias anteriores` : "desde o início";
   const max = Math.max(1, a.visitas);
 
   const kpis = [
@@ -226,19 +230,24 @@ export function Metricas({ painel, leads, dias, perguntas, conversao, onFunil, o
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
         <section className={cartao}>
-          <h3 className="flex items-center gap-2 text-lg font-bold text-white"><TrendingUp className="h-5 w-5 text-cyan-300" />Visitas por dia ({painel.porDia.length} dias)</h3>
+          <h3 className="flex items-center gap-2 text-lg font-bold text-white"><TrendingUp className="h-5 w-5 text-cyan-300" />{painel.porHora ? "Visitas por hora (hoje)" : `Visitas por dia (${painel.porDia.length} dias)`}</h3>
           <div className="mt-3 flex h-40 items-end gap-1">
             {(() => {
-              const m = Math.max(1, ...painel.porDia.map((d) => d.n));
-              return painel.porDia.map((d) => (
-                <div key={d.dia} className="group flex h-full flex-1 flex-col justify-end" title={`${format(new Date(`${d.dia}T12:00:00`), "EEE, d MMM", { locale: ptBR })}: ${d.n} ${d.n === 1 ? "visita" : "visitas"}`}>
+              const barras = painel.porHora
+                ? painel.porHora.map((h) => ({ chave: String(h.hora), n: h.n, dica: `${String(h.hora).padStart(2, "0")}h: ${h.n} ${h.n === 1 ? "visita" : "visitas"}` }))
+                : painel.porDia.map((d) => ({ chave: d.dia, n: d.n, dica: `${format(new Date(`${d.dia}T12:00:00`), "EEE, d MMM", { locale: ptBR })}: ${d.n} ${d.n === 1 ? "visita" : "visitas"}` }));
+              const m = Math.max(1, ...barras.map((d) => d.n));
+              return barras.map((d) => (
+                <div key={d.chave} className="group flex h-full flex-1 flex-col justify-end" title={d.dica}>
                   <span className="mb-0.5 text-center text-[10px] tabular-nums text-white/60 opacity-0 group-hover:opacity-100">{d.n}</span>
                   <span className="block rounded-t bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.5)] group-hover:opacity-80" style={{ height: `${(d.n / m) * 100}%`, minHeight: d.n ? 3 : 1, opacity: d.n ? 1 : 0.25 }} />
                 </div>
               ));
             })()}
           </div>
-          <div className="mt-1 flex justify-between text-[10px] text-white/45"><span>{format(new Date(`${painel.porDia[0].dia}T12:00:00`), "d MMM", { locale: ptBR })}</span><span>hoje</span></div>
+          <div className="mt-1 flex justify-between text-[10px] text-white/45">
+            {painel.porHora ? <><span>00h</span><span>agora</span></> : <><span>{format(new Date(`${painel.porDia[0].dia}T12:00:00`), "d MMM", { locale: ptBR })}</span><span>hoje</span></>}
+          </div>
         </section>
 
         <section className={cartao}>
@@ -692,21 +701,22 @@ function ConversaCard({ conversao: c, visitas, onQuentes }: { conversao: ResumoC
   return (
     <section className={cn(cartao, "space-y-3")}>
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="flex flex-1 items-center gap-2 text-lg font-bold text-white"><ShoppingCart className="h-5 w-5 text-emerald-300" />Conversão: do lead à compra</h3>
+        <h3 className="flex flex-1 items-center gap-2 text-lg font-bold text-white"><ShoppingCart className="h-5 w-5 text-emerald-300" />Funil de conversão do quiz</h3>
         {c.quentes > 0 && (
           <button type="button" onClick={onQuentes} className="flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/25">
             <Flame className="h-3.5 w-3.5" />{c.quentes} {c.quentes === 1 ? "pessoa foi" : "pessoas foram"} ao checkout e não {c.quentes === 1 ? "comprou" : "compraram"}: abordar no X1
           </button>
         )}
       </div>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-        {caixa("Leads", String(c.leads), `${porcento(c.leads, visitas)}% das visitas`, "text-cyan-300", Users)}
-        {seta(`${porcento(c.clicaram, c.leads)}%`)}
-        {caixa("Foram ao checkout", String(c.clicaram), "clicaram em comprar", "text-amber-300", MousePointerClick)}
-        {seta(`${porcento(c.compraram, c.clicaram)}%`)}
-        {caixa("Compraram", String(c.compraram), `${porcento(c.compraram, c.leads)}% dos leads`, "text-emerald-300", ShoppingCart)}
-        {seta("R$")}
-        {caixa("Receita", moeda(c.receita), c.compraram ? `${moeda(c.receita / c.compraram)} por compra` : "—", "text-emerald-300", TrendingUp)}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <Funil etapas={[
+          { rotulo: "Visitas", n: visitas, Icone: Eye }, { rotulo: "Leads", n: c.leads, Icone: Users },
+          { rotulo: "Foram ao checkout", n: c.clicaram, Icone: MousePointerClick }, { rotulo: "Compraram", n: c.compraram, Icone: ShoppingCart },
+        ]} />
+        <div className="grid grid-cols-2 content-center gap-2 lg:grid-cols-1">
+          {caixa("Receita do quiz", moeda(c.receita), c.compraram ? `${moeda(c.receita / c.compraram)} por compra` : "nenhuma compra ainda", "text-emerald-300", TrendingUp)}
+          {caixa("Conversão em compra", `${porcento(c.compraram, c.leads)}%`, `${c.compraram} de ${c.leads} leads · ${porcento(c.compraram, visitas)}% das visitas`, "text-cyan-300", Percent)}
+        </div>
       </div>
       <p className="text-[11px] text-white/40">A compra é ligada ao lead pelo <b>e-mail</b> que ele deixou no quiz (vendas da Eduzz, Kiwify ou Hotmart do projeto; reembolso não conta). “Foi ao checkout” = clicou no botão de comprar do quiz.</p>
     </section>

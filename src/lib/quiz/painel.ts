@@ -15,12 +15,14 @@ export interface Painel {
   funil: { rotulo: string; tipo: PassoInfo["tipo"]; n: number }[];
   pior: number;   // índice do passo onde mais gente sai (-1 se não há)
   porDia: { dia: string; n: number }[];
+  /** Só quando o período é "hoje" (dias < 1): visitas de cada hora do dia, da meia-noite até agora. */
+  porHora: { hora: number; n: number }[] | null;
 }
 
 const DIA = 86_400_000;
 const dia = (t: number) => new Date(t).toISOString().slice(0, 10);
 
-/** `dias` = 0 → desde sempre (sem período anterior). */
+/** `dias` = 0 → desde sempre (sem período anterior). `dias` fracionado (< 1) = "hoje": da meia-noite até agora, comparando com o mesmo trecho de ontem. */
 export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; leads: LeadQuiz[]; dias: number; agora?: number }): Painel {
   const agora = p.agora ?? Date.now();
   const inicio = p.dias ? agora - p.dias * DIA : 0;
@@ -56,12 +58,15 @@ export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; 
     const d = funil[i - 1].n - funil[i].n;
     if (d > perda) { perda = d; pior = i; }
   }
-  const n = p.dias || 14;
+  const n = Math.max(1, Math.ceil(p.dias || 14));
   const porDia = Array.from({ length: n }, (_, k) => {
     const d = dia(agora - (n - 1 - k) * DIA);
     return { dia: d, n: [...sessoes.values()].filter((s) => s.visita && dia(s.t) === d).length };
   });
-  return { atual: cur.j, anterior: ant, funil, pior, porDia };
+  const porHora = p.dias > 0 && p.dias < 1
+    ? Array.from({ length: new Date(agora).getHours() + 1 }, (_, h) => ({ hora: h, n: cur.lista.filter((x) => new Date(x.t).getHours() === h).length }))
+    : null;
+  return { atual: cur.j, anterior: ant, funil, pior, porDia, porHora };
 }
 
 /** "+120%", "-30%", "novo" (antes era zero) ou null (sem como comparar). */

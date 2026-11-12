@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DollarSign, Eye, Filter, MousePointerClick, Percent, Receipt, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
+import { DollarSign, Percent, Receipt, ShoppingCart, TrendingUp, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { origens, porcento, type EstadoCompra, type EventoQuiz, type LeadQuiz } from "@/lib/quiz/painel";
+import { origens, type EventoQuiz, type LeadQuiz } from "@/lib/quiz/painel";
 import { resumoVendas, tabelaPorOrigem, type Pagamento, type VendaUtm } from "@/lib/quiz/vendasUtm";
 
 // Vendas por UTM (12/11/2026, Davi: "uma visualização estilo UTMify"): faturamento, lucro e ROAS por origem, vendas por forma de pagamento e
@@ -15,7 +15,7 @@ const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0
 const moeda = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 const COR_PAGAMENTO: Record<Pagamento, string> = { Pix: "#22d3ee", Cartão: "#3b82f6", Boleto: "#facc15", Outros: "#f87171", "Não informado": "#64748b" };
 
-export function VendasUtm({ quizId, eventos, leads, estados, vendas, dias }: { quizId: string; eventos: EventoQuiz[]; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; vendas: VendaUtm[]; dias: number }) {
+export function VendasUtm({ quizId, eventos, leads, vendas, dias }: { quizId: string; eventos: EventoQuiz[]; leads: LeadQuiz[]; vendas: VendaUtm[]; dias: number }) {
   const [origem, setOrigem] = useState("");
   const [soComOrigem, setSoComOrigem] = useState(false);
   const [invest, setInvest] = useState<Map<string, number>>(new Map());
@@ -43,8 +43,6 @@ export function VendasUtm({ quizId, eventos, leads, estados, vendas, dias }: { q
   const lucro = faturamento - investimento;
   const roas = investimento > 0 ? faturamento / investimento : null;
   const tot = tabela.reduce((a, l) => ({ visitas: a.visitas + l.visitas, leads: a.leads + l.leads, checkout: a.checkout + l.checkout }), { visitas: 0, leads: 0, checkout: 0 });
-  // O funil é SÓ deste quiz (12/11, Davi): as compras são as dos leads que passaram por ele (ligadas pelo e-mail), não todas as vendas do projeto.
-  const comprasDoQuiz = useMemo(() => leads.filter((l) => Date.parse(l.criada_em) >= desde && (!origem || (l.utm?.utm_source ?? "") === origem) && estados.get(l.id)?.compra).length, [leads, estados, desde, origem]);
   const pag = useMemo(() => resumoVendas(liquidas.map((v) => ({ ...v })), 0).porPagamento, [liquidas]);
   const semana = useMemo(() => resumoVendas(liquidas.map((v) => ({ ...v })), 0).porDiaSemana, [liquidas]);
 
@@ -67,7 +65,7 @@ export function VendasUtm({ quizId, eventos, leads, estados, vendas, dias }: { q
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-bold text-white">Resumo de vendas</h3>
-        <span className="text-xs text-white/45">{dias ? `últimos ${dias} dias` : "desde o início"}</span>
+        <span className="text-xs text-white/45">{dias > 0 && dias < 1 ? "hoje" : dias ? `últimos ${dias} dias` : "desde o início"}</span>
         <div className="ml-auto flex flex-wrap items-center gap-2 text-sm">
           <select value={origem} onChange={(e) => setOrigem(e.target.value)} className="rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-white outline-none">
             <option value="">Todas as origens</option>{fontes.map((f) => <option key={f} value={f}>{f}</option>)}
@@ -85,7 +83,7 @@ export function VendasUtm({ quizId, eventos, leads, estados, vendas, dias }: { q
         {kpi("Ticket médio", moeda(nVendas ? faturamento / nVendas : 0), null, Receipt, "text-white")}
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.5fr)]">
+      <div className="grid gap-4 xl:grid-cols-2">
         <section className={cartao}>
           <h4 className="font-bold text-white">Vendas por pagamento</h4>
           {pag.length === 0 ? <p className="py-10 text-center text-sm text-white/40">Sem vendas no período.</p> : (
@@ -114,14 +112,6 @@ export function VendasUtm({ quizId, eventos, leads, estados, vendas, dias }: { q
           )}
         </section>
 
-        <section className={cartao}>
-          <h4 className="flex items-center gap-2 font-bold text-white"><Filter className="h-4 w-4 text-cyan-300" />Funil de conversão</h4>
-          <p className="text-[11px] text-white/45">Só deste quiz: as compras são as de quem fez o quiz (ligadas pelo e-mail).</p>
-          <Funil etapas={[
-            { rotulo: "Visitas", n: tot.visitas, Icone: Eye }, { rotulo: "Leads", n: tot.leads, Icone: Users },
-            { rotulo: "Foram ao checkout", n: tot.checkout, Icone: MousePointerClick }, { rotulo: "Compraram", n: comprasDoQuiz, Icone: ShoppingCart },
-          ]} />
-        </section>
       </div>
 
       <section className={cartao}>
@@ -180,30 +170,5 @@ function Donut({ fatias, total }: { fatias: { rotulo: string; n: number; cor: st
       <text x="70" y="66" textAnchor="middle" className="fill-white/55" fontSize="10">Total</text>
       <text x="70" y="86" textAnchor="middle" className="fill-white" fontSize="22" fontWeight="700">{total}</text>
     </svg>
-  );
-}
-
-// Funil na horizontal, como o do UTMify: a faixa afina de uma etapa para a outra, azul → roxo.
-function Funil({ etapas }: { etapas: { rotulo: string; n: number; Icone: typeof Eye }[] }) {
-  const topo = Math.max(1, etapas[0]?.n ?? 1);
-  const W = 560, H = 150, col = W / etapas.length;
-  const alt = etapas.map((e) => Math.max(e.n ? 6 : 2, Math.min(1, e.n / topo) * (H - 20)));
-  const pontos = etapas.map((_, i) => ({ x: i * col + col / 2, h: alt[i] }));
-  const cima = [`M 0 ${H / 2 - alt[0] / 2}`, ...pontos.map((p, i) => { const prev = i ? pontos[i - 1] : { x: 0, h: alt[0] }; const mx = (prev.x + p.x) / 2; return `C ${mx} ${H / 2 - prev.h / 2} ${mx} ${H / 2 - p.h / 2} ${p.x} ${H / 2 - p.h / 2}`; }), `L ${W} ${H / 2 - alt[alt.length - 1] / 2}`];
-  const baixo = [`L ${W} ${H / 2 + alt[alt.length - 1] / 2}`, ...[...pontos].reverse().map((p, k, arr) => { const next = k < arr.length - 1 ? arr[k + 1] : { x: 0, h: alt[0] }; const mx = (p.x + next.x) / 2; return `C ${mx} ${H / 2 + p.h / 2} ${mx} ${H / 2 + next.h / 2} ${next.x} ${H / 2 + next.h / 2}`; }), "Z"];
-  return (
-    <div className="mt-2">
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
-        <defs><linearGradient id="funil-grad" x1="0" x2="1"><stop offset="0%" stopColor="#1d4ed8" /><stop offset="60%" stopColor="#6d28d9" /><stop offset="100%" stopColor="#db2777" /></linearGradient></defs>
-        <path d={`${cima.join(" ")} ${baixo.join(" ")}`} fill="url(#funil-grad)" opacity="0.9" />
-        {pontos.slice(1).map((p, i) => <line key={i} x1={i * col + col} x2={i * col + col} y1="0" y2={H} stroke="rgba(255,255,255,0.12)" />)}
-        {pontos.map((p, i) => <text key={i} x={p.x} y={H / 2 + 4} textAnchor="middle" className="fill-white" fontSize="13" fontWeight="700">{porcento(etapas[i].n, topo)}%</text>)}
-      </svg>
-      <div className="mt-1 grid" style={{ gridTemplateColumns: `repeat(${etapas.length}, minmax(0, 1fr))` }}>
-        {etapas.map((e) => (
-          <div key={e.rotulo} className="px-1 text-center"><p className="flex items-center justify-center gap-1 text-[11px] text-white/55"><e.Icone className="h-3 w-3" />{e.rotulo}</p><p className="text-base font-bold tabular-nums text-white">{e.n}</p></div>
-        ))}
-      </div>
-    </div>
   );
 }

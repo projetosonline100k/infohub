@@ -91,3 +91,20 @@ test('conversão: clicou no checkout, comprou (por e-mail) e reembolso', () => {
   const r = m.resumoConversao(leads, est, 14, Date.parse('2026-11-12T12:00:00Z'));
   assert.deepEqual(r, { leads: 4, clicaram: 3, compraram: 2, receita: 144, quentes: 1 });
 });
+
+test('"hoje" (dias fracionado): só a janela de hoje, comparação com ontem e visitas por hora', () => {
+  const AGORA = Date.parse('2026-11-12T15:00:00Z');
+  const hoje = (h) => new Date(AGORA - h * 3_600_000).toISOString();
+  const eventos = [
+    { sessao: 'a', tipo: 'visita', passo: -1, criado_em: hoje(1) }, { sessao: 'b', tipo: 'visita', passo: -1, criado_em: hoje(2) },
+    { sessao: 'c', tipo: 'visita', passo: -1, criado_em: hoje(18) },   // ontem, nas 12 h anteriores
+  ];
+  const dias = 0.5;   // 12 h de "hoje"
+  const p = m.calcularPainel({ passos, eventos, leads: [], dias, agora: AGORA });
+  assert.equal(p.atual.visitas, 2);
+  assert.equal(p.anterior.visitas, 1);   // as 12 h anteriores (ontem)
+  assert.equal(p.porDia.length, 1);
+  assert.equal(p.porHora.length, new Date(AGORA).getHours() + 1);
+  assert.equal(p.porHora.reduce((s, h) => s + h.n, 0), 2);
+  assert.equal(m.calcularPainel({ passos, eventos, leads: [], dias: 14, agora: AGORA }).porHora, null);
+});
