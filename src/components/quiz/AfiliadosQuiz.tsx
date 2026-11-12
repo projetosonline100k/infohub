@@ -84,15 +84,14 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const tot = totais(resumo)!, totAnt = totais(resumoAnt);
 
   const serie = useMemo(() => {
-    const dados = vendasAfi.filter((v) => v.tipo === "venda" && vendaNaJanela(v, janela));
+    const dados = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && a.codigo).map((a) => a.venda);
     const inicio = janela.desde || (dados.length ? Math.min(...dados.map((v) => Date.parse(`${v.data}T12:00:00-03:00`))) : addDays(new Date(), -29).getTime());
     const dias = Math.min(365, Math.max(1, Math.round((startOfDay(new Date(janela.ate)).getTime() - startOfDay(new Date(inicio)).getTime()) / 86_400_000)));
-    const porDia = new Map<string, { projeto: number; afiliados: number; receitaProjeto: number; receitaAfiliados: number }>();
-    for (let i = 0; i < dias; i++) porDia.set(format(addDays(startOfDay(new Date(inicio)), i), "yyyy-MM-dd"), { projeto: 0, afiliados: 0, receitaProjeto: 0, receitaAfiliados: 0 });
-    for (const v of dados) { const d = porDia.get(v.data.slice(0, 10)); if (d) { d.projeto++; d.receitaProjeto += v.valor ?? 0; } }
-    for (const a of resumo.atribuicoes) if (a.venda.tipo === "venda" && a.codigo) { const d = porDia.get((a.venda.data ?? "").slice(0, 10)); if (d) { d.afiliados++; d.receitaAfiliados += a.venda.valor ?? 0; } }
+    const porDia = new Map<string, { afiliados: number; receitaAfiliados: number }>();
+    for (let i = 0; i < dias; i++) porDia.set(format(addDays(startOfDay(new Date(inicio)), i), "yyyy-MM-dd"), { afiliados: 0, receitaAfiliados: 0 });
+    for (const v of dados) { const d = porDia.get((v.data ?? "").slice(0, 10)); if (d) { d.afiliados++; d.receitaAfiliados += v.valor ?? 0; } }
     return [...porDia.entries()].map(([dia, v]) => ({ dia, rotulo: format(new Date(`${dia}T12:00:00`), "dd MMM", { locale: ptBR }), ...v }));
-  }, [vendasAfi, janela, resumo]);
+  }, [janela, resumo]);
 
   const criar = async () => {
     const nome = f.nome.trim();
@@ -197,20 +196,18 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
             <AreaChart data={serie} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
               <defs>
                 <linearGradient id="afiOuro" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={OURO} stopOpacity={0.45} /><stop offset="100%" stopColor={OURO} stopOpacity={0} /></linearGradient>
-                <linearGradient id="afiCian" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} /><stop offset="100%" stopColor="#22d3ee" stopOpacity={0} /></linearGradient>
               </defs>
               <CartesianGrid stroke="rgba(255,255,255,0.07)" vertical={false} />
               <XAxis dataKey="rotulo" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 12 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={24} />
               <YAxis tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={(v: number) => (grafico === "receita" ? `${Math.round(v)}` : String(v))} />
               <Tooltip cursor={{ stroke: "rgba(255,255,255,0.25)" }} content={({ active, payload, label }) => active && payload?.length ? (
                 <div className="rounded-xl border border-white/20 bg-[#0a1520] px-3 py-2 text-xs shadow-lg"><p className="text-white/60">{label}</p>
-                  {payload.map((p) => <p key={String(p.dataKey)} className="font-semibold" style={{ color: p.color }}>{grafico === "receita" ? moeda(Number(p.value)) : `${p.value} ${Number(p.value) === 1 ? "venda" : "vendas"}`} <span className="font-normal text-white/50">{p.dataKey === "projeto" || p.dataKey === "receitaProjeto" ? "do projeto" : "por afiliados"}</span></p>)}</div>) : null} />
-              <Area type="monotone" dataKey={grafico === "vendas" ? "projeto" : "receitaProjeto"} stroke={OURO} strokeWidth={2} fill="url(#afiOuro)" dot={false} activeDot={{ r: 4 }} />
-              <Area type="monotone" dataKey={grafico === "vendas" ? "afiliados" : "receitaAfiliados"} stroke="#22d3ee" strokeWidth={2} fill="url(#afiCian)" dot={false} activeDot={{ r: 4 }} />
+                  {payload.map((p) => <p key={String(p.dataKey)} className="font-semibold" style={{ color: p.color }}>{grafico === "receita" ? moeda(Number(p.value)) : `${p.value} ${Number(p.value) === 1 ? "venda" : "vendas"}`} <span className="font-normal text-white/50">por afiliados</span></p>)}</div>) : null} />
+              <Area type="monotone" dataKey={grafico === "vendas" ? "afiliados" : "receitaAfiliados"} stroke={OURO} strokeWidth={2} fill="url(#afiOuro)" dot={false} activeDot={{ r: 4 }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
-        <p className="mt-1 flex gap-4 text-xs text-white/55"><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ backgroundColor: OURO }} />Vendas do projeto</span><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-cyan-400" />Por afiliados</span></p>
+        {tot.afiliados === 0 && <p className="text-center text-xs text-white/45">Nenhuma venda por afiliado neste período ainda.</p>}
       </div>
 
       {aConferir.length > 0 && (
