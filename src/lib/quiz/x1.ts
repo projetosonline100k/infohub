@@ -44,13 +44,19 @@ export const linkWhatsapp = (w: string | null | undefined, texto: string) => {
   return n ? `https://wa.me/${n}?text=${encodeURIComponent(texto)}` : null;
 };
 
-export type CategoriaX1 = "abordar" | "conversa" | "retomar" | "convertidos" | "sem_whatsapp";
+export type CategoriaX1 = "quentes" | "abordar" | "conversa" | "retomar" | "convertidos" | "sem_whatsapp";
+/** O que se sabe da compra do lead (vem do painel: checkout e venda pelo e-mail). */
+export interface EstadoX1 { clicouCheckout: boolean; comprou: boolean }
 export const HORAS_PARA_RETOMAR = 24;
 
-/** Em que fila o lead está. Sem WhatsApp válido não dá para abordar; convertido sai das filas; sem mensagem enviada, é para abordar. */
-export function categoriaDoLead(l: LeadX1, abordagens: Pick<Abordagem, "enviada_em">[], agora = Date.now()): CategoriaX1 {
-  if (l.status === "convertido") return "convertidos";
+/**
+ * Em que fila o lead está. Convertido ou quem já comprou sai das filas; sem WhatsApp válido não dá para abordar; quem clicou no checkout e NÃO
+ * comprou é o mais quente (fila própria); sem mensagem enviada, é para abordar; depois, conversa ou retomar pelo tempo da última mensagem.
+ */
+export function categoriaDoLead(l: LeadX1, abordagens: Pick<Abordagem, "enviada_em">[], agora = Date.now(), estado?: EstadoX1): CategoriaX1 {
+  if (l.status === "convertido" || estado?.comprou) return "convertidos";
   if (!telefoneWa(l.whatsapp)) return "sem_whatsapp";
+  if (estado?.clicouCheckout) return "quentes";
   if (!abordagens.length) return "abordar";
   const ultima = Math.max(...abordagens.map((a) => Date.parse(a.enviada_em)));
   return agora - ultima >= HORAS_PARA_RETOMAR * 3_600_000 ? "retomar" : "conversa";
@@ -64,9 +70,9 @@ export function agruparPorLead(abordagens: Abordagem[]): Map<string, Abordagem[]
   return m;
 }
 
-export function contarCategorias(leads: LeadX1[], porLead: Map<string, Abordagem[]>, agora = Date.now()): Record<CategoriaX1 | "todos", number> {
-  const c: Record<CategoriaX1 | "todos", number> = { abordar: 0, conversa: 0, retomar: 0, convertidos: 0, sem_whatsapp: 0, todos: leads.length };
-  for (const l of leads) c[categoriaDoLead(l, porLead.get(l.id) ?? [], agora)]++;
+export function contarCategorias(leads: LeadX1[], porLead: Map<string, Abordagem[]>, agora = Date.now(), estados?: Map<string, EstadoX1>): Record<CategoriaX1 | "todos", number> {
+  const c: Record<CategoriaX1 | "todos", number> = { quentes: 0, abordar: 0, conversa: 0, retomar: 0, convertidos: 0, sem_whatsapp: 0, todos: leads.length };
+  for (const l of leads) c[categoriaDoLead(l, porLead.get(l.id) ?? [], agora, estados?.get(l.id))]++;
   return c;
 }
 

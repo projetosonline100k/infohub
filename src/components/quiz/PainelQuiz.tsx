@@ -4,7 +4,7 @@ import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Copy, ExternalLink, Eye, Filter, Lightbulb, ListChecks, Loader2, Mail, MessageCircle,
-  ImagePlus, Link2, MoreHorizontal, MousePointerClick, Play, Plus, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
+  ImagePlus, Flame, Link2, MoreHorizontal, MousePointerClick, Play, Plus, ShoppingCart, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,8 +14,8 @@ import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizR
 import { X1Quiz } from "./X1Quiz";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
 import {
-  agruparRespostas, calcularPainel, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, variacao, vendasDoLink,
-  type EventoQuiz, type LeadQuiz, type PassoInfo, type StatusLead,
+  agruparRespostas, calcularPainel, estadoDosLeads, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, resumoConversao, variacao, vendasDoLink,
+  type EstadoCompra, type EventoQuiz, type LeadQuiz, type PassoInfo, type ResumoConversao, type StatusLead, type VendaPlataforma,
 } from "@/lib/quiz/painel";
 
 // Painel do quiz (11/11/2026, Davi: "uma visualização desse tipo, até com essas funções"): Métricas (números com
@@ -37,6 +37,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   const [dias, setDias] = useState<number>(14);
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
   const [leads, setLeads] = useState<LeadQuiz[] | null>(null);
+  const [vendas, setVendas] = useState<VendaPlataforma[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [slug, setSlug] = useState(quiz.slug);   // o endereço pode ser trocado na aba Links
 
@@ -44,10 +45,21 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
     setCarregando(true);
     const [e, l] = await Promise.all([
       db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).limit(50000),
-      db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).limit(5000),
+      db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).limit(5000),
     ]);
     setEventos((e.data ?? []) as EventoQuiz[]);
     setLeads(((l.data ?? []) as LeadQuiz[]).map((x) => ({ ...x, respostas: x.respostas ?? [], status: x.status ?? "novo" })));
+    // Compras do projeto (Eduzz/Kiwify/Hotmart): o elo com o lead é o e-mail que ele deixou no quiz.
+    const { data: qz } = await db.from("quizzes").select("cliente_id").eq("id", quiz.id).maybeSingle();
+    const cid = (qz as { cliente_id: string } | null)?.cliente_id;
+    if (cid) {
+      const { data: ps } = await db.from("produtos_cliente").select("id").eq("cliente_id", cid);
+      const ids = ((ps ?? []) as { id: string }[]).map((x) => x.id);
+      if (ids.length) {
+        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, valor, data").in("produto_id", ids).in("tipo", ["venda", "reembolso"]).limit(10000);
+        setVendas((v ?? []) as VendaPlataforma[]);
+      }
+    }
     setCarregando(false);
   }, [quiz.id]);
   useEffect(() => {
@@ -64,6 +76,8 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   }, [estrutura]);
   const perguntas = useMemo(() => (estrutura?.perguntas ?? []).map((q) => q.texto), [estrutura]);
   const painel = useMemo(() => (eventos && leads ? calcularPainel({ passos, eventos, leads, dias }) : null), [passos, eventos, leads, dias]);
+  const estados = useMemo(() => (eventos && leads ? estadoDosLeads(leads, eventos, vendas) : new Map<string, EstadoCompra>()), [eventos, leads, vendas]);
+  const conversao = useMemo(() => (leads ? resumoConversao(leads, estados, dias) : null), [leads, estados, dias]);
 
   const mudarStatus = async (l: LeadQuiz, status: StatusLead) => {
     const antes = leads;
@@ -73,7 +87,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   };
 
   if (!estrutura) return <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">O quiz ainda não foi criado: o painel aparece quando ele estiver pronto.</p>;
-  if (!painel || !leads) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
+  if (!painel || !leads || !conversao) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
 
   return (
     <div className="dark space-y-4 rounded-2xl bg-[#060a12] p-3 text-foreground sm:p-4">
@@ -94,9 +108,9 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
 
       {quiz.status !== "publicado" && <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
 
-      {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onStatus={mudarStatus} />}
-      {aba === "leads" && <Leads leads={leads} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
-      {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} perguntas={perguntas} onStatus={mudarStatus} />}
+      {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
+      {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
+      {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
       {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
@@ -113,8 +127,8 @@ function Tendencia({ atual, anterior }: { atual: number; anterior: number | null
   return <span className={cn("flex items-center gap-0.5 text-xs font-semibold", v.sobe ? "text-emerald-400" : "text-rose-400")}>{v.sobe ? "▲" : "▼"} {v.texto}</span>;
 }
 
-export function Metricas({ painel, leads, dias, perguntas, onFunil, onLeads, onStatus }: {
-  painel: ReturnType<typeof calcularPainel>; leads: LeadQuiz[]; dias: number; perguntas: string[]; onFunil: () => void; onLeads: () => void;
+export function Metricas({ painel, leads, dias, perguntas, conversao, onFunil, onLeads, onQuentes, onStatus }: {
+  painel: ReturnType<typeof calcularPainel>; leads: LeadQuiz[]; dias: number; perguntas: string[]; conversao: ResumoConversao; onFunil: () => void; onLeads: () => void; onQuentes: () => void;
   onStatus: (l: LeadQuiz, s: StatusLead) => void;
 }) {
   const a = painel.atual, b = painel.anterior;
@@ -136,18 +150,21 @@ export function Metricas({ painel, leads, dias, perguntas, onFunil, onLeads, onS
     { r: "Leads captados", v: a.leads, atual: a.leads, ant: b?.leads ?? null, sub: `${porcento(a.leads, a.visitas)}% de conversão`, Icone: Users, destaque: true },
     { r: "Terminaram", v: a.terminaram, atual: a.terminaram, ant: b?.terminaram ?? null, sub: `${Math.min(100, porcento(a.leads, a.terminaram))}% viraram lead`, Icone: CheckCircle2 },
     { r: "Clicaram na oferta", v: a.cta, atual: a.cta, ant: b?.cta ?? null, sub: `${porcento(a.cta, a.terminaram)}% de quem terminou`, Icone: MousePointerClick },
+    { r: "Compraram", v: conversao.compraram, atual: conversao.compraram, ant: null, sub: conversao.compraram ? `${moeda(conversao.receita)} · ${porcento(conversao.compraram, conversao.clicaram)}% de quem clicou` : "ninguém ainda", Icone: ShoppingCart, compra: true },
   ];
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {kpis.map((k) => (
-          <div key={k.r} className={cn(cartao, k.destaque && "border-cyan-300/50 shadow-[0_0_24px_rgba(34,211,238,0.18)]")}>
-            <p className="flex items-center gap-2 text-sm font-medium text-white/80"><k.Icone className="h-4 w-4 text-cyan-300" />{k.r}</p>
+          <div key={k.r} className={cn(cartao, k.destaque && "border-cyan-300/50 shadow-[0_0_24px_rgba(34,211,238,0.18)]", k.compra && "border-emerald-400/40 shadow-[0_0_24px_rgba(52,211,153,0.15)]")}>
+            <p className="flex items-center gap-2 text-sm font-medium text-white/80"><k.Icone className={cn("h-4 w-4", k.compra ? "text-emerald-300" : "text-cyan-300")} />{k.r}</p>
             <div className="mt-2 flex items-baseline gap-2"><span className="text-3xl font-bold tabular-nums text-white">{k.v}</span><Tendencia atual={k.atual} anterior={k.ant} /></div>
             <p className="mt-1 text-xs text-white/50">{k.sub}</p>
           </div>
         ))}
       </div>
+
+      <ConversaCard conversao={conversao} visitas={a.visitas} onQuentes={onQuentes} />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
         <section className={cartao}>
@@ -272,7 +289,7 @@ function LinhaLead({ l, perguntas, onStatus }: { l: LeadQuiz; perguntas: string[
 
 // ---------------------------------------------------------------- Leads
 
-export function Leads({ leads, perguntas, perfis, onStatus }: { leads: LeadQuiz[]; perguntas: string[]; perfis: { id: string; nome: string }[]; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
+export function Leads({ leads, estados, perguntas, perfis, onStatus }: { leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; perfis: { id: string; nome: string }[]; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<"" | StatusLead>("");
   const [perfil, setPerfil] = useState("");
@@ -297,8 +314,8 @@ export function Leads({ leads, perguntas, perfis, onStatus }: { leads: LeadQuiz[
       <p className="mt-2 text-xs text-white/50">{filtrados.length} de {leads.length} leads</p>
       {filtrados.length === 0 ? <p className="py-10 text-center text-sm text-white/45">Nenhum lead com esse filtro.</p> : (
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead className="text-left text-xs text-white/50"><tr><th className="py-1.5 font-medium">Quando</th><th className="font-medium">Nome</th><th className="font-medium">E-mail</th><th className="font-medium">WhatsApp</th><th className="font-medium">Perfil</th><th className="font-medium">Etapa</th><th className="font-medium">Status</th></tr></thead>
+          <table className="w-full min-w-[900px] text-sm">
+            <thead className="text-left text-xs text-white/50"><tr><th className="py-1.5 font-medium">Quando</th><th className="font-medium">Nome</th><th className="font-medium">E-mail</th><th className="font-medium">WhatsApp</th><th className="font-medium">Perfil</th><th className="font-medium">Etapa</th><th className="font-medium">Compra</th><th className="font-medium">Status</th></tr></thead>
             <tbody>
               {filtrados.map((l) => {
                 const zap = l.whatsapp?.replace(/\D/g, "");
@@ -311,10 +328,11 @@ export function Leads({ leads, perguntas, perfis, onStatus }: { leads: LeadQuiz[
                       <td onClick={(e) => e.stopPropagation()}>{zap ? <button type="button" onClick={() => void abrirLinkExterno(`https://wa.me/${zap.length <= 11 ? `55${zap}` : zap}`)} className="flex items-center gap-1 text-emerald-300 hover:underline"><MessageCircle className="h-3.5 w-3.5" />{l.whatsapp}</button> : "—"}</td>
                       <td className="text-white/70">{nomePerfil(l.perfil)}</td>
                       <td className="max-w-[180px] truncate text-white/70">{etapaDoLead(l, perguntas)}</td>
+                      <td><BadgeCompra estado={estados.get(l.id)} /></td>
                       <td onClick={(e) => e.stopPropagation()}><SeletorStatus l={l} onStatus={onStatus} /></td>
                     </tr>
                     {aberto === l.id && (
-                      <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={7} className="px-3 py-2">
+                      <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={8} className="px-3 py-2">
                         <ul className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">{l.respostas.map((r, i) => <li key={i}><span className="text-white/50">{r.pergunta}</span> → <b className="text-white">{r.resposta ?? "—"}</b></li>)}</ul>
                         {l.respostas.length === 0 && <p className="text-xs text-white/45">Sem respostas guardadas.</p>}
                       </td></tr>
@@ -646,6 +664,48 @@ function PreviaDoLink({ quizId, slug }: { quizId: string; slug: string }) {
           </div>
         </div>
       </div>
+    </section>
+  );
+}
+
+
+// ---------------------------------------------------------------- Conversão (checkout e compra)
+
+export function BadgeCompra({ estado }: { estado: EstadoCompra | undefined }) {
+  if (estado?.compra) return <span className="inline-flex items-center gap-1 rounded-full border border-emerald-400/50 bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-200" title={`Comprou em ${format(new Date(`${estado.compra.data.slice(0, 10)}T12:00:00`), "d MMM", { locale: ptBR })}`}><ShoppingCart className="h-3 w-3" />Comprou {moeda(estado.compra.valor)}</span>;
+  if (estado?.clicouCheckout) return <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-200" title="Clicou no botão de compra e ainda não comprou"><Flame className="h-3 w-3" />Foi ao checkout</span>;
+  return <span className="text-white/35">—</span>;
+}
+
+function ConversaCard({ conversao: c, visitas, onQuentes }: { conversao: ResumoConversao; visitas: number; onQuentes: () => void }) {
+  const caixa = (titulo: string, valor: string, sub: string, cor: string, Icone: typeof Users) => (
+    <div className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/25 p-3">
+      <p className="flex items-center gap-1.5 text-xs font-medium text-white/60"><Icone className={cn("h-3.5 w-3.5", cor)} />{titulo}</p>
+      <p className="mt-1 text-2xl font-bold tabular-nums text-white">{valor}</p>
+      <p className="text-[11px] text-white/45">{sub}</p>
+    </div>
+  );
+  const seta = (txt: string) => <div className="flex shrink-0 flex-col items-center justify-center px-1 text-center text-[11px] font-semibold text-cyan-300"><span>{txt}</span><span className="text-white/30">→</span></div>;
+  return (
+    <section className={cn(cartao, "space-y-3")}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="flex flex-1 items-center gap-2 text-lg font-bold text-white"><ShoppingCart className="h-5 w-5 text-emerald-300" />Conversão: do lead à compra</h3>
+        {c.quentes > 0 && (
+          <button type="button" onClick={onQuentes} className="flex items-center gap-1.5 rounded-full border border-amber-400/50 bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-200 hover:bg-amber-500/25">
+            <Flame className="h-3.5 w-3.5" />{c.quentes} {c.quentes === 1 ? "pessoa foi" : "pessoas foram"} ao checkout e não {c.quentes === 1 ? "comprou" : "compraram"}: abordar no X1
+          </button>
+        )}
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+        {caixa("Leads", String(c.leads), `${porcento(c.leads, visitas)}% das visitas`, "text-cyan-300", Users)}
+        {seta(`${porcento(c.clicaram, c.leads)}%`)}
+        {caixa("Foram ao checkout", String(c.clicaram), "clicaram em comprar", "text-amber-300", MousePointerClick)}
+        {seta(`${porcento(c.compraram, c.clicaram)}%`)}
+        {caixa("Compraram", String(c.compraram), `${porcento(c.compraram, c.leads)}% dos leads`, "text-emerald-300", ShoppingCart)}
+        {seta("R$")}
+        {caixa("Receita", moeda(c.receita), c.compraram ? `${moeda(c.receita / c.compraram)} por compra` : "—", "text-emerald-300", TrendingUp)}
+      </div>
+      <p className="text-[11px] text-white/40">A compra é ligada ao lead pelo <b>e-mail</b> que ele deixou no quiz (vendas da Eduzz, Kiwify ou Hotmart do projeto; reembolso não conta). “Foi ao checkout” = clicou no botão de comprar do quiz.</p>
     </section>
   );
 }

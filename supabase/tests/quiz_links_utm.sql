@@ -28,6 +28,8 @@ BEGIN
   PERFORM public.responder_quiz('qlu-antigo', '[]', 'p', 'Ana', 'a@b.co', '11', '{"utm_source":"instagram"}');
   IF (SELECT utm->>'utm_source' FROM public.quiz_respostas WHERE nome = 'Ana') <> 'instagram' THEN RAISE EXCEPTION 'lead sem utm'; END IF;
   PERFORM public.responder_quiz('qlu-antigo', '[]', 'p', 'Bia', NULL, NULL);
+  PERFORM public.responder_quiz('qlu-antigo', '[]', 'p', 'Caio', NULL, NULL, NULL, '10000000-0000-0000-0000-0000000000a1');
+  IF (SELECT sessao FROM public.quiz_respostas WHERE nome = 'Caio') <> '10000000-0000-0000-0000-0000000000a1' THEN RAISE EXCEPTION 'lead sem sessão'; END IF;
   IF (SELECT utm FROM public.quiz_respostas WHERE nome = 'Bia') IS NOT NULL THEN RAISE EXCEPTION 'utm vazia deveria ser nula'; END IF;
 END $$;
 SET LOCAL ROLE authenticated;

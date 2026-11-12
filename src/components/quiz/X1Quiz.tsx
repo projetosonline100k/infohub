@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Check, CheckCheck, ChevronRight, Copy, Inbox, Loader2, MessageCircle, Plus, RefreshCw, Repeat2, Search, Send, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Check, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Plus, RefreshCw, Repeat2, Search, Send, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
-import { etapaDoLead, type LeadQuiz, type StatusLead } from "@/lib/quiz/painel";
+import { etapaDoLead, type EstadoCompra, type LeadQuiz, type StatusLead } from "@/lib/quiz/painel";
 import {
   MODELOS_PADRAO, agruparPorLead, categoriaDoLead, contarCategorias, generalizarModelo, haQuanto, linkWhatsapp, preencherModelo,
   type Abordagem, type CategoriaX1, type Modelo,
@@ -20,6 +20,7 @@ import {
 const db = supabase as unknown as SupabaseClient;
 type Fila = CategoriaX1 | "todos";
 const FILAS: { id: Fila; rotulo: string; dica: string; Icone: typeof Inbox; cor: string }[] = [
+  { id: "quentes", rotulo: "Quentes", dica: "Clicaram em comprar e ainda não compraram: abordar primeiro", Icone: Flame, cor: "text-orange-400" },
   { id: "abordar", rotulo: "Abordar agora", dica: "Leads novos, sem nenhuma mensagem sua", Icone: Inbox, cor: "text-amber-300" },
   { id: "conversa", rotulo: "Em conversa", dica: "Você mandou mensagem há menos de 24 h", Icone: MessageCircle, cor: "text-emerald-300" },
   { id: "retomar", rotulo: "Retomar", dica: "Mandou há mais de 24 h: vale um novo toque", Icone: Repeat2, cor: "text-sky-300" },
@@ -29,13 +30,14 @@ const FILAS: { id: Fila; rotulo: string; dica: string; Icone: typeof Inbox; cor:
 ];
 const NOMES_STATUS: Record<StatusLead, string> = { novo: "Novo", em_contato: "Em contato", convertido: "Convertido" };
 
-export function X1Quiz({ quizId, leads, perguntas, onStatus }: {
-  quizId: string; leads: LeadQuiz[]; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void;
+export function X1Quiz({ quizId, leads, estados, perguntas, onStatus }: {
+  quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void;
 }) {
   const [abordagens, setAbordagens] = useState<Abordagem[] | null>(null);
   const [proprios, setProprios] = useState<Modelo[]>([]);
   const [clienteId, setClienteId] = useState<string | null>(null);
-  const [fila, setFila] = useState<Fila>("abordar");
+  const estadosX1 = useMemo(() => new Map([...estados].map(([id, e]) => [id, { clicouCheckout: e.clicouCheckout, comprou: !!e.compra }])), [estados]);
+  const [fila, setFila] = useState<Fila>(() => ([...estados.values()].some((e) => e.clicouCheckout && !e.compra) ? "quentes" : "abordar"));
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [texto, setTexto] = useState("");
@@ -59,18 +61,18 @@ export function X1Quiz({ quizId, leads, perguntas, onStatus }: {
 
   const porLead = useMemo(() => agruparPorLead(abordagens ?? []), [abordagens]);
   const agora = Date.now();
-  const contagem = useMemo(() => contarCategorias(leads, porLead), [leads, porLead]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const contagem = useMemo(() => contarCategorias(leads, porLead, Date.now(), estadosX1), [leads, porLead, estadosX1]);   // eslint-disable-line react-hooks/exhaustive-deps
   const ultima = (id: string) => porLead.get(id)?.at(-1);
 
   const lista = useMemo(() => {
     const t = busca.trim().toLowerCase();
     const filtrados = leads.filter((l) => {
-      if (fila !== "todos" && categoriaDoLead(l, porLead.get(l.id) ?? []) !== fila) return false;
+      if (fila !== "todos" && categoriaDoLead(l, porLead.get(l.id) ?? [], Date.now(), estadosX1.get(l.id)) !== fila) return false;
       return !t || [l.nome, l.email, l.whatsapp].some((x) => (x ?? "").toLowerCase().includes(t));
     });
     const atividade = (l: LeadQuiz) => Date.parse(ultima(l.id)?.enviada_em ?? l.criada_em);
     return filtrados.sort((a, b) => (fila === "retomar" ? atividade(a) - atividade(b) : atividade(b) - atividade(a)));
-  }, [leads, porLead, fila, busca]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leads, porLead, fila, busca, estadosX1]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sempre há um lead aberto: o escolhido, se ainda está na fila; senão o primeiro dela.
   const lead = lista.find((l) => l.id === sel) ?? lista[0] ?? null;
@@ -130,7 +132,7 @@ export function X1Quiz({ quizId, leads, perguntas, onStatus }: {
             className={cn("flex items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm transition-colors", fila === f.id ? "bg-white/10 font-semibold" : "text-white/75 hover:bg-white/5")}>
             <f.Icone className={cn("h-4 w-4 shrink-0", f.cor)} />
             <span className="min-w-0 flex-1 truncate">{f.rotulo}</span>
-            <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", f.id === "abordar" && contagem.abordar ? "bg-amber-400 text-black" : "bg-white/10 text-white/70")}>{contagem[f.id]}</span>
+            <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", (f.id === "abordar" && contagem.abordar) || (f.id === "quentes" && contagem.quentes) ? "bg-amber-400 text-black" : "bg-white/10 text-white/70")}>{contagem[f.id]}</span>
           </button>
         ))}
         <p className="mt-auto px-2 pt-2 text-[10px] leading-snug text-white/35">O WhatsApp abre com a mensagem pronta; você aperta enviar. A abordagem fica registrada aqui.</p>
@@ -144,13 +146,13 @@ export function X1Quiz({ quizId, leads, perguntas, onStatus }: {
           <div className="relative"><Search className="absolute left-2.5 top-2 h-4 w-4 text-white/40" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar" className="w-full rounded-lg bg-[#202c33] py-1.5 pl-8 pr-3 text-sm text-white outline-none placeholder:text-white/40" /></div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {lista.length === 0 ? <p className="p-6 text-center text-sm text-white/40">{fila === "abordar" ? "Ninguém esperando abordagem. 🎉" : "Ninguém nesta fila."}</p> : lista.map((l) => {
+          {lista.length === 0 ? <p className="p-6 text-center text-sm text-white/40">{fila === "abordar" ? "Ninguém esperando abordagem. 🎉" : fila === "quentes" ? "Ninguém foi ao checkout sem comprar." : "Ninguém nesta fila."}</p> : lista.map((l) => {
             const u = ultima(l.id);
             return (
               <button key={l.id} type="button" onClick={() => setSel(l.id)} className={cn("flex w-full items-center gap-3 border-b border-white/5 px-3 py-2.5 text-left hover:bg-white/5", lead?.id === l.id && "bg-[#2a3942]")}>
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#6b7c85] text-base font-bold">{(l.nome?.trim() || "?").slice(0, 1).toUpperCase()}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2"><span className="min-w-0 flex-1 truncate font-medium">{nomeDe(l)}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
+                  <span className="flex items-baseline gap-2"><span className="flex min-w-0 flex-1 items-center gap-1 truncate font-medium"><span className="truncate">{nomeDe(l)}</span>{estados.get(l.id)?.compra ? <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : estados.get(l.id)?.clicouCheckout ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : null}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
                   <span className="flex items-center gap-1 truncate text-xs text-white/55">{u ? <><CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-400" /><span className="truncate">{u.texto}</span></> : <span className="truncate">Novo lead{l.perfil ? ` · ${l.perfil}` : ""}</span>}</span>
                 </span>
               </button>
@@ -168,6 +170,9 @@ export function X1Quiz({ quizId, leads, perguntas, onStatus }: {
             <header className="flex flex-wrap items-center gap-3 bg-[#202c33] px-4 py-2.5">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#6b7c85] font-bold">{(lead.nome?.trim() || "?").slice(0, 1).toUpperCase()}</span>
               <div className="min-w-0 flex-1"><p className="truncate font-semibold">{nomeDe(lead)}</p><p className="truncate text-xs text-white/55">{lead.whatsapp || "sem WhatsApp"}{lead.perfil ? ` · ${lead.perfil}` : ""}</p></div>
+              {estados.get(lead.id)?.compra
+                ? <span className="rounded-full border border-emerald-400/50 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-200">Comprou · R$ {estados.get(lead.id)!.compra!.valor.toLocaleString("pt-BR")}</span>
+                : estados.get(lead.id)?.clicouCheckout && <span className="flex items-center gap-1 rounded-full border border-orange-400/50 bg-orange-500/15 px-2.5 py-1 text-xs font-medium text-orange-200"><Flame className="h-3 w-3" />Foi ao checkout</span>}
               <select value={lead.status} onChange={(e) => onStatus(lead, e.target.value as StatusLead)} className="rounded-full border border-white/15 bg-[#111b21] px-3 py-1 text-xs outline-none">
                 {(Object.keys(NOMES_STATUS) as StatusLead[]).map((s) => <option key={s} value={s}>{NOMES_STATUS[s]}</option>)}
               </select>

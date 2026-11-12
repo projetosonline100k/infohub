@@ -90,7 +90,7 @@ export default function QuizPublico() {
             const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: q.opcoes[escolhas[q.id]]?.texto ?? null }));
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,
-              p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current,
+              p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current, p_sessao: sessao.current,
             } as never);
             registrar("fim");
           }} />

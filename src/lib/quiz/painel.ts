@@ -6,7 +6,7 @@ export interface EventoQuiz { sessao: string; tipo: "visita" | "passo" | "fim" |
 export type StatusLead = "novo" | "em_contato" | "convertido";
 export interface LeadQuiz {
   id: string; perfil: string | null; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string;
-  respostas: { pergunta: string; resposta: string | null }[]; status: StatusLead; utm?: UtmLida;
+  respostas: { pergunta: string; resposta: string | null }[]; status: StatusLead; utm?: UtmLida; sessao?: string | null;
 }
 export interface PassoInfo { rotulo: string; tipo: "intro" | "pergunta" | "tela" | "captura" | "fim" }
 export interface Janela { visitas: number; comecaram: number; terminaram: number; leads: number; cta: number }
@@ -154,4 +154,50 @@ export function estatisticaDoLink(l: LinkUtm, linhas: LinhaOrigem[]) {
 export function vendasDoLink(l: LinkUtm, vendas: { utm_source: string | null; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; valor: number | null }[]) {
   const d = vendas.filter((v) => ehDoLink(l, { source: v.utm_source ?? "", medium: v.utm_medium ?? "", campaign: v.utm_campaign ?? "", content: v.utm_content ?? "" }));
   return { n: d.length, total: d.reduce((s, v) => s + Number(v.valor ?? 0), 0) };
+}
+
+
+// ---------------------------------------------------------------- Conversão (checkout e compra)
+
+export interface VendaPlataforma { transacao_id?: string | null; tipo: string; comprador_email: string | null; valor: number | null; data: string }
+export interface EstadoCompra { clicouCheckout: boolean; compra: { valor: number; data: string } | null }
+const normEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
+
+/**
+ * Para cada lead: clicou na oferta (evento "cta" da mesma sessão da visita) e comprou (venda com o e-mail dele, sem reembolso).
+ * A venda vem da Eduzz/Kiwify/Hotmart; o elo é o e-mail que a pessoa deixou no quiz.
+ */
+export function estadoDosLeads(leads: Pick<LeadQuiz, "id" | "email" | "sessao">[], eventos: Pick<EventoQuiz, "sessao" | "tipo">[], vendas: VendaPlataforma[]): Map<string, EstadoCompra> {
+  const cta = new Set(eventos.filter((e) => e.tipo === "cta").map((e) => e.sessao));
+  const reembolsadas = new Set(vendas.filter((v) => v.tipo === "reembolso" && v.transacao_id).map((v) => v.transacao_id as string));
+  const porEmail = new Map<string, { valor: number; data: string }>();
+  for (const v of vendas) {
+    if (v.tipo !== "venda" || !v.comprador_email || (v.transacao_id && reembolsadas.has(v.transacao_id))) continue;
+    const k = normEmail(v.comprador_email);
+    const at = porEmail.get(k);
+    porEmail.set(k, { valor: (at?.valor ?? 0) + Number(v.valor ?? 0), data: at && at.data > v.data ? at.data : v.data });
+  }
+  const r = new Map<string, EstadoCompra>();
+  for (const l of leads) {
+    const compra = l.email ? porEmail.get(normEmail(l.email)) ?? null : null;
+    r.set(l.id, { clicouCheckout: !!l.sessao && cta.has(l.sessao) || !!compra, compra });   // quem comprou, no mínimo passou pelo checkout
+  }
+  return r;
+}
+
+export interface ResumoConversao { leads: number; clicaram: number; compraram: number; receita: number; quentes: number }
+/** Os números do período: leads, quantos chegaram ao checkout, quantos compraram, a receita e os "quentes" (clicaram e não compraram). */
+export function resumoConversao(leads: Pick<LeadQuiz, "id" | "criada_em">[], estados: Map<string, EstadoCompra>, dias: number, agora = Date.now()): ResumoConversao {
+  const inicio = dias ? agora - dias * 86_400_000 : 0;
+  const r: ResumoConversao = { leads: 0, clicaram: 0, compraram: 0, receita: 0, quentes: 0 };
+  for (const l of leads) {
+    if (Date.parse(l.criada_em) < inicio) continue;
+    r.leads++;
+    const e = estados.get(l.id);
+    if (!e) continue;
+    if (e.clicouCheckout) r.clicaram++;
+    if (e.compra) { r.compraram++; r.receita += e.compra.valor; }
+    else if (e.clicouCheckout) r.quentes++;
+  }
+  return r;
 }

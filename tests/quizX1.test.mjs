@@ -38,7 +38,7 @@ test('categorias dos leads', () => {
   assert.equal(m.categoriaDoLead(lead(7, { whatsapp: '12' }), [horas(1)], AGORA), 'sem_whatsapp');
   const por = m.agruparPorLead([{ id: 'a', resposta_id: '4', texto: 'x', modelo: null, enviada_em: horas(30).enviada_em }, { id: 'b', resposta_id: '2', texto: 'y', modelo: null, enviada_em: horas(2).enviada_em }]);
   const c = m.contarCategorias([lead('1'), lead('2'), lead('4'), lead('5', { status: 'convertido' })], por, AGORA);
-  assert.deepEqual(c, { abordar: 1, conversa: 1, retomar: 1, convertidos: 1, sem_whatsapp: 0, todos: 4 });
+  assert.deepEqual(c, { quentes: 0, abordar: 1, conversa: 1, retomar: 1, convertidos: 1, sem_whatsapp: 0, todos: 4 });
 });
 test('há quanto tempo', () => {
   const A = Date.parse('2026-11-12T12:00:00Z');
@@ -53,4 +53,17 @@ test('generalizar a mensagem em modelo', () => {
   assert.equal(m.generalizarModelo('Banana é fruta, Ana.', { nome: 'Ana' }), 'Banana é fruta, {nome}.');   // não troca dentro de outra palavra
   assert.equal(m.generalizarModelo('Oi!', { nome: null, perfil: null }), 'Oi!');
   assert.equal(m.preencherModelo(m.generalizarModelo('Oi Ana!', { nome: 'Ana' }), { nome: null }), 'Oi!');
+});
+
+test('quentes: clicou no checkout e não comprou; quem comprou vai para convertidos', () => {
+  const AGORA = Date.parse('2026-11-12T12:00:00Z');
+  const lead = (over) => ({ id: 'x', nome: 'N', whatsapp: '11974743455', perfil: 'P', status: 'novo', criada_em: '2026-11-11T10:00:00Z', ...over });
+  const ab = [{ enviada_em: new Date(AGORA - 2 * 3_600_000).toISOString() }];
+  assert.equal(m.categoriaDoLead(lead(), ab, AGORA, { clicouCheckout: true, comprou: false }), 'quentes');   // vence "em conversa"
+  assert.equal(m.categoriaDoLead(lead(), [], AGORA, { clicouCheckout: true, comprou: false }), 'quentes');
+  assert.equal(m.categoriaDoLead(lead(), ab, AGORA, { clicouCheckout: true, comprou: true }), 'convertidos');
+  assert.equal(m.categoriaDoLead(lead({ whatsapp: null }), [], AGORA, { clicouCheckout: true, comprou: false }), 'sem_whatsapp');
+  assert.equal(m.categoriaDoLead(lead(), [], AGORA, { clicouCheckout: false, comprou: false }), 'abordar');
+  const c = m.contarCategorias([lead({ id: 'a' }), lead({ id: 'b' })], new Map(), AGORA, new Map([['a', { clicouCheckout: true, comprou: false }]]));
+  assert.equal(c.quentes, 1); assert.equal(c.abordar, 1);
 });

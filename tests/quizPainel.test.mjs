@@ -66,3 +66,28 @@ test('etapa do lead, respostas agrupadas e CSV', () => {
   assert.match(csv, /"Ana ""A"""/);
   assert.match(csv, /Terminou/);
 });
+
+test('conversão: clicou no checkout, comprou (por e-mail) e reembolso', () => {
+  const leads = [
+    { id: 'a', email: 'Ana@Gmail.com', sessao: 's1', criada_em: '2026-11-10T10:00:00Z' },   // clicou e comprou
+    { id: 'b', email: 'bia@x.co', sessao: 's2', criada_em: '2026-11-10T10:00:00Z' },        // clicou, não comprou: quente
+    { id: 'c', email: 'caio@x.co', sessao: 's3', criada_em: '2026-11-10T10:00:00Z' },       // não clicou
+    { id: 'd', email: 'dani@x.co', sessao: null, criada_em: '2026-11-10T10:00:00Z' },       // comprou sem sessão guardada: conta como passou pelo checkout
+    { id: 'e', email: 'eva@x.co', sessao: 's5', criada_em: '2026-10-01T10:00:00Z' },        // fora do período
+  ];
+  const eventos = [{ sessao: 's1', tipo: 'cta' }, { sessao: 's2', tipo: 'cta' }, { sessao: 's3', tipo: 'fim' }];
+  const vendas = [
+    { transacao_id: 't1', tipo: 'venda', comprador_email: ' ana@gmail.com', valor: 47, data: '2026-11-11' },
+    { transacao_id: 't2', tipo: 'venda', comprador_email: 'dani@x.co', valor: 97, data: '2026-11-11' },
+    { transacao_id: 't3', tipo: 'venda', comprador_email: 'eva@x.co', valor: 10, data: '2026-11-11' },
+    { transacao_id: 't3', tipo: 'reembolso', comprador_email: 'eva@x.co', valor: 10, data: '2026-11-12' },
+  ];
+  const est = m.estadoDosLeads(leads, eventos, vendas);
+  assert.deepEqual(est.get('a'), { clicouCheckout: true, compra: { valor: 47, data: '2026-11-11' } });
+  assert.deepEqual(est.get('b'), { clicouCheckout: true, compra: null });
+  assert.deepEqual(est.get('c'), { clicouCheckout: false, compra: null });
+  assert.equal(est.get('d').clicouCheckout, true);
+  assert.equal(est.get('e').compra, null);   // reembolsada não conta
+  const r = m.resumoConversao(leads, est, 14, Date.parse('2026-11-12T12:00:00Z'));
+  assert.deepEqual(r, { leads: 4, clicaram: 3, compraram: 2, receita: 144, quentes: 1 });
+});
