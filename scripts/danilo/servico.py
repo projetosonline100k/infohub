@@ -68,8 +68,9 @@ def rodar_claude(prompt, minutos, turnos=200, atividade=None):
     binario = ouvinte.claude_bin()
     if not binario:
         return False, "Claude Code não encontrado neste Mac (abra o app do Claude uma vez)."
-    cmd = [binario, "-p", prompt, "--output-format", "json", "--max-turns", str(turnos),
-           "--allowedTools", "Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"]
+    fila = ouvinte.fila   # fila de desenvolvimento: o Danilo não programa, abre pedido (12/11)
+    cmd = [binario, "-p", fila.com_regra(prompt), "--output-format", "json", "--max-turns", str(turnos),
+           "--allowedTools", "Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch", *fila.args_guarda(ouvinte.PYTHON)]
     env = {**os.environ, "PATH": f"{Path(sys.executable).parent}:/usr/bin:/bin:/usr/sbin:/sbin"}
     if atividade:   # cada passo do Claude aparece ao vivo na tarefa ("O que já foi feito", 19/10)
         sys.path.insert(0, str(RAIZ / "scripts" / "empresa"))

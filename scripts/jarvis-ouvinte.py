@@ -51,6 +51,7 @@ import briefing  # noqa: E402
 import passos  # noqa: E402  (linha do tempo da tarefa: o que o funcionário já fez, 19/10)
 import execucao  # noqa: E402
 import vivo  # noqa: E402  (modo vivo do chat: só no Mac, com Chrome e comandos, 10/11)
+import fila  # noqa: E402  (fila de desenvolvimento: ninguém programa, todos disparam para a fila — 12/11)
 import agente_whatsapp  # noqa: E402  (inteligência do agente do WhatsApp: pedido do X1 → Claude, 12/11)
 import chatbot_assistente  # noqa: E402  (assistente do Chatbot: pedido do app → Claude do Davi, 10/11)
 
@@ -82,18 +83,22 @@ def claude_bin():
     return max(achados, key=versao)
 
 
-def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None, atividade=None):
+def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None, atividade=None, programa=False):
     """Roda o Claude em segundo plano e devolve (ok, texto do resultado).
     `sessao`: continua essa sessão (--resume). `info` (dict) recebe o
     session_id da execução, pra próxima continuar dela. `ferramentas`: troca
     a lista liberada (ex.: só leitura). `atividade`: anota cada passo na tarefa
-    (atividades.passos), para o Davi ver o que já foi feito."""
+    (atividades.passos), para o Davi ver o que já foi feito.
+    `programa`: SÓ o Atlas (a ponte, que executa a fila de desenvolvimento) passa True. Todo outro agente recebe a regra da fila no prompt
+    e um bloqueio de edição de código (scripts/fila.py, scripts/guarda_codigo.py): quem precisa de código abre um pedido na fila."""
     binario = claude_bin()
     if not binario:
         return False, "Claude Code não encontrado neste Mac (abra o app do Claude uma vez)."
-    cmd = [binario, "-p", prompt, "--output-format", "json", "--max-turns", str(turnos),
+    cmd = [binario, "-p", prompt if programa else fila.com_regra(prompt), "--output-format", "json", "--max-turns", str(turnos),
            # Sem ninguém pra aprovar: libera só o que esses pedidos usam.
            "--allowedTools", *(ferramentas or ["Bash", "Read", "Grep", "Glob", "Edit", "Write", "WebSearch", "WebFetch"])]
+    if not programa:
+        cmd += fila.args_guarda(PYTHON)
     if sessao:
         cmd += ["--resume", sessao]
     if chrome and sys.platform == "darwin":

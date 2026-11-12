@@ -105,6 +105,10 @@ Quando o usuário pedir para criar, editar, pausar ou apagar uma automação ("c
 - Migrações novas em `supabase/migrations/` com timestamp; aplicadas via `scripts/apply-*.py` e registradas em `supabase_migrations.schema_migrations`. Depois de mudar schema: `scripts/reload-postgrest-schema.py`.
 - Histórico da migração de Supabase (set/2026): `MIGRATION_STATUS.md`.
 
+## Fila de desenvolvimento (ninguém programa, só o Atlas)
+
+Desde 12/11/2026 nenhum agente (Gabriela, Roy, Danilo, Junior, Pedro, Dalila, modo vivo…) mexe em código: se um pedido do Davi exige mudar app/banco/script/integração, o agente abre um pedido com `python3 scripts/fila.py pedir --origem "<nome>" --titulo "..." <<'FIM' … FIM` (`listar` para não duplicar). O pedido cai em `ponte_pedidos`, o Atlas (`scripts/ponte.py`, o único que roda com `programa=True`) implementa e o Davi acompanha pelo sino no canto superior direito do app. Todo prompt de agente recebe a regra (`fila.REGRA`) e o `claude -p` sobe com um hook que bloqueia Edit/Write em código do repositório e `git commit/push`, migração e deploy (`scripts/guarda_codigo.py`; só `docs/` e pastas fora do repo ficam livres). Qualquer novo lugar que chame `claude -p` para um agente deve usar `ouvinte.rodar_claude` (ou `fila.com_regra` + `fila.args_guarda`).
+
 ## Ponte de voz (Claude de voz → Claude Code)
 
 O Claude de voz grava pedidos em `ponte_pedidos` (só service role; sem acesso pelo app). O serviço `scripts/ponte.py` (LaunchAgent `com.infoprohub.ponte`, `scripts/instalar-ponte.sh`, log `~/.infopro-hub/ponte/ponte.log`) pega um por vez a cada minuto, roda o Claude Code num worktree (`ponte/<id>`), junta no main e grava `resultado`. `requer_aprovacao` sem `aprovado` vira `aguardando_aprovacao`; aprovar: `python3 scripts/ponte.py aprovar <id>` (ou `aprovado = true`). `python3 scripts/ponte.py listar` mostra a fila. Não armar Monitor para essa fila (disputaria os pedidos).

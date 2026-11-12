@@ -182,7 +182,7 @@ def executar(p):
                          "(deploy, edge function, dados reais), NÃO faça: responda com PRECISA_APROVACAO."),
         hoje=f"{datetime.now():%d/%m/%Y %H:%M}")
     log("pedido:", pid, "—", p["titulo"])
-    ok, texto = _ouvinte().rodar_claude(prompt, minutos=60, cwd=obra, turnos=200)
+    ok, texto = _ouvinte().rodar_claude(prompt, minutos=60, cwd=obra, turnos=200, programa=True)
     texto = (texto or "").strip()
 
     novos = _git("rev-list", "--count", f"main..{ramo}").stdout.strip()

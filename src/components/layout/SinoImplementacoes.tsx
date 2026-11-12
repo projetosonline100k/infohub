@@ -83,7 +83,7 @@ export function SinoImplementacoes() {
           <span className="min-w-0 flex-1">
             <span className="line-clamp-2 text-sm font-medium leading-snug">{p.titulo}</span>
             <span className="text-[11px] text-muted-foreground">
-              {ORIGEM[p.origem] ?? p.origem} · {p.status === "em_andamento" ? `fazendo há ${duracaoTexto(dur ?? 0)}` : p.status === "pendente" ? `na fila desde ${haQuanto(p.criado_em)}` : p.status === "aguardando_aprovacao" ? "esperando sua aprovação" : haQuanto(p.concluido_em ?? p.criado_em)}
+              {ORIGEM[p.origem] ?? p.origem.charAt(0).toUpperCase() + p.origem.slice(1)} · {p.status === "em_andamento" ? `fazendo há ${duracaoTexto(dur ?? 0)}` : p.status === "pendente" ? `na fila desde ${haQuanto(p.criado_em)}` : p.status === "aguardando_aprovacao" ? "esperando sua aprovação" : haQuanto(p.concluido_em ?? p.criado_em)}
             </span>
           </span>
           {detalhe && <ChevronDown className={cn("mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform", aberta && "rotate-180")} />}
