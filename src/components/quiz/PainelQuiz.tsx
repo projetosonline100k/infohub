@@ -3,7 +3,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Copy, ExternalLink, Eye, Filter, Lightbulb, ListChecks, Loader2, Mail, MessageCircle,
+  AlertTriangle, BarChart3, CheckCircle2, ChevronDown, Copy, DollarSign, ExternalLink, Eye, Filter, Lightbulb, ListChecks, Loader2, Mail, MessageCircle,
   ImagePlus, Flame, Link2, MoreHorizontal, MousePointerClick, Play, Plus, ShoppingCart, RefreshCw, Search, Settings, Trash2, TrendingUp, Users,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
 import { X1Quiz } from "./X1Quiz";
+import { VendasUtm } from "./VendasUtm";
+import type { VendaUtm as VendaCompleta } from "@/lib/quiz/vendasUtm";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
 import {
   agruparRespostas, calcularPainel, estadoDosLeads, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, resumoConversao, variacao, vendasDoLink,
@@ -22,8 +24,8 @@ import {
 // tendência, funil, maior abandono, insight, leads e visitas por dia), Leads (busca, filtro, status, planilha),
 // Respostas (o que as pessoas escolheram em cada pergunta), Funil e Configurações. Sempre escuro, como o editor.
 const db = supabase as unknown as SupabaseClient;
-type Aba = "metricas" | "leads" | "x1" | "respostas" | "funil" | "links" | "config";
-const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["x1", "X1", MessageCircle], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["config", "Configurações", Settings]];
+type Aba = "metricas" | "leads" | "x1" | "vendas" | "respostas" | "funil" | "links" | "config";
+const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["x1", "X1", MessageCircle], ["vendas", "Vendas", DollarSign], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["config", "Configurações", Settings]];
 const STATUS: Record<StatusLead, { rotulo: string; cor: string }> = {
   novo: { rotulo: "Novo", cor: "border-sky-400/50 bg-sky-500/15 text-sky-200" },
   em_contato: { rotulo: "Em contato", cor: "border-violet-400/50 bg-violet-500/15 text-violet-200" },
@@ -37,7 +39,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   const [dias, setDias] = useState<number>(14);
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
   const [leads, setLeads] = useState<LeadQuiz[] | null>(null);
-  const [vendas, setVendas] = useState<VendaPlataforma[]>([]);
+  const [vendas, setVendas] = useState<VendaCompleta[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [slug, setSlug] = useState(quiz.slug);   // o endereço pode ser trocado na aba Links
 
@@ -56,8 +58,8 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       const { data: ps } = await db.from("produtos_cliente").select("id").eq("cliente_id", cid);
       const ids = ((ps ?? []) as { id: string }[]).map((x) => x.id);
       if (ids.length) {
-        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, valor, data").in("produto_id", ids).in("tipo", ["venda", "reembolso"]).limit(10000);
-        setVendas((v ?? []) as VendaPlataforma[]);
+        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, valor, data, metodo_pagamento, utm_source, utm_medium, utm_campaign, utm_content").in("produto_id", ids).in("tipo", ["venda", "reembolso"]).limit(10000);
+        setVendas((v ?? []) as VendaCompleta[]);
       }
     }
     setCarregando(false);
@@ -111,6 +113,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
       {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} />}
+      {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
       {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}

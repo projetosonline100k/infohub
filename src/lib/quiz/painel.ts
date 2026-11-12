@@ -119,7 +119,7 @@ export function leadsParaCsv(leads: LeadQuiz[], perguntas: string[]): string {
 
 // ---------------------------------------------------------------- Origem do tráfego (UTM)
 
-export interface LinhaOrigem { source: string; medium: string; campaign: string; content: string; visitas: number; leads: number; terminaram: number }
+export interface LinhaOrigem { source: string; medium: string; campaign: string; content: string; visitas: number; leads: number; terminaram: number; checkout: number }
 const chaveOrigem = (u: UtmLida | undefined) => [u?.utm_source ?? "", u?.utm_medium ?? "", u?.utm_campaign ?? "", u?.utm_content ?? ""] as const;
 
 /** Visitas, terminaram e leads por origem (source/medium/campaign/content). Sem UTM = tudo vazio ("direto"). */
@@ -129,13 +129,14 @@ export function origens(eventos: EventoQuiz[], leads: Pick<LeadQuiz, "utm">[]): 
     const [source, medium, campaign, content] = chaveOrigem(u);
     const k = [source, medium, campaign, content].join("|");
     let l = mapa.get(k);
-    if (!l) { l = { source, medium, campaign, content, visitas: 0, leads: 0, terminaram: 0 }; mapa.set(k, l); }
+    if (!l) { l = { source, medium, campaign, content, visitas: 0, leads: 0, terminaram: 0, checkout: 0 }; mapa.set(k, l); }
     return l;
   };
   const utmDaSessao = new Map<string, UtmLida | undefined>();
   for (const e of eventos) if (e.tipo === "visita") utmDaSessao.set(e.sessao, e.utm);
   for (const [, u] of utmDaSessao) linha(u).visitas++;
   for (const e of eventos) if (e.tipo === "fim" && utmDaSessao.has(e.sessao)) linha(utmDaSessao.get(e.sessao)).terminaram++;
+  for (const e of eventos) if (e.tipo === "cta" && utmDaSessao.has(e.sessao)) linha(utmDaSessao.get(e.sessao)).checkout++;
   for (const l of leads) linha(l.utm).leads++;
   return [...mapa.values()].sort((a, b) => b.visitas - a.visitas || b.leads - a.leads);
 }
@@ -159,7 +160,7 @@ export function vendasDoLink(l: LinkUtm, vendas: { utm_source: string | null; ut
 
 // ---------------------------------------------------------------- Conversão (checkout e compra)
 
-export interface VendaPlataforma { transacao_id?: string | null; tipo: string; comprador_email: string | null; valor: number | null; data: string }
+export interface VendaPlataforma { transacao_id?: string | null; tipo: string; comprador_email?: string | null; valor: number | null; data: string }
 export interface EstadoCompra { clicouCheckout: boolean; compra: { valor: number; data: string } | null }
 const normEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
 
