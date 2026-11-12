@@ -43,15 +43,19 @@ const zero = (): ContagemEsteira => ({ fila: 0, criando: 0, edicao: 0, revisao: 
 
 export interface LinhaPerfil { cliente_id: string; perfil: string; videos: (EdicaoDark & { etapa: EtapaEsteira })[]; ativos: number; programados: number; ultimo: string }
 
-export function resumirEsteira(edicoes: EdicaoDark[], hoje: string) {
+/** `perfisBase`: os perfis cadastrados no dash; entram na esteira mesmo sem nenhum vídeo ainda, e só vídeos desses perfis contam. */
+export function resumirEsteira(edicoesTodas: EdicaoDark[], hoje: string, perfisBase?: { cliente_id: string; perfil: string }[]) {
   const geral = zero();
   const por = new Map<string, LinhaPerfil>();
+  const edicoes = perfisBase ? edicoesTodas.filter((e) => perfisBase.some((p) => p.cliente_id === e.cliente_id)) : edicoesTodas;
+  for (const p of perfisBase ?? []) por.set(p.cliente_id, { cliente_id: p.cliente_id, perfil: p.perfil, videos: [], ativos: 0, programados: 0, ultimo: "" });
   for (const e of edicoes) {
     const etapa = etapaEsteira(e, hoje);
     if (etapa === "cancelado") continue;
     geral[etapa]++; geral.total++;
     if (etapa === "postado") continue;   // postado já saiu da esteira
     const l = por.get(e.cliente_id) ?? { cliente_id: e.cliente_id, perfil: e.perfil, videos: [], ativos: 0, programados: 0, ultimo: e.atualizado_em };
+    if (!l.ultimo) l.ultimo = e.atualizado_em;
     l.videos.push({ ...e, etapa }); l.ativos++;
     if (etapa === "programado") l.programados++;
     if (e.atualizado_em > l.ultimo) l.ultimo = e.atualizado_em;

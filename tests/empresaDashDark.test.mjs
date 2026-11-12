@@ -51,3 +51,12 @@ test('prontosParados conta só pronto antigo (programado e recente não)', () =>
   const agora = new Date('2026-11-12T12:00:00Z');
   assert.equal(prontosParados([ed('aprovado'), ed('aprovado', 'A', { atualizado_em: '2026-11-11T00:00:00Z' }), ed('aprovado', 'A', { data_postagem: '2026-11-20' }), ed('na_fila')], HOJE, agora), 1);
 });
+
+test('perfis cadastrados: aparecem mesmo sem vídeo e só os vídeos deles contam', () => {
+  const base = [{ cliente_id: 'Nova', perfil: 'Nova' }, { cliente_id: 'A', perfil: 'A' }];
+  const r = resumirEsteira([ed('aprovado', 'A'), ed('na_fila', 'Fora'), ed('revisar', 'Fora')], HOJE, base);
+  assert.deepEqual(r.porPerfil.map((p) => [p.perfil, p.ativos]).sort(), [['A', 1], ['Nova', 0]]);
+  assert.equal(r.geral.total, 1);
+  assert.equal(r.geral.fila, 0);   // o perfil "Fora" não está cadastrado
+  assert.equal(resumirEsteira([ed('aprovado', 'A')], HOJE, []).geral.total, 0);   // nenhum cadastrado = nada na esteira
+});
