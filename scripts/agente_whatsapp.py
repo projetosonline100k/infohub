@@ -49,6 +49,7 @@ INTELIGÊNCIA ATUAL:
 CONVERSA ATÉ AGORA:
 {historico}
 
+{modo_ajuste}
 MENSAGEM DO DAVI:
 {mensagem}"""
 
@@ -83,12 +84,19 @@ def _historico(h):
     return "\n".join(linhas) or "(começo)"
 
 
+AJUSTE = """ATENÇÃO: a mensagem começa com [ajuste]. O Davi está te ENSINANDO algo para o agente aprender (uma correção ou uma regra nova, muitas vezes depois de testar o agente).
+Incorpore na inteligência agora, no lugar certo (pode, nao_pode, tom, etapas, objecoes, perfis, chamar_humano ou extras), mantendo o resto. Escreva a regra de forma clara e geral, não só para este caso.
+Responda em 1 ou 2 frases dizendo o que você gravou e onde. Não faça pergunta a menos que seja impossível entender.
+"""
+
+
 def _prompt(p):
     base = dict(quiz_id=p["contexto"].get("quiz_id", ""), cliente_id=p["cliente_id"], config=json.dumps(p["config_atual"], ensure_ascii=False), contexto=json.dumps(p["contexto"], ensure_ascii=False),
                 historico=_historico(p["historico"]), mensagem=p["mensagem"])
     if p["tipo"] == "simular":
         return PROMPT_SIMULAR.format(**base)
-    return PROMPT_CONSTRUIR.format(formato=FORMATO, **base)
+    ajuste = p["mensagem"].lstrip().lower().startswith("[ajuste]")
+    return PROMPT_CONSTRUIR.format(formato=FORMATO, modo_ajuste=AJUSTE if ajuste else "", **base)
 
 
 def extrair(texto):

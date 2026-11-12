@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Loader2, Plus, Send, Trash2, FlaskConical, Hammer } from "lucide-react";
+import { Bot, Loader2, Mic, Plus, RotateCcw, Send, Trash2, FlaskConical, Hammer } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { isDesktop } from "@/lib/platform";
+import { useGravarAudio } from "@/hooks/useGravarAudio";
 import { completude, configVazia, prontoParaUsar, sanitizarAgente, type ConfigAgente } from "@/lib/agenteWhatsapp";
 
 // Inteligência do agente do WhatsApp (12/11/2026, Davi: "vou conversando e a gente monta a inteligência: produto, ofertas, o que pode e não pode…").
@@ -11,6 +13,7 @@ import { completude, configVazia, prontoParaUsar, sanitizarAgente, type ConfigAg
 // Nada aqui envia mensagem a lead: o agente ainda só é montado e testado.
 const db = supabase as unknown as SupabaseClient;
 type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string };
+const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
 const AJUDA = "Oi! Vamos montar o seu agente de vendas. Conta do jeito que quiser: qual é o produto, para quem é, quanto custa e onde se compra. Pode colar a página de vendas também. Eu organizo ao lado e te pergunto o que faltar.";
 
 export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: string; perfis: string[] }) {
@@ -20,7 +23,9 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const [msgs, setMsgs] = useState<Record<"construir" | "simular", Msg[]>>({ construir: [{ papel: "assistant", texto: AJUDA }], simular: [] });
   const [texto, setTexto] = useState("");
   const [esperando, setEsperando] = useState(false);
+  const [zerados, setZerados] = useState<Record<"construir" | "simular", string | null>>({ construir: null, simular: null });
   const [perfilSim, setPerfilSim] = useState(perfis[0] ?? "");
+  const audio = useGravarAudio((falado) => setTexto((t) => [t.trim(), falado].filter(Boolean).join(" ")));
   const fim = useRef<HTMLDivElement>(null);
   const salvar = useRef<ReturnType<typeof setTimeout>>();
   const configRef = useRef<ConfigAgente | null>(null);
@@ -32,21 +37,26 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       const cid = (q as { cliente_id: string } | null)?.cliente_id ?? null;
       setClienteId(cid);
       if (!cid) return;
-      const { data } = await db.from("agentes_whatsapp").select("config").eq("cliente_id", cid).maybeSingle();
-      setConfig(sanitizarAgente((data as { config: unknown } | null)?.config ?? {}, configVazia()));
+      const { data } = await db.from("agentes_whatsapp").select("config, zerado_construir_em, zerado_simular_em").eq("cliente_id", cid).maybeSingle();
+      const linha = data as { config: unknown; zerado_construir_em: string | null; zerado_simular_em: string | null } | null;
+      setConfig(sanitizarAgente(linha?.config ?? {}, configVazia()));
+      setZerados({ construir: linha?.zerado_construir_em ?? null, simular: linha?.zerado_simular_em ?? null });
       // A conversa fica guardada: volta do jeito que estava (e retoma uma resposta que ainda estava sendo preparada).
-      const { data: ps } = await db.from("agente_whatsapp_pedidos").select("id, tipo, mensagem, status, resposta, criado_em").eq("cliente_id", cid).order("criado_em", { ascending: false }).limit(60);
-      const lista = ((ps ?? []) as { id: string; tipo: "construir" | "simular"; mensagem: string; status: string; resposta: string | null; criado_em: string }[]).reverse();
+      const { data: ps } = await db.from("agente_whatsapp_pedidos").select("id, tipo, mensagem, status, resposta, criado_em, contexto").eq("cliente_id", cid).order("criado_em", { ascending: false }).limit(60);
+      const lista = ((ps ?? []) as { id: string; tipo: "construir" | "simular"; mensagem: string; status: string; resposta: string | null; criado_em: string; contexto: { origem?: string } | null }[]).reverse();
       const m: Record<"construir" | "simular", Msg[]> = { construir: [{ papel: "assistant", texto: AJUDA }], simular: [] };
       for (const p of lista) {
-        m[p.tipo].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
-        if (p.status === "respondido" && p.resposta) m[p.tipo].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: p.resposta });
+        const onde: "construir" | "simular" = p.contexto?.origem === "teste" ? "simular" : p.tipo;
+        if (linha?.[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] && p.criado_em <= (linha[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] as string)) continue;
+        m[onde].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
+        if (p.status === "respondido" && p.resposta) m[onde].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: p.resposta });
       }
       setMsgs(m);
       const ultimo = lista[lista.length - 1];
       if (ultimo && (ultimo.status === "pendente" || ultimo.status === "processando") && Date.now() - new Date(ultimo.criado_em).getTime() < 12 * 60_000) {
-        setModo(ultimo.tipo);
-        void aguardar(ultimo.id, ultimo.tipo, cid);
+        const onde = ultimo.contexto?.origem === "teste" ? "simular" : ultimo.tipo;
+        setModo(onde);
+        void aguardar(ultimo.id, onde, ultimo.tipo, cid);
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,24 +84,28 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t }] }));
     setTexto("");
     setEsperando(true);
-    const contexto = modo === "construir" ? { quiz: titulo, quiz_id: quizId, perfis } : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" } };
+    // [ajuste] no teste vai para a montagem: o agente aprende e a inteligência muda na hora.
+    const tipo = modo === "simular" && ehAjuste(t) ? "construir" : modo;
+    const contexto = tipo === "construir"
+      ? { quiz: titulo, quiz_id: quizId, perfis, ...(modo === "simular" ? { origem: "teste", conversa_de_teste: hist.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14) } : {}) }
+      : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" } };
     const { data, error } = await db.from("agente_whatsapp_pedidos").insert({
-      cliente_id: clienteId, tipo: modo, mensagem: t, contexto, config_atual: config,
-      historico: hist.filter((h) => h !== hist[0] || modo !== "construir").map((h) => ({ papel: h.papel, texto: h.texto })),
+      cliente_id: clienteId, tipo, mensagem: t, contexto, config_atual: config,
+      historico: (tipo === "construir" && modo === "simular" ? msgs.construir : hist).filter((h, i) => i > 0 || tipo !== "construir").map((h) => ({ papel: h.papel, texto: h.texto })),
     }).select("id").single();
     if (error || !data) { setEsperando(false); toast.error("Não consegui enviar"); return; }
-    await aguardar((data as { id: string }).id, modo, clienteId);
+    await aguardar((data as { id: string }).id, modo, tipo, clienteId);
   };
 
-  async function aguardar(id: string, modo: "construir" | "simular", clienteId: string) {
+  async function aguardar(id: string, modo: "construir" | "simular", tipo: "construir" | "simular", clienteId: string) {
     setEsperando(true);
     for (let i = 0; i < 330; i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const { data: p } = await db.from("agente_whatsapp_pedidos").select("status, resposta, config, erro").eq("id", id).maybeSingle();
       const r = p as { status: string; resposta: string | null; config: unknown; erro: string | null } | null;
       if (r?.status === "respondido") {
-        setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: modo === "construir" ? "assistant" : "agente", texto: r.resposta ?? "" }] }));
-        if (modo === "construir" && r.config && configRef.current) {
+        setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: tipo === "construir" ? "assistant" : "agente", texto: r.resposta ?? "" }] }));
+        if (tipo === "construir" && r.config && configRef.current) {
           const novo = sanitizarAgente(r.config, configRef.current);
           setConfig(novo);
           gravar(novo, clienteId);
@@ -104,6 +118,15 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     setEsperando(false);
     toast.error("Demorou demais. Tente de novo.");
   }
+
+  const zerar = async () => {
+    if (!clienteId || !window.confirm(modo === "construir" ? "Zerar a conversa de montagem? A inteligência ao lado continua como está." : "Zerar a conversa de teste?")) return;
+    const agora = new Date().toISOString();
+    setZerados((z) => ({ ...z, [modo]: agora }));
+    setMsgs((m) => ({ ...m, [modo]: modo === "construir" ? [{ papel: "assistant", texto: AJUDA }] : [] }));
+    const { error } = await db.from("agentes_whatsapp").upsert({ cliente_id: clienteId, [modo === "construir" ? "zerado_construir_em" : "zerado_simular_em"]: agora });
+    if (error) toast.error("Não consegui zerar");
+  };
 
   if (!config) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   const { pct, faltando } = completude(config);
@@ -128,8 +151,9 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           {([["construir", "Montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (
             <button key={m} type="button" onClick={() => setModo(m)} className={cn("flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm", modo === m ? "bg-white/10 font-semibold" : "text-white/60 hover:text-white")}><I className="h-4 w-4" />{r}</button>
           ))}
+          <button type="button" onClick={() => void zerar()} title="Zerar esta conversa" className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
           {modo === "simular" && perfis.length > 0 && (
-            <select value={perfilSim} onChange={(e) => setPerfilSim(e.target.value)} className="ml-auto rounded-lg border border-white/10 bg-[#0b141a] px-2 py-1 text-xs"><option value="">Lead sem perfil</option>{perfis.map((p) => <option key={p}>{p}</option>)}</select>
+            <select value={perfilSim} onChange={(e) => setPerfilSim(e.target.value)} className="rounded-lg border border-white/10 bg-[#0b141a] px-2 py-1 text-xs"><option value="">Lead sem perfil</option>{perfis.map((p) => <option key={p}>{p}</option>)}</select>
           )}
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
@@ -143,7 +167,13 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
         </div>
         <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
           <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
-            placeholder={modo === "construir" ? "Conte sobre o produto, as ofertas, o que o agente pode e não pode…" : "Escreva como o lead…"} className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
+            placeholder={modo === "construir" ? "Conte sobre o produto, as ofertas, o que o agente pode e não pode…" : "Escreva como o lead… (ou [ajuste] … para ensinar o agente)"} className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
+          {isDesktop() && (
+            <button type="button" onClick={() => void audio.alternar()} disabled={audio.transcrevendo} title={audio.gravando ? "Parar e transcrever" : "Gravar áudio"}
+              className={cn("self-end rounded-full p-2.5", audio.gravando ? "animate-pulse bg-rose-500 text-white" : "bg-white/10 text-white/80 hover:bg-white/15")}>
+              {audio.transcrevendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
+            </button>
+          )}
           <button type="button" disabled={!texto.trim() || esperando} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
         </div>
       </section>
