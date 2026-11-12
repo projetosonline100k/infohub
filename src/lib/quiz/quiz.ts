@@ -58,7 +58,7 @@ export interface OfertaQuiz {
   // Oferta no visual do 12min (Davi, 10/11): lista do que recebe, cupom, preço De/Por, botão, garantia, depoimentos, perguntas e o bloco de compra repetido no fim.
   parcelas?: { n: number; valor: string };   // "12x de R$ …" no lugar do preço cheio (Davi, 11/11: o preço cheio a pessoa descobre no checkout)
   video?: { url: string; poster?: string; titulo?: string };   // vídeo no fim da oferta (arquivo leve, só carrega quando a pessoa aperta o play)
-  depoimentos_titulo?: string; recebe_titulo?: string; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
+  depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { titulo: string; texto: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
   faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
 }
 export type CampoCaptura = "nome" | "email" | "whatsapp";

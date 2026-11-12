@@ -1091,6 +1091,17 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
               </li>
             ))}
           </ul>
+          {!!o.bonus?.length && (
+            <div className="space-y-2.5 pt-3">
+              <Txt caminho="oferta.bonus_titulo" valor={o.bonus_titulo ?? "Bônus"} as="h3" className="block text-lg font-extrabold" />
+              {o.bonus.map((b, k) => (
+                <div key={k} className="space-y-1 rounded-2xl border border-white/15 bg-white/5 p-4">
+                  <p className="text-sm font-extrabold leading-snug"><span aria-hidden>🎁 </span><Txt caminho={`oferta.bonus.${k}.titulo`} valor={b.titulo} /></p>
+                  <Txt caminho={`oferta.bonus.${k}.texto`} valor={b.texto} as="p" className="block text-sm leading-snug text-white/80" />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
       {o.video?.url
