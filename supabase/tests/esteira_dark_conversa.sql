@@ -26,4 +26,15 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL; END;
 END $$;
 RESET ROLE;
+-- Modo vivo: só o Davi liga (a conta de teste não é o Davi); o dono comum não consegue.
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000421',true);
+SET LOCAL ROLE authenticated;
+DO $$
+BEGIN
+  BEGIN UPDATE public.esteira_dark_perfis SET modo_vivo = true; RAISE EXCEPTION 'não-Davi ligou o modo vivo';
+  EXCEPTION WHEN raise_exception THEN IF SQLERRM <> 'só o Davi liga o modo vivo' THEN RAISE; END IF; END;
+  BEGIN UPDATE public.esteira_dark_perfis SET sessao_vivo = 'x'; RAISE EXCEPTION 'mexeu na sessão viva';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
+RESET ROLE;
 ROLLBACK;

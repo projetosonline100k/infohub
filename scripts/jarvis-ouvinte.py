@@ -276,6 +276,10 @@ def atender_chatbot_vivo():
     chatbot_assistente.atender_vivo(rodar_claude, log)
 
 
+def atender_estilo_vivo():
+    estilo_dark.atender_vivo(rodar_claude, log)
+
+
 def atender_estilo():
     estilo_dark.atender(rodar_claude, log)
 
@@ -969,6 +973,7 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
         threading.Thread(target=laco, args=("vivo", atender_vivo, 2), daemon=True).start()   # só o Mac tem Chrome e é do Davi
         threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
+        threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()
         laco("melhorias", atender_melhorias, 20)
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.

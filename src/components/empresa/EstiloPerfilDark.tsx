@@ -15,7 +15,7 @@ const db = supabase as unknown as SupabaseClient;
 // Perfil da esteira dark (12/11/2026, Davi: "precisa ser conversa estilo chat e a gente vai montando o estilo que vamos querer para o vídeo").
 // Esquerda: conversa com o Lauro (sessão contínua, ele lembra de tudo; abre links de referência). Direita: o estilo, que a conversa vai preenchendo
 // e que você também pode editar à mão (salva sozinho). O estilo fica em esteira_dark_perfis.estilo: é daqui que o Lauro e o Danilo leem como o vídeo deve ser.
-export interface PerfilDark { id: string; nome: string; arroba: string | null; cliente_id: string | null; estilo: unknown; conversa_zerada_em: string | null }
+export interface PerfilDark { id: string; nome: string; arroba: string | null; cliente_id: string | null; estilo: unknown; conversa_zerada_em: string | null; modo_vivo?: boolean }
 type Msg = { papel: "user" | "assistant"; texto: string };
 
 const CAMPOS: { chave: Exclude<keyof EstiloDark, "referencias">; rotulo: string; linhas?: number }[] = [
@@ -37,6 +37,9 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   const [texto, setTexto] = useState("");
   const [esperando, setEsperando] = useState(false);
   const [detalhes, setDetalhes] = useState(false);
+  const [vivo, setVivo] = useState(false);   // modo vivo: o Lauro roda no Mac do Davi, com o Chrome dele
+  const vivoRef = useRef(false);
+  vivoRef.current = vivo;
   const audio = useGravarAudio((falado) => setTexto((t) => [t.trim(), falado].filter(Boolean).join(" ")));
   const timer = useRef<ReturnType<typeof setTimeout>>();
   const pendente = useRef<{ id: string; dados: Record<string, unknown> } | null>(null);
@@ -66,7 +69,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
 
   const aguardar = useCallback(async (id: string, idPerfil: string) => {
     setEsperando(true);
-    for (let i = 0; i < 330; i++) {
+    for (let i = 0; i < (vivoRef.current ? 800 : 330); i++) {
       await new Promise((r) => setTimeout(r, 2000));
       const { data: p } = await db.from("esteira_dark_pedidos").select("status, resposta, estilo, erro").eq("id", id).maybeSingle();
       const r = p as { status: string; resposta: string | null; estilo: unknown; erro: string | null } | null;
@@ -84,13 +87,13 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
       if (r?.status === "erro") { setEsperando(false); toast.error(r.erro || "O Lauro não conseguiu responder agora"); return; }
     }
     setEsperando(false);
-    toast.error("Demorou demais. Tente de novo.");
+    toast.error(vivoRef.current ? "O Lauro ao vivo não respondeu. O Mac está ligado e o app aberto?" : "Demorou demais. Tente de novo.");
   }, [gravar]);
 
   useEffect(() => {
     if (!perfil) return;
     setNome(perfil.nome); setArroba(perfil.arroba ?? ""); setClienteId(perfil.cliente_id ?? ""); setEstilo(sanitizarEstilo(perfil.estilo));
-    setTexto(""); setEsperando(false); setDetalhes(false);
+    setTexto(""); setEsperando(false); setDetalhes(false); setVivo(!!perfil.modo_vivo);
     void db.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista").then(({ data }: { data: { id: string; nome_especialista: string }[] | null }) => setProjetos(data ?? []));
     // A conversa fica guardada: volta do jeito que estava (e retoma uma resposta que ainda estava sendo preparada).
     void (async () => {
@@ -126,6 +129,15 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
     const { error } = await db.from("esteira_dark_perfis").update({ conversa_zerada_em: agora }).eq("id", perfil.id);
     if (error) toast.error("Não consegui zerar"); else onMudou();
   };
+  const alternarVivo = async () => {
+    if (!perfil) return;
+    const novo = !vivo;
+    setVivo(novo);
+    const { error } = await db.from("esteira_dark_perfis").update({ modo_vivo: novo }).eq("id", perfil.id);
+    if (error) { setVivo(!novo); toast.error(/só o Davi/i.test(error.message) ? "Só o Davi liga o modo vivo." : "Não consegui mudar o modo vivo"); return; }
+    toast.success(novo ? "Modo vivo ligado: o Lauro agora usa o Chrome do seu Mac" : "Modo vivo desligado");
+    onMudou();
+  };
   const mudarEstilo = (patch: Partial<EstiloDark>) => { const novo = { ...estilo, ...patch }; setEstilo(novo); salvar({ estilo: novo }); };
   const apagar = async () => {
     if (!perfil || !(await confirmar(`Apagar o perfil ${perfil.nome}?`, { descricao: "O perfil, o estilo cadastrado e a conversa serão apagados. Os vídeos e projetos não são afetados.", botao: "Apagar" }))) return;
@@ -148,16 +160,21 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
           <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
             <section className="flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
               <div className="flex items-center gap-2 border-b border-white/10 bg-[#111b21] px-3 py-2 text-sm">
-                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-200">L</span><span className="font-semibold">Lauro</span><span className="text-xs text-white/45">editor de vídeos dark</span>
-                <button type="button" onClick={() => void zerar()} title="Zerar a conversa (o estilo ao lado não muda)" className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-200">L</span><span className="font-semibold">Lauro</span><span className="text-xs text-white/45">{vivo ? "ao vivo no seu Mac" : "editor de vídeos dark"}</span>
+                <button type="button" onClick={() => void alternarVivo()} title="Modo vivo: o Lauro usa o Chrome do seu Mac (Instagram logado) para abrir e assistir as referências"
+                  className={cn("ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold", vivo ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200" : "border-white/10 text-white/60 hover:text-white")}>
+                  <span className={cn("h-2 w-2 rounded-full", vivo ? "animate-pulse bg-emerald-400" : "bg-white/30")} />Modo vivo
+                </button>
+                <button type="button" onClick={() => void zerar()} title="Zerar a conversa (o estilo ao lado não muda)" className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
               </div>
+              {vivo && <p className="border-b border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">Modo vivo: o Lauro abre o Chrome do seu Mac, assiste os vídeos que você mandar e olha as páginas. Pode demorar alguns minutos por resposta. O Mac precisa estar ligado com o app aberto.</p>}
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-3">
                 {msgs.map((m, i) => (
                   <div key={i} className={cn("max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
                     {m.papel === "assistant" && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Lauro</span>}{m.texto}
                   </div>
                 ))}
-                {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Lauro está pensando…</div>}
+                {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{vivo ? "Lauro está trabalhando no seu Mac…" : "Lauro está pensando…"}</div>}
                 <div ref={fim} />
               </div>
               <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
