@@ -1079,7 +1079,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
     </div>
   );
   return (
-    <div className="space-y-7 bg-[#0a1020] p-5 text-white [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(0_-100vmax)]">   {/* ponta a ponta: o fundo escuro vai até as bordas da tela (sem faixa branca nas laterais) */}
+    <div className="space-y-7 bg-[#0a1020] p-5 text-white [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]">   {/* ponta a ponta: o fundo escuro vai até as bordas da tela, também em cima e embaixo (sem faixa branca) */}
       {!!o.itens?.length && (
         <section className="space-y-3">
           <Txt caminho="oferta.recebe_titulo" valor={o.recebe_titulo ?? "O que você recebe com o Instalivros"} as="h3" className="block text-lg font-extrabold" />
