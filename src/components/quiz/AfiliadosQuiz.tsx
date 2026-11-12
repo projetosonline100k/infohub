@@ -105,7 +105,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   if (!afiliados) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   const s = resumo.saude;
   const aConferir = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && (a.via === "conflito" || a.via === "codigo_desconhecido"));
-  const base = typeof window !== "undefined" ? window.location.origin : "https://infopro-hub.vercel.app";
+  const base = new URL(linkDoQuiz(slug)).origin;   // o endereço público (no app do Mac, window.location é localhost e não abre para ninguém)
 
   return (
     <div className="space-y-4 text-white">
