@@ -71,6 +71,10 @@ export interface CapturaQuiz {
   fala?: string;            // o Instalivros fala no topo do formulário (balão)
   selos?: SeloQuiz[]; louro?: string;   // quadro de selos embaixo do botão (só com fatos reais da oferta); `louro` = imagem do ramo de louro
 }
+// Pergunta do nome (12/11, Davi: "captar o nome no começo pra me referir à pessoa"): uma tela com um campo
+// só, logo depois de `depois_de` (id de tela ou pergunta). O nome vai para o lead junto com a captura e
+// preenche o {nome} nos textos dali em diante.
+export interface PerguntaNome { depois_de: string; titulo?: string; texto?: string; fala?: string; botao?: string; exemplo?: string }
 export interface SeloQuiz { texto: string; destaque?: string }
 export interface EstruturaQuiz {
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };
@@ -81,6 +85,7 @@ export interface EstruturaQuiz {
   resultado?: { chamada?: string; grafico?: { titulo?: string; subtitulo?: string; barras: { rotulo: string; perfis: string[] }[] } };
   oferta?: OfertaQuiz;
   captura?: CapturaQuiz;
+  nome?: PerguntaNome;
   cor?: string;
   tema?: "claro" | "escuro";
   /** Barra de progresso por fases (como a do 12min): cada fase começa na pergunta/tela de id `de` (a 1ª fase começa na primeira tela). */
@@ -138,6 +143,7 @@ export type Passo =
   | { tipo: "pergunta"; indice: number }
   | { tipo: "tela"; indice: number }
   | { tipo: "captura" }
+  | { tipo: "nome" }
   | { tipo: "fim" };
 
 // Nome curto de cada tela (métricas e a vista em fileira da revisão).
@@ -146,6 +152,7 @@ export function rotuloDoPasso(e: EstruturaQuiz, p: Passo): string {
   if (p.tipo === "pergunta") return `P${p.indice + 1}. ${e.perguntas[p.indice]?.texto ?? ""}`;
   if (p.tipo === "tela") return e.telas?.[p.indice]?.titulo || "Tela de respiro";
   if (p.tipo === "captura") return "Contato (nome/WhatsApp)";
+  if (p.tipo === "nome") return "Nome";
   return e.sem_resultado ? "Oferta" : "Resultado e oferta";
 }
 
@@ -170,27 +177,39 @@ export function montarPassos(e: EstruturaQuiz, temCaptura: boolean): Passo[] {
   const ponto = e.captura?.depois_de;
   let capturou = !temCaptura;
   const captura = (id: string) => { if (!capturou && id === ponto) { passos.push({ tipo: "captura" }); capturou = true; } };
+  let pediuNome = !e.nome?.depois_de;
+  const nome = (id: string) => { if (!pediuNome && id === e.nome?.depois_de) { passos.push({ tipo: "nome" }); pediuNome = true; } };
   const depois = (id: string) => telas.forEach((t, i) => {
     if (t.depois_de !== id) return;
     passos.push({ tipo: "tela", indice: i });
+    nome(t.id);
     captura(t.id);
   });
+  nome("intro");
   depois("intro");
-  e.perguntas.forEach((q, i) => { passos.push({ tipo: "pergunta", indice: i }); captura(q.id); depois(q.id); });
+  e.perguntas.forEach((q, i) => { passos.push({ tipo: "pergunta", indice: i }); nome(q.id); captura(q.id); depois(q.id); });
   if (!capturou) passos.push({ tipo: "captura" });
   passos.push({ tipo: "fim" });
   return passos;
 }
 
-// {perfil} → nome do perfil · {nome} → o primeiro nome da captura ·
+// {perfil} → nome do perfil · {nome} → o primeiro nome (pergunta do nome ou captura) ·
 // {resposta:q2} → a resposta da pergunta q2 (o "resumo" da opção, se tiver,
 // senão o texto com a 1ª letra minúscula).
+// Sem nome, o {nome} some com a vírgula: "{nome}, seu plano" → "Seu plano"; "Anotado, {nome}!" → "Anotado!".
 export const primeiroNome = (nome?: string) => (nome ?? "").trim().split(/\s+/)[0] ?? "";
+const capitalizar = (s: string) => s.charAt(0).toLocaleUpperCase("pt-BR") + s.slice(1).toLocaleLowerCase("pt-BR");
+function comNome(texto: string, nome?: string): string {
+  const n = capitalizar(primeiroNome(nome));
+  if (n) return texto.replace(/\{nome\}/g, n);
+  return texto
+    .replace(/(^|[.!?…]\s*)\{nome\}\s*,?\s*(\S)/gu, (_t, antes: string, letra: string) => antes + letra.toLocaleUpperCase("pt-BR"))
+    .replace(/\s*,?\s*\{nome\}/g, "");
+}
 export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas: Record<string, number>, perfil: PerfilQuiz | null, nome?: string): string {
   if (!texto) return "";
-  return texto
+  return comNome(texto, nome)
     .replace(/\{perfil\}/g, perfil?.nome ?? "")
-    .replace(/\{nome\}/g, primeiroNome(nome))
     .replace(/\{resposta:([\w-]+)\}/g, (_, id: string) => {
       const q = e.perguntas.find((p) => p.id === id);
       const o = q?.opcoes[escolhas[id]];

@@ -54,7 +54,7 @@ const tiposDeBloco = { bloco: Bloco };
 
 const VISUAL: Record<Lamina["tipo"], { cor: string; Icone: LucideIcon; nome: string }> = {
   intro: { cor: "cinza", Icone: Home, nome: "Abertura" }, pergunta: { cor: "ciano", Icone: ListChecks, nome: "Pergunta" },
-  tela: { cor: "amarelo", Icone: Clock, nome: "Respiro" }, captura: { cor: "cinza", Icone: Contact, nome: "Contato" }, fim: { cor: "roxo", Icone: Trophy, nome: "Perfil" },
+  tela: { cor: "amarelo", Icone: Clock, nome: "Respiro" }, captura: { cor: "cinza", Icone: Contact, nome: "Contato" }, nome: { cor: "cinza", Icone: Contact, nome: "Nome" }, fim: { cor: "roxo", Icone: Trophy, nome: "Perfil" },
 };
 // Fluxo de cima para baixo (09/11, Davi: "um mapa mental no sentido para baixo"): uma tela embaixo da outra; os perfis
 // abrem em leque no fim e a oferta vem depois deles.

@@ -12,8 +12,8 @@ import { PedidoDaLamina } from "./FileiraQuiz";
 // Editor do quiz (02/11, Davi: "preciso deixar o quiz mais fácil de usar, ver como está ficando e em qual etapa é
 // cada coisa"): à esquerda o mapa das telas, no centro a tela selecionada grande e à direita os ajustes dela.
 
-const ICONE: Record<Lamina["tipo"], LucideIcon> = { intro: Home, pergunta: ListChecks, tela: Clock, captura: Contact, fim: Trophy };
-const TIPO: Record<Lamina["tipo"], string> = { intro: "Abertura", pergunta: "Múltipla escolha", tela: "Tela de respiro", captura: "Contato", fim: "Resultado e oferta" };
+const ICONE: Record<Lamina["tipo"], LucideIcon> = { intro: Home, pergunta: ListChecks, tela: Clock, captura: Contact, nome: Contact, fim: Trophy };
+const TIPO: Record<Lamina["tipo"], string> = { intro: "Abertura", pergunta: "Múltipla escolha", tela: "Tela de respiro", captura: "Contato", nome: "Nome", fim: "Resultado e oferta" };
 
 /** Pendências (imagem/áudio esperando) de uma tela. */
 export function faltasDaLamina(l: Lamina, e: EstruturaQuiz, faltas: FaltaQuiz[]) {
@@ -22,6 +22,7 @@ export function faltasDaLamina(l: Lamina, e: EstruturaQuiz, faltas: FaltaQuiz[])
   if (l.tipo === "pergunta") return comeca(`perguntas.${l.indice}`);
   if (l.tipo === "tela") return comeca(`telas.${l.indice}`);
   if (l.tipo === "captura") return comeca("captura");
+  if (l.tipo === "nome") return comeca("nome");
   const perfil = l.perfil ? e.perfis.findIndex((p) => p.id === l.perfil) : 0;
   return [...comeca(`perfis.${perfil}`), ...comeca("oferta"), ...comeca("resultado")];
 }

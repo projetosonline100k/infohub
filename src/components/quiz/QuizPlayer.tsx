@@ -664,10 +664,35 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}
 
+          {passo.tipo === "nome" && (() => {
+            const pn = e.nome!;
+            const ok = (contato.nome ?? "").trim().length >= 2;
+            return (
+              <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar || ok) avancar(); }}>
+                {quadrosMascote && (pn.fala || editar) && (
+                  <MascoteCanto key="nome" quadros={quadrosMascote}><Txt caminho="nome.fala" valor={pn.fala} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
+                )}
+                <div className="space-y-2 text-center">
+                  <Txt caminho="nome.titulo" valor={pn.titulo || "Como posso te chamar?"} as="h2" className="block text-2xl font-bold leading-snug" />
+                  <Txt caminho="nome.texto" valor={pn.texto} as="p" className={cn("block text-base", suave)} />
+                </div>
+                <Input value={contato.nome ?? ""} placeholder={pn.exemplo || "Seu primeiro nome"} autoComplete="given-name" autoCapitalize="words" enterKeyHint="next"
+                  className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
+                  onChange={(ev) => setContato({ ...contato, nome: ev.target.value })} />
+                <Button type={editar ? "button" : "submit"} size="lg" className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }} disabled={!editar && !ok}>
+                  <Txt caminho="nome.botao" valor={pn.botao || "Continuar"} />
+                </Button>
+                {pos > 1 && !editar && !travado && (
+                  <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
+                )}
+              </form>
+            );
+          })()}
+
           {passo.tipo === "captura" && (
             <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
               {quadrosMascote && (e.captura?.fala || editar) && (
-                <MascoteCanto key="captura" quadros={quadrosMascote}><Txt caminho="captura.fala" valor={e.captura?.fala} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
+                <MascoteCanto key="captura" quadros={quadrosMascote}><Txt caminho="captura.fala" valor={e.captura?.fala} mostrar={f(e.captura?.fala)} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
               )}
               <div className="space-y-2 text-center">
                 <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} mostrar={f(e.captura?.titulo || "Para onde enviamos o seu resultado?")} as="h2" className="block text-2xl font-bold leading-snug" />
@@ -777,7 +802,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const ultimaFala = !t.falas?.length || iFala >= t.falas.length - 1;
   return (
     <div ref={raiz} className={cn("space-y-5 py-2", especialista && "text-center")}>
-      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={t.fala} falas={t.falas} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} pose={t.pose} />
+      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={f(t.fala) || undefined} falas={t.falas?.map((x) => f(x))} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} pose={t.pose} />
       : t.loop?.length ? <MascoteLoop frames={t.loop} />
       : t.mapa && t.imagem ? <MapaConectado url={t.imagem} pontos={t.mapa.pontos} cor={cor} />
       : t.imagem_mascote && t.imagem ? <img src={t.imagem} alt="" draggable={false} className="mx-auto h-52 w-52 object-contain motion-safe:animate-empolgado" />

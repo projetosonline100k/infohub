@@ -71,6 +71,9 @@ def validar(e):
     cap = e.get('captura') or {}
     if cap and any(c not in ('nome', 'email', 'whatsapp') for c in cap.get('pedir', [])):
         erros.append('captura.pedir: só nome, email e whatsapp')
+    pn = e.get('nome')
+    if pn is not None and (not isinstance(pn, dict) or not str(pn.get('depois_de', '')).strip()):
+        erros.append('nome: precisa de depois_de (id da tela ou pergunta depois da qual o nome é perguntado)')
     if cap.get('depois_de') and cap['depois_de'] not in vistos | {t.get('id') for t in telas if isinstance(t, dict)}:
         erros.append(f'captura.depois_de "{cap["depois_de"]}" não é id de pergunta nem de tela')
     for k, item in enumerate((e.get('oferta') or {}).get('faq') or [], 1):
