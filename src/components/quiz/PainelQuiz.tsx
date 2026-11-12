@@ -9,6 +9,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { confirmar } from "@/components/DialogosGlobais";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
 import { X1Quiz } from "./X1Quiz";
@@ -92,6 +93,17 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
     if (error) { setLeads(antes); toast.error("Não consegui mudar o status"); }
   };
 
+  // Apagar leads (12/11, Davi: "fizemos muito teste, quero limpar"): pede confirmação, apaga do banco (e as abordagens deles do X1, em cascata).
+  const apagarLeads = async (ids: string[]) => {
+    if (!ids.length) return;
+    const ok = await confirmar(`Apagar ${ids.length === 1 ? "este lead" : `${ids.length} leads`}? As mensagens de abordagem deles no X1 também somem. Não dá para desfazer.`, { botao: "Apagar", destrutivo: true });
+    if (!ok) return;
+    const { error } = await db.from("quiz_respostas").delete().in("id", ids);
+    if (error) { toast.error("Não consegui apagar"); return; }
+    setLeads((ls) => (ls ?? []).filter((l) => !ids.includes(l.id)));
+    toast.success(ids.length === 1 ? "Lead apagado" : `${ids.length} leads apagados`);
+  };
+
   if (!estrutura) return <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">O quiz ainda não foi criado: o painel aparece quando ele estiver pronto.</p>;
   if (!painel || !leads || !conversao) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
 
@@ -115,8 +127,8 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {quiz.status !== "publicado" && <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
-      {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
-      {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} />}
+      {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
+      {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />}
       {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
@@ -301,17 +313,22 @@ function LinhaLead({ l, perguntas, onStatus }: { l: LeadQuiz; perguntas: string[
 
 // ---------------------------------------------------------------- Leads
 
-export function Leads({ leads, estados, perguntas, perfis, onStatus }: { leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; perfis: { id: string; nome: string }[]; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
+export function Leads({ leads, estados, perguntas, perfis, onApagar, onStatus }: { leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; perfis: { id: string; nome: string }[]; onApagar: (ids: string[]) => Promise<void>; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<"" | StatusLead>("");
   const [perfil, setPerfil] = useState("");
   const [aberto, setAberto] = useState<string | null>(null);
+  const [marcados, setMarcados] = useState<Set<string>>(new Set());
   const filtrados = leads.filter((l) => {
     if (status && l.status !== status) return false;
     if (perfil && l.perfil !== perfil) return false;
     const t = busca.trim().toLowerCase();
     return !t || [l.nome, l.email, l.whatsapp].some((x) => (x ?? "").toLowerCase().includes(t));
   });
+  const idsFiltrados = filtrados.map((l) => l.id);
+  const todosMarcados = idsFiltrados.length > 0 && idsFiltrados.every((id) => marcados.has(id));
+  const alternar = (id: string) => setMarcados((m) => { const n = new Set(m); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const marcadosValidos = [...marcados].filter((id) => leads.some((l) => l.id === id));
   const nomePerfil = (id: string | null) => perfis.find((p) => p.id === id)?.nome ?? id ?? "—";
   const campo = "rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-400/50";
   return (
@@ -322,18 +339,22 @@ export function Leads({ leads, estados, perguntas, perfis, onStatus }: { leads: 
         {perfis.length > 0 && <select value={perfil} onChange={(e) => setPerfil(e.target.value)} className={campo}><option value="">Todos os perfis</option>{perfis.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>}
         <button type="button" onClick={() => { void navigator.clipboard.writeText(leadsParaCsv(filtrados, perguntas)); toast.success(`${filtrados.length} leads copiados: cole numa planilha`); }}
           className="flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-sm text-white/80 hover:bg-white/5"><Copy className="h-4 w-4" />Copiar planilha</button>
+        <button type="button" disabled={!marcadosValidos.length} onClick={() => void onApagar(marcadosValidos).then(() => setMarcados(new Set()))}
+          className="flex items-center gap-1.5 rounded-lg border border-rose-400/40 px-3 py-1.5 text-sm text-rose-300 hover:bg-rose-500/10 disabled:opacity-30"><Trash2 className="h-4 w-4" />Apagar{marcadosValidos.length ? ` (${marcadosValidos.length})` : ""}</button>
       </div>
-      <p className="mt-2 text-xs text-white/50">{filtrados.length} de {leads.length} leads</p>
+      <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/50">{filtrados.length} de {leads.length} leads{marcadosValidos.length > 0 && <span className="text-rose-300">· {marcadosValidos.length} marcado{marcadosValidos.length > 1 ? "s" : ""}</span>}
+        {filtrados.length > 0 && <button type="button" onClick={() => setMarcados(todosMarcados ? new Set() : new Set(idsFiltrados))} className="text-cyan-300 hover:underline">{todosMarcados ? "Desmarcar todos" : `Marcar todos${filtrados.length !== leads.length ? " do filtro" : ""} (${filtrados.length})`}</button>}</p>
       {filtrados.length === 0 ? <p className="py-10 text-center text-sm text-white/45">Nenhum lead com esse filtro.</p> : (
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
-            <thead className="text-left text-xs text-white/50"><tr><th className="py-1.5 font-medium">Quando</th><th className="font-medium">Nome</th><th className="font-medium">E-mail</th><th className="font-medium">WhatsApp</th><th className="font-medium">Perfil</th><th className="font-medium">Etapa</th><th className="font-medium">Compra</th><th className="font-medium">Status</th></tr></thead>
+            <thead className="text-left text-xs text-white/50"><tr><th className="w-8 py-1.5"><input type="checkbox" checked={todosMarcados} onChange={() => setMarcados(todosMarcados ? new Set() : new Set(idsFiltrados))} title="Marcar todos" /></th><th className="py-1.5 font-medium">Quando</th><th className="font-medium">Nome</th><th className="font-medium">E-mail</th><th className="font-medium">WhatsApp</th><th className="font-medium">Perfil</th><th className="font-medium">Etapa</th><th className="font-medium">Compra</th><th className="font-medium">Status</th></tr></thead>
             <tbody>
               {filtrados.map((l) => {
                 const zap = l.whatsapp?.replace(/\D/g, "");
                 return (
                   <>
-                    <tr key={l.id} className="cursor-pointer border-t border-white/5 hover:bg-white/[0.03]" onClick={() => setAberto(aberto === l.id ? null : l.id)}>
+                    <tr key={l.id} className={cn("cursor-pointer border-t border-white/5 hover:bg-white/[0.03]", marcados.has(l.id) && "bg-rose-500/[0.06]")} onClick={() => setAberto(aberto === l.id ? null : l.id)}>
+                      <td className="w-8 py-2" onClick={(e) => e.stopPropagation()}><input type="checkbox" checked={marcados.has(l.id)} onChange={() => alternar(l.id)} /></td>
                       <td className="whitespace-nowrap py-2 text-xs text-white/55">{format(new Date(l.criada_em), "d MMM HH:mm", { locale: ptBR })}</td>
                       <td className="font-medium text-white">{l.nome || "Sem nome"}</td>
                       <td className="text-white/70">{l.email || "—"}</td>
@@ -344,7 +365,7 @@ export function Leads({ leads, estados, perguntas, perfis, onStatus }: { leads: 
                       <td onClick={(e) => e.stopPropagation()}><SeletorStatus l={l} onStatus={onStatus} /></td>
                     </tr>
                     {aberto === l.id && (
-                      <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={8} className="px-3 py-2">
+                      <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={9} className="px-3 py-2">
                         <ul className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">{l.respostas.map((r, i) => <li key={i}><span className="text-white/50">{r.pergunta}</span> → <b className="text-white">{r.resposta ?? "—"}</b></li>)}</ul>
                         {l.respostas.length === 0 && <p className="text-xs text-white/45">Sem respostas guardadas.</p>}
                       </td></tr>

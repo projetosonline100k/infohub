@@ -30,8 +30,8 @@ const FILAS: { id: Fila; rotulo: string; dica: string; Icone: typeof Inbox; cor:
 ];
 const NOMES_STATUS: Record<StatusLead, string> = { novo: "Novo", em_contato: "Em contato", convertido: "Convertido" };
 
-export function X1Quiz({ quizId, leads, estados, perguntas, onStatus }: {
-  quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void;
+export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }: {
+  quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void; onApagar: (ids: string[]) => Promise<void>;
 }) {
   const [abordagens, setAbordagens] = useState<Abordagem[] | null>(null);
   const [proprios, setProprios] = useState<Modelo[]>([]);
@@ -176,6 +176,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus }: {
               <select value={lead.status} onChange={(e) => onStatus(lead, e.target.value as StatusLead)} className="rounded-full border border-white/15 bg-[#111b21] px-3 py-1 text-xs outline-none">
                 {(Object.keys(NOMES_STATUS) as StatusLead[]).map((s) => <option key={s} value={s}>{NOMES_STATUS[s]}</option>)}
               </select>
+              <button type="button" onClick={() => void onApagar([lead.id])} title="Apagar este lead" className="rounded-full border border-white/15 p-1.5 text-white/60 hover:border-rose-400/50 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
               <button type="button" onClick={proximo} disabled={lista.length < 2} className="flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10 disabled:opacity-30">Próximo<ChevronRight className="h-3.5 w-3.5" /></button>
             </header>
 
