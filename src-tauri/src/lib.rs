@@ -119,6 +119,8 @@ pub fn run() {
             whatsapp::whatsapp_apagar,
             whatsapp::whatsapp_editar,
             whatsapp::whatsapp_midia_base,
+            whatsapp::whatsapp_conexao,
+            whatsapp::whatsapp_qr,
             danilo::danilo_base,
             ditado::ditado_organizar,
             creator::voz_aquecer,

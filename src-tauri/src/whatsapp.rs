@@ -122,6 +122,36 @@ pub async fn whatsapp_enviar_audio(chat_id: String, base64: String, mimetype: St
     resultado
 }
 
+/// Estado da conexão do WhatsApp (12/11, Davi: "coloque o QR code no sistema para eu escanear direto"). Se a sessão caiu
+/// (FAILED/STOPPED), religa; quando pede o QR (SCAN_QR_CODE), a tela busca a imagem em `whatsapp_qr`.
+#[tauri::command]
+pub async fn whatsapp_conexao(conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    let sessao = cfg["sessao"].as_str().unwrap_or("default").to_string();
+    let caminho = format!("/api/sessions/{sessao}");
+    let mut estado = pedir_waha(&cfg, "GET", &caminho, serde_json::json!({})).await?;
+    let status = estado["status"].as_str().unwrap_or("").to_string();
+    if status == "FAILED" || status == "STOPPED" {
+        registrar(&format!("religar sessao {sessao} (estava {status})"));
+        let acao = if status == "STOPPED" { "start" } else { "restart" };
+        let _ = pedir_waha(&cfg, "POST", &format!("{caminho}/{acao}"), serde_json::json!({})).await;
+        estado = pedir_waha(&cfg, "GET", &caminho, serde_json::json!({})).await?;
+    }
+    Ok(serde_json::json!({
+        "status": estado["status"],
+        "nome": estado["me"]["pushName"],
+        "numero": estado["me"]["id"],
+    }))
+}
+
+/// Imagem do QR code (base64) para conectar o número: WhatsApp > Aparelhos conectados > Conectar.
+#[tauri::command]
+pub async fn whatsapp_qr(conta: Option<String>) -> Result<serde_json::Value, String> {
+    let cfg = config(conta.as_deref())?;
+    let sessao = cfg["sessao"].as_str().unwrap_or("default").to_string();
+    pedir_waha(&cfg, "GET", &format!("/api/{sessao}/auth/qr"), serde_json::json!({})).await
+}
+
 /// Foto, vídeo ou arquivo arrastado/colado na conversa (26/10, Davi: "arrastar imagens no WhatsApp para
 /// enviar"). Foto → sendImage, vídeo → sendVideo, o resto → sendFile; a legenda vai junto.
 #[tauri::command]
@@ -178,7 +208,7 @@ async fn pedir_waha(cfg: &serde_json::Value, metodo: &str, caminho: &str, corpo:
         std::fs::write(&arquivo, corpo.to_string()).map_err(|e| e.to_string())?;
         let saida = (|| {
             let dados = format!("@{}", arquivo.display());
-            let mut args: Vec<&str> = vec!["-sS", "--max-time", "180", "-X", &metodo, &url, "-K", "-", "-w", "\n%{http_code}"];
+            let mut args: Vec<&str> = vec!["-sS", "--max-time", "180", "-X", &metodo, &url, "-K", "-", "-H", "Accept: application/json", "-w", "\n%{http_code}"];
             // GET (participantes) vai sem corpo.
             if metodo != "GET" { args.extend(["-H", "Content-Type: application/json", "--data-binary", &dados]); }
             let mut filho = Command::new("/usr/bin/curl")

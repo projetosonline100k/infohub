@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { isDesktop } from "@/lib/platform";
+import { ConectarWhatsapp } from "./ConectarWhatsapp";
 import { etapaDoLead, type EstadoCompra, type LeadQuiz, type StatusLead } from "@/lib/quiz/painel";
 import {
   MODELOS_PADRAO, agruparPorLead, categoriaDoLead, telefoneWa, contarCategorias, generalizarModelo, haQuanto, linkWhatsapp, preencherModelo,
@@ -38,6 +39,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const [proprios, setProprios] = useState<Modelo[]>([]);
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [contaWa, setContaWa] = useState("principal");
+  const [conectando, setConectando] = useState(false);
   const [wa, setWa] = useState<(Abordagem & { chat_id: string })[]>([]);   // o que está de fato no WhatsApp (enviado e recebido)
   const estadosX1 = useMemo(() => new Map([...estados].map(([id, e]) => [id, { clicouCheckout: e.clicouCheckout, comprou: !!e.compra }])), [estados]);
   const [fila, setFila] = useState<Fila>(() => ([...estados.values()].some((e) => e.clicouCheckout && !e.compra) ? "quentes" : "abordar"));
@@ -141,7 +143,9 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
         await invoke("whatsapp_enviar", { chatId: `${telefoneWa(lead.whatsapp)}@c.us`, texto: texto.trim(), conta: contaWa, responderA: null, mencoes: null });
       } catch (e) {
         setEnviando(false);
-        toast.error(typeof e === "string" ? e : "Não consegui enviar pelo WhatsApp");
+        const msg = typeof e === "string" ? e : "Não consegui enviar pelo WhatsApp";
+        if (/Session status|não respondeu|FAILED|SCAN_QR|STOPPED/i.test(msg)) { toast.error("O WhatsApp está desconectado. Escaneie o QR para reconectar."); setConectando(true); }
+        else toast.error(msg);
         return;
       }
     }
@@ -169,12 +173,14 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     setProprios((p) => p.filter((x) => x.id !== m.id));
   };
 
+  const dialogoConexao = <ConectarWhatsapp aberto={conectando} conta={contaWa} onFechar={() => setConectando(false)} onConectado={() => toast.success("WhatsApp conectado")} />;
   if (!abordagens) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
   const nomeDe = (l: LeadQuiz) => l.nome?.trim() || l.whatsapp || l.email || "Sem nome";
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
     <div className="grid h-[calc(100svh-230px)] min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]">
+      {dialogoConexao}
       {/* Filas */}
       <aside className="flex flex-col gap-1 border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
         <p className="px-2 pb-1 pt-1 text-xs font-bold uppercase tracking-wider text-white/45">X1 · filas</p>
@@ -186,7 +192,8 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
             <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", (f.id === "abordar" && contagem.abordar) || (f.id === "quentes" && contagem.quentes) ? "bg-amber-400 text-black" : "bg-white/10 text-white/70")}>{contagem[f.id]}</span>
           </button>
         ))}
-        <p className="mt-auto px-2 pt-2 text-[10px] leading-snug text-white/35">No app do Mac a mensagem vai direto pelo WhatsApp do projeto e as respostas chegam aqui. Na web, o WhatsApp abre com o texto pronto.</p>
+        {isDesktop() && <button type="button" onClick={() => setConectando(true)} className="mt-auto rounded-lg px-2 py-1.5 text-left text-xs text-white/60 hover:bg-white/5 hover:text-white">Reconectar o WhatsApp (QR)</button>}
+        <p className="px-2 pt-1 text-[10px] leading-snug text-white/35">No app do Mac a mensagem vai direto pelo WhatsApp do projeto e as respostas chegam aqui. Na web, o WhatsApp abre com o texto pronto.</p>
       </aside>
 
       {/* Leads da fila */}
