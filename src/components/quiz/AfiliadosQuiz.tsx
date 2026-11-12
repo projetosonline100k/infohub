@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { AlertTriangle, CheckCircle2, ChevronDown, Copy, Loader2, Plus, Trash2 } from "lucide-react";
+import { addDays, format, startOfDay } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { AlertTriangle, ArrowUp, ArrowDown, BarChart3, CalendarDays, CheckCircle2, ChevronDown, Coins, Copy, Link2, Loader2, MoreVertical, Percent, Search, ShoppingCart, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -10,15 +13,19 @@ import { linkDoQuiz, type EstruturaQuiz } from "@/lib/quiz/quiz";
 import { codigoCurto, enderecoCurto, linkRastreado, propagarUtm, type LinkQuiz } from "@/lib/quiz/utm";
 import type { EventoQuiz, LeadQuiz } from "@/lib/quiz/painel";
 import type { VendaUtm } from "@/lib/quiz/vendasUtm";
-import { codigoAfiliado, marcaDoAfiliado, resumirAfiliados, utmDoAfiliado, type AfiliadoBase, type Atribuicao, type Via } from "@/lib/quiz/afiliados";
+import { codigoAfiliado, marcaDoAfiliado, resumirAfiliados, utmDoAfiliado, vendaNaJanela, type AfiliadoBase, type Atribuicao, type Janela, type ResumoAfiliado, type Via } from "@/lib/quiz/afiliados";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 // Aba Afiliados (12/11/2026, Davi: "crio um link para a pessoa e a venda que sair dela puxa que foi da pessoa, sem perder dado nem cruzar").
 // Cada afiliado tem um código único e fixo: o link dele leva utm_content = aff_<código> da visita até o botão de compra. As regras de crédito
 // estão em src/lib/quiz/afiliados.ts (cada venda vai para um afiliado só ou para nenhum, e o que for duvidoso aparece em "A conferir").
 const db = supabase as unknown as SupabaseClient;
 const moeda = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
-const campo = "rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-400/50";
+const cartao = "rounded-2xl border border-white/10 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
+const OURO = "#f3c98b";
+const campo = "rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-amber-200/60";
+const PERIODOS: [number, string][] = [[7, "Últimos 7 dias"], [14, "Últimos 14 dias"], [30, "Últimos 30 dias"], [90, "Últimos 90 dias"], [0, "Todo o período"]];
 interface Afiliado extends AfiliadoBase { contato: string | null; criado_em: string }
 interface Curto { codigo: string; quiz_link_id: string; cliques: number }
 type LinkAfi = LinkQuiz;
@@ -37,7 +44,11 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [f, setF] = useState({ nome: "", contato: "", comissao: "30" });
   const [criando, setCriando] = useState(false);
+  const [novoAberto, setNovoAberto] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");
+  const [dias, setDias] = useState(30);
+  const [grafico, setGrafico] = useState<"vendas" | "receita">("vendas");
 
   const carregar = useCallback(async () => {
     const { data: q } = await db.from("quizzes").select("cliente_id").eq("id", quizId).maybeSingle();
@@ -51,12 +62,37 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   }, [quizId]);
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const resumo = useMemo(() => resumirAfiliados(
-    afiliados ?? [],
-    eventos.map((e) => ({ sessao: e.sessao, criado_em: e.criado_em, utm: e.utm as Record<string, string> | null })),
-    leads.map((l) => ({ id: l.id, email: l.email, criada_em: l.criada_em, utm: l.utm as Record<string, string> | null })),
-    vendas.map((v) => ({ transacao_id: v.transacao_id ?? "", tipo: v.tipo, comprador_email: v.comprador_email ?? null, valor: v.valor, data: v.data, utm_content: v.utm_content ?? null })),
-  ), [afiliados, eventos, leads, vendas]);
+  const eventosAfi = useMemo(() => eventos.map((e) => ({ sessao: e.sessao, criado_em: e.criado_em, utm: e.utm as Record<string, string> | null })), [eventos]);
+  const leadsAfi = useMemo(() => leads.map((l) => ({ id: l.id, email: l.email, criada_em: l.criada_em, utm: l.utm as Record<string, string> | null })), [leads]);
+  const vendasAfi = useMemo(() => vendas.map((v) => ({ transacao_id: v.transacao_id ?? "", tipo: v.tipo, comprador_email: v.comprador_email ?? null, valor: v.valor, data: v.data, utm_content: v.utm_content ?? null })), [vendas]);
+
+  // Período atual e o anterior (do mesmo tamanho), para as setinhas de variação.
+  const { janela, anterior } = useMemo(() => {
+    const hoje = startOfDay(new Date());
+    const ate = addDays(hoje, 1).getTime();
+    if (!dias) return { janela: { desde: 0, ate } as Janela, anterior: null };
+    const desde = addDays(hoje, -(dias - 1)).getTime();
+    return { janela: { desde, ate } as Janela, anterior: { desde: addDays(new Date(desde), -dias).getTime(), ate: desde } as Janela };
+  }, [dias]);
+  const resumo = useMemo(() => resumirAfiliados(afiliados ?? [], eventosAfi, leadsAfi, vendasAfi, janela), [afiliados, eventosAfi, leadsAfi, vendasAfi, janela]);
+  const resumoAnt = useMemo(() => (anterior ? resumirAfiliados(afiliados ?? [], eventosAfi, leadsAfi, vendasAfi, anterior) : null), [afiliados, eventosAfi, leadsAfi, vendasAfi, anterior]);
+  const totais = (r: typeof resumo | null) => {
+    if (!r) return null;
+    const rs = [...r.porAfiliado.values()];
+    return { projeto: r.saude.totalVendas, afiliados: rs.reduce((a, x) => a + x.vendas, 0), receita: rs.reduce((a, x) => a + x.liquido, 0), comissao: rs.reduce((a, x) => a + x.comissao, 0), comVendas: rs.filter((x) => x.vendas > 0).length };
+  };
+  const tot = totais(resumo)!, totAnt = totais(resumoAnt);
+
+  const serie = useMemo(() => {
+    const dados = vendasAfi.filter((v) => v.tipo === "venda" && vendaNaJanela(v, janela));
+    const inicio = janela.desde || (dados.length ? Math.min(...dados.map((v) => Date.parse(`${v.data}T12:00:00-03:00`))) : addDays(new Date(), -29).getTime());
+    const dias = Math.min(365, Math.max(1, Math.round((startOfDay(new Date(janela.ate)).getTime() - startOfDay(new Date(inicio)).getTime()) / 86_400_000)));
+    const porDia = new Map<string, { projeto: number; afiliados: number; receitaProjeto: number; receitaAfiliados: number }>();
+    for (let i = 0; i < dias; i++) porDia.set(format(addDays(startOfDay(new Date(inicio)), i), "yyyy-MM-dd"), { projeto: 0, afiliados: 0, receitaProjeto: 0, receitaAfiliados: 0 });
+    for (const v of dados) { const d = porDia.get(v.data.slice(0, 10)); if (d) { d.projeto++; d.receitaProjeto += v.valor ?? 0; } }
+    for (const a of resumo.atribuicoes) if (a.venda.tipo === "venda" && a.codigo) { const d = porDia.get((a.venda.data ?? "").slice(0, 10)); if (d) { d.afiliados++; d.receitaAfiliados += a.venda.valor ?? 0; } }
+    return [...porDia.entries()].map(([dia, v]) => ({ dia, rotulo: format(new Date(`${dia}T12:00:00`), "dd MMM", { locale: ptBR }), ...v }));
+  }, [vendasAfi, janela, resumo]);
 
   const criar = async () => {
     const nome = f.nome.trim();
@@ -84,6 +120,8 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
         if (!error) curto = true; else if (!/duplicate|unique|23505/i.test(`${error.message} ${error.code}`)) break;
       }
       setF({ nome: "", contato: "", comissao: f.comissao });
+      setNovoAberto(false);
+      setAberto(criado.id);
       toast.success(curto ? "Afiliado criado: copie o link dele e mande" : "Afiliado criado (use o link completo; o curto não saiu)");
       await carregar();
     } finally { setCriando(false); }
@@ -107,31 +145,72 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const s = resumo.saude;
   const aConferir = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && (a.via === "conflito" || a.via === "codigo_desconhecido"));
   const base = new URL(linkDoQuiz(slug)).origin;   // o endereço público (no app do Mac, window.location é localhost e não abre para ninguém)
+  const lista = afiliados.filter((a) => !busca.trim() || a.nome.toLowerCase().includes(busca.trim().toLowerCase()) || a.codigo.includes(busca.trim().toLowerCase()));
+  const linkDe = (a: Afiliado) => links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo));
+  const curtoDe = (a: Afiliado) => { const lk = linkDe(a); return lk ? curtos.find((c) => c.quiz_link_id === lk.id) : undefined; };
+
+  const Variacao = ({ atual, antes }: { atual: number; antes: number | undefined }) => {
+    if (antes === undefined) return <span className="text-white/35">–</span>;
+    if (antes === 0) return atual > 0 ? <span className="flex items-center gap-0.5 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-300"><ArrowUp className="h-3 w-3" />+100%</span> : <span className="text-white/35">–</span>;
+    const p = Math.round(((atual - antes) / antes) * 100);
+    if (p === 0) return <span className="text-white/35">–</span>;
+    return <span className={cn("flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold", p > 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300")}>{p > 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}{p > 0 ? "+" : ""}{p}%</span>;
+  };
+  const KPIS = [
+    { rot: "Vendas do projeto", v: String(tot.projeto), atual: tot.projeto, antes: totAnt?.projeto, sub: dias ? `vs. ${dias} dias anteriores` : "todo o período", Icone: ShoppingCart, tile: "bg-blue-500/20 text-blue-300 ring-blue-400/30" },
+    { rot: "Vendas por afiliados", v: String(tot.afiliados), atual: tot.afiliados, antes: totAnt?.afiliados, sub: dias ? `vs. ${dias} dias anteriores` : "todo o período", Icone: Users, tile: "bg-emerald-500/20 text-emerald-300 ring-emerald-400/30" },
+    { rot: "Receita total", v: moeda(tot.receita), atual: tot.receita, antes: totAnt?.receita, sub: dias ? `vs. ${dias} dias anteriores` : "líquida, via afiliados", Icone: Coins, tile: "bg-amber-500/20 text-amber-300 ring-amber-400/30" },
+    { rot: "Comissão a pagar", v: moeda(tot.comissao), atual: tot.comissao, antes: totAnt?.comissao, sub: `${tot.comVendas} ${tot.comVendas === 1 ? "afiliado com vendas" : "afiliados com vendas"}`, Icone: Percent, tile: "bg-violet-500/20 text-violet-300 ring-violet-400/30" },
+  ];
 
   return (
     <div className="space-y-4 text-white">
-      <div className={cartao}>
-        <h3 className="text-lg font-bold">Afiliados</h3>
-        <p className="text-xs text-white/55">Cada afiliado tem um link só dele. Visita, lead e venda saem marcados com o código dele, então nada se mistura com os outros links nem entre afiliados. Cada venda é creditada a um afiliado só (ou a nenhum).</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_1fr_110px_auto]">
-          <input className={campo} placeholder="Nome do afiliado" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") void criar(); }} />
-          <input className={campo} placeholder="Contato (opcional)" value={f.contato} onChange={(e) => setF({ ...f, contato: e.target.value })} />
-          <input className={campo} placeholder="Comissão %" inputMode="decimal" value={f.comissao} onChange={(e) => setF({ ...f, comissao: e.target.value })} />
-          <button type="button" disabled={!f.nome.trim() || criando} onClick={() => void criar()} className="flex items-center justify-center gap-1.5 rounded-lg bg-cyan-500/90 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40">{criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Criar</button>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1.5 text-sm text-white/60"><Users className="h-3.5 w-3.5" />Afiliados</p>
+          <h3 className="text-3xl font-bold tracking-tight">Programa de Afiliados</h3>
+          <p className="text-sm text-white/55">Convide parceiros, acompanhe as vendas e veja o impacto do seu time de afiliados.</p>
         </div>
+        <label className="flex items-center gap-2 rounded-xl border border-white/15 bg-[#0a1520] px-3 py-2 text-sm">
+          <CalendarDays className="h-4 w-4 text-white/60" />
+          <select value={dias} onChange={(e) => setDias(Number(e.target.value))} className="bg-transparent pr-1 outline-none">{PERIODOS.map(([d, r]) => <option key={d} value={d} className="bg-[#0a1520]">{r}</option>)}</select>
+        </label>
+        <button type="button" onClick={() => setNovoAberto(true)} style={{ backgroundColor: OURO }} className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-black shadow hover:brightness-105"><UserPlus className="h-4 w-4" />Novo afiliado</button>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {KPIS.map((k) => (
+          <div key={k.rot} className={cn(cartao, "flex items-center gap-3")}>
+            <span className={cn("flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ring-1", k.tile)}><k.Icone className="h-6 w-6" /></span>
+            <div className="min-w-0 flex-1"><p className="text-sm text-white/70">{k.rot}</p>
+              <div className="flex items-center justify-between gap-2"><p className="truncate text-3xl font-bold tabular-nums">{k.v}</p><Variacao atual={k.atual} antes={k.antes} /></div>
+              <p className="text-xs text-white/50">{k.sub}</p></div>
+          </div>
+        ))}
       </div>
 
       <div className={cartao}>
-        <p className="text-sm font-semibold">Saúde do rastreio</p>
-        <div className="mt-2 grid gap-2 text-center sm:grid-cols-4">
-          {([["Vendas totais do projeto", s.totalVendas, ""], ["Creditadas a afiliados", s.vendasDoQuiz, "text-emerald-300"], ["Com a marca vinda do checkout", s.comMarcaNoCheckout, s.totalVendas > 0 && s.comMarcaNoCheckout === 0 ? "text-amber-300" : ""], ["A conferir", s.conflitos + s.codigoDesconhecido, s.conflitos + s.codigoDesconhecido ? "text-amber-300" : ""]] as const).map(([r, v, cor]) => (
-            <div key={r} className="rounded-xl bg-white/5 p-3"><p className="text-[11px] uppercase tracking-wide text-white/50">{r}</p><p className={cn("text-xl font-bold tabular-nums", cor)}>{v}</p></div>
-          ))}
+        <div className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-white/60" /><p className="text-lg font-bold">Vendas ao longo do tempo</p>
+          <div className="ml-auto flex rounded-full bg-white/5 p-0.5 text-sm">{(["vendas", "receita"] as const).map((g) => <button key={g} type="button" onClick={() => setGrafico(g)} className={cn("rounded-full px-4 py-1", grafico === g ? "font-semibold text-black" : "text-white/70")} style={grafico === g ? { backgroundColor: OURO } : undefined}>{g === "vendas" ? "Vendas" : "Receita"}</button>)}</div></div>
+        <div className="mt-3 h-56">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={serie} margin={{ top: 8, right: 12, left: -12, bottom: 0 }}>
+              <defs>
+                <linearGradient id="afiOuro" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={OURO} stopOpacity={0.45} /><stop offset="100%" stopColor={OURO} stopOpacity={0} /></linearGradient>
+                <linearGradient id="afiCian" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#22d3ee" stopOpacity={0.35} /><stop offset="100%" stopColor="#22d3ee" stopOpacity={0} /></linearGradient>
+              </defs>
+              <CartesianGrid stroke="rgba(255,255,255,0.07)" vertical={false} />
+              <XAxis dataKey="rotulo" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 12 }} tickLine={false} axisLine={false} interval="preserveStartEnd" minTickGap={24} />
+              <YAxis tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 12 }} tickLine={false} axisLine={false} allowDecimals={false} width={44} tickFormatter={(v: number) => (grafico === "receita" ? `${Math.round(v)}` : String(v))} />
+              <Tooltip cursor={{ stroke: "rgba(255,255,255,0.25)" }} content={({ active, payload, label }) => active && payload?.length ? (
+                <div className="rounded-xl border border-white/20 bg-[#0a1520] px-3 py-2 text-xs shadow-lg"><p className="text-white/60">{label}</p>
+                  {payload.map((p) => <p key={String(p.dataKey)} className="font-semibold" style={{ color: p.color }}>{grafico === "receita" ? moeda(Number(p.value)) : `${p.value} ${Number(p.value) === 1 ? "venda" : "vendas"}`} <span className="font-normal text-white/50">{p.dataKey === "projeto" || p.dataKey === "receitaProjeto" ? "do projeto" : "por afiliados"}</span></p>)}</div>) : null} />
+              <Area type="monotone" dataKey={grafico === "vendas" ? "projeto" : "receitaProjeto"} stroke={OURO} strokeWidth={2} fill="url(#afiOuro)" dot={false} activeDot={{ r: 4 }} />
+              <Area type="monotone" dataKey={grafico === "vendas" ? "afiliados" : "receitaAfiliados"} stroke="#22d3ee" strokeWidth={2} fill="url(#afiCian)" dot={false} activeDot={{ r: 4 }} />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
-        <ul className="mt-2 space-y-1 text-xs text-white/60">
-          <li>Pelo checkout (a plataforma devolveu a marca): <b className="text-white/80">{s.viaCheckout}</b> · pelo e-mail do lead: <b className="text-white/80">{s.viaLead}</b> · leads do quiz sem afiliado: <b className="text-white/80">{s.semAfiliado}</b> · compras sem relação com o quiz: <b className="text-white/80">{s.foraDoQuiz}</b></li>
-          {s.totalVendas > 0 && s.comMarcaNoCheckout === 0 && <li className="flex gap-1.5 text-amber-300"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Nenhuma venda recebida chegou com marca do checkout ainda. Até a plataforma devolver a UTM, o crédito vem só pelo e-mail que a pessoa deixou no quiz: se ela comprar com outro e-mail, a venda não é ligada. Faça uma compra de teste pelo link de um afiliado para confirmar.</li>}
-        </ul>
+        <p className="mt-1 flex gap-4 text-xs text-white/55"><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full" style={{ backgroundColor: OURO }} />Vendas do projeto</span><span className="flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-cyan-400" />Por afiliados</span></p>
       </div>
 
       {aConferir.length > 0 && (
@@ -142,46 +221,120 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
         </div>
       )}
 
-      {afiliados.length === 0 ? <p className="rounded-xl bg-white/5 p-6 text-center text-sm text-white/50">Nenhum afiliado ainda. Crie o primeiro acima.</p> : afiliados.map((a) => {
-        const r = resumo.porAfiliado.get(a.codigo.toLowerCase())!;
-        const lk = links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo));
-        const curto = lk ? curtos.find((c) => c.quiz_link_id === lk.id) : undefined;
-        const completo = lk ? linkRastreado(linkDoQuiz(slug), lk) : "";
-        const compra = estrutura && lk ? propagarUtm(estrutura, { utm_source: lk.utm_source, ...(lk.utm_medium ? { utm_medium: lk.utm_medium } : {}), ...(lk.utm_campaign ? { utm_campaign: lk.utm_campaign } : {}), utm_content: lk.utm_content ?? "" }).oferta?.cta_url : undefined;
-        const vendasDele = resumo.atribuicoes.filter((x) => x.codigo?.toLowerCase() === a.codigo.toLowerCase());
-        return (
-          <div key={a.id} className={cn(cartao, !a.ativo && "opacity-60")}>
-            <div className="flex flex-wrap items-center gap-2">
-              <input defaultValue={a.nome} onBlur={(e) => { const v = e.target.value.trim().slice(0, 80); if (v && v !== a.nome) void atualizar(a, { nome: v }); else e.target.value = a.nome; }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} title="Clique para renomear o afiliado" className="min-w-0 rounded bg-transparent px-1 text-lg font-bold outline-none hover:bg-white/5 focus:bg-white/10" />
-              <span className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-[11px] text-white/70">{a.codigo}</span>
-              {!a.ativo && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">pausado</span>}
-              <div className="ml-auto flex items-center gap-1.5">
-                {curto && <button type="button" onClick={() => copiar(enderecoCurto(base, curto.codigo), "Link curto copiado")} className="flex items-center gap-1.5 rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-black"><Copy className="h-3.5 w-3.5" />Copiar link curto</button>}
-                {curto && <RenomearLink codigo={curto.codigo} base={base} onRenomeado={() => void carregar()} />}
-                {completo && <button type="button" onClick={() => copiar(completo, "Link completo copiado")} className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white">Link completo</button>}
-                <button type="button" onClick={() => void atualizar(a, { ativo: !a.ativo })} className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 hover:text-white">{a.ativo ? "Pausar" : "Reativar"}</button>
-                <button type="button" onClick={() => void apagar(a)} title="Apagar afiliado" className="rounded-full border border-white/15 p-1.5 text-white/50 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
-              </div>
-            </div>
-            <p className="mt-1 text-xs text-white/50">{a.contato ? `${a.contato} · ` : ""}comissão <input className="w-14 rounded bg-white/10 px-1.5 py-0.5 text-center text-white outline-none" defaultValue={String(a.comissao_pct).replace(".", ",")} inputMode="decimal"
-              onBlur={(e) => { const v = Math.min(100, Math.max(0, Number(e.target.value.replace(",", ".")) || 0)); if (v !== a.comissao_pct) void atualizar(a, { comissao_pct: v }); }} />% · {curto ? `${curto.cliques} cliques no link curto` : "sem link curto"}</p>
-            {a.ativo === false && <p className="mt-1 text-[11px] text-white/40">Pausado só marca aqui: o link dele continua rastreando as visitas e vendas.</p>}
-            <div className="mt-3 grid gap-2 sm:grid-cols-5">
-              {([["Visitas", String(r.visitas)], ["Leads", String(r.leads)], ["Vendas", String(r.vendas) + (r.reembolsos ? ` (−${r.reembolsos} reemb.)` : "")], ["Líquido", moeda(r.liquido)], ["Comissão a pagar", moeda(r.comissao)]] as const).map(([rot, v]) => (
-                <div key={rot} className="rounded-xl bg-white/5 p-2.5 text-center"><p className="text-[11px] uppercase tracking-wide text-white/50">{rot}</p><p className="text-lg font-bold tabular-nums">{v}</p></div>
-              ))}
-            </div>
-            {compra && <p className="mt-2 break-all text-[11px] text-white/45">O botão de compra do quiz vai para: <span className="font-mono text-white/70">{compra}</span> {/utm_content=aff_/.test(compra) ? <CheckCircle2 className="inline h-3.5 w-3.5 text-emerald-400" /> : <AlertTriangle className="inline h-3.5 w-3.5 text-amber-400" />}</p>}
-            {vendasDele.length > 0 && (
-              <>
-                <button type="button" onClick={() => setAberto(aberto === a.id ? null : a.id)} className="mt-2 flex items-center gap-1 text-xs text-cyan-300 hover:underline"><ChevronDown className={cn("h-3.5 w-3.5 transition-transform", aberto === a.id && "rotate-180")} />Ver as {vendasDele.length} vendas e como cada uma foi ligada</button>
-                {aberto === a.id && <div className="mt-2 space-y-1.5">{vendasDele.map((x) => <LinhaVenda key={x.venda.transacao_id + x.venda.tipo} a={x} afiliados={afiliados} />)}</div>}
-              </>
-            )}
+      <div className={cartao}>
+        <div className="flex flex-wrap items-center gap-3">
+          <Users className="h-5 w-5 text-white/70" /><p className="text-lg font-bold">Meus afiliados ({afiliados.length})</p>
+          <div className="relative ml-auto w-full sm:w-72"><Search className="absolute left-3 top-2.5 h-4 w-4 text-white/45" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar afiliado..." className="w-full rounded-xl border border-white/20 bg-transparent py-2 pl-9 pr-3 text-sm outline-none placeholder:text-white/45 focus:border-amber-200/60" /></div>
+        </div>
+        {afiliados.length === 0 ? <p className="mt-4 rounded-xl bg-white/5 p-8 text-center text-sm text-white/50">Nenhum afiliado ainda. Clique em “Novo afiliado” para criar o primeiro e receber o link dele.</p> : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead><tr className="bg-white/5 text-white/70"><th className="rounded-l-xl px-4 py-3 text-left font-medium">Afiliado</th>{["Visitas", "Leads", "Vendas", "Conversão", "Comissão"].map((h) => <th key={h} className="px-3 py-3 text-center font-medium">{h}</th>)}<th className="w-10 rounded-r-xl" /></tr></thead>
+              <tbody>
+                {lista.map((a) => {
+                  const r = resumo.porAfiliado.get(a.codigo.toLowerCase()) as ResumoAfiliado;
+                  const curto = curtoDe(a);
+                  const aberta = aberto === a.id;
+                  return (
+                    <Fragment key={a.id}>
+                      <tr onClick={() => setAberto(aberta ? null : a.id)} className={cn("cursor-pointer border-b border-white/5 hover:bg-white/[0.03]", !a.ativo && "opacity-55")}>
+                        <td className="px-4 py-3"><span className="flex items-center gap-3">
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-base font-semibold">{a.nome.slice(0, 1).toUpperCase()}</span>
+                          <span className="font-semibold">{a.nome}</span>
+                          {curto && <button type="button" title="Copiar link curto" onClick={(e) => { e.stopPropagation(); copiar(enderecoCurto(base, curto.codigo), "Link curto copiado"); }} className="text-white/55 hover:text-white"><Link2 className="h-4 w-4" /></button>}
+                          {!a.ativo && <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px]">pausado</span>}
+                        </span></td>
+                        <td className="px-3 py-3 text-center tabular-nums">{r.visitas}</td><td className="px-3 py-3 text-center tabular-nums">{r.leads}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{r.vendas}{r.reembolsos ? <span className="text-rose-300"> (−{r.reembolsos})</span> : null}</td>
+                        <td className="px-3 py-3 text-center tabular-nums">{r.visitas ? `${Math.round(r.conversao * 1000) / 10}%` : "0%"}</td>
+                        <td className="px-3 py-3 text-center font-semibold tabular-nums">{moeda(r.comissao)}</td>
+                        <td className="px-2 py-3" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu><DropdownMenuTrigger asChild><button type="button" className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"><MoreVertical className="h-4 w-4" /></button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="dark">
+                              {curto && <DropdownMenuItem onClick={() => copiar(enderecoCurto(base, curto.codigo), "Link curto copiado")}>Copiar link curto</DropdownMenuItem>}
+                              {linkDe(a) && <DropdownMenuItem onClick={() => copiar(linkRastreado(linkDoQuiz(slug), linkDe(a)!), "Link completo copiado")}>Copiar link completo</DropdownMenuItem>}
+                              <DropdownMenuItem onClick={() => setAberto(a.id)}>Ver detalhes e renomear link</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => void atualizar(a, { ativo: !a.ativo })}>{a.ativo ? "Pausar" : "Reativar"}</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-rose-400 focus:text-rose-300" onClick={() => void apagar(a)}>Apagar afiliado</DropdownMenuItem>
+                            </DropdownMenuContent></DropdownMenu>
+                        </td>
+                      </tr>
+                      {aberta && <tr><td colSpan={7} className="bg-black/20 px-4 py-4"><DetalheAfiliado a={a} r={r} curto={curto} lk={linkDe(a)} slug={slug} base={base} estrutura={estrutura} atribuicoes={resumo.atribuicoes} afiliados={afiliados} onCopiar={copiar} onAtualizar={atualizar} onRecarregar={() => void carregar()} /></td></tr>}
+                    </Fragment>
+                  );
+                })}
+                {lista.length === 0 && <tr><td colSpan={7} className="py-6 text-center text-white/45">Ninguém com esse nome.</td></tr>}
+              </tbody>
+            </table>
           </div>
-        );
-      })}
-      <p className="text-[11px] text-white/40">A marca do afiliado vai na UTM (utm_content = aff_código) do link, da visita, do lead e do botão de compra. O crédito não depende do nome nem das outras UTM, então dois afiliados nunca se misturam. Reembolso desconta do afiliado da venda original.</p>
+        )}
+      </div>
+
+      <details className={cartao}>
+        <summary className="cursor-pointer text-sm font-semibold">Saúde do rastreio <span className="font-normal text-white/50">· como as vendas estão sendo ligadas aos afiliados</span></summary>
+        <div className="mt-3 grid gap-2 text-center sm:grid-cols-4">
+          {([["Vendas do projeto", s.totalVendas, ""], ["Creditadas a afiliados", s.vendasDoQuiz, "text-emerald-300"], ["Com a marca vinda do checkout", s.comMarcaNoCheckout, s.totalVendas > 0 && s.comMarcaNoCheckout === 0 ? "text-amber-300" : ""], ["A conferir", s.conflitos + s.codigoDesconhecido, s.conflitos + s.codigoDesconhecido ? "text-amber-300" : ""]] as const).map(([r, v, cor]) => (
+            <div key={r} className="rounded-xl bg-white/5 p-3"><p className="text-[11px] uppercase tracking-wide text-white/50">{r}</p><p className={cn("text-xl font-bold tabular-nums", cor)}>{v}</p></div>
+          ))}
+        </div>
+        <ul className="mt-2 space-y-1 text-xs text-white/60">
+          <li>Pelo checkout (a plataforma devolveu a marca): <b className="text-white/80">{s.viaCheckout}</b> · pelo e-mail do lead: <b className="text-white/80">{s.viaLead}</b> · leads do quiz sem afiliado: <b className="text-white/80">{s.semAfiliado}</b> · compras sem relação com o quiz: <b className="text-white/80">{s.foraDoQuiz}</b></li>
+          {s.totalVendas > 0 && s.comMarcaNoCheckout === 0 && <li className="flex gap-1.5 text-amber-300"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />Nenhuma venda deste período chegou com marca do checkout. Até a plataforma devolver a UTM, o crédito vem só pelo e-mail que a pessoa deixou no quiz: se ela comprar com outro e-mail, a venda não é ligada. Faça uma compra de teste pelo link de um afiliado para confirmar.</li>}
+        </ul>
+        <p className="mt-2 text-[11px] text-white/40">A marca do afiliado vai na UTM (utm_content = aff_código) do link, da visita, do lead e do botão de compra. O crédito não depende do nome nem das outras UTM, então dois afiliados nunca se misturam. Reembolso desconta do afiliado da venda original.</p>
+      </details>
+
+      <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
+        <DialogContent className="dark border-white/10 bg-[#0c1b27] text-white sm:max-w-md">
+          <DialogHeader><DialogTitle>Novo afiliado</DialogTitle><DialogDescription className="text-white/55">Ele recebe um link só dele. Tudo que vier por esse link (visita, lead e venda) fica marcado com o código dele.</DialogDescription></DialogHeader>
+          <div className="space-y-2.5">
+            <input className={cn(campo, "w-full")} placeholder="Nome do afiliado" autoFocus value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} onKeyDown={(e) => { if (e.key === "Enter") void criar(); }} />
+            <input className={cn(campo, "w-full")} placeholder="Contato (opcional: WhatsApp ou e-mail)" value={f.contato} onChange={(e) => setF({ ...f, contato: e.target.value })} />
+            <label className="flex items-center gap-2 text-sm text-white/70">Comissão <input className={cn(campo, "w-24 text-center")} inputMode="decimal" value={f.comissao} onChange={(e) => setF({ ...f, comissao: e.target.value })} /> % sobre a venda líquida</label>
+            <button type="button" disabled={!f.nome.trim() || criando} onClick={() => void criar()} style={{ backgroundColor: OURO }} className="flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold text-black disabled:opacity-40">{criando ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}Criar afiliado e link</button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function DetalheAfiliado({ a, r, curto, lk, slug, base, estrutura, atribuicoes, afiliados, onCopiar, onAtualizar, onRecarregar }: {
+  a: Afiliado; r: ResumoAfiliado; curto: Curto | undefined; lk: LinkAfi | undefined; slug: string; base: string; estrutura: EstruturaQuiz | null; atribuicoes: Atribuicao[]; afiliados: Afiliado[];
+  onCopiar: (t: string, ok: string) => void; onAtualizar: (a: Afiliado, m: Partial<Pick<Afiliado, "ativo" | "comissao_pct" | "nome" | "contato">>) => Promise<void>; onRecarregar: () => void;
+}) {
+  const completo = lk ? linkRastreado(linkDoQuiz(slug), lk) : "";
+  const compra = estrutura && lk ? propagarUtm(estrutura, { utm_source: lk.utm_source, ...(lk.utm_medium ? { utm_medium: lk.utm_medium } : {}), ...(lk.utm_campaign ? { utm_campaign: lk.utm_campaign } : {}), utm_content: lk.utm_content ?? "" }).oferta?.cta_url : undefined;
+  const vendasDele = atribuicoes.filter((x) => x.codigo?.toLowerCase() === a.codigo.toLowerCase());
+  return (
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+      <div className="space-y-2.5 text-sm">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">Link do afiliado</p>
+        {curto ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="rounded bg-black/40 px-2 py-1 text-amber-200">{enderecoCurto(base, curto.codigo)}</code>
+            <button type="button" onClick={() => onCopiar(enderecoCurto(base, curto.codigo), "Link curto copiado")} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-bold text-black" style={{ backgroundColor: OURO }}><Copy className="h-3.5 w-3.5" />Copiar</button>
+            <RenomearLink codigo={curto.codigo} base={base} onRenomeado={onRecarregar} />
+            <span className="text-xs text-white/50">{curto.cliques} {curto.cliques === 1 ? "clique" : "cliques"}</span>
+          </div>
+        ) : <p className="text-xs text-white/50">Sem link curto: use o link completo.</p>}
+        {completo && <button type="button" onClick={() => onCopiar(completo, "Link completo copiado")} className="block max-w-full truncate rounded border border-white/10 px-2 py-1 text-left font-mono text-[11px] text-white/55 hover:text-white" title={completo}>{completo}</button>}
+        <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-white/60">
+          <span>Nome <input defaultValue={a.nome} onBlur={(e) => { const v = e.target.value.trim().slice(0, 80); if (v && v !== a.nome) void onAtualizar(a, { nome: v }); else e.target.value = a.nome; }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} className="w-40 rounded bg-white/10 px-2 py-1 text-white outline-none" /></span>
+          <span>Comissão <input className="w-14 rounded bg-white/10 px-1.5 py-1 text-center text-white outline-none" defaultValue={String(a.comissao_pct).replace(".", ",")} inputMode="decimal" onBlur={(e) => { const v = Math.min(100, Math.max(0, Number(e.target.value.replace(",", ".")) || 0)); if (v !== a.comissao_pct) void onAtualizar(a, { comissao_pct: v }); }} />%</span>
+          <span>Contato <input defaultValue={a.contato ?? ""} onBlur={(e) => { const v = e.target.value.trim().slice(0, 120) || null; if (v !== a.contato) void onAtualizar(a, { contato: v }); }} className="w-40 rounded bg-white/10 px-2 py-1 text-white outline-none" /></span>
+        </div>
+        {compra && <p className="break-all text-[11px] text-white/45">O botão de compra do quiz vai para: <span className="font-mono text-white/70">{compra}</span> {/utm_content=aff_/.test(compra) ? <CheckCircle2 className="inline h-3.5 w-3.5 text-emerald-400" /> : <AlertTriangle className="inline h-3.5 w-3.5 text-amber-400" />}</p>}
+        {!a.ativo && <p className="text-[11px] text-white/40">Pausado só marca aqui: o link dele continua rastreando as visitas e vendas.</p>}
+      </div>
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2 text-center">
+          {([["Receita bruta", moeda(r.bruto)], ["Reembolsos", moeda(r.reembolsado)], ["Líquido", moeda(r.liquido)]] as const).map(([rot, v]) => <div key={rot} className="rounded-xl bg-white/5 p-2"><p className="text-[10px] uppercase tracking-wide text-white/50">{rot}</p><p className="font-bold tabular-nums">{v}</p></div>)}
+        </div>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">Vendas e como cada uma foi ligada ({vendasDele.length})</p>
+        {vendasDele.length === 0 ? <p className="text-xs text-white/45">Nenhuma venda neste período.</p> : <div className="max-h-56 space-y-1.5 overflow-y-auto">{vendasDele.map((x) => <LinhaVenda key={x.venda.transacao_id + x.venda.tipo} a={x} afiliados={afiliados} />)}</div>}
+      </div>
     </div>
   );
 }

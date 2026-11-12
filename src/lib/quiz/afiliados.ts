@@ -70,8 +70,16 @@ export interface ResumoGeral {
   atribuicoes: Atribuicao[];
 }
 
-export function resumirAfiliados(afiliados: AfiliadoBase[], eventos: EventoAfi[], leads: LeadAfi[], vendas: VendaAfi[]): ResumoGeral {
-  const atribuicoes = atribuirVendas(afiliados, leads, vendas);
+/** Janela de datas (ms). A atribuição usa SEMPRE todos os leads (o lead pode ser de antes do período); só a contagem respeita a janela. */
+export interface Janela { desde: number; ate: number }
+const diaEmMs = (d: string | null) => (d ? Date.parse(`${d.slice(0, 10)}T12:00:00-03:00`) : NaN);
+export const vendaNaJanela = (v: Pick<VendaAfi, "data">, j?: Janela) => !j || (diaEmMs(v.data) >= j.desde && diaEmMs(v.data) < j.ate);
+
+export function resumirAfiliados(afiliados: AfiliadoBase[], eventosTodos: EventoAfi[], leadsTodos: LeadAfi[], vendasTodas: VendaAfi[], janela?: Janela): ResumoGeral {
+  const noPeriodo = (iso: string) => !janela || (Date.parse(iso) >= janela.desde && Date.parse(iso) < janela.ate);
+  const eventos = eventosTodos.filter((e) => noPeriodo(e.criado_em));
+  const leads = leadsTodos.filter((l) => noPeriodo(l.criada_em));
+  const atribuicoes = atribuirVendas(afiliados, leadsTodos, vendasTodas).filter((a) => vendaNaJanela(a.venda, janela));
   const por = new Map<string, ResumoAfiliado>(afiliados.map((a) => [a.codigo.toLowerCase(), { codigo: a.codigo, visitas: 0, leads: 0, vendas: 0, reembolsos: 0, bruto: 0, reembolsado: 0, liquido: 0, comissao: 0, conversao: 0, viaCheckout: 0, viaLead: 0, conflitos: 0 }]));
   // Visita = sessão única; a marca vale a da primeira vez que a sessão aparece (a UTM é fixada na entrada).
   const vistas = new Set<string>();
@@ -82,7 +90,7 @@ export function resumirAfiliados(afiliados: AfiliadoBase[], eventos: EventoAfi[]
     if (r) r.visitas++;
   }
   for (const l of leads) { const r = por.get(codigoDaMarca(l.utm?.utm_content) ?? ""); if (r) r.leads++; }
-  const emailsLeads = new Set(leads.map((l) => email(l.email)).filter(Boolean));
+  const emailsLeads = new Set(leadsTodos.map((l) => email(l.email)).filter(Boolean));
   const saude = { vendasDoQuiz: 0, viaCheckout: 0, viaLead: 0, conflitos: 0, codigoDesconhecido: 0, semAfiliado: 0, foraDoQuiz: 0, comMarcaNoCheckout: 0, totalVendas: 0 };
   for (const a of atribuicoes) {
     const valor = a.venda.valor ?? 0;

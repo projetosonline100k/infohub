@@ -63,3 +63,17 @@ test('saúde do rastreio: separa o que veio do checkout, do lead, sem afiliado e
   const r = m.resumirAfiliados(AFS, [], [lead('l1', 'b@x.co', 'joao22'), lead('l2', 'c@x.co', null)], vendas);
   assert.deepEqual(r.saude, { vendasDoQuiz: 2, viaCheckout: 1, viaLead: 1, conflitos: 0, codigoDesconhecido: 1, semAfiliado: 1, foraDoQuiz: 0, comMarcaNoCheckout: 2, totalVendas: 4 });
 });
+
+test('janela de datas: conta só o período, mas o lead de antes do período ainda credita a venda de dentro dele', () => {
+  const dia = (d) => Date.parse(`${d}T00:00:00-03:00`);
+  const j = { desde: dia('2026-11-10'), ate: dia('2026-11-13') };
+  const leads = [lead('l1', 'a@x.co', 'maria1', '2026-10-01T10:00:00Z')];
+  const vendas = [venda('t1', 'a@x.co', null, 100, 'venda', '2026-11-11'), venda('t2', 'a@x.co', null, 50, 'venda', '2026-11-01')];
+  const eventos = [{ sessao: 's1', criado_em: '2026-11-11T10:00:00Z', utm: { utm_content: 'aff_maria1' } }, { sessao: 's2', criado_em: '2026-11-02T10:00:00Z', utm: { utm_content: 'aff_maria1' } }];
+  const r = m.resumirAfiliados(AFS, eventos, leads, vendas, j).porAfiliado.get('maria1');
+  assert.equal(r.vendas, 1);
+  assert.equal(r.bruto, 100);
+  assert.equal(r.visitas, 1);
+  assert.equal(r.leads, 0);   // o lead é de outubro: fora do período
+  assert.equal(m.vendaNaJanela({ data: '2026-11-13' }, j), false);   // o limite superior não entra
+});
