@@ -14,6 +14,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
+import { DashDark } from "./DashDark";
 import { EscritorioSalas, type CelulaEscritorio } from "./EscritorioSalas";
 import { AoVivoTarefa, type AlvoAoVivo } from "./AoVivoTarefa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
@@ -40,7 +41,7 @@ import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
 import { cancelarCarrossel, cancelarEdicao, cancelarPelaTarefaDeData, cancelarReelPelaTarefa, cancelarTarefa } from "@/lib/empresa/cancelar";
 import {
-  contarIndicadores, ehCoordenador, equipeOfflineDesde, filaAcabando, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, tarefaAtrasada, trabalhoDasIas, videosProgramados,
+  contarIndicadores, ehCoordenador, ehDark, equipeOfflineDesde, filaAcabando, estadoDosMembros, iasParadas, minutosRestantes, tarefasEmExecucao, textoRestante, postProgramado, precisaDeVoce, sinalDoMembro, tarefaAtrasada, trabalhoDasIas, videosProgramados,
   type Sinal,
   type MembroResumo, type SetorResumo, type TarefaResumo, type VideoResumo,
 } from "@/lib/empresa/visaoGeral";
@@ -117,6 +118,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [videos, setVideos] = useState<VideoResumo[]>([]);
   const [membroAberto, setMembroAberto] = useState<MembroResumo | null>(null);
   const [chatPedido, setChatPedido] = useState<{ membroId: string; n: number } | null>(null);
+  const [dashDark, setDashDark] = useState<MembroResumo | null>(null);
+  const conversarCom = (id: string) => setChatPedido((p) => ({ membroId: id, n: (p?.n ?? 0) + 1 }));
+  // IA de vídeos dark (Lauro) abre o dash; as outras IAs abrem o chat; pessoa abre a fila.
+  const abrirMembro = (m: MembroResumo) => { if (ehDark(m)) setDashDark(m); else if (m.eh_ia) conversarCom(m.id); else setMembroAberto(m); };
   // 22/10: clicar numa tarefa sendo executada abre o "Ao vivo" dela (não a ficha da pessoa).
   const [aoVivo, setAoVivo] = useState<AlvoAoVivo | null>(null);
   const [mundo3d, setMundo3d] = useState(false);
@@ -763,7 +768,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             const m = membros.find((x) => x.id === t.responsavel_id);
             setAoVivo({ atividadeId: t.id, titulo: t.titulo, nome: m?.nome ?? "", ehIa: !!m?.eh_ia, progresso: t.progresso ?? null });
           }}
-          onPessoa={(m) => { if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m); }}
+          onPessoa={(m) => { abrirMembro(m); }}
           topo={<div className="flex gap-2">
             <button type="button" onClick={() => setEscritorio({ editando: null })}
               className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Setor</button>
@@ -784,7 +789,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
               if (!m) return;
-              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+              abrirMembro(m);
             }}
             onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })}
             lateral={<>
@@ -835,7 +840,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
               // 22/10: clicar num funcionário de IA abre o chat dele (a fila fica no botão ☰ do chat); pessoa abre a fila.
               const m = membros.find((x) => x.id === id);
               if (!m) return;
-              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+              abrirMembro(m);
             }}
               onAbrirSetor={setEsteiraAberta}
               tv={<TelaTv semana={semana} onAbrir={() => setTvAberta(true)} />}
@@ -869,11 +874,13 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             onConversar={(id) => {
               const m = membros.find((x) => x.id === id);
               if (!m) return;
-              if (m.eh_ia) setChatPedido((p) => ({ membroId: m.id, n: (p?.n ?? 0) + 1 })); else setMembroAberto(m);
+              abrirMembro(m);
             }}
             onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })} />
         </Suspense>
       )}
+      <DashDark membro={dashDark} aberto={!!dashDark} onFechar={() => setDashDark(null)}
+        onConversar={() => { if (dashDark) conversarCom(dashDark.id); setDashDark(null); }} />
       <AoVivoTarefa alvo={aoVivo} onFechar={() => setAoVivo(null)} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
