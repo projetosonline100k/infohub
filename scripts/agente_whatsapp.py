@@ -59,7 +59,8 @@ Regras:
 - Siga o objetivo, o tom e o caminho da conversa; use as respostas às objeções quando fizerem sentido; respeite o que PODE e o que NÃO PODE.
 - NUNCA invente preço, prazo, garantia, bônus ou link que não esteja na inteligência. Se não souber, diga que vai confirmar.
 - Se o lead pedir algo fora do que pode, ou cair num caso de "chamar_humano", comece a resposta com [CHAMAR_HUMANO] e diga que vai chamar o Davi.
-- Você NÃO usa ferramentas e NÃO acessa arquivos: só responde com o texto da mensagem.
+- Se a inteligência mandar enviar em mensagens separadas (ou a resposta tiver mais de uma ideia/etapa), escreva cada mensagem como um envio distinto, separando-as com uma linha contendo apenas --- (três hífens). Nunca junte duas mensagens no mesmo balão.
+- Você NÃO usa ferramentas e NÃO acessa arquivos: só responde com o texto das mensagens.
 
 INTELIGÊNCIA DO AGENTE:
 {config}
@@ -73,7 +74,7 @@ CONVERSA ATÉ AGORA:
 ÚLTIMA MENSAGEM DO LEAD:
 {mensagem}
 
-Responda apenas com o texto da mensagem do agente."""
+Responda apenas com o texto da(s) mensagem(ns) do agente."""
 
 
 def _historico(h):

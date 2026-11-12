@@ -13,6 +13,8 @@ import { completude, configVazia, prontoParaUsar, sanitizarAgente, type ConfigAg
 // Nada aqui envia mensagem a lead: o agente ainda só é montado e testado.
 const db = supabase as unknown as SupabaseClient;
 type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string };
+// O agente pode mandar várias mensagens seguidas: ele as separa com uma linha "---" e cada uma vira um balão (como seriam enviadas).
+const partirMensagens = (t: string) => t.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter(Boolean);
 const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
 const AJUDA = "Oi! Vamos montar o seu agente de vendas. Conta do jeito que quiser: qual é o produto, para quem é, quanto custa e onde se compra. Pode colar a página de vendas também. Eu organizo ao lado e te pergunto o que faltar.";
 
@@ -49,7 +51,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
         const onde: "construir" | "simular" = p.contexto?.origem === "teste" ? "simular" : p.tipo;
         if (linha?.[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] && p.criado_em <= (linha[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] as string)) continue;
         if (!p.contexto?.iniciar) m[onde].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
-        if (p.status === "respondido" && p.resposta) m[onde].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: p.resposta });
+        if (p.status === "respondido" && p.resposta) for (const parte of p.tipo === "construir" ? [p.resposta] : partirMensagens(p.resposta)) m[onde].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: parte });
       }
       setMsgs(m);
       const ultimo = lista[lista.length - 1];
@@ -104,7 +106,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       const { data: p } = await db.from("agente_whatsapp_pedidos").select("status, resposta, config, erro").eq("id", id).maybeSingle();
       const r = p as { status: string; resposta: string | null; config: unknown; erro: string | null } | null;
       if (r?.status === "respondido") {
-        setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: tipo === "construir" ? "assistant" : "agente", texto: r.resposta ?? "" }] }));
+        setMsgs((m) => ({ ...m, [modo]: [...m[modo], ...(tipo === "construir" ? [r.resposta ?? ""] : partirMensagens(r.resposta ?? "")).map((texto) => ({ papel: (tipo === "construir" ? "assistant" : "agente") as Msg["papel"], texto }))] }));
         if (tipo === "construir" && r.config && configRef.current) {
           const novo = sanitizarAgente(r.config, configRef.current);
           setConfig(novo);
