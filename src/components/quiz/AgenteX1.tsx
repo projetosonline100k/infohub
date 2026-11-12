@@ -43,12 +43,12 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       setZerados({ construir: linha?.zerado_construir_em ?? null, simular: linha?.zerado_simular_em ?? null });
       // A conversa fica guardada: volta do jeito que estava (e retoma uma resposta que ainda estava sendo preparada).
       const { data: ps } = await db.from("agente_whatsapp_pedidos").select("id, tipo, mensagem, status, resposta, criado_em, contexto").eq("cliente_id", cid).order("criado_em", { ascending: false }).limit(60);
-      const lista = ((ps ?? []) as { id: string; tipo: "construir" | "simular"; mensagem: string; status: string; resposta: string | null; criado_em: string; contexto: { origem?: string } | null }[]).reverse();
+      const lista = ((ps ?? []) as { id: string; tipo: "construir" | "simular"; mensagem: string; status: string; resposta: string | null; criado_em: string; contexto: { origem?: string; iniciar?: boolean } | null }[]).reverse();
       const m: Record<"construir" | "simular", Msg[]> = { construir: [{ papel: "assistant", texto: AJUDA }], simular: [] };
       for (const p of lista) {
         const onde: "construir" | "simular" = p.contexto?.origem === "teste" ? "simular" : p.tipo;
         if (linha?.[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] && p.criado_em <= (linha[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] as string)) continue;
-        m[onde].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
+        if (!p.contexto?.iniciar) m[onde].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
         if (p.status === "respondido" && p.resposta) m[onde].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: p.resposta });
       }
       setMsgs(m);
@@ -76,19 +76,19 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     gravar(novo, clienteId);
   };
 
-  const enviar = async () => {
-    const t = texto.trim();
+  const enviar = async (abertura = false) => {
+    const t = abertura ? "(início da conversa)" : texto.trim();
     if (!t || !clienteId || !config || esperando) return;
     const papelEu = modo === "construir" ? "user" : "lead";
-    const hist = msgs[modo];
-    setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t }] }));
+    const hist = abertura ? [] : msgs[modo];
+    if (!abertura) setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t }] }));
     setTexto("");
     setEsperando(true);
     // [ajuste] no teste vai para a montagem: o agente aprende e a inteligência muda na hora.
     const tipo = modo === "simular" && ehAjuste(t) ? "construir" : modo;
     const contexto = tipo === "construir"
       ? { quiz: titulo, quiz_id: quizId, perfis, ...(modo === "simular" ? { origem: "teste", conversa_de_teste: hist.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14) } : {}) }
-      : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" } };
+      : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" }, ...(abertura ? { iniciar: true } : {}) };
     const { data, error } = await db.from("agente_whatsapp_pedidos").insert({
       cliente_id: clienteId, tipo, mensagem: t, contexto, config_atual: config,
       historico: (tipo === "construir" && modo === "simular" ? msgs.construir : hist).filter((h, i) => i > 0 || tipo !== "construir").map((h) => ({ papel: h.papel, texto: h.texto })),
@@ -125,7 +125,8 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     setZerados((z) => ({ ...z, [modo]: agora }));
     setMsgs((m) => ({ ...m, [modo]: modo === "construir" ? [{ papel: "assistant", texto: AJUDA }] : [] }));
     const { error } = await db.from("agentes_whatsapp").upsert({ cliente_id: clienteId, [modo === "construir" ? "zerado_construir_em" : "zerado_simular_em"]: agora });
-    if (error) toast.error("Não consegui zerar");
+    if (error) { toast.error("Não consegui zerar"); return; }
+    if (modo === "simular") { setTimeout(() => void enviar(true), 0); }   // o agente já abre a conversa, como ao abordar o lead
   };
 
   if (!config) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;

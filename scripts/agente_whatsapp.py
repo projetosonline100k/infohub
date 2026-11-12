@@ -94,6 +94,9 @@ def _prompt(p):
     base = dict(quiz_id=p["contexto"].get("quiz_id", ""), cliente_id=p["cliente_id"], config=json.dumps(p["config_atual"], ensure_ascii=False), contexto=json.dumps(p["contexto"], ensure_ascii=False),
                 historico=_historico(p["historico"]), mensagem=p["mensagem"])
     if p["tipo"] == "simular":
+        if p["contexto"].get("iniciar"):
+            # Zerou o teste: o agente abre a conversa, como faria ao abordar o lead (que ainda não escreveu nada).
+            base["mensagem"] = "(o lead ainda não escreveu nada: é VOCÊ quem começa a conversa, com a mensagem de abordagem inicial, usando o que sabe do lead e do quiz)"
         return PROMPT_SIMULAR.format(**base)
     ajuste = p["mensagem"].lstrip().lower().startswith("[ajuste]")
     return PROMPT_CONSTRUIR.format(formato=FORMATO, modo_ajuste=AJUSTE if ajuste else "", **base)
