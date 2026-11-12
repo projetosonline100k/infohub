@@ -43,7 +43,9 @@ Regras:
 Formato da inteligência (JSON):
 {formato}
 
-Responda SOMENTE com JSON, sem texto antes nem depois: {{"resposta": "sua fala para o Davi", "config": <a inteligência inteira, já atualizada>}}.
+PEDIDOS DE SISTEMA: se o Davi pedir algo que a inteligência NÃO resolve e exige mudar o código do app (tela nova, botão, enviar áudio, reagir a evento, integração, mudança de como o agente envia/recebe), você NÃO diz que não dá: abra um pedido para a fila de desenvolvimento, que o Claude Code implementa. Coloque em "pedidos_sistema" uma lista com {{"titulo": "curto", "descricao": "completa e autossuficiente: o que o Davi pediu (nas palavras dele), onde fica (X1 do quiz > aba Inteligência do agente: src/components/quiz/AgenteX1.tsx, src/lib/agenteWhatsapp.ts, scripts/agente_whatsapp.py, tabelas agentes_whatsapp e agente_whatsapp_pedidos) e como saber que ficou pronto"}}. Antes, confira se já não existe um parecido: python3 scripts/consulta.py "select titulo, status, left(coalesce(resultado, erro, ''), 200) from ponte_pedidos where origem = 'gabriela' order by criado_em desc limit 15". Se o Davi perguntar como estão os pedidos, consulte essa mesma tabela e conte o status em linguagem simples (pendente = na fila, em_andamento = sendo feito, concluido = pronto, erro = não deu). Na resposta, diga em uma frase o que foi para a fila. Pedido que cabe na inteligência (regra, tom, comportamento) você resolve sozinha, sem abrir pedido.
+
+Responda SOMENTE com JSON, sem texto antes nem depois: {{"resposta": "sua fala para o Davi", "config": <a inteligência inteira, já atualizada>, "pedidos_sistema": [] (opcional)}}.
 
 CONTEXTO DO QUIZ:
 {contexto}
@@ -109,17 +111,35 @@ def _prompt(p):
 
 
 def extrair(texto):
-    """(resposta, config|None). Se o Claude só conversou (sem JSON válido), devolve o texto e config None."""
+    """(resposta, config|None, pedidos_sistema). Se o Claude só conversou (sem JSON válido), devolve o texto, config None e nenhum pedido."""
     try:
         i, f = texto.find("{"), texto.rfind("}")
         d = json.loads(texto[i:f + 1])
+        pedidos = [x for x in (d.get("pedidos_sistema") or []) if isinstance(x, dict) and str(x.get("titulo", "")).strip() and str(x.get("descricao", "")).strip()][:3]
         if isinstance(d.get("config"), dict):
-            return str(d.get("resposta") or "Pronto, atualizei a inteligência."), d["config"]
+            return str(d.get("resposta") or "Pronto, atualizei a inteligência."), d["config"], pedidos
         if isinstance(d.get("resposta"), str):
-            return d["resposta"], None
+            return d["resposta"], None, pedidos
     except (ValueError, TypeError):
         pass
-    return texto.strip(), None
+    return texto.strip(), None, []
+
+
+def abrir_pedidos(q, pedidos, log=print):
+    """Pedidos que exigem código vão para a fila da ponte (ponte_pedidos), que o Claude Code implementa.
+    Davi (12/11): "tudo que for desta complexidade vai para a fila e é implementado" — entram já aprovados."""
+    abertos = []
+    for x in pedidos:
+        titulo = str(x["titulo"]).strip()[:160]
+        q.execute("SELECT 1 FROM public.ponte_pedidos WHERE origem = 'gabriela' AND titulo = %s AND status IN ('pendente', 'em_andamento', 'aguardando_aprovacao')", (titulo,))
+        if q.fetchone():
+            continue
+        q.execute("""INSERT INTO public.ponte_pedidos (origem, titulo, descricao, prioridade, requer_aprovacao, aprovado)
+                     VALUES ('gabriela', %s, %s, 'normal', true, true)""",
+                  (titulo, "Pedido do Davi à Gabriela (agente do WhatsApp, X1 do quiz). " + str(x["descricao"]).strip()[:6000]))
+        abertos.append(titulo)
+        log("agente: pedido de sistema na fila —", titulo)
+    return abertos
 
 
 def atender(rodar_claude, log=print):
@@ -158,7 +178,10 @@ def atender(rodar_claude, log=print):
             q.execute("UPDATE public.agente_whatsapp_pedidos SET status='respondido', resposta=%s, respondido_em=now() WHERE id=%s", (texto.strip(), p["id"]))
             log("agente: simulação respondida")
         else:
-            resposta, config = extrair(texto)
+            resposta, config, pedidos = extrair(texto)
+            abertos = abrir_pedidos(q, pedidos, log)
+            if abertos:
+                resposta += "\n\n🛠 Na fila de desenvolvimento: " + "; ".join(abertos)
             q.execute("UPDATE public.agente_whatsapp_pedidos SET status='respondido', resposta=%s, config=%s::jsonb, respondido_em=now() WHERE id=%s",
                       (resposta, json.dumps(config, ensure_ascii=False) if config else None, p["id"]))
             log("agente: respondido" + ("" if config else " (só conversa)"))
