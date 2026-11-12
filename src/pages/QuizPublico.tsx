@@ -56,7 +56,13 @@ export default function QuizPublico() {
   const sessao = useRef<string>("");
   if (!sessao.current) {
     const chave = `quiz-sessao:${slug}`;
-    try { sessao.current = sessionStorage.getItem(chave) || crypto.randomUUID(); sessionStorage.setItem(chave, sessao.current); }
+    try {
+      // Entrou por um link com OUTRA marca (outro afiliado/origem) na mesma aba: é uma visita nova, para a marca antiga não se misturar com a nova.
+      const daUrl = utmDaUrl(window.location.search);
+      const guardada = sessionStorage.getItem(`quiz-utm:${slug}`);
+      const trocou = Object.keys(daUrl).length > 0 && guardada !== null && guardada !== JSON.stringify(daUrl);
+      sessao.current = (!trocou && sessionStorage.getItem(chave)) || crypto.randomUUID(); sessionStorage.setItem(chave, sessao.current);
+    }
     catch { sessao.current = crypto.randomUUID(); }
   }
   // Origem do clique (UTM): vem no link e fica guardada nesta aba; vai junto da visita, do lead e do botão de compra.
@@ -67,6 +73,16 @@ export default function QuizPublico() {
       if (Object.keys(da).length) { sessionStorage.setItem(chave, JSON.stringify(da)); return da; }
       return JSON.parse(sessionStorage.getItem(chave) || "{}") as Utm;
     } catch { return da; }
+  })());
+  // @ do Instagram de quem veio pelo comentário (a automação põe ?ig=<usuário> no link). Fica guardado nesta aba, como a UTM.
+  const instagram = useRef<string | null>((() => {
+    const chave = `quiz-ig:${slug}`;
+    const valido = (v: string | null) => (v && /^[A-Za-z0-9._]{1,30}$/.test(v) ? v : null);
+    try {
+      const da = valido(new URLSearchParams(window.location.search).get("ig"));
+      if (da) { sessionStorage.setItem(chave, da); return da; }
+      return valido(sessionStorage.getItem(chave));
+    } catch { return null; }
   })());
   const estrutura = useMemo(() => (quiz ? propagarUtm(quiz.estrutura, utm.current) : null), [quiz]);
   const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number) => {
@@ -90,7 +106,7 @@ export default function QuizPublico() {
             const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: q.opcoes[escolhas[q.id]]?.texto ?? null }));
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,
-              p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current, p_sessao: sessao.current,
+              p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current, p_sessao: sessao.current, p_instagram: instagram.current,
             } as never);
             registrar("fim");
           }} />

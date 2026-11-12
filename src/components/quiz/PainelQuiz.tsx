@@ -15,6 +15,7 @@ import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizR
 import { X1Quiz } from "./X1Quiz";
 import { AgenteX1 } from "./AgenteX1";
 import { VendasUtm } from "./VendasUtm";
+import { AfiliadosQuiz } from "./AfiliadosQuiz";
 import { Funil } from "./FunilConversao";
 import type { VendaUtm as VendaCompleta } from "@/lib/quiz/vendasUtm";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
@@ -27,8 +28,8 @@ import {
 // tendência, funil, maior abandono, insight, leads e visitas por dia), Leads (busca, filtro, status, planilha),
 // Respostas (o que as pessoas escolheram em cada pergunta), Funil e Configurações. Sempre escuro, como o editor.
 const db = supabase as unknown as SupabaseClient;
-type Aba = "metricas" | "leads" | "x1" | "vendas" | "respostas" | "funil" | "links" | "config";
-const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["x1", "X1", MessageCircle], ["vendas", "Vendas", DollarSign], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["config", "Configurações", Settings]];
+type Aba = "metricas" | "leads" | "x1" | "vendas" | "respostas" | "funil" | "links" | "afiliados" | "config";
+const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["x1", "X1", MessageCircle], ["vendas", "Vendas", DollarSign], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["afiliados", "Afiliados", Users], ["config", "Configurações", Settings]];
 const STATUS: Record<StatusLead, { rotulo: string; cor: string }> = {
   novo: { rotulo: "Novo", cor: "border-sky-400/50 bg-sky-500/15 text-sky-200" },
   em_contato: { rotulo: "Em contato", cor: "border-violet-400/50 bg-violet-500/15 text-violet-200" },
@@ -145,6 +146,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
+      {aba === "afiliados" && <AfiliadosQuiz quizId={quiz.id} slug={slug} estrutura={estrutura} eventos={eventos ?? []} leads={leads} vendas={vendas} />}
       {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
       {aba === "config" && <Config quiz={{ ...quiz, slug }} total={leads.length} />}
     </div>
@@ -527,6 +529,9 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
     if (!f.nome.trim() || !clienteId) return;
     const origem = normalizarUtm(f.origem);
     if (!origem) { toast.error("Escolha a origem (instagram, tiktok…)"); return; }
+    // Dois links com a mesma origem/meio/campanha/conteúdo contariam as MESMAS visitas e vendas (e cada um mostraria o total dos dois).
+    const igual = (links ?? []).find((x) => x.utm_source === origem && (x.utm_medium ?? "") === (normalizarUtm(f.meio) || "") && (x.utm_campaign ?? "") === (normalizarUtm(f.campanha || f.nome) || "") && (x.utm_content ?? "") === (normalizarUtm(f.conteudo) || ""));
+    if (igual) { toast.error(`Já existe o link “${igual.nome}” com a mesma origem, meio e campanha: os números dos dois se misturariam. Mude a campanha ou o conteúdo.`); return; }
     const { data: criado, error } = await db.from("quiz_links").insert({
       quiz_id: quizId, cliente_id: clienteId, nome: f.nome.trim(), utm_source: origem, utm_medium: normalizarUtm(f.meio) || null,
       utm_campaign: normalizarUtm(f.campanha || f.nome) || null, utm_content: normalizarUtm(f.conteudo) || null,

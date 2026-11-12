@@ -118,3 +118,22 @@ test('Eduzz real (exemplo do Developer Hub): fatura paga usa price.paid, buyer e
     customer: { name: 'John', email: 'j@x.com' }, transactionId: 'T1', paymentMethod: 'creditcard' } }, agora);
   assert.deepEqual([a.tipo, a.transacao_id, a.utm_source, a.utm_campaign, a.comprador_nome], ['abandono', 'T1', 'google', 'summer', 'John']);
 });
+
+test('Eduzz nova: a UTM vem no objeto utm (source/medium/campaign/content) e o utm_content do afiliado chega até a venda', () => {
+  const e = interpretarWebhook({
+    event: 'myeduzz.invoice_paid', id: 'x',
+    data: { id: '152', status: 'paid', utm: { source: 'afiliado', medium: 'link', campaign: 'instalivros', content: 'aff_maria1', term: null },
+      buyer: { email: 'comprador@example.com', name: 'Comprador Teste' }, price: { value: 137 }, paid: { createdAt: '2026-11-12T10:00:00.000Z' } },
+  }, agora);
+  assert.ok(e, 'interpretou');
+  assert.equal(e.utm_content, 'aff_maria1');
+  assert.equal(e.utm_source, 'afiliado');
+  assert.equal(e.utm_campaign, 'instalivros');
+  assert.equal(e.comprador_email, 'comprador@example.com');
+});
+
+test('Eduzz com utm nulo não inventa origem', () => {
+  const e = interpretarWebhook({ event: 'myeduzz.invoice_paid', id: 'y', data: { id: '1', status: 'paid', utm: null, buyer: { email: 'a@b.co' }, price: { value: 10 } } }, agora);
+  assert.ok(e);
+  assert.equal(e.utm_content, undefined);
+});

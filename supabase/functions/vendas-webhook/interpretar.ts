@@ -57,6 +57,22 @@ function achar(obj: Json, chave: RegExp, profundidade = 0): string | undefined {
   return undefined;
 }
 
+/** Eduzz nova: a UTM vem num objeto `utm` ({source, medium, campaign, content, term}); as demais plataformas mandam utm_source etc. soltos. */
+function utmEmObjeto(obj: Json, profundidade = 0): Record<string, string> | undefined {
+  if (!obj || typeof obj !== "object" || profundidade > 4) return undefined;
+  const u = (obj as Record<string, Json>).utm;
+  if (u && typeof u === "object" && !Array.isArray(u)) {
+    const r: Record<string, string> = {};
+    for (const nome of ["source", "medium", "campaign", "content", "term"]) {
+      const v = u[nome] ?? u[`utm_${nome}`];
+      if ((typeof v === "string" || typeof v === "number") && String(v).trim()) r[nome] = String(v).trim();
+    }
+    if (Object.keys(r).length) return r;
+  }
+  for (const v of Object.values(obj)) { const r = utmEmObjeto(v, profundidade + 1); if (r) return r; }
+  return undefined;
+}
+
 /** Origem, comprador e pagamento: os nomes mudam de plataforma para plataforma, então procura por padrão. */
 function extras(corpo: Json): Partial<EventoVenda> {
   const e: Partial<EventoVenda> = {
@@ -69,6 +85,10 @@ function extras(corpo: Json): Partial<EventoVenda> {
     comprador_nome: achar(corpo, /^(cus_|customer_|buyer_)?(full_?)?name$|^nome$/i),
     metodo_pagamento: achar(corpo, /^payment_?(method|type)$|^paymentMethod$|^trans_paymentmethod$|^forma_?pagamento$/i),
   };
+  const obj = utmEmObjeto(corpo);
+  if (obj) {
+    e.utm_source ??= obj.source; e.utm_medium ??= obj.medium; e.utm_campaign ??= obj.campaign; e.utm_content ??= obj.content; e.utm_term ??= obj.term;
+  }
   // O nome do comprador pode bater com o nome do produto: só vale se estiver junto de um e-mail de comprador.
   if (!e.comprador_email) delete e.comprador_nome;
   for (const k of Object.keys(e) as (keyof EventoVenda)[]) if (e[k] === undefined) delete e[k];
