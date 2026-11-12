@@ -179,7 +179,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
-    <div className="grid h-[calc(100svh-230px)] min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]">
+    <div className="grid h-[calc(100svh-560px)] min-h-[440px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]">
       {dialogoConexao}
       {/* Filas */}
       <aside className="flex flex-col gap-1 border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">

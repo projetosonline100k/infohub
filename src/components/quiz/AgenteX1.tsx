@@ -94,10 +94,10 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       historico: (tipo === "construir" && modo === "simular" ? msgs.construir : hist).filter((h, i) => i > 0 || tipo !== "construir").map((h) => ({ papel: h.papel, texto: h.texto })),
     }).select("id").single();
     if (error || !data) { setEsperando(false); toast.error("Não consegui enviar"); return; }
-    await aguardar((data as { id: string }).id, modo, tipo, clienteId);
+    await aguardar((data as { id: string }).id, modo, tipo, clienteId, ehAjuste(t));
   };
 
-  async function aguardar(id: string, modo: "construir" | "simular", tipo: "construir" | "simular", clienteId: string) {
+  async function aguardar(id: string, modo: "construir" | "simular", tipo: "construir" | "simular", clienteId: string, ajuste = false) {
     setEsperando(true);
     for (let i = 0; i < 330; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -109,6 +109,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           const novo = sanitizarAgente(r.config, configRef.current);
           setConfig(novo);
           gravar(novo, clienteId);
+          if (ajuste) toast.success("Aprendi e gravei na inteligência");
         }
         setEsperando(false);
         return;
@@ -120,13 +121,12 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   }
 
   const zerar = async () => {
-    if (!clienteId || !window.confirm(modo === "construir" ? "Zerar a conversa de montagem? A inteligência ao lado continua como está." : "Zerar a conversa de teste?")) return;
+    if (!clienteId) return;   // sem confirmação: o histórico fica guardado e a inteligência ao lado não muda
     const agora = new Date().toISOString();
     setZerados((z) => ({ ...z, [modo]: agora }));
     setMsgs((m) => ({ ...m, [modo]: modo === "construir" ? [{ papel: "assistant", texto: AJUDA }] : [] }));
     const { error } = await db.from("agentes_whatsapp").upsert({ cliente_id: clienteId, [modo === "construir" ? "zerado_construir_em" : "zerado_simular_em"]: agora });
     if (error) { toast.error("Não consegui zerar"); return; }
-    if (modo === "simular") { setTimeout(() => void enviar(true), 0); }   // o agente já abre a conversa, como ao abordar o lead
   };
 
   if (!config) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
@@ -146,7 +146,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const P = config.produto;
 
   return (
-    <div className="grid h-[calc(100svh-230px)] min-h-[560px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid h-[calc(100svh-560px)] min-h-[440px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <section className="flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-1 border-b border-white/10 bg-[#111b21] p-2">
           {([["construir", "Montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (
@@ -158,7 +158,12 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           )}
         </div>
         <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-          {modo === "simular" && lista.length === 0 && <p className="rounded-xl bg-white/5 p-3 text-sm text-white/60">Faça o papel do lead: escreva como ele escreveria (&quot;oi, vi o quiz, quanto custa?&quot;) e veja como o agente responde com o que você montou. {!prontoParaUsar(config) && "A inteligência ainda está incompleta: as respostas podem ficar vagas."}</p>}
+          {modo === "simular" && lista.length === 0 && !esperando && (
+            <div className="space-y-3 rounded-xl bg-white/5 p-4 text-sm text-white/65">
+              <p>Faça o papel do lead: escreva como ele escreveria (&quot;oi, vi o quiz, quanto custa?&quot;) e veja como o agente responde. {!prontoParaUsar(config) && "A inteligência ainda está incompleta: as respostas podem ficar vagas."}</p>
+              <button type="button" onClick={() => void enviar(true)} className="rounded-lg bg-emerald-500 px-3 py-1.5 font-semibold text-black hover:bg-emerald-400">Fazer o agente me abordar</button>
+            </div>
+          )}
           {lista.map((m, i) => {
             const meu = m.papel === "user" || m.papel === "lead";
             return <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", meu ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>{m.texto}</div>;
@@ -166,6 +171,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Pensando…</div>}
           <div ref={fim} />
         </div>
+        {ehAjuste(texto) && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste: o agente vai aprender isso e gravar na inteligência ao lado.</p>}
         <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
           <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
             placeholder={modo === "construir" ? "Conte sobre o produto, as ofertas, o que o agente pode e não pode…" : "Escreva como o lead… (ou [ajuste] … para ensinar o agente)"} className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
