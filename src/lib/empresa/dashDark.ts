@@ -41,25 +41,26 @@ export const tituloCurto = (titulo: string, perfil?: string) => {
 export type ContagemEsteira = Record<Exclude<EtapaEsteira, "cancelado">, number> & { total: number };
 const zero = (): ContagemEsteira => ({ fila: 0, criando: 0, edicao: 0, revisao: 0, pronto: 0, programado: 0, postado: 0, total: 0 });
 
-export interface LinhaPerfil { cliente_id: string; perfil: string; videos: (EdicaoDark & { etapa: EtapaEsteira })[]; ativos: number; programados: number; ultimo: string }
+export interface LinhaPerfil { id: string; cliente_id: string | null; perfil: string; videos: (EdicaoDark & { etapa: EtapaEsteira })[]; ativos: number; programados: number; ultimo: string }
+export interface PerfilBase { id: string; perfil: string; cliente_id: string | null }
 
-/** `perfisBase`: os perfis cadastrados no dash; entram na esteira mesmo sem nenhum vídeo ainda, e só vídeos desses perfis contam. */
-export function resumirEsteira(edicoesTodas: EdicaoDark[], hoje: string, perfisBase?: { cliente_id: string; perfil: string }[]) {
+/** `perfisBase`: os perfis criados no dash (cada um pode estar ligado a um projeto, `cliente_id`). Aparecem mesmo sem vídeo, e as edições dark entram no perfil ligado ao projeto delas. */
+export function resumirEsteira(edicoes: EdicaoDark[], hoje: string, perfisBase: PerfilBase[] = []) {
   const geral = zero();
-  const por = new Map<string, LinhaPerfil>();
-  const edicoes = perfisBase ? edicoesTodas.filter((e) => perfisBase.some((p) => p.cliente_id === e.cliente_id)) : edicoesTodas;
-  for (const p of perfisBase ?? []) por.set(p.cliente_id, { cliente_id: p.cliente_id, perfil: p.perfil, videos: [], ativos: 0, programados: 0, ultimo: "" });
+  const por = new Map<string, LinhaPerfil>(perfisBase.map((p) => [p.id, { id: p.id, cliente_id: p.cliente_id, perfil: p.perfil, videos: [], ativos: 0, programados: 0, ultimo: "" }]));
+  const dono = new Map<string, string>();   // projeto → perfil (o primeiro perfil ligado a ele)
+  for (const p of perfisBase) if (p.cliente_id && !dono.has(p.cliente_id)) dono.set(p.cliente_id, p.id);
   for (const e of edicoes) {
+    const perfilId = dono.get(e.cliente_id);
+    if (!perfilId) continue;   // edição de um projeto que não está ligado a nenhum perfil: fora da esteira
     const etapa = etapaEsteira(e, hoje);
     if (etapa === "cancelado") continue;
     geral[etapa]++; geral.total++;
     if (etapa === "postado") continue;   // postado já saiu da esteira
-    const l = por.get(e.cliente_id) ?? { cliente_id: e.cliente_id, perfil: e.perfil, videos: [], ativos: 0, programados: 0, ultimo: e.atualizado_em };
-    if (!l.ultimo) l.ultimo = e.atualizado_em;
+    const l = por.get(perfilId)!;
     l.videos.push({ ...e, etapa }); l.ativos++;
     if (etapa === "programado") l.programados++;
-    if (e.atualizado_em > l.ultimo) l.ultimo = e.atualizado_em;
-    por.set(e.cliente_id, l);
+    if (!l.ultimo || e.atualizado_em > l.ultimo) l.ultimo = e.atualizado_em;
   }
   const rank = (e: { etapa: EtapaEsteira }) => ORDEM_ETAPAS.indexOf(e.etapa as never);
   for (const l of por.values()) l.videos.sort((a, b) => rank(a) - rank(b) || b.atualizado_em.localeCompare(a.atualizado_em));
@@ -86,4 +87,30 @@ export function atividadeRecente(edicoes: EdicaoDark[], hoje: string, n = 6): At
 export function prontosParados(edicoes: EdicaoDark[], hoje: string, agora: Date, dias = 7) {
   const limite = agora.getTime() - dias * 86400000;
   return edicoes.filter((e) => etapaEsteira(e, hoje) === "pronto" && new Date(e.atualizado_em).getTime() < limite).length;
+}
+
+
+// ---------------------------------------------------------------- Estilo do vídeo do perfil
+
+/** O que o Davi cadastra ao clicar no perfil: como é o vídeo que esse perfil vai fazer (o Lauro/Danilo leem daqui). */
+export interface EstiloDark {
+  descricao: string; publico: string; duracao: string; gancho: string; estrutura: string; narracao: string;
+  visual: string; musica: string; cta: string; regras: string; referencias: string[]; observacoes: string;
+}
+export const estiloVazio = (): EstiloDark => ({ descricao: "", publico: "", duracao: "", gancho: "", estrutura: "", narracao: "", visual: "", musica: "", cta: "", regras: "", referencias: [], observacoes: "" });
+
+const txt = (v: unknown, max = 4000) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+export function sanitizarEstilo(bruto: unknown): EstiloDark {
+  const b = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
+  const e = estiloVazio();
+  for (const k of Object.keys(e) as (keyof EstiloDark)[]) if (k !== "referencias") e[k] = txt(b[k], k === "duracao" ? 80 : 4000) as never;
+  e.referencias = (Array.isArray(b.referencias) ? b.referencias : []).map((r) => txt(r, 500)).filter(Boolean).slice(0, 30);
+  return e;
+}
+
+/** Quanto do estilo já está cadastrado (8 itens essenciais) e o que falta. */
+export function completudeEstilo(e: EstiloDark) {
+  const itens: [string, boolean][] = [["a ideia do vídeo", !!e.descricao], ["o gancho", !!e.gancho], ["a estrutura do roteiro", !!e.estrutura], ["a narração", !!e.narracao],
+    ["o visual", !!e.visual], ["a música e os efeitos", !!e.musica], ["o fechamento", !!e.cta], ["as regras", !!e.regras]];
+  return { feitos: itens.filter(([, ok]) => ok).length, total: itens.length, faltando: itens.filter(([, ok]) => !ok).map(([n]) => n) };
 }

@@ -2,13 +2,13 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowRight, BarChart3, Plus, Search, X, CalendarDays, CheckCircle2, ChevronDown, Clock, Layers, ListChecks, Loader2, MessageCircle, Pencil, Play, Settings, Sparkles, UserRound, UserSearch, Users } from "lucide-react";
+import { ArrowRight, BarChart3, Plus, CalendarDays, CheckCircle2, ChevronDown, Clock, Layers, ListChecks, Loader2, MessageCircle, Pencil, Play, Settings, Sparkles, UserRound, UserSearch, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { confirmar } from "@/components/DialogosGlobais";
+import { EstiloPerfilDark, type PerfilDark } from "./EstiloPerfilDark";
 import {
-  atividadeRecente, ordenarPerfis, prontosParados, resumirEsteira, ROTULO_ETAPA, tituloCurto,
+  atividadeRecente, completudeEstilo, ordenarPerfis, sanitizarEstilo, prontosParados, resumirEsteira, ROTULO_ETAPA, tituloCurto,
   type EdicaoDark, type EtapaEsteira, type OrdemPerfis,
 } from "@/lib/empresa/dashDark";
 import type { MembroResumo } from "@/lib/empresa/visaoGeral";
@@ -51,26 +51,27 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
   const [erro, setErro] = useState(false);
   const [ordem, setOrdem] = useState<OrdemPerfis>("nome");
   const [historico, setHistorico] = useState(false);
-  const [cadastrados, setCadastrados] = useState<{ cliente_id: string; perfil: string }[]>([]);
+  const [cadastrados, setCadastrados] = useState<PerfilDark[]>([]);
+  const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
+  const [nomeNovo, setNomeNovo] = useState("");
+  const [criandoPerfil, setCriandoPerfil] = useState(false);
   const [recarga, setRecarga] = useState(0);
   const [novoAberto, setNovoAberto] = useState(false);
-  const [projetos, setProjetos] = useState<{ id: string; nome_especialista: string }[] | null>(null);
-  const [buscaProjeto, setBuscaProjeto] = useState("");
 
   useEffect(() => {
     if (!aberto || !membro) return;
     let vivo = true;
     setEdicoes(null); setErro(false); setHistorico(false);
     (async () => {
-      // Só os projetos cadastrados no dash entram na esteira (Davi, 12/11: "tira os dois perfis, eu vou cadastrar novos").
-      const { data: reg, error: erroReg } = await db.from("esteira_dark_perfis").select("cliente_id, clientes(nome_especialista)").order("criado_em");
+      // Os perfis do dash são criados aqui (Davi, 12/11: "criar do zero"); os vídeos de um perfil vêm do projeto ligado a ele, se tiver.
+      const { data: reg, error: erroReg } = await db.from("esteira_dark_perfis").select("id, nome, arroba, cliente_id, estilo").order("criado_em");
       if (!vivo) return;
       if (erroReg) { setErro(true); return; }
-      const perfisReg = ((reg || []) as unknown as { cliente_id: string; clientes: { nome_especialista: string } | { nome_especialista: string }[] | null }[])
-        .map((r) => ({ cliente_id: r.cliente_id, perfil: (Array.isArray(r.clientes) ? r.clientes[0] : r.clientes)?.nome_especialista ?? "Sem nome" }));
+      const perfisReg = (reg || []) as PerfilDark[];
       setCadastrados(perfisReg);
-      const { data: eds, error } = perfisReg.length
-        ? await db.from("edicoes_video").select("id, titulo, status, cliente_id, criado_em, atualizado_em, video_vertical_id").eq("formato", "dark").in("cliente_id", perfisReg.map((p) => p.cliente_id)).order("atualizado_em", { ascending: false })
+      const ligados = [...new Set(perfisReg.map((p) => p.cliente_id).filter((x): x is string => !!x))];
+      const { data: eds, error } = ligados.length
+        ? await db.from("edicoes_video").select("id, titulo, status, cliente_id, criado_em, atualizado_em, video_vertical_id").eq("formato", "dark").in("cliente_id", ligados).order("atualizado_em", { ascending: false })
         : { data: [], error: null };
       if (!vivo) return;
       if (error) { setErro(true); return; }
@@ -96,26 +97,19 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
   }, [aberto, membro, recarga]);
 
   const hoje = hojeBrasilia();
-  const resumo = useMemo(() => (edicoes ? resumirEsteira(edicoes, hoje, cadastrados) : null), [edicoes, hoje, cadastrados]);
+  const resumo = useMemo(() => (edicoes ? resumirEsteira(edicoes, hoje, cadastrados.map((p) => ({ id: p.id, perfil: p.nome, cliente_id: p.cliente_id }))) : null), [edicoes, hoje, cadastrados]);
   const perfis = useMemo(() => (resumo ? ordenarPerfis(resumo.porPerfil, ordem) : []), [resumo, ordem]);
   const parados = edicoes ? prontosParados(edicoes, hoje, new Date()) : 0;
   const atividade = useMemo(() => (edicoes ? atividadeRecente(edicoes, hoje, historico ? 30 : 5) : []), [edicoes, hoje, historico]);
-  const abrirNovo = async () => {
-    setNovoAberto(true); setBuscaProjeto("");
-    const { data } = await db.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista");
-    setProjetos((data || []) as { id: string; nome_especialista: string }[]);
-  };
-  const cadastrar = async (id: string) => {
-    const { error } = await db.from("esteira_dark_perfis").insert({ cliente_id: id });
-    if (error) { toast.error("Não consegui cadastrar o perfil"); return; }
-    setNovoAberto(false); setRecarga((n) => n + 1);
-    toast.success("Perfil cadastrado na esteira");
-  };
-  const tirar = async (id: string, nome: string) => {
-    if (!(await confirmar(`Tirar ${nome} da esteira?`, { descricao: "Só some deste dash: o projeto e os vídeos dele continuam como estão, e você pode cadastrar de novo quando quiser.", botao: "Tirar" }))) return;
-    const { error } = await db.from("esteira_dark_perfis").delete().eq("cliente_id", id);
-    if (error) { toast.error("Não consegui tirar o perfil"); return; }
-    setRecarga((n) => n + 1);
+  const criarPerfil = async () => {
+    const nome = nomeNovo.trim();
+    if (!nome || criandoPerfil) return;
+    setCriandoPerfil(true);
+    const { data, error } = await db.from("esteira_dark_perfis").insert({ nome: nome.slice(0, 80) }).select("id").single();
+    setCriandoPerfil(false);
+    if (error || !data) { toast.error(/duplicate|unique|23505/i.test(`${error?.message} ${error?.code}`) ? "Já existe um perfil com esse nome." : "Não consegui criar o perfil"); return; }
+    setNovoAberto(false); setNomeNovo(""); setRecarga((n) => n + 1);
+    setPerfilAberto((data as { id: string }).id);   // já abre a ficha para cadastrar o estilo do vídeo
   };
   const emAndamento = resumo ? resumo.geral.fila + resumo.geral.criando + resumo.geral.edicao + resumo.geral.revisao : 0;
 
@@ -129,7 +123,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
             <div className="flex flex-wrap items-center gap-3">
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/30"><Play className="h-7 w-7" /></span>
               <div className="min-w-0 flex-1"><DialogTitle className="text-3xl font-bold tracking-tight">Vídeos Dark</DialogTitle><p className="text-sm text-white/55">Esteira dinâmica de produção por perfil.</p></div>
-              <button type="button" onClick={() => void abrirNovo()} className="flex items-center gap-1.5 rounded-xl bg-[#f3c98b] px-3.5 py-2 text-sm font-bold text-black hover:brightness-105"><Plus className="h-4 w-4" />Novo perfil</button>
+              <button type="button" onClick={() => { setNomeNovo(""); setNovoAberto(true); }} className="flex items-center gap-1.5 rounded-xl bg-[#f3c98b] px-3.5 py-2 text-sm font-bold text-black hover:brightness-105"><Plus className="h-4 w-4" />Novo perfil</button>
               <button type="button" onClick={onConversar} className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2 text-sm font-medium text-white/80 hover:bg-white/10"><MessageCircle className="h-4 w-4" />Conversar com o {membro?.nome}</button>
             </div>
 
@@ -151,17 +145,17 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
                       <option value="nome" className="bg-[#0a1520]">Nome do perfil</option><option value="videos" className="bg-[#0a1520]">Mais vídeos</option><option value="recente" className="bg-[#0a1520]">Mais recente</option>
                     </select></label>
                 </div>
-                {perfis.length === 0 ? <p className="mt-6 rounded-xl bg-white/5 p-8 text-center text-sm text-white/50">{cadastrados.length === 0 ? "Nenhum perfil cadastrado ainda. Clique em “Novo perfil” e escolha o projeto que entra na esteira." : "Nenhum vídeo dark na esteira agora."}</p> : (
+                {perfis.length === 0 ? <p className="mt-6 rounded-xl bg-white/5 p-8 text-center text-sm text-white/50">{cadastrados.length === 0 ? "Nenhum perfil cadastrado ainda. Clique em “Novo perfil”, dê um nome e cadastre o estilo do vídeo dele." : "Nenhum vídeo dark na esteira agora."}</p> : (
                   <div className="mt-3 space-y-3">
                     {perfis.map((p) => {
                       const cartoes = p.videos.slice(0, MAX_CARTOES), resto = p.videos.length - cartoes.length;
                       return (
-                        <div key={p.cliente_id} className="flex items-stretch gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                        <div key={p.id} className="flex items-stretch gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
                           <div className="flex w-36 shrink-0 flex-col justify-center gap-1">
                             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/30"><UserRound className="h-5 w-5" /></span>
-                            <div className="flex items-center gap-1"><p className="min-w-0 flex-1 truncate text-lg font-bold" title={p.perfil}>{p.perfil}</p>
-                              <button type="button" onClick={() => void tirar(p.cliente_id, p.perfil)} title="Tirar da esteira" className="shrink-0 rounded p-0.5 text-white/35 hover:bg-white/10 hover:text-rose-300"><X className="h-3.5 w-3.5" /></button></div>
+                            <button type="button" onClick={() => setPerfilAberto(p.id)} title="Abrir o perfil e cadastrar o estilo do vídeo" className="min-w-0 truncate text-left text-lg font-bold hover:text-amber-200 hover:underline">{p.perfil}</button>
                             <p className="text-xs text-white/50">{p.ativos} {p.ativos === 1 ? "vídeo" : "vídeos"} na esteira</p>
+                            {(() => { const c = completudeEstilo(sanitizarEstilo(cadastrados.find((x) => x.id === p.id)?.estilo)); return <button type="button" onClick={() => setPerfilAberto(p.id)} className={cn("self-start rounded-full px-2 py-0.5 text-[11px] font-semibold", c.feitos === c.total ? "bg-emerald-500/20 text-emerald-300" : c.feitos === 0 ? "bg-amber-500/20 text-amber-300" : "bg-white/10 text-white/70")}>{c.feitos === 0 ? "Cadastrar estilo" : `Estilo ${c.feitos}/${c.total}`}</button>; })()}
                           </div>
                           <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1">
                             {cartoes.map((v, i) => {
@@ -176,6 +170,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
                                 </Fragment>
                               );
                             })}
+                            {cartoes.length === 0 && <span className="px-2 text-xs text-white/40">Ainda sem vídeos neste perfil.</span>}
                             {resto > 0 && <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs text-white/60">+{resto}</span>}
                             <span className="mx-1 h-14 shrink-0 border-l border-dashed border-white/25" />
                             <div className="flex w-28 shrink-0 flex-col items-center justify-center gap-0.5 self-stretch rounded-xl border border-cyan-400/50 bg-cyan-500/10 p-2 text-center">
@@ -234,19 +229,14 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
         )}
       </DialogContent>
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
-        <DialogContent className="dark max-h-[80vh] max-w-md overflow-y-auto border-white/10 bg-[#0c1b27] text-white">
-          <DialogHeader><DialogTitle>Novo perfil na esteira</DialogTitle><DialogDescription className="text-white/55">Escolha o projeto. Os vídeos dark dele passam a aparecer aqui.</DialogDescription></DialogHeader>
-          <div className="relative"><Search className="absolute left-3 top-2.5 h-4 w-4 text-white/45" /><input autoFocus value={buscaProjeto} onChange={(e) => setBuscaProjeto(e.target.value)} placeholder="Buscar projeto…" className="w-full rounded-xl border border-white/15 bg-transparent py-2 pl-9 pr-3 text-sm outline-none focus:border-amber-200/60" /></div>
-          {!projetos ? <Loader2 className="mx-auto my-6 h-5 w-5 animate-spin text-white/50" /> : (
-            <ul className="space-y-1">
-              {projetos.filter((c) => !cadastrados.some((x) => x.cliente_id === c.id) && c.nome_especialista.toLowerCase().includes(buscaProjeto.trim().toLowerCase())).map((c) => (
-                <li key={c.id}><button type="button" onClick={() => void cadastrar(c.id)} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-white/10"><UserRound className="h-4 w-4 text-cyan-300" />{c.nome_especialista}</button></li>
-              ))}
-              {projetos.length === 0 && <li className="py-4 text-center text-sm text-white/50">Nenhum projeto cadastrado.</li>}
-            </ul>
-          )}
+        <DialogContent className="dark max-w-sm border-white/10 bg-[#0c1b27] text-white">
+          <DialogHeader><DialogTitle>Novo perfil</DialogTitle><DialogDescription className="text-white/55">Dê um nome. Depois você abre o perfil e cadastra o estilo do vídeo dele.</DialogDescription></DialogHeader>
+          <input autoFocus value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void criarPerfil(); }} placeholder="Nome do perfil" className="w-full rounded-xl border border-white/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-200/60" />
+          <button type="button" disabled={!nomeNovo.trim() || criandoPerfil} onClick={() => void criarPerfil()} className="flex items-center justify-center gap-2 rounded-xl bg-[#f3c98b] py-2.5 text-sm font-bold text-black disabled:opacity-40">{criandoPerfil ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Criar perfil</button>
         </DialogContent>
       </Dialog>
+      <EstiloPerfilDark perfil={cadastrados.find((p) => p.id === perfilAberto) ?? null} onFechar={() => { setPerfilAberto(null); setRecarga((n) => n + 1); }} onMudou={() => undefined}
+        onApagado={() => { setPerfilAberto(null); setRecarga((n) => n + 1); }} />
     </Dialog>
   );
 }
