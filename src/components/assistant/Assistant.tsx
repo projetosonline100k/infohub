@@ -15,6 +15,7 @@ import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { AssistantOrb } from "./AssistantOrb";
 import { AssistantPanel } from "./AssistantPanel";
 import { JarvisNotificationCard } from "./JarvisNotificationCard";
+import { useSaudePc } from "@/hooks/useSaudePc";
 import { AssistantHourAlert } from "./AssistantHourAlert";
 import { AssistantFocusPrompt } from "./AssistantFocusPrompt";
 import { AssistantOvertimeCard } from "./AssistantOvertimeCard";
@@ -1127,7 +1128,18 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // pendente — a notificação aparece flutuando sobre o painel (já cabe
   // dentro dos 460x620), nunca troca a janela pra modo notification com o
   // painel aberto (item 6 do pedido).
+  // Saúde do Mac (12/11, Davi: "a orbe fica amarela/vermelha quando o PC for sobrecarregar; passando o mouse, avisa"): só na janela da orbe, no Mac.
+  const saudePc = useSaudePc(variant === "window" && isDesktop() && /Mac/i.test(navigator.platform || navigator.userAgent));
+  const [orbeHover, setOrbeHover] = useState(false);
+  const hoverTimer = useRef<number | null>(null);
+  const passouMouse = (dentro: boolean) => {   // pequena folga ao sair: a janela muda de tamanho quando o aviso abre
+    if (hoverTimer.current) window.clearTimeout(hoverTimer.current);
+    if (dentro) setOrbeHover(true);
+    else hoverTimer.current = window.setTimeout(() => setOrbeHover(false), 900);
+  };
+  const mostrarSaude = variant === "window" && !open && orbeHover && saudePc.nivel !== "ok" && saudePc.avisos.length > 0;
   const temBalaoVisivel = !!(
+    mostrarSaude ||
     alarmeAtlas.atual || dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
     priorityOneNudge.mostrar || (variant !== "window" && (!!paraRevisar.atual || !!luaAberta || !!mensagens.atual || !!shirley.atual)) || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
@@ -1274,6 +1286,19 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Rodada 12: extraído numa variável só pra poder ser posicionado
   // diferente por variant (empilhado com a orbe na nativa — ver mais
   // abaixo — vs. flutuando acima dela na embutida, como sempre foi).
+  const saudeJsx = mostrarSaude ? (
+    <JarvisNotificationCard titulo={saudePc.nivel === "critico" ? "Seu Mac está sobrecarregado" : "Seu Mac está ficando pesado"}>
+      <span className="block space-y-1.5">
+        {saudePc.avisos.slice(0, 2).map((a) => (
+          <span key={a.tipo} className="block">
+            <span className={`block text-[12px] font-semibold ${a.nivel === "critico" ? "text-red-500" : "text-amber-500"}`}>{a.titulo}</span>
+            <span className="block text-[11px] leading-snug text-muted-foreground">{a.dica}</span>
+          </span>
+        ))}
+        {saudePc.avisos.length > 2 && <span className="block text-[10px] text-muted-foreground">+{saudePc.avisos.length - 2} {saudePc.avisos.length - 2 === 1 ? "alerta" : "alertas"}</span>}
+      </span>
+    </JarvisNotificationCard>
+  ) : null;
   const notificacaoJsx = alarmeAtlas.atual ? (
     <AlarmeAtlasCard alarme={alarmeAtlas.atual} onResponder={alarmeAtlas.responder} />
   ) : dialogoExcedido && tarefaAtual ? (
@@ -1628,7 +1653,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 sempre visível, com o card OU o painel empilhado por cima
                 dela (nunca os dois juntos: um só aparece com o painel
                 fechado, o outro só com o painel aberto). */}
-            {!open && notificacaoJsx}
+            {!open && (notificacaoJsx || saudeJsx)}
             {open && (
               // min(): nunca maior que a janela (descontando o p-6 e a orbe
               // empilhada embaixo) — se a janela sair menor, o painel encolhe
@@ -1650,6 +1675,9 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 pausado={estado === "pausado"}
                 diaEncerrado={diaEncerrado}
                 voz={estadoVoz}
+                saude={variant === "window" ? saudePc.nivel : null}
+                onMouseEnter={() => passouMouse(true)}
+                onMouseLeave={() => passouMouse(false)}
                 onPointerDown={handleOrbPointerDown}
                 className={alarmeAtlas.atual ? "scale-[1.3] animate-pulse drop-shadow-[0_0_22px_rgba(251,191,36,0.9)]" : undefined}
               />

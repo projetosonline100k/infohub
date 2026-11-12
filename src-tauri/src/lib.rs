@@ -15,6 +15,8 @@ mod global_shortcut;
 #[cfg(target_os = "macos")]
 mod mac_sleep;
 #[cfg(target_os = "macos")]
+mod saude;
+#[cfg(target_os = "macos")]
 mod lembretes;
 #[cfg(target_os = "macos")]
 mod voz;
@@ -89,6 +91,7 @@ pub fn run() {
             focus_monitor::open_accessibility_settings,
             global_shortcut::atalho_encerrar_dia_registrado,
             mac_sleep::dormir_mac,
+            saude::saude_pc,
             lembretes::lembretes_criar_lote,
             lembretes::lembrete_atualizar_dados,
             lembretes::lembrete_remover,

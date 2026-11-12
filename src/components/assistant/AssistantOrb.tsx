@@ -20,6 +20,8 @@ interface AssistantOrbProps extends React.ButtonHTMLAttributes<HTMLButtonElement
   diaEncerrado?: boolean;
   // Modo voz (⌥+Espaço, ver useAssistantVoz): ouvindo / transcrevendo / esperando o Claude.
   voz?: "ouvindo" | "entendendo" | "pensando" | null;
+  // Saúde do Mac (12/11): amarelo = atenção, vermelho = crítico (a orbe esquenta de cor e ganha um halo). null/"ok" = normal.
+  saude?: "ok" | "atencao" | "critico" | null;
 }
 
 // Rodada 7, itens 3/4: isolado num componente memoizado à parte,
@@ -65,7 +67,7 @@ const AssistantOrbGlowFace = memo(function AssistantOrbGlowFace({ pulse, pausado
 // (drop-shadow + leve scale) e a interação (hover no botão externo,
 // arraste via onPointerDown vindo de fora).
 export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
-  ({ open, pulse, ring, pausado, diaEncerrado, voz, className, ...props }, ref) => (
+  ({ open, pulse, ring, pausado, diaEncerrado, voz, saude, className, ...props }, ref) => (
     <button
       ref={ref}
       type="button"
@@ -89,6 +91,16 @@ export const AssistantOrb = forwardRef<HTMLButtonElement, AssistantOrbProps>(
           propósito além do círculo de 60px (ver AssistantOrbRing.tsx). */}
       {ring && <AssistantOrbRing progress={ring.progress} estado={ring.estado} />}
       <AssistantOrbGlowFace pulse={pulse} pausado={pausado || diaEncerrado} />
+      {saude && saude !== "ok" && (
+        <>
+          {/* Troca o ciano pela cor do alerta só nos olhos e no aro (mix-blend "color" mantém o preto do núcleo). */}
+          <span aria-hidden="true" className={cn("pointer-events-none absolute inset-0 rounded-full mix-blend-color transition-colors duration-700", saude === "critico" ? "bg-red-500" : "bg-amber-400")} />
+          <span aria-hidden="true" className={cn(
+            "pointer-events-none absolute -inset-1 rounded-full border-2 transition-colors duration-700",
+            saude === "critico" ? "animate-pulse border-red-500 shadow-[0_0_18px_rgba(239,68,68,0.75)]" : "border-amber-400/90 shadow-[0_0_14px_rgba(251,191,36,0.65)]",
+          )} />
+        </>
+      )}
       {voz && (
         <>
           {/* Ouvindo: a órbita que vibra com a voz (OndaVoz). Os outros estados: o anel de sempre.
