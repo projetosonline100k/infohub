@@ -13,6 +13,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
 import { X1Quiz } from "./X1Quiz";
+import { AgenteX1 } from "./AgenteX1";
 import { VendasUtm } from "./VendasUtm";
 import { Funil } from "./FunilConversao";
 import type { VendaUtm as VendaCompleta } from "@/lib/quiz/vendasUtm";
@@ -75,6 +76,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
     return () => window.clearInterval(t);
   }, [carregar]);
 
+  const [x1Vista, setX1Vista] = useState<"conversas" | "agente">("conversas");
   const estrutura = quiz.estrutura as EstruturaQuiz | null;
   const passos = useMemo<PassoInfo[]>(() => {
     if (!estrutura) return [];
@@ -128,7 +130,18 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
-      {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />}
+      {aba === "x1" && (
+        <div className="space-y-3">
+          <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1 text-sm">
+            {([["conversas", "Conversas"], ["agente", "Inteligência do agente"]] as const).map(([v, r]) => (
+              <button key={v} type="button" onClick={() => setX1Vista(v)} className={cn("rounded-xl px-3.5 py-1.5", x1Vista === v ? "bg-cyan-400/10 font-semibold text-cyan-200" : "text-white/60 hover:text-white")}>{r}</button>
+            ))}
+          </div>
+          {x1Vista === "conversas"
+            ? <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />
+            : <AgenteX1 quizId={quiz.id} titulo={quiz.titulo} perfis={(estrutura?.perfis ?? []).map((p) => p.nome)} />}
+        </div>
+      )}
       {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
