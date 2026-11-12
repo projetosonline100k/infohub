@@ -4,7 +4,7 @@ import { DollarSign, Eye, Filter, MousePointerClick, Percent, Receipt, ShoppingC
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { origens, porcento, type EventoQuiz, type LeadQuiz } from "@/lib/quiz/painel";
+import { origens, porcento, type EstadoCompra, type EventoQuiz, type LeadQuiz } from "@/lib/quiz/painel";
 import { resumoVendas, tabelaPorOrigem, type Pagamento, type VendaUtm } from "@/lib/quiz/vendasUtm";
 
 // Vendas por UTM (12/11/2026, Davi: "uma visualização estilo UTMify"): faturamento, lucro e ROAS por origem, vendas por forma de pagamento e
@@ -15,7 +15,7 @@ const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0
 const moeda = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 const COR_PAGAMENTO: Record<Pagamento, string> = { Pix: "#22d3ee", Cartão: "#3b82f6", Boleto: "#facc15", Outros: "#f87171", "Não informado": "#64748b" };
 
-export function VendasUtm({ quizId, eventos, leads, vendas, dias }: { quizId: string; eventos: EventoQuiz[]; leads: LeadQuiz[]; vendas: VendaUtm[]; dias: number }) {
+export function VendasUtm({ quizId, eventos, leads, estados, vendas, dias }: { quizId: string; eventos: EventoQuiz[]; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; vendas: VendaUtm[]; dias: number }) {
   const [origem, setOrigem] = useState("");
   const [soComOrigem, setSoComOrigem] = useState(false);
   const [invest, setInvest] = useState<Map<string, number>>(new Map());
@@ -43,6 +43,8 @@ export function VendasUtm({ quizId, eventos, leads, vendas, dias }: { quizId: st
   const lucro = faturamento - investimento;
   const roas = investimento > 0 ? faturamento / investimento : null;
   const tot = tabela.reduce((a, l) => ({ visitas: a.visitas + l.visitas, leads: a.leads + l.leads, checkout: a.checkout + l.checkout }), { visitas: 0, leads: 0, checkout: 0 });
+  // O funil é SÓ deste quiz (12/11, Davi): as compras são as dos leads que passaram por ele (ligadas pelo e-mail), não todas as vendas do projeto.
+  const comprasDoQuiz = useMemo(() => leads.filter((l) => Date.parse(l.criada_em) >= desde && (!origem || (l.utm?.utm_source ?? "") === origem) && estados.get(l.id)?.compra).length, [leads, estados, desde, origem]);
   const pag = useMemo(() => resumoVendas(liquidas.map((v) => ({ ...v })), 0).porPagamento, [liquidas]);
   const semana = useMemo(() => resumoVendas(liquidas.map((v) => ({ ...v })), 0).porDiaSemana, [liquidas]);
 
@@ -79,7 +81,7 @@ export function VendasUtm({ quizId, eventos, leads, vendas, dias }: { quizId: st
         {kpi("Investimento", moeda(investimento), investimento ? "digitado na tabela" : "preencha na tabela abaixo", Wallet, "text-white")}
         {kpi("Lucro", moeda(lucro), investimento ? null : "sem investimento informado", TrendingUp, lucro < 0 ? "text-rose-300" : "text-emerald-300")}
         {kpi("ROAS", roas == null ? "—" : `${roas.toFixed(2).replace(".", ",")}x`, roas == null ? "faturamento ÷ investimento" : null, Percent, roas != null && roas < 1 ? "text-rose-300" : "text-emerald-300")}
-        {kpi("Vendas", String(nVendas), null, ShoppingCart, "text-white")}
+        {kpi("Vendas", String(nVendas), "do projeto, todas as origens", ShoppingCart, "text-white")}
         {kpi("Ticket médio", moeda(nVendas ? faturamento / nVendas : 0), null, Receipt, "text-white")}
       </div>
 
@@ -114,9 +116,10 @@ export function VendasUtm({ quizId, eventos, leads, vendas, dias }: { quizId: st
 
         <section className={cartao}>
           <h4 className="flex items-center gap-2 font-bold text-white"><Filter className="h-4 w-4 text-cyan-300" />Funil de conversão</h4>
+          <p className="text-[11px] text-white/45">Só deste quiz: as compras são as de quem fez o quiz (ligadas pelo e-mail).</p>
           <Funil etapas={[
             { rotulo: "Visitas", n: tot.visitas, Icone: Eye }, { rotulo: "Leads", n: tot.leads, Icone: Users },
-            { rotulo: "Foram ao checkout", n: tot.checkout, Icone: MousePointerClick }, { rotulo: "Compras", n: nVendas, Icone: ShoppingCart },
+            { rotulo: "Foram ao checkout", n: tot.checkout, Icone: MousePointerClick }, { rotulo: "Compraram", n: comprasDoQuiz, Icone: ShoppingCart },
           ]} />
         </section>
       </div>

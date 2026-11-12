@@ -113,7 +113,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
       {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} />}
-      {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
+      {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} estados={estados} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
       {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
