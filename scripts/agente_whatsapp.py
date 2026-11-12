@@ -98,6 +98,12 @@ Responda em 1 ou 2 frases dizendo o que você gravou e onde. Não faça pergunta
 """
 
 
+AJUSTE_CONVERSA = """MODO AJUSTE LIGADO: o Davi está testando o agente e agora conversa com VOCÊ (Gabriela) sobre o teste, não faz o papel do lead. Em "conversa_de_teste" (no contexto do quiz) está o que o agente e o lead falaram até agora.
+Converse como colega: explique por que o agente respondeu daquele jeito (qual regra da inteligência levou a isso), responda às dúvidas dele e sugira melhorias concretas e curtas. Pode discordar e dar opinião de quem entende de vendas no WhatsApp.
+Só altere a inteligência quando ele pedir ou concordar com uma sugestão; aí aplique na hora e diga o que mudou. Se ele só estiver tirando dúvida, devolva a inteligência igual, sem mudar nada. Termine, quando fizer sentido, com UMA sugestão ou pergunta para a próxima melhoria.
+"""
+
+
 def _prompt(p):
     base = dict(quiz_id=p["contexto"].get("quiz_id", ""), cliente_id=p["cliente_id"], config=json.dumps(p["config_atual"], ensure_ascii=False), contexto=json.dumps(p["contexto"], ensure_ascii=False),
                 historico=_historico(p["historico"]), mensagem=p["mensagem"])
@@ -107,7 +113,8 @@ def _prompt(p):
             base["mensagem"] = "(o lead ainda não escreveu nada: é VOCÊ quem começa a conversa, com a mensagem de abordagem inicial, usando o que sabe do lead e do quiz)"
         return PROMPT_SIMULAR.format(**base)
     ajuste = p["mensagem"].lstrip().lower().startswith("[ajuste]")
-    return PROMPT_CONSTRUIR.format(formato=FORMATO, modo_ajuste=AJUSTE if ajuste else "", **base)
+    modo = AJUSTE_CONVERSA if p["contexto"].get("conversa") == "ajuste" else AJUSTE if ajuste else ""
+    return PROMPT_CONSTRUIR.format(formato=FORMATO, modo_ajuste=modo, **base)
 
 
 def extrair(texto):

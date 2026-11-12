@@ -12,7 +12,7 @@ import { completude, configVazia, pausaDigitando, prontoParaUsar, sanitizarAgent
 // Esquerda: conversa com o Claude (que entrevista) ou teste (você faz o lead). Direita: a inteligência, editável à mão, salva sozinha.
 // Nada aqui envia mensagem a lead: o agente ainda só é montado e testado.
 const db = supabase as unknown as SupabaseClient;
-type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string };
+type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string; ajuste?: boolean };
 // O agente pode mandar várias mensagens seguidas: ele as separa com uma linha "---" e cada uma vira um balão (como seriam enviadas).
 const partirMensagens = (t: string) => t.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter(Boolean);
 const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
@@ -26,6 +26,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const [texto, setTexto] = useState("");
   const [esperando, setEsperando] = useState(false);
   const [digitando, setDigitando] = useState(false);
+  const [ajusteLigado, setAjusteLigado] = useState(false);   // modo ajuste: no teste, você fala com a Gabriela (não com o agente) sobre o que melhorar
   const [zerados, setZerados] = useState<Record<"construir" | "simular", string | null>>({ construir: null, simular: null });
   const [perfilSim, setPerfilSim] = useState(perfis[0] ?? "");
   const audio = useGravarAudio((falado) => setTexto((t) => [t.trim(), falado].filter(Boolean).join(" ")));
@@ -51,8 +52,9 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       for (const p of lista) {
         const onde: "construir" | "simular" = p.contexto?.origem === "teste" ? "simular" : p.tipo;
         if (linha?.[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] && p.criado_em <= (linha[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] as string)) continue;
-        if (!p.contexto?.iniciar) m[onde].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem });
-        if (p.status === "respondido" && p.resposta) for (const parte of p.tipo === "construir" ? [p.resposta] : partirMensagens(p.resposta)) m[onde].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: parte });
+        const aj = onde === "simular" && p.tipo === "construir";   // conversa com a Gabriela dentro do teste
+        if (!p.contexto?.iniciar) m[onde].push({ papel: p.tipo === "construir" ? "user" : "lead", texto: p.mensagem, ...(aj ? { ajuste: true } : {}) });
+        if (p.status === "respondido" && p.resposta) for (const parte of p.tipo === "construir" ? [p.resposta] : partirMensagens(p.resposta)) m[onde].push({ papel: p.tipo === "construir" ? "assistant" : "agente", texto: parte, ...(aj ? { ajuste: true } : {}) });
       }
       setMsgs(m);
       const ultimo = lista[lista.length - 1];
@@ -82,25 +84,27 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const enviar = async (abertura = false) => {
     const t = abertura ? "(início da conversa)" : texto.trim();
     if (!t || !clienteId || !config || esperando) return;
-    const papelEu = modo === "construir" ? "user" : "lead";
+    const ajusteAgora = modo === "simular" && !abertura && (ajusteLigado || ehAjuste(t));
+    const papelEu = modo === "construir" || ajusteAgora ? "user" : "lead";
     const hist = abertura ? [] : msgs[modo];
-    if (!abertura) setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t }] }));
+    if (!abertura) setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t, ...(ajusteAgora ? { ajuste: true } : {}) }] }));
     setTexto("");
     setEsperando(true);
     // [ajuste] no teste vai para a montagem: o agente aprende e a inteligência muda na hora.
-    const tipo = modo === "simular" && ehAjuste(t) ? "construir" : modo;
+    const tipo = ajusteAgora ? "construir" : modo;
+    const teste = hist.filter((h) => !h.ajuste);
     const contexto = tipo === "construir"
-      ? { quiz: titulo, quiz_id: quizId, perfis, ...(modo === "simular" ? { origem: "teste", conversa_de_teste: hist.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14) } : {}) }
+      ? { quiz: titulo, quiz_id: quizId, perfis, ...(modo === "simular" ? { origem: "teste", conversa_de_teste: teste.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14), ...(ajusteLigado ? { conversa: "ajuste" } : {}) } : {}) }
       : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" }, ...(abertura ? { iniciar: true } : {}) };
     const { data, error } = await db.from("agente_whatsapp_pedidos").insert({
       cliente_id: clienteId, tipo, mensagem: t, contexto, config_atual: config,
-      historico: (tipo === "construir" && modo === "simular" ? msgs.construir : hist).filter((h, i) => i > 0 || tipo !== "construir").map((h) => ({ papel: h.papel, texto: h.texto })),
+      historico: (tipo === "construir" && modo === "simular" ? hist.filter((h) => h.ajuste) : hist).filter((h, i) => i > 0 || tipo !== "construir" || modo === "simular").map((h) => ({ papel: h.papel, texto: h.texto })),
     }).select("id").single();
     if (error || !data) { setEsperando(false); toast.error("Não consegui enviar"); return; }
-    await aguardar((data as { id: string }).id, modo, tipo, clienteId, ehAjuste(t));
+    await aguardar((data as { id: string }).id, modo, tipo, clienteId, ajusteAgora);
   };
 
-  async function aguardar(id: string, modo: "construir" | "simular", tipo: "construir" | "simular", clienteId: string, ajuste = false) {
+  async function aguardar(id: string, modo: "construir" | "simular", tipo: "construir" | "simular", clienteId: string, marcaAjuste = false) {
     setEsperando(true);
     for (let i = 0; i < 330; i++) {
       await new Promise((r) => setTimeout(r, 2000));
@@ -111,13 +115,14 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
         const partes = tipo === "construir" ? [r.resposta ?? ""] : configRef.current?.comportamento.separar === false ? [(r.resposta ?? "").replace(/\n\s*-{3,}\s*\n/g, "\n\n")] : partirMensagens(r.resposta ?? "");
         for (let k = 0; k < partes.length; k++) {
           if (k > 0) { setDigitando(true); await new Promise((ok) => setTimeout(ok, pausaDigitando(partes[k], configRef.current?.comportamento))); setDigitando(false); }
-          setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: (tipo === "construir" ? "assistant" : "agente") as Msg["papel"], texto: partes[k] }] }));
+          setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: (tipo === "construir" ? "assistant" : "agente") as Msg["papel"], texto: partes[k], ...(marcaAjuste ? { ajuste: true } : {}) }] }));
         }
         if (tipo === "construir" && r.config && configRef.current) {
           const novo = sanitizarAgente(r.config, configRef.current);
+          const mudou = JSON.stringify(novo) !== JSON.stringify(configRef.current);
           setConfig(novo);
           gravar(novo, clienteId);
-          if (ajuste) toast.success("Aprendi e gravei na inteligência");
+          if (marcaAjuste && mudou) toast.success("Gabriela atualizou a inteligência");
         }
         setEsperando(false);
         return;
@@ -160,7 +165,13 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           {([["construir", "Gabriela · montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (
             <button key={m} type="button" onClick={() => setModo(m)} className={cn("flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm", modo === m ? "bg-white/10 font-semibold" : "text-white/60 hover:text-white")}><I className="h-4 w-4" />{r}</button>
           ))}
-          <button type="button" onClick={() => void zerar()} title="Zerar esta conversa" className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
+          {modo === "simular" && (
+            <button type="button" onClick={() => setAjusteLigado((v) => !v)} title="Fale com a Gabriela sobre o teste: tire dúvidas e decidam melhorias juntos"
+              className={cn("ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold", ajusteLigado ? "border-amber-400/60 bg-amber-500/20 text-amber-200" : "border-white/10 text-white/60 hover:text-white")}>
+              <span className={cn("h-2 w-2 rounded-full", ajusteLigado ? "bg-amber-400" : "bg-white/30")} />Modo ajuste
+            </button>
+          )}
+          <button type="button" onClick={() => void zerar()} title="Zerar esta conversa" className={cn("flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white", modo === "construir" && "ml-auto")}><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
           {modo === "simular" && perfis.length > 0 && (
             <select value={perfilSim} onChange={(e) => setPerfilSim(e.target.value)} className="rounded-lg border border-white/10 bg-[#0b141a] px-2 py-1 text-xs"><option value="">Lead sem perfil</option>{perfis.map((p) => <option key={p}>{p}</option>)}</select>
           )}
@@ -174,15 +185,16 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           )}
           {lista.map((m, i) => {
             const meu = m.papel === "user" || m.papel === "lead";
-            return <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", meu ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>{m.texto}</div>;
+            return <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.ajuste ? (meu ? "ml-auto bg-amber-700/60 ring-1 ring-amber-400/40" : "bg-amber-950/60 ring-1 ring-amber-400/30") : meu ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>{m.ajuste && !meu && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-300">Gabriela</span>}{m.texto}</div>;
           })}
           {(esperando || digitando) && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{digitando ? "digitando…" : "Pensando…"}</div>}
           <div ref={fim} />
         </div>
-        {ehAjuste(texto) && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste: o agente vai aprender isso e gravar na inteligência ao lado.</p>}
+        {modo === "simular" && ajusteLigado && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste ligado: você está falando com a Gabriela, não com o agente. Pergunte por que ele respondeu assim, tire dúvidas e decidam melhorias juntos. Desligue para voltar a fazer o lead.</p>}
+        {modo === "simular" && !ajusteLigado && ehAjuste(texto) && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste: o agente vai aprender isso e gravar na inteligência ao lado.</p>}
         <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
           <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
-            placeholder={modo === "construir" ? "Conte sobre o produto, as ofertas, o que o agente pode e não pode…" : "Escreva como o lead… (ou [ajuste] … para ensinar o agente)"} className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
+            placeholder={modo === "construir" ? "Conte sobre o produto, as ofertas, o que o agente pode e não pode…" : ajusteLigado ? "Converse com a Gabriela sobre o teste: dúvidas, ideias de melhoria…" : "Escreva como o lead…"} className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
           {isDesktop() && (
             <button type="button" onClick={() => void audio.alternar()} disabled={audio.transcrevendo} title={audio.gravando ? "Parar e transcrever" : "Gravar áudio"}
               className={cn("self-end rounded-full p-2.5", audio.gravando ? "animate-pulse bg-rose-500 text-white" : "bg-white/10 text-white/80 hover:bg-white/15")}>
