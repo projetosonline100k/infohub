@@ -64,7 +64,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
     setEdicoes(null); setErro(false); setHistorico(false);
     (async () => {
       // Os perfis do dash são criados aqui (Davi, 12/11: "criar do zero"); os vídeos de um perfil vêm do projeto ligado a ele, se tiver.
-      const { data: reg, error: erroReg } = await db.from("esteira_dark_perfis").select("id, nome, arroba, cliente_id, estilo").order("criado_em");
+      const { data: reg, error: erroReg } = await db.from("esteira_dark_perfis").select("id, nome, arroba, cliente_id, estilo, conversa_zerada_em").order("criado_em");
       if (!vivo) return;
       if (erroReg) { setErro(true); return; }
       const perfisReg = (reg || []) as PerfilDark[];

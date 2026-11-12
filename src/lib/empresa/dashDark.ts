@@ -114,3 +114,12 @@ export function completudeEstilo(e: EstiloDark) {
     ["o visual", !!e.visual], ["a música e os efeitos", !!e.musica], ["o fechamento", !!e.cta], ["as regras", !!e.regras]];
   return { feitos: itens.filter(([, ok]) => ok).length, total: itens.length, faltando: itens.filter(([, ok]) => !ok).map(([n]) => n) };
 }
+
+/** Junta o estilo devolvido na conversa com o atual: só troca os campos que vieram (o que não veio fica como estava). */
+export function aplicarEstilo(atual: EstiloDark, bruto: unknown): EstiloDark {
+  const b = (bruto && typeof bruto === "object" ? bruto : {}) as Record<string, unknown>;
+  const novo = sanitizarEstilo(b);
+  const r = { ...atual };
+  for (const k of Object.keys(r) as (keyof EstiloDark)[]) if (k in b) (r as Record<string, unknown>)[k] = novo[k];
+  return r;
+}

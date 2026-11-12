@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../src/lib/empresa/dashDark.ts', import.meta.url), 'utf8');
 const { outputText } = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
-const { etapaEsteira, resumirEsteira, ordenarPerfis, atividadeRecente, prontosParados, tituloCurto, sanitizarEstilo, completudeEstilo, estiloVazio } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
+const { etapaEsteira, resumirEsteira, ordenarPerfis, atividadeRecente, prontosParados, tituloCurto, sanitizarEstilo, completudeEstilo, estiloVazio, aplicarEstilo } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
 const HOJE = '2026-11-12';
 const ed = (status, perfil = 'A', extra = {}) => ({ id: Math.random().toString(), titulo: 'Versão dark: t', status, cliente_id: perfil, perfil, criado_em: '2026-11-01T00:00:00Z', atualizado_em: '2026-11-01T00:00:00Z', video_status: null, data_postagem: null, ...extra });
@@ -74,4 +74,15 @@ test('estilo do vídeo: limpa o que veio, mede o que falta e guarda as referênc
   assert.equal(c.total, 8);
   assert.ok(c.faltando.includes('o gancho'));
   assert.equal(completudeEstilo({ ...estiloVazio(), descricao: 'a', gancho: 'b', estrutura: 'c', narracao: 'd', visual: 'e', musica: 'f', cta: 'g', regras: 'h' }).feitos, 8);
+});
+
+test('aplicarEstilo: troca só os campos que vieram da conversa; o resto fica; campo enviado vazio limpa', () => {
+  const atual = { ...estiloVazio(), descricao: 'ideia', gancho: 'antigo', referencias: ['https://a.co'] };
+  const r = aplicarEstilo(atual, { gancho: 'novo gancho', visual: 'preto e dourado', lixo: 1 });
+  assert.equal(r.descricao, 'ideia');
+  assert.equal(r.gancho, 'novo gancho');
+  assert.equal(r.visual, 'preto e dourado');
+  assert.deepEqual(r.referencias, ['https://a.co']);
+  assert.equal(aplicarEstilo(atual, { gancho: '' }).gancho, '');
+  assert.deepEqual(aplicarEstilo(atual, null), atual);
 });
