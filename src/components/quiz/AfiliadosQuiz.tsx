@@ -79,7 +79,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const totais = (r: typeof resumo | null) => {
     if (!r) return null;
     const rs = [...r.porAfiliado.values()];
-    return { projeto: r.saude.totalVendas, afiliados: rs.reduce((a, x) => a + x.vendas, 0), receita: rs.reduce((a, x) => a + x.liquido, 0), comissao: rs.reduce((a, x) => a + x.comissao, 0), comVendas: rs.filter((x) => x.vendas > 0).length };
+    return { leads: rs.reduce((a, x) => a + x.leads, 0), afiliados: rs.reduce((a, x) => a + x.vendas, 0), receita: rs.reduce((a, x) => a + x.liquido, 0), comissao: rs.reduce((a, x) => a + x.comissao, 0), comVendas: rs.filter((x) => x.vendas > 0).length };
   };
   const tot = totais(resumo)!, totAnt = totais(resumoAnt);
 
@@ -156,9 +156,9 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
     return <span className={cn("flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold", p > 0 ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300")}>{p > 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}{p > 0 ? "+" : ""}{p}%</span>;
   };
   const KPIS = [
-    { rot: "Vendas do projeto", v: String(tot.projeto), atual: tot.projeto, antes: totAnt?.projeto, sub: dias ? `vs. ${dias} dias anteriores` : "todo o período", Icone: ShoppingCart, tile: "bg-blue-500/20 text-blue-300 ring-blue-400/30" },
-    { rot: "Vendas por afiliados", v: String(tot.afiliados), atual: tot.afiliados, antes: totAnt?.afiliados, sub: dias ? `vs. ${dias} dias anteriores` : "todo o período", Icone: Users, tile: "bg-emerald-500/20 text-emerald-300 ring-emerald-400/30" },
+    { rot: "Vendas por afiliados", v: String(tot.afiliados), atual: tot.afiliados, antes: totAnt?.afiliados, sub: dias ? `vs. ${dias} dias anteriores` : "todo o período", Icone: ShoppingCart, tile: "bg-emerald-500/20 text-emerald-300 ring-emerald-400/30" },
     { rot: "Receita total", v: moeda(tot.receita), atual: tot.receita, antes: totAnt?.receita, sub: dias ? `vs. ${dias} dias anteriores` : "líquida, via afiliados", Icone: Coins, tile: "bg-amber-500/20 text-amber-300 ring-amber-400/30" },
+    { rot: "Leads por afiliados", v: String(tot.leads), atual: tot.leads, antes: totAnt?.leads, sub: dias ? `vs. ${dias} dias anteriores` : "todo o período", Icone: UserPlus, tile: "bg-blue-500/20 text-blue-300 ring-blue-400/30" },
     { rot: "Comissão a pagar", v: moeda(tot.comissao), atual: tot.comissao, antes: totAnt?.comissao, sub: `${tot.comVendas} ${tot.comVendas === 1 ? "afiliado com vendas" : "afiliados com vendas"}`, Icone: Percent, tile: "bg-violet-500/20 text-violet-300 ring-violet-400/30" },
   ];
 
@@ -271,7 +271,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
       <details className={cartao}>
         <summary className="cursor-pointer text-sm font-semibold">Saúde do rastreio <span className="font-normal text-white/50">· como as vendas estão sendo ligadas aos afiliados</span></summary>
         <div className="mt-3 grid gap-2 text-center sm:grid-cols-4">
-          {([["Vendas do projeto", s.totalVendas, ""], ["Creditadas a afiliados", s.vendasDoQuiz, "text-emerald-300"], ["Com a marca vinda do checkout", s.comMarcaNoCheckout, s.totalVendas > 0 && s.comMarcaNoCheckout === 0 ? "text-amber-300" : ""], ["A conferir", s.conflitos + s.codigoDesconhecido, s.conflitos + s.codigoDesconhecido ? "text-amber-300" : ""]] as const).map(([r, v, cor]) => (
+          {([["Todas as vendas do projeto (diagnóstico)", s.totalVendas, ""], ["Creditadas a afiliados", s.vendasDoQuiz, "text-emerald-300"], ["Com a marca vinda do checkout", s.comMarcaNoCheckout, s.totalVendas > 0 && s.comMarcaNoCheckout === 0 ? "text-amber-300" : ""], ["A conferir", s.conflitos + s.codigoDesconhecido, s.conflitos + s.codigoDesconhecido ? "text-amber-300" : ""]] as const).map(([r, v, cor]) => (
             <div key={r} className="rounded-xl bg-white/5 p-3"><p className="text-[11px] uppercase tracking-wide text-white/50">{r}</p><p className={cn("text-xl font-bold tabular-nums", cor)}>{v}</p></div>
           ))}
         </div>
