@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, X } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -828,6 +828,57 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
 }
 
 // "Analisando…": barra enchendo e as etapas sendo marcadas; passa sozinha.
+/** Vídeo no estilo do vturb: começa mudo e em loop assim que aparece, com o aviso "Clique para ouvir";
+ * ao clicar recomeça do zero com som, sem pausar nem avançar, e vai até o fim. */
+function VideoVsl({ url, poster }: { url: string; poster?: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [ouvindo, setOuvindo] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    const io = new IntersectionObserver(([e]) => { if (e.isIntersecting && !ouvindo) void v.play().catch(() => {}); }, { threshold: 0.4 });
+    io.observe(v);
+    return () => io.disconnect();
+  }, [ouvindo]);
+  const ouvir = () => {
+    const v = ref.current;
+    if (!v) return;
+    v.loop = false;
+    v.muted = false;
+    v.currentTime = 0;
+    setOuvindo(true);
+    void v.play().catch(() => {});
+  };
+  return (
+    <div className="relative mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] select-none overflow-hidden rounded-2xl bg-black" onContextMenu={(e) => e.preventDefault()}>
+      <video
+        ref={ref}
+        src={url}
+        poster={poster}
+        muted
+        loop
+        playsInline
+        preload="auto"
+        disablePictureInPicture
+        controlsList="nodownload noplaybackrate noremoteplayback"
+        onTimeUpdate={(e) => ouvindo && setProgresso(e.currentTarget.currentTime / (e.currentTarget.duration || 1))}
+        className="pointer-events-none h-full w-full object-cover"
+      />
+      {!ouvindo && (
+        <button type="button" onClick={ouvir} className="absolute inset-0 flex items-center justify-center p-4">
+          <span className="flex w-full flex-col items-center gap-2 rounded-lg border-2 border-white/90 bg-[#e0623f]/85 px-3 py-5 text-white">
+            <span className="text-base font-extrabold leading-tight">Seu vídeo já começou</span>
+            <VolumeX className="h-14 w-14" strokeWidth={2.2} />
+            <span className="text-base font-extrabold leading-tight">Clique para ouvir</span>
+          </span>
+        </button>
+      )}
+      {ouvindo && <div className="absolute inset-x-0 bottom-0 h-1 bg-white/25"><div className="h-full bg-white" style={{ width: `${progresso * 100}%` }} /></div>}
+    </div>
+  );
+}
+
 function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string; f: (s?: string) => string; onPronto?: () => void; suave: string }) {
   const { cor } = useContext(QuizCtx);
   const itens = t.itens ?? [];
@@ -1046,7 +1097,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
         ? (
           <div className="space-y-3">
             <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
-            <video src={o.video.url} poster={o.video.poster} controls playsInline preload="none" className="mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] rounded-2xl bg-black object-cover" />
+            <VideoVsl url={o.video.url} poster={o.video.poster} />
           </div>
         )
         : <Img caminho="oferta.imagem" url={o.imagem} nota={o.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />}
