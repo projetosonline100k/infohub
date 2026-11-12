@@ -1,7 +1,7 @@
 // X1 do quiz (12/11/2026, Davi: "abordar a pessoa com mensagens padrão ou feitas na hora, visual de WhatsApp, categorias na lateral").
 // A parte de contas: modelos de mensagem, número do WhatsApp, em qual categoria cada lead cai. Sem React nem importações: testável.
 
-export interface Abordagem { id: string; resposta_id: string; texto: string; modelo: string | null; enviada_em: string }
+export interface Abordagem { id: string; resposta_id: string; texto: string; modelo: string | null; enviada_em: string; de_mim?: boolean }
 export interface LeadX1 { id: string; nome: string | null; whatsapp: string | null; perfil: string | null; status: "novo" | "em_contato" | "convertido"; criada_em: string }
 export interface Modelo { id: string; nome: string; texto: string; proprio: boolean }
 

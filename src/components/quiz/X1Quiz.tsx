@@ -38,6 +38,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const [proprios, setProprios] = useState<Modelo[]>([]);
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [contaWa, setContaWa] = useState("principal");
+  const [wa, setWa] = useState<(Abordagem & { chat_id: string })[]>([]);   // o que está de fato no WhatsApp (enviado e recebido)
   const estadosX1 = useMemo(() => new Map([...estados].map(([id, e]) => [id, { clicouCheckout: e.clicouCheckout, comprou: !!e.compra }])), [estados]);
   const [fila, setFila] = useState<Fila>(() => ([...estados.values()].some((e) => e.clicouCheckout && !e.compra) ? "quentes" : "abordar"));
   const [busca, setBusca] = useState("");
@@ -65,7 +66,39 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   }, [quizId]);
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const porLead = useMemo(() => agruparPorLead(abordagens ?? []), [abordagens]);
+  // Conversa de verdade (12/11, Davi: "como se fosse o WhatsApp normal: eu mando, chega, recebo por ele"): as mensagens do WhatsApp do projeto,
+  // enviadas e recebidas, a partir da data em que o lead entrou. As abordagens registradas aqui só entram se ainda não chegaram do WhatsApp.
+  const chaveLeads = useMemo(() => leads.map((l) => `${l.id}:${telefoneWa(l.whatsapp) ?? ""}`).join(","), [leads]);
+  const carregarWa = useCallback(async () => {
+    const porChat = new Map<string, LeadQuiz[]>();
+    for (const l of leads) { const t = telefoneWa(l.whatsapp); if (t) porChat.set(`${t}@c.us`, [...(porChat.get(`${t}@c.us`) ?? []), l]); }
+    const ids = [...porChat.keys()];
+    if (!ids.length) { setWa([]); return; }
+    const out: (Abordagem & { chat_id: string })[] = [];
+    for (let i = 0; i < ids.length; i += 80) {
+      const { data } = await db.from("whatsapp_mensagens").select("id, chat_id, de_mim, tipo, texto, midia_tipo, transcricao, enviada_em").eq("conta", contaWa).in("chat_id", ids.slice(i, i + 80)).order("enviada_em", { ascending: false }).limit(3000);
+      for (const m of (data ?? []) as { id: string; chat_id: string; de_mim: boolean; texto: string | null; midia_tipo: string | null; transcricao: string | null; tipo: string; enviada_em: string }[]) {
+        const texto = m.texto?.trim() || (m.transcricao ? `🎤 ${m.transcricao}` : m.midia_tipo ? `[${m.midia_tipo === "audio" ? "áudio" : m.midia_tipo === "image" ? "foto" : m.midia_tipo === "video" ? "vídeo" : "arquivo"}]` : "");
+        if (!texto) continue;
+        for (const l of porChat.get(m.chat_id) ?? []) if (Date.parse(m.enviada_em) >= Date.parse(l.criada_em)) out.push({ id: `${m.id}:${l.id}`, resposta_id: l.id, chat_id: m.chat_id, texto, modelo: null, enviada_em: m.enviada_em, de_mim: m.de_mim });
+      }
+    }
+    setWa(out);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chaveLeads, contaWa]);
+  useEffect(() => { void carregarWa(); }, [carregarWa]);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const canal = supabase.channel(`x1-whatsapp-${quizId}-${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "whatsapp_mensagens" }, () => { clearTimeout(t); t = setTimeout(() => void carregarWa(), 700); })
+      .subscribe();
+    const ciclo = window.setInterval(() => void carregarWa(), 20000);   // garantia, se o canal em tempo real cair
+    return () => { clearTimeout(t); window.clearInterval(ciclo); void supabase.removeChannel(canal); };
+  }, [quizId, carregarWa]);
+  const porLead = useMemo(() => {
+    const extra = (abordagens ?? []).filter((a) => !wa.some((w) => w.resposta_id === a.resposta_id && w.de_mim && w.texto.trim() === a.texto.trim() && Math.abs(Date.parse(w.enviada_em) - Date.parse(a.enviada_em)) < 15 * 60_000));
+    return agruparPorLead([...extra.map((a) => ({ ...a, de_mim: true })), ...wa]);
+  }, [abordagens, wa]);
   const agora = Date.now();
   const contagem = useMemo(() => contarCategorias(leads, porLead, Date.now(), estadosX1), [leads, porLead, estadosX1]);   // eslint-disable-line react-hooks/exhaustive-deps
   const ultima = (id: string) => porLead.get(id)?.at(-1);
@@ -153,7 +186,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
             <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", (f.id === "abordar" && contagem.abordar) || (f.id === "quentes" && contagem.quentes) ? "bg-amber-400 text-black" : "bg-white/10 text-white/70")}>{contagem[f.id]}</span>
           </button>
         ))}
-        <p className="mt-auto px-2 pt-2 text-[10px] leading-snug text-white/35">O WhatsApp abre com a mensagem pronta; você aperta enviar. A abordagem fica registrada aqui.</p>
+        <p className="mt-auto px-2 pt-2 text-[10px] leading-snug text-white/35">No app do Mac a mensagem vai direto pelo WhatsApp do projeto e as respostas chegam aqui. Na web, o WhatsApp abre com o texto pronto.</p>
       </aside>
 
       {/* Leads da fila */}
@@ -171,7 +204,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#6b7c85] text-base font-bold">{(l.nome?.trim() || "?").slice(0, 1).toUpperCase()}</span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline gap-2"><span className="flex min-w-0 flex-1 items-center gap-1 truncate font-medium"><span className="truncate">{nomeDe(l)}</span>{estados.get(l.id)?.compra ? <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : estados.get(l.id)?.clicouCheckout ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : null}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
-                  <span className="flex items-center gap-1 truncate text-xs text-white/55">{u ? <><CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-400" /><span className="truncate">{u.texto}</span></> : <span className="truncate">Novo lead{l.perfil ? ` · ${l.perfil}` : ""}</span>}</span>
+                  <span className="flex items-center gap-1 truncate text-xs text-white/55">{u ? <>{u.de_mim !== false ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-400" /> : null}<span className={cn("truncate", u.de_mim === false && "font-medium text-white/80")}>{u.texto}</span></> : <span className="truncate">Novo lead{l.perfil ? ` · ${l.perfil}` : ""}</span>}</span>
                 </span>
               </button>
             );
@@ -207,17 +240,17 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
                       <ul className="mt-1 space-y-0.5">{lead.respostas.map((r, i) => <li key={i}><span className="text-white/45">{r.pergunta}</span> → <b className="text-white/85">{r.resposta ?? "—"}</b></li>)}</ul></details>
                   )}
                 </div>
-                {mensagens.length === 0 && <p className="mx-auto rounded-lg bg-[#182229] px-3 py-1.5 text-xs text-white/50">Nenhuma mensagem sua ainda. Escolha um modelo abaixo ou escreva do zero.</p>}
+                {mensagens.length === 0 && <p className="mx-auto rounded-lg bg-[#182229] px-3 py-1.5 text-xs text-white/50">Nenhuma mensagem ainda. Escolha um modelo abaixo ou escreva do zero.</p>}
                 {mensagens.map((m, i) => {
                   const d = new Date(m.enviada_em);
                   const novoDia = i === 0 || !isSameDay(d, new Date(mensagens[i - 1].enviada_em));
                   return (
                     <div key={m.id} className="contents">
                       {novoDia && <p className="mx-auto my-1 rounded-lg bg-[#182229] px-3 py-1 text-[11px] text-white/55">{format(d, "d 'de' MMMM", { locale: ptBR })}</p>}
-                      <div className="ml-auto max-w-[85%] whitespace-pre-wrap break-words rounded-lg rounded-tr-none bg-[#005c4b] px-3 py-1.5 text-[14.5px] shadow">
+                      <div className={cn("max-w-[85%] whitespace-pre-wrap break-words rounded-lg px-3 py-1.5 text-[14.5px] shadow", m.de_mim === false ? "mr-auto rounded-tl-none bg-[#202c33]" : "ml-auto rounded-tr-none bg-[#005c4b]")}>
                         {m.modelo && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-emerald-200/70">{m.modelo}</span>}
                         {m.texto}
-                        <span className="ml-3 inline-flex translate-y-1 items-center gap-0.5 text-[10.5px] text-white/55">{format(d, "HH:mm")}<Check className="h-3 w-3" /></span>
+                        <span className="ml-3 inline-flex translate-y-1 items-center gap-0.5 text-[10.5px] text-white/55">{format(d, "HH:mm")}{m.de_mim !== false && <Check className="h-3 w-3" />}</span>
                       </div>
                     </div>
                   );
