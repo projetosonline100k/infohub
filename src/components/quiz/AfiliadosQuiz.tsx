@@ -48,6 +48,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const [aberto, setAberto] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [dias, setDias] = useState(30);
+  const [filtro, setFiltro] = useState("");   // id do afiliado (vazio = todos)
   const [grafico, setGrafico] = useState<"vendas" | "receita">("vendas");
 
   const carregar = useCallback(async () => {
@@ -78,20 +79,22 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const resumoAnt = useMemo(() => (anterior ? resumirAfiliados(afiliados ?? [], eventosAfi, leadsAfi, vendasAfi, anterior) : null), [afiliados, eventosAfi, leadsAfi, vendasAfi, anterior]);
   const totais = (r: typeof resumo | null) => {
     if (!r) return null;
-    const rs = [...r.porAfiliado.values()];
+    const codigoFiltro = (afiliados ?? []).find((x) => x.id === filtro)?.codigo.toLowerCase();
+    const rs = [...r.porAfiliado.entries()].filter(([c]) => !codigoFiltro || c === codigoFiltro).map(([, x]) => x);
     return { leads: rs.reduce((a, x) => a + x.leads, 0), afiliados: rs.reduce((a, x) => a + x.vendas, 0), receita: rs.reduce((a, x) => a + x.liquido, 0), comissao: rs.reduce((a, x) => a + x.comissao, 0), comVendas: rs.filter((x) => x.vendas > 0).length };
   };
   const tot = totais(resumo)!, totAnt = totais(resumoAnt);
 
   const serie = useMemo(() => {
-    const dados = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && a.codigo).map((a) => a.venda);
+    const codigoFiltro = (afiliados ?? []).find((x) => x.id === filtro)?.codigo.toLowerCase();
+    const dados = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && a.codigo && (!codigoFiltro || a.codigo.toLowerCase() === codigoFiltro)).map((a) => a.venda);
     const inicio = janela.desde || (dados.length ? Math.min(...dados.map((v) => Date.parse(`${v.data}T12:00:00-03:00`))) : addDays(new Date(), -29).getTime());
     const dias = Math.min(365, Math.max(1, Math.round((startOfDay(new Date(janela.ate)).getTime() - startOfDay(new Date(inicio)).getTime()) / 86_400_000)));
     const porDia = new Map<string, { afiliados: number; receitaAfiliados: number }>();
     for (let i = 0; i < dias; i++) porDia.set(format(addDays(startOfDay(new Date(inicio)), i), "yyyy-MM-dd"), { afiliados: 0, receitaAfiliados: 0 });
     for (const v of dados) { const d = porDia.get((v.data ?? "").slice(0, 10)); if (d) { d.afiliados++; d.receitaAfiliados += v.valor ?? 0; } }
     return [...porDia.entries()].map(([dia, v]) => ({ dia, rotulo: format(new Date(`${dia}T12:00:00`), "dd MMM", { locale: ptBR }), ...v }));
-  }, [janela, resumo]);
+  }, [janela, resumo, afiliados, filtro]);
 
   const criar = async () => {
     const nome = f.nome.trim();
@@ -144,7 +147,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const s = resumo.saude;
   const aConferir = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && (a.via === "conflito" || a.via === "codigo_desconhecido"));
   const base = new URL(linkDoQuiz(slug)).origin;   // o endereço público (no app do Mac, window.location é localhost e não abre para ninguém)
-  const lista = afiliados.filter((a) => !busca.trim() || a.nome.toLowerCase().includes(busca.trim().toLowerCase()) || a.codigo.includes(busca.trim().toLowerCase()));
+  const lista = afiliados.filter((a) => (!filtro || a.id === filtro) && (!busca.trim() || a.nome.toLowerCase().includes(busca.trim().toLowerCase()) || a.codigo.includes(busca.trim().toLowerCase())));
   const linkDe = (a: Afiliado) => links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo));
   const curtoDe = (a: Afiliado) => { const lk = linkDe(a); return lk ? curtos.find((c) => c.quiz_link_id === lk.id) : undefined; };
 
@@ -170,6 +173,10 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
           <h3 className="text-3xl font-bold tracking-tight">Programa de Afiliados</h3>
           <p className="text-sm text-white/55">Convide parceiros, acompanhe as vendas e veja o impacto do seu time de afiliados.</p>
         </div>
+        <label className="flex items-center gap-2 rounded-xl border border-white/15 bg-[#0a1520] px-3 py-2 text-sm">
+          <Users className="h-4 w-4 text-white/60" />
+          <select value={filtro} onChange={(e) => setFiltro(e.target.value)} className="max-w-[11rem] bg-transparent pr-1 outline-none"><option value="" className="bg-[#0a1520]">Todos os afiliados</option>{afiliados.map((a) => <option key={a.id} value={a.id} className="bg-[#0a1520]">{a.nome}</option>)}</select>
+        </label>
         <label className="flex items-center gap-2 rounded-xl border border-white/15 bg-[#0a1520] px-3 py-2 text-sm">
           <CalendarDays className="h-4 w-4 text-white/60" />
           <select value={dias} onChange={(e) => setDias(Number(e.target.value))} className="bg-transparent pr-1 outline-none">{PERIODOS.map(([d, r]) => <option key={d} value={d} className="bg-[#0a1520]">{r}</option>)}</select>
