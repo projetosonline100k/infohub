@@ -31,6 +31,8 @@ export interface MembroResumo {
 // O coordenador da empresa (robô): Atlas desde 15/10 (antes "Jarvis").
 export const ehNomeCoordenador = (nome: string) => /^(atlas|jarvis)$/i.test(nome.trim());
 export const ehCoordenador = (m: { eh_ia: boolean; nome: string }) => m.eh_ia && ehNomeCoordenador(m.nome);
+/** IA de vídeos dark (Lauro): ao clicar nela abre o dash de vídeos dark em vez do chat. */
+export const ehDark = (m: { eh_ia: boolean; funcao: string | null }) => m.eh_ia && /\bdark\b/i.test(m.funcao ?? "");
 const IAS_AUTONOMAS = new Set(["atlas", "jarvis", "pedro", "dalila", "ítalo", "italo", "gabriel", "roy", "danilo"]);
 export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && !IAS_AUTONOMAS.has(m.nome.toLowerCase());
 
