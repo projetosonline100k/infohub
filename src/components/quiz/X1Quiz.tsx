@@ -7,16 +7,17 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
+import { isDesktop } from "@/lib/platform";
 import { etapaDoLead, type EstadoCompra, type LeadQuiz, type StatusLead } from "@/lib/quiz/painel";
 import {
-  MODELOS_PADRAO, agruparPorLead, categoriaDoLead, contarCategorias, generalizarModelo, haQuanto, linkWhatsapp, preencherModelo,
+  MODELOS_PADRAO, agruparPorLead, categoriaDoLead, telefoneWa, contarCategorias, generalizarModelo, haQuanto, linkWhatsapp, preencherModelo,
   type Abordagem, type CategoriaX1, type Modelo,
 } from "@/lib/quiz/x1";
 
 // X1 do quiz (12/11/2026, Davi: "uma parte chamada X1, onde a gente aborda a pessoa com mensagens padrão ou feitas na hora, visual de
 // WhatsApp, com categorias na lateral"). Esquerda: as filas (abordar agora, em conversa, retomar…). Meio: os leads da fila.
 // Direita: a conversa no estilo WhatsApp, com modelos de mensagem e o campo para escrever na hora.
-// O Hub não envia sozinho: "Enviar pelo WhatsApp" abre o WhatsApp com a mensagem pronta (você aperta enviar) e registra a abordagem aqui.
+// No app do Mac, "Enviar pelo WhatsApp" manda direto pelo WhatsApp do projeto (WAHA) quando VOCÊ aperta o botão; na web abre o WhatsApp com a mensagem pronta. O Hub nunca envia sozinho.
 const db = supabase as unknown as SupabaseClient;
 type Fila = CategoriaX1 | "todos";
 const FILAS: { id: Fila; rotulo: string; dica: string; Icone: typeof Inbox; cor: string }[] = [
@@ -36,6 +37,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const [abordagens, setAbordagens] = useState<Abordagem[] | null>(null);
   const [proprios, setProprios] = useState<Modelo[]>([]);
   const [clienteId, setClienteId] = useState<string | null>(null);
+  const [contaWa, setContaWa] = useState("principal");
   const estadosX1 = useMemo(() => new Map([...estados].map(([id, e]) => [id, { clicouCheckout: e.clicouCheckout, comprou: !!e.compra }])), [estados]);
   const [fila, setFila] = useState<Fila>(() => ([...estados.values()].some((e) => e.clicouCheckout && !e.compra) ? "quentes" : "abordar"));
   const [busca, setBusca] = useState("");
@@ -50,6 +52,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     const { data: q } = await db.from("quizzes").select("cliente_id").eq("id", quizId).maybeSingle();
     const cid = (q as { cliente_id: string } | null)?.cliente_id ?? null;
     setClienteId(cid);
+    if (cid) {
+      const { data: c } = await db.from("clientes").select("whatsapp_conta").eq("id", cid).maybeSingle();
+      setContaWa((c as { whatsapp_conta?: string | null } | null)?.whatsapp_conta || "principal");
+    }
     const { data: a } = await db.from("quiz_abordagens").select("id, resposta_id, texto, modelo, enviada_em").eq("quiz_id", quizId).order("enviada_em").limit(5000);
     setAbordagens((a ?? []) as Abordagem[]);
     if (cid) {
@@ -94,14 +100,26 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     const url = linkWhatsapp(lead.whatsapp, texto.trim());
     if (!url) { toast.error("Esse lead não tem um WhatsApp válido"); return; }
     setEnviando(true);
+    // No app do Mac a mensagem vai direto pelo WhatsApp do projeto (WAHA), sem abrir outro sistema. Na web, abre o WhatsApp com o texto pronto.
+    const direto = isDesktop();
+    if (direto) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("whatsapp_enviar", { chatId: `${telefoneWa(lead.whatsapp)}@c.us`, texto: texto.trim(), conta: contaWa, responderA: null, mencoes: null });
+      } catch (e) {
+        setEnviando(false);
+        toast.error(typeof e === "string" ? e : "Não consegui enviar pelo WhatsApp");
+        return;
+      }
+    }
     const { error } = await db.from("quiz_abordagens").insert({ quiz_id: quizId, resposta_id: lead.id, cliente_id: clienteId, texto: texto.trim(), modelo: modeloUsado });
     if (error) { setEnviando(false); toast.error("Não consegui registrar a abordagem"); return; }
     if (lead.status === "novo") onStatus(lead, "em_contato");
-    void abrirLinkExterno(url);
+    if (!direto) void abrirLinkExterno(url);
     setTexto(""); setModeloUsado(null);
     await carregar();
     setEnviando(false);
-    toast.success("WhatsApp aberto com a mensagem pronta: é só apertar enviar");
+    toast.success(direto ? "Mensagem enviada" : "WhatsApp aberto com a mensagem pronta: é só apertar enviar");
     if (fila === "abordar") proximo();
   };
   const salvarModelo = async (nome: string) => {
