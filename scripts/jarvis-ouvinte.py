@@ -652,43 +652,27 @@ OBRAS_TAREFAS = Path.home() / ".infopro-hub" / "obras"
 
 
 def _executar_sistema(aid):
-    """Tarefa que muda o sistema: worktree próprio, como as melhorias do Pedro; junta no main ao entregar."""
-    curto = aid[:8]
-    ramo, obra = f"tarefa/{curto}", OBRAS_TAREFAS / curto
-    OBRAS_TAREFAS.mkdir(parents=True, exist_ok=True)
-    if obra.exists():
-        _git("worktree", "remove", "--force", str(obra))
-    if _git("rev-parse", "--verify", "--quiet", ramo).returncode == 0:
-        r = _git("worktree", "add", str(obra), ramo)
-    else:
-        r = _git("worktree", "add", "-b", ramo, str(obra), "main")
-    if r.returncode != 0:
-        execucao.erro(aid, f"Não consegui preparar a cópia do código: {(r.stderr or r.stdout).strip()[:200]}")
+    """Tarefa que muda o sistema. 12/11/2026 (Davi: "ninguém programa, todo mundo dispara para a fila; quem programa é o Atlas"):
+    o funcionário NÃO implementa mais; a tarefa vira pedido na fila de desenvolvimento (a ponte/Atlas faz) e é entregue como "enviado"."""
+    c = execucao.connect()
+    try:
+        q = c.cursor()
+        q.execute("""SELECT a.titulo, a.descricao, coalesce(m.nome, 'funcionário') FROM atividades a LEFT JOIN membros m ON m.id = a.responsavel_id WHERE a.id = %s""", (aid,))
+        linha = q.fetchone()
+    finally:
+        c.rollback()
+        c.close()
+    if not linha:
+        execucao.erro(aid, "Tarefa não encontrada.")
         return
-    for nome in ("node_modules", ".env", ".env.local", ".env.migration.local"):
-        if (RAIZ / nome).exists() and not (obra / nome).exists():
-            (obra / nome).symlink_to(RAIZ / nome)
-    ok, texto = rodar_claude(PROMPT_SISTEMA.format(aid=aid, obra=obra, ramo=ramo, raiz=RAIZ, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"),
-                             minutos=90, cwd=obra, turnos=200, atividade=aid)
-    st = execucao.situacao(aid)
-    novos = _git("rev-list", "--count", f"main..{ramo}").stdout.strip()
-    if st == "andamento":
-        execucao.erro(aid, texto[:200] if not ok else "terminei sem entregar.")
-    elif st == "aguardando_aprovacao" and novos not in ("", "0"):
-        m = _git("merge", "--no-edit", ramo)
-        if m.returncode != 0:
-            _git("merge", "--abort")
-            # Já entregue (aguardando aprovação): o erro() não muda nada; avisa na tarefa e no log (16/10:
-            # o "Reels em Programados" da Dalila ficou parado no ramo sem ninguém saber).
-            execucao.nota(aid, f"⚠️ Pronto no ramo {ramo}, mas não deu para juntar no sistema (conflito com trabalho de outro chat). "
-                               f"Peça ao chat geral para juntar. {(m.stderr or m.stdout).strip()[:150]}")
-            log("execução: merge falhou —", ramo, (m.stderr or m.stdout).strip()[:200])
-            _git("worktree", "remove", "--force", str(obra))
-            return                                  # mantém o ramo
-        log("execução: juntei no main", ramo)
-    _git("worktree", "remove", "--force", str(obra))
-    if execucao.situacao(aid) == "aguardando_aprovacao":
-        _git("branch", "-D", ramo)
+    titulo, descricao, nome = linha
+    pid, novo = fila.pedir(nome, titulo, f"Tarefa {aid} do funcionário {nome} no escritório (muda o próprio sistema). O combinado com o Davi:\n{descricao or '(sem descrição)'}\n\n"
+                                           f"Implemente, confira (tsc, eslint, testes) e faça commit. Quem pediu espera o resultado no sino e na tarefa.")
+    log("execução: sistema virou pedido na fila —", aid, pid[:8], "(novo)" if novo else "(já existia)")
+    html = (f"<h2>Enviado para a fila de desenvolvimento</h2><p>Esta tarefa muda o próprio sistema. Desde 12/11 os funcionários não programam: o pedido <strong>{pid[:8]}</strong> "
+            f"foi para a fila e o <strong>Atlas</strong> implementa. Você acompanha o andamento e o resultado pelo sino, no canto superior direito do app.</p>"
+            f"<h3>O combinado</h3><p>{(descricao or titulo).strip()[:1500]}</p><p>Quando o Atlas terminar, o resultado aparece no sino (Recentes). Se precisar de ajuste, peça aqui na tarefa ou direto no chat.</p>")
+    execucao.entregar(aid, f"Na fila do Atlas: {titulo}"[:150], f"Pedido {pid[:8]} aberto na fila de desenvolvimento.", html)
 
 
 def _executar(aid):
@@ -782,58 +766,24 @@ def _git(*args, cwd=RAIZ):
 
 
 def atender_melhorias():
+    """Melhoria aprovada ("Pode fazer"). 12/11/2026 (Davi: "ninguém programa, todo mundo dispara para a fila; quem programa é o Atlas"):
+    o Pedro não implementa mais; a melhoria vira pedido na fila de desenvolvimento e o cartão vai para "Feito" com a nota de que está na fila."""
     mid = melhorias.pegar()
     if not mid:
         return
-    curto = mid[:8]
-    ramo, obra = f"pedro/{curto}", OBRAS / curto
-    log("melhoria:", mid)
-    OBRAS.mkdir(parents=True, exist_ok=True)
-    if obra.exists():
-        _git("worktree", "remove", "--force", str(obra))
-    # Voltou de uma pendência: continua do ramo dele (o que já tinha feito fica).
-    if _git("rev-parse", "--verify", "--quiet", ramo).returncode == 0:
-        r = _git("worktree", "add", str(obra), ramo)
-    else:
-        r = _git("worktree", "add", "-b", ramo, str(obra), "main")
-    if r.returncode != 0:
-        melhorias.erro(mid, f"Não consegui preparar a cópia do código: {(r.stderr or r.stdout).strip()[:200]}")
+    r = melhorias._q("SELECT titulo, problema, porque, sugestao, notas FROM melhorias_sistema WHERE id = %s", (mid,), um=True)
+    if not r:
         return
-    # O worktree usa os mesmos pacotes e as mesmas chaves locais do projeto.
-    for nome in ("node_modules", ".env", ".env.local", ".env.migration.local"):
-        if (RAIZ / nome).exists() and not (obra / nome).exists():
-            (obra / nome).symlink_to(RAIZ / nome)
-    ok, texto = rodar_claude(PROMPT_MELHORIA.format(mid=mid, obra=obra, ramo=ramo, raiz=RAIZ, hoje=f"{datetime.now():%d/%m/%Y %H:%M}"),
-                             minutos=90, cwd=obra, turnos=200)
-    st, resultado, _ = melhorias.situacao(mid) or (None, None, None)
-    if st == "pendente":                       # depende do Davi: guarda o ramo pra continuar depois
-        log("melhoria: pendente —", (resultado or "")[:150])
-        _git("-C", str(obra), "add", "-A")
-        _git("-C", str(obra), "commit", "-q", "-m", "wip: Pedro parou numa pendência (continua depois)")
-        _git("worktree", "remove", "--force", str(obra))
-        return
-    if st != "fazendo":                        # o Pedro registrou erro
-        log("melhoria:", st, (resultado or "")[:150])
-    elif not resultado:                        # terminou sem "pronto"
-        melhorias.erro(mid, f"O Pedro parou sem terminar: {(texto or '')[:300]}")
-        log("melhoria: sem pronto —", (texto or "")[:200])
-    else:
-        novos = _git("rev-list", "--count", f"main..{ramo}").stdout.strip()
-        if novos in ("", "0"):
-            melhorias.erro(mid, "O Pedro disse que terminou, mas não fez commit de nada.")
-        else:
-            m = _git("merge", "--no-edit", ramo)
-            if m.returncode != 0:
-                _git("merge", "--abort")
-                melhorias.erro(mid, f"Ficou pronto no ramo {ramo}, mas não deu para juntar no sistema agora "
-                                    f"(conflito com trabalho em andamento de outro chat). Peça ao chat geral para juntar. {(m.stderr or m.stdout).strip()[:200]}")
-                log("melhoria: merge falhou —", (m.stderr or m.stdout)[:200])
-                return                          # mantém o ramo pra juntar depois
-            melhorias.feito(mid, _git("rev-parse", "--short", "HEAD").stdout.strip())
-            log("melhoria: feita", mid)
-    _git("worktree", "remove", "--force", str(obra))
-    if melhorias.situacao(mid)[0] == "feito":
-        _git("branch", "-D", ramo)
+    titulo, problema, porque, sugestao, notas = r
+    log("melhoria: vai para a fila —", mid)
+    desc = (f"Melhoria aprovada pelo Davi no kanban do Pedro (id {mid}).\nProblema: {problema or '-'}\nPor que importa: {porque or '-'}\nSugestão: {sugestao or '-'}"
+            + (f"\nDETALHES DO DAVI (valem mais que a sugestão): {notas}" if notas else "")
+            + "\n\nImplemente a menor mudança que resolve; banco só por migração + teste; confira tsc, eslint e testes; faça commit.")
+    pid, novo = fila.pedir("pedro", titulo, desc)
+    resumo = f"Na fila do Atlas (pedido {pid[:8]}): ele implementa e você acompanha pelo sino."
+    melhorias._q("UPDATE melhorias_sistema SET status = 'feito', progresso = 100, agora = NULL, resultado = %s, briefing = %s WHERE id = %s",
+                 (resumo, f"{resumo}\n\nO Pedro não programa mais: toda melhoria aprovada vira pedido na fila de desenvolvimento. O resultado aparece no sino (Recentes) quando o Atlas terminar.", mid), commit=True)
+    log("melhoria: na fila", mid, pid[:8], "(novo)" if novo else "(já existia)")
 
 
 # Rodada de ideias (pedido do Davi, 16/10/2026: "sempre fique trazendo ideias do
