@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
 import { useGravarAudio } from "@/hooks/useGravarAudio";
-import { completude, configVazia, prontoParaUsar, sanitizarAgente, type ConfigAgente } from "@/lib/agenteWhatsapp";
+import { completude, configVazia, pausaDigitando, prontoParaUsar, sanitizarAgente, type ConfigAgente } from "@/lib/agenteWhatsapp";
 
 // Inteligência do agente do WhatsApp (12/11/2026, Davi: "vou conversando e a gente monta a inteligência: produto, ofertas, o que pode e não pode…").
 // Esquerda: conversa com o Claude (que entrevista) ou teste (você faz o lead). Direita: a inteligência, editável à mão, salva sozinha.
@@ -25,6 +25,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const [msgs, setMsgs] = useState<Record<"construir" | "simular", Msg[]>>({ construir: [{ papel: "assistant", texto: AJUDA }], simular: [] });
   const [texto, setTexto] = useState("");
   const [esperando, setEsperando] = useState(false);
+  const [digitando, setDigitando] = useState(false);
   const [zerados, setZerados] = useState<Record<"construir" | "simular", string | null>>({ construir: null, simular: null });
   const [perfilSim, setPerfilSim] = useState(perfis[0] ?? "");
   const audio = useGravarAudio((falado) => setTexto((t) => [t.trim(), falado].filter(Boolean).join(" ")));
@@ -106,7 +107,12 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       const { data: p } = await db.from("agente_whatsapp_pedidos").select("status, resposta, config, erro").eq("id", id).maybeSingle();
       const r = p as { status: string; resposta: string | null; config: unknown; erro: string | null } | null;
       if (r?.status === "respondido") {
-        setMsgs((m) => ({ ...m, [modo]: [...m[modo], ...(tipo === "construir" ? [r.resposta ?? ""] : partirMensagens(r.resposta ?? "")).map((texto) => ({ papel: (tipo === "construir" ? "assistant" : "agente") as Msg["papel"], texto }))] }));
+        // O agente de teste manda uma mensagem de cada vez, com a pausa de "digitando…" entre elas (como no WhatsApp de verdade).
+        const partes = tipo === "construir" ? [r.resposta ?? ""] : partirMensagens(r.resposta ?? "");
+        for (let k = 0; k < partes.length; k++) {
+          if (k > 0) { setDigitando(true); await new Promise((ok) => setTimeout(ok, pausaDigitando(partes[k]))); setDigitando(false); }
+          setMsgs((m) => ({ ...m, [modo]: [...m[modo], { papel: (tipo === "construir" ? "assistant" : "agente") as Msg["papel"], texto: partes[k] }] }));
+        }
         if (tipo === "construir" && r.config && configRef.current) {
           const novo = sanitizarAgente(r.config, configRef.current);
           setConfig(novo);
@@ -170,7 +176,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
             const meu = m.papel === "user" || m.papel === "lead";
             return <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", meu ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>{m.texto}</div>;
           })}
-          {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Pensando…</div>}
+          {(esperando || digitando) && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{digitando ? "digitando…" : "Pensando…"}</div>}
           <div ref={fim} />
         </div>
         {ehAjuste(texto) && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste: o agente vai aprender isso e gravar na inteligência ao lado.</p>}

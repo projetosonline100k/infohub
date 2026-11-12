@@ -35,3 +35,9 @@ test('completude e quando está pronto', () => {
   assert.equal(r.pct, 50);   // produto, para quem, oferta, objetivo, não pode
   assert.ok(r.faltando.includes('o tom de voz') && r.faltando.includes('quando chamar você'));
 });
+
+test('pausa de digitação: mínimo 1,5 s, cresce com o texto, máximo 7 s', () => {
+  assert.equal(m.pausaDigitando('oi'), 1500);
+  assert.ok(m.pausaDigitando('x'.repeat(60)) > m.pausaDigitando('x'.repeat(30)));
+  assert.equal(m.pausaDigitando('x'.repeat(1000)), 7000);
+});

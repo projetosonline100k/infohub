@@ -59,3 +59,6 @@ export function completude(c: ConfigAgente): { pct: number; faltando: string[] }
 
 /** Pode simular/usar com segurança? Sem produto, oferta com link e as regras do que não pode, melhor não soltar o agente. */
 export const prontoParaUsar = (c: ConfigAgente) => !!c.produto.nome && c.ofertas.some((o) => !!o.preco && !!o.link) && c.nao_pode.length > 0 && !!c.objetivo;
+
+/** Pausa (ms) "digitando…" antes de cada mensagem do agente, como numa conversa de verdade: ~1,2 s + 40 ms por caractere, entre 1,5 s e 7 s. */
+export const pausaDigitando = (texto: string) => Math.min(7000, Math.max(1500, 1200 + texto.length * 40));
