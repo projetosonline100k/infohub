@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
+import { X1Quiz } from "./X1Quiz";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
 import {
   agruparRespostas, calcularPainel, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, variacao, vendasDoLink,
@@ -21,8 +22,8 @@ import {
 // tendência, funil, maior abandono, insight, leads e visitas por dia), Leads (busca, filtro, status, planilha),
 // Respostas (o que as pessoas escolheram em cada pergunta), Funil e Configurações. Sempre escuro, como o editor.
 const db = supabase as unknown as SupabaseClient;
-type Aba = "metricas" | "leads" | "respostas" | "funil" | "links" | "config";
-const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["config", "Configurações", Settings]];
+type Aba = "metricas" | "leads" | "x1" | "respostas" | "funil" | "links" | "config";
+const ABAS: [Aba, string, typeof BarChart3][] = [["metricas", "Métricas", BarChart3], ["leads", "Leads", Users], ["x1", "X1", MessageCircle], ["respostas", "Respostas", ListChecks], ["funil", "Funil", Filter], ["links", "Links", Link2], ["config", "Configurações", Settings]];
 const STATUS: Record<StatusLead, { rotulo: string; cor: string }> = {
   novo: { rotulo: "Novo", cor: "border-sky-400/50 bg-sky-500/15 text-sky-200" },
   em_contato: { rotulo: "Em contato", cor: "border-violet-400/50 bg-violet-500/15 text-violet-200" },
@@ -95,6 +96,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads leads={leads} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} />}
+      {aba === "x1" && <X1Quiz quizId={quiz.id} leads={leads} perguntas={perguntas} onStatus={mudarStatus} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
       {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
