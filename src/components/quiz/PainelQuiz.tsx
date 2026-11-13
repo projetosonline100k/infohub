@@ -678,7 +678,11 @@ function PreviaDoLink({ quizId, slug }: { quizId: string; slug: string }) {
       toast.success("Imagem enviada: clique em Salvar prévia");
     } catch { toast.error("Não consegui enviar a imagem (até 20 MB)"); } finally { setEnviando(false); }
   };
+  // Link que não é imagem (ex.: página do Kommodo/Drive) deixa o cartão sem foto na DM: confere carregando de verdade.
+  const [quebrada, setQuebrada] = useState<string | null>(null);
+  const conferirImagem = (url: string) => new Promise<boolean>((ok) => { if (!url) { ok(true); return; } const i = new Image(); i.onload = () => ok(true); i.onerror = () => ok(false); i.src = url; });
   const salvar = async () => {
+    if (v.imagem.trim() && !(await conferirImagem(v.imagem.trim()))) { setQuebrada(v.imagem); toast.error("Esse link não é de uma imagem: use Enviar imagem"); return; }
     setSalvando(true);
     const limpo = { titulo: v.titulo.trim(), descricao: v.descricao.trim(), imagem: v.imagem.trim() };
     const { error } = await db.from("quizzes").update({ compartilhar: limpo.titulo || limpo.descricao || limpo.imagem ? limpo : null }).eq("id", quizId);
@@ -702,6 +706,7 @@ function PreviaDoLink({ quizId, slug }: { quizId: string; slug: string }) {
             </label>
             <input value={v.imagem} onChange={(e) => setV({ ...v, imagem: e.target.value })} placeholder="ou cole o link de uma imagem (https://…)" className={cn(campo, "min-w-[200px] flex-1")} disabled={!carregou} />
           </div>
+          {quebrada && quebrada === v.imagem && <p className="rounded-lg bg-rose-500/15 p-2 text-xs text-rose-200">Esse link não é de uma imagem (provavelmente é uma página, como o Kommodo ou o Drive), por isso o cartão sai sem foto. Clique em <b>Enviar imagem</b> e escolha o arquivo, ou cole o endereço direto da imagem (termina em .jpg, .png ou .webp).</p>}
           <p className="text-[11px] text-white/45">Melhor tamanho: <b>1200 × 630</b> (retangular, mais larga que alta). Formatos JPG ou PNG, até 5 MB. Aparece como foto grande em cima do título.</p>
           <div className="flex gap-2">
             <button type="button" disabled={salvando || !carregou} onClick={() => void salvar()} className="rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40">{salvando ? "Salvando…" : "Salvar prévia"}</button>
@@ -711,7 +716,7 @@ function PreviaDoLink({ quizId, slug }: { quizId: string; slug: string }) {
         <div>
           <p className="mb-1 text-xs text-white/50">Como aparece (aproximado)</p>
           <div className="max-w-[300px] overflow-hidden rounded-2xl bg-[#1f2630] text-white">
-            {v.imagem ? <img src={v.imagem} alt="" className="aspect-[1.91/1] w-full object-cover" /> : <div className="flex aspect-[1.91/1] w-full items-center justify-center bg-black/30 text-xs text-white/35">sem imagem</div>}
+            {v.imagem ? <img src={v.imagem} alt="" onError={() => setQuebrada(v.imagem)} className="aspect-[1.91/1] w-full object-cover" /> : <div className="flex aspect-[1.91/1] w-full items-center justify-center bg-black/30 text-xs text-white/35">sem imagem</div>}
             <div className="space-y-0.5 p-3"><p className="line-clamp-2 text-sm font-semibold">{v.titulo || "Título do quiz"}</p>{v.descricao && <p className="line-clamp-2 text-xs text-white/65">{v.descricao}</p>}<p className="text-xs text-white/45">{dominio}</p></div>
           </div>
         </div>
