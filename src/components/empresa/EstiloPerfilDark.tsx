@@ -37,7 +37,9 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   const [salvando, setSalvando] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [texto, setTexto] = useState("");
-  const [esperando, setEsperando] = useState(false);
+  const [pendentes, setPendentes] = useState(0);   // respostas que ainda estou esperando (pode haver mais de uma: o Lauro responde sem parar o trabalho)
+  const pendentesRef = useRef(0);
+  const esperando = pendentes > 0;
   const [detalhes, setDetalhes] = useState(false);
   const [vivo, setVivo] = useState(false);   // modo vivo: o Lauro roda no Mac do Davi, com o Chrome dele
   const vivoRef = useRef(false);
@@ -74,59 +76,62 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   // Fecha/troca de perfil: não perde o que ainda não foi gravado.
   useEffect(() => () => { clearTimeout(timer.current); void gravar(); }, [perfilId]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  const mudarPendentes = (d: number) => { pendentesRef.current = Math.max(0, pendentesRef.current + d); setPendentes(pendentesRef.current); };
   const aguardar = useCallback(async (id: string, idPerfil: string) => {
-    setEsperando(true);
-    for (let i = 0; i < (vivoRef.current ? 800 : 330); i++) {
-      await new Promise((r) => setTimeout(r, 2000));
-      const { data: p } = await db.from("esteira_dark_pedidos").select("status, resposta, estilo, erro").eq("id", id).maybeSingle();
-      const r = p as { status: string; resposta: string | null; estilo: unknown; erro: string | null } | null;
-      if (r?.status === "respondido") {
-        setMsgs((m) => [...m, { papel: "assistant", texto: r.resposta ?? "" }]);
-        if (r.estilo) {
-          const novo = aplicarEstilo(estiloRef.current, r.estilo);
-          setEstilo(novo);
-          pendente.current = { id: idPerfil, dados: { ...(pendente.current?.dados ?? {}), estilo: novo } };
-          void gravar();
+    mudarPendentes(1);
+    try {
+      for (let i = 0; i < (vivoRef.current ? 800 : 330); i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { data: p } = await db.from("esteira_dark_pedidos").select("status, resposta, estilo, erro, encaminhado_id").eq("id", id).maybeSingle();
+        const r = p as { status: string; resposta: string | null; estilo: unknown; erro: string | null; encaminhado_id: string | null } | null;
+        if (r?.status === "respondido") {
+          setMsgs((m) => [...m, { papel: "assistant", texto: r.resposta ?? "" }]);
+          if (r.estilo) {
+            const novo = aplicarEstilo(estiloRef.current, r.estilo);
+            setEstilo(novo);
+            pendente.current = { id: idPerfil, dados: { ...(pendente.current?.dados ?? {}), estilo: novo } };
+            void gravar();
+          }
+          if (r.encaminhado_id) void aguardar(r.encaminhado_id, idPerfil);   // a mensagem virou pedido do Lauro: a resposta dele chega depois
+          return;
         }
-        setEsperando(false);
-        return;
+        if (r?.status === "erro") { toast.error(r.erro || "O Lauro não conseguiu responder agora"); return; }
       }
-      if (r?.status === "erro") { setEsperando(false); toast.error(r.erro || "O Lauro não conseguiu responder agora"); return; }
-    }
-    setEsperando(false);
-    toast.error(vivoRef.current ? "O Lauro ao vivo não respondeu. O Mac está ligado e o app aberto?" : "Demorou demais. Tente de novo.");
+      toast.error(vivoRef.current ? "O Lauro ao vivo não respondeu. O Mac está ligado e o app aberto?" : "Demorou demais. Tente de novo.");
+    } finally { mudarPendentes(-1); }
   }, [gravar]);
 
   useEffect(() => {
     if (!perfil) return;
     setNome(perfil.nome); setArroba(perfil.arroba ?? ""); setClienteId(perfil.cliente_id ?? ""); setEstilo(sanitizarEstilo(perfil.estilo));
-    setTexto(""); setEsperando(false); setDetalhes(false); setVivo(!!perfil.modo_vivo);
+    setTexto(""); pendentesRef.current = 0; setPendentes(0); setDetalhes(false); setVivo(!!perfil.modo_vivo);
     void db.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista").then(({ data }: { data: { id: string; nome_especialista: string }[] | null }) => setProjetos(data ?? []));
     // A conversa fica guardada: volta do jeito que estava (e retoma uma resposta que ainda estava sendo preparada).
     void (async () => {
-      const { data: ps } = await db.from("esteira_dark_pedidos").select("id, mensagem, status, resposta, criado_em").eq("perfil_id", perfil.id).order("criado_em", { ascending: false }).limit(60);
-      const lista = ((ps ?? []) as { id: string; mensagem: string; status: string; resposta: string | null; criado_em: string }[]).reverse().filter((p) => !perfil.conversa_zerada_em || p.criado_em > perfil.conversa_zerada_em);
+      const { data: ps } = await db.from("esteira_dark_pedidos").select("id, mensagem, status, resposta, criado_em, rapido, encaminhado_id").eq("perfil_id", perfil.id).order("criado_em", { ascending: false }).limit(80);
+      type P = { id: string; mensagem: string; status: string; resposta: string | null; criado_em: string; rapido: boolean; encaminhado_id: string | null };
+      const lista = ((ps ?? []) as P[]).reverse().filter((p) => !perfil.conversa_zerada_em || p.criado_em > perfil.conversa_zerada_em);
+      const encaminhados = new Set(lista.map((p) => p.encaminhado_id).filter((x): x is string => !!x));   // mensagens que o Lauro recebeu como pedido (o texto já aparece como você escreveu)
       const m: Msg[] = [intro(perfil.nome)];
-      for (const p of lista) { m.push({ papel: "user", texto: p.mensagem }); if (p.status === "respondido" && p.resposta) m.push({ papel: "assistant", texto: p.resposta }); }
+      for (const p of lista) { if (!encaminhados.has(p.id)) m.push({ papel: "user", texto: p.mensagem }); if (p.status === "respondido" && p.resposta) m.push({ papel: "assistant", texto: p.resposta }); }
       setMsgs(m);
-      const ultimo = lista[lista.length - 1];
-      if (ultimo && (ultimo.status === "pendente" || ultimo.status === "processando") && Date.now() - new Date(ultimo.criado_em).getTime() < 12 * 60_000) void aguardar(ultimo.id, perfil.id);
+      for (const p of lista) if ((p.status === "pendente" || p.status === "processando") && Date.now() - new Date(p.criado_em).getTime() < 30 * 60_000) void aguardar(p.id, perfil.id);
     })();
   }, [perfilId]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs, esperando]);
 
   const enviar = async () => {
     const t = texto.trim();
-    if (!t || !perfil || esperando) return;
+    if (!t || !perfil) return;
     const hist = msgs.slice(1);
     setMsgs((m) => [...m, { papel: "user", texto: t }]);
     setTexto("");
-    setEsperando(true);
+    const ocupado = pendentesRef.current > 0;   // o Lauro está trabalhando: a mensagem vira pergunta rápida, respondida sem parar o trabalho dele
     const { data, error } = await db.from("esteira_dark_pedidos").insert({
-      perfil_id: perfil.id, mensagem: t, estilo_atual: estilo, contexto: { perfil: nome || perfil.nome, arroba: arroba || null, cliente_id: clienteId || null },
+      perfil_id: perfil.id, mensagem: t, rapido: ocupado, estilo_atual: estilo, contexto: { perfil: nome || perfil.nome, arroba: arroba || null, cliente_id: clienteId || null },
       historico: hist.map((h) => ({ papel: h.papel, texto: h.texto })),
     }).select("id").single();
-    if (error || !data) { setEsperando(false); toast.error("Não consegui enviar"); return; }
+    if (error || !data) { toast.error("Não consegui enviar"); return; }
     await aguardar((data as { id: string }).id, perfil.id);
   };
   const zerar = async () => {
@@ -182,7 +187,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                     {midiasPorMsg[i]?.map((md) => <MidiaLocal key={md.caminho} midia={md} />)}
                   </div>
                 ))}
-                {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{vivo ? "Lauro está trabalhando no seu Mac…" : "Lauro está pensando…"}</div>}
+                {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{vivo ? "Lauro está trabalhando no seu Mac…" : "Lauro está pensando…"}<span className="text-white/35">· pode escrever: ele responde sem parar o que está fazendo</span></div>}
                 <div ref={fim} />
               </div>
               <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
@@ -194,7 +199,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                     {audio.transcrevendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
                   </button>
                 )}
-                <button type="button" disabled={!texto.trim() || esperando} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
+                <button type="button" disabled={!texto.trim()} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
               </div>
             </section>
 
