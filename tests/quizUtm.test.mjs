@@ -81,3 +81,28 @@ test('vendas por UTM: faturamento, pagamento, dia da semana, reembolso e tabela 
   const direto = t.find((x) => x.source === '');
   assert.equal(direto.vendas, 1); assert.equal(direto.roas, null);   // sem investimento: sem ROAS
 });
+
+test('dados do lead vão para o checkout da Eduzz (nome, e-mail, celular sem o 55) sem trocar o que já está na URL', () => {
+  const { comDadosDoLead, telefoneNacional } = u;
+  const r = new URL(comDadosDoLead('https://chk.eduzz.com/Q9N21JVZ01?utm_source=afiliado', { nome: ' Maria Souza ', email: ' Maria@Exemplo.COM ', whatsapp: '+55 (11) 98765-4321' }));
+  assert.equal(r.searchParams.get('name'), 'Maria Souza');
+  assert.equal(r.searchParams.get('email'), 'maria@exemplo.com');
+  assert.equal(r.searchParams.get('phone'), '11987654321');
+  assert.equal(r.searchParams.get('cellphone'), '11987654321');
+  assert.equal(r.searchParams.get('utm_source'), 'afiliado');   // a UTM continua
+  assert.equal(new URL(comDadosDoLead('https://chk.eduzz.com/X?email=ja@tem.co', { email: 'outro@x.co' })).searchParams.get('email'), 'ja@tem.co');
+  assert.equal(telefoneNacional('11987654321'), '11987654321');
+  assert.equal(telefoneNacional('5511987654321'), '11987654321');
+  assert.equal(telefoneNacional('12345'), '');
+});
+
+test('dados do lead só vão para a Eduzz: outros sites e links inválidos ficam como estão; e-mail ruim e telefone vazio são ignorados', () => {
+  const { comDadosDoLead } = u;
+  assert.equal(comDadosDoLead('https://pay.kiwify.com.br/abc', { nome: 'A', email: 'a@b.co' }), 'https://pay.kiwify.com.br/abc');
+  assert.equal(comDadosDoLead('https://site-falso-eduzz.com.evil.com/x', { nome: 'A', email: 'a@b.co' }), 'https://site-falso-eduzz.com.evil.com/x');
+  assert.equal(comDadosDoLead('#', { nome: 'A' }), '#');
+  const r = new URL(comDadosDoLead('https://chk.eduzz.com/X', { nome: 'Ana', email: 'nao-e-email', whatsapp: '' }));
+  assert.equal(r.searchParams.get('name'), 'Ana');
+  assert.equal(r.searchParams.has('email'), false);
+  assert.equal(r.searchParams.has('phone'), false);
+});

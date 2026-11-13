@@ -55,3 +55,32 @@ export function codigoCurto(v: string): string | null {
   return /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(s) ? s : null;
 }
 export const enderecoCurto = (baseDoSite: string, codigo: string) => `${baseDoSite.replace(/\/$/, "")}/r/${codigo}`;
+
+/** Telefone só com números e sem o 55 do Brasil (o checkout da Eduzz já traz o DDI): "+55 (11) 98765-4321" → "11987654321". Vazio se não parecer um telefone. */
+export function telefoneNacional(v: string | null | undefined): string {
+  let d = (v ?? "").replace(/\D/g, "");
+  if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
+  return d.length >= 10 && d.length <= 11 ? d : "";
+}
+
+/**
+ * Leva o que a pessoa já preencheu no quiz (nome, e-mail, WhatsApp) para o checkout da Eduzz, que preenche sozinho os campos
+ * (13/11/2026, Davi: "ao ir para a Eduzz, os dados que ela já preencheu já vão sendo preenchidos"). Testado em chk.eduzz.com:
+ * `name` → Nome completo, `email` → E-mail, `phone`/`cellphone` → Celular. Só mexe em endereços da Eduzz e não troca o que já estiver na URL.
+ */
+export function comDadosDoLead(url: string, dados: { nome?: string; email?: string; whatsapp?: string }): string {
+  if (!/^https?:\/\//i.test(url)) return url;
+  try {
+    const u = new URL(url);
+    if (!/(^|\.)eduzz\.com$/i.test(u.hostname)) return url;
+    const nome = (dados.nome ?? "").trim().slice(0, 120);
+    const email = (dados.email ?? "").trim().toLowerCase().slice(0, 160);
+    const fone = telefoneNacional(dados.whatsapp);
+    const poe = (k: string, v: string) => { if (v && !u.searchParams.has(k)) u.searchParams.set(k, v); };
+    poe("name", nome);
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) poe("email", email);
+    poe("phone", fone);
+    poe("cellphone", fone);
+    return u.toString();
+  } catch { return url; }
+}

@@ -70,3 +70,6 @@ Pedido do Davi: quiz cru (só texto e botão) não serve. Referências dele: inl
 - **Imagem com URL vazia é lugar reservado**: no teste aparece pontilhada com o `imagem_nota` ("Falta: foto do Matheus"); no link público some. Não invente foto do especialista nem depoimento: deixe vazio com a nota.
 - **O Davi edita na tela:** em "Ver e aprovar" → Testar o quiz → **Editar**, ele clica num texto para mudar a palavra ou numa imagem para enviar (bucket público `quiz-imagens`). Grava direto em `quizzes.estrutura`; antes de ajustar, rode `ver` de novo para não desfazer o que ele mudou.
 - Copy nova (texto de tela, perfil, oferta) vem do Ítalo: use o texto do esboço dele; o Roy cuida de montar e do visual.
+
+## Dados do lead no checkout da Eduzz (13/11)
+O botão de compra (oferta e perfis) leva o que a pessoa já deu no quiz para o checkout da Eduzz, que preenche sozinho: `name` → Nome completo, `email` → E-mail, `phone`/`cellphone` → Celular (sem o 55). Só vale para links `*.eduzz.com`, não troca parâmetros que já estejam na URL e não vale no editor. Código: `comDadosDoLead` em `src/lib/quiz/utm.ts`. O checkout guarda o que a pessoa já preencheu antes no mesmo aparelho e pode ignorar a URL nesse caso.

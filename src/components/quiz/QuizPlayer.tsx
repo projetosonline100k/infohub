@@ -8,6 +8,7 @@ import {
   type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
 } from "@/lib/quiz/quiz";
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
+import { comDadosDoLead } from "@/lib/quiz/utm";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
@@ -67,6 +68,8 @@ interface Ctx {
   // 25/10 (Davi): no teste da revisão também dá pra enviar a foto/áudio que falta, sem entrar no Editar.
   podeEnviar: boolean;
   aoClicarOferta?: () => void;   // métrica: clique no link da oferta
+  /** Antes de abrir o checkout: leva nome, e-mail e WhatsApp que a pessoa já deu para o formulário de compra (Eduzz). */
+  linkDeCompra?: (url: string) => string;
 }
 const QuizCtx = createContext<Ctx>({ editar: false, mostrarFaltas: false, cor: "#0ea5e9", escuro: false, mudarTexto: () => {}, mudarImagem: () => {}, podeEnviar: false });
 
@@ -470,11 +473,11 @@ function Depoimentos({ caminho, lista, nota }: { caminho: string; lista?: Depoim
 }
 
 function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
-  const { cor, editar, aoClicarOferta } = useContext(QuizCtx);
+  const { cor, editar, aoClicarOferta, linkDeCompra } = useContext(QuizCtx);
   const cls = "h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]";
   const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}` };
   if (editar) return <div className={cn(cls, "flex items-center justify-center px-4 py-3")} style={estilo}>{children}</div>;
-  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={href} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()}>{children}</a></Button>;
+  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()}>{children}</a></Button>;
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
@@ -547,6 +550,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const ctx: Ctx = {
     editar, mostrarFaltas: !!teste, cor, escuro, podeEnviar: !!onImagem && !!onMudar,
     aoClicarOferta: () => evento.current?.("cta"),
+    linkDeCompra: editar ? undefined : (u) => comDadosDoLead(u, { nome: contato.nome, email: contato.email, whatsapp: contato.whatsapp }),
     mudarTexto: (c, v) => onMudar?.(comValor(e, c, v)),
     mudarImagem: (c, arq) => {
       if (!arq) { onMudar?.(comValor(e, c, "")); return; }
@@ -1249,9 +1253,10 @@ function Resultado({ e, t, base, perfil, iPerfil, escolhas, nome, f, onSeguir, s
 // recebe, o plano pronto com o cupom e o preço De/Por, o botão, a garantia, depoimentos, perguntas frequentes e o
 // bloco de compra repetido no fim.
 function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; iPerfil?: number; f: (s?: string) => string; suave?: string }) {
-  const { aoClicarOferta, editar } = useContext(QuizCtx);
+  const { aoClicarOferta, editar, linkDeCompra } = useContext(QuizCtx);
   const o = e.oferta!;
-  const url = o.cta_url || perfil?.cta_url;
+  const urlBase = o.cta_url || perfil?.cta_url;
+  const url = urlBase && linkDeCompra ? linkDeCompra(urlBase) : urlBase;
   const texto = o.cta_texto || perfil?.cta_texto || "Ativar meu plano";
   const verde = "#34d399", roxo = "#9aa7ff";
   const de = o.preco_de, por = o.preco_por ?? o.preco;
