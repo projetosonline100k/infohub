@@ -123,3 +123,40 @@ pub fn lauro_controle_parar(ativo: bool) -> Result<bool, String> {
 pub fn lauro_controle_estado() -> bool {
     arquivo_parar().map(|f| f.exists()).unwrap_or(false)
 }
+
+// ---------------------------------------------------------------- Liberar o Mac para o Lauro (permissões do macOS)
+
+/// Programa que roda o ouvinte do Atlas (é ele que precisa das permissões de Acessibilidade e Gravação de Tela).
+fn programa_do_ouvinte() -> String {
+    let padrao = "/Library/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python".to_string();
+    let saida = std::process::Command::new("/usr/bin/pgrep").args(["-f", "jarvis-ouvinte.py --so-codigo"]).output();
+    if let Ok(o) = saida {
+        if let Some(pid) = String::from_utf8_lossy(&o.stdout).split_whitespace().next() {
+            if let Ok(c) = std::process::Command::new("/bin/ps").args(["-o", "comm=", "-p", pid]).output() {
+                let caminho = String::from_utf8_lossy(&c.stdout).trim().to_string();
+                if caminho.starts_with('/') && std::path::Path::new(&caminho).exists() { return caminho; }
+            }
+        }
+    }
+    padrao
+}
+
+/// Abre o painel certo dos Ajustes do Sistema ("acessibilidade" ou "tela"), copia o caminho do programa para colar no "+" (⇧⌘G) e o mostra no Finder.
+/// Só abre telas e copia um texto: quem liga a permissão é o Davi.
+#[tauri::command]
+pub fn lauro_liberar_mac(painel: String) -> Result<String, String> {
+    use std::io::Write;
+    let programa = programa_do_ouvinte();
+    let url = match painel.as_str() {
+        "acessibilidade" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+        "tela" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+        _ => return Err("Painel desconhecido".into()),
+    };
+    if let Ok(mut filho) = std::process::Command::new("/usr/bin/pbcopy").stdin(std::process::Stdio::piped()).spawn() {
+        if let Some(mut entrada) = filho.stdin.take() { let _ = entrada.write_all(programa.as_bytes()); }
+        let _ = filho.wait();
+    }
+    std::process::Command::new("/usr/bin/open").arg(url).spawn().map_err(|e| e.to_string())?;
+    let _ = std::process::Command::new("/usr/bin/open").args(["-R", &programa]).spawn();
+    Ok(programa)
+}

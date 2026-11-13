@@ -124,6 +124,7 @@ pub fn run() {
             midia_local::salvar_anexo_lauro,
             midia_local::lauro_controle_parar,
             midia_local::lauro_controle_estado,
+            midia_local::lauro_liberar_mac,
             whatsapp::whatsapp_conexao,
             whatsapp::whatsapp_qr,
             danilo::danilo_base,

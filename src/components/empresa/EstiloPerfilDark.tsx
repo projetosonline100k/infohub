@@ -43,6 +43,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   const [detalhes, setDetalhes] = useState(false);
   const [anexos, setAnexos] = useState<File[]>([]);   // imagens, vídeos e áudios para o Lauro ver (jogados no chat, colados ou escolhidos no clipe)
   const [arrastando, setArrastando] = useState(false);
+  const [guiaMac, setGuiaMac] = useState<boolean>(() => { try { return localStorage.getItem("lauro:mac-liberado") !== "1"; } catch { return true; } });   // passo a passo da permissão do macOS (uma vez só)
   const [controlePausado, setControlePausado] = useState(false);   // botão "Parar controle": trava o Lauro de mexer no Mac (mouse/teclado)
   const seletor = useRef<HTMLInputElement>(null);
   const [vivo, setVivo] = useState(false);   // modo vivo: o Lauro roda no Mac do Davi, com o Chrome dele
@@ -133,8 +134,8 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
     if (!vivo) { toast.error("Ligue o Modo vivo: o Lauro precisa do seu Mac para abrir o arquivo"); return; }
     setAnexos((a) => [...a, ...ok].slice(0, 8));
   };
-  const enviar = async () => {
-    let t = texto.trim();
+  const enviar = async (forca?: string) => {
+    let t = (forca ?? texto).trim();
     if ((!t && anexos.length === 0) || !perfil) return;
     // Anexos: vão para o Mac (~/.infopro-hub/exemplos/<perfil>/recebidos) e o Lauro recebe o caminho de cada um.
     if (anexos.length) {
@@ -149,7 +150,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
     }
     const hist = msgs.slice(1);
     setMsgs((m) => [...m, { papel: "user", texto: t }]);
-    setTexto("");
+    if (forca === undefined) setTexto("");
     const ocupado = pendentesRef.current > 0;   // o Lauro está trabalhando: a mensagem vira pergunta rápida, respondida sem parar o trabalho dele
     const { data, error } = await db.from("esteira_dark_pedidos").insert({
       perfil_id: perfil.id, mensagem: t, rapido: ocupado, estilo_atual: estilo, contexto: { perfil: nome || perfil.nome, arroba: arroba || null, cliente_id: clienteId || null },
@@ -165,6 +166,14 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
     const { error } = await db.from("esteira_dark_perfis").update({ conversa_zerada_em: agora }).eq("id", perfil.id);
     if (error) toast.error("Não consegui zerar"); else onMudou();
   };
+  const abrirAjuste = async (painel: "acessibilidade" | "tela") => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke<string>("lauro_liberar_mac", { painel });
+      toast.success("Ajustes abertos. O caminho do programa já está copiado: clique no +, aperte ⇧⌘G, cole (⌘V) e confirme");
+    } catch { toast.error("Só funciona no app do Mac"); }
+  };
+  const marcarLiberado = () => { setGuiaMac(false); try { localStorage.setItem("lauro:mac-liberado", "1"); } catch { /* sem storage */ } };
   const alternarControle = async () => {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -222,6 +231,18 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                 <button type="button" onClick={() => void zerar()} title="Zerar a conversa (o estilo ao lado não muda)" className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
               </div>
               {vivo && <p className="border-b border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">Modo vivo: o Lauro usa o Chrome e o seu Mac (vê a tela, clica, digita, abre apps), assiste os vídeos que você mandar e olha as páginas. Pode demorar alguns minutos por resposta. O botão "Parar controle" trava o mouse e o teclado dele na hora. O Mac precisa estar ligado com o app aberto.</p>}
+              {vivo && isDesktop() && guiaMac && (
+                <div className="space-y-2 border-b border-amber-300/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  <p className="font-semibold">Liberar o Mac para o Lauro (só uma vez)</p>
+                  <p className="text-amber-100/80">O macOS pede a sua permissão. Em cada botão abaixo, abre a tela certa e já copia o caminho do programa: clique no <b>+</b>, aperte <b>⇧⌘G</b>, cole com <b>⌘V</b>, Enter, e ligue a chavinha dele.</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => void abrirAjuste("acessibilidade")} className="rounded-lg bg-amber-300 px-2.5 py-1 font-semibold text-black hover:bg-amber-200">1 · Acessibilidade</button>
+                    <button type="button" onClick={() => void abrirAjuste("tela")} className="rounded-lg bg-amber-300 px-2.5 py-1 font-semibold text-black hover:bg-amber-200">2 · Gravação de tela</button>
+                    <button type="button" onClick={() => void enviar("Rode o diagnóstico do controle do Mac e me diga se está tudo liberado.")} className="rounded-lg border border-amber-300/50 px-2.5 py-1 hover:bg-amber-300/10">3 · Testar (o Lauro confere)</button>
+                    <button type="button" onClick={marcarLiberado} className="ml-auto rounded-lg px-2.5 py-1 text-amber-100/70 hover:text-amber-100">Já liberei, esconder</button>
+                  </div>
+                </div>
+              )}
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-3">
                 {msgs.map((m, i) => (
                   <div key={i} className={cn("max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
