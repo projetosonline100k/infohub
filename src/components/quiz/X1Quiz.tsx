@@ -88,7 +88,12 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const chaveLeads = useMemo(() => leads.map((l) => `${l.id}:${telefoneWa(l.whatsapp) ?? ""}`).join(","), [leads]);
   const carregarWa = useCallback(async () => {
     const porChat = new Map<string, LeadQuiz[]>();
-    for (const l of leads) { const t = telefoneWa(l.whatsapp); if (t) porChat.set(`${t}@c.us`, [...(porChat.get(`${t}@c.us`) ?? []), l]); }
+    for (const l of leads) {
+      const t = telefoneWa(l.whatsapp);
+      if (!t) continue;
+      // Celular BR: o WhatsApp de alguns DDDs não usa o 9º dígito (91981999578 → 559181999578): a conversa pode estar em qualquer um dos dois ids.
+      for (const id of new Set([t, t.length === 13 && t[4] === "9" ? t.slice(0, 4) + t.slice(5) : t])) porChat.set(`${id}@c.us`, [...(porChat.get(`${id}@c.us`) ?? []), l]);
+    }
     const ids = [...porChat.keys()];
     if (!ids.length) { setWa([]); return; }
     const out: (Abordagem & { chat_id: string })[] = [];

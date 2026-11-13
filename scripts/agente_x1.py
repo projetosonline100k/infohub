@@ -64,6 +64,19 @@ def waha_post(cfg, caminho, corpo):
         return json.loads(r.read() or b"{}")
 
 
+def resolver_chat(conta, telefone_wa):
+    """Confere no WhatsApp se o número existe e devolve o id certo do chat (pn@c.us). Número BR muda: o 9º dígito de alguns DDDs não existe no WhatsApp
+    (91981999578 vira 559181999578@c.us), e mandar para o id errado dá erro 500. None se o número não tem WhatsApp."""
+    cfg = waha_config(conta)
+    sessao = cfg.get("sessao", "default")
+    req = urllib.request.Request(f"{cfg.get('waha_url', 'http://localhost:3000')}/api/contacts/check-exists?phone={telefone_wa}&session={sessao}", headers={"X-Api-Key": cfg["waha_api_key"]})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        d = json.loads(r.read() or b"{}")
+    if not d.get("numberExists"):
+        return None
+    return d.get("pn") or d.get("chatId")
+
+
 def enviar_partes(conta, chat_id, partes, log):
     """Manda cada parte como uma mensagem, com 'digitando…' proporcional ao tamanho (como uma pessoa)."""
     cfg = waha_config(conta)
@@ -153,11 +166,17 @@ def _tratar(c, q, rodar_claude, log, cv):
         _atualizar(q, cv["id"], estado="encerrado", motivo="Lead não existe mais"); c.commit(); return
     if lead["status"] == "convertido":
         _atualizar(q, cv["id"], estado="encerrado", motivo="Lead convertido"); c.commit(); return
-    chat_id = cv["chat_id"] or telefone_chat(lead["whatsapp"])
-    if not chat_id:
-        _atualizar(q, cv["id"], estado="erro", motivo="Esse lead não tem um WhatsApp válido"); c.commit(); return
     q.execute("SELECT whatsapp_conta FROM public.clientes WHERE id = %s", (cv["cliente_id"],))
     conta = (q.fetchone() or [None])[0] or cv["conta"] or "principal"
+    chat_id = cv["chat_id"]
+    if not chat_id:
+        bruto = telefone_chat(lead["whatsapp"])
+        if not bruto:
+            _atualizar(q, cv["id"], estado="erro", motivo="Esse lead não tem um WhatsApp válido"); c.commit(); return
+        chat_id = resolver_chat(conta, bruto.split("@")[0])
+        if not chat_id:
+            _atualizar(q, cv["id"], estado="erro", motivo="Esse número não tem WhatsApp"); c.commit(); return
+        q.execute("UPDATE public.x1_agente_conversas SET chat_id = %s WHERE id = %s", (chat_id, cv["id"])); c.commit()
     if not no_horario():   # de madrugada o robô espera: solta a trava e volta na próxima passada
         q.execute("UPDATE public.x1_agente_conversas SET trava_ate = now() + interval '10 minutes' WHERE id = %s", (cv["id"],)); c.commit(); return
     if cv["enviadas"] >= MAX_ENVIADAS:
