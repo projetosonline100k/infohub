@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { AtSign, Loader2, MessageCircle, MessageSquareText, Pencil, Plus, RefreshCw, Trash2, Zap } from "lucide-react";
+import { AtSign, GitBranch, Loader2, MessageCircle, MessageSquareText, Pencil, Plus, RefreshCw, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,6 +11,8 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { AutomacaoDialog } from "@/components/automacoes/AutomacaoDialog";
 import { AutomacoesResultados } from "@/components/automacoes/AutomacoesResultados";
 import { ConectarContaDialog } from "@/components/automacoes/ConectarContaDialog";
+import { FluxoEditor } from "@/components/automacoes/FluxoEditor";
+import { useInstagramFluxos, type FluxoInstagram } from "@/hooks/useInstagramFluxos";
 import { GATILHOS } from "@/lib/automacoes/instagram";
 import { cn } from "@/lib/utils";
 import { nomeDaConta, useInstagramAutomacoes, type InstagramAutomacao } from "@/hooks/useInstagramAutomacoes";
@@ -27,6 +29,8 @@ export default function Automacoes() {
   const [editando, setEditando] = useState<InstagramAutomacao | null>(null);
   const [dialogAberto, setDialogAberto] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
+  const fluxosDaConta = useInstagramFluxos(conta?.ig_user_id);
+  const [fluxoAberto, setFluxoAberto] = useState<{ fluxo: FluxoInstagram | null } | null>(null);
 
   const nomePorId = useMemo(() => new Map(automacoes.map((a) => [a.id, a.nome])), [automacoes]);
   const hoje = new Date().toDateString();
@@ -117,6 +121,7 @@ export default function Automacoes() {
         <TabsList>
           <TabsTrigger value="resultados">Resultados</TabsTrigger>
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
+          <TabsTrigger value="fluxos">Fluxos{fluxosDaConta.fluxos.length > 0 && <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 text-[10px] text-primary">{fluxosDaConta.fluxos.length}</span>}</TabsTrigger>
           <TabsTrigger value="historico">
             Histórico{comErro > 0 && <span className="ml-1.5 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{comErro}</span>}
           </TabsTrigger>
@@ -124,6 +129,45 @@ export default function Automacoes() {
 
         <TabsContent value="resultados" className="mt-4">
           <AutomacoesResultados automacoes={automacoes} disparos={disparos} />
+        </TabsContent>
+
+        <TabsContent value="fluxos" className="mt-4 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="max-w-2xl text-sm text-muted-foreground">Uma conversa em etapas: a pessoa comenta a palavra, recebe a primeira mensagem com botões e o fluxo segue pelo caminho que ela escolher, com esperas e condições.</p>
+            <Button onClick={() => setFluxoAberto({ fluxo: null })} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Novo fluxo</Button>
+          </div>
+          {fluxosDaConta.loading ? <div className="flex h-24 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            : fluxosDaConta.fluxos.length === 0 ? (
+              <Card className="flex flex-col items-center gap-3 p-10 text-center">
+                <GitBranch className="h-8 w-8 text-muted-foreground" />
+                <div><p className="font-medium">Nenhum fluxo ainda</p><p className="text-sm text-muted-foreground">Monte blocos de mensagem, espera e condição, ligados por setas, como no ManyChat.</p></div>
+                <Button onClick={() => setFluxoAberto({ fluxo: null })} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Criar o primeiro fluxo</Button>
+              </Card>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                {fluxosDaConta.fluxos.map((f) => {
+                  const p = fluxosDaConta.numeros.pessoas[f.id] ?? { total: 0, fim: 0, erro: 0 };
+                  return (
+                    <Card key={f.id} className="space-y-3 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0"><p className="truncate font-semibold">{f.nome}</p>
+                          <p className="text-xs text-muted-foreground">{f.grafo.nos.filter((n) => n.tipo === "mensagem").length} mensagem(ns) · {f.grafo.nos.length - 1} blocos</p></div>
+                        <Switch checked={f.ativo} aria-label={`Ativar ${f.nome}`} onCheckedChange={() => void fluxosDaConta.alternar(f).catch((e) => toast.error(e instanceof Error ? e.message : "Erro"))} />
+                      </div>
+                      <div className="flex flex-wrap gap-1">{f.palavras_chave.map((w) => <span key={w} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{w}</span>)}{!f.palavras_chave.length && <span className="text-xs text-amber-500">sem palavra-chave</span>}</div>
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{p.total} pessoa{p.total === 1 ? "" : "s"} · {p.fim} concluíram{p.erro > 0 && <span className="text-destructive"> · {p.erro} com erro</span>}</span>
+                        <span className="flex gap-1">
+                          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Editar fluxo" onClick={() => setFluxoAberto({ fluxo: f })}><Pencil className="h-4 w-4" /></Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive" aria-label="Apagar fluxo" onClick={async () => {
+                            if (!(await confirmar(`Apagar o fluxo “${f.nome}”? As conversas em andamento param.`, { botao: "Apagar", destrutivo: true }))) return;
+                            try { await fluxosDaConta.apagar(f.id); toast.success("Fluxo apagado"); } catch (e) { toast.error(e instanceof Error ? e.message : "Erro ao apagar"); }
+                          }}><Trash2 className="h-4 w-4" /></Button>
+                        </span>
+                      </div>
+                    </Card>);
+                })}
+              </div>)}
         </TabsContent>
 
         <TabsContent value="automacoes" className="mt-4">
@@ -224,6 +268,8 @@ export default function Automacoes() {
         </TabsContent>
       </Tabs>
 
+      <FluxoEditor aberto={!!fluxoAberto} fluxo={fluxoAberto?.fluxo ?? null} contaNome={conta ? `@${conta.username ?? conta.ig_user_id}` : ""} numeros={fluxoAberto?.fluxo ? fluxosDaConta.numeros.porNo[fluxoAberto.fluxo.id] ?? {} : {}}
+        onFechar={() => setFluxoAberto(null)} onSalvar={fluxosDaConta.salvar} />
       <ConectarContaDialog aberto={conectarAberto} onFechar={() => { setConectarAberto(false); recarregar(); }} />
 
       <AutomacaoDialog

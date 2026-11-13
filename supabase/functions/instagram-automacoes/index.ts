@@ -20,6 +20,7 @@
 //                         salva a conexão, inscreve o webhook e manda pro Hub.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { continuarFluxo, iniciarFluxo, retomarEsperas } from "./fluxos.ts";
 
 const GRAPH = "https://graph.instagram.com/v23.0";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://infopro-hub.vercel.app";
@@ -62,6 +63,7 @@ type Evento = {
   autorId: string;
   autorUsername: string | null;
   mediaId: string | null;
+  payload?: string | null;
 };
 
 type Comentario = {
@@ -73,9 +75,11 @@ type Comentario = {
 
 type Mensageria = {
   sender?: { id?: string };
+  postback?: { mid?: string; title?: string; payload?: string };
   message?: {
     mid?: string;
     text?: string;
+    quick_reply?: { payload?: string };
     is_echo?: boolean;
     reply_to?: { story?: { id?: string } };
   };
@@ -211,7 +215,11 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
         .update({ respondeu_em: new Date().toISOString() }).eq("id", ultima.id);
     }
   }
+  // Fluxos de mensagem (13/11): a resposta a um botão continua o fluxo; a palavra certa começa um. O fluxo vence a automação simples.
+  const dep = { graph, tokenAtual };
+  if (await continuarFluxo(admin, dep, conexao, evento)) return;
   if (!evento.texto) return;
+  if (await iniciarFluxo(admin, dep, conexao, evento)) return;
 
   const { data: automacoes } = await admin
     .from("instagram_automacoes")
@@ -438,6 +446,10 @@ const doComentario = (c: Comentario): Evento => ({
 });
 
 const daMensagem = (m: Mensageria): Evento | null => {
+  // Botão do fluxo (postback): chega fora de "message".
+  if (m.postback?.payload) {
+    return { origem: "dm", eventoId: m.postback.mid ?? `pb-${m.sender?.id}-${m.postback.payload}`, texto: m.postback.title ?? "", autorId: m.sender?.id ?? "", autorUsername: null, mediaId: null, payload: m.postback.payload };
+  }
   if (!m.message || m.message.is_echo) return null;
   const story = m.message.reply_to?.story;
   return {
@@ -447,6 +459,7 @@ const daMensagem = (m: Mensageria): Evento | null => {
     autorId: m.sender?.id ?? "",
     autorUsername: null,
     mediaId: story?.id ?? null,
+    payload: m.message.quick_reply?.payload ?? null,
   };
 };
 
@@ -531,6 +544,12 @@ serve(async (req) => {
   if (!supabaseUrl || !serviceKey) return new Response("not configured", { status: 500 });
   const admin = createClient(supabaseUrl, serviceKey);
 
+  if (url.pathname.endsWith("/tick")) {
+    // pg_cron (1 min): retoma as esperas dos fluxos. Chave do Vault (a mesma da Dalila), conferida no banco.
+    const { data: ok } = await admin.rpc("dalila_chave_ok", { p_chave: req.headers.get("x-dalila-chave") ?? "" });
+    if (!ok) return json({ erro: "não autorizado" }, 401);
+    return json({ retomadas: await retomarEsperas(admin, { graph, tokenAtual }) });
+  }
   if (url.pathname.endsWith("/posts")) return listarPosts(req, admin, supabaseUrl);
   if (url.pathname.endsWith("/link")) return gerarLink(req, admin, supabaseUrl);
 

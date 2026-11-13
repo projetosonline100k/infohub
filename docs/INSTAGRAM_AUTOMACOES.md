@@ -94,3 +94,14 @@ python3 scripts/instagram-automacoes.py status
   mensagem da pessoa. Cada mensagem com a palavra dispara de novo.
 - Se você usa outra ferramenta que também responde DMs (ManyChat etc.), as
   duas vão responder.
+
+## Fluxos de mensagem (13/11/2026)
+
+Aba **Fluxos** da tela `/automacoes`: editor visual (React Flow, estilo ManyChat) de uma conversa em etapas. Vale para todas as contas conectadas.
+
+- **Blocos:** mensagem (texto + botões de *resposta* **ou** de *link*; a Meta não mistura), esperar (1 min a 24 h), condição (a pessoa respondeu? / a resposta contém a palavra), fim. Cada saída tem o seu ponto de ligação (um por botão de resposta, "outra resposta", sim/não, "depois").
+- **Regras da Meta que moldam o fluxo:** a 1ª mensagem de um comentário é uma resposta privada; as seguintes só saem **depois que a pessoa responde** (toque num botão ou texto) e valem por **24 h**. Por isso a primeira mensagem deve ter botões de resposta. Link: botão `web_url` (até 3, título até 20 caracteres, texto até 640). Respostas rápidas: até 13.
+- **Dados:** `instagram_fluxos` (grafo em jsonb: `{nos, ligacoes}`) e `instagram_fluxo_execucoes` (a caminhada de cada pessoa; só o robô escreve). Sem `ON DELETE CASCADE` da conexão (13/11 uma conexão apagada levou as automações junto).
+- **Motor:** `supabase/functions/instagram-automacoes/fluxos.ts` (banco + Meta) sobre a lógica pura `supabase/functions/_shared/fluxo.ts` (validação, próximo passo, condição; testada em `tests/fluxoInstagram.test.mjs` e `tests/fluxoMotor.test.mjs`). O fluxo vence a automação simples quando a mesma palavra bate nos dois. O pg_cron `instagram-fluxos-tick` chama `/tick` a cada minuto para retomar as esperas.
+- **Idempotência:** `(fluxo_id, evento_id)` único (a Meta reenvia webhooks) e uma execução ativa por pessoa e fluxo.
+- **Falta (próximas versões):** escolher posts específicos no fluxo, condição "clicou no link", variáveis ({nome}), números por bloco mais ricos.
