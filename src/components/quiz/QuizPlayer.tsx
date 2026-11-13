@@ -687,12 +687,6 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-center text-xl font-bold leading-snug" />
                   <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-center text-sm", suave)} />
                   <div className="flex items-end gap-2">
-                    {quadrosM && (
-                      <div className="flex w-[30%] shrink-0 flex-col items-center gap-1 pb-1">
-                        <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-white transition-colors" style={{ background: completa ? "#16a34a" : cor }}>{completa ? "Pronto!" : `${sel.length}/${meta}`}</span>
-                        <img src={quadrosM[completa ? Q.PULO : Q.PARADO] ?? quadrosM[0]} alt="" draggable={false} className="aspect-square w-full object-contain" />
-                      </div>
-                    )}
                     <div className={cn("grid min-w-0 flex-1 grid-cols-2 gap-1.5 overflow-y-auto rounded-2xl border-2 p-1.5", escuro ? "border-white/15 bg-white/5" : "border-gray-200 bg-white/60", !editar && "max-h-[46dvh]")}>
                       {q.opcoes.map((o, k) => {
                         const marcada = sel.includes(k);
@@ -702,7 +696,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                             className={cn("group relative flex flex-col items-center justify-center gap-1 rounded-xl border-2 px-1.5 py-2 text-center text-[13px] font-semibold leading-tight transition-all",
                               escuro ? "border-white/15" : "border-gray-200", marcada ? "scale-[1.03] text-white shadow-md" : completa && !editar ? "opacity-45" : "hover:-translate-y-0.5 hover:shadow-md")}
                             style={marcada ? { background: cor, borderColor: cor } : undefined}>
-                            {(o.imagem !== undefined || !!o.imagens) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={imagemDe(o)} className="mx-auto aspect-square w-12" />}
+                            {(o.imagem !== undefined || !!o.imagens) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={imagemDe(o)} className="mx-auto aspect-square w-14" />}
                             {o.emoji && !(o.imagem !== undefined || !!o.imagens) && <span className="text-3xl leading-none">{o.emoji}</span>}
                             <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} />
                             {marcada && <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white/90"><Check className="h-3 w-3" style={{ color: cor }} /></span>}
@@ -719,15 +713,23 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                           style={i < sel.length ? { background: cor } : undefined}>{i + 1}</span>
                       ))}
                     </div>
-                    <p className={cn("text-center text-xs", suave)}>{completa ? "Tudo certo! Se quiser trocar, desmarque uma e escolha outra." : `Escolha mais ${meta - sel.length}`}</p>
+                    <p className={cn("text-center text-xs", suave)}>{completa ? "Tudo certo! Se quiser trocar, desmarque uma e escolha outra." : `${sel.length} de ${meta} escolhidas`}</p>
                   </div>
                   {editar && (
                     <div className={cn("flex items-center justify-center gap-1.5 text-xs", suave)}>Quantos escolher:
                       {[3, 5].map((n) => <button key={n} type="button" onClick={() => mudarPergunta(pos, (qq) => { qq.meta = n; })} className={cn("rounded-md border px-2 py-0.5 font-semibold", meta === n && "text-white")} style={meta === n ? { background: cor, borderColor: cor } : undefined}>{n}</button>)}
                     </div>
                   )}
-                  <div className={cn("sticky bottom-3 z-10 pt-1", !editar && !completa && "pointer-events-none opacity-40")}>
-                    <Botao onClick={avancar}>Continuar</Botao>
+                  <div className="sticky bottom-3 z-10 pt-1">
+                    {completa
+                      ? <Botao onClick={avancar}>Continuar</Botao>
+                      : (
+                        // Bloqueado até completar: cinza, com cadeado e o que falta (no editor continua clicável para navegar).
+                        <button type="button" disabled={!editar} aria-disabled="true" onClick={editar ? avancar : undefined}
+                          className={cn("flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-bold shadow-none", escuro ? "bg-white/10 text-white/40" : "bg-gray-200 text-gray-400")}>
+                          <Lock className="h-4 w-4" />Escolha mais {meta - sel.length}
+                        </button>
+                      )}
                   </div>
                   {pos > 1 && !editar && !travado && (
                     <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
