@@ -47,7 +47,13 @@ export interface TelaQuiz {
   credenciais?: string[];
   itens?: string[];    // carregando: as etapas que vão sendo marcadas
   fonte?: string;
+  // Visual da 1ª tela (Davi, 13/11): fundo em degradê (qualquer `background` CSS), enfeites em volta do mascote e selos embaixo.
+  fundo?: string; balao_grande?: boolean;
+  enfeites?: EnfeiteTela[]; selos?: SeloTela[];
 }
+// Enfeite solto na tela: `imagem` (url) ou `icone` (livro, livros, estrela, trofeu, brilho); x/y em % da tela; `tam` em px.
+export interface EnfeiteTela { icone?: "livro" | "livros" | "estrela" | "trofeu" | "brilho"; imagem?: string; x: number; y: number; tam?: number; rot?: number; cor?: string }
+export interface SeloTela { icone?: "raio" | "alvo" | "controle" | "relogio"; texto: string; cor?: string; fundo?: string }
 export interface OfertaQuiz {
   titulo?: string; subtitulo?: string; texto?: string; produto?: string;
   dias?: string[]; itens?: string[];

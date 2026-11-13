@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
+import { Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -142,7 +142,7 @@ const ROTEIRO: [number, number][] = [
 ];
 const FIM_ROTEIRO_MS = 4200;
 const FALA_MS = 3200;   // tempo de cada fala antes de emendar a próxima
-function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, onAberto, pose }: { caminho: string; url?: string; nota?: string; fala?: string; falas?: string[]; onFala?: (i: number) => void; quadros?: string[]; abertura?: TelaQuiz["abertura"]; onAberto?: () => void; pose?: number }) {
+function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, onAberto, pose, balaoGrande }: { caminho: string; url?: string; nota?: string; fala?: string; falas?: string[]; onFala?: (i: number) => void; quadros?: string[]; abertura?: TelaQuiz["abertura"]; onAberto?: () => void; pose?: number; balaoGrande?: boolean }) {
   const { editar, mudarImagem } = useContext(QuizCtx);
   const trocar = useRef<HTMLInputElement>(null);
   const reduzido = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -189,10 +189,10 @@ function Mascote({ caminho, url, nota, fala, falas, onFala, quadros, abertura, o
   return (
     <div className="group relative mx-auto flex w-64 flex-col items-center">
       {!!lista.length && (
-        <div className="mb-3 flex min-h-[84px] items-end">   {/* altura fixa: o balão maior da 2ª fala não empurra o mascote */}
-        <div key={iFala} className={cn("relative rounded-2xl border-2 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm", !aberto && "invisible", iFala === 0 ? "motion-safe:animate-balao-entra" : "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-90 motion-safe:duration-300")}>
+        <div className={cn("mb-3 flex items-end", balaoGrande ? "min-h-[120px]" : "min-h-[84px]")}>   {/* altura fixa: o balão maior da 2ª fala não empurra o mascote */}
+        <div key={iFala} className={cn("relative rounded-2xl border-2 bg-white px-4 py-2 text-sm font-semibold text-gray-800 shadow-sm", balaoGrande && "w-[19rem] max-w-[88vw] rounded-3xl border-[#d6e0f5] px-5 py-3 text-center text-[1.35rem] font-extrabold leading-tight text-[#1c2a5e] shadow-lg", !aberto && "invisible", iFala === 0 ? "motion-safe:animate-balao-entra" : "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-90 motion-safe:duration-300")}>
           {lista[iFala]}
-          <span className="absolute -bottom-[9px] left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b-2 border-r-2 bg-white" />
+          <span className={cn("absolute -bottom-[9px] left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b-2 border-r-2 bg-white", balaoGrande && "border-[#d6e0f5]")} />
         </div>
         </div>
       )}
@@ -570,7 +570,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
       {/* O quiz usa sempre a própria paleta (quiz-claro / quiz-escuro em index.css), não o tema do Infopro
           (25/10, Davi: "o fundo do quiz está da mesma cor do Infopro; preciso que mostre a cor original"). */}
       <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro",
-        telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}>
+        telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}
+        style={passo.tipo === "tela" && telas[passo.indice]?.fundo ? { background: telas[passo.indice].fundo } : undefined}>
         {teste && !editar && !travado && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
         {editar && !travado && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
@@ -834,6 +835,21 @@ function AudioDaTela({ caminho, url, nota }: { caminho: string; url?: string; no
   );
 }
 
+const ICONES_SELO = { raio: Zap, alvo: Crosshair, controle: Gamepad2, relogio: Clock };
+const ICONES_ENFEITE = { livro: BookOpen, livros: BookCopy, estrela: Star, trofeu: Award, brilho: Sparkles };
+// Enfeite solto em volta do mascote (flutua devagar, fica atrás do conteúdo; quem pede menos movimento o vê parado).
+function Enfeite({ en, k }: { en: NonNullable<TelaQuiz["enfeites"]>[number]; k: number }) {
+  const Ic = en.icone ? ICONES_ENFEITE[en.icone] : null;
+  const tam = en.tam ?? 48;
+  return (
+    <div aria-hidden className="pointer-events-none absolute z-0 motion-safe:animate-[mascote-flutua_5s_ease-in-out_infinite]"
+      style={{ left: `${en.x}%`, top: `${en.y}%`, width: tam, height: tam, transform: `translate(-50%,-50%) rotate(${en.rot ?? 0}deg)`, animationDelay: `${(k % 4) * -1.1}s` }}>
+      {en.imagem ? <img src={en.imagem} alt="" draggable={false} className="h-full w-full object-contain" />
+        : Ic && <Ic className="h-full w-full drop-shadow-md" style={{ color: en.cor ?? "#2f6fe4", fill: en.icone === "estrela" || en.icone === "trofeu" ? en.cor ?? "#2f6fe4" : "none" }} strokeWidth={en.icone === "estrela" ? 1.5 : 2} />}
+    </div>
+  );
+}
+
 // Tela de respiro (dado, frase, prova social) ou de apresentação do especialista.
 function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (s?: string) => string; onSeguir: () => void; suave: string }) {
   const { cor } = useContext(QuizCtx);
@@ -849,8 +865,9 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const [aberto, setAberto] = useState(!t.abertura);   // com abertura, o botão só aparece quando a cena termina
   const ultimaFala = !t.falas?.length || iFala >= t.falas.length - 1;
   return (
-    <div ref={raiz} className={cn("space-y-5 py-2", especialista && "text-center")}>
-      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={f(t.fala) || undefined} falas={t.falas?.map((x) => f(x))} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} pose={t.pose} />
+    <div ref={raiz} className={cn("space-y-5 py-2", especialista && "text-center", !!t.enfeites?.length && "relative")}>
+      {t.enfeites?.map((en, k) => <Enfeite key={k} en={en} k={k} />)}
+      {t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={f(t.fala) || undefined} falas={t.falas?.map((x) => f(x))} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} pose={t.pose} balaoGrande={t.balao_grande} />
       : t.loop?.length ? <MascoteLoop frames={t.loop} />
       : t.mapa && t.imagem ? <MapaConectado url={t.imagem} pontos={t.mapa.pontos} cor={cor} />
       : t.imagem_mascote && t.imagem ? <img src={t.imagem} alt="" draggable={false} className="mx-auto h-52 w-52 object-contain motion-safe:animate-empolgado" />
@@ -895,6 +912,18 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
       <AudioDaTela caminho={`${base}.audio`} url={t.audio} nota={t.audio_nota} />
       <Depoimentos caminho={`${base}.depoimentos`} lista={t.depoimentos} nota={t.depoimentos_nota} />
       <Txt caminho={`${base}.fonte`} valor={t.fonte} as="p" className={cn("block text-left text-[11px]", suave)} />
+      {!!t.selos?.length && (
+        <div className="relative flex flex-wrap justify-center gap-2">
+          {t.selos.map((sl, k) => {
+            const Ic = sl.icone ? ICONES_SELO[sl.icone] : null;
+            return (
+              <span key={k} className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-bold shadow-sm" style={{ background: sl.fundo, color: sl.cor }}>
+                {Ic && <Ic className="h-4 w-4" />}{sl.texto}
+              </span>
+            );
+          })}
+        </div>
+      )}
       <div className={cn((!aberto || !ultimaFala) && "invisible")}><Botao onClick={seguir}>{ultimaFala ? <Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /> : <span>{t.botao_inicial || "Continuar"}</span>}</Botao></div>
     </div>
   );
