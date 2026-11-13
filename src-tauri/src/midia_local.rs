@@ -104,3 +104,22 @@ mod testes_anexo {
         assert_eq!(decodifica("100%"), "100%");
     }
 }
+
+// ---------------------------------------------------------------- Botão "Parar controle" (Lauro mexendo no Mac)
+
+fn arquivo_parar() -> Result<PathBuf, String> {
+    Ok(std::env::var_os("HOME").map(PathBuf::from).ok_or("HOME não encontrado")?.join(".infopro-hub").join("lauro-parar"))
+}
+
+/// Liga/desliga a trava do controle do Mac: com o arquivo ~/.infopro-hub/lauro-parar presente, a ferramenta `controle` do Lauro não faz nenhuma ação.
+#[tauri::command]
+pub fn lauro_controle_parar(ativo: bool) -> Result<bool, String> {
+    let f = arquivo_parar()?;
+    if ativo { std::fs::write(&f, "parado pelo Davi\n").map_err(|e| e.to_string())?; } else { let _ = std::fs::remove_file(&f); }
+    Ok(f.exists())
+}
+
+#[tauri::command]
+pub fn lauro_controle_estado() -> bool {
+    arquivo_parar().map(|f| f.exists()).unwrap_or(false)
+}

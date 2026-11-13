@@ -122,6 +122,8 @@ pub fn run() {
             whatsapp::whatsapp_midia_base,
             midia_local::ler_midia_local,
             midia_local::salvar_anexo_lauro,
+            midia_local::lauro_controle_parar,
+            midia_local::lauro_controle_estado,
             whatsapp::whatsapp_conexao,
             whatsapp::whatsapp_qr,
             danilo::danilo_base,

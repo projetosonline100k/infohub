@@ -43,6 +43,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   const [detalhes, setDetalhes] = useState(false);
   const [anexos, setAnexos] = useState<File[]>([]);   // imagens, vídeos e áudios para o Lauro ver (jogados no chat, colados ou escolhidos no clipe)
   const [arrastando, setArrastando] = useState(false);
+  const [controlePausado, setControlePausado] = useState(false);   // botão "Parar controle": trava o Lauro de mexer no Mac (mouse/teclado)
   const seletor = useRef<HTMLInputElement>(null);
   const [vivo, setVivo] = useState(false);   // modo vivo: o Lauro roda no Mac do Davi, com o Chrome dele
   const vivoRef = useRef(false);
@@ -107,6 +108,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   useEffect(() => {
     if (!perfil) return;
     setNome(perfil.nome); setArroba(perfil.arroba ?? ""); setClienteId(perfil.cliente_id ?? ""); setEstilo(sanitizarEstilo(perfil.estilo));
+    void import("@tauri-apps/api/core").then(({ invoke }) => invoke<boolean>("lauro_controle_estado")).then(setControlePausado).catch(() => undefined);
     setTexto(""); pendentesRef.current = 0; setPendentes(0); setDetalhes(false); setVivo(!!perfil.modo_vivo);
     void db.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista").then(({ data }: { data: { id: string; nome_especialista: string }[] | null }) => setProjetos(data ?? []));
     // A conversa fica guardada: volta do jeito que estava (e retoma uma resposta que ainda estava sendo preparada).
@@ -163,6 +165,14 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
     const { error } = await db.from("esteira_dark_perfis").update({ conversa_zerada_em: agora }).eq("id", perfil.id);
     if (error) toast.error("Não consegui zerar"); else onMudou();
   };
+  const alternarControle = async () => {
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      const parado = await invoke<boolean>("lauro_controle_parar", { ativo: !controlePausado });
+      setControlePausado(parado);
+      toast(parado ? "Controle parado: o Lauro não mexe mais no seu Mac" : "Controle liberado de novo");
+    } catch { toast.error("Só funciona no app do Mac"); }
+  };
   const alternarVivo = async () => {
     if (!perfil) return;
     const novo = !vivo;
@@ -199,13 +209,19 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
               {arrastando && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/60 text-sm font-semibold text-amber-200">Solte aqui para o Lauro ver</div>}
               <div className="flex items-center gap-2 border-b border-white/10 bg-[#111b21] px-3 py-2 text-sm">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-200">L</span><span className="font-semibold">Lauro</span><span className="text-xs text-white/45">{vivo ? "ao vivo no seu Mac" : "editor de vídeos dark"}</span>
+                {vivo && isDesktop() && (
+                  <button type="button" onClick={() => void alternarControle()} title="Trava o Lauro de mexer no mouse e no teclado do seu Mac (ele continua conversando)"
+                    className={cn("ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold", controlePausado ? "border-amber-400/60 bg-amber-500/20 text-amber-200" : "border-rose-400/50 text-rose-300 hover:bg-rose-500/10")}>
+                    {controlePausado ? "Controle parado · liberar" : "Parar controle"}
+                  </button>
+                )}
                 <button type="button" onClick={() => void alternarVivo()} title="Modo vivo: o Lauro usa o Chrome do seu Mac (Instagram logado) para abrir e assistir as referências"
-                  className={cn("ml-auto flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold", vivo ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200" : "border-white/10 text-white/60 hover:text-white")}>
+                  className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold", !(vivo && isDesktop()) && "ml-auto", vivo ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200" : "border-white/10 text-white/60 hover:text-white")}>
                   <span className={cn("h-2 w-2 rounded-full", vivo ? "animate-pulse bg-emerald-400" : "bg-white/30")} />Modo vivo
                 </button>
                 <button type="button" onClick={() => void zerar()} title="Zerar a conversa (o estilo ao lado não muda)" className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/55 hover:bg-white/5 hover:text-white"><RotateCcw className="h-3.5 w-3.5" />Zerar</button>
               </div>
-              {vivo && <p className="border-b border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">Modo vivo: o Lauro abre o Chrome do seu Mac, assiste os vídeos que você mandar e olha as páginas. Pode demorar alguns minutos por resposta. O Mac precisa estar ligado com o app aberto.</p>}
+              {vivo && <p className="border-b border-emerald-400/20 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">Modo vivo: o Lauro usa o Chrome e o seu Mac (vê a tela, clica, digita, abre apps), assiste os vídeos que você mandar e olha as páginas. Pode demorar alguns minutos por resposta. O botão "Parar controle" trava o mouse e o teclado dele na hora. O Mac precisa estar ligado com o app aberto.</p>}
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-3">
                 {msgs.map((m, i) => (
                   <div key={i} className={cn("max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
