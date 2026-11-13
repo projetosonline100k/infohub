@@ -52,6 +52,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       const lista = ((ps ?? []) as { id: string; tipo: "construir" | "simular"; mensagem: string; status: string; resposta: string | null; criado_em: string; contexto: { origem?: string; iniciar?: boolean } | null }[]).reverse();
       const m: Record<"construir" | "simular", Msg[]> = { construir: [{ papel: "assistant", texto: AJUDA }], simular: [] };
       for (const p of lista) {
+        if (p.contexto?.origem === "x1") continue;   // abordagens do X1 não entram no chat de teste
         const onde: "construir" | "simular" = p.contexto?.origem === "teste" ? "simular" : p.tipo;
         if (linha?.[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] && p.criado_em <= (linha[onde === "construir" ? "zerado_construir_em" : "zerado_simular_em"] as string)) continue;
         const aj = onde === "simular" && p.tipo === "construir";   // conversa com a Gabriela dentro do teste

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Check, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Plus, RefreshCw, Repeat2, Search, Send, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Check, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Plus, RefreshCw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const [modeloUsado, setModeloUsado] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [salvandoModelo, setSalvandoModelo] = useState<string | null>(null);   // nome sendo digitado
+  const [abordando, setAbordando] = useState<string | null>(null);   // id do lead para o qual o agente está escrevendo
   const fim = useRef<HTMLDivElement>(null);
 
   const carregar = useCallback(async () => {
@@ -132,7 +133,9 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   };
   const enviar = async () => {
     if (!lead || !clienteId || !texto.trim() || enviando) return;
-    const url = linkWhatsapp(lead.whatsapp, texto.trim());
+    // O agente separa as ideias com --- : cada trecho sai como uma mensagem (uma depois da outra), como no WhatsApp de verdade.
+    const partes = texto.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter(Boolean);
+    const url = linkWhatsapp(lead.whatsapp, (partes[0] ?? texto).trim());
     if (!url) { toast.error("Esse lead não tem um WhatsApp válido"); return; }
     setEnviando(true);
     // No app do Mac a mensagem vai direto pelo WhatsApp do projeto (WAHA), sem abrir outro sistema. Na web, abre o WhatsApp com o texto pronto.
@@ -140,7 +143,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     if (direto) {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
-        await invoke("whatsapp_enviar", { chatId: `${telefoneWa(lead.whatsapp)}@c.us`, texto: texto.trim(), conta: contaWa, responderA: null, mencoes: null });
+        for (let i = 0; i < Math.max(1, partes.length); i++) {
+          if (i > 0) await new Promise((r) => setTimeout(r, 1500 + Math.min(4000, (partes[i]?.length ?? 0) * 40)));
+          await invoke("whatsapp_enviar", { chatId: `${telefoneWa(lead.whatsapp)}@c.us`, texto: partes[i] ?? texto.trim(), conta: contaWa, responderA: null, mencoes: null });
+        }
       } catch (e) {
         setEnviando(false);
         const msg = typeof e === "string" ? e : "Não consegui enviar pelo WhatsApp";
@@ -149,7 +155,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
         return;
       }
     }
-    const { error } = await db.from("quiz_abordagens").insert({ quiz_id: quizId, resposta_id: lead.id, cliente_id: clienteId, texto: texto.trim(), modelo: modeloUsado });
+    const { error } = await db.from("quiz_abordagens").insert((partes.length ? partes : [texto.trim()]).map((t, i) => ({ quiz_id: quizId, resposta_id: lead.id, cliente_id: clienteId, texto: t, modelo: i === 0 ? modeloUsado : null })));
     if (error) { setEnviando(false); toast.error("Não consegui registrar a abordagem"); return; }
     if (lead.status === "novo") onStatus(lead, "em_contato");
     if (!direto) void abrirLinkExterno(url);
@@ -158,6 +164,38 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     setEnviando(false);
     toast.success(direto ? "Mensagem enviada" : "WhatsApp aberto com a mensagem pronta: é só apertar enviar");
     if (fila === "abordar") proximo();
+  };
+  // "Abordar" (13/11, Davi): o agente do projeto escreve a primeira mensagem para ESTE lead (com o que ele respondeu no quiz) e ela cai no campo,
+  // para você ler, ajustar e enviar. O Hub nunca envia sozinho.
+  const abordar = async () => {
+    if (!lead || !clienteId || abordando) return;
+    const id = lead.id;
+    setAbordando(id);
+    try {
+      const { data: ag } = await db.from("agentes_whatsapp").select("config").eq("cliente_id", clienteId).maybeSingle();
+      const est = estados.get(id);
+      const contexto = {
+        origem: "x1", iniciar: true, quiz_id: quizId,
+        lead: { nome: lead.nome, perfil: lead.perfil, etapa: etapaDoLead(lead, perguntas), foi_ao_checkout: !!est?.clicouCheckout, comprou: !!est?.compra,
+          respostas: (lead.respostas ?? []).filter((r) => r.resposta).slice(0, 40).map((r) => `${r.pergunta} → ${r.resposta}`) },
+      };
+      const { data: ped, error } = await db.from("agente_whatsapp_pedidos").insert({ cliente_id: clienteId, tipo: "simular", mensagem: "(abordagem)", contexto, config_atual: (ag as { config: unknown } | null)?.config ?? {}, historico: [] }).select("id").single();
+      if (error || !ped) { toast.error("Não consegui chamar o agente"); return; }
+      for (let i = 0; i < 100; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const { data: p } = await db.from("agente_whatsapp_pedidos").select("status, resposta, erro").eq("id", (ped as { id: string }).id).maybeSingle();
+        const r = p as { status: string; resposta: string | null; erro: string | null } | null;
+        if (r?.status === "respondido" && r.resposta) {
+          // Só põe no campo se ainda estiver nesse lead e o campo estiver vazio (não pisa no que você começou a escrever).
+          setSel((atual) => { if (atual === id || lead.id === id) setTexto((t) => (t.trim() ? t : r.resposta!.trim())); return atual; });
+          setModeloUsado("Agente");
+          toast.success("Abordagem pronta: leia, ajuste e envie");
+          return;
+        }
+        if (r?.status === "erro") { toast.error(r.erro || "O agente não conseguiu escrever agora"); return; }
+      }
+      toast.error("O agente demorou demais. Tente de novo.");
+    } finally { setAbordando(null); }
   };
   const salvarModelo = async (nome: string) => {
     if (!lead || !clienteId || !nome.trim() || !texto.trim()) return;
@@ -268,6 +306,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
 
             <footer className="space-y-2 bg-[#202c33] p-3">
               <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                <button type="button" onClick={() => void abordar()} disabled={!!abordando || !clienteId} title="O agente escreve a primeira mensagem para este lead, com o que ele respondeu no quiz"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-60">
+                  {abordando === lead.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{abordando === lead.id ? "Escrevendo…" : "Abordar"}
+                </button>
                 {modelos.map((m) => (
                   <span key={m.id} className="group flex shrink-0 items-center">
                     <button type="button" onClick={() => escolherModelo(m)} title={preencherModelo(m.texto, { nome: lead.nome, perfil: lead.perfil })}

@@ -181,6 +181,10 @@ def _prompt(p, alvo=None):
         if p["contexto"].get("iniciar"):
             # Zerou o teste: o agente abre a conversa, como faria ao abordar o lead (que ainda não escreveu nada).
             base["mensagem"] = "(o lead ainda não escreveu nada: é VOCÊ quem começa a conversa, com a mensagem de abordagem inicial, usando o que sabe do lead e do quiz)"
+            if p["contexto"].get("origem") == "x1":
+                # Botão "Abordar" do X1 (13/11): lead REAL; o Davi lê, ajusta e envia. Use o nome, o perfil e as respostas do quiz.
+                base["mensagem"] = ("(LEAD REAL do quiz: escreva a mensagem de ABORDAGEM que o Davi vai ler, ajustar e enviar pelo WhatsApp. Use o primeiro nome, o perfil e 1 ou 2 respostas do quiz que mostrem que você prestou atenção"
+                                    "; se ele foi ao checkout e não comprou, retome isso com leveza; se já comprou, agradeça e oriente o acesso. Só o texto, sem comentários seus.)")
         quantidade = ""
         if alvo:
             quantidade = ("- NESTA resposta, mande exatamente 1 mensagem (um balão só, sem ---), como uma pessoa que responde rápido. Isto vale mais do que a regra de separar ideias.\n" if alvo == 1 else
