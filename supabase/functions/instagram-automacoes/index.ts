@@ -394,13 +394,13 @@ async function callbackOAuth(url: URL, admin: any, supabaseUrl: string) {
     longoUrl.searchParams.set("client_secret", segredo);
     longoUrl.searchParams.set("access_token", curto.access_token);
     const longo = await fetch(longoUrl).then((r) => r.json());
-    if (!longo.access_token) throw new Error(longo.error?.message ?? "token de longa duração falhou");
+    if (!longo.access_token) throw new Error(`token de longa duração: ${longo.error?.message ?? "falhou"}`);
 
     const eu = await fetch(`${GRAPH}/me?fields=user_id,username`, {
       headers: { Authorization: `Bearer ${longo.access_token}` },
     }).then((r) => r.json());
     const igUserId = String(eu.user_id ?? eu.id ?? "");
-    if (!igUserId) throw new Error(eu.error?.message ?? "não deu para ler a conta");
+    if (!igUserId) throw new Error(`ler a conta: ${eu.error?.message ?? "falhou"}`);
 
     const { data: existente } = await admin.from("instagram_conexoes").select("user_id").eq("ig_user_id", igUserId).maybeSingle();
     if (existente && existente.user_id !== pedido.user_id) throw new Error("essa conta já está conectada por outro usuário do Hub");
