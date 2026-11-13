@@ -54,6 +54,7 @@ import vivo  # noqa: E402  (modo vivo do chat: só no Mac, com Chrome e comandos
 import fila  # noqa: E402  (fila de desenvolvimento: ninguém programa, todos disparam para a fila — 12/11)
 import estilo_dark  # noqa: E402  (conversa do estilo de vídeo dos perfis da esteira dark — 12/11)
 import agente_whatsapp  # noqa: E402  (inteligência do agente do WhatsApp: pedido do X1 → Claude, 12/11)
+import agente_x1  # noqa: E402  (agente automático do X1: aborda e responde os leads pelo WhatsApp do projeto, 13/11; só no Mac, onde está o WAHA)
 import chatbot_assistente  # noqa: E402  (assistente do Chatbot: pedido do app → Claude do Davi, 10/11)
 
 EMAIL = "eu.daviqueiroz22@gmail.com"  # conta admin do app (src/lib/admin.ts)
@@ -282,6 +283,10 @@ def atender_estilo_vivo():
 
 def atender_estilo():
     estilo_dark.atender(rodar_claude, log)
+
+
+def atender_agente_x1():
+    agente_x1.passada(rodar_claude, log)
 
 
 def atender_agente():
@@ -847,7 +852,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, vivo, chatbot_assistente, agente_whatsapp, estilo_dark, melhorias, cobranca_rodada, esteira, vigia):
+        for m in (briefing, execucao, vivo, chatbot_assistente, agente_whatsapp, agente_x1, estilo_dark, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -951,6 +956,7 @@ if __name__ == "__main__":
     log("ouvinte iniciado" + (" (só código)" if SO_CODIGO else " (sem código)" if SEM_CODIGO else "") + "; claude =", claude_bin())
     if SO_CODIGO:
         fluxos = (("execucao", lambda: execucao.reenfileirar(sistema=True), "tarefa(s) de programação interrompida(s)"),
+                  ("agente-x1", agente_x1.reenfileirar, "conversa(s) do agente do X1 destravada(s)"),
                   ("vivo", vivo.reenfileirar, "mensagem(ns) do modo vivo interrompida(s)"),
                   ("chatbot-vivo", chatbot_assistente.reenfileirar_vivo, "pedido(s) do chatbot ao vivo"),
                   ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"))
@@ -974,6 +980,7 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("vivo", atender_vivo, 2), daemon=True).start()   # só o Mac tem Chrome e é do Davi
         threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()
+        threading.Thread(target=laco, args=("agente-x1", atender_agente_x1, 5), daemon=True).start()   # o WAHA está neste Mac
         laco("melhorias", atender_melhorias, 20)
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Check, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Plus, RefreshCw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Bot, Check, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -50,7 +50,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const [modeloUsado, setModeloUsado] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [salvandoModelo, setSalvandoModelo] = useState<string | null>(null);   // nome sendo digitado
-  const [abordando, setAbordando] = useState<string | null>(null);   // id do lead para o qual o agente está escrevendo
+  const [abordando, setAbordando] = useState<string | null>(null);   // id do lead para o qual o agente está escrevendo (rascunho)
+  type ConversaAgente = { id: string; resposta_id: string; estado: "abordar" | "conversando" | "aguardando_humano" | "pausado" | "encerrado" | "erro"; motivo: string | null; enviadas: number; recebidas: number };
+  const [agentes, setAgentes] = useState<Map<string, ConversaAgente>>(new Map());
+  const [automatico, setAutomatico] = useState(true);   // chave geral do agente automático do projeto
   const fim = useRef<HTMLDivElement>(null);
 
   const carregar = useCallback(async () => {
@@ -61,6 +64,12 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
       const { data: c } = await db.from("clientes").select("whatsapp_conta").eq("id", cid).maybeSingle();
       setContaWa((c as { whatsapp_conta?: string | null } | null)?.whatsapp_conta || "principal");
     }
+    const { data: ag } = await db.from("x1_agente_conversas").select("id, resposta_id, estado, motivo, enviadas, recebidas").eq("quiz_id", quizId).limit(5000);
+    setAgentes(new Map(((ag ?? []) as ConversaAgente[]).map((x) => [x.resposta_id, x])));
+    if (cid) {
+      const { data: aw } = await db.from("agentes_whatsapp").select("automatico").eq("cliente_id", cid).maybeSingle();
+      setAutomatico((aw as { automatico?: boolean } | null)?.automatico !== false);
+    }
     const { data: a } = await db.from("quiz_abordagens").select("id, resposta_id, texto, modelo, enviada_em").eq("quiz_id", quizId).order("enviada_em").limit(5000);
     setAbordagens((a ?? []) as Abordagem[]);
     if (cid) {
@@ -69,6 +78,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     }
   }, [quizId]);
   useEffect(() => { void carregar(); }, [carregar]);
+  useEffect(() => {   // o agente muda de estado sozinho (pediu uma pessoa, Davi assumiu…): atualiza a faixa do lead sem recarregar tudo
+    const t = window.setInterval(() => { if (!document.hidden) void db.from("x1_agente_conversas").select("id, resposta_id, estado, motivo, enviadas, recebidas").eq("quiz_id", quizId).limit(5000).then(({ data }: { data: unknown }) => setAgentes(new Map(((data ?? []) as ConversaAgente[]).map((x) => [x.resposta_id, x])))); }, 6000);
+    return () => window.clearInterval(t);
+  }, [quizId]);
 
   // Conversa de verdade (12/11, Davi: "como se fosse o WhatsApp normal: eu mando, chega, recebo por ele"): as mensagens do WhatsApp do projeto,
   // enviadas e recebidas, a partir da data em que o lead entrou. As abordagens registradas aqui só entram se ainda não chegaram do WhatsApp.
@@ -168,7 +181,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   };
   // "Abordar" (13/11, Davi): o agente do projeto escreve a primeira mensagem para ESTE lead (com o que ele respondeu no quiz) e ela cai no campo,
   // para você ler, ajustar e enviar. O Hub nunca envia sozinho.
-  const abordar = async () => {
+  const rascunhar = async () => {
     if (!lead || !clienteId || abordando) return;
     const id = lead.id;
     setAbordando(id);
@@ -197,6 +210,37 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
       }
       toast.error("O agente demorou demais. Tente de novo.");
     } finally { setAbordando(null); }
+  };
+  // "Abordar" automático (13/11, Davi: "já vai mandando, o cliente vai respondendo e a Gabriela vai respondendo também"): um clique e o agente
+  // (robô do Mac) escreve e manda a primeira mensagem pelo WhatsApp do projeto e segue a conversa sozinho, até você pausar ou assumir.
+  const abordar = async () => {
+    if (!lead || !clienteId) return;
+    if (!telefoneWa(lead.whatsapp)) { toast.error("Esse lead não tem um WhatsApp válido"); return; }
+    if (!automatico) { toast.error("O agente automático está desligado neste projeto. Ligue a chave na lateral."); return; }
+    const atual = agentes.get(lead.id);
+    const { error } = atual
+      ? await db.from("x1_agente_conversas").update({ estado: "abordar", motivo: null }).eq("id", atual.id)
+      : await db.from("x1_agente_conversas").insert({ quiz_id: quizId, resposta_id: lead.id, cliente_id: clienteId, estado: "abordar" });
+    if (error) { toast.error("Não consegui chamar o agente"); return; }
+    toast.success("Agente abordando: a mensagem sai em instantes e ele segue a conversa sozinho");
+    setAgentes((m) => new Map(m).set(lead.id, { id: atual?.id ?? "", resposta_id: lead.id, estado: "abordar", motivo: null, enviadas: atual?.enviadas ?? 0, recebidas: atual?.recebidas ?? 0 }));
+    if (fila === "abordar") window.setTimeout(proximo, 600);
+    window.setTimeout(() => void carregar(), 1500);
+  };
+  const mudarAgente = async (estado: "pausado" | "conversando" | "encerrado") => {
+    const a = lead && agentes.get(lead.id);
+    if (!a?.id) return;
+    const { error } = await db.from("x1_agente_conversas").update({ estado, motivo: estado === "pausado" ? "Você pausou" : null }).eq("id", a.id);
+    if (error) { toast.error("Não consegui mudar o agente"); return; }
+    setAgentes((m) => new Map(m).set(a.resposta_id, { ...a, estado, motivo: estado === "pausado" ? "Você pausou" : null }));
+  };
+  const alternarAutomatico = async () => {
+    if (!clienteId) return;
+    const novo = !automatico;
+    setAutomatico(novo);
+    const { error } = await db.from("agentes_whatsapp").update({ automatico: novo }).eq("cliente_id", clienteId);
+    if (error) { setAutomatico(!novo); toast.error("Não consegui mudar a chave"); return; }
+    toast.success(novo ? "Agente automático ligado" : "Agente automático desligado: ninguém recebe mensagem dele");
   };
   const salvarModelo = async (nome: string) => {
     if (!lead || !clienteId || !nome.trim() || !texto.trim()) return;
@@ -231,7 +275,9 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
             <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", (f.id === "abordar" && contagem.abordar) || (f.id === "quentes" && contagem.quentes) ? "bg-amber-400 text-black" : "bg-white/10 text-white/70")}>{contagem[f.id]}</span>
           </button>
         ))}
-        {isDesktop() && <button type="button" onClick={() => setConectando(true)} className="mt-auto rounded-lg px-2 py-1.5 text-left text-xs text-white/60 hover:bg-white/5 hover:text-white">Reconectar o WhatsApp (QR)</button>}
+        <button type="button" onClick={() => void alternarAutomatico()} title="Chave geral: desligada, o agente não manda mensagem para ninguém" className={cn("mt-auto flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs", automatico ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : "border-rose-400/30 bg-rose-500/10 text-rose-200")}>
+          <Bot className="h-4 w-4 shrink-0" /><span className="flex-1">Agente automático<br /><b>{automatico ? "ligado" : "desligado"}</b></span><span className={cn("h-2 w-2 rounded-full", automatico ? "bg-emerald-400" : "bg-rose-400")} /></button>
+        {isDesktop() && <button type="button" onClick={() => setConectando(true)} className="mt-1 rounded-lg px-2 py-1.5 text-left text-xs text-white/60 hover:bg-white/5 hover:text-white">Reconectar o WhatsApp (QR)</button>}
         <p className="px-2 pt-1 text-[10px] leading-snug text-white/35">No app do Mac a mensagem vai direto pelo WhatsApp do projeto e as respostas chegam aqui. Na web, o WhatsApp abre com o texto pronto.</p>
       </aside>
 
@@ -249,7 +295,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
               <button key={l.id} type="button" onClick={() => setSel(l.id)} className={cn("flex w-full items-center gap-3 border-b border-white/5 px-3 py-2.5 text-left hover:bg-white/5", lead?.id === l.id && "bg-[#2a3942]")}>
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#6b7c85] text-base font-bold">{(l.nome?.trim() || "?").slice(0, 1).toUpperCase()}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2"><span className="flex min-w-0 flex-1 items-center gap-1 truncate font-medium"><span className="truncate">{nomeDe(l)}</span>{estados.get(l.id)?.compra ? <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : estados.get(l.id)?.clicouCheckout ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : null}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
+                  <span className="flex items-baseline gap-2"><span className="flex min-w-0 flex-1 items-center gap-1 truncate font-medium"><span className="truncate">{nomeDe(l)}</span>{agentes.get(l.id) && ["conversando", "abordar"].includes(agentes.get(l.id)!.estado) ? <Bot className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : agentes.get(l.id)?.estado === "aguardando_humano" ? <Bot className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : null}{estados.get(l.id)?.compra ? <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : estados.get(l.id)?.clicouCheckout ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : null}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
                   <span className="flex items-center gap-1 truncate text-xs text-white/55">{u ? <>{u.de_mim !== false ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-400" /> : null}<span className={cn("truncate", u.de_mim === false && "font-medium text-white/80")}>{u.texto}</span></> : <span className="truncate">Novo lead{l.perfil ? ` · ${l.perfil}` : ""}</span>}</span>
                 </span>
               </button>
@@ -276,6 +322,22 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
               <button type="button" onClick={() => void onApagar([lead.id])} title="Apagar este lead" className="rounded-full border border-white/15 p-1.5 text-white/60 hover:border-rose-400/50 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
               <button type="button" onClick={proximo} disabled={lista.length < 2} className="flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10 disabled:opacity-30">Próximo<ChevronRight className="h-3.5 w-3.5" /></button>
             </header>
+            {(() => {
+              const a = agentes.get(lead.id);
+              if (!a) return null;
+              const cor = a.estado === "conversando" || a.estado === "abordar" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : a.estado === "aguardando_humano" || a.estado === "erro" ? "border-amber-400/40 bg-amber-500/10 text-amber-200" : "border-white/10 bg-white/5 text-white/70";
+              const rot = { abordar: "Agente vai abordar…", conversando: "Agente conversando sozinho", aguardando_humano: "O agente chamou você", pausado: "Agente pausado", encerrado: "Agente encerrado", erro: "O agente não conseguiu" }[a.estado];
+              return (
+                <div className={cn("flex flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs", cor)}>
+                  <Bot className="h-4 w-4 shrink-0" /><b>{rot}</b>
+                  <span className="text-white/55">{a.enviadas} enviada{a.enviadas === 1 ? "" : "s"} · {a.recebidas} resposta{a.recebidas === 1 ? "" : "s"} do lead</span>
+                  {a.motivo && <span className="min-w-0 flex-1 truncate text-white/70" title={a.motivo}>{a.motivo}</span>}
+                  <span className="ml-auto flex gap-1.5">
+                    {(a.estado === "conversando" || a.estado === "abordar") && <button type="button" onClick={() => void mudarAgente("pausado")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Pause className="h-3 w-3" />Pausar e assumir</button>}
+                    {(a.estado === "pausado" || a.estado === "aguardando_humano" || a.estado === "erro") && <button type="button" onClick={() => void mudarAgente("conversando")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Play className="h-3 w-3" />Retomar o agente</button>}
+                  </span>
+                </div>);
+            })()}
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-[#0b141a] bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.025),transparent_40%),radial-gradient(circle_at_80%_70%,rgba(255,255,255,0.02),transparent_40%)] px-4 py-3">
               <div className="mx-auto flex max-w-2xl flex-col gap-1.5">
@@ -307,9 +369,13 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
 
             <footer className="space-y-2 bg-[#202c33] p-3">
               <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-                <button type="button" onClick={() => void abordar()} disabled={!!abordando || !clienteId} title="O agente escreve a primeira mensagem para este lead, com o que ele respondeu no quiz"
-                  className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-60">
-                  {abordando === lead.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{abordando === lead.id ? "Escrevendo…" : "Abordar"}
+                <button type="button" onClick={() => void abordar()} disabled={!clienteId || ["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "")} title="O agente escreve e manda a primeira mensagem pelo WhatsApp e segue a conversa sozinho"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-50">
+                  <Bot className="h-3.5 w-3.5" />{["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "") ? "Agente em ação" : "Abordar"}
+                </button>
+                <button type="button" onClick={() => void rascunhar()} disabled={!!abordando || !clienteId} title="O agente só escreve o rascunho no campo; você lê, ajusta e envia"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10 disabled:opacity-60">
+                  {abordando === lead.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{abordando === lead.id ? "Escrevendo…" : "Só rascunhar"}
                 </button>
                 {modelos.map((m) => (
                   <span key={m.id} className="group flex shrink-0 items-center">
