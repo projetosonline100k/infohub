@@ -8,6 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { isDesktop } from "@/lib/platform";
+import { separarMensagens } from "@/lib/agenteWhatsapp";
 import { ConectarWhatsapp } from "./ConectarWhatsapp";
 import { etapaDoLead, type EstadoCompra, type LeadQuiz, type StatusLead } from "@/lib/quiz/painel";
 import {
@@ -134,7 +135,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const enviar = async () => {
     if (!lead || !clienteId || !texto.trim() || enviando) return;
     // O agente separa as ideias com --- : cada trecho sai como uma mensagem (uma depois da outra), como no WhatsApp de verdade.
-    const partes = texto.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter(Boolean);
+    const partes = separarMensagens(texto);
     const url = linkWhatsapp(lead.whatsapp, (partes[0] ?? texto).trim());
     if (!url) { toast.error("Esse lead não tem um WhatsApp válido"); return; }
     setEnviando(true);

@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { isDesktop } from "@/lib/platform";
 import { useGravarAudio } from "@/hooks/useGravarAudio";
-import { completude, configVazia, pausaDigitando, prontoParaUsar, sanitizarAgente, type ConfigAgente } from "@/lib/agenteWhatsapp";
+import { completude, configVazia, pausaDigitando, prontoParaUsar, sanitizarAgente, separarMensagens, type ConfigAgente } from "@/lib/agenteWhatsapp";
 
 // Inteligência do agente do WhatsApp (12/11/2026, Davi: "vou conversando e a gente monta a inteligência: produto, ofertas, o que pode e não pode…").
 // Esquerda: conversa com o Claude (que entrevista) ou teste (você faz o lead). Direita: a inteligência, editável à mão, salva sozinha.
@@ -14,7 +14,7 @@ import { completude, configVazia, pausaDigitando, prontoParaUsar, sanitizarAgent
 const db = supabase as unknown as SupabaseClient;
 type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string; ajuste?: boolean };
 // O agente pode mandar várias mensagens seguidas: ele as separa com uma linha "---" e cada uma vira um balão (como seriam enviadas).
-const partirMensagens = (t: string) => t.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter(Boolean);
+const partirMensagens = separarMensagens;
 const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
 const AJUDA = "Oi, aqui é a Gabriela, a agente que cuida da inteligência do seu agente de vendas. Fico aqui o tempo todo e lembro de tudo que você pedir: ordens, ajustes, regras. Conta do jeito que quiser: qual é o produto, para quem é, quanto custa e onde se compra. Pode colar a página de vendas também. Eu organizo ao lado e te pergunto o que faltar.";
 

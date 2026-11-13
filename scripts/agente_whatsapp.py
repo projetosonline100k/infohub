@@ -9,6 +9,7 @@ O Claude NÃO mexe em arquivo nem no banco e NÃO envia nada a ninguém: só dev
 import json
 import random
 import re
+from difflib import SequenceMatcher
 from migration_db import connect
 
 FORMATO = """{
@@ -137,6 +138,32 @@ def sortear_quantidade(historico, sorteio=random):
     return sorteio.choices(list(pesos), weights=list(pesos.values()))[0]
 
 
+def _chave(t):
+    """Texto sem emoji, pontuação, espaço e maiúscula, para comparar mensagens."""
+    return re.sub(r"[\W_]+", "", t.lower())
+
+
+def _parecidas(a, b):
+    ka, kb = _chave(a), _chave(b)
+    return bool(ka) and (ka == kb or SequenceMatcher(None, ka, kb).ratio() >= 0.9)
+
+
+def tirar_repetidas(partes, ultima=None):
+    """Tira da resposta as mensagens iguais (ou quase) a outra da mesma resposta e à última que o agente já mandou. Nunca zera a lista."""
+    saida = []
+    for x in partes:
+        if not any(_parecidas(x, y) for y in saida) and not (ultima and _parecidas(x, ultima)):
+            saida.append(x)
+    return saida or partes[:1]
+
+
+def _ultima_do_agente(historico):
+    for m in reversed(historico or []):
+        if m.get("papel") == "agente":
+            return str(m.get("texto", ""))
+    return None
+
+
 def _dividir(parte):
     """Parte uma mensagem em duas: primeiro por parágrafo/linha, senão pela frase do meio. None se não der."""
     linhas = [x.strip() for x in parte.split("\n") if x.strip()]
@@ -148,11 +175,12 @@ def _dividir(parte):
     return [" ".join(linhas[:meio]), " ".join(linhas[meio:])]
 
 
-def ajustar_quantidade(texto, alvo):
-    """Junta ou divide as mensagens (separadas por ---) até chegar no alvo. A pausa de digitando entre elas o app já faz."""
+def ajustar_quantidade(texto, alvo, ultima=None):
+    """Junta ou divide as mensagens (separadas por ---) até chegar no alvo, sem repetir nenhuma (se não der, manda menos). A pausa de digitando entre elas o app já faz."""
     partes = [x.strip() for x in _SEP.split(texto.strip()) if x.strip()]
     if not partes:
         return texto.strip()
+    partes = tirar_repetidas(partes, ultima)
     while len(partes) > alvo:   # junta o par vizinho mais curto
         i = min(range(len(partes) - 1), key=lambda k: len(partes[k]) + len(partes[k + 1]))
         partes[i:i + 2] = [partes[i] + "\n" + partes[i + 1]]
@@ -162,6 +190,7 @@ def ajustar_quantidade(texto, alvo):
         if not metade:
             break
         partes[i:i + 1] = metade
+    partes = tirar_repetidas(partes, ultima)
     return "\n---\n".join(partes)
 
 
@@ -187,8 +216,8 @@ def _prompt(p, alvo=None):
                                     "; se ele foi ao checkout e não comprou, retome isso com leveza; se já comprou, agradeça e oriente o acesso. Só o texto, sem comentários seus.)")
         quantidade = ""
         if alvo:
-            quantidade = ("- NESTA resposta, mande exatamente 1 mensagem (um balão só, sem ---), como uma pessoa que responde rápido. Isto vale mais do que a regra de separar ideias.\n" if alvo == 1 else
-                          f"- NESTA resposta, mande exatamente {alvo} mensagens, separadas por ---. Pessoas de verdade variam: nem sempre é reação + pergunta. Isto vale mais do que a regra de separar ideias.\n")
+            quantidade = ("- NESTA resposta, mande 1 mensagem (um balão só, sem ---), como uma pessoa que responde rápido. Isto vale mais do que a regra de separar ideias.\n" if alvo == 1 else
+                          f"- NESTA resposta, mande até {alvo} mensagens, separadas por ---. Pessoas de verdade variam: nem sempre é reação + pergunta. Se só houver UMA ideia a dizer, mande menos mensagens: NUNCA repita nem reescreva a mesma frase e não invente conteúdo só para chegar no número.\n")
         return PROMPT_SIMULAR.format(quantidade=quantidade, **base)
     ajuste = p["mensagem"].lstrip().lower().startswith("[ajuste]")
     modo = AJUSTE_CONVERSA if p["contexto"].get("conversa") == "ajuste" else AJUSTE if ajuste else ""
@@ -244,9 +273,13 @@ def atender(rodar_claude, log=print):
         alvo = _alvo(p)
         if p["tipo"] == "simular":
             ok, texto = rodar_claude(_prompt(p, alvo), minutos=4, turnos=3, ferramentas=["Read"])
-            if ok and alvo and texto.strip():
-                texto = ajustar_quantidade(texto, alvo)
-                log("agente: simulação em", alvo, "mensagem(ns)")
+            if ok and texto.strip():
+                ultima = _ultima_do_agente(p["historico"])
+                if alvo:
+                    texto = ajustar_quantidade(texto, alvo, ultima)
+                    log("agente: simulação em", alvo, "mensagem(ns)")
+                else:   # abertura ou "tudo num balão": só tira repetição
+                    texto = "\n---\n".join(tirar_repetidas([x.strip() for x in _SEP.split(texto.strip()) if x.strip()] or [texto.strip()], ultima))
         else:   # montar: a Gabriela (sessão contínua) pode consultar o quiz, o banco (só leitura) e a internet
             ferr = ["Bash(python3 scripts/consulta.py:*)", "Read", "Grep", "Glob", "WebFetch", "WebSearch"]
             q.execute("SELECT sessao_construir FROM public.agentes_whatsapp WHERE cliente_id = %s", (p["cliente_id"],))

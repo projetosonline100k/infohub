@@ -73,3 +73,15 @@ export const prontoParaUsar = (c: ConfigAgente) => !!c.produto.nome && c.ofertas
 /** Pausa (ms) "digitando…" antes de cada mensagem do agente, como numa conversa de verdade: ~1,2 s + ms_por_letra por caractere, entre o mínimo e o máximo (padrão 1,5 a 7 s). */
 export const pausaDigitando = (texto: string, c: ComportamentoAgente = comportamentoPadrao()) =>
   !c.pausa ? 0 : Math.min(c.pausa_max_s * 1000, Math.max(c.pausa_min_s * 1000, 1200 + texto.length * c.ms_por_letra));
+
+const chaveMensagem = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+/** Quebra o texto do agente nas mensagens separadas por "---" e tira as repetidas (iguais, ignorando emoji, espaço e maiúscula). */
+export function separarMensagens(t: string): string[] {
+  const vistas = new Set<string>();
+  return t.split(/\n\s*-{3,}\s*\n/).map((x) => x.trim()).filter((x) => {
+    const k = chaveMensagem(x);
+    if (!x || (k && vistas.has(k))) return false;
+    vistas.add(k);
+    return true;
+  });
+}

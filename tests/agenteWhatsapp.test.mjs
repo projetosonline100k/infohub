@@ -41,3 +41,9 @@ test('pausa de digitação: mínimo 1,5 s, cresce com o texto, máximo 7 s', () 
   assert.ok(m.pausaDigitando('x'.repeat(60)) > m.pausaDigitando('x'.repeat(30)));
   assert.equal(m.pausaDigitando('x'.repeat(1000)), 7000);
 });
+
+test('separarMensagens: duas partes iguais (ignorando emoji e maiúscula) saem como uma só', () => {
+  const t = 'Certo, um minuto, vou tentar um desconto 😄\n---\ncerto um minuto vou tentar um desconto!';
+  assert.deepEqual(m.separarMensagens(t), ['Certo, um minuto, vou tentar um desconto 😄']);
+  assert.deepEqual(m.separarMensagens('Oi\n---\nTudo bem?'), ['Oi', 'Tudo bem?']);
+});
