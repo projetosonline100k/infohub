@@ -228,20 +228,20 @@ def passos_em_andamento(mensagem, maximo=28):
     import glob
     import os
     pasta = os.path.expanduser("~/.claude/projects/" + str(RAIZ).replace("/", "-").replace(".", "-"))
-    chave = (mensagem or "")[:50]
+    # No registro (JSONL) o texto vem com aspas e quebras de linha escapadas: procura pela forma escapada. Sessões continuadas (--resume) crescem
+    # e o pedido novo fica no FIM do arquivo, então olha a cauda (e não o começo) de cada registro recente.
+    chave = json.dumps((mensagem or "")[:50], ensure_ascii=False)[1:-1]
     arquivos = sorted(glob.glob(os.path.join(pasta, "*.jsonl")), key=os.path.getmtime, reverse=True)[:8]
     for f in arquivos:
         try:
-            if os.path.getsize(f) > 60_000_000:
-                continue   # sessões enormes (conversas de trabalho do Davi) não são pedidos de agente
             with open(f, "rb") as fh:
-                cabeca = fh.read(40_000).decode("utf-8", "ignore")
-                if chave not in cabeca:
-                    continue
                 fh.seek(0, 2)
                 tam = fh.tell()
-                fh.seek(max(0, tam - 400_000))
-                cauda = fh.read().decode("utf-8", "ignore").splitlines()
+                fh.seek(max(0, tam - 1_500_000))
+                cauda = fh.read().decode("utf-8", "ignore")
+            if chave not in cauda:
+                continue
+            cauda = cauda.splitlines()
         except OSError:
             continue
         passos = []
