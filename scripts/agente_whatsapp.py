@@ -206,18 +206,18 @@ def extrair(texto):
     return texto.strip(), None, []
 
 
-def abrir_pedidos(q, pedidos, log=print):
+def abrir_pedidos(q, pedidos, log=print, origem="gabriela"):
     """Pedidos que exigem código vão para a fila da ponte (ponte_pedidos), que o Claude Code implementa.
     Davi (12/11): "tudo que for desta complexidade vai para a fila e é implementado" — entram já aprovados."""
     abertos = []
     for x in pedidos:
         titulo = str(x["titulo"]).strip()[:160]
-        q.execute("SELECT 1 FROM public.ponte_pedidos WHERE origem = 'gabriela' AND titulo = %s AND status IN ('pendente', 'em_andamento', 'aguardando_aprovacao')", (titulo,))
+        q.execute("SELECT 1 FROM public.ponte_pedidos WHERE titulo = %s AND status IN ('pendente', 'em_andamento', 'aguardando_aprovacao')", (titulo,))
         if q.fetchone():
             continue
         q.execute("""INSERT INTO public.ponte_pedidos (origem, titulo, descricao, prioridade, requer_aprovacao, aprovado)
-                     VALUES ('gabriela', %s, %s, 'normal', true, true)""",
-                  (titulo, "Pedido do Davi à Gabriela (agente do WhatsApp, X1 do quiz). " + str(x["descricao"]).strip()[:6000]))
+                     VALUES (%s, %s, %s, 'normal', true, true)""",
+                  (origem, titulo, f"Pedido do Davi a {origem.capitalize()}. " + str(x["descricao"]).strip()[:6000]))
         abertos.append(titulo)
         log("agente: pedido de sistema na fila —", titulo)
     return abertos

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Loader2, Mic, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,8 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { isDesktop } from "@/lib/platform";
 import { useGravarAudio } from "@/hooks/useGravarAudio";
 import { aplicarEstilo, completudeEstilo, estiloVazio, sanitizarEstilo, type EstiloDark } from "@/lib/empresa/dashDark";
+import { midiasDoTexto } from "@/lib/empresa/midiasChat";
+import { MidiaLocal } from "./MidiaLocal";
 import { cn } from "@/lib/utils";
 
 const db = supabase as unknown as SupabaseClient;
@@ -46,6 +48,11 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   const estiloRef = useRef(estilo);
   estiloRef.current = estilo;
   const fim = useRef<HTMLDivElement>(null);
+  // Imagens e vídeos citados pelo Lauro (caminhos em ~/.infopro-hub): aparecem embaixo da mensagem dele.
+  const midiasPorMsg = useMemo(() => {
+    let pasta: string | null = null;
+    return msgs.map((m) => { const r = midiasDoTexto(m.texto, pasta); pasta = r.pasta; return m.papel === "assistant" ? r.midias : []; });
+  }, [msgs]);
   const perfilId = perfil?.id;
 
   const gravar = useCallback(async () => {
@@ -172,6 +179,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                 {msgs.map((m, i) => (
                   <div key={i} className={cn("max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
                     {m.papel === "assistant" && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Lauro</span>}{m.texto}
+                    {midiasPorMsg[i]?.map((md) => <MidiaLocal key={md.caminho} midia={md} />)}
                   </div>
                 ))}
                 {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{vivo ? "Lauro está trabalhando no seu Mac…" : "Lauro está pensando…"}</div>}

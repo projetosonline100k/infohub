@@ -24,6 +24,7 @@ mod voz;
 mod creator;
 #[cfg(target_os = "macos")]
 mod whatsapp;
+mod midia_local;
 #[cfg(target_os = "macos")]
 mod danilo;
 #[cfg(target_os = "macos")]
@@ -119,6 +120,7 @@ pub fn run() {
             whatsapp::whatsapp_apagar,
             whatsapp::whatsapp_editar,
             whatsapp::whatsapp_midia_base,
+            midia_local::ler_midia_local,
             whatsapp::whatsapp_conexao,
             whatsapp::whatsapp_qr,
             danilo::danilo_base,
