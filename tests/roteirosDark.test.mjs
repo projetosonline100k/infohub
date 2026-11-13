@@ -42,10 +42,27 @@ test('agruparPorDia ordena pelo número e ignora roteiro sem dia; contarPorStatu
   assert.deepEqual([c.editando, c.programado, c.na_fila], [2, 1, 0]);
 });
 
-test('mensagem para o Lauro leva o id curto, o dia e as regras (nada publicado sem OK)', () => {
+test('mensagem para o Lauro: voz no ElevenLabs, vídeo, revisar (não programa) e só programa depois do APROVADO', () => {
   const t = m.mensagemParaLauro(r(7, '2026-11-20'), 'Insta insights oficial');
   assert.ok(t.includes('V7') && t.includes('20/11/2026'));
   assert.ok(t.includes('roteiros.py contexto id7-aaaa'));
-  assert.ok(t.includes('status id7-aaaa programado'));
-  assert.ok(/Nada é publicado sem o meu OK/.test(t));
+  assert.ok(t.includes('elevenlabs.io') && t.includes('Gregory Grumble'));
+  assert.ok(t.includes('status id7-aaaa revisar --arquivo'));
+  assert.ok(t.includes('"APROVADO"') && t.includes('status id7-aaaa programando'));
+  assert.ok(/Nada é publicado sem o meu Aprovar/.test(t));
+});
+
+test('mensagens de ajuste e de aprovado citam o id curto, o dia e o próximo status', () => {
+  const a = m.mensagemAjuste(r(7, '2026-11-20'), 'a legenda está atrasada');
+  assert.ok(a.startsWith('AJUSTE no roteiro V7') && a.includes('a legenda está atrasada') && a.includes('NOVA versão') && a.includes('revisar --arquivo'));
+  const ok = m.mensagemAprovado(r(7, '2026-11-20'), 'Insta insights oficial');
+  assert.ok(ok.startsWith('APROVADO:') && ok.includes('20/11/2026') && ok.includes('status id7-aaaa programado'));
+  assert.ok(m.mensagemAprovado(r(8, null), 'P').includes('me pergunte o dia'));
+});
+
+test('versoesDoRoteiro: histórico quando há; senão o arquivo atual; senão nada', () => {
+  assert.deepEqual(m.versoesDoRoteiro({ arquivo: 'b.mp4', versoes: [{ arquivo: 'a.mp4' }, { arquivo: 'b.mp4' }] }).map((v) => v.arquivo), ['a.mp4', 'b.mp4']);
+  assert.deepEqual(m.versoesDoRoteiro({ arquivo: 'x.mp4', versoes: [] }).map((v) => v.arquivo), ['x.mp4']);
+  assert.deepEqual(m.versoesDoRoteiro({ arquivo: null, versoes: null }), []);
+  assert.equal(m.ROTULO_STATUS.revisar, 'Aprovar');
 });

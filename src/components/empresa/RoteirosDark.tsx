@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronLeft, ChevronRight, FileText, Loader2, MessageCircle, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, MessageCircle, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { confirmar } from "@/components/DialogosGlobais";
 import { MidiaLocal } from "./MidiaLocal";
-import { agruparPorDia, contarPorStatus, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
+import { agruparPorDia, contarPorStatus, mensagemAjuste, mensagemAprovado, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, versoesDoRoteiro, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
+import { midiasDoTexto } from "@/lib/empresa/midiasChat";
 import { cn } from "@/lib/utils";
 
 const db = supabase as unknown as SupabaseClient;
@@ -17,7 +18,7 @@ const db = supabase as unknown as SupabaseClient;
 export interface PerfilRoteiro { id: string; nome: string; modo_vivo?: boolean; estilo?: unknown }
 
 const CHIP: Record<StatusRoteiro, string> = {
-  na_fila: "bg-white/10 text-white/70", editando: "bg-amber-500/20 text-amber-300", programando: "bg-sky-500/20 text-sky-300", programado: "bg-emerald-500/20 text-emerald-300", erro: "bg-rose-500/20 text-rose-300",
+  na_fila: "bg-white/10 text-white/70", editando: "bg-amber-500/20 text-amber-300", revisar: "bg-violet-500/30 text-violet-200 ring-1 ring-violet-400/40", programando: "bg-sky-500/20 text-sky-300", programado: "bg-emerald-500/20 text-emerald-300", erro: "bg-rose-500/20 text-rose-300",
 };
 const DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -35,7 +36,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
   useEffect(() => { if (!perfis.some((p) => p.id === perfilId)) setPerfilId(perfis[0]?.id ?? ""); }, [perfis, perfilId]);
   const carregar = useCallback(async () => {
     if (!perfilId) { setRoteiros([]); return; }
-    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, criado_em").eq("perfil_id", perfilId).order("numero");
+    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em").eq("perfil_id", perfilId).order("numero");
     setRoteiros((data ?? []) as RoteiroDark[]);
   }, [perfilId]);
   useEffect(() => {
@@ -117,7 +118,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
       </div>
 
       <NovoRoteiro aberto={!!novo} dia={novo?.dia ?? hoje} perfil={perfil} onFechar={() => setNovo(null)} onCriado={() => { setNovo(null); void carregar(); }} />
-      <DetalheRoteiro roteiro={atual} perfil={perfil} onFechar={() => setAberto(null)} onMudou={() => void carregar()} onConversar={() => { if (perfil) { setAberto(null); onConversar(perfil.id); } }} />
+      <EstudioRoteiro roteiro={atual} perfil={perfil} onFechar={() => setAberto(null)} onMudou={() => void carregar()} />
     </div>
   );
 }
@@ -166,47 +167,151 @@ function NovoRoteiro({ aberto, dia, perfil, onFechar, onCriado }: { aberto: bool
   );
 }
 
-function DetalheRoteiro({ roteiro, perfil, onFechar, onMudou, onConversar }: { roteiro: RoteiroDark | null; perfil?: PerfilRoteiro; onFechar: () => void; onMudou: () => void; onConversar: () => void }) {
+type Msg = { papel: "user" | "assistant"; texto: string };
+
+// Estúdio do roteiro (13/11/2026, Davi: "ao clicar, um editor estilo Premiere onde eu converso com o Lauro; quando ele editar, vem 'aprovar'").
+// Esquerda: o vídeo atual (com o histórico de versões v1, v2…) e o roteiro. Direita: a conversa com o Lauro sobre ESTE roteiro. Quando o Lauro termina uma
+// versão ele marca "revisar" e aparece o botão Aprovar; aprovar manda o Lauro programar a publicação. Nada é publicado sem o Aprovar.
+function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: RoteiroDark | null; perfil?: PerfilRoteiro; onFechar: () => void; onMudou: () => void }) {
   const r = roteiro;
+  const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [texto, setTexto] = useState("");
+  const [pendentes, setPendentes] = useState(0);
+  const pendentesRef = useRef(0);
+  const [versaoSel, setVersaoSel] = useState<number | null>(null);
+  const [verRoteiro, setVerRoteiro] = useState(false);
+  const fim = useRef<HTMLDivElement>(null);
+  const roteiroId = r?.id;
+  const versoes = r ? versoesDoRoteiro(r) : [];
+  const indice = versaoSel === null ? versoes.length - 1 : Math.min(versaoSel, versoes.length - 1);
+  const versao = indice >= 0 ? versoes[indice] : null;
+
+  const mudar = (d: number) => { pendentesRef.current = Math.max(0, pendentesRef.current + d); setPendentes(pendentesRef.current); };
+  const aguardar = useCallback(async (id: string) => {
+    mudar(1);
+    try {
+      for (let i = 0; i < 800; i++) {
+        await new Promise((res) => setTimeout(res, 2000));
+        const { data: p } = await db.from("esteira_dark_pedidos").select("status, resposta, erro, encaminhado_id").eq("id", id).maybeSingle();
+        const x = p as { status: string; resposta: string | null; erro: string | null; encaminhado_id: string | null } | null;
+        if (x?.status === "respondido") { setMsgs((m) => [...m, { papel: "assistant", texto: x.resposta ?? "" }]); if (x.encaminhado_id) void aguardar(x.encaminhado_id); return; }
+        if (x?.status === "erro") { toast.error(x.erro || "O Lauro não conseguiu responder agora"); return; }
+      }
+      toast.error("O Lauro não respondeu. O Mac está ligado e o app aberto?");
+    } finally { mudar(-1); }
+  }, []);
+
+  useEffect(() => {
+    if (!roteiroId) return;
+    setMsgs([]); setTexto(""); setVersaoSel(null); setVerRoteiro(false); pendentesRef.current = 0; setPendentes(0);
+    void (async () => {
+      const { data: ps } = await db.from("esteira_dark_pedidos").select("id, mensagem, status, resposta, criado_em, encaminhado_id").eq("contexto->>roteiro_id", roteiroId).order("criado_em", { ascending: true }).limit(80);
+      type P = { id: string; mensagem: string; status: string; resposta: string | null; criado_em: string; encaminhado_id: string | null };
+      const lista = (ps ?? []) as P[];
+      const encaminhados = new Set(lista.map((p) => p.encaminhado_id).filter((x): x is string => !!x));
+      const m: Msg[] = [];
+      for (const p of lista) {
+        if (!encaminhados.has(p.id)) {
+          const t = p.mensagem.startsWith("NOVO ROTEIRO") ? `📄 ${p.mensagem.split("\n")[0]}` : p.mensagem.startsWith("APROVADO:") ? "✅ Aprovado: pode programar" : p.mensagem.startsWith("AJUSTE no roteiro") ? p.mensagem.replace(/^AJUSTE no roteiro[^:]*:\s*/, "").split("\n\n")[0] : p.mensagem;
+          m.push({ papel: "user", texto: t });
+        }
+        if (p.status === "respondido" && p.resposta) m.push({ papel: "assistant", texto: p.resposta });
+      }
+      setMsgs(m);
+      for (const p of lista) if ((p.status === "pendente" || p.status === "processando") && Date.now() - new Date(p.criado_em).getTime() < 30 * 60_000) void aguardar(p.id);
+    })();
+  }, [roteiroId]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs, pendentes]);
+
+  const pedir = async (mensagem: string, mostrar: string) => {
+    if (!r || !perfil) return false;
+    setMsgs((m) => [...m, { papel: "user", texto: mostrar }]);
+    const { data, error } = await db.from("esteira_dark_pedidos").insert({
+      perfil_id: perfil.id, mensagem, rapido: pendentesRef.current > 0, estilo_atual: perfil.estilo ?? {}, historico: [], contexto: { perfil: perfil.nome, origem: "roteiro", roteiro_id: r.id },
+    }).select("id").single();
+    if (error || !data) { toast.error("Não consegui falar com o Lauro"); return false; }
+    void aguardar((data as { id: string }).id);
+    return true;
+  };
+  const enviar = async () => {
+    const t = texto.trim();
+    if (!t || !r) return;
+    setTexto("");
+    await pedir(mensagemAjuste(r, t), t);
+  };
+  const aprovar = async () => {
+    if (!r || !perfil) return;
+    if (!(await confirmar(`Aprovar o V${r.numero}?`, { descricao: `O Lauro vai agendar a publicação${r.data_postagem ? ` para ${r.data_postagem.split("-").reverse().join("/")}` : ""} com esta versão do vídeo.`, botao: "Aprovar", destrutivo: false }))) return;
+    const { error } = await db.from("esteira_dark_roteiros").update({ status: "programando", atualizado_em: new Date().toISOString() }).eq("id", r.id);
+    if (error) { toast.error("Não consegui aprovar"); return; }
+    onMudou();
+    await pedir(mensagemAprovado(r, perfil.nome), "✅ Aprovado: pode programar");
+    toast.success("Aprovado: o Lauro vai programar a publicação");
+  };
   const atualizar = async (mudanca: Record<string, unknown>) => {
     if (!r) return;
     const { error } = await db.from("esteira_dark_roteiros").update({ ...mudanca, atualizado_em: new Date().toISOString() }).eq("id", r.id);
     if (error) toast.error("Não consegui salvar"); else onMudou();
   };
-  const reenviar = async () => {
-    if (!r || !perfil) return;
-    const { error } = await db.from("esteira_dark_pedidos").insert({
-      perfil_id: perfil.id, mensagem: mensagemParaLauro({ id: r.id, numero: r.numero, titulo: r.titulo, data_postagem: r.data_postagem }, perfil.nome),
-      estilo_atual: perfil.estilo ?? {}, contexto: { perfil: perfil.nome, origem: "roteiro", roteiro_id: r.id }, historico: [],
-    });
-    if (error) toast.error("Não consegui chamar o Lauro"); else toast.success("Lauro chamado de novo para este roteiro");
-  };
   const apagar = async () => {
-    if (!r || !(await confirmar(`Apagar o roteiro V${r.numero}?`, { descricao: "O roteiro some do calendário. O vídeo que o Lauro já gerou continua guardado no Mac.", botao: "Apagar" }))) return;
+    if (!r || !(await confirmar(`Apagar o roteiro V${r.numero}?`, { descricao: "O roteiro some do calendário. Os vídeos que o Lauro já gerou continuam guardados no Mac.", botao: "Apagar" }))) return;
     const { error } = await db.from("esteira_dark_roteiros").delete().eq("id", r.id);
     if (error) { toast.error("Não consegui apagar"); return; }
     onMudou(); onFechar();
   };
+  const midiasPorMsg = useMemo(() => { let pasta: string | null = null; return msgs.map((m) => { const x = midiasDoTexto(m.texto, pasta); pasta = x.pasta; return x.midias; }); }, [msgs]);
+  const ocupado = r?.status === "editando" || r?.status === "programando" || r?.status === "na_fila";
+
   return (
     <Dialog open={!!r} onOpenChange={(a) => { if (!a) onFechar(); }}>
-      <DialogContent className="dark max-h-[90vh] max-w-2xl overflow-y-auto border-white/10 bg-[#0c1b27] text-white">
+      <DialogContent className="dark flex h-[92vh] max-h-[92vh] w-[97vw] max-w-[1400px] flex-col gap-0 overflow-hidden border-white/10 bg-[#0a1520] p-0 text-white">
         {r && (
           <>
-            <DialogHeader><DialogTitle>V{r.numero} · {r.titulo}</DialogTitle><DialogDescription className="text-white/55">{perfil?.nome}</DialogDescription></DialogHeader>
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
-                <label className="flex items-center gap-2 text-white/70">Status
-                  <select className={cn(campo, "w-40")} value={r.status} onChange={(e) => void atualizar({ status: e.target.value })}>{(Object.keys(ROTULO_STATUS) as StatusRoteiro[]).map((s) => <option key={s} value={s} className="bg-[#0a1520]">{ROTULO_STATUS[s]}</option>)}</select></label>
-                <label className="flex items-center gap-2 text-white/70">Dia <input type="date" className={cn(campo, "w-44")} value={r.data_postagem ?? ""} onChange={(e) => void atualizar({ data_postagem: e.target.value || null })} /></label>
+            <DialogDescription className="sr-only">Estúdio do roteiro: vídeo, versões e conversa com o Lauro</DialogDescription>
+            <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0c1b27] px-5 py-3">
+              <DialogTitle className="flex min-w-0 items-center gap-2 text-lg"><span className="rounded bg-white/10 px-1.5 py-0.5 text-sm font-bold">V{r.numero}</span><span className="truncate">{r.titulo}</span></DialogTitle>
+              <span className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", CHIP[r.status])}>{ocupado && r.status !== "na_fila" && <Loader2 className="h-3 w-3 animate-spin" />}{r.status === "editando" ? "Lauro editando…" : r.status === "programando" ? "Lauro programando…" : ROTULO_STATUS[r.status]}</span>
+              <span className="text-xs text-white/45">{perfil?.nome}</span>
+              <div className="ml-auto flex items-center gap-2">
+                <label className="flex items-center gap-1.5 text-xs text-white/55">Dia <input type="date" className={cn(campo, "w-36 py-1")} value={r.data_postagem ?? ""} onChange={(e) => void atualizar({ data_postagem: e.target.value || null })} /></label>
+                {r.status === "revisar" && <button type="button" onClick={() => void aprovar()} className="flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2 text-sm font-bold text-black shadow-lg shadow-emerald-500/20 hover:bg-emerald-400"><CheckCircle2 className="h-4 w-4" />Aprovar</button>}
+                <button type="button" onClick={() => void apagar()} title="Apagar roteiro" className="rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-rose-300"><Trash2 className="h-4 w-4" /></button>
               </div>
-              {r.obs && <p className="rounded-lg bg-rose-500/10 p-2 text-xs text-rose-200">Lauro: {r.obs}</p>}
-              {r.arquivo && /\.(mp4|mov|webm|m4v)$/i.test(r.arquivo) && <MidiaLocal midia={{ caminho: r.arquivo, nome: r.arquivo.split("/").pop() ?? "video.mp4", tipo: "video" }} />}
-              <div><p className="mb-1 text-xs font-semibold uppercase tracking-wide text-white/45">Roteiro</p><p className="max-h-72 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-sm text-white/85">{r.texto}</p></div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={onConversar} className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-sm hover:bg-white/10"><MessageCircle className="h-4 w-4" />Falar com o Lauro</button>
-                <button type="button" onClick={() => void reenviar()} className="rounded-xl border border-white/15 px-3 py-2 text-sm hover:bg-white/10">Chamar o Lauro de novo</button>
-                <button type="button" onClick={() => void apagar()} className="ml-auto flex items-center gap-1.5 text-xs text-rose-300/80 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" />Apagar</button>
-              </div>
+            </div>
+            <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_420px]">
+              <section className="min-h-0 space-y-3 overflow-y-auto p-4">
+                {versao ? <MidiaLocal key={versao.arquivo} grande midia={{ caminho: versao.arquivo, nome: versao.arquivo.split("/").pop() ?? "video.mp4", tipo: "video" }} />
+                  : <div className="flex h-[46vh] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-black/30 text-center text-sm text-white/50">
+                    {r.status === "erro" ? <p className="px-6 text-rose-200">O Lauro travou: {r.obs || "veja a conversa ao lado"}</p> : <><Loader2 className="h-6 w-6 animate-spin text-white/30" /><p>O Lauro ainda está produzindo o vídeo.</p><p className="text-xs text-white/35">Quando ficar pronto ele aparece aqui, com o botão Aprovar.</p></>}</div>}
+                {versoes.length > 1 && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs"><span className="text-white/45">Versões:</span>
+                    {versoes.map((v, i) => <button key={v.arquivo} type="button" onClick={() => setVersaoSel(i)} title={v.nota || v.arquivo} className={cn("rounded-lg px-2.5 py-1 font-semibold", i === indice ? "bg-[#f3c98b] text-black" : "bg-white/10 text-white/70 hover:bg-white/15")}>v{i + 1}</button>)}
+                    {indice !== versoes.length - 1 && <span className="text-amber-300">(não é a mais nova)</span>}
+                  </div>
+                )}
+                {versao?.nota && <p className="rounded-lg bg-white/5 p-2 text-xs text-white/65">Lauro: {versao.nota}</p>}
+                <button type="button" onClick={() => setVerRoteiro((v) => !v)} className="text-xs text-white/50 hover:text-white">{verRoteiro ? "Esconder o roteiro" : "Ver o roteiro"}</button>
+                {verRoteiro && <p className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-sm text-white/80">{r.texto}</p>}
+              </section>
+
+              <section className="flex min-h-0 flex-col border-t border-white/10 bg-[#0b141a] lg:border-l lg:border-t-0">
+                <div className="flex items-center gap-2 border-b border-white/10 bg-[#111b21] px-3 py-2 text-sm"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-200">L</span><span className="font-semibold">Lauro</span><span className="text-xs text-white/45">peça mudanças neste vídeo</span></div>
+                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  {msgs.length === 0 && pendentes === 0 && <p className="rounded-xl bg-white/5 p-3 text-xs text-white/50">Converse com o Lauro sobre este vídeo: “a legenda está atrasada no começo”, “troque essa imagem”, “deixa a voz mais lenta”. Ele gera uma nova versão e ela aparece aqui para você aprovar.</p>}
+                  {msgs.map((m, i) => (
+                    <div key={i} className={cn("max-w-[92%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
+                      {m.papel === "assistant" && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Lauro</span>}{m.texto}
+                      {midiasPorMsg[i]?.map((md) => <MidiaLocal key={md.caminho} midia={md} />)}
+                    </div>
+                  ))}
+                  {pendentes > 0 && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Lauro está trabalhando…<span className="text-white/35">· pode escrever</span></div>}
+                  <div ref={fim} />
+                </div>
+                <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
+                  <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} placeholder="Peça uma mudança neste vídeo…" className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
+                  <button type="button" disabled={!texto.trim()} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
+                </div>
+              </section>
             </div>
           </>
         )}

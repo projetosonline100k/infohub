@@ -10,7 +10,10 @@ DO $$
 BEGIN
   IF (SELECT array_agg(numero ORDER BY numero) FROM public.esteira_dark_roteiros) <> ARRAY[1, 2] THEN RAISE EXCEPTION 'numeração errada (V1, V2 por perfil)'; END IF;
   IF (SELECT status FROM public.esteira_dark_roteiros WHERE numero = 1) <> 'na_fila' THEN RAISE EXCEPTION 'não nasceu na fila'; END IF;
-  UPDATE public.esteira_dark_roteiros SET status = 'programado', data_postagem = '2026-11-25' WHERE numero = 1;
+  UPDATE public.esteira_dark_roteiros SET status = 'revisar', data_postagem = '2026-11-25' WHERE numero = 1;
+  UPDATE public.esteira_dark_roteiros SET status = 'programando' WHERE numero = 1;
+  BEGIN UPDATE public.esteira_dark_roteiros SET versoes = '[1]'::jsonb; RAISE EXCEPTION 'dono mexeu nas versões';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN UPDATE public.esteira_dark_roteiros SET arquivo = '/x.mp4'; RAISE EXCEPTION 'dono mexeu no arquivo';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN INSERT INTO public.esteira_dark_roteiros(perfil_id, titulo, texto, status) VALUES ('10000000-0000-0000-0000-000000000433', 'X', 'y', 'programado'); RAISE EXCEPTION 'nasceu já programado';

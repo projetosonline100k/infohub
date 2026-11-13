@@ -4,8 +4,9 @@ O Davi sobe o roteiro no app (aba Roteiros do dash do Lauro); o Lauro lê o rote
   python3 scripts/lauro/roteiros.py listar [<perfil>]                      os roteiros (V1, V2…) com dia e status
   python3 scripts/lauro/roteiros.py contexto <id>                          o roteiro inteiro, o perfil e o ESTILO do vídeo cadastrado
   python3 scripts/lauro/roteiros.py status <id> <novo> [--obs "..."] [--arquivo <caminho>]
-        novo = editando (começou a produzir) | programando (vídeo pronto, agendando a publicação) | programado (agendado) | erro (travou: diga o porquê em --obs)
-        --arquivo: caminho do vídeo final (em ~/.infopro-hub/exemplos/<perfil>/roteiros/<id>/), que o Davi vê no calendário
+        novo = editando (começou a produzir) | revisar (vídeo pronto: o Davi vê no estúdio e aprova; use --arquivo) | programando (só depois do APROVADO do Davi: agendando)
+               | programado (agendado) | erro (travou: diga o porquê em --obs)
+        --arquivo: caminho do vídeo (cada versão num arquivo novo: video_v1.mp4, video_v2.mp4…); fica no histórico de versões do estúdio do Davi
   python3 scripts/lauro/roteiros.py data <id> AAAA-MM-DD                    muda o dia de postagem
 
 <id> pode ser o começo do id (8 caracteres bastam).
@@ -19,7 +20,7 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
 
-STATUS = ("editando", "programando", "programado", "erro")
+STATUS = ("editando", "revisar", "programando", "programado", "erro")
 
 
 def _achar(q, prefixo):
@@ -57,6 +58,9 @@ def main():
         elif arg.cmd == "status":
             r = _achar(q, arg.id)
             q.execute("UPDATE public.esteira_dark_roteiros SET status = %s, obs = coalesce(%s, obs), arquivo = coalesce(%s, arquivo), atualizado_em = now() WHERE id = %s", (arg.novo, arg.obs, arg.arquivo, r[0]))
+            if arg.arquivo:   # histórico de versões (v1, v2…): a mesma versão não entra duas vezes
+                q.execute("""UPDATE public.esteira_dark_roteiros SET versoes = versoes || jsonb_build_array(jsonb_build_object('arquivo', %s::text, 'em', now()::text, 'nota', %s::text))
+                              WHERE id = %s AND NOT versoes @> jsonb_build_array(jsonb_build_object('arquivo', %s::text))""", (arg.arquivo, arg.obs or "", r[0], arg.arquivo))
             c.commit()
             print(f"V{r[2]} ({r[9]}): {arg.novo}")
         elif arg.cmd == "data":
