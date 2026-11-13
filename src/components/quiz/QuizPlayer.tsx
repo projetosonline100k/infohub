@@ -7,6 +7,7 @@ import {
   barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher, primeiroNome,
   type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
 } from "@/lib/quiz/quiz";
+import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
@@ -536,6 +537,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     f(n.perguntas[passo.indice].opcoes);
     onMudar(n);
   };
+  const mudarPergunta = (posicao: number, f: (q: EstruturaQuiz["perguntas"][number]) => void) => {
+    const passo = passos[posicao];
+    if (passo?.tipo !== "pergunta" || !onMudar) return;
+    const n = structuredClone(e);
+    f(n.perguntas[passo.indice]);
+    onMudar(n);
+  };
   const ctx: Ctx = {
     editar, mostrarFaltas: !!teste, cor, escuro, podeEnviar: !!onImagem && !!onMudar,
     aoClicarOferta: () => evento.current?.("cta"),
@@ -573,9 +581,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     if (!editar && !travado) window.setTimeout(avancar, 280);
   };
   // Múltipla escolha: marca/desmarca e só segue no botão Continuar; no perfil conta a 1ª opção marcada.
-  const alternar = (qid: string, k: number) => {
+  const alternar = (qid: string, k: number, limite?: number) => {
     const atual = marcadas[qid] ?? [];
-    const nova = atual.includes(k) ? atual.filter((x) => x !== k) : [...atual, k];
+    const nova = alternarMarcada(atual, k, limite);
+    if (!nova) return;   // já marcou o máximo: só troca desmarcando uma
     setMarcadas((m) => ({ ...m, [qid]: nova }));
     setEscolhas((x) => { const y = { ...x }; if (nova.length) y[qid] = nova[0]; else delete y[qid]; return y; });
   };
@@ -668,6 +677,64 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             };
             const livro = q.estilo === "livro";
             const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
+            if (q.estilo === "lado") {
+              // Seleção ao lado do mascote (desenho do Davi, 13/11): ele fica de um lado, a pessoa marca N itens no painel e a barra de baixo enche até completar.
+              const meta = metaDaSelecao(q);
+              const sel = marcadas[q.id] ?? [];
+              const completa = sel.length >= meta;
+              return (
+                <div className="space-y-3">
+                  <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-center text-xl font-bold leading-snug" />
+                  <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-center text-sm", suave)} />
+                  <div className="flex items-end gap-2">
+                    {quadrosM && (
+                      <div className="flex w-[30%] shrink-0 flex-col items-center gap-1 pb-1">
+                        <span className="rounded-full px-2.5 py-0.5 text-xs font-bold text-white transition-colors" style={{ background: completa ? "#16a34a" : cor }}>{completa ? "Pronto!" : `${sel.length}/${meta}`}</span>
+                        <img src={quadrosM[completa ? Q.PULO : Q.PARADO] ?? quadrosM[0]} alt="" draggable={false} className="aspect-square w-full object-contain" />
+                      </div>
+                    )}
+                    <div className={cn("grid min-w-0 flex-1 grid-cols-2 gap-1.5 overflow-y-auto rounded-2xl border-2 p-1.5", escuro ? "border-white/15 bg-white/5" : "border-gray-200 bg-white/60", !editar && "max-h-[46dvh]")}>
+                      {q.opcoes.map((o, k) => {
+                        const marcada = sel.includes(k);
+                        const Opcao = editar ? "div" : "button";
+                        return (
+                          <Opcao key={k} type={editar ? undefined : "button"} onClick={() => alternar(q.id, k, meta)}
+                            className={cn("group relative flex flex-col items-center justify-center gap-1 rounded-xl border-2 px-1.5 py-2 text-center text-[13px] font-semibold leading-tight transition-all",
+                              escuro ? "border-white/15" : "border-gray-200", marcada ? "scale-[1.03] text-white shadow-md" : completa && !editar ? "opacity-45" : "hover:-translate-y-0.5 hover:shadow-md")}
+                            style={marcada ? { background: cor, borderColor: cor } : undefined}>
+                            {(o.imagem !== undefined || !!o.imagens) && <Img caminho={`${base}.opcoes.${k}.imagem`} url={imagemDe(o)} className="mx-auto aspect-square w-12" />}
+                            {o.emoji && !(o.imagem !== undefined || !!o.imagens) && <span className="text-3xl leading-none">{o.emoji}</span>}
+                            <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} />
+                            {marcada && <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-white/90"><Check className="h-3 w-3" style={{ color: cor }} /></span>}
+                          </Opcao>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {/* Barra de baixo: um pedaço por item; enche conforme a pessoa marca, até completar */}
+                  <div className="space-y-1">
+                    <div className="flex gap-1" role="progressbar" aria-valuemin={0} aria-valuemax={meta} aria-valuenow={Math.min(sel.length, meta)}>
+                      {Array.from({ length: meta }, (_, i) => (
+                        <span key={i} className={cn("flex h-8 flex-1 items-center justify-center rounded-lg text-sm font-bold transition-all duration-300", i < sel.length ? "text-white" : escuro ? "bg-white/10 text-white/40" : "bg-gray-200 text-gray-400")}
+                          style={i < sel.length ? { background: cor } : undefined}>{i + 1}</span>
+                      ))}
+                    </div>
+                    <p className={cn("text-center text-xs", suave)}>{completa ? "Tudo certo! Se quiser trocar, desmarque uma e escolha outra." : `Escolha mais ${meta - sel.length}`}</p>
+                  </div>
+                  {editar && (
+                    <div className={cn("flex items-center justify-center gap-1.5 text-xs", suave)}>Quantos escolher:
+                      {[3, 5].map((n) => <button key={n} type="button" onClick={() => mudarPergunta(pos, (qq) => { qq.meta = n; })} className={cn("rounded-md border px-2 py-0.5 font-semibold", meta === n && "text-white")} style={meta === n ? { background: cor, borderColor: cor } : undefined}>{n}</button>)}
+                    </div>
+                  )}
+                  <div className={cn("sticky bottom-3 z-10 pt-1", !editar && !completa && "pointer-events-none opacity-40")}>
+                    <Botao onClick={avancar}>Continuar</Botao>
+                  </div>
+                  {pos > 1 && !editar && !travado && (
+                    <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
+                  )}
+                </div>
+              );
+            }
             return (
               <div className="space-y-3">
                 {quadrosM && !livro

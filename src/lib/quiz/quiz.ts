@@ -16,9 +16,11 @@ export interface OpcaoQuiz {
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
-  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones";
+  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones" | "lado";
   botao?: boolean;      // marca a resposta e só segue no botão Continuar (sem avançar sozinho)
   multipla?: boolean;   // "escolha quantas quiser": marca várias e segue no botão Continuar (conta a 1ª escolhida no perfil)
+  /** estilo "lado" (13/11): o mascote fica ao lado, a pessoa marca exatamente `meta` itens (3 ou 5; padrão 5) e a barra de baixo enche até liberar o Continuar. */
+  meta?: number;
 }
 export interface PerfilQuiz {
   id: string; nome: string; descricao?: string; cta_texto?: string; cta_url?: string;
@@ -246,3 +248,4 @@ export function comValor<T>(obj: T, caminho: string, valor: unknown): T {
 }
 
 export const corDoQuiz = (e?: EstruturaQuiz | null) => (e?.cor && /^#[0-9a-f]{3,8}$/i.test(e.cor) ? e.cor : "#0ea5e9");
+

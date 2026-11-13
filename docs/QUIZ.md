@@ -57,6 +57,7 @@ Pedido do Davi: quiz cru (só texto e botão) não serve. Referências dele: inl
 - `tema`: `"escuro"` (fundo preto, bom para o vermelho e preto do Matheus) ou `"claro"`.
 - `intro`: `imagem`, `imagem_nota`, `credenciais` (lista de selos) e `rodape` ("Leva 2 minutos. É anônimo.").
 - Pergunta: `imagem`, `imagem_nota`, `subtitulo`, `estilo: "cartoes"` (opções em grade, com `imagem` por opção). Opção: `emoji`, `resumo` (como a resposta entra em frases: "nos estudos").
+- Pergunta de marcar vários **com o mascote ao lado** (13/11): `estilo: "lado"`, `multipla: true` e `meta: 3` ou `5` (padrão 5). O mascote fica de um lado, a pessoa marca exatamente `meta` itens no painel (cada opção com `imagem` ou `emoji`) e a barra de baixo enche, um pedaço por item, até liberar o Continuar. No perfil conta a 1ª opção marcada. No editor, o seletor "Quantos escolher: 3 | 5" aparece embaixo da pergunta.
 - `telas`: lista de telas entre as perguntas. Cada uma tem `id`, `depois_de` (`"intro"` ou id da pergunta; várias no mesmo ponto saem na ordem da lista) e `tipo`:
   - `respiro`: `titulo`, `texto`, `imagem`, `citacao {texto, autor}`, `grafico {titulo, barras:[{rotulo, valor, legenda, destaque}]}`, `depoimentos [{nome, texto}]`, `depoimentos_nota`, `fonte`, `botao`;
   - `especialista`: foto redonda, `credenciais`, `audio` (URL) ou `audio_nota`;
