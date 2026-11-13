@@ -533,6 +533,75 @@ function Escala({ q, base, escolhida, aoEscolher, f }: { q: EstruturaQuiz["pergu
   );
 }
 
+// Criar a conta em etapas (13/11/2026, Davi, com um desenho: "primeiro o nome, que é mais fácil; ao dar OK sai para o lado; aí e-mail e WhatsApp; ao dar OK sai para o lado;
+// aparece 'Conta criada!' com confete e embaixo o botão 'Ver meu plano personalizado'"). O lead é gravado quando e-mail e WhatsApp são confirmados (quem sair na última etapa não se perde).
+function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, escuro, suave, enviando, editar, onGravar, onVerPlano }: {
+  e: EstruturaQuiz; contato: Partial<Record<CampoCaptura, string>>; setContato: (c: Partial<Record<CampoCaptura, string>>) => void; pedir: CampoCaptura[]; f: (t?: string) => string;
+  quadros?: string[]; selos: ReactNode; cor: string; escuro: boolean; suave: string; enviando: boolean; editar: boolean; onGravar: () => Promise<void>; onVerPlano: () => void;
+}) {
+  const [fase, setFase] = useState(0);
+  const [saindo, setSaindo] = useState(false);
+  const cap = e.captura;
+  const ir = (prox: number) => { setSaindo(true); window.setTimeout(() => { setFase(prox); setSaindo(false); }, 220); };
+  useEffect(() => { if (fase === 2 && !editar) { confeteFase(); somFaseConcluida(); const t = window.setTimeout(confeteFase, 350); return () => window.clearTimeout(t); } }, [fase, editar]);
+  const nomeOk = (contato.nome ?? "").trim().length >= 2;
+  const contatoOk = pedir.filter((c) => c !== "nome").every((c) => { const v = (contato[c] ?? "").trim(); return c === "whatsapp" ? v.replace(/\D/g, "").length >= 10 : c === "email" ? /^\S+@\S+\.\S+$/.test(v) : v.length >= 2; });
+  const campo = (c: CampoCaptura, rotulo: string, placeholder: string, auto: string) => (
+    <label key={c} className="block space-y-1 text-sm">
+      <Txt caminho={`captura.rotulos.${c}`} valor={cap?.rotulos?.[c] || rotulo} className={suave} />
+      <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={placeholder} inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={auto} autoFocus={!editar}
+        className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")} onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
+    </label>
+  );
+  const ok = (rotulo: ReactNode, habilitado: boolean, carregando = false) => (
+    <Button type="submit" size="lg" disabled={!editar && (!habilitado || carregando)} className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }}>
+      {carregando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{rotulo}
+    </Button>
+  );
+  const anim = saindo ? "animate-out fade-out slide-out-to-left-8 duration-200 fill-mode-forwards" : "animate-in fade-in slide-in-from-right-8 duration-300";
+  const fala0 = cap?.fala || "Falta pouco! Crie sua conta para liberar o seu acesso.";
+  return (
+    <div className="space-y-3 py-2">
+      {editar && <div className="flex justify-center gap-1 text-xs">{["Nome", "E-mail e WhatsApp", "Conta criada"].map((r, i) => <button key={r} type="button" onClick={() => setFase(i)} className={cn("rounded-full border px-2.5 py-1 font-semibold", fase === i && "text-white")} style={fase === i ? { background: cor, borderColor: cor } : undefined}>{i + 1}. {r}</button>)}</div>}
+      <div key={fase} className={anim}>
+        {fase === 0 && (
+          <form className="space-y-4" onSubmit={(ev) => { ev.preventDefault(); if (editar) setFase(1); else if (nomeOk) ir(1); }}>
+            {quadros ? <MascoteCanto key="conta0" quadros={quadros}><Txt caminho="captura.fala" valor={fala0} mostrar={f(fala0)} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
+              : <Txt caminho="captura.fala" valor={fala0} mostrar={f(fala0)} as="h2" className="block text-2xl font-bold leading-snug" />}
+            {campo("nome", "Nome", "Seu nome e sobrenome", "name")}
+            {ok("OK", nomeOk)}
+          </form>
+        )}
+        {fase === 1 && (
+          <form className="space-y-4" onSubmit={(ev) => { ev.preventDefault(); if (editar) { setFase(2); return; } if (contatoOk && !enviando) void onGravar().then(() => ir(2)); }}>
+            <div className="space-y-1.5 text-center">
+              <Txt caminho="captura.titulo" valor={cap?.titulo || "Quase lá! Para onde enviamos o seu plano?"} mostrar={f(cap?.titulo || "Quase lá! Para onde enviamos o seu plano?")} as="h2" className="block text-2xl font-bold leading-snug" />
+              <Txt caminho="captura.texto" valor={cap?.texto || "Rapidinho: só e-mail e WhatsApp."} mostrar={f(cap?.texto || "Rapidinho: só e-mail e WhatsApp.")} as="p" className={cn("block text-base", suave)} />
+            </div>
+            {pedir.filter((c) => c !== "nome").map((c) => campo(c, ROTULO_CAMPO[c].rotulo, ROTULO_CAMPO[c].exemplo, c === "whatsapp" ? "tel" : "email"))}
+            {ok("OK", contatoOk, enviando)}
+            {(cap?.nota || editar) && <p className={cn("flex items-center justify-center gap-1.5 text-center text-xs", suave)}><Lock className="h-3 w-3 shrink-0" /><Txt caminho="captura.nota" valor={cap?.nota} /></p>}
+            {selos}
+            <button type="button" onClick={() => ir(0)} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
+          </form>
+        )}
+        {fase === 2 && (
+          <div className="space-y-5 py-4 text-center">
+            <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-full text-white shadow-xl motion-safe:animate-in motion-safe:zoom-in-50 duration-500" style={{ background: cor, boxShadow: `0 12px 30px -8px ${cor}` }}><Check className="h-11 w-11" strokeWidth={3.5} /></span>
+            <div className="space-y-1.5">
+              <Txt caminho="captura.conta_criada.titulo" valor={cap?.conta_criada?.titulo || "Conta criada!"} as="h2" className="block text-3xl font-extrabold leading-tight" />
+              <Txt caminho="captura.conta_criada.texto" valor={cap?.conta_criada?.texto || "{nome}, o seu plano personalizado já está pronto."} mostrar={f(cap?.conta_criada?.texto || "{nome}, o seu plano personalizado já está pronto.")} as="p" className={cn("block text-base", suave)} />
+            </div>
+            <Button type="button" size="lg" onClick={editar ? undefined : onVerPlano} className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }}>
+              <Txt caminho="captura.conta_criada.botao" valor={cap?.conta_criada?.botao || "Ver meu plano personalizado"} /><ArrowRight className="ml-2 h-4 w-4 shrink-0" />
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // "Seus livros e o seu plano": junta as respostas (áreas marcadas, livros que curtiu, perfil) com a lista de livros do Instalivros e monta os dias.
 function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir }: {
   t: TelaQuiz; base: string; e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; marcadas: Record<string, number[]>; f: (s?: string) => string; cor: string; escuro: boolean; suave: string; onSeguir: () => void;
@@ -951,7 +1020,24 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             );
           })()}
 
-          {passo.tipo === "captura" && (
+          {passo.tipo === "captura" && e.captura?.etapas && (
+            <CapturaEtapas e={e} contato={contato} setContato={setContato} pedir={pedir} f={f} quadros={quadrosMascote} cor={cor} escuro={escuro} suave={suave} enviando={enviando} editar={editar}
+              onGravar={() => gravar(contato)} onVerPlano={avancar}
+              selos={!!e.captura.selos?.length && (
+                <div className={cn("flex flex-wrap justify-center gap-2 rounded-2xl border p-3", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]")}>
+                  {e.captura.selos.map((sl, k) => (
+                    <div key={k} className={cn("relative", k === 0 ? "w-full" : "w-[48%]")}>
+                      {e.captura?.louro && <img src={e.captura.louro} alt="" draggable={false} className="mx-auto w-full max-w-[220px] object-contain" />}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center px-[22%] text-center leading-tight text-amber-600">
+                        <span className={cn("font-extrabold", k === 0 ? "text-2xl" : "text-lg")}>{sl.destaque}</span>
+                        <span className="text-[11px] font-medium opacity-90">{sl.texto}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )} />
+          )}
+          {passo.tipo === "captura" && !e.captura?.etapas && (
             <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
               {quadrosMascote && (e.captura?.fala || editar) && (
                 <MascoteCanto key="captura" quadros={quadrosMascote}><Txt caminho="captura.fala" valor={e.captura?.fala} mostrar={f(e.captura?.fala)} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>

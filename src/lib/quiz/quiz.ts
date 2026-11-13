@@ -82,6 +82,10 @@ export interface CapturaQuiz {
   ativa?: boolean; titulo?: string; texto?: string; nota?: string; botao?: string;
   pedir?: CampoCaptura[]; rotulos?: Partial<Record<CampoCaptura, string>>; depois_de?: string;
   fala?: string;            // o Instalivros fala no topo do formulário (balão)
+  /** Criar a conta em etapas (13/11): 1) nome → 2) e-mail e WhatsApp → 3) "Conta criada!" com confete e o botão do plano; cada etapa sai para o lado com animação. */
+  etapas?: boolean;
+  /** Etapa final: título ("Conta criada!"), texto e botão ("Ver meu plano personalizado"). */
+  conta_criada?: { titulo?: string; texto?: string; botao?: string };
   selos?: SeloQuiz[]; louro?: string;   // quadro de selos embaixo do botão (só com fatos reais da oferta); `louro` = imagem do ramo de louro
 }
 // Pergunta do nome (12/11, Davi: "captar o nome no começo pra me referir à pessoa"): uma tela com um campo
