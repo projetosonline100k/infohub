@@ -429,7 +429,7 @@ function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, onVolta
           style={{ background: claro, color: cor }}><ArrowLeft className="h-4 w-4" />Voltar</button>
         <span className="text-xl font-extrabold tracking-tight" style={{ color: cor }}>Instalivros</span>
       </div>
-      <div className="relative mx-1 pb-5 pt-1">
+      <div className={cn("relative mx-1 pt-1", n > 1 && atual === n - 2 ? "pb-9" : "pb-5")}>
         <div className="relative h-5">
           <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ background: claro }} />
           <div className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full transition-all duration-500" style={{ width: `${fill}%`, background: cor }} />
@@ -447,6 +447,10 @@ function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, onVolta
           })}
         </div>
         <span className="absolute top-8 -translate-x-1/2 whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.14em]" style={{ left: `${Math.min(Math.max(((atual + 1) / n) * 100, 14), 86)}%`, color: cor }}>{fases[atual]}</span>
+        {/* O nome da última fase fica sempre visível embaixo do último ponto (ex.: "Acessar o App"); se colidir com o da fase atual, desce para a linha de baixo. */}
+        {n > 1 && atual < n - 1 && (
+          <span className={cn("absolute right-0 whitespace-nowrap text-right text-[10px] font-bold uppercase tracking-[0.14em] opacity-60", atual === n - 2 ? "top-[3.1rem]" : "top-8")} style={{ color: cor }}>{fases[n - 1]}</span>
+        )}
       </div>
     </div>
   );
