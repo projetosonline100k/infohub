@@ -74,3 +74,9 @@ Pedido do Davi: quiz cru (só texto e botão) não serve. Referências dele: inl
 
 ## Dados do lead no checkout da Eduzz (13/11)
 O botão de compra (oferta e perfis) leva o que a pessoa já deu no quiz para o checkout da Eduzz, que preenche sozinho: `name` → Nome completo, `email` → E-mail, `phone`/`cellphone` → Celular (sem o 55). Só vale para links `*.eduzz.com`, não troca parâmetros que já estejam na URL e não vale no editor. Código: `comDadosDoLead` em `src/lib/quiz/utm.ts`. O checkout guarda o que a pessoa já preencheu antes no mesmo aparelho e pode ignorar a URL nesse caso.
+
+## Perfil e plano de leitura (13/11)
+Duas telas novas (`tipo` em `telas`), depois do carregando:
+- `perfil`: "Com base nas suas respostas, seu perfil é **X**" + emoji, frase curta, descrição e **por quê** (as 3 respostas que mais deram ponto ao perfil). Campos novos no perfil: `emoji` e `frase`. Os 4 perfis do Instalivros: Mente de Xadrez (`sem_tempo`), Olho de Águia (`ambicioso`), Postura de Rei (`inseguro`) e Fôlego de Maratonista (`adiado`).
+- `plano_livros`: os livros que mais combinam e o plano ("Amanhã", "Depois de amanhã", "Dia 3"…), com o resto escondido ("Mais 25 livros no seu plano de 30 dias"). Config em `plano`: `areas_pergunta` (pergunta onde ela marca as áreas), `livros_temas` (que tema cada livro curtido indica), `perfil_temas` (temas de cada perfil), `dias_visiveis` (5) e `total_dias` (30).
+Os livros vêm de `src/data/livros-instalivros.json`, gerado do books.csv do Instalivros: `python3 scripts/quiz/livros_temas.py gerar /caminho/books.csv` (o CSV não tem categoria: o tema sai de palavras do título e do autor; livros de religião, saúde e família ficam de fora). A escolha é `montarPlano` em `src/lib/quiz/plano.ts`: um livro de cada área marcada, autor sem repetir, do áudio mais curto para o mais longo.

@@ -9,6 +9,8 @@ import {
 } from "@/lib/quiz/quiz";
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
 import { comDadosDoLead } from "@/lib/quiz/utm";
+import { montarPlano, razoesDoPerfil, temaDaOpcao, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
+import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
@@ -531,6 +533,26 @@ function Escala({ q, base, escolhida, aoEscolher, f }: { q: EstruturaQuiz["pergu
   );
 }
 
+// "Seus livros e o seu plano": junta as respostas (áreas marcadas, livros que curtiu, perfil) com a lista de livros do Instalivros e monta os dias.
+function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir }: {
+  t: TelaQuiz; base: string; e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; marcadas: Record<string, number[]>; f: (s?: string) => string; cor: string; escuro: boolean; suave: string; onSeguir: () => void;
+}) {
+  const [livros, setLivros] = useState<LivroPlano[] | null>(null);
+  useEffect(() => { let vivo = true; void import("@/data/livros-instalivros.json").then((m) => { if (vivo) setLivros(m.default as LivroPlano[]); }); return () => { vivo = false; }; }, []);
+  const cfg = useMemo(() => t.plano ?? {}, [t.plano]);
+  const { areas, plano } = useMemo(() => {
+    const pa = e.perguntas.find((q) => q.id === (cfg.areas_pergunta ?? "areas"));
+    const areas = (pa ? (marcadas[pa.id] ?? []).map((k) => temaDaOpcao(pa.opcoes[k]?.texto ?? "")) : []).filter((x): x is Tema => !!x);
+    const curtidos = Object.entries(cfg.livros_temas ?? {}).filter(([qid]) => escolhas[qid] === 1).flatMap(([, temas]) => temas);
+    const montado: PlanoMontado | null = livros ? montarPlano(livros, { areas, curtidos, perfil: cfg.perfil_temas?.[perfil?.id ?? ""] ?? [] }, cfg) : null;
+    return { areas, plano: montado };
+  }, [livros, e.perguntas, marcadas, escolhas, perfil, cfg]);
+  const titulo = t.titulo || "{nome}, seus livros e o seu plano";
+  return <PlanoLivrosTela plano={plano} carregando={!livros} areas={areas.map((a) => ROTULO_TEMA[a])} cor={cor} escuro={escuro} suave={suave}
+    titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
+    botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
+}
+
 // Continuar das perguntas que só seguem no botão: bloqueado (cinza, cadeado e o que falta) até a pessoa responder.
 function ContinuarTravavel({ liberado, falta, onClick }: { liberado: boolean; falta: string; onClick: () => void }) {
   const { escuro, editar } = useContext(QuizCtx);
@@ -881,6 +903,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             const t = telas[passo.indice];
             const base = `telas.${passo.indice}`;
             if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar || travado ? undefined : avancar} suave={suave} />;
+            if (t.tipo === "perfil") {
+              const razoes = razoesDoPerfil(perguntas, escolhas, perfil?.id ?? "");
+              return <PerfilTela key={t.id} perfil={perfil} razoes={razoes} cor={cor} escuro={escuro} suave={suave}
+                titulo={<Txt caminho={`${base}.titulo`} valor={t.titulo || "Com base nas suas respostas, seu perfil é"} mostrar={f(t.titulo || "Com base nas suas respostas, seu perfil é")} as="p" className="block" />}
+                botao={<Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || "Ver meu plano"} /></Botao>} />;
+            }
+            if (t.tipo === "plano_livros") return <PlanoLivros key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} />;
             if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} onSeguir={avancar} suave={suave} />;
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}

@@ -1,4 +1,5 @@
 import { PUBLIC_SITE_URL } from "@/lib/shareUrl";
+import type { ConfigPlano } from "./plano";
 
 // Quiz do Infopro (docs/QUIZ.md). O Roy monta a estrutura; a página pública
 // /quiz/<slug> roda o quiz e o resultado é o perfil com mais pontos.
@@ -25,13 +26,17 @@ export interface PerguntaQuiz {
 export interface PerfilQuiz {
   id: string; nome: string; descricao?: string; cta_texto?: string; cta_url?: string;
   resumo?: string; imagem?: string; imagem_nota?: string; virada?: string;
+  /** Tela "perfil" (13/11): emoji do perfil e a frase curta embaixo do nome ("Quando você pega ritmo, vai longe"). */
+  emoji?: string; frase?: string;
 }
 export interface Depoimento { nome?: string; texto?: string; imagem?: string }
 export interface BarraFixa { rotulo: string; valor: number; legenda?: string; destaque?: boolean }
 export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
-  tipo: "respiro" | "especialista" | "carregando" | "resultado";
+  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros";
+  /** Tela "plano_livros" (13/11): como escolher os livros do plano (ver src/lib/quiz/plano.ts). */
+  plano?: ConfigPlano;
   titulo?: string; texto?: string; botao?: string;
   imagem?: string; imagem_nota?: string;
   animada?: boolean; fala?: string; quadros?: string[];
