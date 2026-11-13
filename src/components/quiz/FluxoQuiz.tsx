@@ -36,7 +36,7 @@ function Bloco({ data }: NodeProps<Dados>) {
       <span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 bg-white/5", c.icone)}><Icone className="h-5 w-5" /></span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold leading-tight">{data.subtitulo}</span>
-        <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-white/55">{data.rotulo}</span>
+        {data.rotulo.trim().toLowerCase() !== data.subtitulo.trim().toLowerCase() && <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-white/55">{data.rotulo}</span>}
         {data.variavel && <span title="Esta resposta muda o que aparece depois" className="mt-1 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-200">◆ variável: {data.variavel}</span>}
         {data.usa && <span title="As imagens desta pergunta mudam conforme a resposta" className="mt-1 inline-flex items-center gap-1 rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[10px] font-semibold text-fuchsia-200">◆ foto muda com {data.usa}</span>}
       </span>
