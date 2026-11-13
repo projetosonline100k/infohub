@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CheckCircle2, ExternalLink, Instagram, Loader2, Unlink } from "lucide-react";
 import { toast } from "sonner";
+import QRCode from "qrcode";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
 import { gerarLinkConexao } from "@/hooks/useInstagramAutomacoes";
@@ -31,21 +33,23 @@ export function useInstagramDoPerfil(perfilId: string) {
 export function ConectarInstagramDark({ perfilId, conta, recarregar, compacto }: { perfilId: string; conta: InstagramDoPerfil | null | undefined; recarregar: () => Promise<void>; compacto?: boolean }) {
   const [aguardando, setAguardando] = useState(false);
   const [link, setLink] = useState<string | null>(null);
+  const [qr, setQr] = useState("");
+  const [verQr, setVerQr] = useState(false);
   useEffect(() => {
     if (!aguardando) return;
     const t = window.setInterval(() => void recarregar(), 4000);
     const fim = window.setTimeout(() => setAguardando(false), 10 * 60_000);
     return () => { window.clearInterval(t); window.clearTimeout(fim); };
   }, [aguardando, recarregar]);
-  useEffect(() => { if (conta) setAguardando(false); }, [conta]);
+  useEffect(() => { if (conta) { setAguardando(false); setVerQr(false); } }, [conta]);
 
   const conectar = async () => {
     try {
       const url = await gerarLinkConexao(null, perfilId);
       setLink(url);
-      await abrirLinkExterno(url);   // no app do Mac o window.open não faz nada
-      setAguardando(true);
-      toast.info("Autorize no Instagram que abriu. Quando terminar, a conta aparece aqui.");
+      setQr(await QRCode.toDataURL(url, { width: 320, margin: 2 }));
+      setVerQr(true);
+      setAguardando(true);   // a conta está no Instagram do celular: o QR abre a autorização lá
     } catch (e) { toast.error(e instanceof Error ? e.message : "Não deu para gerar o link"); }
   };
   const desconectar = async () => {
@@ -65,9 +69,22 @@ export function ConectarInstagramDark({ perfilId, conta, recarregar, compacto }:
     <span className="flex flex-wrap items-center gap-2">
       <button type="button" onClick={() => void conectar()}
         className={cn("flex items-center gap-2 rounded-xl border border-pink-400/40 bg-pink-500/10 px-3 py-2 text-sm font-semibold text-pink-200 hover:bg-pink-500/20", compacto && "py-1.5 text-xs")}>
-        {aguardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}{aguardando ? "Esperando você autorizar… (abrir de novo)" : "Conectar Instagram"}
+        {aguardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}{aguardando ? "Esperando você autorizar… (novo link)" : "Conectar Instagram"}
       </button>
-      {aguardando && link && <button type="button" onClick={() => { void navigator.clipboard.writeText(link); toast.success("Link copiado"); }} className="text-xs text-pink-200/70 underline hover:text-pink-100">copiar link</button>}
+      {aguardando && link && <button type="button" onClick={() => setVerQr(true)} className="text-xs text-pink-200/70 underline hover:text-pink-100">ver QR</button>}
+      <Dialog open={verQr} onOpenChange={setVerQr}>
+        <DialogContent className="dark max-w-sm border-white/10 bg-[#0a1520] text-white">
+          <DialogHeader>
+            <DialogTitle>Conectar pelo celular</DialogTitle>
+            <DialogDescription className="text-white/60">Aponte a câmera do celular onde está o Instagram dessa conta e toque em Permitir. Esta tela fecha sozinha quando a conta conectar. O link vale 7 dias.</DialogDescription>
+          </DialogHeader>
+          {qr && <img src={qr} alt="QR code para conectar o Instagram" className="mx-auto h-64 w-64 rounded-lg bg-white" />}
+          <div className="flex justify-center gap-2 text-xs">
+            <button type="button" onClick={() => { if (link) { void navigator.clipboard.writeText(link); toast.success("Link copiado: mande para o celular"); } }} className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">Copiar link</button>
+            <button type="button" onClick={() => link && void abrirLinkExterno(link)} className="rounded-lg bg-white/10 px-3 py-1.5 hover:bg-white/15">Abrir neste computador</button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </span>
   );
 }
