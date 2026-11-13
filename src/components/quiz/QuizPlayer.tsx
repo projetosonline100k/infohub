@@ -92,7 +92,15 @@ function Txt({ caminho, valor, mostrar, as: Tag = "span", className }: {
     );
   }
   const t = mostrar ?? valor;
-  return t ? <Tag className={cn("whitespace-pre-line", className)}>{t}</Tag> : null;
+  return t ? <Tag className={cn("whitespace-pre-line", className)}>{comGrifo(t)}</Tag> : null;
+}
+
+// Grifo de marca-texto: ==trecho== vira fundo amarelo atrás das palavras (Davi, 13/11).
+function comGrifo(t: string): ReactNode {
+  if (!t.includes("==")) return t;
+  return t.split(/==(.+?)==/g).map((p, i) => i % 2
+    ? <mark key={i} className="rounded-sm bg-[#fde047] px-1 text-[#0a1020] [box-decoration-break:clone]">{p}</mark>
+    : p);
 }
 
 // Imagem do quiz. Sem URL: no teste aparece o espaço reservado (com o que vai ali); no link público some.
@@ -1482,6 +1490,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
   );
   return (
     <div className="space-y-7 bg-[#0a1020] p-5 text-white [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]">   {/* ponta a ponta: o fundo escuro vai até as bordas da tela, também em cima e embaixo (sem faixa branca) */}
+      {(o.headline || editar) && <Txt caminho="oferta.headline" valor={o.headline} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />}
       {!!o.itens?.length && (
         <section className="space-y-3">
           <Txt caminho="oferta.recebe_titulo" valor={o.recebe_titulo ?? "O que você recebe com o Instalivros"} as="h3" className="block text-lg font-extrabold" />
@@ -1499,6 +1508,9 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
               {o.bonus.map((b, k) => (
                 <div key={k} className="space-y-1 rounded-2xl border border-white/15 bg-white/5 p-4">
                   <p className="text-sm font-extrabold leading-snug"><span aria-hidden>🎁 </span><Txt caminho={`oferta.bonus.${k}.titulo`} valor={b.titulo} /></p>
+                  {(b.preco_de || b.preco_por) && (
+                    <p className="text-sm font-semibold text-white/70">De <s><Txt caminho={`oferta.bonus.${k}.preco_de`} valor={b.preco_de} /></s> por <span className="font-extrabold" style={{ color: verde }}><Txt caminho={`oferta.bonus.${k}.preco_por`} valor={b.preco_por} /></span></p>
+                  )}
                   <Txt caminho={`oferta.bonus.${k}.texto`} valor={b.texto} as="p" className="block text-sm leading-snug text-white/80" />
                 </div>
               ))}
