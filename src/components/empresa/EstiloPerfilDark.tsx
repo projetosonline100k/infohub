@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Loader2, Mic, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
+import { Loader2, Mic, Paperclip, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -41,6 +41,9 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   const pendentesRef = useRef(0);
   const esperando = pendentes > 0;
   const [detalhes, setDetalhes] = useState(false);
+  const [anexos, setAnexos] = useState<File[]>([]);   // imagens, vídeos e áudios para o Lauro ver (jogados no chat, colados ou escolhidos no clipe)
+  const [arrastando, setArrastando] = useState(false);
+  const seletor = useRef<HTMLInputElement>(null);
   const [vivo, setVivo] = useState(false);   // modo vivo: o Lauro roda no Mac do Davi, com o Chrome dele
   const vivoRef = useRef(false);
   vivoRef.current = vivo;
@@ -53,7 +56,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   // Imagens e vídeos citados pelo Lauro (caminhos em ~/.infopro-hub): aparecem embaixo da mensagem dele.
   const midiasPorMsg = useMemo(() => {
     let pasta: string | null = null;
-    return msgs.map((m) => { const r = midiasDoTexto(m.texto, pasta); pasta = r.pasta; return m.papel === "assistant" ? r.midias : []; });
+    return msgs.map((m) => { const r = midiasDoTexto(m.texto, pasta); pasta = r.pasta; return r.midias; });
   }, [msgs]);
   const perfilId = perfil?.id;
 
@@ -120,9 +123,28 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   }, [perfilId]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs, esperando]);
 
+  const aceitar = (arquivos: FileList | File[]) => {
+    const ok = [...arquivos].filter((f) => /^(image|video|audio)\//.test(f.type) || /\.(png|jpe?g|webp|gif|mp4|mov|webm|m4v|mp3|wav|m4a|aac|ogg|opus|pdf)$/i.test(f.name));
+    if (ok.length < arquivos.length) toast("Só imagens, vídeos e áudios");
+    if (!ok.length) return;
+    if (!isDesktop()) { toast.error("Para o Lauro ver arquivos, abra o app do Mac"); return; }
+    if (!vivo) { toast.error("Ligue o Modo vivo: o Lauro precisa do seu Mac para abrir o arquivo"); return; }
+    setAnexos((a) => [...a, ...ok].slice(0, 8));
+  };
   const enviar = async () => {
-    const t = texto.trim();
-    if (!t || !perfil) return;
+    let t = texto.trim();
+    if ((!t && anexos.length === 0) || !perfil) return;
+    // Anexos: vão para o Mac (~/.infopro-hub/exemplos/<perfil>/recebidos) e o Lauro recebe o caminho de cada um.
+    if (anexos.length) {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const pasta = (nome || perfil.nome).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+        const caminhos: string[] = [];
+        for (const f of anexos) caminhos.push(await invoke<string>("salvar_anexo_lauro", new Uint8Array(await f.arrayBuffer()), { headers: { "x-nome": encodeURIComponent(f.name), "x-pasta": encodeURIComponent(pasta) } }));
+        t = `${t || "Olha o que eu te mandei."}\n\n${caminhos.map((c) => `📎 Anexo: ${c}`).join("\n")}`;
+        setAnexos([]);
+      } catch (e) { toast.error(typeof e === "string" ? e : "Não consegui guardar o arquivo"); return; }
+    }
     const hist = msgs.slice(1);
     setMsgs((m) => [...m, { papel: "user", texto: t }]);
     setTexto("");
@@ -170,7 +192,11 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
         </div>
         {perfil && (
           <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-            <section className="flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
+            <section className={cn("relative flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r", arrastando && "ring-2 ring-inset ring-amber-300/70")}
+              onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setArrastando(true); } }}
+              onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setArrastando(false); }}
+              onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); aceitar(e.dataTransfer.files); } setArrastando(false); }}>
+              {arrastando && <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-black/60 text-sm font-semibold text-amber-200">Solte aqui para o Lauro ver</div>}
               <div className="flex items-center gap-2 border-b border-white/10 bg-[#111b21] px-3 py-2 text-sm">
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-200">L</span><span className="font-semibold">Lauro</span><span className="text-xs text-white/45">{vivo ? "ao vivo no seu Mac" : "editor de vídeos dark"}</span>
                 <button type="button" onClick={() => void alternarVivo()} title="Modo vivo: o Lauro usa o Chrome do seu Mac (Instagram logado) para abrir e assistir as referências"
@@ -190,8 +216,16 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                 {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{vivo ? "Lauro está trabalhando no seu Mac…" : "Lauro está pensando…"}<span className="text-white/35">· pode escrever: ele responde sem parar o que está fazendo</span></div>}
                 <div ref={fim} />
               </div>
+              {anexos.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 border-t border-white/10 bg-[#111b21] px-2 pt-2">
+                  {anexos.map((f, i) => <span key={i} className="flex max-w-[14rem] items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-xs"><Paperclip className="h-3 w-3 shrink-0" /><span className="truncate">{f.name}</span>
+                    <button type="button" onClick={() => setAnexos((a) => a.filter((_, j) => j !== i))} className="text-white/50 hover:text-rose-300"><X className="h-3 w-3" /></button></span>)}
+                </div>
+              )}
               <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
-                <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
+                <input ref={seletor} type="file" multiple accept="image/*,video/*,audio/*,.pdf" className="hidden" onChange={(e) => { if (e.target.files) aceitar(e.target.files); e.target.value = ""; }} />
+                <button type="button" onClick={() => seletor.current?.click()} title="Anexar imagem, vídeo ou áudio para o Lauro ver (ou jogue o arquivo no chat)" className="self-end rounded-full bg-white/10 p-2.5 text-white/80 hover:bg-white/15"><Paperclip className="h-4 w-4" /></button>
+                <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onPaste={(e) => { const f = [...e.clipboardData.files]; if (f.length) { e.preventDefault(); aceitar(f); } }} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
                   placeholder="Conte como imagina o vídeo, cole links de referência, peça ideias…" className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
                 {isDesktop() && (
                   <button type="button" onClick={() => void audio.alternar()} disabled={audio.transcrevendo} title={audio.gravando ? "Parar e transcrever" : "Gravar áudio"}
@@ -199,7 +233,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                     {audio.transcrevendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
                   </button>
                 )}
-                <button type="button" disabled={!texto.trim()} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
+                <button type="button" disabled={!texto.trim() && anexos.length === 0} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
               </div>
             </section>
 

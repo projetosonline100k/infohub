@@ -38,3 +38,69 @@ mod testes {
         assert!(ler_midia_local("~/.infopro-hub/whatsapp/config.json".into()).is_err());   // json não é mídia
     }
 }
+
+// ---------------------------------------------------------------- Anexos para o Lauro
+
+const EXT_ANEXO: [&str; 16] = ["png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "webm", "m4v", "mp3", "wav", "m4a", "aac", "ogg", "opus", "pdf"];
+const LIMITE_ANEXO: usize = 500 * 1024 * 1024;
+
+fn decodifica(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut saida = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16) { saida.push(v); i += 3; continue; }
+        }
+        saida.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&saida).to_string()
+}
+
+fn limpa_nome(n: &str) -> String {
+    let base = n.rsplit(['/', '\\']).next().unwrap_or("arquivo");
+    let l: String = base.chars().map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' }).collect();
+    l.trim_matches('.').chars().take(80).collect()
+}
+
+fn limpa_pasta(p: &str) -> String {
+    let l: String = p.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' { c.to_ascii_lowercase() } else { '-' }).collect();
+    let l = l.trim_matches('-').to_string();
+    if l.is_empty() { "perfil".into() } else { l.chars().take(60).collect() }
+}
+
+/// Guarda uma imagem, vídeo ou áudio que o Davi jogou no chat do Lauro em ~/.infopro-hub/exemplos/<perfil>/recebidos/ e devolve o caminho
+/// (o Lauro, que roda neste Mac, abre o arquivo por ele). Corpo = bytes do arquivo; cabeçalhos x-pasta e x-nome (codificados).
+#[tauri::command]
+pub fn salvar_anexo_lauro(request: tauri::ipc::Request) -> Result<String, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Arquivo vazio".into()) };
+    if bytes.is_empty() { return Err("Arquivo vazio".into()); }
+    if bytes.len() > LIMITE_ANEXO { return Err("Arquivo grande demais (máximo 500 MB)".into()); }
+    let cab = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).map(decodifica).unwrap_or_default();
+    let nome = limpa_nome(&cab("x-nome"));
+    let ext = nome.rsplit('.').next().map(|e| e.to_lowercase()).unwrap_or_default();
+    if !EXT_ANEXO.contains(&ext.as_str()) { return Err("Tipo de arquivo não permitido".into()); }
+    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or("HOME não encontrado")?;
+    let pasta = limpa_pasta(&cab("x-pasta"));
+    let dir = home.join(".infopro-hub").join("exemplos").join(&pasta).join("recebidos");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let agora = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let arquivo = format!("{agora}-{nome}");
+    std::fs::write(dir.join(&arquivo), bytes).map_err(|e| e.to_string())?;
+    Ok(format!("~/.infopro-hub/exemplos/{pasta}/recebidos/{arquivo}"))
+}
+
+#[cfg(test)]
+mod testes_anexo {
+    use super::*;
+
+    #[test]
+    fn nomes_e_pastas_sao_limpos() {
+        assert_eq!(limpa_nome("../../etc/Foto bonita (1).PNG"), "Foto_bonita__1_.PNG");
+        assert_eq!(limpa_pasta("Insta Insights oficial!"), "insta-insights-oficial");
+        assert_eq!(limpa_pasta("///"), "perfil");
+        assert_eq!(decodifica("Foto%20bonita%C3%A7"), "Foto bonitaç");
+        assert_eq!(decodifica("100%"), "100%");
+    }
+}

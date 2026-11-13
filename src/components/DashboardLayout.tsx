@@ -44,6 +44,15 @@ export const DashboardLayout = () => {
       await invoke("foco_lateral_abrir").catch(() => undefined);
     })();
   }, [focoTotal]);
+  // Arquivo solto fora de uma área que o aceita: o navegador abria o arquivo no lugar do app (vídeo em tela cheia, 13/11). Ninguém tratou o arquivo → não faz nada.
+  useEffect(() => {
+    const sobre = (e: DragEvent) => { if (!e.defaultPrevented && e.dataTransfer?.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "none"; } };
+    const solto = (e: DragEvent) => { if (!e.defaultPrevented && e.dataTransfer?.types.includes("Files")) e.preventDefault(); };
+    window.addEventListener("dragover", sobre);
+    window.addEventListener("drop", solto);
+    return () => { window.removeEventListener("dragover", sobre); window.removeEventListener("drop", solto); };
+  }, []);
+
   // Alarmes da Agenda tocam em qualquer tela do app (não só na Agenda).
   useAlarmesAgenda();
 
