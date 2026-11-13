@@ -2,10 +2,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowRight, BarChart3, Plus, CalendarDays, CheckCircle2, ChevronDown, Clock, Layers, ListChecks, Loader2, MessageCircle, Pencil, Play, Settings, Sparkles, UserRound, UserSearch, Users } from "lucide-react";
+import { ArrowRight, BarChart3, Plus, CalendarDays, CheckCircle2, ChevronDown, Clock, Layers, ListChecks, Loader2, MessageCircle, Pencil, Play, Settings, Sparkles, UploadCloud, UserRound, UserSearch, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { confirmar } from "@/components/DialogosGlobais";
 import { EstiloPerfilDark, type PerfilDark } from "./EstiloPerfilDark";
 import {
   atividadeRecente, completudeEstilo, ordenarPerfis, sanitizarEstilo, prontosParados, resumirEsteira, ROTULO_ETAPA, tituloCurto,
@@ -15,6 +16,20 @@ import type { MembroResumo } from "@/lib/empresa/visaoGeral";
 import { cn } from "@/lib/utils";
 
 const db = supabase as unknown as SupabaseClient;
+
+// Botão "Subir banco no Drive" (13/11/2026, Davi: "vamos criar um botão no seu dash que ao ser clicado você abre o meu pc e vai subindo os vídeos no drive, só arrastando").
+// Vira um pedido do modo vivo do Lauro (mesmo caminho do chat do estilo): ele usa o controle do Mac para arrastar para o Drive só o que ainda não subiu.
+const PASTA_DRIVE = "https://drive.google.com/drive/folders/1npndFQkwCdi5_lxcd9Y3okqq4XK0BMHN";
+const PEDIDO_DRIVE = `TAREFA: subir o banco de vídeos e imagens para o Google Drive, arrastando com o controle do Mac.
+Origem: ~/.infopro-hub/exemplos/insta-insights/banco (videos/<tema>/, imagens/<tema>/, capas-livros/, indice.json).
+Destino: pasta "Banco de videos" no Drive (conta meusuporteteacher@gmail.com, já logada no Chrome): ${PASTA_DRIVE}
+Passos:
+1. Rode ~/.infopro-hub/bin/controle diagnostico. Se faltar permissão, diga como liberar e pare. O Davi acabou de autorizar esta tarefa: avise em uma frase que vai mexer no mouse e comece.
+2. Liste o que já está no Drive (abra a pasta no Chrome, entre nas subpastas) e compare pelo NOME com o que existe no banco. Use também o campo "drive" do indice.json, que registra o que já foi enviado. Suba SOMENTE o que ainda não está lá: clicar de novo nunca pode duplicar.
+3. Abra o Finder na pasta do banco e arraste os arquivos/pastas que faltam para a janela do Drive (mantendo a mesma estrutura de pastas). Capture a tela depois de cada arrasto para conferir e espere o envio terminar.
+4. Depois de conferir no Drive, registre no indice.json o que foi enviado (campo "drive": data) sem apagar nenhum outro dado.
+5. NUNCA apague nada no Drive nem no Mac, nunca digite senha. Se pedir login, pare e avise. Deixe o Mac como encontrou (feche abas e janelas que abriu).
+6. Na resposta, escreva a lista do que subiu (e do que já estava lá, em uma linha). Se não houver nada novo, diga isso. Responda no JSON de sempre e devolva o estilo sem alterações.`;
 
 // Esteira dos vídeos dark (abre ao clicar no Lauro; 12/11/2026, Davi: "preciso que o dash do Lauro seja assim": KPIs por etapa, esteira por
 // perfil com os vídeos em cadeia até "Programados", insights e atividade recente). Lê as edições de formato "dark" de todos os projetos.
@@ -57,6 +72,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
   const [criandoPerfil, setCriandoPerfil] = useState(false);
   const [recarga, setRecarga] = useState(0);
   const [novoAberto, setNovoAberto] = useState(false);
+  const [drive, setDrive] = useState<{ estado: "enviando" | "concluido" | "erro"; texto: string } | null>(null);
 
   useEffect(() => {
     if (!aberto || !membro) return;
@@ -111,6 +127,27 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
     setNovoAberto(false); setNomeNovo(""); setRecarga((n) => n + 1);
     setPerfilAberto((data as { id: string }).id);   // já abre a ficha para cadastrar o estilo do vídeo
   };
+  const subirBanco = async () => {
+    if (drive?.estado === "enviando") return;
+    const perfil = cadastrados.find((p) => p.modo_vivo);
+    if (!perfil) { toast.error("Ligue o modo vivo em um perfil (Estilo do vídeo) para o Lauro usar o seu Mac."); return; }
+    if (!(await confirmar("Subir o banco no Drive?", { descricao: "O Lauro vai assumir o mouse e o teclado do seu Mac por alguns minutos para arrastar os arquivos novos para a pasta Banco de videos. Não mexa no Mac enquanto isso. Use o botão Parar controle se precisar.", botao: "Subir" }))) return;
+    setDrive({ estado: "enviando", texto: "Pedido enviado ao Lauro…" });
+    const { data, error } = await db.from("esteira_dark_pedidos").insert({
+      perfil_id: perfil.id, mensagem: PEDIDO_DRIVE, rapido: false, estilo_atual: perfil.estilo ?? {}, contexto: { perfil: perfil.nome, arroba: perfil.arroba, cliente_id: perfil.cliente_id }, historico: [],
+    }).select("id").single();
+    if (error || !data) { setDrive({ estado: "erro", texto: "Não consegui enviar o pedido ao Lauro." }); return; }
+    const id = (data as { id: string }).id;
+    for (let i = 0; i < 400; i++) {   // até ~30 min
+      await new Promise((r) => setTimeout(r, 4500));
+      const { data: p } = await db.from("esteira_dark_pedidos").select("status, resposta, erro").eq("id", id).maybeSingle();
+      const r = p as { status: string; resposta: string | null; erro: string | null } | null;
+      if (r?.status === "respondido") { setDrive({ estado: "concluido", texto: r.resposta || "Concluído." }); return; }
+      if (r?.status === "erro") { setDrive({ estado: "erro", texto: r.erro || "O Lauro não conseguiu terminar." }); return; }
+      if (r?.status === "processando") setDrive({ estado: "enviando", texto: "O Lauro está arrastando os arquivos para o Drive…" });
+    }
+    setDrive({ estado: "erro", texto: "Demorou demais. Veja a conversa com o Lauro para saber como ficou." });
+  };
   const emAndamento = resumo ? resumo.geral.fila + resumo.geral.criando + resumo.geral.edicao + resumo.geral.revisao : 0;
 
   return (
@@ -124,8 +161,14 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
               <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-500/15 text-cyan-300 ring-1 ring-cyan-400/30"><Play className="h-7 w-7" /></span>
               <div className="min-w-0 flex-1"><DialogTitle className="text-3xl font-bold tracking-tight">Vídeos Dark</DialogTitle><p className="text-sm text-white/55">Esteira dinâmica de produção por perfil.</p></div>
               <button type="button" onClick={() => { setNomeNovo(""); setNovoAberto(true); }} className="flex items-center gap-1.5 rounded-xl bg-[#f3c98b] px-3.5 py-2 text-sm font-bold text-black hover:brightness-105"><Plus className="h-4 w-4" />Novo perfil</button>
+              <button type="button" onClick={() => void subirBanco()} disabled={drive?.estado === "enviando"} title="O Lauro abre o seu Mac e arrasta para o Drive os vídeos do banco que ainda não subiram"
+                className={cn("flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-medium disabled:opacity-70", drive?.estado === "concluido" ? "border-emerald-400/50 text-emerald-300" : drive?.estado === "erro" ? "border-rose-400/50 text-rose-300" : "border-white/15 text-white/80 hover:bg-white/10")}>
+                {drive?.estado === "enviando" ? <Loader2 className="h-4 w-4 animate-spin" /> : drive?.estado === "concluido" ? <CheckCircle2 className="h-4 w-4" /> : <UploadCloud className="h-4 w-4" />}
+                {drive?.estado === "enviando" ? "Enviando…" : drive?.estado === "concluido" ? "Concluído" : drive?.estado === "erro" ? "Erro: tentar de novo" : "Subir banco no Drive"}</button>
               <button type="button" onClick={onConversar} className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3.5 py-2 text-sm font-medium text-white/80 hover:bg-white/10"><MessageCircle className="h-4 w-4" />Conversar com o {membro?.nome}</button>
             </div>
+
+            {drive && <p className={cn("whitespace-pre-wrap rounded-xl border px-3 py-2 text-sm", drive.estado === "erro" ? "border-rose-400/30 bg-rose-500/10 text-rose-200" : drive.estado === "concluido" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100" : "border-white/10 bg-white/5 text-white/70")}>{drive.texto}</p>}
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {KPIS.map(({ chave, Icone, cor }) => (
