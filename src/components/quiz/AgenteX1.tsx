@@ -24,7 +24,8 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const [modo, setModo] = useState<"construir" | "simular">("construir");
   const [msgs, setMsgs] = useState<Record<"construir" | "simular", Msg[]>>({ construir: [{ papel: "assistant", texto: AJUDA }], simular: [] });
   const [texto, setTexto] = useState("");
-  const [esperando, setEsperando] = useState(false);
+  const [esperando, setEsperandoEstado] = useState(false);
+  const setEsperando = (v: boolean) => { esperandoRef.current = v; setEsperandoEstado(v); };
   const [digitando, setDigitando] = useState(false);
   const [ajusteLigado, setAjusteLigado] = useState(false);   // modo ajuste: no teste, você fala com a Gabriela (não com o agente) sobre o que melhorar
   const [zerados, setZerados] = useState<Record<"construir" | "simular", string | null>>({ construir: null, simular: null });
@@ -34,6 +35,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const salvar = useRef<ReturnType<typeof setTimeout>>();
   const configRef = useRef<ConfigAgente | null>(null);
   configRef.current = config;
+  const esperandoRef = useRef(false);
 
   useEffect(() => {
     void (async () => {
@@ -68,12 +70,36 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   }, [quizId]);
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs, esperando, modo]);
 
+  const pendente = useRef<{ c: ConfigAgente; cid: string } | null>(null);
+  const gravarAgora = useCallback(async () => {
+    clearTimeout(salvar.current);
+    const p = pendente.current;
+    if (!p) return;
+    pendente.current = null;
+    const { error } = await db.from("agentes_whatsapp").upsert({ cliente_id: p.cid, config: p.c, atualizado_em: new Date().toISOString() });
+    if (error) toast.error("Não consegui salvar a inteligência");
+  }, []);
   const gravar = useCallback((c: ConfigAgente, cid: string) => {
     clearTimeout(salvar.current);
-    salvar.current = setTimeout(() => {
-      void db.from("agentes_whatsapp").upsert({ cliente_id: cid, config: c, atualizado_em: new Date().toISOString() }).then(({ error }: { error: unknown }) => { if (error) toast.error("Não consegui salvar a inteligência"); });
-    }, 700);
-  }, []);
+    pendente.current = { c, cid };
+    salvar.current = setTimeout(() => { void gravarAgora(); }, 700);
+  }, [gravarAgora]);
+  // A inteligência que vale é a do banco (a Gabriela, o modo ajuste do WhatsApp ou outra aba podem ter mudado):
+  // antes de testar, e a cada poucos segundos, traz a versão mais nova para a tela (13/11, Davi: "sem eu precisar clicar em Command R").
+  const recarregarConfig = useCallback(async (cid: string): Promise<ConfigAgente | null> => {
+    await gravarAgora();   // edição ainda não salva vai primeiro, para não ser pisada
+    const { data } = await db.from("agentes_whatsapp").select("config").eq("cliente_id", cid).maybeSingle();
+    const bruto = (data as { config: unknown } | null)?.config;
+    if (!bruto || !configRef.current) return configRef.current;
+    const novo = sanitizarAgente(bruto, configRef.current);
+    if (JSON.stringify(novo) !== JSON.stringify(configRef.current)) { configRef.current = novo; setConfig(novo); }
+    return novo;
+  }, [gravarAgora]);
+  useEffect(() => {
+    if (!clienteId) return;
+    const t = window.setInterval(() => { if (!document.hidden && !pendente.current && !esperandoRef.current) void recarregarConfig(clienteId); }, 6000);
+    return () => window.clearInterval(t);
+  }, [clienteId, recarregarConfig]);
   const editar = (f: (c: ConfigAgente) => ConfigAgente) => {
     if (!config || !clienteId) return;
     const novo = f(config);
@@ -90,6 +116,8 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     if (!abertura) setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t, ...(ajusteAgora ? { ajuste: true } : {}) }] }));
     setTexto("");
     setEsperando(true);
+    // No teste, a inteligência mais nova (a que a Gabriela acabou de gravar) vale já, sem recarregar a tela.
+    const cfg = modo === "simular" ? (await recarregarConfig(clienteId)) ?? config : config;
     // [ajuste] no teste vai para a montagem: o agente aprende e a inteligência muda na hora.
     const tipo = ajusteAgora ? "construir" : modo;
     const teste = hist.filter((h) => !h.ajuste);
@@ -97,7 +125,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
       ? { quiz: titulo, quiz_id: quizId, perfis, ...(modo === "simular" ? { origem: "teste", conversa_de_teste: teste.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14), ...(ajusteLigado ? { conversa: "ajuste" } : {}) } : {}) }
       : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" }, ...(abertura ? { iniciar: true } : {}) };
     const { data, error } = await db.from("agente_whatsapp_pedidos").insert({
-      cliente_id: clienteId, tipo, mensagem: t, contexto, config_atual: config,
+      cliente_id: clienteId, tipo, mensagem: t, contexto, config_atual: cfg,
       historico: (tipo === "construir" && modo === "simular" ? hist.filter((h) => h.ajuste) : hist).filter((h, i) => i > 0 || tipo !== "construir" || modo === "simular").map((h) => ({ papel: h.papel, texto: h.texto })),
     }).select("id").single();
     if (error || !data) { setEsperando(false); toast.error("Não consegui enviar"); return; }
@@ -140,6 +168,8 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     setMsgs((m) => ({ ...m, [modo]: modo === "construir" ? [{ papel: "assistant", texto: AJUDA }] : [] }));
     const { error } = await db.from("agentes_whatsapp").upsert({ cliente_id: clienteId, [modo === "construir" ? "zerado_construir_em" : "zerado_simular_em"]: agora });
     if (error) { toast.error("Não consegui zerar"); return; }
+    // Zerou o teste: já traz a inteligência mais nova e o agente abre a conversa (13/11, Davi).
+    if (modo === "simular" && !esperandoRef.current) { await recarregarConfig(clienteId); await enviar(true); }
   };
 
   if (!config) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
