@@ -890,7 +890,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <MascoteCanto key="nome" quadros={quadrosMascote}><Txt caminho="nome.fala" valor={pn.fala} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
                 )}
                 <div className="space-y-2 text-center">
-                  <Txt caminho="nome.titulo" valor={pn.titulo || "Como posso te chamar?"} as="h2" className="block text-2xl font-bold leading-snug" />
+                  {(editar || pn.titulo !== "") && <Txt caminho="nome.titulo" valor={pn.titulo ?? "Como posso te chamar?"} as="h2" className="block text-2xl font-bold leading-snug" />}
                   <Txt caminho="nome.texto" valor={pn.texto} as="p" className={cn("block text-base", suave)} />
                 </div>
                 {pn.modo === "letras" ? (
