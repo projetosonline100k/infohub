@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
 import { gerarLinkConexao } from "@/hooks/useInstagramAutomacoes";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 import type { RoteiroDark } from "@/lib/empresa/roteirosDark";
 
@@ -29,6 +30,7 @@ export function useInstagramDoPerfil(perfilId: string) {
 /** Botão "Conectar Instagram" do perfil: abre a autorização do Instagram e fica conferindo até a conta aparecer. */
 export function ConectarInstagramDark({ perfilId, conta, recarregar, compacto }: { perfilId: string; conta: InstagramDoPerfil | null | undefined; recarregar: () => Promise<void>; compacto?: boolean }) {
   const [aguardando, setAguardando] = useState(false);
+  const [link, setLink] = useState<string | null>(null);
   useEffect(() => {
     if (!aguardando) return;
     const t = window.setInterval(() => void recarregar(), 4000);
@@ -40,7 +42,8 @@ export function ConectarInstagramDark({ perfilId, conta, recarregar, compacto }:
   const conectar = async () => {
     try {
       const url = await gerarLinkConexao(null, perfilId);
-      window.open(url, "_blank", "noopener");
+      setLink(url);
+      await abrirLinkExterno(url);   // no app do Mac o window.open não faz nada
       setAguardando(true);
       toast.info("Autorize no Instagram que abriu. Quando terminar, a conta aparece aqui.");
     } catch (e) { toast.error(e instanceof Error ? e.message : "Não deu para gerar o link"); }
@@ -59,10 +62,13 @@ export function ConectarInstagramDark({ perfilId, conta, recarregar, compacto }:
     </span>
   );
   return (
-    <button type="button" onClick={() => void conectar()} disabled={aguardando}
-      className={cn("flex items-center gap-2 rounded-xl border border-pink-400/40 bg-pink-500/10 px-3 py-2 text-sm font-semibold text-pink-200 hover:bg-pink-500/20 disabled:opacity-70", compacto && "py-1.5 text-xs")}>
-      {aguardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}{aguardando ? "Esperando você autorizar…" : "Conectar Instagram"}
-    </button>
+    <span className="flex flex-wrap items-center gap-2">
+      <button type="button" onClick={() => void conectar()}
+        className={cn("flex items-center gap-2 rounded-xl border border-pink-400/40 bg-pink-500/10 px-3 py-2 text-sm font-semibold text-pink-200 hover:bg-pink-500/20", compacto && "py-1.5 text-xs")}>
+        {aguardando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Instagram className="h-4 w-4" />}{aguardando ? "Esperando você autorizar… (abrir de novo)" : "Conectar Instagram"}
+      </button>
+      {aguardando && link && <button type="button" onClick={() => { void navigator.clipboard.writeText(link); toast.success("Link copiado"); }} className="text-xs text-pink-200/70 underline hover:text-pink-100">copiar link</button>}
+    </span>
   );
 }
 
