@@ -45,6 +45,7 @@ const App = () => (
           {/* Public route without layout */}
           <Route path="/formulario/:slug" element={<FormularioPublico />} />
           <Route path="/quiz/:slug" element={<QuizPublico />} />
+          <Route path="/quiz-previa/:token" element={<QuizPublico previa />} />
           <Route path="/chatbot/:slug" element={<ChatbotPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
           <Route path="/privacidade" element={<Privacidade />} />

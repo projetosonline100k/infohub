@@ -14,8 +14,10 @@ import { propagarUtm, utmDaUrl, type Utm } from "@/lib/quiz/utm";
 const FUNDO_ESCURO = "#0a0a0a";   // bg-neutral-950
 const FUNDO_CLARO = "#ffffff";
 
-export default function QuizPublico() {
-  const { slug = "" } = useParams();
+// previa (13/11): /quiz-previa/:token mostra o rascunho do quiz, mesmo publicado, sem gravar visita, passo nem lead.
+export default function QuizPublico({ previa = false }: { previa?: boolean }) {
+  const { slug: slugDaUrl = "", token = "" } = useParams();
+  const slug = previa ? token : slugDaUrl;
   const [quiz, setQuiz] = useState<{ titulo: string; estrutura: EstruturaQuiz } | null>(null);
   const [carregando, setCarregando] = useState(true);
   const rolagem = useRef<HTMLDivElement>(null);
@@ -23,13 +25,13 @@ export default function QuizPublico() {
   const fundo = escuro ? FUNDO_ESCURO : FUNDO_CLARO;
 
   useEffect(() => {
-    void supabase.rpc("quiz_publico" as never, { p_slug: slug } as never).then(({ data }) => {
+    void (previa ? supabase.rpc("quiz_rascunho" as never, { p_token: slug } as never) : supabase.rpc("quiz_publico" as never, { p_slug: slug } as never)).then(({ data }) => {
       const q = data as { titulo: string; estrutura: EstruturaQuiz } | null;
       setQuiz(q && q.estrutura ? q : null);
       setCarregando(false);
       if (q?.titulo) document.title = q.titulo;
     });
-  }, [slug]);
+  }, [slug, previa]);
 
   // Fundo da página e da barra do Safari na cor do quiz, sem efeito elástico.
   useEffect(() => {
@@ -88,14 +90,16 @@ export default function QuizPublico() {
   const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number) => {
     // O .then é o que envia: a consulta do Supabase só sai quando alguém espera a resposta. Sem ele (15–25/10)
     // nenhuma visita/tela/fim foi gravada e as métricas ficaram zeradas.
+    if (previa) return;
     void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1, p_utm: utm.current } as never).then(() => undefined);
-  }, [slug]);
+  }, [slug, previa]);
   useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
 
   return (
     <div ref={rolagem}
       className={escuro ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "quiz-claro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
       style={{ touchAction: "pan-y" }}>
+      {previa && <div className="sticky top-0 z-50 -mb-px bg-amber-400 px-3 py-1 text-center text-[11px] font-semibold text-amber-950">Prévia — não publicado</div>}
       <div className="flex min-h-full flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-[max(env(safe-area-inset-top),1.25rem)] sm:py-12">
         {carregando ? (
           <div className="my-auto flex justify-center"><Loader2 className="h-6 w-6 animate-spin opacity-60" /></div>
@@ -104,6 +108,7 @@ export default function QuizPublico() {
         ) : (
           <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={estrutura ?? quiz.estrutura} onFim={async ({ escolhas, perfil, contato }) => {
             const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: q.opcoes[escolhas[q.id]]?.texto ?? null }));
+            if (previa) return;
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,
               p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current, p_sessao: sessao.current, p_instagram: instagram.current,

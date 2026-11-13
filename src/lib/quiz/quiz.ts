@@ -114,6 +114,8 @@ export const ROTULO_STATUS: Record<StatusQuiz, string> = {
 };
 
 export const linkDoQuiz = (slug: string) => `${PUBLIC_SITE_URL}/quiz/${slug}`;
+// Link secreto que mostra o RASCUNHO (13/11): abre sem login, não conta visita nem lead.
+export const linkDaPreviaDoQuiz = (token: string) => `${PUBLIC_SITE_URL}/quiz-previa/${token}`;
 
 export function pontosPorPerfil(e: EstruturaQuiz, escolhas: Record<string, number>): Map<string, number> {
   const pontos = new Map<string, number>();

@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart3, CheckCircle2, FileText, ExternalLink, Link2, List, Loader2, MessageSquare, Monitor, Pencil, Play, Smartphone, Workflow } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, ExternalLink, Link2, QrCode, List, Loader2, MessageSquare, Monitor, Pencil, Play, Smartphone, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import { MolduraCelular } from "@/components/quiz/MolduraCelular";
+import { QrPrevia } from "@/components/quiz/QrPrevia";
 import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
 import { moverBloco, adicionarPergunta, AjustesDaTela, desligarCaptura, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, excluirTelaExtra, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
 import { FluxoQuiz } from "@/components/quiz/FluxoQuiz";
@@ -25,7 +26,7 @@ import { faltasDoQuiz } from "@/lib/quiz/faltas";
 import { AndamentoEntrega } from "./AndamentoEntrega";
 import type { Andamento } from "./ConversaEntrega";
 import { abrirLinkExterno } from "@/lib/abrirLink";
-import { laminasDoQuiz, linkDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type Lamina, type StatusQuiz } from "@/lib/quiz/quiz";
+import { laminasDoQuiz, linkDaPreviaDoQuiz, linkDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type Lamina, type StatusQuiz } from "@/lib/quiz/quiz";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const db = supabase as unknown as SupabaseClient;   // quizzes ainda não está nos tipos gerados
@@ -60,7 +61,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
-  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; previa_token?: string; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null } | null>(null);
   const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
   // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
   // 02/11 (Davi: "mais fácil de usar, ver em qual etapa é cada coisa"): Editar (estrutura, tela grande e ajustes) é o
@@ -94,6 +95,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [versao, setVersao] = useState(0);
   const [carregando, setCarregando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  const [qrPrevia, setQrPrevia] = useState(false);
   const [escrevendo, setEscrevendo] = useState(false);   // o chat espera resposta: o documento pode mudar a qualquer momento
   const [mudancas, setMudancas] = useState<Record<string, Bloco[]>>({});
   const conhecidos = useRef<Record<string, string>>({});
@@ -112,7 +114,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     void (async () => {
       const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
-        db.from("quizzes").select("id, titulo, slug, status, estrutura, estrutura_publicada").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+        db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
           .then((r) => {
             if (!vivo) return;
             const novo = (r.data as typeof quiz) ?? null;
@@ -266,6 +268,11 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                       title={linkDoQuiz(quiz.slug)} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"><Link2 className="h-3.5 w-3.5" />{noAr ? "Copiar link" : "Copiar link de teste"}</button>
                     <button type="button" onClick={() => void abrirLinkExterno(linkDoQuiz(quiz.slug))} title="Abrir no navegador" className="rounded-full border p-1 hover:bg-muted"><ExternalLink className="h-3.5 w-3.5" /></button>
                   </span>
+                )}
+                {/* Link de prévia (13/11): sempre o rascunho, mesmo publicado; abre sem login e não conta nas métricas. */}
+                {quiz.previa_token && (
+                  <button type="button" onClick={() => { void navigator.clipboard.writeText(linkDaPreviaDoQuiz(quiz.previa_token!)).then(() => toast.success("Link de prévia copiado: mostra o rascunho, sem publicar")); setQrPrevia(true); }}
+                    title="Link secreto que mostra o rascunho, sem publicar" className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"><QrCode className="h-3.5 w-3.5" />Link de prévia</button>
                 )}
                 {(quiz.status === "revisar" || (quiz.status === "publicado")) && (
                   <Button size="sm" className="h-7 gap-1.5 rounded-full px-3 text-xs" disabled={salvando || escrevendo || (quiz.status === "publicado" && !alteracoesNaoPublicadas)}
@@ -432,6 +439,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
           </>
         )}
       </DialogContent>
+      {quiz?.previa_token && <QrPrevia link={linkDaPreviaDoQuiz(quiz.previa_token)} aberto={qrPrevia} onFechar={() => setQrPrevia(false)} />}
     </Dialog>
   );
 }
