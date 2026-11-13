@@ -1,11 +1,11 @@
 // Roteiros dos vídeos dark em calendário (13/11/2026, Davi, com um desenho: "eu subo o roteiro, o Lauro faz o resto; calendário com o status embaixo de cada roteiro").
 // Sem React nem importações: testável.
 
-export type StatusRoteiro = "na_fila" | "editando" | "revisar" | "programando" | "programado" | "erro";
+export type StatusRoteiro = "na_fila" | "editando" | "revisar" | "programando" | "programado" | "publicando" | "publicado" | "erro";
 export interface VersaoRoteiro { arquivo: string; em?: string; nota?: string }
-export interface RoteiroDark { id: string; perfil_id: string; numero: number; titulo: string; texto: string; data_postagem: string | null; status: StatusRoteiro; arquivo: string | null; obs: string | null; versoes?: VersaoRoteiro[] | null; criado_em: string }
+export interface RoteiroDark { id: string; perfil_id: string; numero: number; titulo: string; texto: string; data_postagem: string | null; status: StatusRoteiro; arquivo: string | null; obs: string | null; versoes?: VersaoRoteiro[] | null; legenda?: string | null; video_url?: string | null; programado_para?: string | null; permalink?: string | null; mensagem?: string | null; criado_em: string }
 
-export const ROTULO_STATUS: Record<StatusRoteiro, string> = { na_fila: "Na fila", editando: "Editando", revisar: "Aprovar", programando: "Programando", programado: "Programado", erro: "Travou" };
+export const ROTULO_STATUS: Record<StatusRoteiro, string> = { na_fila: "Na fila", editando: "Editando", revisar: "Aprovar", programando: "Programando", programado: "Programado", publicando: "Publicando", publicado: "Publicado", erro: "Travou" };
 
 /** Soma dias a uma data AAAA-MM-DD (sem fuso: tudo em UTC ao meio-dia). */
 export function somarDias(dia: string, n: number): string {
@@ -45,7 +45,7 @@ export function agruparPorDia(roteiros: RoteiroDark[]): Map<string, RoteiroDark[
 }
 
 export const contarPorStatus = (roteiros: Pick<RoteiroDark, "status">[]): Record<StatusRoteiro, number> => {
-  const c: Record<StatusRoteiro, number> = { na_fila: 0, editando: 0, revisar: 0, programando: 0, programado: 0, erro: 0 };
+  const c: Record<StatusRoteiro, number> = { na_fila: 0, editando: 0, revisar: 0, programando: 0, programado: 0, publicando: 0, publicado: 0, erro: 0 };
   for (const r of roteiros) c[r.status]++;
   return c;
 };
@@ -68,7 +68,8 @@ export function mensagemParaLauro(r: Pick<RoteiroDark, "id" | "numero" | "titulo
     `3. VOZ: gere a narração no ElevenLabs, pelo Chrome (já estou logado lá): abra https://elevenlabs.io/app/speech-synthesis/text-to-speech, escolha a voz "Gregory Grumble - Old Lovable Bedtime Bear" (a menos que o estilo do perfil peça outra), cole o roteiro inteiro e gere UMA vez só (cada geração gasta créditos: confira o saldo antes, avise se não der e nunca compre nem assine nada). Baixe o mp3 para ~/.infopro-hub/exemplos/<perfil>/roteiros/${id}/voz.mp3 e aplique o ajuste de velocidade do estilo (ex.: 1.1x) com o ffmpeg.\n` +
     `4. VÍDEO: com essa voz, produza o vídeo no estilo cadastrado (imagens, legendas sincronizadas com a fala, música, cortes) e salve em ~/.infopro-hub/exemplos/<perfil>/roteiros/${id}/video_v1.mp4 (cite o caminho completo aqui no chat).\n` +
     `5. Quando o vídeo estiver pronto, NÃO programe: marque python3 scripts/lauro/roteiros.py status ${id} revisar --arquivo <caminho> --obs "o que você fez" . Isso faz aparecer no meu estúdio o vídeo e o botão Aprovar. Se eu pedir mudanças, gere uma NOVA versão (video_v2.mp4, v3…) e marque revisar de novo.\n` +
-    `6. Só depois que eu aprovar (chega uma mensagem "APROVADO"), marque status ${id} programando, agende a publicação no dia combinado e, ao terminar, status ${id} programado.\n` +
+    `6. Depois do meu Aprovar você não precisa fazer mais nada: o Hub comprime o vídeo aprovado, eu escolho a data e a legenda no estúdio e a nuvem publica no Instagram do perfil. NÃO agende nem poste pelo Chrome.
+` +
     `Se travar em algo: status ${id} erro --obs "o que aconteceu". Nada é publicado sem o meu Aprovar.`;
 }
 
@@ -79,9 +80,3 @@ export function mensagemAjuste(r: Pick<RoteiroDark, "id" | "numero" | "titulo">,
     `Se a mudança altera o vídeo: marque python3 scripts/lauro/roteiros.py status ${id} editando, gere uma NOVA versão (nunca sobrescreva a anterior: video_v2.mp4, v3…), cite o caminho completo aqui e marque status ${id} revisar --arquivo <caminho> --obs "o que mudou" para eu aprovar. Se for só dúvida, responda sem mexer no status.`;
 }
 
-/** Mensagem enviada quando o Davi aperta Aprovar. */
-export function mensagemAprovado(r: Pick<RoteiroDark, "id" | "numero" | "titulo" | "data_postagem">, perfil: string): string {
-  const id = r.id.slice(0, 8);
-  return `APROVADO: o roteiro V${r.numero} ("${r.titulo}") do perfil ${perfil} está aprovado${r.data_postagem ? `. Programe a publicação para ${dataBr(r.data_postagem)}` : ". Programe a publicação (sem dia marcado: me pergunte o dia antes)"}.\n\n` +
-    `Agende no Instagram do perfil (Chrome do meu Mac) usando a versão aprovada do vídeo. O status já está em "programando": quando terminar de agendar, marque python3 scripts/lauro/roteiros.py status ${id} programado --obs "agendado para <dia e hora>". Se algo impedir (login caído, erro do Instagram), status ${id} erro --obs "o que aconteceu" e me avise aqui.`;
-}

@@ -77,7 +77,7 @@ Acesso por dono + equipe. Funções: `team_allowed`, `team_access`, `team_row_al
 
 ## Edge functions (`supabase/functions/`)
 
-`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-metricas` (seguidores/alcance/visualizações por dia e números de cada post, pg_cron às 03:10), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`), `vendas-webhook` (Kiwify/Hotmart, `?chave=` do produto), `youtube` (canal do projeto + Shorts da Dalila, `docs/YOUTUBE.md`). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
+`admin-users`, `chat` (usa `LOVABLE_API_KEY`), `process-pdf`, `backblaze-upload-url` (segredos `B2_*`), `instagram-metricas` (seguidores/alcance/visualizações por dia e números de cada post, pg_cron às 03:10), `google-calendar`, `instagram-automacoes` (webhook da Meta, segredos `META_APP_SECRET`/`META_VERIFY_TOKEN`), `vendas-webhook` (Kiwify/Hotmart, `?chave=` do produto), `youtube` (canal do projeto + Shorts da Dalila, `docs/YOUTUBE.md`), `lauro-publicar` (pg_cron a cada minuto: publica no Instagram conectado ao perfil dark o vídeo que o Davi aprovou e programou; o Mac prepara o vídeo com `scripts/lauro/publicar.py`; migração `20261113160000`). Checar quais estão no ar: `node scripts/check-edge-functions.mjs`.
 
 ## Consultar dados reais (somente leitura)
 

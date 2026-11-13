@@ -6,7 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { confirmar } from "@/components/DialogosGlobais";
 import { MidiaLocal } from "./MidiaLocal";
-import { agruparPorDia, contarPorStatus, mensagemAjuste, mensagemAprovado, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, versoesDoRoteiro, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
+import { ConectarInstagramDark, ProgramarPublicacao, useInstagramDoPerfil } from "./PublicacaoDark";
+import { agruparPorDia, contarPorStatus, mensagemAjuste, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, versoesDoRoteiro, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
 import { midiasDoTexto } from "@/lib/empresa/midiasChat";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,7 @@ const db = supabase as unknown as SupabaseClient;
 export interface PerfilRoteiro { id: string; nome: string; modo_vivo?: boolean; estilo?: unknown }
 
 const CHIP: Record<StatusRoteiro, string> = {
-  na_fila: "bg-white/10 text-white/70", editando: "bg-amber-500/20 text-amber-300", revisar: "bg-violet-500/30 text-violet-200 ring-1 ring-violet-400/40", programando: "bg-sky-500/20 text-sky-300", programado: "bg-emerald-500/20 text-emerald-300", erro: "bg-rose-500/20 text-rose-300",
+  na_fila: "bg-white/10 text-white/70", editando: "bg-amber-500/20 text-amber-300", revisar: "bg-violet-500/30 text-violet-200 ring-1 ring-violet-400/40", programando: "bg-sky-500/20 text-sky-300", programado: "bg-emerald-500/20 text-emerald-300", publicando: "bg-sky-500/20 text-sky-300", publicado: "bg-emerald-500/30 text-emerald-200 ring-1 ring-emerald-400/40", erro: "bg-rose-500/20 text-rose-300",
 };
 const DIAS = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -36,7 +37,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
   useEffect(() => { if (!perfis.some((p) => p.id === perfilId)) setPerfilId(perfis[0]?.id ?? ""); }, [perfis, perfilId]);
   const carregar = useCallback(async () => {
     if (!perfilId) { setRoteiros([]); return; }
-    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em").eq("perfil_id", perfilId).order("numero");
+    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em, legenda, video_url, programado_para, permalink, mensagem").eq("perfil_id", perfilId).order("numero");
     setRoteiros((data ?? []) as RoteiroDark[]);
   }, [perfilId]);
   useEffect(() => {
@@ -46,6 +47,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
   }, [carregar]);
 
   const perfil = perfis.find((p) => p.id === perfilId);
+  const ig = useInstagramDoPerfil(perfilId);
   const porDia = useMemo(() => agruparPorDia(roteiros ?? []), [roteiros]);
   const semanas = useMemo(() => semanasDoMes(mes.ano, mes.mes), [mes]);
   const contagem = contarPorStatus(roteiros ?? []);
@@ -60,7 +62,8 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
         <label className="flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-sm text-white/70">Perfil
           <select value={perfilId} onChange={(e) => setPerfilId(e.target.value)} className="bg-transparent text-white outline-none">{perfis.map((p) => <option key={p.id} value={p.id} className="bg-[#0a1520]">{p.nome}</option>)}</select></label>
         <div className="flex flex-wrap gap-1.5 text-xs">{(Object.keys(ROTULO_STATUS) as StatusRoteiro[]).filter((s) => contagem[s] > 0).map((s) => <span key={s} className={cn("rounded-full px-2.5 py-1 font-semibold", CHIP[s])}>{contagem[s]} {ROTULO_STATUS[s].toLowerCase()}</span>)}</div>
-        <button type="button" onClick={() => perfil && onConversar(perfil.id)} className="ml-auto flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-sm text-white/80 hover:bg-white/10"><MessageCircle className="h-4 w-4" />Conversar com o Lauro</button>
+        <span className="ml-auto"><ConectarInstagramDark perfilId={perfilId} conta={ig.conta} recarregar={ig.recarregar} /></span>
+        <button type="button" onClick={() => perfil && onConversar(perfil.id)} className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-sm text-white/80 hover:bg-white/10"><MessageCircle className="h-4 w-4" />Conversar com o Lauro</button>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -171,7 +174,7 @@ type Msg = { papel: "user" | "assistant"; texto: string };
 
 // Estúdio do roteiro (13/11/2026, Davi: "ao clicar, um editor estilo Premiere onde eu converso com o Lauro; quando ele editar, vem 'aprovar'").
 // Esquerda: o vídeo atual (com o histórico de versões v1, v2…) e o roteiro. Direita: a conversa com o Lauro sobre ESTE roteiro. Quando o Lauro termina uma
-// versão ele marca "revisar" e aparece o botão Aprovar; aprovar manda o Lauro programar a publicação. Nada é publicado sem o Aprovar.
+// versão ele marca "revisar" e aparece o botão Aprovar; aprovar prepara o vídeo, e a publicação sai pela nuvem na data que o Davi escolher (PublicacaoDark). Nada é publicado sem o Aprovar e a data.
 function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: RoteiroDark | null; perfil?: PerfilRoteiro; onFechar: () => void; onMudou: () => void }) {
   const r = roteiro;
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -212,7 +215,7 @@ function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: Rotei
       const m: Msg[] = [];
       for (const p of lista) {
         if (!encaminhados.has(p.id)) {
-          const t = p.mensagem.startsWith("NOVO ROTEIRO") ? `📄 ${p.mensagem.split("\n")[0]}` : p.mensagem.startsWith("APROVADO:") ? "✅ Aprovado: pode programar" : p.mensagem.startsWith("AJUSTE no roteiro") ? p.mensagem.replace(/^AJUSTE no roteiro[^:]*:\s*/, "").split("\n\n")[0] : p.mensagem;
+          const t = p.mensagem.startsWith("NOVO ROTEIRO") ? `📄 ${p.mensagem.split("\n")[0]}` : p.mensagem.startsWith("APROVADO:") ? "✅ Aprovado" : p.mensagem.startsWith("AJUSTE no roteiro") ? p.mensagem.replace(/^AJUSTE no roteiro[^:]*:\s*/, "").split("\n\n")[0] : p.mensagem;
           m.push({ papel: "user", texto: t });
         }
         if (p.status === "respondido" && p.resposta) m.push({ papel: "assistant", texto: p.resposta });
@@ -241,12 +244,11 @@ function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: Rotei
   };
   const aprovar = async () => {
     if (!r || !perfil) return;
-    if (!(await confirmar(`Aprovar o V${r.numero}?`, { descricao: `O Lauro vai agendar a publicação${r.data_postagem ? ` para ${r.data_postagem.split("-").reverse().join("/")}` : ""} com esta versão do vídeo.`, botao: "Aprovar", destrutivo: false }))) return;
+    if (!(await confirmar(`Aprovar o V${r.numero}?`, { descricao: "O vídeo é preparado para o Instagram. Nada é publicado até você conectar a conta, escolher a data e programar.", botao: "Aprovar", destrutivo: false }))) return;
     const { error } = await db.from("esteira_dark_roteiros").update({ status: "programando", atualizado_em: new Date().toISOString() }).eq("id", r.id);
     if (error) { toast.error("Não consegui aprovar"); return; }
     onMudou();
-    await pedir(mensagemAprovado(r, perfil.nome), "✅ Aprovado: pode programar");
-    toast.success("Aprovado: o Lauro vai programar a publicação");
+    toast.success("Aprovado: preparando o vídeo para o Instagram");
   };
   const atualizar = async (mudanca: Record<string, unknown>) => {
     if (!r) return;
@@ -270,7 +272,7 @@ function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: Rotei
             <DialogDescription className="sr-only">Estúdio do roteiro: vídeo, versões e conversa com o Lauro</DialogDescription>
             <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0c1b27] px-5 py-3">
               <DialogTitle className="flex min-w-0 items-center gap-2 text-lg"><span className="rounded bg-white/10 px-1.5 py-0.5 text-sm font-bold">V{r.numero}</span><span className="truncate">{r.titulo}</span></DialogTitle>
-              <span className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", CHIP[r.status])}>{ocupado && r.status !== "na_fila" && <Loader2 className="h-3 w-3 animate-spin" />}{r.status === "editando" ? "Lauro editando…" : r.status === "programando" ? "Lauro programando…" : ROTULO_STATUS[r.status]}</span>
+              <span className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold", CHIP[r.status])}>{ocupado && r.status !== "na_fila" && <Loader2 className="h-3 w-3 animate-spin" />}{r.status === "editando" ? "Lauro editando…" : r.status === "programando" ? "Aprovado" : ROTULO_STATUS[r.status]}</span>
               <span className="text-xs text-white/45">{perfil?.nome}</span>
               <div className="ml-auto flex items-center gap-2">
                 <label className="flex items-center gap-1.5 text-xs text-white/55">Dia <input type="date" className={cn(campo, "w-36 py-1")} value={r.data_postagem ?? ""} onChange={(e) => void atualizar({ data_postagem: e.target.value || null })} /></label>
@@ -290,6 +292,7 @@ function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: Rotei
                   </div>
                 )}
                 {versao?.nota && <p className="rounded-lg bg-white/5 p-2 text-xs text-white/65">Lauro: {versao.nota}</p>}
+                <ProgramarPublicacao roteiro={r} perfilId={r.perfil_id} onMudou={onMudou} />
                 <button type="button" onClick={() => setVerRoteiro((v) => !v)} className="text-xs text-white/50 hover:text-white">{verRoteiro ? "Esconder o roteiro" : "Ver o roteiro"}</button>
                 {verRoteiro && <p className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-sm text-white/80">{r.texto}</p>}
               </section>

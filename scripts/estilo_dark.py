@@ -3,6 +3,8 @@ O app grava o pedido em public.esteira_dark_pedidos; o ouvinte do Atlas chama `a
 com o estilo atualizado. O Claude só devolve texto: não mexe em arquivo nem no banco (pedido que exige código vai para a fila, como todo agente: scripts/fila.py).
 """
 import json
+import threading
+import time
 from pathlib import Path
 import agente_whatsapp
 from migration_db import connect
@@ -25,7 +27,7 @@ Como conduzir:
 - Se ele mandar links de referência (vídeo, perfil, página), ABRA com WebFetch/WebSearch e diga o que você viu de útil (ritmo, gancho, cores, legenda, duração) e o que sugere aproveitar; salve o link em "referencias".
 - Nunca invente decisão por ele: o que ele não definiu fica vazio ou como sugestão sua marcada como "sugestão" na conversa (não grave sugestão como decidida).
 - Mantenha tudo que já estava no estilo e ele não pediu para mudar. Se ele corrigir algo, atualize.
-- ROTEIROS: o Davi sobe roteiros no calendário do dash (mensagens "NOVO ROTEIRO V<n>"), clica no roteiro para abrir o ESTÚDIO e conversa com você ali (mensagens "AJUSTE no roteiro V<n>"). Você faz o resto sozinho: lê o roteiro e o estilo com `python3 scripts/lauro/roteiros.py contexto <id>`, gera a VOZ no ElevenLabs (Chrome do Davi, já logado: https://elevenlabs.io/app/speech-synthesis/text-to-speech; voz "Gregory Grumble - Old Lovable Bedtime Bear", salvo se o estilo pedir outra; cole o roteiro inteiro e gere UMA vez, porque cada geração gasta créditos da conta dele: confira o saldo antes, avise se não bastar e nunca compre, assine nem mude plano; baixe o mp3 para ~/.infopro-hub/exemplos/<perfil>/roteiros/<id>/voz.mp3 e aplique o ajuste de velocidade do estilo, ex.: 1.1x, com o ffmpeg), produz o vídeo no estilo cadastrado com essa voz e atualiza o status, que aparece no calendário: `python3 scripts/lauro/roteiros.py status <id> editando` (começou), `revisar --arquivo <caminho> --obs "o que fez/mudou"` (vídeo pronto: no estúdio aparecem o vídeo e o botão APROVAR; NÃO programe antes), `programando` e `programado` SÓ depois que chegar a mensagem "APROVADO" (aí você agenda a publicação no Instagram do perfil, Chrome do Davi, para o dia combinado), `erro --obs "o que aconteceu"` (travou). Cada versão do vídeo num arquivo novo (video_v1.mp4, video_v2.mp4…, nunca sobrescreva) e o caminho completo citado na resposta. NADA é publicado ou agendado sem o Aprovar do Davi. `python3 scripts/lauro/roteiros.py listar` mostra todos. Se travar, avise já no chat, sem esperar.
+- ROTEIROS: o Davi sobe roteiros no calendário do dash (mensagens "NOVO ROTEIRO V<n>"), clica no roteiro para abrir o ESTÚDIO e conversa com você ali (mensagens "AJUSTE no roteiro V<n>"). Você faz o resto sozinho: lê o roteiro e o estilo com `python3 scripts/lauro/roteiros.py contexto <id>`, gera a VOZ no ElevenLabs (Chrome do Davi, já logado: https://elevenlabs.io/app/speech-synthesis/text-to-speech; voz "Gregory Grumble - Old Lovable Bedtime Bear", salvo se o estilo pedir outra; cole o roteiro inteiro e gere UMA vez, porque cada geração gasta créditos da conta dele: confira o saldo antes, avise se não bastar e nunca compre, assine nem mude plano; baixe o mp3 para ~/.infopro-hub/exemplos/<perfil>/roteiros/<id>/voz.mp3 e aplique o ajuste de velocidade do estilo, ex.: 1.1x, com o ffmpeg), produz o vídeo no estilo cadastrado com essa voz e atualiza o status, que aparece no calendário: `python3 scripts/lauro/roteiros.py status <id> editando` (começou), `revisar --arquivo <caminho> --obs "o que fez/mudou"` (vídeo pronto: no estúdio aparecem o vídeo e o botão APROVAR; NÃO programe antes), depois do Aprovar o Hub assume sozinho: o Mac comprime o vídeo aprovado, o Davi escolhe a data e a legenda no estúdio e a nuvem publica no Instagram conectado ao perfil (você NÃO agenda nem posta pelo Chrome nem muda o status para programando/programado), `erro --obs "o que aconteceu"` (travou). Cada versão do vídeo num arquivo novo (video_v1.mp4, video_v2.mp4…, nunca sobrescreva) e o caminho completo citado na resposta. NADA é publicado ou agendado sem o Aprovar e a data do Davi. `python3 scripts/lauro/roteiros.py listar` mostra todos. Se travar, avise já no chat, sem esperar.
 - ANEXOS: quando a mensagem do Davi trouxer linhas "📎 Anexo: <caminho>", é um arquivo que ele jogou no chat (imagem, vídeo, áudio ou PDF), guardado neste Mac. ABRA e veja de verdade: imagem e PDF com a ferramenta Read; vídeo extraindo quadros com o ffmpeg (/opt/homebrew/bin/ffmpeg, em pasta temporária; ex.: um quadro por segundo) e lendo os quadros; áudio ouvindo/transcrevendo se houver ferramenta, ou dizendo que só consegue ler o nome. Diga o que viu e como isso entra no estilo. Nunca finja ter visto sem abrir.
 - Se existir um projeto ligado ao perfil, você pode consultar (SOMENTE LEITURA) as edições dark dele: python3 scripts/consulta.py "select titulo, status from edicoes_video where formato = 'dark' and cliente_id = '<id>' order by criado_em desc limit 10".
 - Pedido que exige mudar o app/sistema (tela, botão, integração) você NÃO faz: coloque em "pedidos_sistema" ({{"titulo": "...", "descricao": "completa e autossuficiente: o que o Davi pediu, onde fica (esteira dark: src/components/empresa/DashDark.tsx, EstiloPerfilDark.tsx, scripts/estilo_dark.py, tabela esteira_dark_perfis) e como saber que ficou pronto"}}) e diga que foi para a fila de desenvolvimento.
@@ -151,9 +153,34 @@ def _garantir_rapido(rodar_claude, log):
     t.start()
 
 
+_ultimo_preparo = [0.0]
+_preparando = [False]
+
+
+def _preparar_publicacao(log):
+    """Mac (13/11): a cada minuto, prepara o vídeo aprovado para a nuvem publicar (scripts/lauro/publicar.py), sem travar a conversa."""
+    if _preparando[0] or time.time() - _ultimo_preparo[0] < 60:
+        return
+    _ultimo_preparo[0] = time.time()
+    _preparando[0] = True
+
+    def _roda():
+        try:
+            import importlib
+            import lauro.publicar as pub
+            importlib.reload(pub)
+            pub.passada()
+        except Exception as e:  # noqa: BLE001
+            log("lauro publicar:", repr(e)[:200])
+        finally:
+            _preparando[0] = False
+    threading.Thread(target=_roda, daemon=True).start()
+
+
 def atender_vivo(rodar_claude, log=print):
     """Mac: atende UM pedido pendente de perfil em modo vivo, escrito pelo Davi (autor_id), com o Chrome dele."""
     _garantir_rapido(rodar_claude, log)
+    _preparar_publicacao(log)
     c = connect()
     try:
         q = c.cursor()

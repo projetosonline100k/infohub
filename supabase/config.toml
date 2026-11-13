@@ -21,6 +21,10 @@ verify_jwt = false
 # Webhook da Meta: chega sem JWT; a função valida a assinatura X-Hub-Signature-256.
 verify_jwt = false
 
+[functions.lauro-publicar]
+# Chamada pelo pg_cron (sem JWT); confere a chave do Vault (x-dalila-chave), a mesma da Dalila.
+verify_jwt = false
+
 [functions.dalila-publicar]
 # Chamada pelo pg_cron (sem JWT); a função confere a chave do Vault (x-dalila-chave).
 verify_jwt = false

@@ -109,6 +109,6 @@ export async function buscarPostsInstagram(igUserId: string): Promise<InstagramP
 }
 
 /** Link (vale 7 dias) para a pessoa autorizar a conta do Instagram dela. */
-export async function gerarLinkConexao(clienteId: string | null): Promise<string> {
-  return (await chamar<{ url: string }>("link", { cliente_id: clienteId })).url;
+export async function gerarLinkConexao(clienteId: string | null, perfilDarkId?: string): Promise<string> {
+  return (await chamar<{ url: string }>("link", { cliente_id: clienteId, ...(perfilDarkId ? { perfil_dark_id: perfilDarkId } : {}) })).url;
 }

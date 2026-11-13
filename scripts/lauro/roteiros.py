@@ -4,8 +4,7 @@ O Davi sobe o roteiro no app (aba Roteiros do dash do Lauro); o Lauro lê o rote
   python3 scripts/lauro/roteiros.py listar [<perfil>]                      os roteiros (V1, V2…) com dia e status
   python3 scripts/lauro/roteiros.py contexto <id>                          o roteiro inteiro, o perfil e o ESTILO do vídeo cadastrado
   python3 scripts/lauro/roteiros.py status <id> <novo> [--obs "..."] [--arquivo <caminho>]
-        novo = editando (começou a produzir) | revisar (vídeo pronto: o Davi vê no estúdio e aprova; use --arquivo) | programando (só depois do APROVADO do Davi: agendando)
-               | programado (agendado) | erro (travou: diga o porquê em --obs)
+        novo = editando (começou a produzir) | revisar (vídeo pronto: o Davi vê no estúdio e aprova; use --arquivo) | erro (travou: diga o porquê em --obs)
         --arquivo: caminho do vídeo (cada versão num arquivo novo: video_v1.mp4, video_v2.mp4…); fica no histórico de versões do estúdio do Davi
   python3 scripts/lauro/roteiros.py data <id> AAAA-MM-DD                    muda o dia de postagem
 
@@ -20,7 +19,7 @@ RAIZ = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(RAIZ / "scripts"))
 from migration_db import connect  # noqa: E402
 
-STATUS = ("editando", "revisar", "programando", "programado", "erro")
+STATUS = ("editando", "revisar", "erro")   # programando/programado/publicado: do Hub (Aprovar → Mac prepara → Davi escolhe a data → nuvem publica)
 
 
 def _achar(q, prefixo):

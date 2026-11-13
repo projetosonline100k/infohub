@@ -48,16 +48,13 @@ test('mensagem para o Lauro: voz no ElevenLabs, vídeo, revisar (não programa) 
   assert.ok(t.includes('roteiros.py contexto id7-aaaa'));
   assert.ok(t.includes('elevenlabs.io') && t.includes('Gregory Grumble'));
   assert.ok(t.includes('status id7-aaaa revisar --arquivo'));
-  assert.ok(t.includes('"APROVADO"') && t.includes('status id7-aaaa programando'));
+  assert.ok(t.includes('NÃO agende nem poste pelo Chrome'));
   assert.ok(/Nada é publicado sem o meu Aprovar/.test(t));
 });
 
-test('mensagens de ajuste e de aprovado citam o id curto, o dia e o próximo status', () => {
+test('mensagem de ajuste cita o id curto e pede nova versão', () => {
   const a = m.mensagemAjuste(r(7, '2026-11-20'), 'a legenda está atrasada');
   assert.ok(a.startsWith('AJUSTE no roteiro V7') && a.includes('a legenda está atrasada') && a.includes('NOVA versão') && a.includes('revisar --arquivo'));
-  const ok = m.mensagemAprovado(r(7, '2026-11-20'), 'Insta insights oficial');
-  assert.ok(ok.startsWith('APROVADO:') && ok.includes('20/11/2026') && ok.includes('status id7-aaaa programado'));
-  assert.ok(m.mensagemAprovado(r(8, null), 'P').includes('me pergunte o dia'));
 });
 
 test('versoesDoRoteiro: histórico quando há; senão o arquivo atual; senão nada', () => {

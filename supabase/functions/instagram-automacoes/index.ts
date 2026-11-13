@@ -117,12 +117,15 @@ function ehLinkCurtoDoHub(link: string): boolean {
 }
 
 /** Troca cada link da mensagem pelo redirecionador que conta o clique (menos os links curtos do Hub, que contam sozinhos). */
-export function rastrearLinks(texto: string, base: string, disparoId: string) {
+export function rastrearLinks(texto: string, base: string, disparoId: string, usuario?: string | null) {
   const links: string[] = [];
   const mensagem = texto.replace(URL_RE, (bruto) => {
     const link = limparLink(bruto);
     const resto = bruto.slice(link.length);
-    if (ehLinkCurtoDoHub(link)) return bruto;
+    if (ehLinkCurtoDoHub(link)) {
+      // O @ de quem comentou vai no link (?ig=): o quiz guarda no lead e o painel mostra o Instagram da pessoa.
+      return usuario && /^[A-Za-z0-9._]{1,30}$/.test(usuario) && !link.includes("?") ? `${link}?ig=${usuario}${resto}` : bruto;
+    }
     links.push(link);
     // Curto (11/11, Davi: "o link da DM está comprido"): os 8 primeiros caracteres do envio + o número do link.
     return `${base}/l/${disparoId.slice(0, 8)}-${links.length - 1}${resto}`;
@@ -248,7 +251,7 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
   // Link bonito na DM (11/11, Davi): o endereço do Hub (APP_URL/l/…) — o vercel.json repassa para esta função, que conta o clique.
   const base = APP_URL.replace(/\/$/, "");
   const { mensagem, links } = automacao.rastrear_links
-    ? rastrearLinks(automacao.mensagem_dm, base, disparo.id)
+    ? rastrearLinks(automacao.mensagem_dm, base, disparo.id, evento.autorUsername)
     : { mensagem: automacao.mensagem_dm, links: [] as string[] };
   let dmStatus = "enviada";
   let respostaStatus = "nenhuma";
@@ -292,7 +295,7 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
 async function redirecionar(req: Request, admin: any, disparoId: string, indice: number) {
   // O id inteiro (links antigos) ou só os 8 primeiros caracteres (links novos, curtos): o uuid é ordenável, então o prefixo vira uma faixa.
   const prefixo = /^[0-9a-f]{8}$/i.test(disparoId) ? disparoId.toLowerCase() : null;
-  const consulta = admin.from("instagram_automacao_disparos").select("id, links, cliques, clicou_em");
+  const consulta = admin.from("instagram_automacao_disparos").select("id, links, cliques, clicou_em, autor_username");
   const { data: disparo } = UUID_RE.test(disparoId)
     ? await consulta.eq("id", disparoId).maybeSingle()
     : prefixo
@@ -307,7 +310,16 @@ async function redirecionar(req: Request, admin: any, disparoId: string, indice:
       clicou_em: disparo.clicou_em ?? new Date().toISOString(),
     }).eq("id", disparo.id);
   }
-  return new Response(null, { status: 302, headers: { Location: destino, "Cache-Control": "no-store" } });
+  // Destino do próprio Hub (o quiz): leva o @ de quem comentou (?ig=). Para sites de fora, nada de dado pessoal na URL.
+  let final = destino;
+  try {
+    const u = new URL(destino);
+    if (u.host === new URL(APP_URL).host && disparo.autor_username && /^[A-Za-z0-9._]{1,30}$/.test(disparo.autor_username) && !u.searchParams.has("ig")) {
+      u.searchParams.set("ig", disparo.autor_username);
+      final = u.toString();
+    }
+  } catch { /* segue com o destino */ }
+  return new Response(null, { status: 302, headers: { Location: final, "Cache-Control": "no-store" } });
 }
 
 const redirectUri = (supabaseUrl: string) => `${supabaseUrl}/functions/v1/instagram-automacoes/callback`;
@@ -318,13 +330,17 @@ async function gerarLink(req: Request, admin: any, supabaseUrl: string) {
   if (!user) return json({ error: "não autenticado" }, 401);
   const appId = Deno.env.get("META_IG_APP_ID");
   if (!appId) return json({ error: "META_IG_APP_ID não configurado" }, 500);
-  const { cliente_id: clienteId } = await req.json().catch(() => ({}));
+  const { cliente_id: clienteId, perfil_dark_id: perfilDarkId } = await req.json().catch(() => ({}));
+  if (perfilDarkId) {
+    const { data: perfil } = await admin.from("esteira_dark_perfis").select("id").eq("id", perfilDarkId).eq("user_id", user.id).maybeSingle();
+    if (!perfil) return json({ error: "perfil dark não encontrado" }, 404);
+  }
   if (clienteId) {
     const { data: cliente } = await admin.from("clientes").select("id").eq("id", clienteId).eq("user_id", user.id).maybeSingle();
     if (!cliente) return json({ error: "cliente não encontrado" }, 404);
   }
   const state = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => b.toString(16).padStart(2, "0")).join("");
-  const { error } = await admin.from("instagram_oauth_states").insert({ state, user_id: user.id, cliente_id: clienteId ?? null });
+  const { error } = await admin.from("instagram_oauth_states").insert({ state, user_id: user.id, cliente_id: clienteId ?? null, perfil_dark_id: perfilDarkId ?? null });
   if (error) return json({ error: error.message }, 500);
   return json({ url: `${supabaseUrl}/functions/v1/instagram-automacoes/c/${state}` });
 }
@@ -355,7 +371,7 @@ async function callbackOAuth(url: URL, admin: any, supabaseUrl: string) {
   if (url.searchParams.get("error")) return voltarProHub({ erro: "Você cancelou a autorização no Instagram." });
 
   const { data: pedido } = await admin.from("instagram_oauth_states")
-    .select("state, user_id, cliente_id, criado_em, usado_em").eq("state", state).maybeSingle();
+    .select("state, user_id, cliente_id, perfil_dark_id, criado_em, usado_em").eq("state", state).maybeSingle();
   if (!pedido || pedido.usado_em || Date.now() - Date.parse(pedido.criado_em) > STATE_VALIDADE_MS || !code) {
     return voltarProHub({ erro: "Link de conexão inválido ou vencido. Peça um novo." });
   }
@@ -393,6 +409,7 @@ async function callbackOAuth(url: URL, admin: any, supabaseUrl: string) {
       ig_user_id: igUserId,
       user_id: pedido.user_id,
       cliente_id: pedido.cliente_id,
+      perfil_dark_id: pedido.perfil_dark_id ?? null,
       username: eu.username ?? null,
       access_token: longo.access_token,
       token_expira_em: new Date(Date.now() + Number(longo.expires_in ?? 5184000) * 1000).toISOString(),
