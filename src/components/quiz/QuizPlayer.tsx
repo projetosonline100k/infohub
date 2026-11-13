@@ -472,6 +472,73 @@ function Depoimentos({ caminho, lista, nota }: { caminho: string; lista?: Depoim
   );
 }
 
+// Escala com emojis (13/11/2026, Davi: "as perguntas com emoji em lista ficariam melhor assim"): uma trilha com um ponto por opção; a pessoa toca
+// (ou arrasta) e o ponto escolhido cresce, a trilha enche até ele e um balão mostra a resposta; embaixo, o emoji e o texto de cada opção.
+function Escala({ q, base, escolhida, aoEscolher, f }: { q: EstruturaQuiz["perguntas"][number]; base: string; escolhida: number | undefined; aoEscolher: (k: number) => void; f: (t?: string) => string }) {
+  const { cor, escuro, editar } = useContext(QuizCtx);
+  const n = q.opcoes.length;
+  const trilha = useRef<HTMLDivElement>(null);
+  const pct = (k: number) => (n > 1 ? (k / (n - 1)) * 100 : 50);
+  const doPonteiro = (clientX: number) => {
+    const el = trilha.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    aoEscolher(Math.max(0, Math.min(n - 1, Math.round(((clientX - r.left) / r.width) * (n - 1)))));
+  };
+  const arrastando = useRef(false);
+  return (
+    <div className={cn("rounded-2xl border p-4 shadow-sm", escuro ? "border-white/15 bg-white/5" : "border-gray-200 bg-white")}>
+      {/* trilha: o balão fica em cima do ponto escolhido */}
+      <div className="px-5 pt-10">
+        <div ref={trilha} className="relative h-9 touch-none select-none"
+          onPointerDown={(ev) => { if (editar) return; arrastando.current = true; (ev.currentTarget as HTMLElement).setPointerCapture(ev.pointerId); doPonteiro(ev.clientX); }}
+          onPointerMove={(ev) => { if (arrastando.current) doPonteiro(ev.clientX); }}
+          onPointerUp={() => { arrastando.current = false; }} onPointerCancel={() => { arrastando.current = false; }}>
+          <div className={cn("absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full", escuro ? "bg-white/15" : "bg-gray-200")} />
+          {escolhida !== undefined && <div className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full transition-all duration-300" style={{ width: `${pct(escolhida)}%`, background: cor }} />}
+          {q.opcoes.map((_, k) => {
+            const sel = escolhida === k, passou = escolhida !== undefined && k < escolhida;
+            return (
+              <span key={k} className={cn("absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 bg-white transition-all duration-300", sel ? "h-9 w-9 border-[5px]" : "h-5 w-5", !sel && !passou && (escuro ? "border-white/30" : "border-gray-300"))}
+                style={{ left: `${pct(k)}%`, ...(sel || passou ? { borderColor: cor } : {}), ...(sel ? { boxShadow: `0 0 0 6px ${cor}33, 0 6px 14px -4px ${cor}` } : {}) }} />
+            );
+          })}
+          {escolhida !== undefined && (
+            <span className="pointer-events-none absolute -top-9 -translate-x-1/2 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-sm font-bold text-white shadow-md transition-all duration-300" style={{ left: `${pct(escolhida)}%`, background: cor }}>
+              {f(q.opcoes[escolhida].texto)}
+              <span className="absolute left-1/2 top-full h-2.5 w-2.5 -translate-x-1/2 -translate-y-1.5 rotate-45" style={{ background: cor }} />
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+        {q.opcoes.map((o, k) => {
+          const sel = escolhida === k;
+          const Coluna = editar ? "div" : "button";
+          return (
+            <Coluna key={k} type={editar ? undefined : "button"} onClick={() => aoEscolher(k)}
+              className={cn("flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-center transition-colors", sel ? (escuro ? "bg-white/15 font-bold" : "bg-blue-50 font-bold") : "hover:bg-black/5")}>
+              {editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-2xl leading-none" /> : <span className="text-3xl leading-none">{o.emoji}</span>}
+              <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className="text-[12px] leading-tight" />
+            </Coluna>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Continuar das perguntas que só seguem no botão: bloqueado (cinza, cadeado e o que falta) até a pessoa responder.
+function ContinuarTravavel({ liberado, falta, onClick }: { liberado: boolean; falta: string; onClick: () => void }) {
+  const { escuro, editar } = useContext(QuizCtx);
+  if (liberado) return <Botao onClick={onClick}>Continuar</Botao>;
+  return (
+    <button type="button" disabled={!editar} aria-disabled="true" onClick={editar ? onClick : undefined}
+      className={cn("flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-bold shadow-none", escuro ? "bg-white/10 text-white/40" : "bg-gray-200 text-gray-400")}>
+      <Lock className="h-4 w-4" />{falta}
+    </button>
+  );
+}
+
 function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
   const { cor, editar, aoClicarOferta, linkDeCompra } = useContext(QuizCtx);
   const cls = "h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]";
@@ -719,11 +786,6 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     </div>
                     <p className={cn("text-center text-xs", suave)}>{completa ? "Tudo certo! Se quiser trocar, desmarque uma e escolha outra." : `${sel.length} de ${meta} escolhidas`}</p>
                   </div>
-                  {editar && (
-                    <div className={cn("flex items-center justify-center gap-1.5 text-xs", suave)}>Quantos escolher:
-                      {[3, 5].map((n) => <button key={n} type="button" onClick={() => mudarPergunta(pos, (qq) => { qq.meta = n; })} className={cn("rounded-md border px-2 py-0.5 font-semibold", meta === n && "text-white")} style={meta === n ? { background: cor, borderColor: cor } : undefined}>{n}</button>)}
-                    </div>
-                  )}
                   <div className="sticky bottom-3 z-10 pt-1">
                     {completa
                       ? <Botao onClick={avancar}>Continuar</Botao>
@@ -755,7 +817,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 {(q.imagem || q.imagem_nota) && (livro
                   ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
                   : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
-                <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
+                {q.estilo === "escala" && !q.multipla
+                  ? <Escala q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
+                  : <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
                     const marcada = q.multipla ? (marcadas[q.id] ?? []).includes(k) : escolhas[q.id] === k;
                     const Opcao = editar ? "div" : "button";
@@ -796,10 +860,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     <button type="button" onClick={() => mudarOpcoes(pos, (l) => { l.push({ texto: "Nova opção", perfil: e.perfis[0]?.id ?? null }); })}
                       className={cn("flex w-full items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-3 py-2.5 text-sm", suave)}><Plus className="h-4 w-4" />Adicionar opção</button>
                   )}
-                </div>
-                {(q.multipla || q.botao) && (
-                  <div className={cn("sticky bottom-3 z-10 pt-1", !editar && (q.multipla ? !marcadas[q.id]?.length : escolhas[q.id] === undefined) && "pointer-events-none opacity-40")}>
-                    <Botao onClick={avancar}>Continuar</Botao>
+                </div>}
+                {(q.multipla || q.botao || (q.estilo === "escala" && !q.multipla)) && (
+                  <div className="sticky bottom-3 z-10 pt-1">
+                    <ContinuarTravavel liberado={q.multipla ? !!marcadas[q.id]?.length : escolhas[q.id] !== undefined} falta={q.multipla ? "Escolha pelo menos uma" : "Escolha uma opção"} onClick={avancar} />
                   </div>
                 )}
                 {pos > 1 && !editar && !travado && (

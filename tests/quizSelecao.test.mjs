@@ -6,14 +6,14 @@ import ts from 'typescript';
 const { outputText } = ts.transpileModule(readFileSync(new URL('../src/lib/quiz/selecao.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } });
 const { metaDaSelecao, alternarMarcada } = await import(`data:text/javascript;base64,${Buffer.from(outputText).toString('base64')}`);
 
-test('meta: padrão 5, aceita 3, nunca passa do número de opções e ignora lixo', () => {
+test('meta: padrão 3, aceita 5 quando pedido, nunca passa do número de opções e ignora lixo', () => {
   const ops = (n) => Array.from({ length: n }, () => ({}));
-  assert.equal(metaDaSelecao({ opcoes: ops(8) }), 5);
-  assert.equal(metaDaSelecao({ meta: 3, opcoes: ops(8) }), 3);
+  assert.equal(metaDaSelecao({ opcoes: ops(8) }), 3);
+  assert.equal(metaDaSelecao({ meta: 5, opcoes: ops(8) }), 5);
   assert.equal(metaDaSelecao({ meta: 5, opcoes: ops(4) }), 4);
-  assert.equal(metaDaSelecao({ meta: 0, opcoes: ops(8) }), 5);
-  assert.equal(metaDaSelecao({ meta: -2, opcoes: ops(8) }), 5);
-  assert.equal(metaDaSelecao({ meta: NaN, opcoes: ops(8) }), 5);
+  assert.equal(metaDaSelecao({ meta: 0, opcoes: ops(8) }), 3);
+  assert.equal(metaDaSelecao({ meta: -2, opcoes: ops(8) }), 3);
+  assert.equal(metaDaSelecao({ meta: NaN, opcoes: ops(8) }), 3);
   assert.equal(metaDaSelecao({ meta: 3.6, opcoes: ops(8) }), 4);
 });
 
