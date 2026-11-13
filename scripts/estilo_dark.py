@@ -316,3 +316,14 @@ def reenfileirar():
         return n
     finally:
         c.close()
+
+
+def _autoligar():
+    """Quando o ouvinte do Mac recarrega este módulo, já liga o laço da resposta rápida (sem esperar o trabalho longo do modo vivo terminar)."""
+    import sys
+    principal = sys.modules.get("__main__")
+    if principal is not None and getattr(principal, "SO_CODIGO", False) and hasattr(principal, "rodar_claude") and hasattr(principal, "log"):
+        _garantir_rapido(principal.rodar_claude, principal.log)
+
+
+_autoligar()
