@@ -11,6 +11,7 @@ export async function startWindowDrag(): Promise<void> {
   try {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     const win = getCurrentWindow();
+    void acompanharMovimentoDaJanela(win);
     // O SO só devolve esse await quando o usuário solta o botão do mouse —
     // ou seja, o arraste nativo já terminou aqui.
     await win.startDragging();
@@ -240,6 +241,36 @@ let ancoraCache: { x: number; y: number } | null = lerAncoraSalva();
 // lançamento do app, descartando a âncora salva antes dela valer uma vez.
 let primeiraConsulta = true;
 
+// 13/11/2026 (Davi: "sempre que arrasto o Atlas para o canto, ele volta para o mesmo local"): no macOS o startDragging() devolve o await assim que o
+// arraste COMEÇA (não quando solta), então a âncora era gravada na posição de antes do arraste e a próxima troca de modo (orbe ↔ balão ↔ painel)
+// levava a janela de volta para lá. Agora a âncora acompanha a janela de verdade: quando ela PARA de se mover (e o movimento não foi nosso), vira a âncora.
+let movimentoDoCodigoAte = 0;
+let acompanhando = false;
+const marcarMovimentoDoCodigo = () => { movimentoDoCodigoAte = Date.now() + 600; };
+
+async function acompanharMovimentoDaJanela(win: InstanceType<typeof import("@tauri-apps/api/window").Window>): Promise<void> {
+  if (acompanhando) return;
+  acompanhando = true;
+  let t: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await win.onMoved(() => {
+      if (Date.now() < movimentoDoCodigoAte) return;   // fomos nós que movemos (troca de modo): a âncora já é a certa
+      clearTimeout(t);
+      t = setTimeout(async () => {
+        if (Date.now() < movimentoDoCodigoAte) return;
+        try {
+          const scale = await win.scaleFactor();
+          const pos = (await win.outerPosition()).toLogical(scale);
+          const size = (await win.outerSize()).toLogical(scale);
+          definirAncora({ x: pos.x + size.width, y: pos.y + size.height });
+        } catch { /* a janela fechou */ }
+      }, 250);   // espera o arraste parar
+    });
+  } catch {
+    acompanhando = false;
+  }
+}
+
 function definirAncora(ancora: { x: number; y: number }): void {
   ancoraCache = ancora;
   try {
@@ -295,8 +326,10 @@ export async function setJarvisWindowMode(mode: JarvisWindowMode): Promise<void>
     // renderizar (quem chama controla isso via `await`, ver abrirPainel em
     // Assistant.tsx), a janela já está no lugar e no tamanho certos antes
     // de qualquer conteúdo aparecer.
+    marcarMovimentoDoCodigo();
     await win.setSize(new LogicalSize(target.width, target.height));
     await win.setPosition(new LogicalPosition(x, y));
+    marcarMovimentoDoCodigo();
     // Se o monitor clampou a posição, a âncora "de casa" também precisa
     // acompanhar — senão o próximo modo calcula de novo a partir do ponto
     // original (fora da tela) e clampa de novo, ficando sempre "puxando"
@@ -319,8 +352,10 @@ export async function redimensionarPainelJarvis(conteudo: Tamanho): Promise<void
     const scale = await win.scaleFactor();
     const ancora = await obterAncora(win, scale);
     const alvo = janelaDoPainel(conteudo);
+    marcarMovimentoDoCodigo();
     await win.setSize(new LogicalSize(alvo.width, alvo.height));
     await win.setPosition(new LogicalPosition(ancora.x - alvo.width, ancora.y - alvo.height));
+    marcarMovimentoDoCodigo();
   } catch {
     /* ignora — o painel só não muda de tamanho */
   }
