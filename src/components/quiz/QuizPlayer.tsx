@@ -570,7 +570,15 @@ function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, 
   const fala0 = cap?.fala || "Falta pouco! Crie sua conta para liberar o seu acesso.";
   return (
     <div className="space-y-3 py-2">
-      {editar && <div className="flex justify-center gap-1 text-xs">{["Nome", "E-mail e WhatsApp", "Conta criada"].map((r, i) => <button key={r} type="button" onClick={() => setFase(i)} className={cn("rounded-full border px-2.5 py-1 font-semibold", fase === i && "text-white")} style={fase === i ? { background: cor, borderColor: cor } : undefined}>{i + 1}. {r}</button>)}</div>}
+      <div className="flex justify-center gap-1 text-[11px] sm:text-xs">{["Nome", "E-mail e WhatsApp", "Conta criada"].map((r, i) => {
+        const cls = cn("flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 font-semibold sm:px-2.5", fase === i && "text-white", !editar && fase < i && "opacity-45");
+        const estilo = fase === i ? { background: cor, borderColor: cor } : !editar && fase > i ? { borderColor: cor, color: cor } : undefined;
+        const texto = <>{!editar && fase > i && <Check className="h-3 w-3" />}{i + 1}. {r}</>;
+        // O lead não pula etapa: só o editor troca de etapa clicando.
+        return editar
+          ? <button key={r} type="button" onClick={() => setFase(i)} className={cls} style={estilo}>{texto}</button>
+          : <div key={r} aria-current={fase === i ? "step" : undefined} className={cls} style={estilo}>{texto}</div>;
+      })}</div>
       <div key={fase} className={anim}>
         {fase === 0 && (
           <form className="space-y-4" onSubmit={(ev) => { ev.preventDefault(); if (editar) setFase(1); else if (nomeOk) ir(1); }}>
