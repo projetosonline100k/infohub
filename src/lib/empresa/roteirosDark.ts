@@ -55,8 +55,9 @@ export function mensagemParaLauro(r: Pick<RoteiroDark, "id" | "numero" | "titulo
   return `NOVO ROTEIRO V${r.numero} do perfil ${perfil}: "${r.titulo}"${r.data_postagem ? `, para postar em ${r.data_postagem.split("-").reverse().join("/")}` : ""}.\n\n` +
     `Faça o resto sozinho:\n1. Leia o roteiro e o estilo do vídeo do perfil: python3 scripts/lauro/roteiros.py contexto ${id}\n` +
     `2. Avise que começou: python3 scripts/lauro/roteiros.py status ${id} editando\n` +
-    `3. Produza o vídeo no estilo cadastrado (imagens, narração, legendas sincronizadas, música, cortes) e salve em ~/.infopro-hub/exemplos/<perfil>/roteiros/${id}/video.mp4 (cite o caminho completo aqui no chat para eu ver).\n` +
-    `4. Quando estiver pronto, mande o vídeo aqui e peça meu OK. Depois do OK, marque python3 scripts/lauro/roteiros.py status ${id} programando --arquivo <caminho> e agende a publicação no dia combinado.\n` +
-    `5. Quando estiver agendado: python3 scripts/lauro/roteiros.py status ${id} programado.\n` +
+    `3. VOZ: gere a narração no ElevenLabs, pelo Chrome (já estou logado lá): abra https://elevenlabs.io/app/speech-synthesis/text-to-speech, escolha a voz "Gregory Grumble - Old Lovable Bedtime Bear" (a menos que o estilo do perfil peça outra), cole o roteiro inteiro e gere UMA vez só (cada geração gasta créditos: confira o saldo antes, avise se não der e nunca compre nem assine nada). Baixe o mp3 para ~/.infopro-hub/exemplos/<perfil>/roteiros/${id}/voz.mp3 e aplique o ajuste de velocidade do estilo (ex.: 1.1x) com o ffmpeg.\n` +
+    `4. VÍDEO: com essa voz, produza o vídeo no estilo cadastrado (imagens, legendas sincronizadas com a fala, música, cortes) e salve em ~/.infopro-hub/exemplos/<perfil>/roteiros/${id}/video.mp4 (cite o caminho completo aqui no chat para eu ver e ouvir).\n` +
+    `5. Quando estiver pronto, mande o vídeo aqui e peça meu OK. Depois do OK, marque python3 scripts/lauro/roteiros.py status ${id} programando --arquivo <caminho> e agende a publicação no dia combinado.\n` +
+    `6. Quando estiver agendado: python3 scripts/lauro/roteiros.py status ${id} programado.\n` +
     `Se travar em algo: status ${id} erro --obs "o que aconteceu". Nada é publicado sem o meu OK.`;
 }
