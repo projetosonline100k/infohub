@@ -1,3 +1,4 @@
+import { JornadaLead } from "./JornadaLead";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -131,7 +132,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {quiz.status !== "publicado" && <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
-      {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
+      {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} eventos={eventos ?? []} passos={passos} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
       {aba === "x1" && (
         <div className="space-y-3">
           <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1 text-sm">
@@ -329,7 +330,7 @@ function LinhaLead({ l, perguntas, onStatus }: { l: LeadQuiz; perguntas: string[
 
 // ---------------------------------------------------------------- Leads
 
-export function Leads({ leads, estados, perguntas, perfis, onApagar, onStatus }: { leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; perfis: { id: string; nome: string }[]; onApagar: (ids: string[]) => Promise<void>; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
+export function Leads({ leads, estados, perguntas, perfis, eventos, passos, onApagar, onStatus }: { leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; eventos: EventoQuiz[]; passos: PassoInfo[]; perfis: { id: string; nome: string }[]; onApagar: (ids: string[]) => Promise<void>; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<"" | StatusLead>("");
   const [perfil, setPerfil] = useState("");
@@ -382,8 +383,10 @@ export function Leads({ leads, estados, perguntas, perfis, onApagar, onStatus }:
                     </tr>
                     {aberto === l.id && (
                       <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={9} className="px-3 py-2">
-                        <ul className="grid gap-x-6 gap-y-1 text-xs sm:grid-cols-2">{l.respostas.map((r, i) => <li key={i}><span className="text-white/50">{r.pergunta}</span> → <b className="text-white">{r.resposta ?? "—"}</b></li>)}</ul>
-                        {l.respostas.length === 0 && <p className="text-xs text-white/45">Sem respostas guardadas.</p>}
+                        {passos.length > 0 && <JornadaLead lead={l} eventos={eventos} passos={passos} />}
+                        <details className="mt-3 text-xs" open={passos.length === 0}><summary className="cursor-pointer text-white/45 hover:text-white/70">Respostas em lista</summary>
+                          <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">{l.respostas.map((r, i) => <li key={i}><span className="text-white/50">{r.pergunta}</span> → <b className="text-white">{r.resposta ?? "—"}</b></li>)}</ul>
+                          {l.respostas.length === 0 && <p className="text-white/45">Sem respostas guardadas.</p>}</details>
                       </td></tr>
                     )}
                   </>
