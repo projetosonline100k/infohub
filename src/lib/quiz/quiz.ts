@@ -74,7 +74,11 @@ export interface CapturaQuiz {
 // Pergunta do nome (12/11, Davi: "captar o nome no começo pra me referir à pessoa"): uma tela com um campo
 // só, logo depois de `depois_de` (id de tela ou pergunta). O nome vai para o lead junto com a captura e
 // preenche o {nome} nos textos dali em diante.
-export interface PerguntaNome { depois_de: string; titulo?: string; texto?: string; fala?: string; botao?: string; exemplo?: string }
+export interface PerguntaNome { depois_de: string; titulo?: string; texto?: string; fala?: string; botao?: string; exemplo?: string;
+  /** "letras" (padrão): monta o nome tocando em botões de letra, sem abrir o teclado do celular (Davi, 13/11); "campo": campo de texto. */
+  modo?: "letras" | "campo";
+  /** Texto do link discreto que segue sem nome (ex.: "Prefiro não dizer"). Sem ele, não há como pular. */
+  pular?: string }
 export interface SeloQuiz { texto: string; destaque?: string }
 export interface EstruturaQuiz {
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };

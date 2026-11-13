@@ -39,7 +39,9 @@ def validar(e):
             ids.add(p['id'])
     vistos = set()
     for k, q in enumerate(perguntas, 1):
-        if not isinstance(q, dict) or not str(q.get('texto', '')).strip():
+        # estilo "livro" (capa de livro + Sim/Não): o texto da pergunta fica vazio, vale o subtítulo
+        sem_texto_ok = isinstance(q, dict) and q.get('estilo') == 'livro' and (q.get('subtitulo') or q.get('imagem'))
+        if not isinstance(q, dict) or (not str(q.get('texto', '')).strip() and not sem_texto_ok):
             erros.append(f'pergunta {k} sem texto')
             continue
         if q.get('id') in vistos or not q.get('id'):

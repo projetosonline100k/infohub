@@ -22,6 +22,42 @@ const ROTULO_CAMPO: Record<CampoCaptura, { rotulo: string; tipo: string; exemplo
 const LETRAS = "ABCDEFGH";
 const ENTRA = "animate-in fade-in slide-in-from-bottom-3 duration-500";
 
+// Jogo de montar o nome (Davi, 13/11): teclado de letras em botões grandes; cada toque faz a letra
+// subir até a linha do nome. Sem teclado nativo do celular (que cobria a tela no navegador do Instagram).
+const TECLAS = ["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"];
+const ACENTOS = ["Á", "É", "Í", "Ó", "Ú", "Ã", "Õ", "Â", "Ê", "Ô", "Ç"];
+const maiusculaInicial = (s: string) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+
+function NomeLetras({ valor, cor, escuro, suave, aoMudar }: { valor: string; cor: string; escuro: boolean; suave: string; aoMudar: (v: string) => void }) {
+  const letras = Array.from(valor);
+  const tecla = escuro ? "border-white/20 bg-white/10 text-white" : "border-gray-300 bg-white text-gray-800";
+  const botao = "flex h-11 min-w-0 flex-1 items-center justify-center rounded-lg border-b-4 text-lg font-bold uppercase active:translate-y-0.5 active:border-b-2";
+  const por = (l: string) => { if (letras.length < 20) aoMudar(maiusculaInicial(valor + l)); };
+  return (
+    <div className="space-y-3">
+      <div className="flex min-h-14 flex-wrap items-end justify-center gap-1 border-b-2 pb-1" style={{ borderColor: cor }} aria-live="polite">
+        {letras.length === 0 && <span className={cn("text-base", suave)}>toque nas letras</span>}
+        {letras.map((l, i) => (
+          <span key={`${i}-${l}`} className="inline-block text-4xl font-extrabold motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-16 motion-safe:zoom-in-50 motion-safe:duration-300" style={{ color: cor }}>{i === 0 ? l.toUpperCase() : l.toLowerCase()}</span>
+        ))}
+      </div>
+      <div className="space-y-1.5">
+        {TECLAS.map((linha, k) => (
+          <div key={linha} className="flex justify-center gap-1">
+            {Array.from(linha).map((l) => <button key={l} type="button" className={cn(botao, tecla)} onClick={() => por(l)}>{l}</button>)}
+            {k === 2 && (
+              <button type="button" aria-label="Apagar" className={cn(botao, "flex-[1.5]", tecla)} onClick={() => aoMudar(Array.from(valor).slice(0, -1).join(""))}>⌫</button>
+            )}
+          </div>
+        ))}
+        <div className="flex justify-center gap-1">
+          {ACENTOS.map((l) => <button key={l} type="button" className={cn(botao, "h-10 text-base", tecla)} onClick={() => por(l)}>{l}</button>)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface Ctx {
   editar: boolean; mostrarFaltas: boolean; cor: string; escuro: boolean;
   mudarTexto: (caminho: string, valor: string) => void;
@@ -676,12 +712,24 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <Txt caminho="nome.titulo" valor={pn.titulo || "Como posso te chamar?"} as="h2" className="block text-2xl font-bold leading-snug" />
                   <Txt caminho="nome.texto" valor={pn.texto} as="p" className={cn("block text-base", suave)} />
                 </div>
-                <Input value={contato.nome ?? ""} placeholder={pn.exemplo || "Seu primeiro nome"} autoComplete="given-name" autoCapitalize="words" enterKeyHint="next"
-                  className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
-                  onChange={(ev) => setContato({ ...contato, nome: ev.target.value })} />
+                {pn.modo === "letras" ? (
+                  <NomeLetras valor={contato.nome ?? ""} cor={cor} escuro={escuro} suave={suave} aoMudar={(v) => setContato({ ...contato, nome: v })} />
+                ) : (
+                  <Input value={contato.nome ?? ""} placeholder={pn.exemplo || "Seu primeiro nome"} autoComplete="given-name" autoCapitalize="words" enterKeyHint="next"
+                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
+                    onChange={(ev) => setContato({ ...contato, nome: ev.target.value })} />
+                )}
                 <Button type={editar ? "button" : "submit"} size="lg" className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }} disabled={!editar && !ok}>
                   <Txt caminho="nome.botao" valor={pn.botao || "Continuar"} />
                 </Button>
+                {pn.pular && (
+                  <div className="text-center">
+                    <button type="button" className={cn("text-xs underline underline-offset-2 hover:opacity-100", suave)}
+                      onClick={() => { if (travado || editar) return; setContato({ ...contato, nome: "" }); avancar(); }}>
+                      <Txt caminho="nome.pular" valor={pn.pular} />
+                    </button>
+                  </div>
+                )}
                 {pos > 1 && !editar && !travado && (
                   <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                 )}
