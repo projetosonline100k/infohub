@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from "sonner";
 import { confirmar } from "@/components/DialogosGlobais";
 import { EstiloPerfilDark, type PerfilDark } from "./EstiloPerfilDark";
+import { RoteirosDark } from "./RoteirosDark";
 import {
   atividadeRecente, completudeEstilo, ordenarPerfis, sanitizarEstilo, prontosParados, resumirEsteira, ROTULO_ETAPA, tituloCurto,
   type EdicaoDark, type EtapaEsteira, type OrdemPerfis,
@@ -68,6 +69,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
   const [historico, setHistorico] = useState(false);
   const [cadastrados, setCadastrados] = useState<PerfilDark[]>([]);
   const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
+  const [aba, setAba] = useState<"esteira" | "roteiros">("esteira");
   const [nomeNovo, setNomeNovo] = useState("");
   const [criandoPerfil, setCriandoPerfil] = useState(false);
   const [recarga, setRecarga] = useState(0);
@@ -170,6 +172,12 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
 
             {drive && <p className={cn("whitespace-pre-wrap rounded-xl border px-3 py-2 text-sm", drive.estado === "erro" ? "border-rose-400/30 bg-rose-500/10 text-rose-200" : drive.estado === "concluido" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100" : "border-white/10 bg-white/5 text-white/70")}>{drive.texto}</p>}
 
+            <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1 text-sm">
+              {([["esteira", "Esteira"], ["roteiros", "Roteiros e calendário"]] as const).map(([v, r]) => (
+                <button key={v} type="button" onClick={() => setAba(v)} className={cn("rounded-xl px-4 py-1.5", aba === v ? "bg-[#f3c98b] font-bold text-black" : "text-white/65 hover:text-white")}>{r}</button>
+              ))}
+            </div>
+            {aba === "roteiros" ? <RoteirosDark perfis={cadastrados.map((p) => ({ id: p.id, nome: p.nome, modo_vivo: p.modo_vivo, estilo: p.estilo }))} onConversar={(id) => setPerfilAberto(id)} /> : <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {KPIS.map(({ chave, Icone, cor }) => (
                 <div key={chave} className={cn(painel, "flex flex-col items-center gap-1 px-3 py-4")}>
@@ -268,6 +276,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
                 )}
               </aside>
             </div>
+            </>}
           </div>
         )}
       </DialogContent>

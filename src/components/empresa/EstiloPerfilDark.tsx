@@ -119,7 +119,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
       const lista = ((ps ?? []) as P[]).reverse().filter((p) => !perfil.conversa_zerada_em || p.criado_em > perfil.conversa_zerada_em);
       const encaminhados = new Set(lista.map((p) => p.encaminhado_id).filter((x): x is string => !!x));   // mensagens que o Lauro recebeu como pedido (o texto já aparece como você escreveu)
       const m: Msg[] = [intro(perfil.nome)];
-      for (const p of lista) { if (!encaminhados.has(p.id)) m.push({ papel: "user", texto: p.mensagem }); if (p.status === "respondido" && p.resposta) m.push({ papel: "assistant", texto: p.resposta }); }
+      for (const p of lista) { if (!encaminhados.has(p.id)) m.push({ papel: "user", texto: p.mensagem.startsWith("NOVO ROTEIRO") ? `📄 ${p.mensagem.split("\n")[0]}` : p.mensagem }); if (p.status === "respondido" && p.resposta) m.push({ papel: "assistant", texto: p.resposta }); }
       setMsgs(m);
       for (const p of lista) if ((p.status === "pendente" || p.status === "processando") && Date.now() - new Date(p.criado_em).getTime() < 30 * 60_000) void aguardar(p.id, perfil.id);
     })();
