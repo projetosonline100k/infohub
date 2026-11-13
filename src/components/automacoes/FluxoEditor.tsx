@@ -73,8 +73,10 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
 const tipos = { bloco: BlocoFluxo };
 const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
-export function FluxoEditor({ aberto, fluxo, contaNome, numeros, onFechar, onSalvar }: {
-  aberto: boolean; fluxo: FluxoInstagram | null; contaNome: string; numeros: Record<string, NumerosDoNo>;
+export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
+
+export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFechar, onSalvar }: {
+  aberto: boolean; fluxo: FluxoInstagram | null; inicial?: RascunhoFluxo | null; contaNome: string; numeros: Record<string, NumerosDoNo>;
   onFechar: () => void; onSalvar: (f: Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">, id?: string) => Promise<void>;
 }) {
   const [nome, setNome] = useState("");
@@ -90,11 +92,14 @@ export function FluxoEditor({ aberto, fluxo, contaNome, numeros, onFechar, onSal
 
   useEffect(() => {
     if (!aberto) return;
-    setNome(fluxo?.nome ?? "Novo fluxo"); setAtivo(fluxo?.ativo ?? false);
-    setGatilhos(fluxo?.gatilhos ?? ["comentario"]); setPalavras((fluxo?.palavras_chave ?? []).join(", "));
-    setExata(fluxo?.correspondencia === "exata"); setRespostas((fluxo?.respostas_comentario ?? []).join("\n"));
-    setGrafo(fluxo?.grafo?.nos?.length ? fluxo.grafo : grafoVazio()); setSel(null);
-  }, [aberto, fluxo]);
+    // Automação nova já nasce com o gatilho ligado a uma primeira mensagem (como o ManyChat): é só escrever.
+    const base: RascunhoFluxo = fluxo ?? inicial ?? {};
+    setNome(base.nome ?? "Nova automação"); setAtivo(fluxo?.ativo ?? false);
+    setGatilhos(base.gatilhos ?? ["comentario"]); setPalavras((base.palavras_chave ?? []).join(", "));
+    setExata(base.correspondencia === "exata"); setRespostas((base.respostas_comentario ?? []).join("\n"));
+    setGrafo(base.grafo?.nos?.length ? base.grafo : { nos: [{ id: "inicio", tipo: "inicio", x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem", x: 360, y: 0, dados: { texto: "" } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] });
+    setSel(fluxo || inicial?.grafo ? null : "m1");
+  }, [aberto, fluxo, inicial]);
 
   const problemas = useMemo(() => problemasDoFluxo(grafo), [grafo]);
   const porNo = useMemo(() => { const m = new Map<string, string[]>(); for (const p of problemas) if (p.no) m.set(p.no, [...(m.get(p.no) ?? []), p.texto]); return m; }, [problemas]);
@@ -149,7 +154,7 @@ export function FluxoEditor({ aberto, fluxo, contaNome, numeros, onFechar, onSal
     }
     setSalvando(true);
     try {
-      await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: exata ? "exata" : "contem", media_ids: fluxo?.media_ids ?? null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo }, fluxo?.id);
+      await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: exata ? "exata" : "contem", media_ids: fluxo?.media_ids ?? inicial?.media_ids ?? null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo }, fluxo?.id);
       setAtivo(quer); toast.success(quer ? "Fluxo salvo e ativo" : "Fluxo salvo (desativado)"); onFechar();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Não consegui salvar"); } finally { setSalvando(false); }
   };

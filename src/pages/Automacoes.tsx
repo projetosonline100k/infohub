@@ -11,7 +11,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { AutomacaoDialog } from "@/components/automacoes/AutomacaoDialog";
 import { AutomacoesResultados } from "@/components/automacoes/AutomacoesResultados";
 import { ConectarContaDialog } from "@/components/automacoes/ConectarContaDialog";
-import { FluxoEditor } from "@/components/automacoes/FluxoEditor";
+import { FluxoEditor, type RascunhoFluxo } from "@/components/automacoes/FluxoEditor";
 import { useInstagramFluxos, type FluxoInstagram } from "@/hooks/useInstagramFluxos";
 import { GATILHOS } from "@/lib/automacoes/instagram";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,7 @@ export default function Automacoes() {
   const [dialogAberto, setDialogAberto] = useState(false);
   const [atualizando, setAtualizando] = useState(false);
   const fluxosDaConta = useInstagramFluxos(conta?.ig_user_id);
-  const [fluxoAberto, setFluxoAberto] = useState<{ fluxo: FluxoInstagram | null } | null>(null);
+  const [fluxoAberto, setFluxoAberto] = useState<{ fluxo: FluxoInstagram | null; inicial?: RascunhoFluxo; converterDe?: string } | null>(null);
 
   const nomePorId = useMemo(() => new Map(automacoes.map((a) => [a.id, a.nome])), [automacoes]);
   const hoje = new Date().toDateString();
@@ -38,6 +38,18 @@ export default function Automacoes() {
   const comErro = disparos.filter((d) => d.dm_status === "erro").length;
 
   const abrir = (a: InstagramAutomacao | null) => { setEditando(a); setDialogAberto(true); };
+
+  const converter = (a: InstagramAutomacao) => setFluxoAberto({
+    fluxo: null, converterDe: a.id,
+    inicial: { nome: a.nome, gatilhos: a.gatilhos, palavras_chave: a.palavras_chave, correspondencia: a.correspondencia === "exata" ? "exata" : "contem", media_ids: a.media_ids, respostas_comentario: a.respostas_comentario,
+      grafo: { nos: [{ id: "inicio", tipo: "inicio", x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem", x: 360, y: 0, dados: { texto: a.mensagem_dm } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] } },
+  });
+  // Convertida em fluxo: a automação simples é pausada (não apagada) para a pessoa não receber a mensagem em dobro.
+  const salvarFluxo: typeof fluxosDaConta.salvar = async (form, id) => {
+    await fluxosDaConta.salvar(form, id);
+    const origem = fluxoAberto?.converterDe && automacoes.find((x) => x.id === fluxoAberto.converterDe);
+    if (origem && origem.ativo && form.ativo) { await alternar(origem); toast.info("A automação simples foi pausada: o fluxo assumiu a palavra."); }
+  };
 
   const remover = async (a: InstagramAutomacao) => {
     if (!(await confirmar(`Apagar a automação “${a.nome}”? O histórico de disparos fica.`, { botao: "Apagar", destrutivo: true }))) return;
@@ -65,7 +77,7 @@ export default function Automacoes() {
           <Button variant="outline" size="icon" onClick={atualizar} aria-label="Atualizar" title="Atualizar">
             <RefreshCw className={cn("h-4 w-4", atualizando && "animate-spin")} />
           </Button>
-          <Button onClick={() => abrir(null)} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Nova automação</Button>
+          <Button onClick={() => setFluxoAberto({ fluxo: null })} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Nova automação</Button>
         </div>
       </div>
 
@@ -112,8 +124,8 @@ export default function Automacoes() {
         </Card>
         <Card className="p-4">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ativas</p>
-          <p className="mt-1 text-2xl font-bold">{automacoes.filter((a) => a.ativo).length}</p>
-          <p className="text-xs text-muted-foreground">de {automacoes.length} criada{automacoes.length === 1 ? "" : "s"} · sem limite</p>
+          <p className="mt-1 text-2xl font-bold">{automacoes.filter((a) => a.ativo).length + fluxosDaConta.fluxos.filter((f) => f.ativo).length}</p>
+          <p className="text-xs text-muted-foreground">de {automacoes.length + fluxosDaConta.fluxos.length} criada{automacoes.length + fluxosDaConta.fluxos.length === 1 ? "" : "s"} · sem limite</p>
         </Card>
       </div>
 
@@ -121,7 +133,6 @@ export default function Automacoes() {
         <TabsList>
           <TabsTrigger value="resultados">Resultados</TabsTrigger>
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
-          <TabsTrigger value="fluxos">Fluxos{fluxosDaConta.fluxos.length > 0 && <span className="ml-1.5 rounded-full bg-primary/15 px-1.5 text-[10px] text-primary">{fluxosDaConta.fluxos.length}</span>}</TabsTrigger>
           <TabsTrigger value="historico">
             Histórico{comErro > 0 && <span className="ml-1.5 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{comErro}</span>}
           </TabsTrigger>
@@ -131,21 +142,10 @@ export default function Automacoes() {
           <AutomacoesResultados automacoes={automacoes} disparos={disparos} />
         </TabsContent>
 
-        <TabsContent value="fluxos" className="mt-4 space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="max-w-2xl text-sm text-muted-foreground">Uma conversa em etapas: a pessoa comenta a palavra, recebe a primeira mensagem com botões e o fluxo segue pelo caminho que ela escolher, com esperas e condições.</p>
-            <Button onClick={() => setFluxoAberto({ fluxo: null })} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Novo fluxo</Button>
-          </div>
-          {fluxosDaConta.loading ? <div className="flex h-24 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
-            : fluxosDaConta.fluxos.length === 0 ? (
-              <Card className="flex flex-col items-center gap-3 p-10 text-center">
-                <GitBranch className="h-8 w-8 text-muted-foreground" />
-                <div><p className="font-medium">Nenhum fluxo ainda</p><p className="text-sm text-muted-foreground">Monte blocos de mensagem, espera e condição, ligados por setas, como no ManyChat.</p></div>
-                <Button onClick={() => setFluxoAberto({ fluxo: null })} disabled={!conta}><Plus className="mr-1.5 h-4 w-4" /> Criar o primeiro fluxo</Button>
-              </Card>
-            ) : (
-              <div className="grid gap-3 md:grid-cols-2">
-                {fluxosDaConta.fluxos.map((f) => {
+        <TabsContent value="automacoes" className="mt-4 space-y-3">
+          {fluxosDaConta.fluxos.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2">
+              {fluxosDaConta.fluxos.map((f) => {
                   const p = fluxosDaConta.numeros.pessoas[f.id] ?? { total: 0, fim: 0, erro: 0 };
                   return (
                     <Card key={f.id} className="space-y-3 p-4">
@@ -167,20 +167,17 @@ export default function Automacoes() {
                       </div>
                     </Card>);
                 })}
-              </div>)}
-        </TabsContent>
-
-        <TabsContent value="automacoes" className="mt-4">
-          {automacoes.length === 0 ? (
+            </div>)}
+          {automacoes.length === 0 && fluxosDaConta.fluxos.length === 0 ? (
             <Card className="flex flex-col items-center gap-3 p-10 text-center">
               <Zap className="h-8 w-8 text-muted-foreground" />
               <div>
                 <p className="font-medium">Nenhuma automação ainda</p>
                 <p className="text-sm text-muted-foreground">Crie aqui ou diga ao Claude: “cria a palavra QUERO mandando o link X”.</p>
               </div>
-              <Button onClick={() => abrir(null)}><Plus className="mr-1.5 h-4 w-4" /> Criar a primeira</Button>
+              <Button onClick={() => setFluxoAberto({ fluxo: null })}><Plus className="mr-1.5 h-4 w-4" /> Criar a primeira</Button>
             </Card>
-          ) : (
+          ) : automacoes.length === 0 ? null : (
             <div className="grid gap-3 md:grid-cols-2">
               {automacoes.map((a) => (
                 <Card key={a.id} className={cn("flex flex-col gap-3 p-4", !a.ativo && "opacity-60")}>
@@ -216,6 +213,7 @@ export default function Automacoes() {
                       )}
                     </div>
                     <div className="flex shrink-0">
+                      <Button variant="ghost" size="icon" aria-label="Abrir no editor de fluxo" title="Abrir no editor de fluxo (blocos, botões, esperas)" onClick={() => converter(a)}><GitBranch className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" aria-label="Editar" onClick={() => abrir(a)}><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" aria-label="Apagar" onClick={() => remover(a)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
@@ -268,8 +266,8 @@ export default function Automacoes() {
         </TabsContent>
       </Tabs>
 
-      <FluxoEditor aberto={!!fluxoAberto} fluxo={fluxoAberto?.fluxo ?? null} contaNome={conta ? `@${conta.username ?? conta.ig_user_id}` : ""} numeros={fluxoAberto?.fluxo ? fluxosDaConta.numeros.porNo[fluxoAberto.fluxo.id] ?? {} : {}}
-        onFechar={() => setFluxoAberto(null)} onSalvar={fluxosDaConta.salvar} />
+      <FluxoEditor aberto={!!fluxoAberto} fluxo={fluxoAberto?.fluxo ?? null} inicial={fluxoAberto?.inicial ?? null} contaNome={conta ? `@${conta.username ?? conta.ig_user_id}` : ""} numeros={fluxoAberto?.fluxo ? fluxosDaConta.numeros.porNo[fluxoAberto.fluxo.id] ?? {} : {}}
+        onFechar={() => setFluxoAberto(null)} onSalvar={salvarFluxo} />
       <ConectarContaDialog aberto={conectarAberto} onFechar={() => { setConectarAberto(false); recarregar(); }} />
 
       <AutomacaoDialog
