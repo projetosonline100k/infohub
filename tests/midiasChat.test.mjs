@@ -26,3 +26,8 @@ test('não repete a mesma mídia e ignora links da internet e outros tipos de ar
   const r = midiasDoTexto('~/.infopro-hub/e/a.png e de novo ~/.infopro-hub/e/a.png; https://site.com/b.png e ~/.infopro-hub/e/gerar.py');
   assert.deepEqual(r.midias.map((m) => m.caminho), ['~/.infopro-hub/e/a.png']);
 });
+
+test('áudio (mp3, wav, m4a…) também aparece, como no caso da voz do roteiro', () => {
+  const r = midiasDoTexto('Ouça a amostra em ~/.infopro-hub/exemplos/insta-insights/voz_idoso_amostra.mp3 e o roteiro completo em ~/.infopro-hub/exemplos/insta-insights/voz_idoso.mp3. Também voz.wav.');
+  assert.deepEqual(r.midias.map((m) => [m.nome, m.tipo]), [['voz_idoso_amostra.mp3', 'audio'], ['voz_idoso.mp3', 'audio'], ['voz.wav', 'audio']]);
+});

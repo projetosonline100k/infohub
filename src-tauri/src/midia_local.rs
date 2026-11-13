@@ -1,8 +1,8 @@
-//! Mostra no app as imagens e vídeos que o Lauro gera no Mac (12/11/2026, Davi: "preciso que eu consiga ver o vídeo e as imagens que ele vai gerar").
+//! Mostra no app as imagens, vídeos e áudios que o Lauro gera no Mac (12/11/2026, Davi: "preciso que eu consiga ver o vídeo e as imagens que ele vai gerar").
 //! Só lê arquivos de mídia de dentro de ~/.infopro-hub (nada fora dessa pasta), até 150 MB.
 use std::path::PathBuf;
 
-const EXTENSOES: [&str; 10] = ["png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "webm", "m4v", "svg"];
+const EXTENSOES: [&str; 16] = ["png", "jpg", "jpeg", "webp", "gif", "mp4", "mov", "webm", "m4v", "svg", "mp3", "wav", "m4a", "aac", "ogg", "opus"];
 const LIMITE: u64 = 150 * 1024 * 1024;
 
 #[tauri::command]
