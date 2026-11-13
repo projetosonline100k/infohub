@@ -146,7 +146,9 @@ fn programa_do_ouvinte() -> String {
 #[tauri::command]
 pub fn lauro_liberar_mac(painel: String) -> Result<String, String> {
     use std::io::Write;
-    let programa = programa_do_ouvinte();
+    // O macOS atribui a permissão ao APP (…/Python.app), não ao executável solto de dentro dele: é o app que vai na lista.
+    let executavel = programa_do_ouvinte();
+    let programa = match executavel.find(".app/") { Some(i) => executavel[..i + 4].to_string(), None => executavel };
     let url = match painel.as_str() {
         "acessibilidade" => "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
         "tela" => "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
