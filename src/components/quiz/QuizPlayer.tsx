@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
 import { Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
+import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -370,10 +371,50 @@ function GraficoCurva({ barras, aqui, cor }: { barras: BarraFixa[]; aqui?: strin
   );
 }
 
+// Som curto e leve de "fase concluída" (duas notas). Web Audio: só toca depois do primeiro toque e o iPhone
+// respeita o modo silencioso; qualquer falha é ignorada.
+function somFaseConcluida() {
+  try {
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    if (ctx.state === "suspended") void ctx.resume();
+    [[784, 0], [1175, 0.11]].forEach(([freq, atraso]) => {
+      const osc = ctx.createOscillator(), g = ctx.createGain(), t = ctx.currentTime + atraso;
+      osc.type = "sine"; osc.frequency.value = freq;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t); osc.stop(t + 0.32);
+    });
+    setTimeout(() => void ctx.close().catch(() => {}), 800);
+  } catch { /* sem som */ }
+}
+
+// Confete rápido (~1,2 s) do alto da tela, sem pegar eventos de toque; sem confete se a pessoa pediu menos movimento.
+function confeteFase() {
+  try {
+    void confetti({ particleCount: 60, spread: 70, startVelocity: 32, gravity: 1.3, ticks: 70, scalar: 0.9, origin: { x: 0.5, y: 0.12 }, colors: ["#fbbf24", "#f59e0b", "#34d399", "#60a5fa", "#f472b6"], disableForReducedMotion: true, zIndex: 60 });
+  } catch { /* sem confete */ }
+}
+
 // Barra de progresso por fases, como a do 12min: "← Voltar" arredondado, a marca no meio e uma linha com uma
 // bolinha por fase (✓ nas que já passaram, anel escuro na atual) e o nome da fase embaixo.
-function BarraFases({ fases, atual, frac, cor, escuro, onVoltar }: { fases: string[]; atual: number; frac: number; cor: string; escuro: boolean; onVoltar?: () => void }) {
+function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, onVoltar }: { fases: string[]; atual: number; frac: number; cor: string; escuro: boolean; comemorar?: boolean; onVoltar?: () => void }) {
   const n = fases.length;
+  // Ao entrar numa fase mais adiante, a bolinha da anterior vira estrela com confete e som (voltar não comemora).
+  const maior = useRef(atual);
+  const [recem, setRecem] = useState(-1);
+  useEffect(() => {
+    if (atual <= maior.current) return;
+    maior.current = atual;
+    if (!comemorar) return;
+    setRecem(atual - 1);
+    confeteFase(); somFaseConcluida();
+    const t = setTimeout(() => setRecem(-1), 900);
+    return () => clearTimeout(t);
+  }, [atual, comemorar]);
   const fill = Math.min(100, ((atual + frac) / n) * 100);
   const claro = escuro ? "rgba(255,255,255,.14)" : `${cor}26`;
   return (
@@ -393,8 +434,10 @@ function BarraFases({ fases, atual, frac, cor, escuro, onVoltar }: { fases: stri
             const feito = i < atual, ativo = i === atual;
             return (
               <span key={nome} className="absolute top-1/2 flex h-5 w-5 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] transition-colors duration-500"
-                style={{ left: `${((i + 1) / n) * 100}%`, borderColor: feito || ativo ? cor : `${cor}55`, background: feito ? cor : escuro ? "#0a0a0a" : "#fff" }}>
-                {feito && <Check className="h-3 w-3 text-white" strokeWidth={4} />}
+                style={{ left: `${((i + 1) / n) * 100}%`, borderColor: feito && comemorar ? "transparent" : feito || ativo ? cor : `${cor}55`, background: feito && comemorar ? "transparent" : feito ? cor : escuro ? "#0a0a0a" : "#fff" }}>
+                {feito && (comemorar
+                  ? <Star className={cn("h-6 w-6 shrink-0 fill-amber-400 text-amber-500", recem === i && "motion-safe:animate-estrela-pula")} strokeWidth={2} />
+                  : <Check className="h-3 w-3 text-white" strokeWidth={4} />)}
               </span>
             );
           })}
@@ -581,7 +624,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           </div>
         )}
         {passo.tipo !== "intro" && passo.tipo !== "fim" && fasesInfo ? (
-          <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
+          <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} comemorar={e.fases_comemorar !== false} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
         ) : passo.tipo !== "intro" && passo.tipo !== "fim" ? (
           <div className={cn("h-2 shrink-0 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progresso}%`, background: cor, boxShadow: `0 0 12px ${cor}` }} />

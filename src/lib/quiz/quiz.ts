@@ -100,6 +100,8 @@ export interface EstruturaQuiz {
   tema?: "claro" | "escuro";
   /** Barra de progresso por fases (como a do 12min): cada fase começa na pergunta/tela de id `de` (a 1ª fase começa na primeira tela). */
   fases?: { nome: string; de: string }[];
+  /** Estrela + confete + som ao concluir cada fase (padrão: liga; `false` desliga). */
+  fases_comemorar?: boolean;
   /** Sem tela de perfil: depois do plano vem direto a oferta (Davi, 10/11: "não existe perfil na minha copy"). */
   sem_resultado?: boolean;
 }

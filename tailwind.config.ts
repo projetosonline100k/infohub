@@ -121,6 +121,12 @@ export default {
           "75%": { transform: "translateY(0) scale(0.97, 1.04)" },
           "100%": { transform: "translateY(0) scale(1)", opacity: "1" },
         },
+        // Estrela da fase concluída: pula e brilha uma vez.
+        "estrela-pula": {
+          "0%": { transform: "scale(0.3) rotate(-30deg)", opacity: "0" },
+          "55%": { transform: "scale(1.5) rotate(12deg)", opacity: "1", filter: "drop-shadow(0 0 8px #fbbf24)" },
+          "100%": { transform: "scale(1) rotate(0)", opacity: "1", filter: "drop-shadow(0 0 0 #fbbf24)" },
+        },
         "mascote-flutua": {
           "0%, 100%": { transform: "translateY(0) rotate(-1.2deg) scale(1, 1)" },
           "50%": { transform: "translateY(-7px) rotate(1.2deg) scale(0.995, 1.015)" },
@@ -199,6 +205,7 @@ export default {
         "paraquedas-balanca": "paraquedas-balanca 1.6s ease-in-out infinite",
         "paraquedas-some": "paraquedas-some 0.35s ease-in forwards",
         "mascote-entra": "mascote-entra 0.8s cubic-bezier(0.34, 1.4, 0.64, 1) both",
+        "estrela-pula": "estrela-pula 0.7s cubic-bezier(0.34, 1.4, 0.64, 1) both",
         "mascote-flutua": "mascote-flutua 4.5s ease-in-out 0.8s 1",
         "mascote-sombra": "mascote-sombra 4.5s ease-in-out 0.8s 1",
         "balao-entra": "balao-entra 0.45s ease-out 0.7s both",
