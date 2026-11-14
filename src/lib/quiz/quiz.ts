@@ -46,6 +46,7 @@ export interface TelaQuiz {
   citacao?: { texto: string; autor?: string };
   grafico?: { titulo?: string; barras: BarraFixa[]; tipo?: "curva"; aqui?: string };   // curva: linha subindo mês a mês, com "você está aqui" no 1º ponto
   loop?: string[];            // quadros que se alternam em sequência (ex.: o mascote de fone fazendo várias coisas)
+  imagem_cheia?: boolean;     // `imagem` inteira (sem recorte, sem animação), na largura da coluna; vale mesmo com `animada` (os quadros seguem servindo ao mascote das outras telas)
   imagem_mascote?: boolean;   // imagem do mascote inteira (sem recorte), com pulinho de empolgado
   mapa?: { pontos: [number, number][] };   // mapa com setas ligando os pontos (% da imagem)
   pausas?: { pct: number; texto: string; opcoes: string[] }[];   // carregando: perguntas que param o carregamento
