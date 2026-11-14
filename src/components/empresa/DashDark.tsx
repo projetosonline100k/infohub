@@ -59,8 +59,9 @@ const CHIP: Record<Etapa, { Icone: typeof Layers; cor: string }> = {
 const PONTO: Record<EtapaEsteira, string> = { fila: "bg-white/40", criando: "bg-yellow-400", edicao: "bg-sky-400", revisao: "bg-violet-400", pronto: "bg-emerald-400", programado: "bg-cyan-400", postado: "bg-white/50", cancelado: "bg-white/20" };
 const painel = "rounded-2xl border border-white/10 bg-gradient-to-br from-[#0c1b27] to-[#08121c]";
 
-export function DashDark({ membro, aberto, onFechar, onConversar }: {
+export function DashDark({ membro, aberto, onFechar, onConversar, escritorioId = null }: {
   membro: MembroResumo | null; aberto: boolean; onFechar: () => void; onConversar: () => void;
+  escritorioId?: string | null;   // o projeto do escritório onde este Lauro mora: o dash lista só os perfis dele (14/11)
 }) {
   const [edicoes, setEdicoes] = useState<EdicaoDark[] | null>(null);
   const [tarefas, setTarefas] = useState<TarefaLauro[]>([]);
@@ -82,10 +83,13 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
     setEdicoes(null); setErro(false); setHistorico(false);
     (async () => {
       // Os perfis do dash são criados aqui (Davi, 12/11: "criar do zero"); os vídeos de um perfil vêm do projeto ligado a ele, se tiver.
-      const { data: reg, error: erroReg } = await db.from("esteira_dark_perfis").select("id, nome, arroba, cliente_id, estilo, conversa_zerada_em, modo_vivo").order("criado_em");
+      const { data: reg, error: erroReg } = await db.from("esteira_dark_perfis").select("id, nome, arroba, cliente_id, escritorio_cliente_id, estilo, conversa_zerada_em, modo_vivo").order("criado_em");
       if (!vivo) return;
       if (erroReg) { setErro(true); return; }
-      const perfisReg = (reg || []) as PerfilDark[];
+      const todosReg = (reg || []) as PerfilDark[];
+      // Cada escritório tem o seu Lauro e os seus perfis; os dos outros só servem para copiar o estilo ao criar um novo.
+      const perfisReg = todosReg.filter((p) => (p.escritorio_cliente_id ?? null) === escritorioId);
+      setOutrosPerfis(todosReg.filter((p) => (p.escritorio_cliente_id ?? null) !== escritorioId));
       setCadastrados(perfisReg);
       const ligados = [...new Set(perfisReg.map((p) => p.cliente_id).filter((x): x is string => !!x))];
       const { data: eds, error } = ligados.length
@@ -112,21 +116,25 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
       setTarefas((tar.data || []) as TarefaLauro[]);
     })();
     return () => { vivo = false; };
-  }, [aberto, membro, recarga]);
+  }, [aberto, membro, recarga, escritorioId]);
 
   const hoje = hojeBrasilia();
   const resumo = useMemo(() => (edicoes ? resumirEsteira(edicoes, hoje, cadastrados.map((p) => ({ id: p.id, perfil: p.nome, cliente_id: p.cliente_id }))) : null), [edicoes, hoje, cadastrados]);
   const perfis = useMemo(() => (resumo ? ordenarPerfis(resumo.porPerfil, ordem) : []), [resumo, ordem]);
   const parados = edicoes ? prontosParados(edicoes, hoje, new Date()) : 0;
   const atividade = useMemo(() => (edicoes ? atividadeRecente(edicoes, hoje, historico ? 30 : 5) : []), [edicoes, hoje, historico]);
+  const [outrosPerfis, setOutrosPerfis] = useState<PerfilDark[]>([]);
+  const [copiarDe, setCopiarDe] = useState("");
   const criarPerfil = async () => {
     const nome = nomeNovo.trim();
     if (!nome || criandoPerfil) return;
     setCriandoPerfil(true);
-    const { data, error } = await db.from("esteira_dark_perfis").insert({ nome: nome.slice(0, 80) }).select("id").single();
+    const origem = [...cadastrados, ...outrosPerfis].find((p) => p.id === copiarDe);
+    const estiloCopiado = origem?.estilo && typeof origem.estilo === "object" ? origem.estilo : null;   // o estilo (e a voz) de um perfil que já existe: não começa do zero
+    const { data, error } = await db.from("esteira_dark_perfis").insert({ nome: nome.slice(0, 80), escritorio_cliente_id: escritorioId, ...(estiloCopiado ? { estilo: estiloCopiado } : {}) }).select("id").single();
     setCriandoPerfil(false);
     if (error || !data) { toast.error(/duplicate|unique|23505/i.test(`${error?.message} ${error?.code}`) ? "Já existe um perfil com esse nome." : "Não consegui criar o perfil"); return; }
-    setNovoAberto(false); setNomeNovo(""); setRecarga((n) => n + 1);
+    setNovoAberto(false); setNomeNovo(""); setCopiarDe(""); setRecarga((n) => n + 1);
     setPerfilAberto((data as { id: string }).id);   // já abre a ficha para cadastrar o estilo do vídeo
   };
   const subirBanco = async () => {
@@ -284,6 +292,12 @@ export function DashDark({ membro, aberto, onFechar, onConversar }: {
         <DialogContent className="dark max-w-sm border-white/10 bg-[#0c1b27] text-white">
           <DialogHeader><DialogTitle>Novo perfil</DialogTitle><DialogDescription className="text-white/55">Dê um nome. Depois você abre o perfil e cadastra o estilo do vídeo dele.</DialogDescription></DialogHeader>
           <input autoFocus value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void criarPerfil(); }} placeholder="Nome do perfil" className="w-full rounded-xl border border-white/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-amber-200/60" />
+          <label className="block space-y-1 text-xs text-white/60">Copiar o estilo de (opcional)
+            <select value={copiarDe} onChange={(e) => setCopiarDe(e.target.value)} className="w-full rounded-xl border border-white/15 bg-[#0a1520] px-3 py-2 text-sm text-white">
+              <option value="">Começar do zero</option>
+              {[...cadastrados, ...outrosPerfis].map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+            </select>
+            <span className="text-[11px] text-white/40">Traz a descrição, o público, o gancho, a estrutura, a narração, o visual e a voz. Você ajusta depois.</span></label>
           <button type="button" disabled={!nomeNovo.trim() || criandoPerfil} onClick={() => void criarPerfil()} className="flex items-center justify-center gap-2 rounded-xl bg-[#f3c98b] py-2.5 text-sm font-bold text-black disabled:opacity-40">{criandoPerfil ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}Criar perfil</button>
         </DialogContent>
       </Dialog>

@@ -879,7 +879,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })} />
         </Suspense>
       )}
-      <DashDark membro={dashDark} aberto={!!dashDark} onFechar={() => setDashDark(null)}
+      <DashDark membro={dashDark} aberto={!!dashDark} onFechar={() => setDashDark(null)} escritorioId={clienteId}
         onConversar={() => { if (dashDark) conversarCom(dashDark.id); setDashDark(null); }} />
       <AoVivoTarefa alvo={aoVivo} onFechar={() => setAoVivo(null)} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />

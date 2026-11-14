@@ -17,7 +17,7 @@ const db = supabase as unknown as SupabaseClient;
 // Perfil da esteira dark (12/11/2026, Davi: "precisa ser conversa estilo chat e a gente vai montando o estilo que vamos querer para o vídeo").
 // Esquerda: conversa com o Lauro (sessão contínua, ele lembra de tudo; abre links de referência). Direita: o estilo, que a conversa vai preenchendo
 // e que você também pode editar à mão (salva sozinho). O estilo fica em esteira_dark_perfis.estilo: é daqui que o Lauro e o Danilo leem como o vídeo deve ser.
-export interface PerfilDark { id: string; nome: string; arroba: string | null; cliente_id: string | null; estilo: unknown; conversa_zerada_em: string | null; modo_vivo?: boolean }
+export interface PerfilDark { id: string; nome: string; arroba: string | null; cliente_id: string | null; escritorio_cliente_id?: string | null; estilo: unknown; conversa_zerada_em: string | null; modo_vivo?: boolean }
 type Msg = { papel: "user" | "assistant"; texto: string };
 
 const CAMPOS: { chave: Exclude<keyof EstiloDark, "referencias" | "voz">; rotulo: string; linhas?: number }[] = [
