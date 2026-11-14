@@ -170,11 +170,11 @@ def _gravar_raciocinio(q, cv, lead_disse, partes):
                  VALUES (%s, %s, %s, %s, %s, %s)""", (cv["id"], cv["resposta_id"], cv["cliente_id"], (lead_disse or "")[:2000] or None, r[:4000], [p[:2000] for p in partes]))
 
 
-def _escrever(rodar_claude, log, conversa, config, lead, historico, mensagem, abertura):
+def _escrever(rodar_claude, log, conversa, config, lead, historico, mensagem, abertura, extra=""):
     p = {"id": conversa["id"], "tipo": "simular", "mensagem": mensagem, "historico": historico, "config_atual": config, "cliente_id": str(conversa["cliente_id"]),
          "contexto": {"origem": "x1", "iniciar": abertura, "quiz_id": str(conversa["quiz_id"]), "lead": lead}}
     alvo = None if abertura else agente_whatsapp._alvo(p)
-    ok, texto = rodar_claude(agente_whatsapp._prompt(p, alvo) + PEDIDO_RACIOCINIO, minutos=4, turnos=3, ferramentas=["Read"])
+    ok, texto = rodar_claude(agente_whatsapp._prompt(p, alvo) + extra + PEDIDO_RACIOCINIO, minutos=4, turnos=3, ferramentas=["Read"])
     if not ok or not texto.strip():
         return None
     texto, conversa["_raciocinio"] = separar_raciocinio(texto)
@@ -185,10 +185,117 @@ def _escrever(rodar_claude, log, conversa, config, lead, historico, mensagem, ab
     return texto.strip()
 
 
+def _exige_aprovacao(q, cliente_id):
+    q.execute("SELECT exigir_aprovacao FROM public.agentes_whatsapp WHERE cliente_id = %s", (cliente_id,))
+    r = q.fetchone()
+    return True if not r else bool(r[0])
+
+
+def _criar_proposta(q, cv, tipo, lead_disse, partes, cursor_novo=None, recebidas_novas=0):
+    """Aprovação (14/11, Davi: "ele mostra a mensagem que vai mandar; eu aprovo e ele dispara"): o agente grava a proposta em vez de enviar."""
+    q.execute("""INSERT INTO public.x1_agente_propostas (conversa_id, resposta_id, cliente_id, tipo, lead_disse, raciocinio, mensagens, cursor_novo, recebidas_novas)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+              (cv["id"], cv["resposta_id"], cv["cliente_id"], tipo, (lead_disse or "")[:2000] or None, (cv.get("_raciocinio") or "").strip()[:4000] or None,
+               [x[:2000] for x in partes], cursor_novo, recebidas_novas))
+    # a mesma explicação vai também para o histórico do painel
+    _gravar_raciocinio(q, cv, lead_disse, partes)
+
+
+def _carregar_conversa(q, conversa_id):
+    q.execute("""SELECT id, quiz_id, resposta_id, cliente_id, chat_id, conta, enviadas, recebidas, cursor_em, enviados_recentes, recomecou_em
+                 FROM public.x1_agente_conversas WHERE id = %s""", (conversa_id,))
+    r = q.fetchone()
+    return dict(zip(["id", "quiz_id", "resposta_id", "cliente_id", "chat_id", "conta", "enviadas", "recebidas", "cursor_em", "enviados_recentes", "recomecou_em"], r)) if r else None
+
+
+def _processar_propostas(c, q, rodar_claude, log):
+    # 1) o lead escreveu depois de uma proposta de resposta: ela ficou velha, o agente refaz com tudo que ele disse
+    q.execute("""UPDATE public.x1_agente_propostas p SET status = 'substituida', atualizado_em = now()
+                   FROM public.x1_agente_conversas cv
+                  WHERE p.conversa_id = cv.id AND p.status = 'pendente' AND p.tipo = 'resposta' AND cv.estado = 'aprovacao'
+                    AND EXISTS (SELECT 1 FROM public.whatsapp_mensagens m WHERE m.conta = cv.conta AND m.chat_id = cv.chat_id AND NOT m.de_mim
+                                   AND COALESCE(m.enviada_em, m.recebida_em) > p.criado_em)
+              RETURNING p.conversa_id""")
+    for (cid,) in q.fetchall():
+        q.execute("UPDATE public.x1_agente_conversas SET estado = 'conversando', trava_ate = NULL, atualizado_em = now() WHERE id = %s AND estado = 'aprovacao'", (cid,))
+        log("agente X1: proposta ficou velha (o lead escreveu), vou refazer", str(cid)[:8])
+    # 2) descartada: a conversa pausa (Retomar para ele tentar de novo)
+    q.execute("""UPDATE public.x1_agente_conversas cv SET estado = 'pausado', motivo = 'Você descartou a mensagem do agente (clique em Retomar para ele tentar de novo)', atualizado_em = now()
+                  WHERE cv.estado = 'aprovacao'
+                    AND NOT EXISTS (SELECT 1 FROM public.x1_agente_propostas p WHERE p.conversa_id = cv.id AND p.status IN ('pendente', 'aprovada', 'revisando'))
+                    AND (SELECT p.status FROM public.x1_agente_propostas p WHERE p.conversa_id = cv.id ORDER BY p.criado_em DESC LIMIT 1) = 'descartada'""")
+    c.commit()
+    # 3) aprovada: envia (marca 'enviada' antes, para nunca mandar duas vezes)
+    q.execute("""UPDATE public.x1_agente_propostas SET status = 'enviada', atualizado_em = now()
+                  WHERE id = (SELECT id FROM public.x1_agente_propostas WHERE status = 'aprovada' ORDER BY atualizado_em LIMIT 1 FOR UPDATE SKIP LOCKED)
+              RETURNING id, conversa_id, tipo, mensagens, cursor_novo, recebidas_novas, resposta_id""")
+    ap = q.fetchone()
+    c.commit()
+    if ap:
+        _id, conversa_id, tipo, mensagens, cursor_novo, recebidas_novas, resposta_id = ap
+        cv = _carregar_conversa(q, conversa_id)
+        try:
+            q.execute("SELECT config FROM public.agentes_whatsapp WHERE cliente_id = %s", (cv["cliente_id"],))
+            config = (q.fetchone() or [{}])[0] or {}
+            q.execute("SELECT whatsapp_conta FROM public.clientes WHERE id = %s", (cv["cliente_id"],))
+            conta = (q.fetchone() or [None])[0] or cv["conta"] or "principal"
+            partes = [m for m in (mensagens or []) if m and m.strip()]
+            log("agente X1: enviando a proposta aprovada", str(conversa_id)[:8], f"({len(partes)} mensagem(ns))")
+            partes = enviar_partes(conta, cv["chat_id"], partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, cv["chat_id"], cv))
+            _registrar(q, cv, partes, "Agente")
+            agora = datetime.now(timezone.utc)
+            _atualizar(q, conversa_id, estado="conversando", conta=conta, enviadas=cv["enviadas"] + len(partes), recebidas=cv["recebidas"] + (recebidas_novas or 0),
+                       cursor_em=cursor_novo or agora, enviados_recentes=(list(cv["enviados_recentes"] or []) + [normalizar(x) for x in partes])[-20:], ultima_acao_em=agora, motivo=None)
+            if tipo == "abertura":
+                q.execute("UPDATE public.quiz_respostas SET status = 'em_contato' WHERE id = %s AND status = 'novo'", (resposta_id,))
+        except Exception as e:  # noqa: BLE001
+            c.rollback()
+            log("agente X1: erro ao enviar a proposta —", repr(e)[:200])
+            _atualizar(q, conversa_id, estado="erro", motivo=f"Não consegui enviar a mensagem aprovada: {e}"[:300])
+        c.commit()
+        return
+    # 4) pedido de ajuste: o agente reescreve e a proposta volta a ficar pendente
+    q.execute("""SELECT id, conversa_id, tipo, lead_disse, mensagens, ajustes, instrucao, versao FROM public.x1_agente_propostas
+                  WHERE status = 'revisando' ORDER BY atualizado_em LIMIT 1""")
+    rv = q.fetchone()
+    c.commit()
+    if not rv:
+        return
+    pid, conversa_id, tipo, lead_disse, mensagens, ajustes, instrucao, versao = rv
+    cv = _carregar_conversa(q, conversa_id)
+    q.execute("SELECT config FROM public.agentes_whatsapp WHERE cliente_id = %s", (cv["cliente_id"],))
+    config = (q.fetchone() or [{}])[0] or {}
+    lead = _contexto_lead(q, cv["resposta_id"]) or {}
+    ajustes = list(ajustes or [])
+    log("agente X1: ajustando a proposta", str(pid)[:8], "—", (instrucao or "")[:60])
+    extra = ("\n\nREVISÃO PEDIDA PELO DAVI: antes de enviar, ele revisa a sua mensagem. Você tinha proposto:\n" + "\n---\n".join(mensagens or [])
+             + ("\nConversa de ajuste até agora:\n" + "\n".join(f"{'Davi' if a.get('papel') == 'davi' else 'Você'}: {a.get('texto')}" for a in ajustes[-8:]) if ajustes else "")
+             + f"\nPedido novo do Davi: {instrucao}\nReescreva as mensagens aplicando o pedido (mesmo formato: mensagens separadas por ---, prontas para enviar). "
+               "Se ele só fez uma pergunta ou comentário, mantenha as mensagens iguais e responda no raciocínio. Em [[RACIOCINIO]] diga em 2 a 3 tópicos o que mudou e por quê.")
+    todas, novas_lead = _ler_chat(q, cv["conta"], cv["chat_id"], cv["cursor_em"] or datetime.now(timezone.utc), cv.get("recomecou_em")) if cv["chat_id"] else ([], [])
+    antes = historico_do_chat([(m[1], m[2]) for m in todas if m not in novas_lead]) if tipo == "resposta" else []
+    cv["_raciocinio"] = ""
+    texto = _escrever(rodar_claude, log, cv, config, lead, antes, lead_disse or "", tipo == "abertura", extra)
+    if texto:
+        partes = partes_da_resposta(re.sub(r"^\[CHAMAR_HUMANO\]\s*", "", texto))
+        ajustes += [{"papel": "davi", "texto": instrucao}, {"papel": "agente", "texto": cv.get("_raciocinio") or "Ajustei a mensagem."}]
+        q.execute("""UPDATE public.x1_agente_propostas SET mensagens = %s, raciocinio = %s, ajustes = %s::jsonb, instrucao = NULL, status = 'pendente', versao = %s, atualizado_em = now() WHERE id = %s AND status = 'revisando'""",
+                  ([x[:2000] for x in partes], (cv.get("_raciocinio") or "")[:4000] or None, json.dumps(ajustes, ensure_ascii=False), (versao or 1) + 1, pid))
+    else:
+        ajustes += [{"papel": "davi", "texto": instrucao}, {"papel": "agente", "texto": "Não consegui ajustar agora, tente de novo."}]
+        q.execute("UPDATE public.x1_agente_propostas SET ajustes = %s::jsonb, instrucao = NULL, status = 'pendente', atualizado_em = now() WHERE id = %s AND status = 'revisando'", (json.dumps(ajustes, ensure_ascii=False), pid))
+    c.commit()
+
+
 def passada(rodar_claude, log=print):
     c = connect()
     try:
         q = c.cursor()
+        try:
+            _processar_propostas(c, q, rodar_claude, log)
+        except Exception as e:  # noqa: BLE001
+            c.rollback()
+            log("agente X1: erro nas propostas —", repr(e)[:200])
         q.execute("""SELECT c.id, c.quiz_id, c.resposta_id, c.cliente_id, c.chat_id, c.conta, c.estado, c.enviadas, c.recebidas, c.cursor_em, c.enviados_recentes, c.ultima_acao_em, c.recomecou_em
                      FROM public.x1_agente_conversas c LEFT JOIN public.agentes_whatsapp a ON a.cliente_id = c.cliente_id
                      WHERE c.estado IN ('abordar', 'conversando') AND (c.trava_ate IS NULL OR c.trava_ate < now()) AND COALESCE(a.automatico, true)
@@ -266,6 +373,10 @@ def _tratar(c, q, rodar_claude, log, cv):
         if not texto:
             _atualizar(q, cv["id"], estado="erro", motivo="O agente não conseguiu escrever agora"); c.commit(); return
         partes = partes_da_resposta(re.sub(r"^\[CHAMAR_HUMANO\]\s*", "", texto))
+        if _exige_aprovacao(q, cv["cliente_id"]):
+            _criar_proposta(q, cv, "abertura", None, partes)
+            _atualizar(q, cv["id"], estado="aprovacao", chat_id=chat_id, conta=conta, motivo=None); c.commit()
+            log("agente X1: proposta de abertura esperando aprovação", str(cv["resposta_id"])[:8]); return
         partes = enviar_partes(conta, chat_id, partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, chat_id, cv))
         _registrar(q, cv, partes, "Agente")
         _gravar_raciocinio(q, cv, None, partes)
@@ -315,6 +426,10 @@ def _tratar(c, q, rodar_claude, log, cv):
                    cursor_em=ultimo_lead, recebidas=cv["recebidas"] + len(novas_lead)); c.commit()
         log("agente X1: chamou uma pessoa", str(cv["resposta_id"])[:8]); return
     partes = partes_da_resposta(texto)
+    if _exige_aprovacao(q, cv["cliente_id"]):
+        _criar_proposta(q, cv, "resposta", "\n".join(m[2] for m in novas_lead), partes, cursor_novo=ultimo_lead, recebidas_novas=len(novas_lead))
+        _atualizar(q, cv["id"], estado="aprovacao", motivo=None); c.commit()
+        log("agente X1: proposta de resposta esperando aprovação", str(cv["resposta_id"])[:8]); return
     partes = enviar_partes(conta, chat_id, partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, chat_id, cv),
                            parar=lambda: _lead_depois(q, conta, chat_id, ultimo_lead))
     _registrar(q, cv, partes, "Agente")

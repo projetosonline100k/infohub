@@ -26,8 +26,25 @@ BEGIN
   IF (SELECT cursor_em FROM public.x1_agente_conversas) IS NULL THEN RAISE EXCEPTION 'retomar deveria zerar o cursor para agora'; END IF;
   UPDATE public.x1_agente_conversas SET estado = 'abordar', motivo = '__recomecar__';
   IF (SELECT recomecou_em IS NULL OR motivo IS NOT NULL OR enviadas <> 0 OR estado <> 'abordar' FROM public.x1_agente_conversas) THEN RAISE EXCEPTION 'recomeçar não zerou a conversa'; END IF;
+  BEGIN INSERT INTO public.x1_agente_propostas(conversa_id, resposta_id, cliente_id, tipo, mensagens) SELECT id, resposta_id, cliente_id, 'abertura', '{oi}' FROM public.x1_agente_conversas; RAISE EXCEPTION 'dono criou proposta';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN INSERT INTO public.x1_agente_raciocinio(conversa_id, resposta_id, cliente_id, raciocinio) SELECT id, resposta_id, cliente_id, 'x' FROM public.x1_agente_conversas; RAISE EXCEPTION 'dono escreveu raciocínio';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
+RESET ROLE;
+INSERT INTO public.x1_agente_propostas(conversa_id, resposta_id, cliente_id, tipo, mensagens) SELECT id, resposta_id, cliente_id, 'abertura', '{oi}' FROM public.x1_agente_conversas;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000471',true);
+SET LOCAL ROLE authenticated;
+DO $$
+BEGIN
+  IF (SELECT count(*) FROM public.x1_agente_propostas) <> 1 THEN RAISE EXCEPTION 'dono não vê a proposta'; END IF;
+  UPDATE public.x1_agente_propostas SET mensagens = '{oi, tudo bem?}';
+  BEGIN UPDATE public.x1_agente_propostas SET status = 'enviada'; RAISE EXCEPTION 'dono marcou enviada';
+  EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL; END;
+  UPDATE public.x1_agente_propostas SET instrucao = 'mais curto', status = 'revisando';
+  IF (SELECT status FROM public.x1_agente_propostas) <> 'revisando' THEN RAISE EXCEPTION 'pedido de ajuste não gravou'; END IF;
+  UPDATE public.x1_agente_propostas SET status = 'aprovada';   -- já não é pendente: não pode mexer (0 linhas)
+  IF (SELECT status FROM public.x1_agente_propostas) <> 'revisando' THEN RAISE EXCEPTION 'dono mexeu em proposta que não é pendente'; END IF;
 END $$;
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000472',true);

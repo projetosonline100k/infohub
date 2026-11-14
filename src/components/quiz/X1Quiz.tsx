@@ -52,9 +52,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
   const [enviando, setEnviando] = useState(false);
   const [salvandoModelo, setSalvandoModelo] = useState<string | null>(null);   // nome sendo digitado
   const [abordando, setAbordando] = useState<string | null>(null);   // id do lead para o qual o agente está escrevendo (rascunho)
-  type ConversaAgente = { id: string; resposta_id: string; estado: "abordar" | "conversando" | "aguardando_humano" | "pausado" | "encerrado" | "erro"; motivo: string | null; enviadas: number; recebidas: number };
+  type ConversaAgente = { id: string; resposta_id: string; estado: "abordar" | "conversando" | "aprovacao" | "aguardando_humano" | "pausado" | "encerrado" | "erro"; motivo: string | null; enviadas: number; recebidas: number };
   const [agentes, setAgentes] = useState<Map<string, ConversaAgente>>(new Map());
   const [automatico, setAutomatico] = useState(true);   // chave geral do agente automático do projeto
+  const [exigirAprovacao, setExigirAprovacao] = useState(true);   // o agente mostra a mensagem e só envia depois de você aprovar
   const fim = useRef<HTMLDivElement>(null);
 
   const carregar = useCallback(async () => {
@@ -68,8 +69,9 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
     const { data: ag } = await db.from("x1_agente_conversas").select("id, resposta_id, estado, motivo, enviadas, recebidas").eq("quiz_id", quizId).limit(5000);
     setAgentes(new Map(((ag ?? []) as ConversaAgente[]).map((x) => [x.resposta_id, x])));
     if (cid) {
-      const { data: aw } = await db.from("agentes_whatsapp").select("automatico").eq("cliente_id", cid).maybeSingle();
+      const { data: aw } = await db.from("agentes_whatsapp").select("automatico, exigir_aprovacao").eq("cliente_id", cid).maybeSingle();
       setAutomatico((aw as { automatico?: boolean } | null)?.automatico !== false);
+      setExigirAprovacao((aw as { exigir_aprovacao?: boolean } | null)?.exigir_aprovacao !== false);
     }
     const { data: a } = await db.from("quiz_abordagens").select("id, resposta_id, texto, modelo, enviada_em").eq("quiz_id", quizId).order("enviada_em").limit(5000);
     setAbordagens((a ?? []) as Abordagem[]);
@@ -325,6 +327,61 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
     const t = window.setInterval(() => { if (!document.hidden) void ler(); }, 4000);
     return () => { vivo = false; window.clearInterval(t); };
   }, [leadId, temAgente]);
+  // Aprovação (14/11, Davi: "ele primeiro mostra a mensagem; eu aprovo e ele manda, ou vamos ajustando até ficar boa"): propostas do agente para este lead.
+  type Proposta = { id: string; tipo: "abertura" | "resposta"; lead_disse: string | null; raciocinio: string | null; mensagens: string[]; status: string; instrucao: string | null; ajustes: { papel: string; texto: string }[]; versao: number; criado_em: string };
+  const [proposta, setProposta] = useState<Proposta | null>(null);
+  const [rascunho, setRascunho] = useState<string[]>([]);
+  const [pedidoAjuste, setPedidoAjuste] = useState("");
+  const propostaRef = useRef<string>("");
+  useEffect(() => {
+    setProposta(null); setRascunho([]); setPedidoAjuste(""); propostaRef.current = "";
+    if (!leadId || !temAgente) return;
+    let vivo = true;
+    const ler = async () => {
+      const { data } = await db.from("x1_agente_propostas").select("id, tipo, lead_disse, raciocinio, mensagens, status, instrucao, ajustes, versao, criado_em").eq("resposta_id", leadId).in("status", ["pendente", "aprovada", "revisando"]).order("criado_em", { ascending: false }).limit(1);
+      if (!vivo) return;
+      const p = ((data ?? [])[0] as Proposta | undefined) ?? null;
+      setProposta(p);
+      // O texto em edição só é trocado quando chega uma proposta (ou versão) nova: não atropela o que você está digitando.
+      const chave = p ? `${p.id}:${p.versao}` : "";
+      if (chave !== propostaRef.current) { propostaRef.current = chave; setRascunho(p?.mensagens ?? []); }
+    };
+    void ler();
+    const t = window.setInterval(() => { if (!document.hidden) void ler(); }, 2500);
+    return () => { vivo = false; window.clearInterval(t); };
+  }, [leadId, temAgente]);
+  const aprovarProposta = async () => {
+    if (!proposta) return;
+    const msgs = rascunho.map((m) => m.trim()).filter(Boolean);
+    if (!msgs.length) { toast.error("A mensagem está vazia"); return; }
+    const { error } = await db.from("x1_agente_propostas").update({ mensagens: msgs, status: "aprovada" }).eq("id", proposta.id).eq("status", "pendente");
+    if (error) { toast.error("Não consegui aprovar"); return; }
+    setProposta({ ...proposta, status: "aprovada", mensagens: msgs });
+    toast.success("Aprovada: o agente envia em instantes pelo WhatsApp");
+  };
+  const descartarProposta = async () => {
+    if (!proposta) return;
+    if (!(await confirmar("Descartar esta mensagem?", { botao: "Descartar", destrutivo: true, descricao: "Nada é enviado e a conversa do agente pausa (Retomar para ele tentar de novo)." }))) return;
+    const { error } = await db.from("x1_agente_propostas").update({ status: "descartada" }).eq("id", proposta.id).eq("status", "pendente");
+    if (error) { toast.error("Não consegui descartar"); return; }
+    setProposta(null);
+  };
+  const pedirAjuste = async () => {
+    const t = pedidoAjuste.trim();
+    if (!proposta || !t) return;
+    const { error } = await db.from("x1_agente_propostas").update({ instrucao: t, status: "revisando" }).eq("id", proposta.id).eq("status", "pendente");
+    if (error) { toast.error("Não consegui mandar o pedido"); return; }
+    setProposta({ ...proposta, status: "revisando", instrucao: t });
+    setPedidoAjuste("");
+  };
+  const alternarAprovacao = async () => {
+    if (!clienteId) return;
+    const novo = !exigirAprovacao;
+    setExigirAprovacao(novo);
+    const { error } = await db.from("agentes_whatsapp").update({ exigir_aprovacao: novo }).eq("cliente_id", clienteId);
+    if (error) { setExigirAprovacao(!novo); toast.error("Não consegui mudar"); return; }
+    toast.success(novo ? "Agora o agente mostra a mensagem e só envia depois que você aprovar" : "O agente volta a enviar sozinho, sem pedir aprovação");
+  };
   // Recomeçar: o agente esquece a conversa (o que veio antes deixa de contar) e abre de novo com a primeira mensagem.
   const recomecar = async () => {
     const a = lead && agentes.get(lead.id);
@@ -402,7 +459,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
             <span className={cn("rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums", (f.id === "abordar" && contagem.abordar) || (f.id === "quentes" && contagem.quentes) ? "bg-amber-400 text-black" : "bg-white/10 text-white/70")}>{contagem[f.id]}</span>
           </button>
         ))}
-        <button type="button" onClick={() => void alternarAutomatico()} title="Chave geral: desligada, o agente não manda mensagem para ninguém" className={cn("mt-auto flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs", automatico ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : "border-rose-400/30 bg-rose-500/10 text-rose-200")}>
+        <button type="button" onClick={() => void alternarAprovacao()} title="Ligado: o agente mostra a mensagem e só envia depois de você aprovar. Desligado: envia sozinho." className={cn("mt-auto flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs", exigirAprovacao ? "border-amber-400/40 bg-amber-500/10 text-amber-200" : "border-white/10 text-white/60 hover:bg-white/5")}>
+          <Check className="h-4 w-4 shrink-0" /><span className="flex-1">Aprovar antes de enviar<br /><b>{exigirAprovacao ? "ligado" : "desligado"}</b></span>
+        </button>
+        <button type="button" onClick={() => void alternarAutomatico()} title="Chave geral: desligada, o agente não manda mensagem para ninguém" className={cn("flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-xs", automatico ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : "border-rose-400/30 bg-rose-500/10 text-rose-200")}>
           <Bot className="h-4 w-4 shrink-0" /><span className="flex-1">Agente automático<br /><b>{automatico ? "ligado" : "desligado"}</b></span><span className={cn("h-2 w-2 rounded-full", automatico ? "bg-emerald-400" : "bg-rose-400")} /></button>
         {isDesktop() && <button type="button" onClick={() => setConectando(true)} className="mt-1 rounded-lg px-2 py-1.5 text-left text-xs text-white/60 hover:bg-white/5 hover:text-white">Reconectar o WhatsApp (QR)</button>}
         <p className="px-2 pt-1 text-[10px] leading-snug text-white/35">No app do Mac a mensagem vai direto pelo WhatsApp do projeto e as respostas chegam aqui. Na web, o WhatsApp abre com o texto pronto.</p>
@@ -422,7 +482,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
               <button key={l.id} type="button" onClick={() => setSel(l.id)} className={cn("flex w-full items-center gap-3 border-b border-white/5 px-3 py-2.5 text-left hover:bg-white/5", lead?.id === l.id && "bg-[#2a3942]")}>
                 <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#6b7c85] text-base font-bold">{(l.nome?.trim() || "?").slice(0, 1).toUpperCase()}</span>
                 <span className="min-w-0 flex-1">
-                  <span className="flex items-baseline gap-2"><span className="flex min-w-0 flex-1 items-center gap-1 truncate font-medium"><span className="truncate">{nomeDe(l)}</span>{agentes.get(l.id) && ["conversando", "abordar"].includes(agentes.get(l.id)!.estado) ? <Bot className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : agentes.get(l.id)?.estado === "aguardando_humano" ? <Bot className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : null}{estados.get(l.id)?.compra ? <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : estados.get(l.id)?.clicouCheckout ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : null}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
+                  <span className="flex items-baseline gap-2"><span className="flex min-w-0 flex-1 items-center gap-1 truncate font-medium"><span className="truncate">{nomeDe(l)}</span>{agentes.get(l.id) && ["conversando", "abordar"].includes(agentes.get(l.id)!.estado) ? <Bot className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : ["aguardando_humano", "aprovacao"].includes(agentes.get(l.id)?.estado ?? "") ? <Bot className="h-3.5 w-3.5 shrink-0 text-amber-300" /> : null}{estados.get(l.id)?.compra ? <Trophy className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : estados.get(l.id)?.clicouCheckout ? <Flame className="h-3.5 w-3.5 shrink-0 text-orange-400" /> : null}</span><span className="shrink-0 text-[11px] text-white/45">{haQuanto(u?.enviada_em ?? l.criada_em, agora)}</span></span>
                   <span className="flex items-center gap-1 truncate text-xs text-white/55">{u ? <>{u.de_mim !== false ? <CheckCheck className="h-3.5 w-3.5 shrink-0 text-sky-400" /> : null}<span className={cn("truncate", u.de_mim === false && "font-medium text-white/80")}>{u.texto}</span></> : <span className="truncate">Novo lead{l.perfil ? ` · ${l.perfil}` : ""}</span>}</span>
                 </span>
               </button>
@@ -457,8 +517,8 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
             {(() => {
               const a = agentes.get(lead.id);
               if (!a) return null;
-              const cor = a.estado === "conversando" || a.estado === "abordar" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : a.estado === "aguardando_humano" || a.estado === "erro" ? "border-amber-400/40 bg-amber-500/10 text-amber-200" : "border-white/10 bg-white/5 text-white/70";
-              const rot = { abordar: "Começando do zero: a primeira mensagem vai ser enviada pelo WhatsApp em instantes…", conversando: "Agente conversando sozinho", aguardando_humano: "O agente chamou você", pausado: "Agente pausado", encerrado: "Agente encerrado", erro: "O agente não conseguiu" }[a.estado];
+              const cor = a.estado === "conversando" || a.estado === "abordar" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : a.estado === "aguardando_humano" || a.estado === "aprovacao" || a.estado === "erro" ? "border-amber-400/40 bg-amber-500/10 text-amber-200" : "border-white/10 bg-white/5 text-white/70";
+              const rot = { abordar: "Começando do zero: a primeira mensagem vai ser enviada pelo WhatsApp em instantes…", conversando: "Agente conversando sozinho", aprovacao: "Esperando a sua aprovação", aguardando_humano: "O agente chamou você", pausado: "Agente pausado", encerrado: "Agente encerrado", erro: "O agente não conseguiu" }[a.estado];
               return (
                 <div className={cn("flex flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs", cor)}>
                   <Bot className="h-4 w-4 shrink-0" /><b>{rot}</b>
@@ -466,7 +526,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                   {a.motivo && <span className="min-w-0 flex-1 truncate text-white/70" title={a.motivo}>{a.motivo}</span>}
                   <span className="ml-auto flex gap-1.5">
                     <button type="button" onClick={() => void recomecar()} title="O agente esquece a conversa e abre de novo" className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><RotateCcw className="h-3 w-3" />Recomeçar</button>
-                    {(a.estado === "conversando" || a.estado === "abordar") && <button type="button" onClick={() => void mudarAgente("pausado")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Pause className="h-3 w-3" />Pausar e assumir</button>}
+                    {(a.estado === "conversando" || a.estado === "abordar" || a.estado === "aprovacao") && <button type="button" onClick={() => void mudarAgente("pausado")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Pause className="h-3 w-3" />Pausar e assumir</button>}
                     {(a.estado === "pausado" || a.estado === "aguardando_humano" || a.estado === "erro") && <button type="button" onClick={() => void mudarAgente("conversando")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Play className="h-3 w-3" />Retomar o agente</button>}
                   </span>
                 </div>);
@@ -502,7 +562,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
 
             {/* Agente conversando: só a barra de escrever (como no WhatsApp); os atalhos (Abordar, rascunho, modelos) voltam quando ele está parado. */}
             <footer className="space-y-2 bg-[#202c33] p-3">
-              {!["conversando", "abordar"].includes(agentes.get(lead.id)?.estado ?? "") && <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+              {!["conversando", "abordar", "aprovacao"].includes(agentes.get(lead.id)?.estado ?? "") && <div className="flex gap-1.5 overflow-x-auto pb-0.5">
                 <button type="button" onClick={() => void abordar()} disabled={!clienteId || ["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "")} title="O agente escreve e manda a primeira mensagem pelo WhatsApp e segue a conversa sozinho"
                   className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-50">
                   <Bot className="h-3.5 w-3.5" />{["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "") ? "Agente em ação" : "Abordar"}
@@ -541,7 +601,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                 </button>
                 )}
               </div>
-              {!["conversando", "abordar"].includes(agentes.get(lead.id)?.estado ?? "") && <div className="flex flex-wrap items-center gap-2 text-xs">
+              {!["conversando", "abordar", "aprovacao"].includes(agentes.get(lead.id)?.estado ?? "") && <div className="flex flex-wrap items-center gap-2 text-xs">
                 <button type="button" disabled={!texto.trim()} onClick={() => { void navigator.clipboard.writeText(texto); toast.success("Mensagem copiada"); }} className="flex items-center gap-1 rounded-lg px-2 py-1 text-white/60 hover:bg-white/10 disabled:opacity-30"><Copy className="h-3.5 w-3.5" />Copiar</button>
                 {salvandoModelo === null ? (
                   <button type="button" disabled={!texto.trim()} onClick={() => setSalvandoModelo("")} className="flex items-center gap-1 rounded-lg px-2 py-1 text-white/60 hover:bg-white/10 disabled:opacity-30"><Plus className="h-3.5 w-3.5" />Salvar como modelo</button>
@@ -560,9 +620,43 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
       </section>
       {temAgente && (
         <aside className={cn("min-h-0 flex-col border-l border-white/10 bg-[#111b21]", mostraR ? "flex" : "hidden")}>
-          <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5 text-sm font-semibold"><Brain className="h-4 w-4 text-violet-300" />Raciocínio do agente</div>
+          <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5 text-sm font-semibold"><Brain className="h-4 w-4 text-violet-300" />Agente · aprovação e raciocínio</div>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-[13px]">
-            {racios.length === 0 && <p className="text-white/45">Quando o agente escrever, o porquê de cada resposta aparece aqui: o que ele entendeu do lead, em que etapa está e qual regra usou.</p>}
+            {proposta && (
+              <div className="space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-2.5">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber-200">
+                  {proposta.status === "pendente" ? "Esperando a sua aprovação" : proposta.status === "revisando" ? <><Loader2 className="h-3 w-3 animate-spin" />Ajustando…</> : <><Loader2 className="h-3 w-3 animate-spin" />Enviando…</>}
+                  <span className="ml-auto font-normal normal-case text-white/40">{proposta.tipo === "abertura" ? "abertura" : "resposta"} · versão {proposta.versao}</span>
+                </p>
+                {proposta.lead_disse && <p className="rounded-lg bg-[#202c33] px-2 py-1 text-white/80"><span className="text-white/40">Lead: </span>{proposta.lead_disse}</p>}
+                {proposta.status === "pendente" ? rascunho.map((m, i) => (
+                  <textarea key={i} value={m} rows={Math.max(2, Math.ceil(m.length / 34))} onChange={(e) => setRascunho((r) => r.map((x, k) => (k === i ? e.target.value : x)))}
+                    className="w-full resize-y rounded-lg bg-[#005c4b] px-2.5 py-1.5 text-[13.5px] text-white outline-none ring-1 ring-transparent focus:ring-emerald-300/50" />
+                )) : proposta.mensagens.map((m, i) => <p key={i} className="whitespace-pre-wrap rounded-lg bg-[#005c4b]/70 px-2.5 py-1.5 text-[13.5px] text-white/85">{m}</p>)}
+                {proposta.status === "revisando" && proposta.instrucao && <p className="rounded-lg bg-[#202c33] px-2 py-1 text-white/75"><span className="text-white/40">Você pediu: </span>{proposta.instrucao}</p>}
+                {proposta.status === "pendente" && (
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => void aprovarProposta()} className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-[#00a884] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#019c7a]"><Check className="h-3.5 w-3.5" />Aprovar e enviar</button>
+                    <button type="button" onClick={() => void descartarProposta()} className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/10">Descartar</button>
+                  </div>
+                )}
+                {proposta.raciocinio && <details className="text-white/65"><summary className="cursor-pointer text-white/50">Por que o agente escreveu isso</summary><p className="mt-1 whitespace-pre-wrap leading-snug text-violet-100/90">{proposta.raciocinio}</p></details>}
+                {proposta.ajustes.length > 0 && (
+                  <div className="space-y-1 border-t border-white/10 pt-1.5">
+                    {proposta.ajustes.slice(-6).map((a, i) => <p key={i} className={cn("rounded-lg px-2 py-1", a.papel === "davi" ? "ml-4 bg-[#005c4b]/60 text-white/90" : "mr-4 bg-[#202c33] text-violet-100/90")}>{a.texto}</p>)}
+                  </div>
+                )}
+                {proposta.status === "pendente" && (
+                  <div className="flex items-end gap-1.5">
+                    <textarea value={pedidoAjuste} onChange={(e) => setPedidoAjuste(e.target.value)} rows={2} placeholder="Peça um ajuste ao agente: mais curto, tira a pergunta, fala do valor…"
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void pedirAjuste(); } }}
+                      className="min-h-0 flex-1 resize-none rounded-lg bg-[#2a3942] px-2.5 py-1.5 text-[13px] text-white outline-none placeholder:text-white/35" />
+                    <button type="button" onClick={() => void pedirAjuste()} disabled={!pedidoAjuste.trim()} title="Pedir ajuste (Enter)" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-500 text-white disabled:opacity-40"><Send className="h-3.5 w-3.5" /></button>
+                  </div>
+                )}
+              </div>
+            )}
+            {racios.length === 0 && !proposta && <p className="text-white/45">Quando o agente escrever, o porquê de cada resposta aparece aqui: o que ele entendeu do lead, em que etapa está e qual regra usou.</p>}
             {racios.map((r) => (
               <div key={r.id} className="space-y-1.5 rounded-xl border border-violet-400/20 bg-violet-500/5 p-2.5">
                 <p className="text-[10px] uppercase tracking-wide text-white/40">{format(new Date(r.criado_em), "dd/MM HH:mm")}</p>
