@@ -144,7 +144,7 @@ export function ProgramarPublicacao({ roteiro: r, perfilId, onMudou, numeros }: 
           <label className="block text-xs text-white/55">Legenda<textarea rows={4} maxLength={2200} className={cn(campo, "mt-1 resize-y")} value={legenda} onChange={(e) => setLegenda(e.target.value)} /></label>
           <button type="button" disabled={!conta || salvando || !legenda.trim()} onClick={() => void programar()}
             className="flex items-center gap-2 rounded-xl bg-pink-500 px-4 py-2 text-sm font-bold text-white hover:bg-pink-400 disabled:opacity-40">{salvando && <Loader2 className="h-4 w-4 animate-spin" />}Programar publicação</button>
-          <p className="text-[11px] text-white/40">Escolher a data é o seu ok: sem ela, nada é publicado.</p>
+          <p className="text-[11px] text-white/40">Normalmente isso é automático (18h). Aparece aqui se não havia Instagram conectado quando o vídeo ficou pronto, ou depois de desmarcar.</p>
         </div>
       )}
     </div>

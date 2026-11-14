@@ -249,11 +249,11 @@ function EstudioRoteiro({ roteiro, perfil, numeros, onFechar, onMudou }: { rotei
   };
   const aprovar = async () => {
     if (!r || !perfil) return;
-    if (!(await confirmar(`Aprovar o V${r.numero}?`, { descricao: "O vídeo é preparado para o Instagram. Nada é publicado até você conectar a conta, escolher a data e programar.", botao: "Aprovar", destrutivo: false }))) return;
+    if (!(await confirmar(`Aprovar o V${r.numero}?`, { descricao: `Aprovar é o seu ok: o vídeo é preparado e programado sozinho para as 18h${r.data_postagem ? ` do dia ${r.data_postagem.split("-").reverse().slice(0, 2).join("/")}` : " do primeiro dia livre"}. Você ainda pode mudar o horário ou desmarcar no estúdio.`, botao: "Aprovar", destrutivo: false }))) return;
     const { error } = await db.from("esteira_dark_roteiros").update({ status: "programando", atualizado_em: new Date().toISOString() }).eq("id", r.id);
     if (error) { toast.error("Não consegui aprovar"); return; }
     onMudou();
-    toast.success("Aprovado: preparando o vídeo para o Instagram");
+    toast.success("Aprovado: o vídeo será programado sozinho para as 18h");
   };
   const atualizar = async (mudanca: Record<string, unknown>) => {
     if (!r) return;

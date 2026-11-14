@@ -61,4 +61,24 @@ BEGIN
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
 RESET ROLE;
+-- Programação automática (aprovou = ok): hora padrão 18h de Brasília, dia marcado se ainda der tempo, senão o 1º dia livre; só 'programando' com vídeo pronto e Instagram conectado.
+DO $$
+DECLARE r1 timestamptz; r2 timestamptz;
+BEGIN
+  UPDATE public.esteira_dark_roteiros SET status = 'programando', video_url = 'https://x.co/v.mp4', legenda = NULL, titulo = 'Meu título,', data_postagem = (now() AT TIME ZONE 'America/Sao_Paulo')::date + 3
+    WHERE id = '10000000-0000-0000-0000-000000000444';
+  r1 := public.lauro_programar_auto('10000000-0000-0000-0000-000000000444');
+  IF r1 IS NULL OR (r1 AT TIME ZONE 'America/Sao_Paulo')::time <> time '18:00' OR (r1 AT TIME ZONE 'America/Sao_Paulo')::date <> (now() AT TIME ZONE 'America/Sao_Paulo')::date + 3 THEN RAISE EXCEPTION 'não programou às 18h do dia marcado: %', r1; END IF;
+  IF (SELECT legenda FROM public.esteira_dark_roteiros WHERE id = '10000000-0000-0000-0000-000000000444') <> 'Meu título' THEN RAISE EXCEPTION 'legenda deveria ser o título sem a vírgula final'; END IF;
+  IF (SELECT status FROM public.esteira_dark_roteiros WHERE id = '10000000-0000-0000-0000-000000000444') <> 'programado' THEN RAISE EXCEPTION 'status deveria ser programado'; END IF;
+  IF public.lauro_programar_auto('10000000-0000-0000-0000-000000000444') IS NOT NULL THEN RAISE EXCEPTION 'programou duas vezes'; END IF;
+  -- segundo vídeo sem dia, no mesmo perfil: vai para o 1º dia livre (não o ocupado)
+  INSERT INTO public.esteira_dark_roteiros(id, perfil_id, user_id, titulo, texto, status, video_url) VALUES ('10000000-0000-0000-0000-000000000445', '10000000-0000-0000-0000-000000000443', '10000000-0000-0000-0000-000000000441', 'Outro', 'texto', 'programando', 'https://x.co/v2.mp4');
+  r2 := public.lauro_programar_auto('10000000-0000-0000-0000-000000000445');
+  IF r2 IS NULL OR (r2 AT TIME ZONE 'America/Sao_Paulo')::date = (r1 AT TIME ZONE 'America/Sao_Paulo')::date THEN RAISE EXCEPTION 'caiu no dia já ocupado'; END IF;
+  IF r2 < now() + interval '5 minutes' THEN RAISE EXCEPTION 'horário no passado'; END IF;
+  DELETE FROM public.instagram_conexoes WHERE perfil_dark_id = '10000000-0000-0000-0000-000000000443';
+  UPDATE public.esteira_dark_roteiros SET status = 'programando', programado_para = NULL WHERE id = '10000000-0000-0000-0000-000000000445';
+  IF public.lauro_programar_auto('10000000-0000-0000-0000-000000000445') IS NOT NULL THEN RAISE EXCEPTION 'programou sem Instagram conectado'; END IF;
+END $$;
 ROLLBACK;
