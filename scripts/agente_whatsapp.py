@@ -9,6 +9,7 @@ O Claude NÃO mexe em arquivo nem no banco e NÃO envia nada a ninguém: só dev
 import json
 import random
 import re
+import unicodedata
 from pathlib import Path
 from difflib import SequenceMatcher
 from migration_db import connect
@@ -139,14 +140,39 @@ def sortear_quantidade(historico, sorteio=random):
     return sorteio.choices(list(pesos), weights=list(pesos.values()))[0]
 
 
+_SAUDACAO = re.compile(r"^\s*(?:(?:oi|ola|opa|eai|e ai|bom dia|boa tarde|boa noite|entao|certo|beleza|ok|show|perfeito|claro)\b[\s,!.:;-]*)+", re.I)
+_NOME = re.compile(r"^\s*[^\s,!.?:;]{2,20}\s*[,:]\s+")
+
+
 def _chave(t):
-    """Texto sem emoji, pontuação, espaço e maiúscula, para comparar mensagens."""
+    """Texto sem saudação curta, nome do lead no começo ("Jacileny,"), emoji, pontuação, espaço e maiúscula, para comparar mensagens."""
+    t = unicodedata.normalize("NFD", t or "")
+    t = re.sub(r"[\u0300-\u036f]", "", t)
+    for _ in range(2):
+        t = _SAUDACAO.sub("", t, count=1)
+        t = _NOME.sub("", t, count=1)
     return re.sub(r"[\W_]+", "", t.lower())
 
 
 def _parecidas(a, b):
+    """Igual, quase igual (>= 0,85) ou uma contida na outra (a menor com 15+ letras), ignorando nome e saudação no começo."""
     ka, kb = _chave(a), _chave(b)
-    return bool(ka) and (ka == kb or SequenceMatcher(None, ka, kb).ratio() >= 0.9)
+    if not ka or not kb:
+        return False
+    if ka == kb or SequenceMatcher(None, ka, kb).ratio() >= 0.85:
+        return True
+    menor, maior = sorted((ka, kb), key=len)
+    return len(menor) >= 15 and menor in maior
+
+
+def ultima_pergunta(historico):
+    """A última pergunta (frase com '?') da última mensagem do agente que tenha uma, ou None."""
+    for m in reversed(historico or []):
+        if m.get("papel") == "agente":
+            frases = [f for f in re.split(r"(?<=[.!?…])\s+|\n", str(m.get("texto", ""))) if "?" in f]
+            if frases:
+                return frases[-1].strip()
+    return None
 
 
 def tirar_repetidas(partes, ultima=None):
@@ -219,6 +245,10 @@ def _prompt(p, alvo=None):
         if alvo:
             quantidade = ("- NESTA resposta, mande 1 mensagem (um balão só, sem ---), como uma pessoa que responde rápido. Isto vale mais do que a regra de separar ideias.\n" if alvo == 1 else
                           f"- NESTA resposta, mande até {alvo} mensagens, separadas por ---. Pessoas de verdade variam: nem sempre é reação + pergunta. Se só houver UMA ideia a dizer, mande menos mensagens: NUNCA repita nem reescreva a mesma frase e não invente conteúdo só para chegar no número.\n")
+        pergunta = ultima_pergunta(p["historico"])
+        if pergunta:
+            quantidade += (f"- A ÚLTIMA PERGUNTA que você (agente) fez foi: \"{pergunta}\". Se o lead já respondeu (mesmo com uma letra só, como \"S\" ou \"sim\"), "
+                           "considere respondida e AVANCE para o próximo passo da conversa. NUNCA repita essa pergunta nem uma parecida (nem com o nome do lead na frente).\n")
         return PROMPT_SIMULAR.format(quantidade=quantidade, **base)
     ajuste = p["mensagem"].lstrip().lower().startswith("[ajuste]")
     modo = AJUSTE_CONVERSA if p["contexto"].get("conversa") == "ajuste" else AJUSTE if ajuste else ""

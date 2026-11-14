@@ -77,23 +77,53 @@ def resolver_chat(conta, telefone_wa):
     return d.get("pn") or d.get("chatId")
 
 
-def enviar_partes(conta, chat_id, partes, log):
-    """Manda cada parte como uma mensagem, com 'digitando…' proporcional ao tamanho (como uma pessoa)."""
-    cfg = waha_config(conta)
+COMPORTAMENTO_PADRAO = {"separar": True, "pausa": True, "pausa_min_s": 1.5, "pausa_max_s": 7, "ms_por_letra": 40}
+
+
+def pausa_digitando(texto, comportamento=None):
+    """Segundos de "digitando…" antes de uma mensagem: mesma conta do app (src/lib/agenteWhatsapp.ts, pausaDigitando)."""
+    c = {**COMPORTAMENTO_PADRAO, **{k: v for k, v in (comportamento or {}).items() if v is not None}}
+    if not c["pausa"]:
+        return 0.0
+    pmin = float(c["pausa_min_s"])
+    return min(max(pmin, float(c["pausa_max_s"])), max(pmin, 1.2 + len(texto) * float(c["ms_por_letra"]) / 1000))
+
+
+def repetida(texto, ja_enviadas):
+    """Já mandei isso (ou quase, ou com o nome do lead na frente) nas últimas mensagens do chat?"""
+    return any(agente_whatsapp._parecidas(texto, e) for e in ja_enviadas if e)
+
+
+def enviar_partes(conta, chat_id, partes, log, comportamento=None, recentes=None, parar=None, dormir=time.sleep, post=None):
+    """Manda cada parte como uma mensagem, com "digitando…" pelo comportamento da inteligência. Devolve as partes que saíram de fato.
+    Guarda final, imediatamente antes de CADA envio: `recentes()` traz o que o agente já mandou nesse chat e a parte repetida não vai;
+    `parar()` (chegou mensagem nova do lead) interrompe o resto, que será refeito com o histórico atualizado."""
+    cfg = waha_config(conta) if post is None else {}
     sessao = cfg.get("sessao", "default")
-    for i, texto in enumerate(partes):
+    post = post or (lambda caminho, corpo: waha_post(cfg, caminho, corpo))
+    enviadas = []
+    for texto in partes:
+        if parar and parar():
+            log("agente X1: chegou mensagem nova do lead, parei o envio")
+            break
         try:
-            waha_post(cfg, "/api/startTyping", {"session": sessao, "chatId": chat_id})
+            post("/api/startTyping", {"session": sessao, "chatId": chat_id})
         except Exception:  # noqa: BLE001  digitando é enfeite
             pass
-        time.sleep(min(7.0, 1.2 + len(texto) * 0.035))
-        waha_post(cfg, "/api/sendText", {"session": sessao, "chatId": chat_id, "text": texto})
+        dormir(pausa_digitando(texto, comportamento))
+        if parar and parar():
+            log("agente X1: chegou mensagem nova do lead, parei o envio")
+            break
+        if repetida(texto, list(recentes() if recentes else []) + enviadas):
+            log("agente X1: mensagem repetida, não enviei")
+            continue
+        post("/api/sendText", {"session": sessao, "chatId": chat_id, "text": texto})
+        enviadas.append(texto)
         try:
-            waha_post(cfg, "/api/stopTyping", {"session": sessao, "chatId": chat_id})
+            post("/api/stopTyping", {"session": sessao, "chatId": chat_id})
         except Exception:  # noqa: BLE001
             pass
-        if i < len(partes) - 1:
-            time.sleep(1.0 + min(3.0, len(partes[i + 1]) * 0.02))
+    return enviadas
 
 
 def telefone_chat(whatsapp):
@@ -129,7 +159,7 @@ def _escrever(rodar_claude, log, conversa, config, lead, historico, mensagem, ab
     if not ok or not texto.strip():
         return None
     if alvo:
-        texto = agente_whatsapp.ajustar_quantidade(texto, alvo)
+        texto = agente_whatsapp.ajustar_quantidade(texto, alvo, agente_whatsapp._ultima_do_agente(historico))
     return texto.strip()
 
 
@@ -156,8 +186,34 @@ def passada(rodar_claude, log=print):
         c.close()
 
 
+def _pegar_trava(q, cv):
+    """Trava atômica: só segue quem conseguiu mudar a trava. Relê os campos da conversa (outra passada pode ter acabado de mexer)."""
+    q.execute("""UPDATE public.x1_agente_conversas SET trava_ate = now() + interval '6 minutes'
+                 WHERE id = %s AND estado IN ('abordar', 'conversando') AND (trava_ate IS NULL OR trava_ate < now())
+                 RETURNING estado, chat_id, enviadas, recebidas, cursor_em, enviados_recentes""", (cv["id"],))
+    r = q.fetchone()
+    if not r:
+        return False
+    cv.update(dict(zip(["estado", "chat_id", "enviadas", "recebidas", "cursor_em", "enviados_recentes"], r)))
+    return True
+
+
+def _recentes_do_agente(q, conta, chat_id, cv):
+    """O que o agente realmente mandou nesse chat (banco do WhatsApp + o que o próprio agente anotou)."""
+    q.execute("""SELECT texto FROM public.whatsapp_mensagens WHERE conta = %s AND chat_id = %s AND de_mim AND texto IS NOT NULL
+                 ORDER BY COALESCE(enviada_em, recebida_em) DESC LIMIT 15""", (conta, chat_id))
+    return [r[0] for r in q.fetchall()] + list(cv["enviados_recentes"] or [])
+
+
+def _lead_depois(q, conta, chat_id, depois_de):
+    q.execute("""SELECT count(*) FROM public.whatsapp_mensagens WHERE conta = %s AND chat_id = %s AND NOT de_mim
+                 AND COALESCE(enviada_em, recebida_em) > %s::timestamptz""", (conta, chat_id, depois_de))
+    return (q.fetchone() or [0])[0] > 0
+
+
 def _tratar(c, q, rodar_claude, log, cv):
-    q.execute("UPDATE public.x1_agente_conversas SET trava_ate = now() + interval '6 minutes' WHERE id = %s", (cv["id"],))
+    if not _pegar_trava(q, cv):   # outra passada/processo já está com esta conversa
+        c.commit(); return
     c.commit()
     q.execute("SELECT config FROM public.agentes_whatsapp WHERE cliente_id = %s", (cv["cliente_id"],))
     config = (q.fetchone() or [{}])[0] or {}
@@ -188,20 +244,17 @@ def _tratar(c, q, rodar_claude, log, cv):
         if not texto:
             _atualizar(q, cv["id"], estado="erro", motivo="O agente não conseguiu escrever agora"); c.commit(); return
         partes = partes_da_resposta(re.sub(r"^\[CHAMAR_HUMANO\]\s*", "", texto))
-        enviar_partes(conta, chat_id, partes, log)
+        partes = enviar_partes(conta, chat_id, partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, chat_id, cv))
         _registrar(q, cv, partes, "Agente")
         _atualizar(q, cv["id"], estado="conversando", chat_id=chat_id, conta=conta, enviadas=cv["enviadas"] + len(partes), cursor_em=datetime.now(timezone.utc),
-                   enviados_recentes=[normalizar(p) for p in partes][-20:], ultima_acao_em=datetime.now(timezone.utc), motivo=None)
+                   enviados_recentes=(list(cv["enviados_recentes"] or []) + [normalizar(p) for p in partes])[-20:], ultima_acao_em=datetime.now(timezone.utc), motivo=None)
         q.execute("UPDATE public.quiz_respostas SET status = 'em_contato' WHERE id = %s AND status = 'novo'", (cv["resposta_id"],))
         c.commit()
         return
 
     # conversando: o que o lead escreveu depois do cursor
     cursor = cv["cursor_em"] or datetime.now(timezone.utc)
-    q.execute("""SELECT id, de_mim, COALESCE(NULLIF(btrim(texto), ''), NULLIF(btrim(transcricao), ''), CASE WHEN midia_tipo IS NOT NULL THEN '[' || midia_tipo || ']' END), COALESCE(enviada_em, recebida_em)
-                 FROM public.whatsapp_mensagens WHERE conta = %s AND chat_id = %s AND COALESCE(enviada_em, recebida_em) > %s::timestamptz - interval '2 days' ORDER BY COALESCE(enviada_em, recebida_em)""", (conta, chat_id, cursor))
-    todas = q.fetchall()
-    novas_lead = [m for m in todas if not m[1] and m[2] and m[3] > cursor]
+    todas, novas_lead = _ler_chat(q, conta, chat_id, cursor)
     proprias_novas = [m for m in todas if m[1] and m[2] and m[3] > cursor]
     # O Davi escreveu por conta própria no chat? Então ele assumiu: o robô sai de cena.
     if any(not e_do_robo(m[2], cv["enviados_recentes"] or []) for m in proprias_novas):
@@ -215,22 +268,43 @@ def _tratar(c, q, rodar_claude, log, cv):
     if (q.fetchone() or [0])[0] >= MAX_POR_HORA:
         _atualizar(q, cv["id"], estado="aguardando_humano", motivo="Conversa muito acelerada: confira antes de o agente continuar"); c.commit(); return
 
-    antes = historico_do_chat([(m[1], m[2]) for m in todas if m[3] <= cursor])
-    mensagem = "\n".join(m[2] for m in novas_lead)
-    log("agente X1: respondendo", str(cv["resposta_id"])[:8], f"({len(novas_lead)} mensagem(ns) do lead)")
-    texto = _escrever(rodar_claude, log, cv, config, lead, antes, mensagem, False)
-    if not texto:
-        _atualizar(q, cv["id"], estado="erro", motivo="O agente não conseguiu responder agora"); c.commit(); return
+    texto = None
+    for _ in range(3):
+        # o histórico tem TUDO que já saiu no chat (inclusive o que o agente mandou depois do cursor); só as mensagens novas do lead vão como "mensagem"
+        antes = historico_do_chat([(m[1], m[2]) for m in todas if m not in novas_lead])
+        mensagem = "\n".join(m[2] for m in novas_lead)
+        log("agente X1: respondendo", str(cv["resposta_id"])[:8], f"({len(novas_lead)} mensagem(ns) do lead)")
+        q.execute("UPDATE public.x1_agente_conversas SET trava_ate = now() + interval '6 minutes' WHERE id = %s", (cv["id"],)); c.commit()
+        texto = _escrever(rodar_claude, log, cv, config, lead, antes, mensagem, False)
+        if not texto:
+            _atualizar(q, cv["id"], estado="erro", motivo="O agente não conseguiu responder agora"); c.commit(); return
+        if not _lead_depois(q, conta, chat_id, ultimo_lead):
+            break
+        log("agente X1: o lead escreveu enquanto eu respondia, refazendo")   # descarta a resposta e gera de novo com o histórico atualizado
+        todas, novas_lead = _ler_chat(q, conta, chat_id, cursor)
+        ultimo_lead = max(m[3] for m in novas_lead)
+        texto = None
+    if not texto:   # o lead continua escrevendo: a próxima passada responde tudo junto
+        q.execute("UPDATE public.x1_agente_conversas SET trava_ate = NULL WHERE id = %s", (cv["id"],)); c.commit(); return
     if texto.lstrip().startswith("[CHAMAR_HUMANO]"):
         _atualizar(q, cv["id"], estado="aguardando_humano", motivo=re.sub(r"^\[CHAMAR_HUMANO\]\s*", "", texto)[:300] or "O agente pediu uma pessoa",
                    cursor_em=ultimo_lead, recebidas=cv["recebidas"] + len(novas_lead)); c.commit()
         log("agente X1: chamou uma pessoa", str(cv["resposta_id"])[:8]); return
     partes = partes_da_resposta(texto)
-    enviar_partes(conta, chat_id, partes, log)
+    partes = enviar_partes(conta, chat_id, partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, chat_id, cv),
+                           parar=lambda: _lead_depois(q, conta, chat_id, ultimo_lead))
     _registrar(q, cv, partes, "Agente")
     _atualizar(q, cv["id"], cursor_em=ultimo_lead, enviadas=cv["enviadas"] + len(partes), recebidas=cv["recebidas"] + len(novas_lead),
                enviados_recentes=(list(cv["enviados_recentes"] or []) + [normalizar(p) for p in partes])[-20:], ultima_acao_em=datetime.now(timezone.utc))
     c.commit()
+
+
+def _ler_chat(q, conta, chat_id, cursor):
+    """(todas as mensagens do chat desde 2 dias antes do cursor, as novas do lead depois do cursor)."""
+    q.execute("""SELECT id, de_mim, COALESCE(NULLIF(btrim(texto), ''), NULLIF(btrim(transcricao), ''), CASE WHEN midia_tipo IS NOT NULL THEN '[' || midia_tipo || ']' END), COALESCE(enviada_em, recebida_em)
+                 FROM public.whatsapp_mensagens WHERE conta = %s AND chat_id = %s AND COALESCE(enviada_em, recebida_em) > %s::timestamptz - interval '2 days' ORDER BY COALESCE(enviada_em, recebida_em)""", (conta, chat_id, cursor))
+    todas = q.fetchall()
+    return todas, [m for m in todas if not m[1] and m[2] and m[3] > cursor]
 
 
 def _registrar(q, cv, partes, modelo):
