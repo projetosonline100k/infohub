@@ -25,6 +25,15 @@
   margin-bottom: 0.5em;
 }
 
+/* "Headline N:" é título (recolhe), mas só em negrito, no tamanho do texto (14/11, Davi). */
+.document-editor .ProseMirror :is(h1, h2, h3, h4).titulo-headline {
+  font-size: 1em;
+  font-weight: 700;
+  line-height: inherit;
+  margin-top: 1.1em;
+  margin-bottom: 0.35em;
+}
+
 .document-editor .ProseMirror h3 {
   font-size: 1.25em;
   font-weight: 600;

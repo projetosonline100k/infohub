@@ -43,6 +43,11 @@ export const HeadlineTitulo = Extension.create({
               if (no.type.name === "paragraph" && no.textContent.startsWith(TEXTO_CARREGANDO)) {
                 marcas.push(Decoration.node(pos, pos + no.nodeSize, { class: "bloco-carregando" }));
               }
+              // 14/11, Davi: "quando eu escrever headline não quero que a fonte aumente, só negrito". A linha continua sendo título (para recolher),
+              // mas com o tamanho do texto normal (editor.css, .titulo-headline).
+              if (no.type.name === "heading" && no.textContent.length <= MAX_HEADLINE && MARCA_HEADLINE.test(no.textContent)) {
+                marcas.push(Decoration.node(pos, pos + no.nodeSize, { class: "titulo-headline" }));
+              }
             });
             return DecorationSet.create(estado.doc, marcas);
           },
