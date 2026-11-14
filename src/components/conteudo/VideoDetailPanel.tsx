@@ -318,6 +318,7 @@ export const VideoDetailPanel = ({
   // Cobertura exata da guia (14/11, Davi: "na parte de cima eu consigo ver as coisas que têm atrás"): o painel é desenhado direto no <body>, na caixa da própria guia
   // (medida na moldura data-aba-moldura), em vez de depender de `fixed` dentro de páginas com rolagem/transformação. Guia escondida = painel não aparece.
   const ancora = useRef<HTMLSpanElement>(null);
+  const temVideo = editedVideo !== null;
   const [caixa, setCaixa] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
   useLayoutEffect(() => {
     const a = ancora.current;
@@ -335,7 +336,7 @@ export const VideoDetailPanel = ({
     window.addEventListener("resize", medir);
     const t = window.setInterval(medir, 600);   // a guia pode mudar de lugar sem mudar de tamanho (divisão, barra lateral)
     return () => { ro.disconnect(); window.removeEventListener("resize", medir); window.clearInterval(t); };
-  }, [editedVideo !== null]);   // eslint-disable-line react-hooks/exhaustive-deps  (a âncora só existe com um vídeo aberto)
+  }, [temVideo]);   // a âncora só existe com um vídeo aberto
 
   if (!editedVideo) return null;
 
