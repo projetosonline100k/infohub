@@ -113,7 +113,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   if (!painel || !leads || !conversao) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="dark space-y-4 rounded-2xl bg-[#060a12] p-3 text-foreground sm:p-4">
+    <div className="dark space-y-4 rounded-2xl bg-[#060a12] px-3 pb-1 pt-3 text-foreground sm:px-4 sm:pt-4">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1">
           {ABAS.map(([a, r, Icone]) => (

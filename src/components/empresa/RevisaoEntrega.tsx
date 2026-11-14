@@ -290,7 +290,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
               </div>
             )}
             <div className={cn("flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto md:flex-row md:overflow-hidden", editorQuiz && "dark rounded-2xl bg-[#060a12] p-3 text-foreground")}>
-              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && abaQuiz !== "metricas" && vista !== "computador" && "flex flex-col", editorQuiz && "!flex-row gap-3 overflow-hidden !border-0 !bg-transparent !p-0")}>
+              <div className={cn("min-h-[40vh] flex-1 overflow-y-auto rounded-lg border bg-background p-4 md:min-h-0", quiz?.estrutura && !verEsboco && abaQuiz !== "metricas" && vista !== "computador" && "flex flex-col", editorQuiz && "!flex-row gap-3 overflow-hidden !border-0 !bg-transparent !p-0", abaQuiz === "metricas" && "!border-0 !bg-transparent !p-0")}>
                 {quiz?.estrutura && abaQuiz === "testar" && (
                   <div className="mb-3 flex shrink-0 justify-center gap-1">
                     {(["celular", "computador"] as const).map((c) => {
