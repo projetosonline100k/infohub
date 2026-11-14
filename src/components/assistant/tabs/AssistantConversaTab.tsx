@@ -20,7 +20,8 @@ interface Mensagem {
 // "Me cobra agora" (botão ou ⌘1): manda este comando pra Inteligência do
 // Infopro, que analisa o momento e publica uma cobrança na hora (o mesmo
 // que a tarefa agendada faz a cada 30 min).
-export const COMANDO_COBRAR = "/cobrar";
+export const PREFIXO_AO_VIVO = "🖥️";
+const COMANDO_COBRAR = "/cobrar";
 
 // Rascunho do campo de mensagem: sobrevive a fechar/abrir o Atlas.
 const CHAVE_RASCUNHO = "jarvis:conversa-rascunho";
@@ -150,11 +151,14 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só a cada pedido de foco
   }, [foco]);
 
+  // Ao vivo (14/11, Davi: "o Atlas com as funções do ao vivo, acessar o PC, guiar, mexer no Infopro"): a mensagem leva a marca 🖥️ e o ouvinte do Mac atende com Chrome, terminal e o app.
+  const [aoVivo, setAoVivo] = useState(() => { try { return localStorage.getItem("atlas-ao-vivo") === "1"; } catch { return false; } });
+  const alternarAoVivo = () => setAoVivo((v) => { const n = !v; try { localStorage.setItem("atlas-ao-vivo", n ? "1" : "0"); } catch { /* sem armazenamento */ } return n; });
   const enviar = async (comando?: string) => {
     const conteudo = (comando ?? texto).trim();
     if (!conteudo || !user?.id || enviando) return;
     setEnviando(true);
-    const { error } = await supabase.from("jarvis_conversa").insert({ papel: "davi", texto: conteudo, status: "enviada" });
+    const { error } = await supabase.from("jarvis_conversa").insert({ papel: "davi", texto: aoVivo && !comando ? `${PREFIXO_AO_VIVO} ${conteudo}` : conteudo, status: "enviada" });
     setEnviando(false);
     if (error) { toast.error("Não consegui enviar"); return; }
     if (!comando) setTexto("");
@@ -225,7 +229,7 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
               <div className={cn("flex", minha ? "justify-end" : "justify-start")}>
                 <div className={cn("max-w-[85%] rounded-2xl px-3 py-2", minha ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted")}>
                   {minha
-                    ? <p className="whitespace-pre-wrap">{m.texto === COMANDO_COBRAR ? "⚡ Me cobra agora" : m.texto.startsWith("/analisar ") ? "🎬 Analisar reels para cliente (Creator)" : m.texto.startsWith("/ideia ") ? "💡 Separar ideia de headline (Creator)" : m.texto}</p>
+                    ? <p className="whitespace-pre-wrap">{m.texto === COMANDO_COBRAR ? "⚡ Me cobra agora" : m.texto.startsWith("/analisar ") ? "🎬 Analisar reels para cliente (Creator)" : m.texto.startsWith("/ideia ") ? "💡 Separar ideia de headline (Creator)" : m.texto.startsWith(PREFIXO_AO_VIVO) ? m.texto.slice(PREFIXO_AO_VIVO.length).trim() : m.texto}</p>
                     : <TextoMarkdown texto={m.texto} />}
                   <div className={cn("mt-0.5 text-right text-[10px]", minha ? "text-primary-foreground/70" : "text-muted-foreground")}>{format(new Date(m.criada_em), "HH:mm")}</div>
                 </div>
@@ -249,8 +253,16 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
         <div ref={fimRef} />
       </div>
 
+      <div className="flex items-center gap-2 border-t border-border px-2 pt-1.5">
+        <button type="button" onClick={alternarAoVivo} aria-pressed={aoVivo}
+          title="Ao vivo: o Atlas usa o seu Chrome e o Mac, te guia e mexe no Infopro por você"
+          className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${aoVivo ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" : "border-border text-muted-foreground hover:bg-muted"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${aoVivo ? "animate-pulse bg-emerald-500" : "bg-muted-foreground/50"}`} />{aoVivo ? "Ao vivo ligado" : "Ao vivo"}
+        </button>
+        {aoVivo && <span className="text-[10px] text-muted-foreground">usa o Chrome e o Mac, guia e mexe no Infopro</span>}
+      </div>
       <form
-        className="flex items-end gap-2 border-t border-border p-2"
+        className="flex items-end gap-2 p-2"
         onSubmit={(e) => { e.preventDefault(); void enviar(); }}
       >
         <textarea

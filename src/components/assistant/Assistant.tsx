@@ -165,7 +165,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     }
     setOpen(true);
   }, [variant]);
-  const [aba, setAba] = useState<AssistantAba>("hoje");
+  const [aba, setAba] = useState<AssistantAba>("conversa")   // 14/11 (Davi): clicar no Atlas abre o chat dele;
   const [pos, setPos] = useState<Posicao>(lerPosicaoSalva);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number; moveu: boolean } | null>(null);
