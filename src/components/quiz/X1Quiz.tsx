@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Brain, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, RotateCcw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { confirmar } from "@/components/DialogosGlobais";
 import { cn } from "@/lib/utils";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { isDesktop } from "@/lib/platform";
@@ -303,12 +304,12 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const recomecar = async () => {
     const a = lead && agentes.get(lead.id);
     if (!a?.id) return;
-    if (!window.confirm("Recomeçar esta conversa? O agente esquece tudo o que já foi dito com essa pessoa e manda a primeira mensagem de novo, pelo WhatsApp.")) return;
+    if (!(await confirmar("Recomeçar esta conversa do zero?", { botao: "Recomeçar e mandar", destrutivo: false, descricao: "O agente esquece tudo o que já foi dito com essa pessoa e manda a primeira mensagem de novo pelo WhatsApp, como no primeiro contato." }))) return;
     const { error } = await db.from("x1_agente_conversas").update({ estado: "abordar", motivo: "__recomecar__" }).eq("id", a.id);
     if (error) { toast.error("Não consegui recomeçar"); return; }
     setRacios([]);
     setAgentes((m) => new Map(m).set(a.resposta_id, { ...a, estado: "abordar", motivo: null, enviadas: 0, recebidas: 0 }));
-    toast.success("Recomeçando: a primeira mensagem sai em instantes");
+    toast.success("Recomeçando do zero: o agente esqueceu a conversa e a primeira mensagem sai em instantes pelo WhatsApp");
   };
   const abordar = async () => {
     if (!lead || !clienteId) return;
@@ -423,7 +424,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
               const a = agentes.get(lead.id);
               if (!a) return null;
               const cor = a.estado === "conversando" || a.estado === "abordar" ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : a.estado === "aguardando_humano" || a.estado === "erro" ? "border-amber-400/40 bg-amber-500/10 text-amber-200" : "border-white/10 bg-white/5 text-white/70";
-              const rot = { abordar: "Agente vai abordar…", conversando: "Agente conversando sozinho", aguardando_humano: "O agente chamou você", pausado: "Agente pausado", encerrado: "Agente encerrado", erro: "O agente não conseguiu" }[a.estado];
+              const rot = { abordar: "Começando do zero: a primeira mensagem vai ser enviada pelo WhatsApp em instantes…", conversando: "Agente conversando sozinho", aguardando_humano: "O agente chamou você", pausado: "Agente pausado", encerrado: "Agente encerrado", erro: "O agente não conseguiu" }[a.estado];
               return (
                 <div className={cn("flex flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs", cor)}>
                   <Bot className="h-4 w-4 shrink-0" /><b>{rot}</b>

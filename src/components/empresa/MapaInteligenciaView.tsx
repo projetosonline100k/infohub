@@ -5,6 +5,7 @@ import { Check, FileText, Loader2, Pencil, Plus, Sparkles, Trash2, X } from "luc
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { isDesktop } from "@/lib/platform";
+import { confirmar } from "@/components/DialogosGlobais";
 import { cn } from "@/lib/utils";
 import { CORES_PILAR, MODELO_ROTEIRO, lerMapa, type MapaInteligencia, type PilarMapa } from "@/lib/conteudo/mapaInteligencia";
 import { PainelNoMapa, type MembroMapa, type OrigemPilar } from "./PainelNoMapa";
@@ -114,7 +115,7 @@ function GavetaSecao({ pilar, numero, cor, foco, onSalvar, onApagar, onFechar }:
       <textarea ref={area} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escreva aqui as informações desta seção…"
         className="m-4 min-h-0 flex-1 resize-none rounded-lg border border-foreground/15 bg-background/40 p-3 text-[14px] leading-relaxed outline-none focus:border-foreground/40" />
       <div className="flex items-center gap-2 border-t border-foreground/10 px-4 py-3">
-        <button type="button" onClick={() => { if (window.confirm("Apagar esta seção e tudo o que está nela?")) void onApagar(); }} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-foreground/55 hover:bg-foreground/10 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" />Apagar seção</button>
+        <button type="button" onClick={async () => { if (await confirmar("Apagar esta seção e tudo o que está nela?")) void onApagar(); }} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-foreground/55 hover:bg-foreground/10 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" />Apagar seção</button>
         <span className="ml-auto text-[11px] text-foreground/40">{mudou ? "alterações não salvas · ⌘ Enter salva" : "salvo"}</span>
         <button type="button" onClick={() => void salvar()} disabled={salvando || !mudou} className="flex items-center gap-1 rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold hover:bg-sky-500 disabled:opacity-40">
           {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar</button>
@@ -219,7 +220,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
   const apagarFonte = async (i: number) => {
     if (!mapa || !fonte) return;
     const nome = mapa.pilares[i]?.titulo.trim() || "esta fonte";
-    if (!window.confirm(`Apagar "${nome}" e tudo o que está escrito nela?`)) return;
+    if (!(await confirmar(`Apagar "${nome}" e tudo o que está escrito nela?`))) return;
     const novo = { ...mapa, pilares: mapa.pilares.filter((_, k) => k !== i) };
     if (await fonte.salvar(novo)) { setMapa(novo); setPainelSecao(null); toast.success("Fonte apagada"); }
   };
@@ -249,7 +250,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
     onSalvo?.(limpo);
     toast.success(`Mapa do ${membro.nome} salvo. Ele já usa nas próximas respostas.`);
   };
-  const fechar = () => { if (mudou && !window.confirm("Sair sem salvar as mudanças do mapa?")) return; onFechar(); };
+  const fechar = async () => { if (mudou && !(await confirmar("Sair sem salvar as mudanças do mapa?", { botao: "Sair sem salvar" }))) return; onFechar(); };
 
   const { H, pos } = layout;
   const escala = Math.min(tamanho.w / W, tamanho.h / H);
