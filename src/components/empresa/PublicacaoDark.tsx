@@ -95,7 +95,7 @@ const emBrasilia = (iso: string) => new Date(Date.parse(iso) - 3 * 3600_000).toI
 const dataHoraBr = (iso: string) => { const [d, h] = emBrasilia(iso).split("T"); return `${d.split("-").reverse().slice(0, 2).join("/")} às ${h}`; };
 
 /** Painel do estúdio: depois do Aprovar, conectar a conta, escolher a data e a legenda e programar; mostra o que já saiu. */
-export function ProgramarPublicacao({ roteiro: r, perfilId, onMudou }: { roteiro: RoteiroDark; perfilId: string; onMudou: () => void }) {
+export function ProgramarPublicacao({ roteiro: r, perfilId, onMudou, numeros }: { roteiro: RoteiroDark; perfilId: string; onMudou: () => void; numeros?: React.ReactNode }) {
   const { conta, recarregar } = useInstagramDoPerfil(perfilId);
   const padrao = `${r.data_postagem && r.data_postagem >= hojeLocal() ? r.data_postagem : hojeLocal()}T18:00`;
   const [quando, setQuando] = useState(r.programado_para ? emBrasilia(r.programado_para) : padrao);
@@ -123,8 +123,9 @@ export function ProgramarPublicacao({ roteiro: r, perfilId, onMudou }: { roteiro
       <div className="flex flex-wrap items-center gap-2"><Instagram className="h-4 w-4 text-pink-300" /><span className="font-semibold">Publicar no Instagram</span>
         <span className="ml-auto"><ConectarInstagramDark perfilId={perfilId} conta={conta} recarregar={recarregar} compacto /></span></div>
       {r.status === "publicado" ? (
-        <p className="flex flex-wrap items-center gap-2 text-emerald-300"><CheckCircle2 className="h-4 w-4" />Publicado{r.programado_para ? ` em ${dataHoraBr(r.programado_para)}` : ""}.
+        <div className="space-y-2"><p className="flex flex-wrap items-center gap-2 text-emerald-300"><CheckCircle2 className="h-4 w-4" />Publicado{r.programado_para ? ` em ${dataHoraBr(r.programado_para)}` : ""}.
           {r.permalink && <a href={r.permalink} target="_blank" rel="noreferrer" className="flex items-center gap-1 underline">Ver no Instagram<ExternalLink className="h-3 w-3" /></a>}</p>
+        {numeros}</div>
       ) : r.status === "publicando" ? (
         <p className="flex items-center gap-2 text-sky-300"><Loader2 className="h-4 w-4 animate-spin" />{r.mensagem || "Publicando agora…"}</p>
       ) : r.status === "programado" ? (

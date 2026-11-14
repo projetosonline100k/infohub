@@ -3,7 +3,7 @@
 
 export type StatusRoteiro = "na_fila" | "editando" | "revisar" | "programando" | "programado" | "publicando" | "publicado" | "erro";
 export interface VersaoRoteiro { arquivo: string; em?: string; nota?: string }
-export interface RoteiroDark { id: string; perfil_id: string; numero: number; titulo: string; texto: string; data_postagem: string | null; status: StatusRoteiro; arquivo: string | null; obs: string | null; versoes?: VersaoRoteiro[] | null; legenda?: string | null; video_url?: string | null; programado_para?: string | null; permalink?: string | null; mensagem?: string | null; criado_em: string }
+export interface RoteiroDark { id: string; perfil_id: string; numero: number; titulo: string; texto: string; data_postagem: string | null; status: StatusRoteiro; arquivo: string | null; obs: string | null; versoes?: VersaoRoteiro[] | null; legenda?: string | null; video_url?: string | null; programado_para?: string | null; permalink?: string | null; mensagem?: string | null; ig_media_id?: string | null; criado_em: string }
 
 export const ROTULO_STATUS: Record<StatusRoteiro, string> = { na_fila: "Na fila", editando: "Editando", revisar: "Aprovar", programando: "Programando", programado: "Programado", publicando: "Publicando", publicado: "Publicado", erro: "Travou" };
 

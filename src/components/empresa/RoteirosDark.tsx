@@ -7,6 +7,8 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { confirmar } from "@/components/DialogosGlobais";
 import { MidiaLocal } from "./MidiaLocal";
 import { ConectarInstagramDark, ProgramarPublicacao, useInstagramDoPerfil } from "./PublicacaoDark";
+import { DesempenhoDark, NumerosDoVideo } from "./DesempenhoDark";
+import { useDesempenhoDark } from "@/hooks/useDesempenhoDark";
 import { agruparPorDia, contarPorStatus, mensagemAjuste, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, versoesDoRoteiro, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
 import { midiasDoTexto } from "@/lib/empresa/midiasChat";
 import { cn } from "@/lib/utils";
@@ -37,7 +39,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
   useEffect(() => { if (!perfis.some((p) => p.id === perfilId)) setPerfilId(perfis[0]?.id ?? ""); }, [perfis, perfilId]);
   const carregar = useCallback(async () => {
     if (!perfilId) { setRoteiros([]); return; }
-    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em, legenda, video_url, programado_para, permalink, mensagem").eq("perfil_id", perfilId).order("numero");
+    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em, legenda, video_url, programado_para, permalink, mensagem, ig_media_id").eq("perfil_id", perfilId).order("numero");
     setRoteiros((data ?? []) as RoteiroDark[]);
   }, [perfilId]);
   useEffect(() => {
@@ -48,6 +50,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
 
   const perfil = perfis.find((p) => p.id === perfilId);
   const ig = useInstagramDoPerfil(perfilId);
+  const desempenho = useDesempenhoDark(ig.conta?.ig_user_id, (roteiros ?? []).map((r) => r.ig_media_id).filter((x): x is string => !!x));
   const porDia = useMemo(() => agruparPorDia(roteiros ?? []), [roteiros]);
   const semanas = useMemo(() => semanasDoMes(mes.ano, mes.mes), [mes]);
   const contagem = contarPorStatus(roteiros ?? []);
@@ -66,6 +69,8 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
         <button type="button" onClick={() => perfil && onConversar(perfil.id)} className="flex items-center gap-1.5 rounded-xl border border-white/15 px-3 py-2 text-sm text-white/80 hover:bg-white/10"><MessageCircle className="h-4 w-4" />Conversar com o Lauro</button>
       </div>
 
+      {ig.conta && <DesempenhoDark username={ig.conta.username} dias={desempenho.dias} posts={desempenho.posts} leads={desempenho.leads} atualizando={desempenho.atualizando} carregou={desempenho.carregou} onAtualizar={() => void desempenho.atualizar()} hoje={hoje} />}
+
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
         <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4">
           <div className="flex items-center gap-2"><FileText className="h-5 w-5 text-white/70" /><h3 className="text-lg font-bold">Roteiros</h3>
@@ -76,6 +81,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
                 <li key={r.id}><button type="button" onClick={() => setAberto(r.id)} className="w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-left hover:bg-white/5">
                   <span className="flex items-center gap-2"><span className="rounded bg-white/10 px-1.5 py-0.5 text-xs font-bold">V{r.numero}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{r.titulo}</span></span>
                   <span className="mt-1.5 flex items-center gap-2 text-[11px]"><span className={cn("rounded-full px-2 py-0.5 font-semibold", CHIP[r.status])}>{ROTULO_STATUS[r.status]}</span><span className="text-white/45">{r.data_postagem ? r.data_postagem.split("-").reverse().slice(0, 2).join("/") : "sem dia"}</span></span>
+                  {r.ig_media_id && <span className="mt-1.5 block"><NumerosDoVideo pequeno post={desempenho.posts[r.ig_media_id]} leads={desempenho.leads[r.ig_media_id]} /></span>}
                 </button></li>
               ))}
             </ul>
@@ -121,7 +127,7 @@ export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[];
       </div>
 
       <NovoRoteiro aberto={!!novo} dia={novo?.dia ?? hoje} perfil={perfil} onFechar={() => setNovo(null)} onCriado={() => { setNovo(null); void carregar(); }} />
-      <EstudioRoteiro roteiro={atual} perfil={perfil} onFechar={() => setAberto(null)} onMudou={() => void carregar()} />
+      <EstudioRoteiro roteiro={atual} perfil={perfil} numeros={atual?.ig_media_id ? { post: desempenho.posts[atual.ig_media_id], leads: desempenho.leads[atual.ig_media_id] } : undefined} onFechar={() => setAberto(null)} onMudou={() => void carregar()} />
     </div>
   );
 }
@@ -175,7 +181,7 @@ type Msg = { papel: "user" | "assistant"; texto: string };
 // Estúdio do roteiro (13/11/2026, Davi: "ao clicar, um editor estilo Premiere onde eu converso com o Lauro; quando ele editar, vem 'aprovar'").
 // Esquerda: o vídeo atual (com o histórico de versões v1, v2…) e o roteiro. Direita: a conversa com o Lauro sobre ESTE roteiro. Quando o Lauro termina uma
 // versão ele marca "revisar" e aparece o botão Aprovar; aprovar prepara o vídeo, e a publicação sai pela nuvem na data que o Davi escolher (PublicacaoDark). Nada é publicado sem o Aprovar e a data.
-function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: RoteiroDark | null; perfil?: PerfilRoteiro; onFechar: () => void; onMudou: () => void }) {
+function EstudioRoteiro({ roteiro, perfil, numeros, onFechar, onMudou }: { roteiro: RoteiroDark | null; perfil?: PerfilRoteiro; numeros?: { post?: import("@/lib/empresa/desempenhoDark").PostMetrica; leads?: number }; onFechar: () => void; onMudou: () => void }) {
   const r = roteiro;
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [texto, setTexto] = useState("");
@@ -292,7 +298,7 @@ function EstudioRoteiro({ roteiro, perfil, onFechar, onMudou }: { roteiro: Rotei
                   </div>
                 )}
                 {versao?.nota && <p className="rounded-lg bg-white/5 p-2 text-xs text-white/65">Lauro: {versao.nota}</p>}
-                <ProgramarPublicacao roteiro={r} perfilId={r.perfil_id} onMudou={onMudou} />
+                <ProgramarPublicacao roteiro={r} perfilId={r.perfil_id} onMudou={onMudou} numeros={numeros?.post ? <NumerosDoVideo post={numeros.post} leads={numeros.leads} /> : undefined} />
                 <button type="button" onClick={() => setVerRoteiro((v) => !v)} className="text-xs text-white/50 hover:text-white">{verRoteiro ? "Esconder o roteiro" : "Ver o roteiro"}</button>
                 {verRoteiro && <p className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-sm text-white/80">{r.texto}</p>}
               </section>
