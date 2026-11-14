@@ -267,10 +267,10 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
-    <div className="grid h-[calc(100svh-560px)] min-h-[440px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]">
+    <div className="grid h-[calc(100svh-560px)] min-h-[440px] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]">
       {dialogoConexao}
       {/* Filas */}
-      <aside className="flex flex-col gap-1 border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
+      <aside className="flex min-h-0 flex-col gap-1 overflow-y-auto border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
         <p className="px-2 pb-1 pt-1 text-xs font-bold uppercase tracking-wider text-white/45">X1 · filas</p>
         {FILAS.map((f) => (
           <button key={f.id} type="button" onClick={() => { setFila(f.id); setSel(null); }} title={f.dica}
