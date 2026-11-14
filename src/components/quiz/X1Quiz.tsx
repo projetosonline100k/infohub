@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Brain, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, RotateCcw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Brain, Loader2, PanelLeft, List, MessageCircle, Pause, Play, Plus, RefreshCw, RotateCcw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
@@ -288,6 +288,31 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
   const [racios, setRacios] = useState<Racio[]>([]);
   const leadId = lead?.id;
   const temAgente = !!(leadId && agentes.get(leadId));
+  // Layout ajustável (14/11, Davi: "ajustar o tamanho de cada parte, até ocultar a lateral"): larguras arrastáveis e cada coluna pode ser ocultada.
+  type Layout = { f: number; l: number; r: number; verF: boolean; verL: boolean; verR: boolean };
+  const [lay, setLay] = useState<Layout>(() => {
+    const base: Layout = { f: cheia ? 240 : 200, l: cheia ? 380 : 320, r: cheia ? 380 : 300, verF: true, verL: true, verR: true };
+    try { return { ...base, ...JSON.parse(localStorage.getItem("x1-layout") ?? "{}") }; } catch { return base; }
+  });
+  const mudarLay = (p: Partial<Layout>) => setLay((a) => { const n = { ...a, ...p }; try { localStorage.setItem("x1-layout", JSON.stringify(n)); } catch { /* sem armazenamento */ } return n; });
+  const [largura, setLargura] = useState(() => window.innerWidth);
+  useEffect(() => { const f = () => setLargura(window.innerWidth); window.addEventListener("resize", f); return () => window.removeEventListener("resize", f); }, []);
+  const lg = largura >= 1024, xl = largura >= 1280;
+  const mostraR = temAgente && lay.verR && xl;
+  const colunas = lg ? [lay.verF && `${lay.f}px`, lay.verL && `${lay.l}px`, "minmax(0,1fr)", mostraR && `${lay.r}px`].filter(Boolean).join(" ") : undefined;
+  const arrastar = (qual: "f" | "l" | "r") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = lay[qual];
+    const mover = (ev: PointerEvent) => {
+      const d = qual === "r" ? x0 - ev.clientX : ev.clientX - x0;
+      setLay((a) => ({ ...a, [qual]: Math.max(qual === "r" ? 240 : 160, Math.min(720, w0 + d)) }));
+    };
+    const soltar = () => {
+      window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar);
+      setLay((a) => { try { localStorage.setItem("x1-layout", JSON.stringify(a)); } catch { /* sem armazenamento */ } return a; });
+    };
+    window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
+  };
   useEffect(() => {
     setRacios([]);
     if (!leadId || !temAgente) return;
@@ -360,10 +385,14 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
-    <div className={cn("grid grid-rows-[minmax(0,1fr)]", preencher ? "min-h-[560px] flex-1" : "h-[calc(100svh-300px)] min-h-[600px]", " overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]", cheia && "lg:!grid-cols-[240px_380px_minmax(0,1fr)]", temAgente && (cheia ? "xl:!grid-cols-[240px_380px_minmax(0,1fr)_380px]" : "xl:grid-cols-[200px_320px_minmax(0,1fr)_300px]"))}>
+    <div className={cn("relative grid grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white", preencher ? "min-h-[560px] flex-1" : "h-[calc(100svh-300px)] min-h-[600px]")} style={colunas ? { gridTemplateColumns: colunas } : undefined}>
       {dialogoConexao}
+      {lg && lay.verF && <div onPointerDown={arrastar("f")} title="Arraste para ajustar" className="absolute bottom-0 top-0 z-20 w-1.5 cursor-col-resize hover:bg-cyan-400/40" style={{ left: lay.f - 3 }} />}
+      {lg && lay.verF && lay.verL && <div onPointerDown={arrastar("l")} title="Arraste para ajustar" className="absolute bottom-0 top-0 z-20 w-1.5 cursor-col-resize hover:bg-cyan-400/40" style={{ left: lay.f + lay.l - 3 }} />}
+      {lg && !lay.verF && lay.verL && <div onPointerDown={arrastar("l")} title="Arraste para ajustar" className="absolute bottom-0 top-0 z-20 w-1.5 cursor-col-resize hover:bg-cyan-400/40" style={{ left: lay.l - 3 }} />}
+      {mostraR && <div onPointerDown={arrastar("r")} title="Arraste para ajustar" className="absolute bottom-0 top-0 z-20 w-1.5 cursor-col-resize hover:bg-violet-400/40" style={{ right: lay.r - 3 }} />}
       {/* Filas */}
-      <aside className="flex min-h-0 flex-col gap-1 overflow-y-auto border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
+      <aside className={cn("min-h-0 flex-col gap-1 overflow-y-auto border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r", lay.verF || !lg ? "flex" : "hidden")}>
         <p className="px-2 pb-1 pt-1 text-xs font-bold uppercase tracking-wider text-white/45">X1 · filas</p>
         {FILAS.map((f) => (
           <button key={f.id} type="button" onClick={() => { setFila(f.id); setSel(null); }} title={f.dica}
@@ -380,7 +409,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
       </aside>
 
       {/* Leads da fila */}
-      <section className="flex min-h-0 flex-col border-b border-white/10 bg-[#111b21] lg:border-b-0 lg:border-r">
+      <section className={cn("min-h-0 flex-col border-b border-white/10 bg-[#111b21] lg:border-b-0 lg:border-r", lay.verL || !lg ? "flex" : "hidden")}>
         <div className="space-y-2 border-b border-white/10 p-2.5">
           <div className="flex items-center gap-2"><h3 className="flex-1 truncate text-base font-bold">{filaAtual.rotulo}</h3>
             <button type="button" onClick={() => void carregar()} title="Atualizar" className="rounded-full p-1.5 text-white/55 hover:bg-white/10"><RefreshCw className="h-3.5 w-3.5" /></button></div>
@@ -418,6 +447,11 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                 {(Object.keys(NOMES_STATUS) as StatusLead[]).map((s) => <option key={s} value={s}>{NOMES_STATUS[s]}</option>)}
               </select>
               <button type="button" onClick={() => void onApagar([lead.id])} title="Apagar este lead" className="rounded-full border border-white/15 p-1.5 text-white/60 hover:border-rose-400/50 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
+              <span className="hidden items-center gap-0.5 lg:flex">
+                <button type="button" onClick={() => mudarLay({ verF: !lay.verF })} title={lay.verF ? "Ocultar as filas" : "Mostrar as filas"} className={cn("rounded-full p-1.5 hover:bg-white/10", lay.verF ? "text-white/70" : "text-white/35")}><PanelLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => mudarLay({ verL: !lay.verL })} title={lay.verL ? "Ocultar a lista de leads" : "Mostrar a lista de leads"} className={cn("rounded-full p-1.5 hover:bg-white/10", lay.verL ? "text-white/70" : "text-white/35")}><List className="h-4 w-4" /></button>
+                {temAgente && <button type="button" onClick={() => mudarLay({ verR: !lay.verR })} title={lay.verR ? "Ocultar o raciocínio" : "Mostrar o raciocínio"} className={cn("rounded-full p-1.5 hover:bg-white/10", lay.verR ? "text-violet-300" : "text-white/35")}><Brain className="h-4 w-4" /></button>}
+              </span>
               <button type="button" onClick={proximo} disabled={lista.length < 2} className="flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10 disabled:opacity-30">Próximo<ChevronRight className="h-3.5 w-3.5" /></button>
             </header>
             {(() => {
@@ -493,17 +527,17 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                     <span className="flex-1 text-white/50">Gravando áudio…</span>
                     <button type="button" onClick={() => void pararGravacao()} title="Cancelar a gravação" className="rounded-full p-1.5 text-white/60 hover:bg-white/10 hover:text-rose-300"><Trash2 className="h-4 w-4" /></button>
                   </div>
-                ) : (                <textarea value={texto} onChange={(e) => { setTexto(e.target.value); if (modeloUsado && !e.target.value) setModeloUsado(null); }} rows={3} placeholder="Escreva a mensagem ou escolha um modelo acima…"
+                ) : (                <textarea value={texto} onChange={(e) => { setTexto(e.target.value); if (modeloUsado && !e.target.value) setModeloUsado(null); }} rows={2} placeholder="Escreva uma mensagem"
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void enviar(); } }}
                   className="min-h-0 flex-1 resize-none rounded-xl bg-[#2a3942] px-3.5 py-2 text-[14.5px] text-white outline-none placeholder:text-white/40" />)}
                 {isDesktop() && !texto.trim() && gravando == null && (
-                  <button type="button" onClick={() => void comecarGravacao()} disabled={enviando || !link} title="Gravar e mandar um áudio" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#2a3942] text-white/85 hover:bg-[#33454f] disabled:opacity-40"><Mic className="h-5 w-5" /></button>)}
+                  <button type="button" onClick={() => void comecarGravacao()} disabled={enviando || !link} title="Gravar e mandar um áudio" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#2a3942] text-white/85 hover:bg-[#33454f] disabled:opacity-40"><Mic className="h-4 w-4" /></button>)}
                 {gravando != null ? (
                   <button type="button" disabled={enviando} onClick={() => void enviarAudio()} title="Enviar o áudio" className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#00a884] px-4 text-sm font-semibold text-white hover:bg-[#019c7a] disabled:opacity-40">{enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Enviar áudio</button>
                 ) : (
-                <button type="button" disabled={!texto.trim() || !link || enviando} onClick={() => void enviar()} title={link ? "Abre o WhatsApp com a mensagem pronta (⌘ Enter)" : "Sem WhatsApp válido"}
-                  className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#00a884] px-4 text-sm font-semibold text-white hover:bg-[#019c7a] disabled:opacity-40">
-                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Enviar pelo WhatsApp
+                <button type="button" disabled={!texto.trim() || !link || enviando} onClick={() => void enviar()} title={link ? "Enviar pelo WhatsApp (⌘ Enter)" : "Sem WhatsApp válido"}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white hover:bg-[#019c7a] disabled:opacity-40">
+                  {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                 </button>
                 )}
               </div>
@@ -525,7 +559,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
         )}
       </section>
       {temAgente && (
-        <aside className="hidden min-h-0 flex-col border-l border-white/10 bg-[#111b21] xl:flex">
+        <aside className={cn("min-h-0 flex-col border-l border-white/10 bg-[#111b21]", mostraR ? "flex" : "hidden")}>
           <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5 text-sm font-semibold"><Brain className="h-4 w-4 text-violet-300" />Raciocínio do agente</div>
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-[13px]">
             {racios.length === 0 && <p className="text-white/45">Quando o agente escrever, o porquê de cada resposta aparece aqui: o que ele entendeu do lead, em que etapa está e qual regra usou.</p>}
