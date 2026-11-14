@@ -409,6 +409,10 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   useEffect(() => {
     if (!tocando || !projeto) return;
     let raf = 0;
+    // 14/11 (Davi: "som atrasado, animação atrasada, travando demais"): setTFonte a cada quadro (60x/s) refazia o editor inteiro
+    // (linha do tempo, ondas, painéis) e roubava tempo dos players. Na reprodução a tela do relógio atualiza ~20x/s; ao parar, acerta o tempo exato.
+    let ultimo = 0;
+    const atualizarT = (t: number) => { const agora = performance.now(); if (agora - ultimo < 50) return; ultimo = agora; setTFonte(t); };
     const passo = () => {
       // Player trocando de arquivo (montando ↔ liso) ainda está no 0: não lê o tempo dele,
       // senão a agulha volta pro começo (pedido do Davi, 16/10).
@@ -418,7 +422,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
           if (m.playbackRate !== velRef.current) m.playbackRate = velRef.current;
           const tb = paraBruto(segsQ, m.currentTime);
           m.muted = !!lacunaEm(projeto, tb);
-          setTFonte(tb);
+          atualizarT(tb);
           if (m.ended) setTocando(false);
         }
         raf = requestAnimationFrame(passo);
@@ -464,12 +468,17 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
         }
         const atual = ativo()!;
         atual.muted = !!lacunaEm(projeto, atual.currentTime);
-        setTFonte(atual.currentTime);
+        atualizarT(atual.currentTime);
       }
       raf = requestAnimationFrame(passo);
     };
     raf = requestAnimationFrame(passo);
-    return () => cancelAnimationFrame(raf);
+    const player = vidA.current;
+    return () => {
+      cancelAnimationFrame(raf);
+      const m = modoMontagem ? player : ativo();
+      if (m && m.readyState >= 1) setTFonte(modoMontagem ? paraBruto(segsQ, m.currentTime) : m.currentTime);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tocando, projeto, segs, modoMontagem, segsQ]);
   const irParaFinal = useCallback((tf: number) => {
