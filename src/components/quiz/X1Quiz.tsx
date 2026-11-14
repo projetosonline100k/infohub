@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Check, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -150,6 +150,60 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     const prox = lista[i + 1] ?? lista[i - 1];
     if (prox && prox.id !== lead?.id) setSel(prox.id);
   };
+  // O id do chat no WhatsApp: o da conversa que já existe (cobre o número sem o 9º dígito de alguns DDDs), senão o número do quiz.
+  const chatDoLead = (l: LeadQuiz) => wa.find((w) => w.resposta_id === l.id)?.chat_id ?? `${telefoneWa(l.whatsapp)}@c.us`;
+
+  // Áudio (13/11, Davi: "preciso ter a opção de mandar áudio"): grava no microfone, ouve a contagem e envia pelo WhatsApp do projeto; escrever ou mandar áudio por conta própria pausa o agente.
+  const [gravando, setGravando] = useState<number | null>(null);
+  const [segundosGrav, setSegundosGrav] = useState(0);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
+  const pedacosRef = useRef<Blob[]>([]);
+  useEffect(() => {
+    if (gravando == null) return;
+    const t = setInterval(() => setSegundosGrav(Math.floor((Date.now() - gravando) / 1000)), 250);
+    return () => clearInterval(t);
+  }, [gravando]);
+  useEffect(() => () => { gravadorRef.current?.stream.getTracks().forEach((t) => t.stop()); }, []);
+  useEffect(() => { gravadorRef.current?.stream.getTracks().forEach((t) => t.stop()); gravadorRef.current = null; setGravando(null); }, [lead?.id]);
+  const comecarGravacao = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const tipo = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+      const g = new MediaRecorder(stream, tipo ? { mimeType: tipo } : undefined);
+      pedacosRef.current = [];
+      g.ondataavailable = (e) => { if (e.data.size) pedacosRef.current.push(e.data); };
+      g.start(250);
+      gravadorRef.current = g;
+      setSegundosGrav(0); setGravando(Date.now());
+    } catch { toast.error("Não consegui usar o microfone. Libere em Ajustes do Sistema → Privacidade → Microfone."); }
+  };
+  const pararGravacao = () => new Promise<Blob | null>((ok) => {
+    const g = gravadorRef.current;
+    gravadorRef.current = null; setGravando(null);
+    if (!g) { ok(null); return; }
+    g.onstop = () => { g.stream.getTracks().forEach((t) => t.stop()); ok(new Blob(pedacosRef.current, { type: g.mimeType || "audio/mp4" })); };
+    g.stop();
+  });
+  const enviarAudio = async () => {
+    if (!lead || !clienteId) return;
+    const audio = await pararGravacao();
+    if (!audio || audio.size < 1000) { toast.error("O áudio ficou vazio"); return; }
+    setEnviando(true);
+    try {
+      const base64 = await new Promise<string>((ok, erro) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] ?? ""); r.onerror = () => erro(r.error); r.readAsDataURL(audio); });
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("whatsapp_enviar_audio", { chatId: chatDoLead(lead), base64, mimetype: audio.type.split(";")[0], conta: contaWa });
+      await db.from("quiz_abordagens").insert({ quiz_id: quizId, resposta_id: lead.id, cliente_id: clienteId, texto: "🎤 Áudio", modelo: null });
+      if (lead.status === "novo") onStatus(lead, "em_contato");
+      await carregar();
+      toast.success("Áudio enviado");
+      if (fila === "abordar") proximo();
+    } catch (e) {
+      const msg = typeof e === "string" ? e : "Não consegui enviar o áudio";
+      if (/Session status|não respondeu|FAILED|SCAN_QR|STOPPED/i.test(msg)) { toast.error("O WhatsApp está desconectado. Escaneie o QR para reconectar."); setConectando(true); } else toast.error(msg);
+    } finally { setEnviando(false); }
+  };
+
   const enviar = async () => {
     if (!lead || !clienteId || !texto.trim() || enviando) return;
     // O agente separa as ideias com --- : cada trecho sai como uma mensagem (uma depois da outra), como no WhatsApp de verdade.
@@ -164,7 +218,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
         const { invoke } = await import("@tauri-apps/api/core");
         for (let i = 0; i < Math.max(1, partes.length); i++) {
           if (i > 0) await new Promise((r) => setTimeout(r, 1500 + Math.min(4000, (partes[i]?.length ?? 0) * 40)));
-          await invoke("whatsapp_enviar", { chatId: `${telefoneWa(lead.whatsapp)}@c.us`, texto: partes[i] ?? texto.trim(), conta: contaWa, responderA: null, mencoes: null });
+          await invoke("whatsapp_enviar", { chatId: chatDoLead(lead), texto: partes[i] ?? texto.trim(), conta: contaWa, responderA: null, mencoes: null });
         }
       } catch (e) {
         setEnviando(false);
@@ -391,13 +445,26 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
                 ))}
               </div>
               <div className="flex items-end gap-2">
-                <textarea value={texto} onChange={(e) => { setTexto(e.target.value); if (modeloUsado && !e.target.value) setModeloUsado(null); }} rows={3} placeholder="Escreva a mensagem ou escolha um modelo acima…"
+                {gravando != null ? (
+                  <div className="flex min-h-[44px] flex-1 items-center gap-3 rounded-xl bg-[#2a3942] px-3.5 py-2 text-sm">
+                    <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-rose-500" />
+                    <span className="tabular-nums text-white/90">{Math.floor(segundosGrav / 60)}:{String(segundosGrav % 60).padStart(2, "0")}</span>
+                    <span className="flex-1 text-white/50">Gravando áudio…</span>
+                    <button type="button" onClick={() => void pararGravacao()} title="Cancelar a gravação" className="rounded-full p-1.5 text-white/60 hover:bg-white/10 hover:text-rose-300"><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                ) : (                <textarea value={texto} onChange={(e) => { setTexto(e.target.value); if (modeloUsado && !e.target.value) setModeloUsado(null); }} rows={3} placeholder="Escreva a mensagem ou escolha um modelo acima…"
                   onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void enviar(); } }}
-                  className="min-h-0 flex-1 resize-none rounded-xl bg-[#2a3942] px-3.5 py-2 text-[14.5px] text-white outline-none placeholder:text-white/40" />
+                  className="min-h-0 flex-1 resize-none rounded-xl bg-[#2a3942] px-3.5 py-2 text-[14.5px] text-white outline-none placeholder:text-white/40" />)}
+                {isDesktop() && !texto.trim() && gravando == null && (
+                  <button type="button" onClick={() => void comecarGravacao()} disabled={enviando || !link} title="Gravar e mandar um áudio" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#2a3942] text-white/85 hover:bg-[#33454f] disabled:opacity-40"><Mic className="h-5 w-5" /></button>)}
+                {gravando != null ? (
+                  <button type="button" disabled={enviando} onClick={() => void enviarAudio()} title="Enviar o áudio" className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#00a884] px-4 text-sm font-semibold text-white hover:bg-[#019c7a] disabled:opacity-40">{enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Enviar áudio</button>
+                ) : (
                 <button type="button" disabled={!texto.trim() || !link || enviando} onClick={() => void enviar()} title={link ? "Abre o WhatsApp com a mensagem pronta (⌘ Enter)" : "Sem WhatsApp válido"}
                   className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-[#00a884] px-4 text-sm font-semibold text-white hover:bg-[#019c7a] disabled:opacity-40">
                   {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Enviar pelo WhatsApp
                 </button>
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-2 text-xs">
                 <button type="button" disabled={!texto.trim()} onClick={() => { void navigator.clipboard.writeText(texto); toast.success("Mensagem copiada"); }} className="flex items-center gap-1 rounded-lg px-2 py-1 text-white/60 hover:bg-white/10 disabled:opacity-30"><Copy className="h-3.5 w-3.5" />Copiar</button>
