@@ -34,8 +34,8 @@ const FILAS: { id: Fila; rotulo: string; dica: string; Icone: typeof Inbox; cor:
 ];
 const NOMES_STATUS: Record<StatusLead, string> = { novo: "Novo", em_contato: "Em contato", convertido: "Convertido" };
 
-export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, preencher = false }: {
-  preencher?: boolean; quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void; onApagar: (ids: string[]) => Promise<void>;
+export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, preencher = false, cheia = false }: {
+  preencher?: boolean; cheia?: boolean; quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void; onApagar: (ids: string[]) => Promise<void>;
 }) {
   const [abordagens, setAbordagens] = useState<Abordagem[] | null>(null);
   const [proprios, setProprios] = useState<Modelo[]>([]);
@@ -360,7 +360,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
-    <div className={cn("grid grid-rows-[minmax(0,1fr)]", preencher ? "min-h-[560px] flex-1" : "h-[calc(100svh-300px)] min-h-[600px]", " overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]", temAgente && "xl:grid-cols-[200px_320px_minmax(0,1fr)_300px]")}>
+    <div className={cn("grid grid-rows-[minmax(0,1fr)]", preencher ? "min-h-[560px] flex-1" : "h-[calc(100svh-300px)] min-h-[600px]", " overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]", cheia && "lg:!grid-cols-[240px_380px_minmax(0,1fr)]", temAgente && (cheia ? "xl:!grid-cols-[240px_380px_minmax(0,1fr)_380px]" : "xl:grid-cols-[200px_320px_minmax(0,1fr)_300px]"))}>
       {dialogoConexao}
       {/* Filas */}
       <aside className="flex min-h-0 flex-col gap-1 overflow-y-auto border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
@@ -439,7 +439,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
             })()}
 
             <div className="min-h-0 flex-1 overflow-y-auto bg-[#0b141a] bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.025),transparent_40%),radial-gradient(circle_at_80%_70%,rgba(255,255,255,0.02),transparent_40%)] px-4 py-3">
-              <div className="mx-auto flex max-w-2xl flex-col gap-1.5">
+              <div className={cn("mx-auto flex flex-col gap-1.5", cheia ? "max-w-3xl text-[16px]" : "max-w-2xl")}>
                 <div className="mx-auto mb-2 max-w-md rounded-lg bg-[#182229] px-3 py-2 text-center text-xs text-white/65">
                   <b className="text-white/85">Lead do quiz</b> · {lead.perfil || "sem perfil"} · {etapaDoLead(lead, perguntas)} · {haQuanto(lead.criada_em, agora)}
                   {lead.respostas.length > 0 && (
@@ -466,9 +466,9 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
               </div>
             </div>
 
-            {/* Agente conversando: o rodapé de escrever à mão some (como no WhatsApp, o chat fica com a tela); "Pausar e assumir" traz ele de volta. */}
-            {!["conversando", "abordar"].includes(agentes.get(lead.id)?.estado ?? "") && <footer className="space-y-2 bg-[#202c33] p-3">
-              <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+            {/* Agente conversando: só a barra de escrever (como no WhatsApp); os atalhos (Abordar, rascunho, modelos) voltam quando ele está parado. */}
+            <footer className="space-y-2 bg-[#202c33] p-3">
+              {!["conversando", "abordar"].includes(agentes.get(lead.id)?.estado ?? "") && <div className="flex gap-1.5 overflow-x-auto pb-0.5">
                 <button type="button" onClick={() => void abordar()} disabled={!clienteId || ["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "")} title="O agente escreve e manda a primeira mensagem pelo WhatsApp e segue a conversa sozinho"
                   className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-50">
                   <Bot className="h-3.5 w-3.5" />{["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "") ? "Agente em ação" : "Abordar"}
@@ -484,7 +484,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                     {m.proprio && <button type="button" onClick={() => void apagarModelo(m)} title="Apagar este modelo" className="ml-0.5 hidden rounded-full p-1 text-white/40 hover:text-rose-300 group-hover:block"><Trash2 className="h-3 w-3" /></button>}
                   </span>
                 ))}
-              </div>
+              </div>}
               <div className="flex items-end gap-2">
                 {gravando != null ? (
                   <div className="flex min-h-[44px] flex-1 items-center gap-3 rounded-xl bg-[#2a3942] px-3.5 py-2 text-sm">
@@ -507,7 +507,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                 </button>
                 )}
               </div>
-              <div className="flex flex-wrap items-center gap-2 text-xs">
+              {!["conversando", "abordar"].includes(agentes.get(lead.id)?.estado ?? "") && <div className="flex flex-wrap items-center gap-2 text-xs">
                 <button type="button" disabled={!texto.trim()} onClick={() => { void navigator.clipboard.writeText(texto); toast.success("Mensagem copiada"); }} className="flex items-center gap-1 rounded-lg px-2 py-1 text-white/60 hover:bg-white/10 disabled:opacity-30"><Copy className="h-3.5 w-3.5" />Copiar</button>
                 {salvandoModelo === null ? (
                   <button type="button" disabled={!texto.trim()} onClick={() => setSalvandoModelo("")} className="flex items-center gap-1 rounded-lg px-2 py-1 text-white/60 hover:bg-white/10 disabled:opacity-30"><Plus className="h-3.5 w-3.5" />Salvar como modelo</button>
@@ -519,8 +519,8 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                   </span>
                 )}
                 <span className="ml-auto text-white/40">Variáveis nos modelos: {"{nome}"} e {"{perfil}"}</span>
-              </div>
-            </footer>}
+              </div>}
+            </footer>
           </>
         )}
       </section>
