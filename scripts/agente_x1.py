@@ -151,12 +151,34 @@ def _contexto_lead(q, resp_id):
     return {"nome": r[0], "perfil": r[1], "respostas": resps, "foi_ao_checkout": cta, "status": r[3], "whatsapp": r[4]}
 
 
+PEDIDO_RACIOCINIO = """
+
+PAINEL DO DAVI (ele acompanha o seu raciocínio ao lado do chat; o lead NUNCA vê isto): DEPOIS das mensagens, escreva uma linha com exatamente [[RACIOCINIO]] e, embaixo, de 3 a 5 tópicos curtos ("- ...") em português: o que o lead disse e o que ele quer de verdade; em que etapa do caminho da conversa vocês estão; qual regra, objeção ou trecho da inteligência você usou; por que escreveu essas mensagens (e não outras); o que fará se ele reagir de certa forma. Não repita as mensagens. Se for [CHAMAR_HUMANO], explique o motivo aqui também."""
+
+
+def separar_raciocinio(texto):
+    """(mensagens, raciocínio): o que vem depois de [[RACIOCINIO]] é só para o painel do Davi e nunca vai ao lead."""
+    partes = re.split(r"\n?\s*\[\[RACIOCINIO\]\]\s*", (texto or "").strip(), maxsplit=1)
+    return partes[0].strip(), (partes[1].strip() if len(partes) > 1 else "")
+
+
+def _gravar_raciocinio(q, cv, lead_disse, partes):
+    r = (cv.get("_raciocinio") or "").strip()
+    if not r:
+        return
+    q.execute("""INSERT INTO public.x1_agente_raciocinio (conversa_id, resposta_id, cliente_id, lead_disse, raciocinio, mensagens)
+                 VALUES (%s, %s, %s, %s, %s, %s)""", (cv["id"], cv["resposta_id"], cv["cliente_id"], (lead_disse or "")[:2000] or None, r[:4000], [p[:2000] for p in partes]))
+
+
 def _escrever(rodar_claude, log, conversa, config, lead, historico, mensagem, abertura):
     p = {"id": conversa["id"], "tipo": "simular", "mensagem": mensagem, "historico": historico, "config_atual": config, "cliente_id": str(conversa["cliente_id"]),
          "contexto": {"origem": "x1", "iniciar": abertura, "quiz_id": str(conversa["quiz_id"]), "lead": lead}}
     alvo = None if abertura else agente_whatsapp._alvo(p)
-    ok, texto = rodar_claude(agente_whatsapp._prompt(p, alvo), minutos=4, turnos=3, ferramentas=["Read"])
+    ok, texto = rodar_claude(agente_whatsapp._prompt(p, alvo) + PEDIDO_RACIOCINIO, minutos=4, turnos=3, ferramentas=["Read"])
     if not ok or not texto.strip():
+        return None
+    texto, conversa["_raciocinio"] = separar_raciocinio(texto)
+    if not texto:
         return None
     if alvo:
         texto = agente_whatsapp.ajustar_quantidade(texto, alvo, agente_whatsapp._ultima_do_agente(historico))
@@ -167,11 +189,11 @@ def passada(rodar_claude, log=print):
     c = connect()
     try:
         q = c.cursor()
-        q.execute("""SELECT c.id, c.quiz_id, c.resposta_id, c.cliente_id, c.chat_id, c.conta, c.estado, c.enviadas, c.recebidas, c.cursor_em, c.enviados_recentes, c.ultima_acao_em
+        q.execute("""SELECT c.id, c.quiz_id, c.resposta_id, c.cliente_id, c.chat_id, c.conta, c.estado, c.enviadas, c.recebidas, c.cursor_em, c.enviados_recentes, c.ultima_acao_em, c.recomecou_em
                      FROM public.x1_agente_conversas c LEFT JOIN public.agentes_whatsapp a ON a.cliente_id = c.cliente_id
                      WHERE c.estado IN ('abordar', 'conversando') AND (c.trava_ate IS NULL OR c.trava_ate < now()) AND COALESCE(a.automatico, true)
                      ORDER BY c.atualizado_em LIMIT 5""")
-        cols = ["id", "quiz_id", "resposta_id", "cliente_id", "chat_id", "conta", "estado", "enviadas", "recebidas", "cursor_em", "enviados_recentes", "ultima_acao_em"]
+        cols = ["id", "quiz_id", "resposta_id", "cliente_id", "chat_id", "conta", "estado", "enviadas", "recebidas", "cursor_em", "enviados_recentes", "ultima_acao_em", "recomecou_em"]
         conversas = [dict(zip(cols, r)) for r in q.fetchall()]
         c.commit()
         for cv in conversas:
@@ -190,11 +212,11 @@ def _pegar_trava(q, cv):
     """Trava atômica: só segue quem conseguiu mudar a trava. Relê os campos da conversa (outra passada pode ter acabado de mexer)."""
     q.execute("""UPDATE public.x1_agente_conversas SET trava_ate = now() + interval '6 minutes'
                  WHERE id = %s AND estado IN ('abordar', 'conversando') AND (trava_ate IS NULL OR trava_ate < now())
-                 RETURNING estado, chat_id, enviadas, recebidas, cursor_em, enviados_recentes""", (cv["id"],))
+                 RETURNING estado, chat_id, enviadas, recebidas, cursor_em, enviados_recentes, recomecou_em""", (cv["id"],))
     r = q.fetchone()
     if not r:
         return False
-    cv.update(dict(zip(["estado", "chat_id", "enviadas", "recebidas", "cursor_em", "enviados_recentes"], r)))
+    cv.update(dict(zip(["estado", "chat_id", "enviadas", "recebidas", "cursor_em", "enviados_recentes", "recomecou_em"], r)))
     return True
 
 
@@ -246,6 +268,7 @@ def _tratar(c, q, rodar_claude, log, cv):
         partes = partes_da_resposta(re.sub(r"^\[CHAMAR_HUMANO\]\s*", "", texto))
         partes = enviar_partes(conta, chat_id, partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, chat_id, cv))
         _registrar(q, cv, partes, "Agente")
+        _gravar_raciocinio(q, cv, None, partes)
         _atualizar(q, cv["id"], estado="conversando", chat_id=chat_id, conta=conta, enviadas=cv["enviadas"] + len(partes), cursor_em=datetime.now(timezone.utc),
                    enviados_recentes=(list(cv["enviados_recentes"] or []) + [normalizar(p) for p in partes])[-20:], ultima_acao_em=datetime.now(timezone.utc), motivo=None)
         q.execute("UPDATE public.quiz_respostas SET status = 'em_contato' WHERE id = %s AND status = 'novo'", (cv["resposta_id"],))
@@ -254,7 +277,7 @@ def _tratar(c, q, rodar_claude, log, cv):
 
     # conversando: o que o lead escreveu depois do cursor
     cursor = cv["cursor_em"] or datetime.now(timezone.utc)
-    todas, novas_lead = _ler_chat(q, conta, chat_id, cursor)
+    todas, novas_lead = _ler_chat(q, conta, chat_id, cursor, cv.get("recomecou_em"))
     proprias_novas = [m for m in todas if m[1] and m[2] and m[3] > cursor]
     # O Davi escreveu por conta própria no chat? Então ele assumiu: o robô sai de cena.
     if any(not e_do_robo(m[2], cv["enviados_recentes"] or []) for m in proprias_novas):
@@ -281,12 +304,13 @@ def _tratar(c, q, rodar_claude, log, cv):
         if not _lead_depois(q, conta, chat_id, ultimo_lead):
             break
         log("agente X1: o lead escreveu enquanto eu respondia, refazendo")   # descarta a resposta e gera de novo com o histórico atualizado
-        todas, novas_lead = _ler_chat(q, conta, chat_id, cursor)
+        todas, novas_lead = _ler_chat(q, conta, chat_id, cursor, cv.get("recomecou_em"))
         ultimo_lead = max(m[3] for m in novas_lead)
         texto = None
     if not texto:   # o lead continua escrevendo: a próxima passada responde tudo junto
         q.execute("UPDATE public.x1_agente_conversas SET trava_ate = NULL WHERE id = %s", (cv["id"],)); c.commit(); return
     if texto.lstrip().startswith("[CHAMAR_HUMANO]"):
+        _gravar_raciocinio(q, cv, "\n".join(m[2] for m in novas_lead), [])
         _atualizar(q, cv["id"], estado="aguardando_humano", motivo=re.sub(r"^\[CHAMAR_HUMANO\]\s*", "", texto)[:300] or "O agente pediu uma pessoa",
                    cursor_em=ultimo_lead, recebidas=cv["recebidas"] + len(novas_lead)); c.commit()
         log("agente X1: chamou uma pessoa", str(cv["resposta_id"])[:8]); return
@@ -294,15 +318,16 @@ def _tratar(c, q, rodar_claude, log, cv):
     partes = enviar_partes(conta, chat_id, partes, log, config.get("comportamento"), lambda: _recentes_do_agente(q, conta, chat_id, cv),
                            parar=lambda: _lead_depois(q, conta, chat_id, ultimo_lead))
     _registrar(q, cv, partes, "Agente")
+    _gravar_raciocinio(q, cv, "\n".join(m[2] for m in novas_lead), partes)
     _atualizar(q, cv["id"], cursor_em=ultimo_lead, enviadas=cv["enviadas"] + len(partes), recebidas=cv["recebidas"] + len(novas_lead),
                enviados_recentes=(list(cv["enviados_recentes"] or []) + [normalizar(p) for p in partes])[-20:], ultima_acao_em=datetime.now(timezone.utc))
     c.commit()
 
 
-def _ler_chat(q, conta, chat_id, cursor):
+def _ler_chat(q, conta, chat_id, cursor, desde=None):
     """(todas as mensagens do chat desde 2 dias antes do cursor, as novas do lead depois do cursor)."""
     q.execute("""SELECT id, de_mim, COALESCE(NULLIF(btrim(texto), ''), NULLIF(btrim(transcricao), ''), CASE WHEN midia_tipo IS NOT NULL THEN '[' || midia_tipo || ']' END), COALESCE(enviada_em, recebida_em)
-                 FROM public.whatsapp_mensagens WHERE conta = %s AND chat_id = %s AND COALESCE(enviada_em, recebida_em) > %s::timestamptz - interval '2 days' ORDER BY COALESCE(enviada_em, recebida_em)""", (conta, chat_id, cursor))
+                 FROM public.whatsapp_mensagens WHERE conta = %s AND chat_id = %s AND COALESCE(enviada_em, recebida_em) > greatest(%s::timestamptz - interval '2 days', COALESCE(%s::timestamptz, 'epoch')) ORDER BY COALESCE(enviada_em, recebida_em)""", (conta, chat_id, cursor, desde))
     todas = q.fetchall()
     return todas, [m for m in todas if not m[1] and m[2] and m[3] > cursor]
 

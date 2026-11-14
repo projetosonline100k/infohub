@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Brain, Loader2, MessageCircle, Pause, Play, Plus, RefreshCw, RotateCcw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -282,6 +282,34 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   };
   // "Abordar" automático (13/11, Davi: "já vai mandando, o cliente vai respondendo e a Gabriela vai respondendo também"): um clique e o agente
   // (robô do Mac) escreve e manda a primeira mensagem pelo WhatsApp do projeto e segue a conversa sozinho, até você pausar ou assumir.
+  // Raciocínio do agente (14/11, Davi: "um chat do lado mostrando o raciocínio, para eu ir vendo"): cada resposta dele vem com o porquê.
+  type Racio = { id: string; lead_disse: string | null; raciocinio: string; mensagens: string[]; criado_em: string };
+  const [racios, setRacios] = useState<Racio[]>([]);
+  const leadId = lead?.id;
+  const temAgente = !!(leadId && agentes.get(leadId));
+  useEffect(() => {
+    setRacios([]);
+    if (!leadId || !temAgente) return;
+    let vivo = true;
+    const ler = async () => {
+      const { data } = await db.from("x1_agente_raciocinio").select("id, lead_disse, raciocinio, mensagens, criado_em").eq("resposta_id", leadId).order("criado_em", { ascending: false }).limit(30);
+      if (vivo && data) setRacios(data as Racio[]);
+    };
+    void ler();
+    const t = window.setInterval(() => { if (!document.hidden) void ler(); }, 4000);
+    return () => { vivo = false; window.clearInterval(t); };
+  }, [leadId, temAgente]);
+  // Recomeçar: o agente esquece a conversa (o que veio antes deixa de contar) e abre de novo com a primeira mensagem.
+  const recomecar = async () => {
+    const a = lead && agentes.get(lead.id);
+    if (!a?.id) return;
+    if (!window.confirm("Recomeçar esta conversa? O agente esquece tudo o que já foi dito com essa pessoa e manda a primeira mensagem de novo, pelo WhatsApp.")) return;
+    const { error } = await db.from("x1_agente_conversas").update({ estado: "abordar", motivo: "__recomecar__" }).eq("id", a.id);
+    if (error) { toast.error("Não consegui recomeçar"); return; }
+    setRacios([]);
+    setAgentes((m) => new Map(m).set(a.resposta_id, { ...a, estado: "abordar", motivo: null, enviadas: 0, recebidas: 0 }));
+    toast.success("Recomeçando: a primeira mensagem sai em instantes");
+  };
   const abordar = async () => {
     if (!lead || !clienteId) return;
     if (!telefoneWa(lead.whatsapp)) { toast.error("Esse lead não tem um WhatsApp válido"); return; }
@@ -331,7 +359,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
-    <div className="grid h-[calc(100svh-560px)] min-h-[440px] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]">
+    <div className={cn("grid h-[calc(100svh-560px)] min-h-[440px] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]", temAgente && "xl:grid-cols-[200px_320px_minmax(0,1fr)_300px]")}>
       {dialogoConexao}
       {/* Filas */}
       <aside className="flex min-h-0 flex-col gap-1 overflow-y-auto border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
@@ -402,6 +430,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
                   <span className="text-white/55">{a.enviadas} enviada{a.enviadas === 1 ? "" : "s"} · {a.recebidas} resposta{a.recebidas === 1 ? "" : "s"} do lead</span>
                   {a.motivo && <span className="min-w-0 flex-1 truncate text-white/70" title={a.motivo}>{a.motivo}</span>}
                   <span className="ml-auto flex gap-1.5">
+                    <button type="button" onClick={() => void recomecar()} title="O agente esquece a conversa e abre de novo" className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><RotateCcw className="h-3 w-3" />Recomeçar</button>
                     {(a.estado === "conversando" || a.estado === "abordar") && <button type="button" onClick={() => void mudarAgente("pausado")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Pause className="h-3 w-3" />Pausar e assumir</button>}
                     {(a.estado === "pausado" || a.estado === "aguardando_humano" || a.estado === "erro") && <button type="button" onClick={() => void mudarAgente("conversando")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Play className="h-3 w-3" />Retomar o agente</button>}
                   </span>
@@ -493,6 +522,22 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
           </>
         )}
       </section>
+      {temAgente && (
+        <aside className="hidden min-h-0 flex-col border-l border-white/10 bg-[#111b21] xl:flex">
+          <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5 text-sm font-semibold"><Brain className="h-4 w-4 text-violet-300" />Raciocínio do agente</div>
+          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3 text-[13px]">
+            {racios.length === 0 && <p className="text-white/45">Quando o agente escrever, o porquê de cada resposta aparece aqui: o que ele entendeu do lead, em que etapa está e qual regra usou.</p>}
+            {racios.map((r) => (
+              <div key={r.id} className="space-y-1.5 rounded-xl border border-violet-400/20 bg-violet-500/5 p-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-white/40">{format(new Date(r.criado_em), "dd/MM HH:mm")}</p>
+                {r.lead_disse && <p className="rounded-lg bg-[#202c33] px-2 py-1 text-white/80"><span className="text-white/40">Lead: </span>{r.lead_disse}</p>}
+                <p className="whitespace-pre-wrap leading-snug text-violet-100/90">{r.raciocinio}</p>
+                {r.mensagens.length > 0 && <p className="border-t border-white/10 pt-1.5 text-white/55"><span className="text-white/35">Mandou: </span>{r.mensagens.join(" · ")}</p>}
+              </div>
+            ))}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

@@ -24,6 +24,10 @@ BEGIN
   BEGIN UPDATE public.x1_agente_conversas SET estado = 'aguardando_humano'; RAISE EXCEPTION 'dono forjou aguardando_humano';
   EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL; END;
   IF (SELECT cursor_em FROM public.x1_agente_conversas) IS NULL THEN RAISE EXCEPTION 'retomar deveria zerar o cursor para agora'; END IF;
+  UPDATE public.x1_agente_conversas SET estado = 'abordar', motivo = '__recomecar__';
+  IF (SELECT recomecou_em IS NULL OR motivo IS NOT NULL OR enviadas <> 0 OR estado <> 'abordar' FROM public.x1_agente_conversas) THEN RAISE EXCEPTION 'recomeçar não zerou a conversa'; END IF;
+  BEGIN INSERT INTO public.x1_agente_raciocinio(conversa_id, resposta_id, cliente_id, raciocinio) SELECT id, resposta_id, cliente_id, 'x' FROM public.x1_agente_conversas; RAISE EXCEPTION 'dono escreveu raciocínio';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
 RESET ROLE;
 SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000472',true);
