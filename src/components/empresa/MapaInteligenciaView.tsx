@@ -79,6 +79,50 @@ async function pilaresDoCadastro(membroId: string): Promise<{ pilares: Pilar[]; 
   return { pilares, membro };
 }
 
+/** Gaveta com o texto inteiro de uma seção do cérebro: ler, escrever e editar. Cada linha é uma folha do mapa. */
+function GavetaSecao({ pilar, numero, cor, foco, onSalvar, onApagar, onFechar }: {
+  pilar: PilarMapa; numero: number; cor: string; foco?: number;
+  onSalvar: (titulo: string, itens: string[]) => Promise<boolean>; onApagar: () => Promise<void>; onFechar: () => void;
+}) {
+  const [titulo, setTitulo] = useState(pilar.titulo);
+  const [texto, setTexto] = useState(pilar.itens.join("\n\n"));   // uma linha em branco entre as folhas: fica legível; no mapa cada bloco vira uma folha
+  const [salvando, setSalvando] = useState(false);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const mudou = titulo !== pilar.titulo || texto.split(/\n+/).map((l) => l.trim()).filter(Boolean).join("\n") !== pilar.itens.join("\n");
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.focus();
+    // Vai para a linha que foi clicada.
+    if (foco != null) {
+      const pos = pilar.itens.slice(0, foco).reduce((n, l) => n + l.length + 2, 0);
+      el.setSelectionRange(pos, pos + (pilar.itens[foco]?.length ?? 0));
+      const linhas = Math.floor(pos / 60);
+      el.scrollTop = Math.max(0, linhas * 22 - 60);
+    }
+  }, []);   // eslint-disable-line react-hooks/exhaustive-deps
+  const itens = () => texto.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  const salvar = async () => { setSalvando(true); const ok = await onSalvar(titulo.trim(), itens()); setSalvando(false); return ok; };
+  return (
+    <div className="absolute right-0 top-0 z-30 flex h-full w-[min(520px,92%)] flex-col border-l border-foreground/15 bg-popover shadow-2xl" onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void salvar(); } }}>
+      <div className="flex items-center gap-2 border-b border-foreground/10 px-4 py-3">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-bold" style={{ background: cor }}>{numero}</span>
+        <input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Título da seção" className="min-w-0 flex-1 rounded bg-transparent px-1 text-lg font-bold outline-none ring-1 ring-transparent focus:ring-foreground/30" />
+        <button type="button" onClick={onFechar} title="Fechar" className="rounded-md p-1.5 text-foreground/60 hover:bg-foreground/10 hover:text-foreground"><X className="h-4 w-4" /></button>
+      </div>
+      <p className="px-4 pt-2 text-[11px] text-foreground/50">Escreva à vontade. Cada parágrafo (separado por linha em branco) vira uma folha do mapa. A IA lê tudo isto antes de escrever.</p>
+      <textarea ref={area} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escreva aqui as informações desta seção…"
+        className="m-4 min-h-0 flex-1 resize-none rounded-lg border border-foreground/15 bg-background/40 p-3 text-[14px] leading-relaxed outline-none focus:border-foreground/40" />
+      <div className="flex items-center gap-2 border-t border-foreground/10 px-4 py-3">
+        <button type="button" onClick={() => { if (window.confirm("Apagar esta seção e tudo o que está nela?")) void onApagar(); }} className="flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-foreground/55 hover:bg-foreground/10 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" />Apagar seção</button>
+        <span className="ml-auto text-[11px] text-foreground/40">{mudou ? "alterações não salvas · ⌘ Enter salva" : "salvo"}</span>
+        <button type="button" onClick={() => void salvar()} disabled={salvando || !mudou} className="flex items-center gap-1 rounded-md bg-sky-600 px-3 py-1.5 text-xs font-semibold hover:bg-sky-500 disabled:opacity-40">
+          {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar</button>
+      </div>
+    </div>
+  );
+}
+
 /** `fonte` (14/11): o mesmo mapa mental para outra coisa que não um funcionário (o cérebro de um perfil): vem pronto, salva por `salvar` e não tem pilares "do cadastro". */
 export interface FonteMapa { mapa: MapaInteligencia; salvar: (m: MapaInteligencia) => Promise<boolean>; rotulo: string }
 
@@ -100,6 +144,8 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
     setDoCadastro(r.pilares); setMembroMapa(r.membro);
   };
   const [editar, setEditar] = useState(false);
+  // Painel de uma seção do cérebro (14/11, Davi: "clicar no item e abrir as informações que estão nela, para escrever e editar"): `foco` = a linha clicada.
+  const [painelSecao, setPainelSecao] = useState<{ i: number; foco?: number } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [mudou, setMudou] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
@@ -107,7 +153,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
 
   useEffect(() => {
     if (!aberto || !membro) return;
-    setMapa(null); setDoCadastro([]); setEditar(false); setMudou(false); setNoAberto(null);
+    setMapa(null); setDoCadastro([]); setEditar(false); setMudou(false); setNoAberto(null); setPainelSecao(null);
     if (fonte) { setMapa(lerMapa(fonte.mapa) ?? { pilares: [] }); return; }
     void (async () => {
       const [{ data }, cadastro] = await Promise.all([
@@ -255,7 +301,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
               return (
                 <div key={i}>
                   <div className={cn("absolute rounded-2xl border-2 bg-card p-3 shadow-xl", !ed && "cursor-pointer transition-transform hover:scale-[1.02]")}
-                    onClick={() => { if (p.origem) setNoAberto(p.origem); else if (!editar) setEditar(true); }}
+                    onClick={() => { if (p.origem) setNoAberto(p.origem); else if (fonte) setPainelSecao({ i }); else if (!editar) setEditar(true); }}
                     title={p.origem ? "Clique para abrir e editar" : editar ? undefined : "Clique para editar"}
                     style={{ left: l.x - PILAR.w / 2, top: l.y - PILAR.h / 2, width: PILAR.w, minHeight: PILAR.h, borderColor: cor, borderStyle: p.auto ? "dashed" : "solid", boxShadow: p.auto ? undefined : `0 0 24px ${cor}33` }}>
                     {p.auto
@@ -282,6 +328,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
                       onClick={() => {
                         if (p.origem?.tipo === "skills") setNoAberto({ tipo: "skills", abrir: p.refs?.[k] });
                         else if (p.origem) setNoAberto(extra && k === p.itens.length - 1 ? p.origem : { ...p.origem, foco: k });
+                        else if (fonte) setPainelSecao({ i, foco: k });
                         else if (!editar) setEditar(true);
                       }}
                       style={{ left: xFolha - FOLHA.w / 2, top: y0 + k * FOLHA.passo - FOLHA.h / 2, width: FOLHA.w, height: FOLHA.h, borderColor: `${cor}aa`, borderStyle: p.auto ? "dashed" : "solid" }}
@@ -326,6 +373,20 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
             })}
 
           </div>
+        )}
+        {painelSecao && fonte && mapa?.pilares[painelSecao.i] && (
+          <GavetaSecao key={`${painelSecao.i}-${painelSecao.foco ?? "x"}`} pilar={mapa.pilares[painelSecao.i]} numero={painelSecao.i + 1} foco={painelSecao.foco} cor={mapa.pilares[painelSecao.i].cor ?? CORES_PILAR[painelSecao.i % CORES_PILAR.length]}
+            onFechar={() => setPainelSecao(null)}
+            onApagar={async () => {
+              const novo = { ...mapa, pilares: mapa.pilares.filter((_, k) => k !== painelSecao.i) };
+              if (await fonte.salvar(novo)) { setMapa(novo); setPainelSecao(null); toast.success("Seção apagada"); }
+            }}
+            onSalvar={async (titulo, itens) => {
+              const novo = { ...mapa, pilares: mapa.pilares.map((p, k) => (k === painelSecao.i ? { ...p, titulo, itens } : p)) };
+              if (!(await fonte.salvar(novo))) return false;
+              setMapa(novo); toast.success(`${fonte.rotulo} salvo. A IA já usa nos próximos roteiros.`);
+              return true;
+            }} />
         )}
         {noAberto && membroMapa && (
           <PainelNoMapa key={JSON.stringify(noAberto)} membro={membroMapa} origem={noAberto} onFechar={() => setNoAberto(null)} onMudou={() => void recarregarCadastro()} />
