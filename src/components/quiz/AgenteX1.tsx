@@ -28,16 +28,21 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const [anexos, setAnexos] = useState<string[]>([]);
   const [subindo, setSubindo] = useState(false);
   const PERMITIDOS = ["image/png", "image/jpeg", "image/webp", "image/gif"];
-  // O armazenamento só aceita PNG/JPEG/WebP/GIF: outros formatos (HEIC, AVIF, SVG, TIFF…) viram PNG antes de subir.
+  // Print de tela Retina passa de 20 MB (o limite do armazenamento) e HEIC/AVIF/SVG nem são aceitos: imagem grande ou de formato
+  // estranho é reduzida (lado maior até 2200 px) e enviada como JPEG antes de subir. A Gabriela lê o texto do print sem problema.
   const prepararImagem = async (f: File): Promise<File> => {
-    if (PERMITIDOS.includes(f.type)) return f;
+    if (PERMITIDOS.includes(f.type) && f.size <= 1_500_000) return f;
+    if (f.type === "image/gif" && f.size <= 15_000_000) return f;
     const bmp = await createImageBitmap(f);
+    const k = Math.min(1, 2200 / Math.max(bmp.width, bmp.height));
     const c = document.createElement("canvas");
-    c.width = bmp.width; c.height = bmp.height;
-    c.getContext("2d")!.drawImage(bmp, 0, 0);
-    const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/png"));
+    c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);   // JPEG não tem transparência
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/jpeg", 0.9));
     if (!blob) throw new Error("não consegui converter a imagem");
-    return new File([blob], f.name.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" });
+    return new File([blob], f.name.replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" });
   };
   const subirImagens = async (arquivos: File[]) => {
     const imgs = arquivos.filter((f) => f.type.startsWith("image/"));
