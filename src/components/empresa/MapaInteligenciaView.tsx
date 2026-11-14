@@ -79,11 +79,16 @@ async function pilaresDoCadastro(membroId: string): Promise<{ pilares: Pilar[]; 
   return { pilares, membro };
 }
 
-export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
+/** `fonte` (14/11): o mesmo mapa mental para outra coisa que não um funcionário (o cérebro de um perfil): vem pronto, salva por `salvar` e não tem pilares "do cadastro". */
+export interface FonteMapa { mapa: MapaInteligencia; salvar: (m: MapaInteligencia) => Promise<boolean>; rotulo: string }
+
+export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte, acaoExtra }: {
   membro: { id: string; nome: string; funcao?: string | null } | null;
   aberto: boolean;
   onFechar: () => void;
   onSalvo?: (mapa: MapaInteligencia) => void;
+  fonte?: FonteMapa;
+  acaoExtra?: React.ReactNode;
 }) {
   const [mapa, setMapa] = useState<MapaInteligencia | null>(null);
   const [doCadastro, setDoCadastro] = useState<Pilar[]>([]);
@@ -103,6 +108,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
   useEffect(() => {
     if (!aberto || !membro) return;
     setMapa(null); setDoCadastro([]); setEditar(false); setMudou(false); setNoAberto(null);
+    if (fonte) { setMapa(lerMapa(fonte.mapa) ?? { pilares: [] }); return; }
     void (async () => {
       const [{ data }, cadastro] = await Promise.all([
         db.from("membros").select("mapa_inteligencia").eq("id", membro.id).maybeSingle(),
@@ -111,7 +117,8 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
       setMapa(lerMapa((data as { mapa_inteligencia?: unknown } | null)?.mapa_inteligencia) ?? { pilares: [] });
       setDoCadastro(cadastro.pilares); setMembroMapa(cadastro.membro);
     })();
-  }, [aberto, membro]);
+  // `membro` e `fonte` podem ser objetos novos a cada renderização: só o id reinicia o mapa.
+  }, [aberto, membro?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     if (!aberto) return;
@@ -152,6 +159,15 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
       pilares: mapa.pilares.map((p) => ({ ...p, titulo: p.titulo.trim(), descricao: p.descricao.trim(), exemplo: p.exemplo?.trim() || undefined, itens: p.itens.map((i) => i.trim()).filter(Boolean) }))
         .filter((p) => p.titulo || p.descricao || p.itens.length),
     };
+    if (fonte) {
+      const ok = await fonte.salvar(limpo);
+      setSalvando(false);
+      if (!ok) return;
+      setMapa(limpo); setMudou(false); setEditar(false);
+      onSalvo?.(limpo);
+      toast.success(`${fonte.rotulo} salvo. A IA já usa nos próximos roteiros.`);
+      return;
+    }
     const { error } = await db.from("membros").update({ mapa_inteligencia: limpo }).eq("id", membro.id);
     setSalvando(false);
     if (error) { toast.error("Não consegui salvar o mapa"); return; }
@@ -171,14 +187,15 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo }: {
     <div className="fixed inset-0 z-[150] flex flex-col bg-background text-foreground" onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { if (noAberto) setNoAberto(null); else fechar(); } }}>
       <div className={cn("flex items-center gap-2 border-b border-foreground/10 px-4 py-2.5", isDesktop() && "pl-24 pt-3")}>
         <Sparkles className="h-4 w-4 text-sky-300" />
-        <p className="text-sm font-semibold">Inteligência do {membro.nome}</p>
-        <p className="hidden text-xs text-foreground/50 md:block">tudo isto vai junto em cada pedido para ele</p>
+        <p className="text-sm font-semibold">{fonte ? `Cérebro do ${membro.nome}` : `Inteligência do ${membro.nome}`}</p>
+        <p className="hidden text-xs text-foreground/50 md:block">{fonte ? "a IA lê tudo isto antes de escrever cada roteiro deste perfil" : "tudo isto vai junto em cada pedido para ele"}</p>
         <div className="ml-auto flex items-center gap-2">
+          {acaoExtra}
           {editar && (
             <button type="button" onClick={() => mudar((m) => ({ ...m, pilares: [...m.pilares, { titulo: "", descricao: "", itens: [""] }] }))}
               className="flex items-center gap-1 rounded-md border border-foreground/15 px-2.5 py-1 text-xs hover:bg-foreground/10"><Plus className="h-3.5 w-3.5" />Pilar</button>
           )}
-          {editar && !nUsuario && (
+          {editar && !nUsuario && !fonte && (
             <button type="button" onClick={() => mudar((m) => ({ ...m, subtitulo: m.subtitulo || MODELO_ROTEIRO.subtitulo, pilares: MODELO_ROTEIRO.pilares.map((p) => ({ ...p, itens: [...p.itens] })) }))}
               className="flex items-center gap-1 rounded-md border border-foreground/15 px-2.5 py-1 text-xs hover:bg-foreground/10"><FileText className="h-3.5 w-3.5" />Começar com o modelo do roteiro</button>
           )}

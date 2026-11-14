@@ -7,6 +7,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowUp, AtSign, BookOpen, Network, Check, FileText, History, Loader2, MessageSquare, Pencil, Plus, Quote, Search, Settings2, Sparkles, Square, X } from "lucide-react";
 import { RevisaoNoDocumento, acharTrecho, revisaoAtiva, trocarLinhas } from "./RevisaoNoDocumento";
 import { MapaInteligenciaView } from "@/components/empresa/MapaInteligenciaView";
+import { cerebroParaMapa, mapaParaSecoes } from "@/lib/conteudo/mapaInteligencia";
 import { lerMapa, mapaParaTexto } from "@/lib/conteudo/mapaInteligencia";
 import { CerebroEsteira, CriteriosEtapa } from "@/components/empresa/KanbanEsteira";
 import { toast } from "sonner";
@@ -881,9 +882,18 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
       )}
       <MapaInteligenciaView membro={mapaDe} aberto={!!mapaDe} onFechar={() => setMapaDe(null)}
         onSalvo={(mapa) => { if (mapaDe) setMembros((l) => ({ ...l, [mapaDe.id]: { ...l[mapaDe.id], mapa_inteligencia: mapa } })); }} />
-      {cerebrosAbertos !== false && esc && (
+      {/* Cérebro como mapa mental (14/11, Davi: "quando eu clicar no cérebro, quero ver igual o mapa mental do Junior"). A lista (novo cérebro) continua pelo "＋ Novo cérebro / editar…". */}
+      {typeof cerebrosAbertos === "string" && esc && esc.cerebros.some((c) => c.id === cerebrosAbertos) && (() => {
+        const c = esc.cerebros.find((x) => x.id === cerebrosAbertos)!;
+        return (
+          <MapaInteligenciaView membro={{ id: c.id, nome: c.nome, funcao: "Cérebro" }} aberto onFechar={() => setCerebrosAbertos(false)} key={c.id}
+            fonte={{ mapa: cerebroParaMapa(c), rotulo: `Cérebro ${c.nome}`, salvar: (m) => salvarCerebros(esc.cerebros.map((x) => (x.id === c.id ? { ...x, secoes: mapaParaSecoes(m) } : x))) }}
+            acaoExtra={<button type="button" onClick={() => setCerebrosAbertos(null)} className="flex items-center gap-1 rounded-md border border-foreground/15 px-2.5 py-1 text-xs hover:bg-foreground/10">Lista de cérebros / novo</button>} />
+        );
+      })()}
+      {(cerebrosAbertos === null || (typeof cerebrosAbertos === "string" && !esc?.cerebros.some((c) => c.id === cerebrosAbertos))) && esc && (
         <div className="fixed inset-0 z-[70]" onKeyDown={(e) => e.stopPropagation()}>
-          <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]} abrirId={cerebrosAbertos}
+          <CerebroEsteira inicial={esc.cerebros as Parameters<typeof CerebroEsteira>[0]["inicial"]} abrirId={cerebrosAbertos || null}
             onFechar={() => setCerebrosAbertos(false)}
             onSalvar={(l) => salvarCerebros(l as CerebroEscrita[])} />
         </div>

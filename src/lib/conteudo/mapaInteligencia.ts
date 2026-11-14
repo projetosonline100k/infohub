@@ -43,3 +43,23 @@ export function mapaParaTexto(mapa: MapaInteligencia | null | undefined, nome: s
   });
   return linhas.join("\n");
 }
+
+// ---------------------------------------------------------------- cérebro como mapa mental (14/11)
+// Davi: "quando eu clicar no cérebro, quero ver igual o mapa mental do Junior". Cada seção do cérebro (título + texto) vira um pilar do mapa;
+// cada linha do texto vira uma folha. Ao salvar no mapa, as folhas voltam a ser linhas do texto da seção.
+export interface SecaoCerebroMapa { titulo?: string; texto?: string }
+export function cerebroParaMapa(c: { nome: string; secoes?: SecaoCerebroMapa[] }): MapaInteligencia {
+  return {
+    titulo: c.nome,
+    pilares: (c.secoes ?? []).map((s) => ({
+      titulo: s.titulo ?? "", descricao: "",
+      itens: (s.texto ?? "").split(/\n+/).map((l) => l.trim()).filter(Boolean),
+    })),
+  };
+}
+/** O mapa editado volta a ser seções do cérebro (pilar vazio sai; a descrição, se houver, vira a primeira linha). */
+export function mapaParaSecoes(m: MapaInteligencia): { titulo: string; texto: string }[] {
+  return m.pilares
+    .map((p) => ({ titulo: p.titulo.trim(), texto: [p.descricao.trim(), ...p.itens.map((i) => i.trim())].filter(Boolean).join("\n") }))
+    .filter((s) => s.titulo || s.texto);
+}
