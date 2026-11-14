@@ -33,7 +33,13 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const prepararImagem = async (f: File): Promise<File> => {
     if (PERMITIDOS.includes(f.type) && f.size <= 1_500_000) return f;
     if (f.type === "image/gif" && f.size <= 15_000_000) return f;
-    const bmp = await createImageBitmap(f);
+    let bmp: { width: number; height: number } & CanvasImageSource;
+    try { bmp = await createImageBitmap(f); } catch {
+      const u = URL.createObjectURL(f);
+      try {
+        bmp = await new Promise<HTMLImageElement>((ok, no) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => no(new Error("imagem ilegível")); im.src = u; });
+      } finally { URL.revokeObjectURL(u); }
+    }
     const k = Math.min(1, 2200 / Math.max(bmp.width, bmp.height));
     const c = document.createElement("canvas");
     c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
@@ -50,12 +56,14 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     setSubindo(true);
     try {
       const { data: u } = await supabase.auth.getUser();
+      if (!u.user?.id) throw new Error("sessão expirada: entre de novo");
       for (const original of imgs) {
-        const f = await prepararImagem(original);
+        // Se a conversão falhar por qualquer motivo, tenta enviar a original.
+        const f = await prepararImagem(original).catch((e) => { console.error("agente: conversão da imagem falhou", e); return original; });
         const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
         const caminho = `${u.user?.id}/${quizId}/agente-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
         const { error } = await supabase.storage.from("quiz-imagens").upload(caminho, f, { contentType: f.type || undefined });
-        if (error) throw error;
+        if (error) { console.error("agente: upload falhou", error, { tipo: f.type, bytes: f.size, caminho }); throw error; }
         const url = supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
         setAnexos((a) => [...a, url]);
       }
