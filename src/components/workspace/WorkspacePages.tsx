@@ -58,6 +58,7 @@ export function WorkspacePages() {
         const visivel = dividido ? lado : tab.id === activeId;
         return <div
           key={tab.id}
+          data-aba-moldura=""   // a moldura da guia: o editor de roteiro mede esta caixa para cobrir exatamente a área da guia (14/11)
           // Clicou dentro da outra metade: ela vira a guia ativa (e a
           // navegação passa a valer pra ela).
           onPointerDownCapture={() => { if (lado && tab.id !== activeId) { focarGuia(tab.id); navigate(tab.path); } }}

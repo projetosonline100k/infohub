@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { useZoomDocumento } from "@/hooks/useZoomDocumento";
 import { MenuSelecaoTexto } from "@/components/documentos/MenuSelecaoTexto";
 import { ComentariosNoDocumento } from "@/components/documentos/ComentariosNoDocumento";
@@ -313,6 +314,28 @@ export const VideoDetailPanel = ({
 
     return () => window.clearTimeout(timeoutId);
   }, [editedVideo, onAutoSave]);
+
+  // Cobertura exata da guia (14/11, Davi: "na parte de cima eu consigo ver as coisas que têm atrás"): o painel é desenhado direto no <body>, na caixa da própria guia
+  // (medida na moldura data-aba-moldura), em vez de depender de `fixed` dentro de páginas com rolagem/transformação. Guia escondida = painel não aparece.
+  const ancora = useRef<HTMLSpanElement>(null);
+  const [caixa, setCaixa] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
+  useLayoutEffect(() => {
+    const a = ancora.current;
+    if (!a) return;
+    const moldura = a.closest("[data-aba-moldura]") as HTMLElement | null;
+    const medir = () => {
+      if (!moldura) { setCaixa({ top: 0, left: 0, width: window.innerWidth, height: window.innerHeight }); return; }
+      const r = moldura.getBoundingClientRect();
+      setCaixa(r.width > 0 && r.height > 0 && a.getClientRects().length > 0 ? { top: r.top, left: r.left, width: r.width, height: r.height } : null);
+    };
+    medir();
+    const ro = new ResizeObserver(medir);
+    ro.observe(a);
+    if (moldura) ro.observe(moldura);
+    window.addEventListener("resize", medir);
+    const t = window.setInterval(medir, 600);   // a guia pode mudar de lugar sem mudar de tamanho (divisão, barra lateral)
+    return () => { ro.disconnect(); window.removeEventListener("resize", medir); window.clearInterval(t); };
+  }, [editedVideo !== null]);   // eslint-disable-line react-hooks/exhaustive-deps  (a âncora só existe com um vídeo aberto)
 
   if (!editedVideo) return null;
 
@@ -784,8 +807,8 @@ export const VideoDetailPanel = ({
     </>
   );
 
-  return (
-    <div className="fixed inset-0 z-50 bg-background flex flex-col">
+  const painel = (
+    <div className="fixed z-50 bg-background flex flex-col" style={caixa ? { top: caixa.top, left: caixa.left, width: caixa.width, height: caixa.height } : undefined}>
       <header className="flex items-center justify-between gap-2 px-2 sm:px-4 py-2 border-b bg-background shrink-0">
         <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-3">
           <Button variant="ghost" size="icon" className="shrink-0" onClick={() => void handleClose()}>
@@ -947,5 +970,11 @@ export const VideoDetailPanel = ({
         )}
       </div>
     </div>
+  );
+  return (
+    <>
+      <span ref={ancora} className="block h-0 w-0" aria-hidden />
+      {caixa ? createPortal(painel, document.body) : null}
+    </>
   );
 };
