@@ -239,7 +239,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const P = config.produto;
 
   return (
-    <div className="grid h-[calc(100svh-560px)] min-h-[440px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid h-[calc(100svh-300px)] min-h-[600px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <section className="flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-1 border-b border-white/10 bg-[#111b21] p-2">
           {([["construir", "Gabriela · montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (
