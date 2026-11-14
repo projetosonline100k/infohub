@@ -153,9 +153,11 @@ def pegar_mensagens():
     try:
         q = c.cursor()
         uid = dono(q)
+        # 14/11: "ao vivo" (🖥️) mexe no computador do Davi, então só o ouvinte do Mac atende; o do servidor (VPS) fica com o resto.
         q.execute("""UPDATE public.jarvis_conversa SET status = 'lida'
                      WHERE user_id = %s AND papel = 'davi' AND status = 'enviada'
-                     RETURNING id, texto, criada_em""", (uid,))
+                       AND (left(texto, %s) = %s) = %s
+                     RETURNING id, texto, criada_em""", (uid, len(PREFIXO_AO_VIVO), PREFIXO_AO_VIVO, SO_CODIGO))
         novas = sorted(q.fetchall(), key=lambda r: r[2])
         c.commit()
         if not novas:
