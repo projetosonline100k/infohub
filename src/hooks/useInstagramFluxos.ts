@@ -8,7 +8,7 @@ const db = supabase as unknown as SupabaseClient;
 
 export interface FluxoInstagram {
   id: string; user_id: string; ig_user_id: string; nome: string; ativo: boolean; gatilhos: string[]; palavras_chave: string[];
-  correspondencia: "contem" | "exata"; media_ids: string[] | null; respostas_comentario: string[]; grafo: GrafoFluxo; disparos: number;
+  correspondencia: "contem" | "exata" | "trecho"; media_ids: string[] | null; respostas_comentario: string[]; grafo: GrafoFluxo; disparos: number;
   criado_em?: string;
 }
 export type NumerosDoNo = { enviadas: number; respostas: number };

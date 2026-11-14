@@ -41,7 +41,7 @@ export default function Automacoes() {
 
   const converter = (a: InstagramAutomacao) => setFluxoAberto({
     fluxo: null, converterDe: a.id,
-    inicial: { nome: a.nome, gatilhos: a.gatilhos, palavras_chave: a.palavras_chave, correspondencia: a.correspondencia === "exata" ? "exata" : "contem", media_ids: a.media_ids, respostas_comentario: a.respostas_comentario,
+    inicial: { nome: a.nome, gatilhos: a.gatilhos, palavras_chave: a.palavras_chave, correspondencia: a.correspondencia === "exata" || a.correspondencia === "trecho" ? a.correspondencia : "contem", media_ids: a.media_ids, respostas_comentario: a.respostas_comentario,
       grafo: { nos: [{ id: "inicio", tipo: "inicio", x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem", x: 360, y: 0, dados: { texto: a.mensagem_dm } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] } },
   });
   // Convertida em fluxo: a automação simples é pausada (não apagada) para a pessoa não receber a mensagem em dobro.
@@ -186,7 +186,7 @@ export default function Automacoes() {
                       <p className="truncate font-semibold">{a.nome}</p>
                       <p className="text-xs text-muted-foreground">
                         {a.disparos} {a.disparos === 1 ? "DM enviada" : "DMs enviadas"}
-                        {" · "}{a.correspondencia === "exata" ? "só a palavra" : "contém a palavra"}
+                        {" · "}{a.correspondencia === "exata" ? "só a palavra" : a.correspondencia === "trecho" ? "contém o trecho" : "contém a palavra"}
                       </p>
                     </div>
                     <Switch checked={a.ativo} aria-label={a.ativo ? "Pausar" : "Ativar"}

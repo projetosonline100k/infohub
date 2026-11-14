@@ -3,7 +3,7 @@
 // a tela testar uma frase antes de publicar.
 
 export type Gatilho = "comentario" | "dm" | "story";
-export type Correspondencia = "contem" | "exata";
+export type Correspondencia = "contem" | "exata" | "trecho";
 
 export const GATILHOS: { valor: Gatilho; rotulo: string; descricao: string }[] = [
   { valor: "comentario", rotulo: "Comentário", descricao: "Comentou a palavra num post ou reel" },
@@ -19,13 +19,19 @@ export const normalizar = (texto: string) =>
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+/** "Contém o trecho": basta o pedaço aparecer em qualquer lugar da frase (insta → instalivros, instalivors); sem espaços também (insta livros → instalivros). */
+export const trechoBate = (frase: string, chave: string) =>
+  frase.includes(chave) || (chave.replace(/ /g, "").length >= 4 && frase.replace(/ /g, "").includes(chave.replace(/ /g, "")));
+
 export function bate(palavrasChave: string[], correspondencia: Correspondencia, texto: string) {
   const frase = normalizar(texto);
   if (!frase) return false;
   return palavrasChave.some((palavra) => {
     const chave = normalizar(palavra);
     if (!chave) return false;
-    return correspondencia === "exata" ? frase === chave : ` ${frase} `.includes(` ${chave} `);
+    if (correspondencia === "exata") return frase === chave;
+    if (correspondencia === "trecho") return trechoBate(frase, chave);
+    return ` ${frase} `.includes(` ${chave} `);
   });
 }
 

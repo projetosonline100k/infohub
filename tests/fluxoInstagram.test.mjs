@@ -69,3 +69,9 @@ test('validações: texto vazio, botão grande, link inválido, mistura de botõ
   assert.ok(f.problemasDoFluxo(laco).some((p) => p.texto.includes('laço')));
   assert.ok(f.problemasDoFluxo({ nos: [no('inicio', 'inicio')], ligacoes: [] }).some((p) => p.texto.includes('Ligue o início')));
 });
+
+test('gatilho do fluxo por trecho', () => {
+  assert.equal(f.fluxoBate({ palavras_chave: ['insta'], correspondencia: 'trecho' }, 'instalivors'), true);
+  assert.equal(f.fluxoBate({ palavras_chave: ['insta'], correspondencia: 'contem' }, 'instalivors'), false);
+  assert.equal(f.fluxoBate({ palavras_chave: ['insta'], correspondencia: 'trecho' }, 'bom dia'), false);
+});

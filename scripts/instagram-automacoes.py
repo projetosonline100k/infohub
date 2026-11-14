@@ -271,7 +271,7 @@ def cmd_criar(q, a):
     q.execute("""insert into instagram_automacoes
                    (user_id, ig_user_id, nome, palavras_chave, correspondencia, mensagem_dm, respostas_comentario, media_ids, ativo, gatilhos)
                  values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) returning id""",
-              (dono(q), conta_escolhida(q)[0], a.nome, palavras(a.palavras), 'exata' if a.exata else 'contem', a.dm,
+              (dono(q), conta_escolhida(q)[0], a.nome, palavras(a.palavras), 'exata' if a.exata else ('trecho' if getattr(a, 'trecho', False) else 'contem'), a.dm,
                a.resposta or [], resolver_posts(q, a.post), not a.pausada, gatilhos(a.gatilhos or 'comentario')))
     print(f'Criada: [{str(q.fetchone()[0])[:8]}] {a.nome} em {rotulo(conta_escolhida(q))}')
 
@@ -287,6 +287,8 @@ def cmd_editar(q, a):
         sets.append("correspondencia = 'exata'")
     if a.contem:
         sets.append("correspondencia = 'contem'")
+    if getattr(a, 'trecho', False):
+        sets.append("correspondencia = 'trecho'")
     if a.dm:
         sets.append('mensagem_dm = %s'); vals.append(a.dm)
     if a.resposta:
@@ -362,6 +364,7 @@ def main():
         sp.add_argument('--resposta', action='append', help='resposta pública; repita para variar')
         sp.add_argument('--post', action='append', help='id ou link; repita para vários')
         sp.add_argument('--exata', action='store_true')
+        sp.add_argument('--trecho', action='store_true', help='basta conter o pedaço (insta pega instalivros, instalivors…)')
         sp.add_argument('--gatilhos', help='comentario,dm,story (vírgula)')
     for nome in ('pausar', 'ativar', 'apagar'):
         sub.add_parser(nome).add_argument('ref')

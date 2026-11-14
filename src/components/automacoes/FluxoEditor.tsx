@@ -83,7 +83,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
   const [ativo, setAtivo] = useState(false);
   const [gatilhos, setGatilhos] = useState<string[]>(["comentario"]);
   const [palavras, setPalavras] = useState("");
-  const [exata, setExata] = useState(false);
+  const [modoPalavra, setModoPalavra] = useState<"contem" | "trecho" | "exata">("contem");
   const [respostas, setRespostas] = useState("");
   const [grafo, setGrafo] = useState<GrafoFluxo>(grafoVazio());
   const [sel, setSel] = useState<string | null>(null);
@@ -96,7 +96,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
     const base: RascunhoFluxo = fluxo ?? inicial ?? {};
     setNome(base.nome ?? "Nova automação"); setAtivo(fluxo?.ativo ?? false);
     setGatilhos(base.gatilhos ?? ["comentario"]); setPalavras((base.palavras_chave ?? []).join(", "));
-    setExata(base.correspondencia === "exata"); setRespostas((base.respostas_comentario ?? []).join("\n"));
+    setModoPalavra(base.correspondencia === "exata" || base.correspondencia === "trecho" ? base.correspondencia : "contem"); setRespostas((base.respostas_comentario ?? []).join("\n"));
     setGrafo(base.grafo?.nos?.length ? base.grafo : { nos: [{ id: "inicio", tipo: "inicio", x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem", x: 360, y: 0, dados: { texto: "" } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] });
     setSel(fluxo || inicial?.grafo ? null : "m1");
   }, [aberto, fluxo, inicial]);
@@ -154,7 +154,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
     }
     setSalvando(true);
     try {
-      await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: exata ? "exata" : "contem", media_ids: fluxo?.media_ids ?? inicial?.media_ids ?? null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo }, fluxo?.id);
+      await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: modoPalavra, media_ids: fluxo?.media_ids ?? inicial?.media_ids ?? null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo }, fluxo?.id);
       setAtivo(quer); toast.success(quer ? "Fluxo salvo e ativo" : "Fluxo salvo (desativado)"); onFechar();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Não consegui salvar"); } finally { setSalvando(false); }
   };
@@ -208,7 +208,11 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
                 <h3 className="flex items-center gap-2 text-sm font-bold"><Zap className="h-4 w-4 text-amber-300" />Gatilho do fluxo</h3>
                 <label className="block space-y-1 text-xs text-white/60">Palavras (separe por vírgula)
                   <Textarea rows={2} value={palavras} onChange={(e) => setPalavras(e.target.value)} placeholder="instalivros, quero, livro" className="border-white/15 bg-black/20 text-sm text-white" /></label>
-                <label className="flex items-center gap-2 text-xs text-white/70"><Switch checked={exata} onCheckedChange={setExata} />Só quando a mensagem for exatamente a palavra</label>
+                <div className="space-y-1.5"><p className="text-xs text-white/60">Quando a palavra vale</p>
+                  {([["contem", "Contém a palavra", "“eu quero instalivros” dispara; “instalivors” não"], ["trecho", "Contém o trecho", "basta o pedaço: “insta” pega instalivros, instalivors, insta livros…"], ["exata", "Só a palavra", "a mensagem inteira tem de ser a palavra"]] as const).map(([v, r, d]) => (
+                    <label key={v} className="flex items-start gap-2 text-xs text-white/80"><input type="radio" className="mt-0.5" checked={modoPalavra === v} onChange={() => setModoPalavra(v)} /><span><b>{r}</b> <span className="text-white/45">{d}</span></span></label>))}
+                  {modoPalavra === "trecho" && palavrasLista.some((p) => p.replace(/[^a-zA-Z0-9]/g, "").length < 3) && <p className="rounded-lg bg-amber-500/10 p-2 text-[11px] text-amber-200">Trecho muito curto dispara em muita palavra (“in” aparece em quase tudo). Use 3 letras ou mais.</p>}
+                </div>
                 <div className="space-y-1.5"><p className="text-xs text-white/60">Quando vale</p>
                   {GATILHOS.map((g) => (
                     <label key={g.valor} className="flex items-start gap-2 text-xs text-white/80"><input type="checkbox" className="mt-0.5" checked={gatilhos.includes(g.valor)} onChange={(e) => setGatilhos((x) => e.target.checked ? [...x, g.valor] : x.filter((y) => y !== g.valor))} /><span><b>{g.rotulo}</b> <span className="text-white/45">{g.descricao}</span></span></label>))}

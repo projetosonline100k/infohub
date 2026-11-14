@@ -159,16 +159,17 @@ export function AutomacaoDialog({ aberto, onFechar, automacao, todas, igUserId, 
                 <span key={p} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{p}</span>
               ))}
               <span className="ml-auto inline-flex rounded-md border border-border p-0.5 text-xs">
-                {(["contem", "exata"] as const).map((c) => (
+                {(["contem", "trecho", "exata"] as const).map((c) => (
                   <button key={c} type="button" onClick={() => setCorrespondencia(c)}
                     className={cn("rounded px-2 py-1", correspondencia === c ? "bg-muted font-medium text-foreground" : "text-muted-foreground")}>
-                    {c === "contem" ? "Contém a palavra" : "Só a palavra"}
+                    {c === "contem" ? "Contém a palavra" : c === "trecho" ? "Contém o trecho" : "Só a palavra"}
                   </button>
                 ))}
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
               Separe por vírgula. Maiúsculas, acentos e pontuação são ignorados.
+              {correspondencia === "trecho" && " Com “Contém o trecho”, basta o pedaço aparecer: “insta” dispara com instalivros, instalivors, insta livros… (use 3 letras ou mais)."}
             </p>
             {repetidas.length > 0 && (
               <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-400">

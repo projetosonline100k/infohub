@@ -20,7 +20,7 @@ export type EventoFluxo = {
 };
 type Fluxo = {
   id: string; user_id: string; ig_user_id: string; nome: string; ativo: boolean; gatilhos: string[]; palavras_chave: string[];
-  correspondencia: "contem" | "exata"; media_ids: string[] | null; respostas_comentario: string[]; grafo: GrafoFluxo; disparos: number;
+  correspondencia: "contem" | "exata" | "trecho"; media_ids: string[] | null; respostas_comentario: string[]; grafo: GrafoFluxo; disparos: number;
 };
 type Execucao = {
   id: string; fluxo_id: string; user_id: string; ig_user_id: string; contato_id: string; contato_username: string | null;

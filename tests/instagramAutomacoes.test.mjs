@@ -71,3 +71,11 @@ test('porAutomacao agrupa, nomeia e ordena por envios', () => {
     new Map([['a', 'A'], ['b', 'B']]));
   assert.deepEqual(linhas.map((l) => [l.nome, l.enviadas]), [['B', 2], ['A', 1], ['Automação apagada', 1]]);
 });
+
+test('trecho: basta o pedaço aparecer (erros de digitação, plural, espaço no meio), com acento e caixa ignorados', () => {
+  for (const frase of ['instalivros', 'INSTALIVRO!!', 'instalivors', 'quero o insta livros', 'Instalação', 'me manda o INSTA']) assert.equal(bate(['insta'], 'trecho', frase), true, frase);
+  assert.equal(bate(['insta'], 'trecho', 'quero o link'), false);
+  assert.equal(bate(['insta livros'], 'trecho', 'instalivros'), true);   // sem os espaços também
+  assert.equal(bate(['insta'], 'contem', 'instalivros'), false);          // o modo "contém a palavra" continua exigindo a palavra inteira
+  assert.equal(bate(['insta'], 'trecho', ''), false);
+});

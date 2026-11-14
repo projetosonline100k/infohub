@@ -136,12 +136,15 @@ export function saidaDaResposta(no: NoFluxo, payload: string | null, texto: stri
 }
 
 /** Mesmo gatilho das automações: palavra no comentário/DM/story. */
-export function fluxoBate(f: { palavras_chave: string[]; correspondencia: "contem" | "exata" }, texto: string): boolean {
+export function fluxoBate(f: { palavras_chave: string[]; correspondencia: "contem" | "exata" | "trecho" }, texto: string): boolean {
   const t = normalizar(texto);
   if (!t) return false;
   return f.palavras_chave.some((p) => {
     const k = normalizar(p);
-    return !!k && (f.correspondencia === "exata" ? t === k : ` ${t} `.includes(` ${k} `));
+    if (!k) return false;
+    if (f.correspondencia === "exata") return t === k;
+    if (f.correspondencia === "trecho") return t.includes(k) || (k.replace(/ /g, "").length >= 4 && t.replace(/ /g, "").includes(k.replace(/ /g, "")));
+    return ` ${t} `.includes(` ${k} `);
   });
 }
 

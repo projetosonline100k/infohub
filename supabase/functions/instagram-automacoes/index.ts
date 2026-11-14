@@ -40,7 +40,7 @@ type Origem = "comentario" | "dm" | "story";
 type Automacao = {
   id: string;
   palavras_chave: string[];
-  correspondencia: "contem" | "exata";
+  correspondencia: "contem" | "exata" | "trecho";
   gatilhos: Origem[];
   mensagem_dm: string;
   respostas_comentario: string[];
@@ -99,9 +99,9 @@ export const bate = (automacao: Pick<Automacao, "palavras_chave" | "corresponden
   return automacao.palavras_chave.some((palavra) => {
     const chave = normalizar(palavra);
     if (!chave) return false;
-    return automacao.correspondencia === "exata"
-      ? comentario === chave
-      : ` ${comentario} `.includes(` ${chave} `);
+    if (automacao.correspondencia === "exata") return comentario === chave;
+    if (automacao.correspondencia === "trecho") return comentario.includes(chave) || (chave.replace(/ /g, "").length >= 4 && comentario.replace(/ /g, "").includes(chave.replace(/ /g, "")));
+    return ` ${comentario} `.includes(` ${chave} `);
   });
 };
 
