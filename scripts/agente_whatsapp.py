@@ -270,7 +270,12 @@ def _nota_imagens(p):
             ext = (u.split("?")[0].rsplit(".", 1)[-1] or "png")[:4]
             alvo = pasta / f"imagem-{i + 1}.{ext}"
             req = urllib.request.Request(u, headers={"User-Agent": "infopro-hub"})
-            alvo.write_bytes(urllib.request.urlopen(req, timeout=30).read())
+            try:
+                import ssl, certifi
+                ctx = ssl.create_default_context(cafile=certifi.where())
+            except Exception:  # noqa: BLE001
+                ctx = None
+            alvo.write_bytes(urllib.request.urlopen(req, timeout=30, context=ctx).read())
             caminhos.append(str(alvo))
         except Exception as e:  # noqa: BLE001
             print("agente: imagem não baixou —", repr(e)[:100])
