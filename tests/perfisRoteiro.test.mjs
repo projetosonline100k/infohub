@@ -24,3 +24,17 @@ test('quem tem texto: HTML vazio não conta', () => {
   assert.deepEqual([...s], ['jaci']);
   assert.equal(p.perfisComTexto('<p>x</p>', {}).has('instalivros'), true);
 });
+
+test('cérebro do perfil: acha por id fixo ou por nome conhecido; o "Davi" que já existe serve ao Eu.davi; sem cérebro, nasce em branco', () => {
+  const cer = [{ id: 'c1', nome: 'Davi' }, { id: 'c2', nome: 'Cinthia Chiari' }, { id: 'perfil-jaci', nome: 'Qualquer' }];
+  assert.equal(p.acharCerebroDoPerfil(cer, { chave: 'eu_davi', nome: 'Eu.davi' }).id, 'c1');
+  assert.equal(p.acharCerebroDoPerfil(cer, { chave: 'jaci', nome: 'Jaci' }).id, 'perfil-jaci');
+  assert.equal(p.acharCerebroDoPerfil(cer, { chave: 'instalivros', nome: 'Instalivros' }), null);
+  const novo = p.novoCerebroDoPerfil({ chave: 'instalivros', nome: 'Instalivros' });
+  assert.equal(novo.id, 'perfil-instalivros'); assert.equal(novo.nome, 'Instalivros'); assert.ok(novo.secoes.length >= 4 && novo.secoes.every((x) => x.texto === ''));
+  assert.equal(p.acharCerebroDoPerfil([novo, ...cer], { chave: 'instalivros', nome: 'Instalivros' }).id, 'perfil-instalivros');
+});
+test('headlines para puxar: sem a linha REF, sem link e sem título vazio', () => {
+  const r = p.headlinesParaPuxar([{ numero: 1, titulo: 'REF' }, { numero: 2, titulo: '4 livros para sair do modo zumbi' }, { numero: 3, titulo: '' }, { numero: 4, titulo: 'https://x.co/a' }]);
+  assert.deepEqual(r.map((h) => h.numero), [2]);
+});

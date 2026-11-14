@@ -17,6 +17,7 @@ import { isDesktop } from "@/lib/platform";
 import { proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
 import { cartoesDoHtml, escolherReferencias, palavrasDoPedido } from "@/lib/documentos/quadro";
 import { alinhar } from "@/lib/conteudo/trechos";
+import { acharCerebroDoPerfil, novoCerebroDoPerfil } from "@/lib/conteudo/perfisRoteiro";
 import {
   ehRevisao, linhasDoTexto, montarPedido, montarRevisao, separarNotas, textoParaHtml,
   type AgenteEscrita, type CerebroEscrita, type Conversa, type FormatoEscrita, type Revisao,
@@ -239,7 +240,10 @@ const lerLargura = () => { try { const v = Number(localStorage.getItem(CHAVE_LAR
 interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevendo" | "revisando" }
 
 /** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
-export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; clienteId: string | null; chave?: string | null }) {
+// Perfis do roteiro (14/11, Davi): `perfil` é o perfil aberto no editor, `blocos` são os roteiros (só as headlines) dos OUTROS perfis do mesmo vídeo, que o @ oferece,
+// e `pedidoCerebro` (um contador) abre o cérebro do perfil para cadastrar as informações dele.
+export interface BlocoPerfil { chave: string; nome: string; headlines: { numero: number; titulo: string }[] }
+export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, blocos = [], pedidoCerebro = 0 }: { editor: Editor; clienteId: string | null; chave?: string | null; perfil?: { chave: string; nome: string } | null; blocos?: BlocoPerfil[]; pedidoCerebro?: number }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useRascunho(`docchat:${chave ?? "sem"}`);
   // 24/10 (Davi: "quero que fiquem salvos, a ideia é virar um super cérebro"): as conversas ficam no banco
@@ -366,6 +370,12 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     const m = antes.match(/(?:^|\s)@([^\s@]{0,40})$/);
     setMencao(m ? { consulta: m[1], inicio: caret - m[1].length - 1, fim: caret } : null);
   };
+  // @ também oferece os "blocos de roteiros" dos outros perfis (só as headlines vão para este perfil; os roteiros são escritos aqui com o cérebro dele).
+  const blocosAchados = useMemo(() => {
+    if (!mencao) return [] as BlocoPerfil[];
+    const q = mencao.consulta.toLowerCase();
+    return blocos.filter((b) => b.headlines.length && (!q || `roteiros ${b.nome}`.toLowerCase().includes(q)));
+  }, [blocos, mencao]);
   const citar = (d: Citado) => {
     if (!mencao) return;
     const novo = `${texto.slice(0, mencao.inicio)}@${d.titulo} ${texto.slice(mencao.fim)}`;
@@ -784,6 +794,51 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
     else if (!parou.current) toast.success("Roteiros prontos. Confira cada um com o On/Off da revisão.");
   };
 
+  // Puxar um bloco de roteiros de outro perfil (14/11, Davi: "aperto @, seleciono o bloco e ele refaz os roteiros para o perfil que estou"): as headlines (iguais) entram
+  // aqui sem texto e o "Gerar todos" já escreve cada roteiro embaixo da sua headline, de uma vez, com o cérebro deste perfil.
+  const [pendenteLote, setPendenteLote] = useState(false);
+  const puxarBloco = (b: BlocoPerfil) => {
+    if (!isDesktop()) { toast.info("Gerar os roteiros usa o Claude do Mac: abra o documento no app Infopro Hub."); return; }
+    if (mencao) setTexto(`${texto.slice(0, mencao.inicio)}${texto.slice(mencao.fim)}`.trimStart());
+    setMencao(null);
+    const jaTem = editor.getText().toLowerCase();
+    const novas = b.headlines.filter((h) => !jaTem.includes(h.titulo.toLowerCase().slice(0, 60)));
+    if (!novas.length) { toast.info("Essas headlines já estão neste perfil."); return; }
+    const cer = perfil ? acharCerebroDoPerfil(esc?.cerebros ?? [], perfil) : null;
+    if (cer) setPara(cer.id);
+    else toast.info("Este perfil ainda não tem cérebro cadastrado: escrevi com o cérebro escolhido. Clique no 🧠 ao lado do perfil para cadastrar.");
+    const esc_ = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const html = novas.map((h) => `<p>Headline ${h.numero}: ${esc_(h.titulo)}</p>`).join("");
+    if (editor.isEmpty) editor.commands.setContent(html); else editor.chain().focus("end").insertContent(html).run();
+    toast.success(`${novas.length} headline${novas.length === 1 ? "" : "s"} de ${b.nome} puxada${novas.length === 1 ? "" : "s"}: escrevendo os roteiros embaixo de cada uma.`);
+    setPendenteLote(true);   // o "Gerar todos" roda na próxima renderização, já com o cérebro do perfil escolhido
+  };
+  useEffect(() => {
+    if (!pendenteLote) return;
+    setPendenteLote(false);
+    void gerarTodos();
+  }, [pendenteLote]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // O perfil aberto escolhe o cérebro dele sozinho.
+  useEffect(() => {
+    if (!perfil || !esc) return;
+    const c = acharCerebroDoPerfil(esc.cerebros, perfil);
+    if (c) setPara(c.id);
+  }, [perfil?.chave, esc?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 🧠 ao lado do perfil: abre (e cria, se preciso) o cérebro dele para cadastrar as informações.
+  const [pendenteCerebro, setPendenteCerebro] = useState(false);
+  useEffect(() => { if (pedidoCerebro) { setAberto(true); setPendenteCerebro(true); } }, [pedidoCerebro]);
+  useEffect(() => {
+    if (!pendenteCerebro || !esc || !perfil) return;
+    setPendenteCerebro(false);
+    void (async () => {
+      let c = acharCerebroDoPerfil(esc.cerebros, perfil) as CerebroEscrita | null;
+      if (!c) { c = novoCerebroDoPerfil(perfil) as CerebroEscrita; if (!(await salvarCerebros([...esc.cerebros, c]))) return; }
+      setPara(c.id);
+      setCerebrosAbertos(c.id);
+    })();
+  }, [pendenteCerebro, esc, perfil]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const parar = () => {
     parou.current = true;
     for (const id of rodando.current) void pararClaude(id);
@@ -1013,16 +1068,23 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
           <div className="relative rounded-2xl border bg-card shadow-sm">
             {mencao && (
               <div className="absolute inset-x-0 bottom-full mb-1 overflow-hidden rounded-xl border bg-popover shadow-lg">
-                <p className="flex items-center gap-1 px-3 pt-2 text-[11px] text-muted-foreground"><AtSign className="h-3 w-3" />Citar um documento</p>
-                {achados.map((d, k) => (
+                <p className="flex items-center gap-1 px-3 pt-2 text-[11px] text-muted-foreground"><AtSign className="h-3 w-3" />{blocosAchados.length ? "Puxar um bloco de roteiros ou citar um documento" : "Citar um documento"}</p>
+                {blocosAchados.map((b, k) => (
+                  <button key={b.chave} type="button" onMouseDown={(e) => { e.preventDefault(); puxarBloco(b); }}
+                    className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm", k === indiceAchado ? "bg-muted" : "hover:bg-muted")}>
+                    <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
+                    <span className="truncate">Roteiros do {b.nome}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{b.headlines.length} headline{b.headlines.length === 1 ? "" : "s"} → escreve aqui</span>
+                  </button>
+                ))}
+                {achados.map((d, k0) => { const k = k0 + blocosAchados.length; return (
                   <button key={d.id} type="button" onMouseDown={(e) => { e.preventDefault(); citar(d); }}
                     className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm", k === indiceAchado ? "bg-muted" : "hover:bg-muted")}>
                     <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate">{d.titulo}</span>
                     {d.tipo === "nota" && <span className="ml-auto text-[10px] text-muted-foreground">nota</span>}
-                  </button>
-                ))}
-                {!achados.length && <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum documento com esse nome.</p>}
+                  </button>); })}
+                {!achados.length && !blocosAchados.length && <p className="px-3 py-2 text-sm text-muted-foreground">Nenhum documento com esse nome.</p>}
               </div>
             )}
             {!!citados.length && (
@@ -1041,11 +1103,13 @@ export function ChatNoDocumento({ editor, clienteId, chave }: { editor: Editor; 
               value={texto}
               onChange={(e) => { setTexto(e.target.value); olharMencao(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
               onKeyDown={(e) => {
-                if (mencao && achados.length && ["ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) {
+                const totalMencao = blocosAchados.length + achados.length;
+                if (mencao && totalMencao && ["ArrowDown", "ArrowUp", "Enter", "Tab"].includes(e.key)) {
                   e.preventDefault();
-                  if (e.key === "ArrowDown") setIndiceAchado((i) => (i + 1) % achados.length);
-                  else if (e.key === "ArrowUp") setIndiceAchado((i) => (i - 1 + achados.length) % achados.length);
-                  else citar(achados[indiceAchado]);
+                  if (e.key === "ArrowDown") setIndiceAchado((i) => (i + 1) % totalMencao);
+                  else if (e.key === "ArrowUp") setIndiceAchado((i) => (i - 1 + totalMencao) % totalMencao);
+                  else if (indiceAchado < blocosAchados.length) puxarBloco(blocosAchados[indiceAchado]);
+                  else citar(achados[indiceAchado - blocosAchados.length]);
                   return;
                 }
                 if (mencao && e.key === "Escape") { e.preventDefault(); setMencao(null); return; }

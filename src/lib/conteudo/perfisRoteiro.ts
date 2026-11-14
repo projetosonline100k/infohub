@@ -29,3 +29,30 @@ export function perfisComTexto(roteiroPadrao: string | null | undefined, perfis:
   for (const [k, v] of Object.entries(perfis ?? {})) if (!vazio(v)) s.add(k);
   return s;
 }
+
+// ---------------------------------------------------------------- cérebro de cada perfil (14/11)
+// "Eu preciso clicar em cada perfil e cadastrar as informações daquele perfil: são o cérebro dele." Cada perfil usa um cérebro do escritório
+// (os mesmos cérebros do chat da IA, setores.cerebros). O cérebro do perfil é achado pelo id fixo `perfil-<chave>` ou por um nome conhecido
+// (o cérebro "Davi" que já existe serve ao Eu.davi); se não existe, é criado com as seções em branco para o Davi preencher.
+export interface CerebroMinimo { id: string; nome: string; secoes?: { titulo?: string; texto?: string }[] }
+const normalizarNome = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+const APELIDOS: Record<string, string[]> = { instalivros: ["instalivros"], insta_insights: ["insta insights", "instainsights"], eu_davi: ["eu davi", "davi"], jaci: ["jaci"] };
+export const idCerebroDoPerfil = (chave: string) => `perfil-${chave}`;
+
+export function acharCerebroDoPerfil<T extends CerebroMinimo>(cerebros: T[], perfil: { chave: string; nome: string }): T | null {
+  const porId = cerebros.find((c) => c.id === idCerebroDoPerfil(perfil.chave));
+  if (porId) return porId;
+  const nomes = [normalizarNome(perfil.nome), ...(APELIDOS[perfil.chave] ?? [])];
+  return cerebros.find((c) => nomes.includes(normalizarNome(c.nome))) ?? null;
+}
+export function novoCerebroDoPerfil(perfil: { chave: string; nome: string }): CerebroMinimo {
+  return { id: idCerebroDoPerfil(perfil.chave), nome: perfil.nome, secoes: [
+    { titulo: "Quem é o perfil", texto: "" }, { titulo: "Público", texto: "" }, { titulo: "Tom e jeito de falar", texto: "" },
+    { titulo: "O que funciona e o que evitar", texto: "" }, { titulo: "Exemplos de roteiros que deram certo", texto: "" },
+  ] };
+}
+
+/** Headlines de um roteiro (HTML) para puxar com o @: sem a linha de referência ("REF") nem títulos vazios. */
+export function headlinesParaPuxar(headlines: { numero: number; titulo: string }[]): { numero: number; titulo: string }[] {
+  return headlines.filter((h) => h.titulo.trim() && !/^(ref|refer[eê]ncia|link)\b/i.test(h.titulo.trim()) && !/^https?:\/\//i.test(h.titulo.trim()));
+}

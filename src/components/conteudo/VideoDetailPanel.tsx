@@ -6,6 +6,7 @@ import { ComentariosNoDocumento } from "@/components/documentos/ComentariosNoDoc
 import { Comentario } from "@/lib/tiptapComentario";
 import {
   ArrowLeft,
+  Brain,
   ChevronDown,
   FileText,
   MessageSquare,
@@ -45,7 +46,7 @@ import { HeadlineTitulo, MARCA_HEADLINE } from "@/lib/tiptapHeadlineTitulo";
 import { DocumentToolbar } from "@/components/documentos/DocumentToolbar";
 import { BancoViraisDoc } from "@/components/documentos/BancoViraisDoc";
 import { AudioGravado, MicrofoneNoCursor } from "@/components/documentos/AudioNoDocumento";
-import { ChatNoDocumento } from "@/components/documentos/ChatNoDocumento";
+import { ChatNoDocumento, type BlocoPerfil } from "@/components/documentos/ChatNoDocumento";
 import "@/components/documentos/editor.css";
 import { RoteiroChat } from "./RoteiroChat";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -53,7 +54,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { roteirosNoDocumento, rotuloRoteiros, TITULO_ADAPTADO } from "@/lib/conteudo/roteirosNoDocumento";
-import { guardarRoteiro, PERFIL_PADRAO, PERFIS_ROTEIRO, perfisComTexto, roteiroDoPerfil, type RoteirosPerfis } from "@/lib/conteudo/perfisRoteiro";
+import { guardarRoteiro, headlinesParaPuxar, PERFIL_PADRAO, PERFIS_ROTEIRO, perfisComTexto, roteiroDoPerfil, type RoteirosPerfis } from "@/lib/conteudo/perfisRoteiro";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -185,6 +186,7 @@ export const VideoDetailPanel = ({
   const [perfilAtivo, setPerfilAtivo] = useState(PERFIL_PADRAO);
   const perfilRef = useRef(PERFIL_PADRAO);
   const [perfisCarregados, setPerfisCarregados] = useState(false);
+  const [pedidoCerebro, setPedidoCerebro] = useState(0);   // 🧠 ao lado do perfil: abre o cérebro dele no chat
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, italic: false }),
@@ -489,6 +491,10 @@ export const VideoDetailPanel = ({
   const htmlAtivo = roteiroDoPerfil(perfilAtivo, editedVideo.roteiro, editedVideo.roteiros_perfis);
   const comTexto = perfisComTexto(editedVideo.roteiro, editedVideo.roteiros_perfis);
   const roteirosMarcados = roteirosNoDocumento(htmlAtivo);
+  // Roteiros dos OUTROS perfis (só as headlines) que o @ do chat oferece para refazer neste perfil.
+  const blocosPerfis: BlocoPerfil[] = PERFIS_ROTEIRO.filter((p) => p.chave !== perfilAtivo).map((p) => ({
+    chave: p.chave, nome: p.nome, headlines: headlinesParaPuxar(roteirosNoDocumento(roteiroDoPerfil(p.chave, editedVideo.roteiro, editedVideo.roteiros_perfis))),
+  })).filter((b) => b.headlines.length);
   // Pula para o roteiro N (o N-ésimo título "Headline…" do editor) e põe o cursor nele.
   const irParaRoteiro = (indice: number) => {
     if (!editor) return;
@@ -848,6 +854,7 @@ export const VideoDetailPanel = ({
                 {comTexto.has(p.chave) && perfilAtivo !== p.chave && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-emerald-400" />}
               </button>))}
             <span className="ml-1 hidden text-xs font-medium text-muted-foreground xl:inline">{PERFIS_ROTEIRO.find((p) => p.chave === perfilAtivo)?.nome}</span>
+            <button type="button" onClick={() => setPedidoCerebro((n) => n + 1)} title="Cérebro deste perfil: cadastre quem ele é, o público e o tom (a IA escreve os roteiros com isso)" className="flex h-8 items-center gap-1 rounded-full border px-2 text-xs text-muted-foreground hover:bg-muted"><Brain className="h-3.5 w-3.5" /><span className="hidden 2xl:inline">Cérebro</span></button>
           </div>)}
 
         <div className="flex items-center gap-1 sm:gap-3 shrink-0">
@@ -935,7 +942,7 @@ export const VideoDetailPanel = ({
               {/* Selecionar texto: formatar e comentar, como nos Documentos (25/10). */}
               {editor && <MenuSelecaoTexto editor={editor} onComentar={() => setPedidoComentario((n) => n + 1)} />}
               {editor && <ComentariosNoDocumento editor={editor} videoId={editedVideo.id} pedido={pedidoComentario} />}
-              {editor && <ChatNoDocumento editor={editor} clienteId={editedVideo.cliente_id} chave={`video:${editedVideo.id}`} />}
+              {editor && <ChatNoDocumento editor={editor} clienteId={editedVideo.cliente_id} chave={`video:${editedVideo.id}`} perfil={platform === "vertical" ? { chave: perfilAtivo, nome: PERFIS_ROTEIRO.find((p) => p.chave === perfilAtivo)?.nome ?? perfilAtivo } : null} blocos={platform === "vertical" ? blocosPerfis : []} pedidoCerebro={pedidoCerebro} />}
             </div>
           </div>
         </main>
