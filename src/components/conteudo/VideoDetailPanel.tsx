@@ -508,11 +508,13 @@ export const VideoDetailPanel = ({
   const roteirosMarcados = roteirosNoDocumento(htmlAtivo);
   // Roteiros dos OUTROS perfis (só as headlines) que o @ do chat oferece para refazer neste perfil.
   const blocosPerfis: BlocoPerfil[] = [
-    ...PERFIS_ROTEIRO.filter((p) => p.chave !== perfilAtivo).map((p) => ({
-      chave: p.chave, nome: p.nome, tipo: "perfil" as const, headlines: headlinesParaPuxar(roteirosNoDocumento(roteiroDoPerfil(p.chave, editedVideo.roteiro, editedVideo.roteiros_perfis))),
-    })).filter((b) => b.headlines.length),
+    // O nome é o do card (igual ao do kanban) + o perfil: "7 novos roteiros · Instalivros".
+    ...PERFIS_ROTEIRO.filter((p) => p.chave !== perfilAtivo).map((p) => {
+      const todos = roteirosNoDocumento(roteiroDoPerfil(p.chave, editedVideo.roteiro, editedVideo.roteiros_perfis));
+      return { chave: p.chave, nome: `${editedVideo.titulo} · ${p.nome}`, tipo: "perfil" as const, total: todos.length, headlines: headlinesParaPuxar(todos) };
+    }).filter((b) => b.headlines.length),
     // Os outros cards do kanban com roteiros ("7 roteiros", "7 novos roteiros"…) também são blocos que o @ puxa (14/11).
-    ...outrosCards.map((c) => ({ chave: `video:${c.id}`, nome: c.titulo, tipo: "video" as const, status: c.status, headlines: headlinesParaPuxar(roteirosNoDocumento(c.roteiro)) })).filter((b) => b.headlines.length),
+    ...outrosCards.map((c) => { const todos = roteirosNoDocumento(c.roteiro); return { chave: `video:${c.id}`, nome: c.titulo, tipo: "video" as const, status: c.status, total: todos.length, headlines: headlinesParaPuxar(todos) }; }).filter((b) => b.headlines.length),
   ];
   // Pula para o roteiro N (o N-ésimo título "Headline…" do editor) e põe o cursor nele.
   const irParaRoteiro = (indice: number) => {

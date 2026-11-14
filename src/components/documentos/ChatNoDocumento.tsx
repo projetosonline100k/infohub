@@ -243,7 +243,7 @@ interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevend
 // Perfis do roteiro (14/11, Davi): `perfil` é o perfil aberto no editor, `blocos` são os roteiros (só as headlines) dos OUTROS perfis do mesmo vídeo, que o @ oferece,
 // e `pedidoCerebro` (um contador) abre o cérebro do perfil para cadastrar as informações dele.
 // `tipo`: "perfil" = roteiros de outro perfil do mesmo vídeo; "video" = os roteiros de outro card do kanban (ex.: "7 roteiros", "7 novos roteiros").
-export interface BlocoPerfil { chave: string; nome: string; headlines: { numero: number; titulo: string }[]; tipo?: "perfil" | "video"; status?: string }
+export interface BlocoPerfil { chave: string; nome: string; headlines: { numero: number; titulo: string }[]; tipo?: "perfil" | "video"; status?: string; total?: number }
 export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, blocos = [], pedidoCerebro = 0 }: { editor: Editor; clienteId: string | null; chave?: string | null; perfil?: { chave: string; nome: string } | null; blocos?: BlocoPerfil[]; pedidoCerebro?: number }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useRascunho(`docchat:${chave ?? "sem"}`);
@@ -375,7 +375,7 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
   const blocosAchados = useMemo(() => {
     if (!mencao) return [] as BlocoPerfil[];
     const q = mencao.consulta.toLowerCase();
-    const lista = blocos.filter((b) => b.headlines.length && (!q || `${b.tipo === "video" ? "" : "roteiros "}${b.nome}`.toLowerCase().includes(q)));
+    const lista = blocos.filter((b) => b.headlines.length && (!q || b.nome.toLowerCase().includes(q)));
     return q ? lista.slice(0, 10) : lista.slice(0, 8);
   }, [blocos, mencao]);
   const citar = (d: Citado) => {
@@ -1077,8 +1077,9 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
                   <button key={b.chave} type="button" onMouseDown={(e) => { e.preventDefault(); puxarBloco(b); }}
                     className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm", k === indiceAchado ? "bg-muted" : "hover:bg-muted")}>
                     <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="truncate">{b.tipo === "video" ? b.nome : `Roteiros do ${b.nome}`}</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{b.tipo === "video" ? `${b.headlines.length} roteiro${b.headlines.length === 1 ? "" : "s"}` : `${b.headlines.length} headline${b.headlines.length === 1 ? "" : "s"}`} → escreve aqui</span>
+                    <span className="truncate" title={b.nome}>{b.nome}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground" title={b.total && b.total !== b.headlines.length ? `O card conta ${b.total}; ${b.total - b.headlines.length} não têm headline com título (ex.: a linha REF) e não são puxados.` : undefined}>
+                      {b.headlines.length} roteiro{b.headlines.length === 1 ? "" : "s"}{b.total && b.total !== b.headlines.length ? ` (de ${b.total})` : ""} → escreve aqui</span>
                   </button>
                 ))}
                 {achados.map((d, k0) => { const k = k0 + blocosAchados.length; return (
