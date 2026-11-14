@@ -186,6 +186,7 @@ export const VideoDetailPanel = ({
   const [perfilAtivo, setPerfilAtivo] = useState(PERFIL_PADRAO);
   const perfilRef = useRef(PERFIL_PADRAO);
   const [perfisCarregados, setPerfisCarregados] = useState(false);
+  const [outrosCards, setOutrosCards] = useState<{ id: string; titulo: string; roteiro: string | null; status: string }[]>([]);
   const [pedidoCerebro, setPedidoCerebro] = useState(0);   // 🧠 ao lado do perfil: abre o cérebro dele no chat
   const editor = useEditor({
     extensions: [
@@ -264,6 +265,20 @@ export const VideoDetailPanel = ({
       });
     }
   }, [editor, editedVideo, platform]);
+
+  // Outros cards do projeto com roteiro: blocos que o @ do chat pode puxar (os mais recentes primeiro; os que estão em "Criando roteiro" na frente).
+  const idDoCard = editedVideo?.id, projetoDoCard = editedVideo?.cliente_id;
+  useEffect(() => {
+    if (platform !== "vertical" || !idDoCard || !projetoDoCard) { setOutrosCards([]); return; }
+    let vivo = true;
+    void supabase.from("videos_vertical").select("id, titulo, roteiro, status").eq("cliente_id", projetoDoCard).neq("id", idDoCard).not("roteiro", "is", null)
+      .order("created_at", { ascending: false }).limit(60).then(({ data }) => {
+        if (!vivo) return;
+        const lista = ((data ?? []) as { id: string; titulo: string; roteiro: string | null; status: string }[]);
+        setOutrosCards([...lista.filter((c) => c.status === "roteiro"), ...lista.filter((c) => c.status !== "roteiro")]);
+      });
+    return () => { vivo = false; };
+  }, [platform, idDoCard, projetoDoCard]);
 
   // Trocar de perfil: o roteiro do perfil escolhido entra no editor (zerado se nunca foi escrito; se já tinha texto, ele volta).
   const trocarPerfil = (chave: string) => {
@@ -492,9 +507,13 @@ export const VideoDetailPanel = ({
   const comTexto = perfisComTexto(editedVideo.roteiro, editedVideo.roteiros_perfis);
   const roteirosMarcados = roteirosNoDocumento(htmlAtivo);
   // Roteiros dos OUTROS perfis (só as headlines) que o @ do chat oferece para refazer neste perfil.
-  const blocosPerfis: BlocoPerfil[] = PERFIS_ROTEIRO.filter((p) => p.chave !== perfilAtivo).map((p) => ({
-    chave: p.chave, nome: p.nome, headlines: headlinesParaPuxar(roteirosNoDocumento(roteiroDoPerfil(p.chave, editedVideo.roteiro, editedVideo.roteiros_perfis))),
-  })).filter((b) => b.headlines.length);
+  const blocosPerfis: BlocoPerfil[] = [
+    ...PERFIS_ROTEIRO.filter((p) => p.chave !== perfilAtivo).map((p) => ({
+      chave: p.chave, nome: p.nome, tipo: "perfil" as const, headlines: headlinesParaPuxar(roteirosNoDocumento(roteiroDoPerfil(p.chave, editedVideo.roteiro, editedVideo.roteiros_perfis))),
+    })).filter((b) => b.headlines.length),
+    // Os outros cards do kanban com roteiros ("7 roteiros", "7 novos roteiros"…) também são blocos que o @ puxa (14/11).
+    ...outrosCards.map((c) => ({ chave: `video:${c.id}`, nome: c.titulo, tipo: "video" as const, status: c.status, headlines: headlinesParaPuxar(roteirosNoDocumento(c.roteiro)) })).filter((b) => b.headlines.length),
+  ];
   // Pula para o roteiro N (o N-ésimo título "Headline…" do editor) e põe o cursor nele.
   const irParaRoteiro = (indice: number) => {
     if (!editor) return;

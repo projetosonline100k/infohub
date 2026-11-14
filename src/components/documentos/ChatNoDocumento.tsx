@@ -242,7 +242,8 @@ interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevend
 /** `chave`: o documento (as revisões do Elias ficam guardadas por documento, neste Mac). */
 // Perfis do roteiro (14/11, Davi): `perfil` é o perfil aberto no editor, `blocos` são os roteiros (só as headlines) dos OUTROS perfis do mesmo vídeo, que o @ oferece,
 // e `pedidoCerebro` (um contador) abre o cérebro do perfil para cadastrar as informações dele.
-export interface BlocoPerfil { chave: string; nome: string; headlines: { numero: number; titulo: string }[] }
+// `tipo`: "perfil" = roteiros de outro perfil do mesmo vídeo; "video" = os roteiros de outro card do kanban (ex.: "7 roteiros", "7 novos roteiros").
+export interface BlocoPerfil { chave: string; nome: string; headlines: { numero: number; titulo: string }[]; tipo?: "perfil" | "video"; status?: string }
 export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, blocos = [], pedidoCerebro = 0 }: { editor: Editor; clienteId: string | null; chave?: string | null; perfil?: { chave: string; nome: string } | null; blocos?: BlocoPerfil[]; pedidoCerebro?: number }) {
   const [aberto, setAberto] = useState(false);
   const [texto, setTexto] = useRascunho(`docchat:${chave ?? "sem"}`);
@@ -374,7 +375,8 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
   const blocosAchados = useMemo(() => {
     if (!mencao) return [] as BlocoPerfil[];
     const q = mencao.consulta.toLowerCase();
-    return blocos.filter((b) => b.headlines.length && (!q || `roteiros ${b.nome}`.toLowerCase().includes(q)));
+    const lista = blocos.filter((b) => b.headlines.length && (!q || `${b.tipo === "video" ? "" : "roteiros "}${b.nome}`.toLowerCase().includes(q)));
+    return q ? lista.slice(0, 10) : lista.slice(0, 8);
   }, [blocos, mencao]);
   const citar = (d: Citado) => {
     if (!mencao) return;
@@ -808,7 +810,9 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
     if (cer) setPara(cer.id);
     else toast.info("Este perfil ainda não tem cérebro cadastrado: escrevi com o cérebro escolhido. Clique no 🧠 ao lado do perfil para cadastrar.");
     const esc_ = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const html = novas.map((h) => `<p>Headline ${h.numero}: ${esc_(h.titulo)}</p>`).join("");
+    // Documento vazio: mesmos números da origem. Já com roteiros: continua a numeração (não repete "Headline 1").
+    const maxAtual = editor.isEmpty ? 0 : Math.max(0, ...(editor.getText().match(/(?:headlines?|roteiros?)\s*#?\s*(\d{1,3})/gi) ?? []).map((m) => Number(m.replace(/\D/g, ""))));
+    const html = novas.map((h, i) => `<p>Headline ${maxAtual ? maxAtual + i + 1 : h.numero}: ${esc_(h.titulo)}</p>`).join("");
     if (editor.isEmpty) editor.commands.setContent(html); else editor.chain().focus("end").insertContent(html).run();
     toast.success(`${novas.length} headline${novas.length === 1 ? "" : "s"} de ${b.nome} puxada${novas.length === 1 ? "" : "s"}: escrevendo os roteiros embaixo de cada uma.`);
     setPendenteLote(true);   // o "Gerar todos" roda na próxima renderização, já com o cérebro do perfil escolhido
@@ -1073,8 +1077,8 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
                   <button key={b.chave} type="button" onMouseDown={(e) => { e.preventDefault(); puxarBloco(b); }}
                     className={cn("flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm", k === indiceAchado ? "bg-muted" : "hover:bg-muted")}>
                     <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="truncate">Roteiros do {b.nome}</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{b.headlines.length} headline{b.headlines.length === 1 ? "" : "s"} → escreve aqui</span>
+                    <span className="truncate">{b.tipo === "video" ? b.nome : `Roteiros do ${b.nome}`}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">{b.tipo === "video" ? `${b.headlines.length} roteiro${b.headlines.length === 1 ? "" : "s"}` : `${b.headlines.length} headline${b.headlines.length === 1 ? "" : "s"}`} → escreve aqui</span>
                   </button>
                 ))}
                 {achados.map((d, k0) => { const k = k0 + blocosAchados.length; return (
