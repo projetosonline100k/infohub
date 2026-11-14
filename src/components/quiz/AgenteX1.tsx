@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Loader2, Mic, Plus, RotateCcw, Send, Trash2, FlaskConical, Hammer } from "lucide-react";
+import { Bot, ImagePlus, Loader2, Mic, X, Plus, RotateCcw, Send, Trash2, FlaskConical, Hammer } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
@@ -12,7 +12,7 @@ import { completude, configVazia, pausaDigitando, prontoParaUsar, sanitizarAgent
 // Esquerda: conversa com o Claude (que entrevista) ou teste (você faz o lead). Direita: a inteligência, editável à mão, salva sozinha.
 // Nada aqui envia mensagem a lead: o agente ainda só é montado e testado.
 const db = supabase as unknown as SupabaseClient;
-type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string; ajuste?: boolean };
+type Msg = { papel: "user" | "assistant" | "lead" | "agente"; texto: string; ajuste?: boolean; imagens?: string[] };
 // O agente pode mandar várias mensagens seguidas: ele as separa com uma linha "---" e cada uma vira um balão (como seriam enviadas).
 const partirMensagens = separarMensagens;
 const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
@@ -24,6 +24,25 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const [modo, setModo] = useState<"construir" | "simular">("construir");
   const [msgs, setMsgs] = useState<Record<"construir" | "simular", Msg[]>>({ construir: [{ papel: "assistant", texto: AJUDA }], simular: [] });
   const [texto, setTexto] = useState("");
+  // Imagens para o agente aprender (14/11, Davi: "subir imagens aqui para a IA ir aprendendo"): sobem para o armazenamento e a Gabriela lê cada uma.
+  const [anexos, setAnexos] = useState<string[]>([]);
+  const [subindo, setSubindo] = useState(false);
+  const subirImagens = async (arquivos: File[]) => {
+    const imgs = arquivos.filter((f) => f.type.startsWith("image/"));
+    if (!imgs.length) return;
+    setSubindo(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      for (const f of imgs) {
+        const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+        const caminho = `${u.user?.id}/${quizId}/agente-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
+        const { error } = await supabase.storage.from("quiz-imagens").upload(caminho, f, { contentType: f.type || undefined });
+        if (error) throw error;
+        const url = supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
+        setAnexos((a) => [...a, url]);
+      }
+    } catch { toast.error("Não consegui enviar a imagem (até 20 MB)"); } finally { setSubindo(false); }
+  };
   const [esperando, setEsperandoEstado] = useState(false);
   const setEsperando = (v: boolean) => { esperandoRef.current = v; setEsperandoEstado(v); };
   const [digitando, setDigitando] = useState(false);
@@ -109,13 +128,15 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   };
 
   const enviar = async (abertura = false) => {
-    const t = abertura ? "(início da conversa)" : texto.trim();
+    const imagens = abertura ? [] : anexos;
+    const t = abertura ? "(início da conversa)" : texto.trim() || (imagens.length ? "(imagens para você aprender)" : "");
     if (!t || !clienteId || !config || esperando) return;
     const ajusteAgora = modo === "simular" && !abertura && (ajusteLigado || ehAjuste(t));
     const papelEu = modo === "construir" || ajusteAgora ? "user" : "lead";
     const hist = abertura ? [] : msgs[modo];
-    if (!abertura) setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t, ...(ajusteAgora ? { ajuste: true } : {}) }] }));
+    if (!abertura) setMsgs((m) => ({ ...m, [modo]: [...hist, { papel: papelEu, texto: t, ...(imagens.length ? { imagens } : {}), ...(ajusteAgora ? { ajuste: true } : {}) }] }));
     setTexto("");
+    setAnexos([]);
     setEsperando(true);
     // No teste, a inteligência mais nova (a que a Gabriela acabou de gravar) vale já, sem recarregar a tela.
     const cfg = modo === "simular" ? (await recarregarConfig(clienteId)) ?? config : config;
@@ -123,7 +144,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     const tipo = ajusteAgora ? "construir" : modo;
     const teste = hist.filter((h) => !h.ajuste);
     const contexto = tipo === "construir"
-      ? { quiz: titulo, quiz_id: quizId, perfis, ...(modo === "simular" ? { origem: "teste", conversa_de_teste: teste.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14), ...(ajusteLigado ? { conversa: "ajuste" } : {}) } : {}) }
+      ? { quiz: titulo, quiz_id: quizId, perfis, ...(imagens.length ? { imagens } : {}), ...(modo === "simular" ? { origem: "teste", conversa_de_teste: teste.map((h) => `${h.papel === "lead" ? "Lead" : "Agente"}: ${h.texto}`).slice(-14), ...(ajusteLigado ? { conversa: "ajuste" } : {}) } : {}) }
       : { quiz: titulo, lead: { perfil: perfilSim, nome: "Lead de teste" }, ...(abertura ? { iniciar: true } : {}) };
     const { data, error } = await db.from("agente_whatsapp_pedidos").insert({
       cliente_id: clienteId, tipo, mensagem: t, contexto, config_atual: cfg,
@@ -216,15 +237,32 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           )}
           {lista.map((m, i) => {
             const meu = m.papel === "user" || m.papel === "lead";
-            return <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.ajuste ? (meu ? "ml-auto bg-amber-700/60 ring-1 ring-amber-400/40" : "bg-amber-950/60 ring-1 ring-amber-400/30") : meu ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>{m.ajuste && !meu && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-300">Gabriela</span>}{m.texto}</div>;
+            return <div key={i} className={cn("max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.ajuste ? (meu ? "ml-auto bg-amber-700/60 ring-1 ring-amber-400/40" : "bg-amber-950/60 ring-1 ring-amber-400/30") : meu ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>{m.ajuste && !meu && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-300">Gabriela</span>}{m.imagens?.length ? <span className="mb-1 flex flex-wrap gap-1">{m.imagens.map((u) => <img key={u} src={u} alt="" className="h-24 max-w-[140px] rounded-lg object-cover" />)}</span> : null}{m.texto}</div>;
           })}
           {(esperando || digitando) && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{digitando ? "digitando…" : "Pensando…"}</div>}
           <div ref={fim} />
         </div>
         {modo === "simular" && ajusteLigado && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste ligado: você está falando com a Gabriela, não com o agente. Pergunte por que ele respondeu assim, tire dúvidas e decidam melhorias juntos. Desligue para voltar a fazer o lead.</p>}
         {modo === "simular" && !ajusteLigado && ehAjuste(texto) && <p className="border-t border-amber-400/30 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Modo ajuste: o agente vai aprender isso e gravar na inteligência ao lado.</p>}
-        <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2">
-          <textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
+        {anexos.length > 0 && (
+          <div className="flex flex-wrap gap-2 border-t border-white/10 bg-[#111b21] px-2 pt-2">
+            {anexos.map((u) => (
+              <span key={u} className="relative"><img src={u} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                <button type="button" onClick={() => setAnexos((a) => a.filter((x) => x !== u))} title="Tirar" className="absolute -right-1.5 -top-1.5 rounded-full bg-black/80 p-0.5 text-white"><X className="h-3 w-3" /></button></span>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 border-t border-white/10 bg-[#111b21] p-2"
+          onDragOver={(e) => { if (modo === "construir") e.preventDefault(); }}
+          onDrop={(e) => { if (modo !== "construir") return; e.preventDefault(); void subirImagens([...e.dataTransfer.files]); }}>
+          {modo === "construir" && (
+            <label title="Anexar imagem (ou cole / arraste aqui)" className="flex cursor-pointer items-center self-end rounded-full bg-white/10 p-2.5 text-white/80 hover:bg-white/15">
+              {subindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+              <input type="file" accept="image/*" multiple hidden onChange={(e) => { void subirImagens([...(e.target.files ?? [])]); e.target.value = ""; }} />
+            </label>
+          )}
+          <textarea rows={2} value={texto}
+            onPaste={(e) => { if (modo !== "construir") return; const fs = [...e.clipboardData.files]; if (fs.some((f) => f.type.startsWith("image/"))) { e.preventDefault(); void subirImagens(fs); } }} onChange={(e) => setTexto(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
             placeholder={modo === "construir" ? "Conte sobre o produto, as ofertas, o que o agente pode e não pode…" : ajusteLigado ? "Converse com a Gabriela sobre o teste: dúvidas, ideias de melhoria…" : "Escreva como o lead…"} className="min-h-0 flex-1 resize-none rounded-xl border border-white/10 bg-[#2a3942] px-3 py-2 text-sm outline-none" />
           {isDesktop() && (
             <button type="button" onClick={() => void audio.alternar()} disabled={audio.transcrevendo} title={audio.gravando ? "Parar e transcrever" : "Gravar áudio"}
@@ -232,7 +270,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
               {audio.transcrevendo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
             </button>
           )}
-          <button type="button" disabled={!texto.trim() || esperando} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
+          <button type="button" disabled={(!texto.trim() && !anexos.length) || esperando || subindo} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
         </div>
       </section>
 

@@ -9,6 +9,7 @@ O Claude NÃO mexe em arquivo nem no banco e NÃO envia nada a ninguém: só dev
 import json
 import random
 import re
+from pathlib import Path
 from difflib import SequenceMatcher
 from migration_db import connect
 
@@ -256,6 +257,29 @@ def abrir_pedidos(q, pedidos, log=print, origem="gabriela"):
     return abertos
 
 
+def _nota_imagens(p):
+    """Imagens anexadas pelo Davi (contexto.imagens = URLs públicas): baixa para uma pasta temporária e manda a Gabriela ler cada uma."""
+    urls = [u for u in (p.get("contexto") or {}).get("imagens", []) if isinstance(u, str) and u.startswith("https://")][:8]
+    if not urls:
+        return ""
+    import urllib.request, tempfile
+    pasta = Path(tempfile.mkdtemp(prefix="agente-img-"))
+    caminhos = []
+    for i, u in enumerate(urls):
+        try:
+            ext = (u.split("?")[0].rsplit(".", 1)[-1] or "png")[:4]
+            alvo = pasta / f"imagem-{i + 1}.{ext}"
+            req = urllib.request.Request(u, headers={"User-Agent": "infopro-hub"})
+            alvo.write_bytes(urllib.request.urlopen(req, timeout=30).read())
+            caminhos.append(str(alvo))
+        except Exception as e:  # noqa: BLE001
+            print("agente: imagem não baixou —", repr(e)[:100])
+    if not caminhos:
+        return ""
+    return ("\n\n[O Davi anexou " + str(len(caminhos)) + " imagem(ns). Abra cada uma com a ferramenta Read, entenda o que mostra (produto, oferta, depoimento, conversa, preço, regra…) "
+            "e use para aprender: grave na inteligência o que for útil e diga em 1-2 frases o que você aprendeu.\n" + "\n".join(caminhos) + "]")
+
+
 def atender(rodar_claude, log=print):
     """Atende UM pedido pendente (se houver)."""
     c = connect()
@@ -281,6 +305,7 @@ def atender(rodar_claude, log=print):
                 else:   # abertura ou "tudo num balão": só tira repetição
                     texto = "\n---\n".join(tirar_repetidas([x.strip() for x in _SEP.split(texto.strip()) if x.strip()] or [texto.strip()], ultima))
         else:   # montar: a Gabriela (sessão contínua) pode consultar o quiz, o banco (só leitura) e a internet
+            p["mensagem"] += _nota_imagens(p)
             ferr = ["Bash(python3 scripts/consulta.py:*)", "Read", "Grep", "Glob", "WebFetch", "WebSearch"]
             q.execute("SELECT sessao_construir FROM public.agentes_whatsapp WHERE cliente_id = %s", (p["cliente_id"],))
             linha = q.fetchone()
