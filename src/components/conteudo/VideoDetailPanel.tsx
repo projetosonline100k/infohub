@@ -52,6 +52,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { roteirosNoDocumento, rotuloRoteiros, TITULO_ADAPTADO } from "@/lib/conteudo/roteirosNoDocumento";
+import { guardarRoteiro, PERFIL_PADRAO, PERFIS_ROTEIRO, perfisComTexto, roteiroDoPerfil, type RoteirosPerfis } from "@/lib/conteudo/perfisRoteiro";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -66,6 +67,7 @@ interface Video {
   titulo: string;
   descricao?: string | null;
   roteiro?: string | null;
+  roteiros_perfis?: RoteirosPerfis | null;   // roteiro dos outros perfis do mesmo vídeo (14/11)
   status: string;
   escalado?: boolean;
   data_postagem?: string | null;
@@ -178,6 +180,10 @@ export const VideoDetailPanel = ({
   // em negrito, para conseguir ocultar com a ferramenta de abrir e fechar" e "apertei ⌘H e nada"):
   // o mesmo editor dos Documentos — barra que funciona, títulos recolhíveis, "Headline N" vira
   // título sozinho e ⌘H traz um vídeo do banco de virais. O roteiro passa a ser guardado em HTML.
+  // Perfis (14/11): o roteiro que está no editor pertence ao perfil ativo; o padrão é a coluna `roteiro`.
+  const [perfilAtivo, setPerfilAtivo] = useState(PERFIL_PADRAO);
+  const perfilRef = useRef(PERFIL_PADRAO);
+  const [perfisCarregados, setPerfisCarregados] = useState(false);
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4] }, italic: false }),
@@ -193,7 +199,7 @@ export const VideoDetailPanel = ({
       Comentario,   // trecho comentado (25/10)
     ],
     content: "",
-    onUpdate: ({ editor: e }) => setEditedVideo((prev) => (prev ? { ...prev, roteiro: e.getHTML() } : prev)),
+    onUpdate: ({ editor: e }) => setEditedVideo((prev) => (prev ? { ...prev, ...guardarRoteiro(perfilRef.current, e.getHTML(), prev) } : prev)),
     onSelectionUpdate: ({ editor: e }) => {
       const { from, to } = e.state.selection;
       const texto = from === to ? "" : e.state.doc.textBetween(from, to, "\n");
@@ -239,8 +245,46 @@ export const VideoDetailPanel = ({
   useEffect(() => {
     if (!editor || !editedVideo || idCarregado.current === editedVideo.id) return;
     idCarregado.current = editedVideo.id;
+    perfilRef.current = PERFIL_PADRAO;
+    setPerfilAtivo(PERFIL_PADRAO);
+    setPerfisCarregados(false);
     editor.commands.setContent(roteiroParaHtml(editedVideo.roteiro), { emitUpdate: false });
-  }, [editor, editedVideo]);
+    // Os outros perfis vêm do banco (cada tela que abre este painel carrega colunas diferentes).
+    if (platform === "vertical") {
+      const id = editedVideo.id;
+      void supabase.from("videos_vertical").select("roteiros_perfis").eq("id", id).maybeSingle().then(({ data }) => {
+        if (idCarregado.current !== id) return;
+        const perfis = ((data as { roteiros_perfis?: RoteirosPerfis } | null)?.roteiros_perfis ?? {}) as RoteirosPerfis;
+        perfisSalvosRef.current = JSON.stringify(perfis);
+        setEditedVideo((prev) => (prev && prev.id === id ? { ...prev, roteiros_perfis: perfis } : prev));
+        setPerfisCarregados(true);
+      });
+    }
+  }, [editor, editedVideo, platform]);
+
+  // Trocar de perfil: o roteiro do perfil escolhido entra no editor (zerado se nunca foi escrito; se já tinha texto, ele volta).
+  const trocarPerfil = (chave: string) => {
+    if (!editor || !editedVideo || chave === perfilRef.current || !perfisCarregados) return;
+    perfilRef.current = chave;
+    setPerfilAtivo(chave);
+    editor.commands.setContent(roteiroParaHtml(roteiroDoPerfil(chave, editedVideo.roteiro, editedVideo.roteiros_perfis)), { emitUpdate: false });
+    setSelectionLength(0);
+    window.setTimeout(() => editor.commands.focus("start"), 0);
+  };
+
+  // Os roteiros dos outros perfis são guardados pelo próprio painel (as telas que abrem o painel só salvam o roteiro padrão).
+  const perfisSalvosRef = useRef("");
+  useEffect(() => {
+    if (!editedVideo || platform !== "vertical" || !perfisCarregados) return;
+    const atual = JSON.stringify(editedVideo.roteiros_perfis ?? {});
+    if (atual === perfisSalvosRef.current) return;
+    const id = editedVideo.id;
+    const t = window.setTimeout(async () => {
+      const { error } = await supabase.from("videos_vertical").update({ roteiros_perfis: JSON.parse(atual) }).eq("id", id);
+      if (error) { console.error("Erro ao salvar os perfis:", error); setAutoSaveStatus("error"); } else { perfisSalvosRef.current = atual; setAutoSaveStatus("saved"); }
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [editedVideo, platform, perfisCarregados]);
 
   useEffect(() => {
     if (!editedVideo || !onAutoSave) return;
@@ -287,6 +331,15 @@ export const VideoDetailPanel = ({
   };
 
   const handleClose = async () => {
+    // Os roteiros dos outros perfis também saem antes de fechar (o salvamento deles espera 0,9 s).
+    if (editedVideo && platform === "vertical" && perfisCarregados) {
+      const atual = JSON.stringify(editedVideo.roteiros_perfis ?? {});
+      if (atual !== perfisSalvosRef.current) {
+        const { error } = await supabase.from("videos_vertical").update({ roteiros_perfis: JSON.parse(atual) }).eq("id", editedVideo.id);
+        if (error) { console.error("Erro ao salvar os perfis:", error); setAutoSaveStatus("error"); return; }
+        perfisSalvosRef.current = atual;
+      }
+    }
     if (editedVideo && onAutoSave && getVideoSnapshot(editedVideo) !== lastSavedSnapshotRef.current) {
       try {
         setAutoSaveStatus("saving");
@@ -409,13 +462,15 @@ export const VideoDetailPanel = ({
     return "";
   })();
   const roteiroCharacterCount = editor ? editor.getText().length : (editedVideo.roteiro || "").length;
-  const roteirosMarcados = roteirosNoDocumento(editedVideo.roteiro);
+  const htmlAtivo = roteiroDoPerfil(perfilAtivo, editedVideo.roteiro, editedVideo.roteiros_perfis);
+  const comTexto = perfisComTexto(editedVideo.roteiro, editedVideo.roteiros_perfis);
+  const roteirosMarcados = roteirosNoDocumento(htmlAtivo);
   // Pula para o roteiro N (o N-ésimo título "Headline…" do editor) e põe o cursor nele.
   const irParaRoteiro = (indice: number) => {
     if (!editor) return;
     const alvos = Array.from(editor.view.dom.children).filter((el) => MARCA_HEADLINE.test(el.textContent || ""));
     // Adaptação do Instalivros: os "Headline N" do original vêm antes e não contam.
-    const pular = (editedVideo.roteiro ?? "").includes(TITULO_ADAPTADO) ? Math.max(0, alvos.length - roteirosMarcados.length) : 0;
+    const pular = (htmlAtivo ?? "").includes(TITULO_ADAPTADO) ? Math.max(0, alvos.length - roteirosMarcados.length) : 0;
     const alvo = alvos[pular + indice];
     if (!alvo) return;
     alvo.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -758,6 +813,18 @@ export const VideoDetailPanel = ({
             <Star className="h-4 w-4" />
           </Button>
         </div>
+
+        {platform === "vertical" && (
+          <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="Perfil do roteiro">
+            {PERFIS_ROTEIRO.map((p) => (
+              <button key={p.chave} type="button" onClick={() => trocarPerfil(p.chave)} disabled={!perfisCarregados} title={`${p.nome}${comTexto.has(p.chave) ? "" : " (vazio)"}`} aria-pressed={perfilAtivo === p.chave}
+                className={cn("relative flex h-8 w-8 items-center justify-center rounded-full text-[10px] font-bold text-white transition-all disabled:opacity-50", p.cor,
+                  perfilAtivo === p.chave ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "opacity-60 hover:opacity-100")}>
+                {p.sigla}
+                {comTexto.has(p.chave) && perfilAtivo !== p.chave && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-emerald-400" />}
+              </button>))}
+            <span className="ml-1 hidden text-xs font-medium text-muted-foreground xl:inline">{PERFIS_ROTEIRO.find((p) => p.chave === perfilAtivo)?.nome}</span>
+          </div>)}
 
         <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           {/* Contador sempre à vista (25/10, Davi: "ao encolher, o contador desaparece"); estreito, fica curto. */}

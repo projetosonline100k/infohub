@@ -2725,6 +2725,7 @@ export type Database = {
           origem_plataforma: string | null
           referencia_id: string | null
           roteiro: string | null
+          roteiros_perfis: Json
           status: string
           titulo: string
         }
@@ -2749,6 +2750,7 @@ export type Database = {
           origem_plataforma?: string | null
           referencia_id?: string | null
           roteiro?: string | null
+          roteiros_perfis?: Json
           status?: string
           titulo: string
         }
@@ -2773,6 +2775,7 @@ export type Database = {
           origem_plataforma?: string | null
           referencia_id?: string | null
           roteiro?: string | null
+          roteiros_perfis?: Json
           status?: string
           titulo?: string
         }
