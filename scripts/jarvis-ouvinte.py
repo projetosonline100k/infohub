@@ -955,6 +955,12 @@ if __name__ == "__main__":
         sys.exit(0)
     log("ouvinte iniciado" + (" (só código)" if SO_CODIGO else " (sem código)" if SEM_CODIGO else "") + "; claude =", claude_bin())
     if SO_CODIGO:
+        # O Mac dormindo no meio da produção de um vídeo deixava o Lauro parado por horas (14/11): enquanto este processo viver, o Mac não dorme por inatividade.
+        try:
+            subprocess.Popen(["caffeinate", "-i", "-s", "-w", str(os.getpid())], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:  # noqa: BLE001
+            log("caffeinate não subiu —", repr(e)[:120])
+    if SO_CODIGO:
         fluxos = (("execucao", lambda: execucao.reenfileirar(sistema=True), "tarefa(s) de programação interrompida(s)"),
                   ("agente-x1", agente_x1.reenfileirar, "conversa(s) do agente do X1 destravada(s)"),
                   ("vivo", vivo.reenfileirar, "mensagem(ns) do modo vivo interrompida(s)"),
