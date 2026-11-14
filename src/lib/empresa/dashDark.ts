@@ -96,6 +96,8 @@ export function prontosParados(edicoes: EdicaoDark[], hoje: string, agora: Date,
 export interface EstiloDark {
   descricao: string; publico: string; duracao: string; gancho: string; estrutura: string; narracao: string;
   visual: string; musica: string; cta: string; regras: string; referencias: string[]; observacoes: string;
+  /** Voz fixa do perfil (13/11): lida por scripts/lauro/voz.py. Não aparece nos campos da tela, mas o salvar não pode apagar. */
+  voz?: { motor?: string; voz?: string; velocidade?: number };
 }
 export const estiloVazio = (): EstiloDark => ({ descricao: "", publico: "", duracao: "", gancho: "", estrutura: "", narracao: "", visual: "", musica: "", cta: "", regras: "", referencias: [], observacoes: "" });
 
@@ -105,6 +107,10 @@ export function sanitizarEstilo(bruto: unknown): EstiloDark {
   const e = estiloVazio();
   for (const k of Object.keys(e) as (keyof EstiloDark)[]) if (k !== "referencias") e[k] = txt(b[k], k === "duracao" ? 80 : 4000) as never;
   e.referencias = (Array.isArray(b.referencias) ? b.referencias : []).map((r) => txt(r, 500)).filter(Boolean).slice(0, 30);
+  if (b.voz && typeof b.voz === "object") {
+    const v = b.voz as Record<string, unknown>;
+    e.voz = { motor: txt(v.motor, 30) || "kokoro", voz: txt(v.voz, 40) || "pm_santa", velocidade: typeof v.velocidade === "number" && v.velocidade >= 0.5 && v.velocidade <= 2 ? v.velocidade : 1 };
+  }
   return e;
 }
 

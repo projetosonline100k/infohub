@@ -20,7 +20,7 @@ const db = supabase as unknown as SupabaseClient;
 export interface PerfilDark { id: string; nome: string; arroba: string | null; cliente_id: string | null; estilo: unknown; conversa_zerada_em: string | null; modo_vivo?: boolean }
 type Msg = { papel: "user" | "assistant"; texto: string };
 
-const CAMPOS: { chave: Exclude<keyof EstiloDark, "referencias">; rotulo: string; linhas?: number }[] = [
+const CAMPOS: { chave: Exclude<keyof EstiloDark, "referencias" | "voz">; rotulo: string; linhas?: number }[] = [
   { chave: "descricao", rotulo: "A ideia do vídeo", linhas: 3 }, { chave: "publico", rotulo: "Para quem", linhas: 2 }, { chave: "duracao", rotulo: "Duração" },
   { chave: "gancho", rotulo: "Gancho (como abre)", linhas: 2 }, { chave: "estrutura", rotulo: "Estrutura do roteiro", linhas: 4 }, { chave: "narracao", rotulo: "Narração (voz e tom)", linhas: 2 },
   { chave: "visual", rotulo: "Visual", linhas: 3 }, { chave: "musica", rotulo: "Música e efeitos", linhas: 2 }, { chave: "cta", rotulo: "Fechamento (chamada)", linhas: 2 },

@@ -42,11 +42,11 @@ test('agruparPorDia ordena pelo número e ignora roteiro sem dia; contarPorStatu
   assert.deepEqual([c.editando, c.programado, c.na_fila], [2, 1, 0]);
 });
 
-test('mensagem para o Lauro: voz no ElevenLabs, vídeo, revisar (não programa) e só programa depois do APROVADO', () => {
+test('mensagem para o Lauro: voz local fixa (Kokoro), vídeo, revisar (não programa) e só programa depois do APROVADO', () => {
   const t = m.mensagemParaLauro(r(7, '2026-11-20'), 'Insta insights oficial');
   assert.ok(t.includes('V7') && t.includes('20/11/2026'));
   assert.ok(t.includes('roteiros.py contexto id7-aaaa'));
-  assert.ok(t.includes('elevenlabs.io') && t.includes('Gregory Grumble'));
+  assert.ok(t.includes('scripts/lauro/voz.py id7-aaaa') && t.includes('pm_santa') && t.includes('NÃO use o ElevenLabs'));
   assert.ok(t.includes('status id7-aaaa revisar --arquivo'));
   assert.ok(t.includes('NÃO agende nem poste pelo Chrome'));
   assert.ok(/Nada é publicado sem o meu Aprovar/.test(t));
