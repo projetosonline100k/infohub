@@ -195,10 +195,11 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
   }, [aberto, mapa]);
 
   // Os pilares do Davi primeiro (numerados), depois os do cadastro; divididos entre os dois lados do centro.
+  // Cérebro (14/11, Davi: "não faz sentido ter várias informações que deveriam estar dentro do bloco maior"): sem folhas; o texto fica dentro do bloco.
   const todos: Pilar[] = useMemo(() => [
-    ...(mapa?.pilares ?? []),
+    ...(mapa?.pilares ?? []).map((p) => (fonte ? { ...p, itens: [] } : p)),
     ...doCadastro.map((p) => ({ ...p, itens: p.itens.slice(0, MAX_ITENS_AUTO).concat(p.itens.length > MAX_ITENS_AUTO ? [`+ ${p.itens.length - MAX_ITENS_AUTO} outros (clique)`] : []) })),
-  ], [mapa, doCadastro]);
+  ], [mapa, doCadastro, fonte]);
   const layout = useMemo(() => {
     const altura = (p: Pilar) => Math.max(PILAR.h + 30, (p.itens.length + (p.mais ? 1 : 0)) * FOLHA.passo + (editar && !p.auto ? 40 : 0) + (p.exemplo !== undefined ? 90 : 0) + 20);
     const lados: number[][] = [[], []];
@@ -215,6 +216,13 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
 
   if (!aberto || !membro) return null;
   const nUsuario = mapa?.pilares.length ?? 0;
+  const apagarFonte = async (i: number) => {
+    if (!mapa || !fonte) return;
+    const nome = mapa.pilares[i]?.titulo.trim() || "esta fonte";
+    if (!window.confirm(`Apagar "${nome}" e tudo o que está escrito nela?`)) return;
+    const novo = { ...mapa, pilares: mapa.pilares.filter((_, k) => k !== i) };
+    if (await fonte.salvar(novo)) { setMapa(novo); setPainelSecao(null); toast.success("Fonte apagada"); }
+  };
   const mudar = (f: (m: MapaInteligencia) => MapaInteligencia) => { setMapa((m) => (m ? f(m) : m)); setMudou(true); };
   const mudarPilar = (i: number, patch: Partial<PilarMapa>) => mudar((m) => ({ ...m, pilares: m.pilares.map((p, k) => (k === i ? { ...p, ...patch } : p)) }));
   const salvar = async () => {
@@ -271,7 +279,7 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
               {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Salvar
             </button>
           ) : (
-            <button type="button" onClick={() => setEditar(true)} className="flex items-center gap-1 rounded-md border border-foreground/15 px-3 py-1 text-xs hover:bg-foreground/10"><Pencil className="h-3.5 w-3.5" />Editar</button>
+            <button type="button" onClick={() => setEditar(true)} hidden={!!fonte} className="flex items-center gap-1 rounded-md border border-foreground/15 px-3 py-1 text-xs hover:bg-foreground/10"><Pencil className="h-3.5 w-3.5" />Editar</button>
           )}
           <button type="button" onClick={fechar} title="Fechar (Esc)" className="rounded-md p-1.5 text-foreground/60 hover:bg-foreground/10 hover:text-foreground"><X className="h-4 w-4" /></button>
         </div>
@@ -337,7 +345,17 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
                         className="absolute -right-2 -top-2 rounded-full bg-card p-1 text-foreground/50 ring-1 ring-foreground/20 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" /></button>
                     )}
                     <Texto valor={p.titulo} editar={ed} onMudar={(v) => mudarPilar(i, { titulo: v })} className="block text-lg font-bold" placeholder="Título do pilar" />
-                    <Texto valor={p.descricao} editar={ed} multilinha onMudar={(v) => mudarPilar(i, { descricao: v })} className="mt-1 block text-[13px] leading-snug text-foreground/75" placeholder="O que ele precisa fazer aqui" />
+                    {fonte && !p.auto && (
+                      <button type="button" title="Apagar esta fonte"
+                        onClick={(e) => { e.stopPropagation(); void apagarFonte(i); }}
+                        className="absolute -right-2 -top-2 rounded-full bg-card p-1 text-foreground/50 ring-1 ring-foreground/20 hover:text-rose-400"><Trash2 className="h-3.5 w-3.5" /></button>
+                    )}
+                    {fonte && !p.auto && mapa.pilares[i] && (
+                      <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-[13px] leading-snug text-foreground/70">
+                        {[p.descricao, ...mapa.pilares[i].itens].filter(Boolean).join("\n") || <span className="text-foreground/35">Clique para escrever…</span>}
+                      </p>
+                    )}
+                    {!fonte && <Texto valor={p.descricao} editar={ed} multilinha onMudar={(v) => mudarPilar(i, { descricao: v })} className="mt-1 block text-[13px] leading-snug text-foreground/75" placeholder="O que ele precisa fazer aqui" />}
                     {ed && (
                       <div className="mt-2 flex items-center gap-1">
                         {CORES_PILAR.map((c) => (
