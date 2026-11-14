@@ -152,6 +152,18 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   };
   // O id do chat no WhatsApp: o da conversa que já existe (cobre o número sem o 9º dígito de alguns DDDs), senão o número do quiz.
   const chatDoLead = (l: LeadQuiz) => wa.find((w) => w.resposta_id === l.id)?.chat_id ?? `${telefoneWa(l.whatsapp)}@c.us`;
+  // Celular BR de alguns DDDs não tem o 9º dígito no WhatsApp (5561992393785 → 556192393785): o WhatsApp responde "no LID found". Tenta o número do quiz e, se não existir, o outro formato.
+  const invocarNoChat = async (comando: string, l: LeadQuiz, args: Record<string, unknown>) => {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const primeiro = chatDoLead(l);
+    const num = primeiro.split("@")[0];
+    const outro = num.length === 13 && num[4] === "9" ? `${num.slice(0, 4)}${num.slice(5)}@c.us` : num.length === 12 ? `${num.slice(0, 4)}9${num.slice(4)}@c.us` : null;
+    try { return await invoke(comando, { ...args, chatId: primeiro }); } catch (e) {
+      const msg = typeof e === "string" ? e : "";
+      if (outro && /no LID found|not.*(exist|registered)|invalid.*(jid|number)|\(500\)/i.test(msg)) return await invoke(comando, { ...args, chatId: outro });
+      throw e;
+    }
+  };
 
   // Áudio (13/11, Davi: "preciso ter a opção de mandar áudio"): grava no microfone, ouve a contagem e envia pelo WhatsApp do projeto; escrever ou mandar áudio por conta própria pausa o agente.
   const [gravando, setGravando] = useState<number | null>(null);
@@ -191,8 +203,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     setEnviando(true);
     try {
       const base64 = await new Promise<string>((ok, erro) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1] ?? ""); r.onerror = () => erro(r.error); r.readAsDataURL(audio); });
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("whatsapp_enviar_audio", { chatId: chatDoLead(lead), base64, mimetype: audio.type.split(";")[0], conta: contaWa });
+      await invocarNoChat("whatsapp_enviar_audio", lead, { base64, mimetype: audio.type.split(";")[0], conta: contaWa });
       await db.from("quiz_abordagens").insert({ quiz_id: quizId, resposta_id: lead.id, cliente_id: clienteId, texto: "🎤 Áudio", modelo: null });
       if (lead.status === "novo") onStatus(lead, "em_contato");
       await carregar();
@@ -215,10 +226,9 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
     const direto = isDesktop();
     if (direto) {
       try {
-        const { invoke } = await import("@tauri-apps/api/core");
         for (let i = 0; i < Math.max(1, partes.length); i++) {
           if (i > 0) await new Promise((r) => setTimeout(r, 1500 + Math.min(4000, (partes[i]?.length ?? 0) * 40)));
-          await invoke("whatsapp_enviar", { chatId: chatDoLead(lead), texto: partes[i] ?? texto.trim(), conta: contaWa, responderA: null, mencoes: null });
+          await invocarNoChat("whatsapp_enviar", lead, { texto: partes[i] ?? texto.trim(), conta: contaWa, responderA: null, mencoes: null });
         }
       } catch (e) {
         setEnviando(false);
