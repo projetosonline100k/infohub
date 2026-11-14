@@ -147,6 +147,26 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
   // Painel de uma seção do cérebro (14/11, Davi: "clicar no item e abrir as informações que estão nela, para escrever e editar"): `foco` = a linha clicada.
   const [painelSecao, setPainelSecao] = useState<{ i: number; foco?: number } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  // "Puxar um fio" do centro cria uma nova fonte de inteligência (um pilar novo) e já abre a gaveta para escrever.
+  const [fio, setFio] = useState<{ x0: number; y0: number; x: number; y: number } | null>(null);
+  const puxarFio = (e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault(); e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    const x0 = r.left + r.width / 2, y0 = r.top + r.height / 2;
+    setFio({ x0, y0, x: e.clientX, y: e.clientY });
+    const mover = (ev: PointerEvent) => setFio({ x0, y0, x: ev.clientX, y: ev.clientY });
+    const soltar = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar);
+      setFio(null);
+      if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 40) return;   // só um clique: não cria
+      setMapa((m) => {
+        if (!m) return m;
+        setPainelSecao({ i: m.pilares.length });
+        return { ...m, pilares: [...m.pilares, { titulo: "", descricao: "", itens: [] }] };
+      });
+    };
+    window.addEventListener("pointermove", mover); window.addEventListener("pointerup", soltar);
+  };
   const [mudou, setMudou] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
   const [tamanho, setTamanho] = useState({ w: 1, h: 1 });
@@ -288,6 +308,11 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
               <Texto valor={mapa.titulo ?? membro.nome} editar={editar} onMudar={(v) => mudar((m) => ({ ...m, titulo: v }))} className="text-center text-2xl font-extrabold" placeholder={membro.nome} />
               <Texto valor={mapa.subtitulo ?? ""} editar={editar} multilinha onMudar={(v) => mudar((m) => ({ ...m, subtitulo: v }))}
                 className="text-center text-sm text-foreground/65" placeholder={membro.funcao ?? "O que ele faz"} />
+              {fonte && ([-1, 1] as const).map((lado) => (
+                <button key={lado} type="button" onPointerDown={puxarFio} title="Puxe o fio para criar uma nova fonte de inteligência"
+                  className="absolute top-1/2 flex h-6 w-6 -translate-y-1/2 cursor-crosshair touch-none items-center justify-center rounded-full border-2 border-sky-400 bg-background text-sky-300 hover:scale-125 hover:bg-sky-500 hover:text-white"
+                  style={{ [lado === 1 ? "right" : "left"]: -12 }}><Plus className="h-3.5 w-3.5" /></button>
+              ))}
             </div>
 
             {todos.map((p, i) => {
@@ -374,9 +399,19 @@ export function MapaInteligenciaView({ membro, aberto, onFechar, onSalvo, fonte,
 
           </div>
         )}
+        {fio && (
+          <svg className="pointer-events-none fixed inset-0 z-[200]" width="100%" height="100%">
+            <path d={`M ${fio.x0} ${fio.y0} C ${(fio.x0 + fio.x) / 2} ${fio.y0}, ${(fio.x0 + fio.x) / 2} ${fio.y}, ${fio.x} ${fio.y}`} stroke="#38bdf8" strokeWidth={3} strokeDasharray="6 6" fill="none" />
+            <circle cx={fio.x} cy={fio.y} r={7} fill="#38bdf8" />
+          </svg>
+        )}
         {painelSecao && fonte && mapa?.pilares[painelSecao.i] && (
           <GavetaSecao key={`${painelSecao.i}-${painelSecao.foco ?? "x"}`} pilar={mapa.pilares[painelSecao.i]} numero={painelSecao.i + 1} foco={painelSecao.foco} cor={mapa.pilares[painelSecao.i].cor ?? CORES_PILAR[painelSecao.i % CORES_PILAR.length]}
-            onFechar={() => setPainelSecao(null)}
+            onFechar={() => {
+              const i = painelSecao.i, p = mapa.pilares[i];
+              if (!p.titulo.trim() && !p.descricao.trim() && p.itens.length === 0) setMapa({ ...mapa, pilares: mapa.pilares.filter((_, k) => k !== i) });
+              setPainelSecao(null);
+            }}
             onApagar={async () => {
               const novo = { ...mapa, pilares: mapa.pilares.filter((_, k) => k !== painelSecao.i) };
               if (await fonte.salvar(novo)) { setMapa(novo); setPainelSecao(null); toast.success("Seção apagada"); }
