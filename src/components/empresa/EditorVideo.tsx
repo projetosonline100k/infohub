@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   Bookmark, CheckCircle2, Download, Film, ImagePlus, Link2, Loader2, Magnet, MessageCircle, MousePointer2, Music, Palette, Pause, Play, Redo2, RotateCcw, Save, Slice,
   Trash2, Undo2, ZoomIn,
@@ -317,6 +317,8 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   const nomeFonte = projeto ? projeto.fonte.split("/").pop()! : "";
   const arquivoPlayer = proxyPronto ? "proxy.mp4" : nomeFonte;
   const tFonteRef = useRef(tFonte); tFonteRef.current = tFonte;
+  const tFinalRef = useRef(tFinal); tFinalRef.current = tFinal;
+  useLayoutEffect(() => { definirAgulha(tFinal); }, [tFinal]);
   const relativo = (arq: string) => (arq.startsWith(pasta + "/") ? arq.slice(pasta.length + 1) : null);
   const ocupado = estado?.status === "renderizando" || estado?.status === "aprovando";
   // Formato dark (19/10): sem o Davi na tela, só a voz e o papel desenhado. Não tem linha do
@@ -601,17 +603,18 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     const p = projRef.current;
     if (!p) return;
     const ms = p.marcadores ?? [];
-    const perto = ms.find((m) => Math.abs(m - tFonte) < 0.1);
-    alterar({ ...p, marcadores: perto != null ? ms.filter((m) => m !== perto) : [...ms, tFonte] });
-  }, [tFonte, alterar]);
+    const tF = tFonteRef.current;
+    const perto = ms.find((m) => Math.abs(m - tF) < 0.1);
+    alterar({ ...p, marcadores: perto != null ? ms.filter((m) => m !== perto) : [...ms, tF] });
+  }, [alterar]);
   const novoZoom = useCallback(() => {
     const p = projRef.current;
     if (!p) return;
-    const z: BlocoZoom = { id: `z${Date.now()}`, inicio: tFonte, fim: paraBruto(segs, Math.min(durFinal, tFinal + 3)), z: 1.1, tipo: "suave" };
+    const z: BlocoZoom = { id: `z${Date.now()}`, inicio: tFonteRef.current, fim: paraBruto(segs, Math.min(durFinal, tFinalRef.current + 3)), z: 1.1, tipo: "suave" };
     if (z.fim - z.inicio < 0.3) return;
     alterar({ ...p, zooms: [...blocosZoom(p), z] });
     setSelecao([{ tipo: "zoom", id: z.id }]);
-  }, [tFonte, segs, durFinal, tFinal, alterar]);
+  }, [segs, durFinal, alterar]);
 
   // Atalhos (como no Premiere): Espaço play · V seleção · C navalha · W corta tudo na agulha · E/Delete apaga
   // · ⌘R apaga e junta · Q/R apara até a agulha · M marcador · D/F zoom da linha do tempo · ←/→ quadro (⇧ = 1 s).
@@ -708,12 +711,12 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     }
     onFechar();
   };
-  const subir = async (f: File) => {
+  const subir = useCallback(async (f: File) => {
     if (web) { toast.error("Por enquanto, imagem e vídeo novos só sobem pelo app do Mac."); throw new Error("web"); }
     const r = await fetch(url(`midia?nome=${encodeURIComponent(f.name)}`), { method: "POST", body: f });
     if (!r.ok) throw new Error("upload");
     return (await r.json()).arquivo as string;
-  };
+  }, [web, url]);
 
   // Elementos ativos no instante atual (pra desenhar por cima do player).
   const legAtivas = web ? [] : projeto?.legendas.filter((l) => tFonte >= l.inicio && tFonte < l.fim) ?? [];
@@ -879,11 +882,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                 <div onPointerDown={arrastarDivisoria} title="Arraste pra aumentar a linha do tempo"
                   className="h-1.5 shrink-0 cursor-row-resize border-y border-zinc-700 bg-[#2d2d30] hover:bg-sky-600/60" />
                 <LinhaDoTempo
-                  projeto={projeto} segs={segs} clipes={listaClipes} durFinal={durFinal} tFinal={tFinal} pps={pps} setPps={setPps} onda={onda} ondaMusica={ondaMusica} ganhoMusica={ganhoMusica} vozFinal={vozFinal}
+                  projeto={projeto} segs={segs} clipes={listaClipes} durFinal={durFinal} pps={pps} setPps={setPps} onda={onda} ondaMusica={ondaMusica} ganhoMusica={ganhoMusica} vozFinal={vozFinal}
                   ferramenta={ferramenta} setFerramenta={setFerramenta} selecao={selecao} setSelecao={setSelecao}
                   irParaFinal={irParaFinal} cortarEm={cortarEm} alterar={alterar} desfazer={desfazer} refazer={refazer}
                   podeDesfazer={historico.length > 0} podeRefazer={futuro.length > 0} marcar={marcar} novoZoom={novoZoom}
-                  juntar={juntar} setJuntar={setJuntar} ima={ima} setIma={setIma} tFonte={tFonte} subir={subir}
+                  juntar={juntar} setJuntar={setJuntar} ima={ima} setIma={setIma} tFonteRef={tFonteRef} subir={subir}
                 />
               </div>
             </div>
@@ -1127,16 +1130,43 @@ const TRAVA_PX = 30;   // quanto precisa "insistir" pra passar da legenda vizinh
 const ALTURAS = { leg: 36, zoom: 26, v2: 36, v1: 48, a1: 64, a2: 44, a3: 26 };
 type Faixas = typeof ALTURAS;
 
-function LinhaDoTempo({
-  projeto, segs, clipes: lista, durFinal, tFinal, pps, setPps, onda, ondaMusica, ganhoMusica, vozFinal, ferramenta, setFerramenta, selecao, setSelecao, irParaFinal, cortarEm, alterar,
-  desfazer, refazer, podeDesfazer, podeRefazer, marcar, novoZoom, juntar, setJuntar, ima, setIma, tFonte, subir,
+// Posição da agulha (tempo final) fora do estado do React: só a agulha e o "seguir" se redesenham a cada quadro; a linha do tempo inteira não (14/11, travando).
+const agulhaLoja = { v: 0, ou: new Set<() => void>() };
+function definirAgulha(t: number) { if (agulhaLoja.v === t) return; agulhaLoja.v = t; agulhaLoja.ou.forEach((f) => f()); }
+function useAgulha() {
+  return useSyncExternalStore((f) => { agulhaLoja.ou.add(f); return () => { agulhaLoja.ou.delete(f); }; }, () => agulhaLoja.v);
+}
+function Agulha({ pps }: { pps: number }) {
+  const t = useAgulha();
+  return (
+    <div className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-sky-400" style={{ left: ROT + t * pps }}>
+      <div className="-ml-[6px] h-3 w-[13px] bg-sky-400" style={{ clipPath: "polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)" }} />
+    </div>
+  );
+}
+/** Rola a linha do tempo atrás da agulha quando ela sai da tela (sem arrastar). */
+function SeguirAgulha({ areaRef, pps, arrasteRef }: { areaRef: React.RefObject<HTMLDivElement>; pps: number; arrasteRef: React.MutableRefObject<{ tipo: string } | null | undefined> }) {
+  const t = useAgulha();
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el || arrasteRef.current?.tipo === "agulha") return;
+    const x = t * pps + ROT;
+    if (x < el.scrollLeft + ROT || x > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, x - 200);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t]);
+  return null;
+}
+
+function LinhaDoTempoInterna({
+  projeto, segs, clipes: lista, durFinal, pps, setPps, onda, ondaMusica, ganhoMusica, vozFinal, ferramenta, setFerramenta, selecao, setSelecao, irParaFinal, cortarEm, alterar,
+  desfazer, refazer, podeDesfazer, podeRefazer, marcar, novoZoom, juntar, setJuntar, ima, setIma, tFonteRef, subir,
 }: {
-  projeto: ProjetoEdicao; segs: [number, number][]; clipes: Clipe[]; durFinal: number; tFinal: number; pps: number; setPps: (n: number) => void;
+  projeto: ProjetoEdicao; segs: [number, number][]; clipes: Clipe[]; durFinal: number; pps: number; setPps: (n: number) => void;
   onda: Onda | null; ondaMusica: Onda | null; ganhoMusica: number[]; vozFinal: number[];
   ferramenta: "selecao" | "lamina"; setFerramenta: (f: "selecao" | "lamina") => void; selecao: Item[]; setSelecao: (s: Item[]) => void;
   irParaFinal: (t: number) => void; cortarEm: (t: number, alvo: Item | "tudo") => void; alterar: (p: ProjetoEdicao) => void;
   desfazer: () => void; refazer: () => void; podeDesfazer: boolean; podeRefazer: boolean; marcar: () => void; novoZoom: () => void;
-  juntar: boolean; setJuntar: (v: boolean) => void; ima: boolean; setIma: (v: boolean) => void; tFonte: number; subir: (f: File) => Promise<string>;
+  juntar: boolean; setJuntar: (v: boolean) => void; ima: boolean; setIma: (v: boolean) => void; tFonteRef: React.MutableRefObject<number>; subir: (f: File) => Promise<string>;
 }) {
   const areaRef = useRef<HTMLDivElement>(null);
   const [arraste, setArraste] = useState<Arraste | null>(null);
@@ -1162,12 +1192,13 @@ function LinhaDoTempo({
     const el = areaRef.current, ant = ppsAnt.current;
     ppsAnt.current = pps;
     if (!el || ant === pps) return;
+    const tFinal = agulhaLoja.v;
     const xAgulha = ROT + tFinal * ant - el.scrollLeft;
     const visivel = xAgulha >= ROT && xAgulha <= el.clientWidth;
     const meio = ROT + (el.clientWidth - ROT) / 2;
     const ancora = visivel ? tFinal : (el.scrollLeft + meio - ROT) / ant;
     el.scrollLeft = Math.max(0, ROT + ancora * pps - (visivel ? xAgulha : meio));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [pps]);
 
   // Ímã: pontas de trechos, legendas, imagens, zooms, marcadores e a agulha (no tempo final).
@@ -1181,7 +1212,7 @@ function LinhaDoTempo({
   const encaixar = (t: number, comAgulha: boolean, ignorar?: number) => {
     if (!ima) return { t, guia: null as number | null };
     let melhor: number | null = null;
-    for (const p of comAgulha ? [...pontos, tFinal] : pontos) {
+    for (const p of comAgulha ? [...pontos, agulhaLoja.v] : pontos) {
       if (ignorar != null && Math.abs(p - ignorar) < 1e-6) continue;
       if (Math.abs(p - t) * pps <= 8 && (melhor == null || Math.abs(p - t) < Math.abs(melhor - t))) melhor = p;
     }
@@ -1191,14 +1222,7 @@ function LinhaDoTempo({
   const irRef = useRef(irParaFinal); irRef.current = irParaFinal;
   const xParaTRef = useRef(xParaT); xParaTRef.current = xParaT;
 
-  // Agulha acompanha durante o play.
-  useEffect(() => {
-    const el = areaRef.current;
-    if (!el || arraste?.tipo === "agulha") return;
-    const x = tFinal * pps + ROT;
-    if (x < el.scrollLeft + ROT || x > el.scrollLeft + el.clientWidth - 40) el.scrollLeft = Math.max(0, x - 200);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tFinal]);
+  // Agulha acompanha durante o play (SeguirAgulha, no fim do JSX).
 
   // Arrastes: agulha (segurar e mover na régua), pontas, imagens, zooms. Acompanha o mouse e, ao soltar, aplica UMA vez.
   const arrasteRef = useRef(arraste); arrasteRef.current = arraste;
@@ -1342,7 +1366,7 @@ function LinhaDoTempo({
               const video = f.type.startsWith("video");
               const emPe = video && (await proporcaoVideo(f)) < 0.8;
               const { rotulo: _r, ...pos } = emPe ? POSICOES.celular : POSICOES.embaixo;
-              alterar({ ...projeto, midias: [...projeto.midias, { id: `u${Date.now()}`, tipo: video ? "video" : "imagem", arquivo, inicio: tFonte, fim: tFonte + 5, ...pos,
+              alterar({ ...projeto, midias: [...projeto.midias, { id: `u${Date.now()}`, tipo: video ? "video" : "imagem", arquivo, inicio: tFonteRef.current, fim: tFonteRef.current + 5, ...pos,
                 ...(video && /verde|green|chroma/i.test(f.name) && { chroma: true }) }] });
             } catch { toast.error("Não consegui enviar o arquivo"); }
             e.target.value = "";
@@ -1512,9 +1536,8 @@ function LinhaDoTempo({
           {/* Ímã / trava: linha de encaixe */}
           {guia != null && <div className="pointer-events-none absolute bottom-0 top-0 z-40 w-px bg-yellow-300 shadow-[0_0_4px_#fde047]" style={{ left: ROT + guia * pps }} />}
           {/* Agulha */}
-          <div className="pointer-events-none absolute bottom-0 top-0 z-30 w-px bg-sky-400" style={{ left: ROT + tFinal * pps }}>
-            <div className="-ml-[6px] h-3 w-[13px] bg-sky-400" style={{ clipPath: "polygon(0 0,100% 0,100% 55%,50% 100%,0 55%)" }} />
-          </div>
+          <Agulha pps={pps} />
+          <SeguirAgulha areaRef={areaRef} pps={pps} arrasteRef={arrasteRef} />
         </div>
       </div>
     </div>
@@ -1598,9 +1621,13 @@ function VideoSobreposto({ src: original, t, tocando, style, cobrir, vel = 1, em
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     let pedido = 0;
+    let ultimoT = -1;
     const desenhar = () => {
       pedido = requestAnimationFrame(desenhar);
       if (v.readyState < 2 || !v.videoWidth) return;
+      // Vídeo de 30 fps numa tela de 60: só envia o quadro para a placa de vídeo quando ele mudou (metade do trabalho).
+      if (v.currentTime === ultimoT) return;
+      ultimoT = v.currentTime;
       const w = v.videoWidth, h = Math.round(v.videoHeight / 2);
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; gl.viewport(0, 0, w, h); }
       try { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v); } catch { return; }
@@ -1638,6 +1665,8 @@ function VideoSobreposto({ src: original, t, tocando, style, cobrir, vel = 1, em
   }
   return <video ref={ref} src={src} muted playsInline preload="auto" onLoadedMetadata={(e) => { e.currentTarget.currentTime = Math.max(0, t); }} className={cn("pointer-events-none absolute", cobrir ? "object-cover" : "object-contain")} style={style} />;
 }
+
+const LinhaDoTempo = memo(LinhaDoTempoInterna);
 
 /** Largura ÷ altura de um vídeo (pra saber se ele é em pé). */
 function proporcaoVideo(f: File): Promise<number> {
