@@ -57,7 +57,9 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
     try {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user?.id) throw new Error("sessão expirada: entre de novo");
-      for (const original of imgs) {
+      // Copia o conteúdo para a memória logo de cara: o WebKit esvazia o arquivo do seletor ao longo do caminho ("No content provided").
+      const copias = await Promise.all(imgs.map(async (f) => new File([await f.arrayBuffer()], f.name, { type: f.type })));
+      for (const original of copias) {
         // Se a conversão falhar por qualquer motivo, tenta enviar a original.
         const f = await prepararImagem(original).catch((e) => { console.error("agente: conversão da imagem falhou", e); return original; });
         const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
@@ -284,7 +286,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
           {modo === "construir" && (
             <label title="Anexar imagem (ou cole / arraste aqui)" className="flex cursor-pointer items-center self-end rounded-full bg-white/10 p-2.5 text-white/80 hover:bg-white/15">
               {subindo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
-              <input type="file" accept="image/*" multiple hidden onChange={(e) => { void subirImagens([...(e.target.files ?? [])]); e.target.value = ""; }} />
+              <input type="file" accept="image/*" multiple hidden onChange={async (e) => { const campo = e.target; await subirImagens([...(campo.files ?? [])]); campo.value = ""; }} />
             </label>
           )}
           <textarea rows={2} value={texto}
