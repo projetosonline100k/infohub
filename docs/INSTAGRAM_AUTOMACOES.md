@@ -105,3 +105,11 @@ Aba **Fluxos** da tela `/automacoes`: editor visual (React Flow, estilo ManyChat
 - **Motor:** `supabase/functions/instagram-automacoes/fluxos.ts` (banco + Meta) sobre a lógica pura `supabase/functions/_shared/fluxo.ts` (validação, próximo passo, condição; testada em `tests/fluxoInstagram.test.mjs` e `tests/fluxoMotor.test.mjs`). O fluxo vence a automação simples quando a mesma palavra bate nos dois. O pg_cron `instagram-fluxos-tick` chama `/tick` a cada minuto para retomar as esperas.
 - **Idempotência:** `(fluxo_id, evento_id)` único (a Meta reenvia webhooks) e uma execução ativa por pessoa e fluxo.
 - **Falta (próximas versões):** escolher posts específicos no fluxo, condição "clicou no link", variáveis ({nome}), números por bloco mais ricos.
+
+## Many Hub (14/11/2026)
+
+A tela `/automacoes` agora se chama **Many Hub** (rota igual). Abas: Resultados, Automações (fluxos + automações simples), **Pessoas**, Histórico.
+- **Pessoas:** funil do fluxo escolhido (quantas pessoas chegaram em cada mensagem e por qual botão seguiram) + lista de quem está esperando, avançou, concluiu, parou ou deu erro, e a **conversa** de cada pessoa em estilo chat (`ManyHubPessoas.tsx`, lógica pura em `src/lib/automacoes/manyhub.ts`).
+- **Conversas:** a edge `instagram-automacoes` guarda cada DM que chega e cada DM que sai (`instagram_mensagens`, quem escreve é só o robô) e o @ de quem escreve (`instagram_contatos`, buscado na Meta uma vez). Ecos (DM que o Davi manda pelo app do Instagram) também entram. **Antes de 14/11 não há histórico guardado.**
+- **Responder pelo Many Hub:** `POST /instagram-automacoes/enviar` (JWT; mesma permissão da tela). Só dentro de **24 h da última mensagem da pessoa** (regra da Meta; comentário não abre a janela). Ao responder, as execuções de fluxo ativas dessa pessoa terminam ("Você assumiu a conversa").
+- **Palavra-chave "Contém o trecho"** (`correspondencia = 'trecho'`): basta o pedaço aparecer (insta → instalivros, instalivors).

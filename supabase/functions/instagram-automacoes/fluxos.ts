@@ -2,6 +2,7 @@
 // Chamado pela edge `instagram-automacoes`: (1) quando chega comentário/DM/story/resposta de botão,
 // (2) a cada minuto pelo pg_cron (/tick) para retomar as esperas. A lógica de decisão é pura e testada
 // em ../_shared/fluxo.ts; aqui ficam só o banco e a Meta.
+import { registrarMensagem, textoComBotoes } from "./conversa.ts";
 import {
   aguardaResposta, destinoDe, fluxoBate, linksDoNo, primeiroNo, proximoPasso, respostasDoNo, saidaDaResposta,
   type GrafoFluxo, type NoFluxo,
@@ -78,10 +79,12 @@ async function andar(admin: Admin, d: Deps, conexao: ConexaoFluxo, fluxo: Fluxo,
       }
       try {
         token ??= await d.tokenAtual(admin, conexao);
-        await d.graph(`${exec.ig_user_id}/messages`, token, {
+        const resp = await d.graph(`${exec.ig_user_id}/messages`, token, {
           recipient: primeira ? { comment_id: exec.comment_id } : { id: exec.contato_id },
           message: corpoDaMensagem(no),
-        });
+        }) as { message_id?: string } | null;
+        await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: resp?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id,
+          texto: textoComBotoes((no.dados.texto ?? "").trim(), [...respostasDoNo(no), ...linksDoNo(no)]) });
       } catch (e) {
         const msg = (e as Error).message;
         marcar(no.id, "erro");

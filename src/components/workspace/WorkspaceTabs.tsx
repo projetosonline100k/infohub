@@ -119,7 +119,7 @@ const titleForPath = (path: string) => {
   if (path === "/produtividade") return "Produtividade";
   if (path === "/agenda") return "Agenda";
   if (path === "/admin") return "Administração";
-  if (path === "/automacoes") return "Automações";
+  if (path === "/automacoes") return "Many Hub";
   if (path === "/ponte") return "Ponte";
   if (path === "/foco") return "Modo Foco";
   if (path.startsWith("/navegar")) {

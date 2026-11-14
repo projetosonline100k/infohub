@@ -12,6 +12,7 @@ import { AutomacaoDialog } from "@/components/automacoes/AutomacaoDialog";
 import { AutomacoesResultados } from "@/components/automacoes/AutomacoesResultados";
 import { ConectarContaDialog } from "@/components/automacoes/ConectarContaDialog";
 import { FluxoEditor, type RascunhoFluxo } from "@/components/automacoes/FluxoEditor";
+import { ManyHubPessoas } from "@/components/automacoes/ManyHubPessoas";
 import { useInstagramFluxos, type FluxoInstagram } from "@/hooks/useInstagramFluxos";
 import { GATILHOS } from "@/lib/automacoes/instagram";
 import { cn } from "@/lib/utils";
@@ -70,8 +71,8 @@ export default function Automacoes() {
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Automações do Instagram</h1>
-          <p className="text-sm text-muted-foreground">Comentou, mandou no direct ou respondeu o story com a palavra: recebe a DM.</p>
+          <h1 className="text-2xl font-bold">Many Hub</h1>
+          <p className="text-sm text-muted-foreground">Automações e fluxos de conversa do Instagram: comentou, mandou no direct ou respondeu o story com a palavra, recebe a DM.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="icon" onClick={atualizar} aria-label="Atualizar" title="Atualizar">
@@ -133,6 +134,7 @@ export default function Automacoes() {
         <TabsList>
           <TabsTrigger value="resultados">Resultados</TabsTrigger>
           <TabsTrigger value="automacoes">Automações</TabsTrigger>
+          <TabsTrigger value="pessoas">Pessoas</TabsTrigger>
           <TabsTrigger value="historico">
             Histórico{comErro > 0 && <span className="ml-1.5 rounded-full bg-destructive px-1.5 text-[10px] text-destructive-foreground">{comErro}</span>}
           </TabsTrigger>
@@ -222,6 +224,11 @@ export default function Automacoes() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="pessoas" className="mt-4">
+          <ManyHubPessoas igUserId={conta?.ig_user_id} fluxos={fluxosDaConta.fluxos} nomesAutomacao={nomePorId}
+            disparos={disparos.map((d) => ({ id: d.id, automacao_id: d.automacao_id, autor_id: d.autor_id, autor_username: d.autor_username, criado_em: d.criado_em, respondeu_em: d.respondeu_em, cliques: d.cliques, dm_status: d.dm_status }))} />
         </TabsContent>
 
         <TabsContent value="historico" className="mt-4">

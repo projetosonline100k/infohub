@@ -305,7 +305,7 @@ export function AppSidebar() {
       },
     ];
     // Automações: o admin e quem tem a área "Automações" liberada em algum projeto (25/10).
-    if (ehAdmin(user?.email) || temAutomacoes) itens.push({ chave: "automacoes", titulo: "Automações", icone: Zap, ir: "/automacoes" });
+    if (ehAdmin(user?.email) || temAutomacoes) itens.push({ chave: "automacoes", titulo: "Many Hub", icone: Zap, ir: "/automacoes" });
     if (ehAdmin(user?.email)) itens.push(
       { chave: "ponte", titulo: "Ponte", icone: Radio, ir: "/ponte" },
       { chave: "admin", titulo: "Administração", icone: ShieldCheck, ir: "/admin" },

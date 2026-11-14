@@ -192,7 +192,7 @@ export function GlobalSearchCommand({ open, onOpenChange }: GlobalSearchCommandP
     { titulo: "Agenda", rota: "/agenda", icon: CalendarDays },
     ...(ehAdmin(user?.email)
       ? [
-          { titulo: "Automações", rota: "/automacoes", icon: Zap },
+          { titulo: "Many Hub", rota: "/automacoes", icon: Zap },
           { titulo: "Ponte", rota: "/ponte", icon: Radio },
           { titulo: "Administração", rota: "/admin", icon: ShieldCheck },
         ]

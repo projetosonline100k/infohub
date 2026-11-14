@@ -21,6 +21,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { continuarFluxo, iniciarFluxo, retomarEsperas } from "./fluxos.ts";
+import { garantirContato, JANELA_RESPOSTA_MS, registrarMensagem } from "./conversa.ts";
 
 const GRAPH = "https://graph.instagram.com/v23.0";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://infopro-hub.vercel.app";
@@ -75,6 +76,7 @@ type Comentario = {
 
 type Mensageria = {
   sender?: { id?: string };
+  recipient?: { id?: string };
   postback?: { mid?: string; title?: string; payload?: string };
   message?: {
     mid?: string;
@@ -201,6 +203,11 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
     .eq("ig_user_id", igUserId).maybeSingle();
   if (!conexao) return;
 
+  // Many Hub (14/11): guarda o que a pessoa escreveu e quem ela é, para o chat e os números por pessoa.
+  await registrarMensagem(admin, { ig_user_id: igUserId, contato_id: evento.autorId, mid: evento.eventoId, de_mim: false, origem: "contato",
+    tipo: evento.origem === "comentario" ? "comentario" : evento.payload ? "botao" : evento.texto ? "texto" : "midia", texto: evento.texto || evento.payload || "" });
+  await garantirContato(admin, await tokenAtual(admin, conexao as Conexao), igUserId, evento.autorId, evento.autorUsername);
+
   // Funil: mensagem da pessoa depois de receber uma DM (últimos 7 dias) = respondeu.
   // Roda antes de criar o disparo desta mensagem, então ela não conta para si mesma.
   // O crédito vai só para a DM mais recente: é ela que a pessoa está respondendo.
@@ -265,11 +272,12 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
   let respostaStatus = "nenhuma";
 
   try {
-    await graph(`${igUserId}/messages`, token, {
+    const resp = await graph(`${igUserId}/messages`, token, {
       // Comentário: private reply (a única forma de abrir DM a partir dele).
       recipient: evento.origem === "comentario" ? { comment_id: evento.eventoId } : { id: evento.autorId },
       message: { text: mensagem },
-    });
+    }) as { message_id?: string } | null;
+    await registrarMensagem(admin, { ig_user_id: igUserId, contato_id: evento.autorId, mid: resp?.message_id ?? null, de_mim: true, origem: "automacao", texto: mensagem });
   } catch (e) {
     dmStatus = "erro";
     erros.push(`DM: ${(e as Error).message}`);
@@ -498,6 +506,40 @@ async function listarPosts(req: Request, admin: any, supabaseUrl: string) {
   return json({ posts: payload?.data ?? [] });
 }
 
+// deno-lint-ignore no-explicit-any
+async function enviarPeloChat(req: Request, admin: any, supabaseUrl: string) {
+  const user = await usuarioDaRequisicao(req, supabaseUrl);
+  if (!user) return json({ error: "não autenticado" }, 401);
+  const { ig_user_id: igUserId, contato_id: contatoId, texto } = await req.json().catch(() => ({}));
+  const msg = String(texto ?? "").trim();
+  if (!igUserId || !contatoId || !msg) return json({ error: "faltam a conta, a pessoa ou o texto" }, 400);
+  if (msg.length > 1000) return json({ error: "a mensagem passa de 1000 caracteres" }, 400);
+  // Permissão: a mesma regra da tela (dono da conta ou equipe com a área liberada), conferida com o login de quem pediu.
+  const anon = Deno.env.get("SUPABASE_ANON_KEY");
+  const caller = createClient(supabaseUrl, anon ?? "", { global: { headers: { Authorization: req.headers.get("authorization") ?? "" } } });
+  const { data: pode } = await caller.rpc("instagram_conta_permite", { p_ig_user_id: igUserId, p_acao: "editar" });
+  if (!pode) return json({ error: "sem permissão nesta conta" }, 403);
+  const { data: conexao } = await admin.from("instagram_conexoes").select("ig_user_id, user_id, access_token, token_expira_em").eq("ig_user_id", igUserId).maybeSingle();
+  if (!conexao) return json({ error: "conta não conectada" }, 404);
+  // Regra da Meta: só dá para responder em até 24 h depois da última mensagem DA PESSOA (comentário não conta).
+  const { data: ultima } = await admin.from("instagram_mensagens").select("enviada_em").eq("ig_user_id", igUserId).eq("contato_id", contatoId).eq("de_mim", false)
+    .in("tipo", ["texto", "midia", "botao"]).order("enviada_em", { ascending: false }).limit(1).maybeSingle();
+  if (!ultima || Date.now() - Date.parse(ultima.enviada_em) > JANELA_RESPOSTA_MS) {
+    return json({ error: "A janela de 24 h da Meta fechou: só dá para responder até 24 h depois da última mensagem da pessoa." }, 409);
+  }
+  try {
+    const token = await tokenAtual(admin, conexao as Conexao);
+    const resp = await graph(`${igUserId}/messages`, token, { recipient: { id: contatoId }, message: { text: msg } }) as { message_id?: string } | null;
+    await registrarMensagem(admin, { ig_user_id: igUserId, contato_id: contatoId, mid: resp?.message_id ?? null, de_mim: true, origem: "davi", texto: msg });
+    // Você assumiu: o fluxo para de falar com essa pessoa.
+    await admin.from("instagram_fluxo_execucoes").update({ estado: "fim", erro: "Você assumiu a conversa", trava_ate: null, atualizado_em: new Date().toISOString() })
+      .eq("ig_user_id", igUserId).eq("contato_id", contatoId).in("estado", ["rodando", "aguardando_resposta", "aguardando_tempo"]);
+    return json({ ok: true });
+  } catch (e) {
+    return json({ error: (e as Error).message }, 502);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   const url = new URL(req.url);
@@ -544,6 +586,7 @@ serve(async (req) => {
   if (!supabaseUrl || !serviceKey) return new Response("not configured", { status: 500 });
   const admin = createClient(supabaseUrl, serviceKey);
 
+  if (url.pathname.endsWith("/enviar")) return enviarPeloChat(req, admin, supabaseUrl);
   if (url.pathname.endsWith("/tick")) {
     // pg_cron (1 min): retoma as esperas dos fluxos. Chave do Vault (a mesma da Dalila), conferida no banco.
     const { data: ok } = await admin.rpc("dalila_chave_ok", { p_chave: req.headers.get("x-dalila-chave") ?? "" });
@@ -574,6 +617,12 @@ serve(async (req) => {
 
   for (const entry of payload.entry ?? []) {
     if (!entry.id) continue;
+    // Ecos (14/11): DM que saiu da conta (a do robô já foi guardada; o que sobra é o que o Davi escreveu pelo app do Instagram).
+    const ecos = (entry.messaging ?? []).filter((m) => m.message?.is_echo && m.recipient?.id);
+    if (ecos.length) {
+      await new Promise((r) => setTimeout(r, 1500));   // dá tempo de o robô guardar a que ele mesmo mandou (mesmo mid)
+      for (const m of ecos) await registrarMensagem(admin, { ig_user_id: entry.id, contato_id: m.recipient!.id!, mid: m.message!.mid ?? null, de_mim: true, origem: "instagram", texto: m.message!.text ?? "" });
+    }
     const eventos: Evento[] = [
       ...(entry.changes ?? []).filter((c) => c.field === "comments" && c.value).map((c) => doComentario(c.value!)),
       ...(entry.messaging ?? []).map(daMensagem).filter((e): e is Evento => !!e),

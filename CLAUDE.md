@@ -30,7 +30,7 @@ Rotas internas (sidebar, `src/components/layout/AppSidebar.tsx`):
 | Notas | `/notas` | `Notas.tsx` | notas pessoais com pastas |
 | Produtividade | `/produtividade` | `Produtividade.tsx` | performance (rotinas/metas), sono, relatórios de foco |
 | Agenda | `/agenda` | `Agenda.tsx` | eventos, alarmes, sync com Google Calendar (`docs/GOOGLE_CALENDAR.md`) |
-| Automações | `/automacoes` | `Automacoes.tsx` | automações do Instagram por palavra-chave (só admin) |
+| Many Hub (ex-Automações) | `/automacoes` | `Automacoes.tsx` | automações e fluxos de conversa do Instagram, pessoas e chat (só admin/equipe com a área) |
 | Administração | `/admin` | `Admin.tsx` | só para o e-mail admin (`src/lib/admin.ts`) |
 
 Componentes por domínio em `src/components/<dominio>/`; lógica pura em `src/lib/<dominio>/`; hooks de dados em `src/hooks/` (o Assistant/Jarvis usa `useAssistant*`, produtividade usa `usePerformance*`, `useSleep*`, `useDailyPlan`, `useStartDay*`, `useEndOfDay*`).
@@ -69,7 +69,7 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 - `sleep_logs`, `sleep_goals`.
 - `jarvis_configuracoes`, `jarvis_mensagens` (mensagens/nudges da orbe Atlas).
 
-**Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`; `instagram_conexoes` (token, sem acesso pelo app), `instagram_automacoes`, `instagram_automacao_disparos`, `instagram_metricas_diarias` (histórico diário de cada conta; painel do cronograma), `instagram_posts` (posts dos últimos 35 dias com visualizações/curtidas/salvamentos; liga ao carrossel ou ao card do cronograma, que vira `postado`; "Top posts do mês"). `instagram_fluxos` + `instagram_fluxo_execucoes` (fluxos de mensagem em blocos, aba Fluxos de `/automacoes`; motor em `instagram-automacoes/fluxos.ts`, lógica em `_shared/fluxo.ts`; `docs/INSTAGRAM_AUTOMACOES.md`). `youtube_conexoes` (canal por projeto, tokens criptografados, sem acesso pelo app).
+**Integrações**: `google_calendar_connections` (tokens criptografados), `google_calendar_oauth_states`; `instagram_conexoes` (token, sem acesso pelo app), `instagram_automacoes`, `instagram_automacao_disparos`, `instagram_metricas_diarias` (histórico diário de cada conta; painel do cronograma), `instagram_posts` (posts dos últimos 35 dias com visualizações/curtidas/salvamentos; liga ao carrossel ou ao card do cronograma, que vira `postado`; "Top posts do mês"). `instagram_mensagens` + `instagram_contatos` (conversa de cada pessoa no Many Hub, escritas só pela edge). `instagram_fluxos` + `instagram_fluxo_execucoes` (fluxos de mensagem em blocos, aba Fluxos de `/automacoes`; motor em `instagram-automacoes/fluxos.ts`, lógica em `_shared/fluxo.ts`; `docs/INSTAGRAM_AUTOMACOES.md`). `youtube_conexoes` (canal por projeto, tokens criptografados, sem acesso pelo app).
 
 ## Permissões (RLS)
 

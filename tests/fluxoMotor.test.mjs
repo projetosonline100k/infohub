@@ -7,7 +7,8 @@ const cfg = { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.Script
 const cod = (arq) => ts.transpileModule(readFileSync(new URL(arq, import.meta.url), 'utf8'), cfg).outputText;
 const dataUrl = (js) => `data:text/javascript;base64,${Buffer.from(js).toString('base64')}`;
 const puro = dataUrl(cod('../supabase/functions/_shared/fluxo.ts'));
-const motor = await import(dataUrl(cod('../supabase/functions/instagram-automacoes/fluxos.ts').replace('"../_shared/fluxo.ts"', `"${puro}"`)));
+const conversa = dataUrl(cod('../supabase/functions/instagram-automacoes/conversa.ts'));
+const motor = await import(dataUrl(cod('../supabase/functions/instagram-automacoes/fluxos.ts').replace('"../_shared/fluxo.ts"', `"${puro}"`).replace('"./conversa.ts"', `"${conversa}"`)));
 
 // Banco de mentira: tabelas em memória com o mínimo da API do supabase-js que o motor usa.
 function banco(tabelas) {
