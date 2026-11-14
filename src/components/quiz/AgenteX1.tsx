@@ -27,13 +27,26 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   // Imagens para o agente aprender (14/11, Davi: "subir imagens aqui para a IA ir aprendendo"): sobem para o armazenamento e a Gabriela lê cada uma.
   const [anexos, setAnexos] = useState<string[]>([]);
   const [subindo, setSubindo] = useState(false);
+  const PERMITIDOS = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+  // O armazenamento só aceita PNG/JPEG/WebP/GIF: outros formatos (HEIC, AVIF, SVG, TIFF…) viram PNG antes de subir.
+  const prepararImagem = async (f: File): Promise<File> => {
+    if (PERMITIDOS.includes(f.type)) return f;
+    const bmp = await createImageBitmap(f);
+    const c = document.createElement("canvas");
+    c.width = bmp.width; c.height = bmp.height;
+    c.getContext("2d")!.drawImage(bmp, 0, 0);
+    const blob = await new Promise<Blob | null>((ok) => c.toBlob(ok, "image/png"));
+    if (!blob) throw new Error("não consegui converter a imagem");
+    return new File([blob], f.name.replace(/\.[^.]+$/, "") + ".png", { type: "image/png" });
+  };
   const subirImagens = async (arquivos: File[]) => {
     const imgs = arquivos.filter((f) => f.type.startsWith("image/"));
     if (!imgs.length) return;
     setSubindo(true);
     try {
       const { data: u } = await supabase.auth.getUser();
-      for (const f of imgs) {
+      for (const original of imgs) {
+        const f = await prepararImagem(original);
         const ext = (f.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
         const caminho = `${u.user?.id}/${quizId}/agente-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
         const { error } = await supabase.storage.from("quiz-imagens").upload(caminho, f, { contentType: f.type || undefined });
@@ -41,7 +54,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
         const url = supabase.storage.from("quiz-imagens").getPublicUrl(caminho).data.publicUrl;
         setAnexos((a) => [...a, url]);
       }
-    } catch { toast.error("Não consegui enviar a imagem (até 20 MB)"); } finally { setSubindo(false); }
+    } catch (e) { toast.error(`Não consegui enviar a imagem: ${(e as { message?: string })?.message ?? "erro desconhecido"} (até 20 MB)`); } finally { setSubindo(false); }
   };
   const [esperando, setEsperandoEstado] = useState(false);
   const setEsperando = (v: boolean) => { esperandoRef.current = v; setEsperandoEstado(v); };
