@@ -1047,6 +1047,8 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("agente-x1", atender_agente_x1, 5), daemon=True).start()   # o WAHA está neste Mac
+        # 14/11: a Conversa "ao vivo" (🖥️) é só deste Mac. O resto da Conversa fica com o servidor (pegar_mensagens separa).
+        threading.Thread(target=laco, args=("conversa", atender_conversa, 3), daemon=True).start()
         laco("melhorias", atender_melhorias, 20)
     # Conversa e WhatsApp em paralelo: uma atualização longa do WhatsApp não
     # trava a Conversa.
