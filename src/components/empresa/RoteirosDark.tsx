@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { CheckCircle2, ChevronLeft, ChevronRight, FileText, Loader2, MessageCircle, Plus, Send, Trash2 } from "lucide-react";
+import { CheckCircle2, ChevronLeft, ChevronRight, Copy, FileText, Loader2, MessageCircle, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -188,7 +188,6 @@ function EstudioRoteiro({ roteiro, perfil, numeros, onFechar, onMudou }: { rotei
   const [pendentes, setPendentes] = useState(0);
   const pendentesRef = useRef(0);
   const [versaoSel, setVersaoSel] = useState<number | null>(null);
-  const [verRoteiro, setVerRoteiro] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
   const roteiroId = r?.id;
   const versoes = r ? versoesDoRoteiro(r) : [];
@@ -212,7 +211,7 @@ function EstudioRoteiro({ roteiro, perfil, numeros, onFechar, onMudou }: { rotei
 
   useEffect(() => {
     if (!roteiroId) return;
-    setMsgs([]); setTexto(""); setVersaoSel(null); setVerRoteiro(false); pendentesRef.current = 0; setPendentes(0);
+    setMsgs([]); setTexto(""); setVersaoSel(null); pendentesRef.current = 0; setPendentes(0);
     void (async () => {
       const { data: ps } = await db.from("esteira_dark_pedidos").select("id, mensagem, status, resposta, criado_em, encaminhado_id").eq("contexto->>roteiro_id", roteiroId).order("criado_em", { ascending: true }).limit(80);
       type P = { id: string; mensagem: string; status: string; resposta: string | null; criado_em: string; encaminhado_id: string | null };
@@ -299,8 +298,15 @@ function EstudioRoteiro({ roteiro, perfil, numeros, onFechar, onMudou }: { rotei
                 )}
                 {versao?.nota && <p className="rounded-lg bg-white/5 p-2 text-xs text-white/65">Lauro: {versao.nota}</p>}
                 <ProgramarPublicacao roteiro={r} perfilId={r.perfil_id} onMudou={onMudou} numeros={numeros?.post ? <NumerosDoVideo post={numeros.post} leads={numeros.leads} /> : undefined} />
-                <button type="button" onClick={() => setVerRoteiro((v) => !v)} className="text-xs text-white/50 hover:text-white">{verRoteiro ? "Esconder o roteiro" : "Ver o roteiro"}</button>
-                {verRoteiro && <p className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-xl bg-black/30 p-3 text-sm text-white/80">{r.texto}</p>}
+                {/* Transcrição (13/11, Davi: "queria clicar no vídeo e ver a transcrição dele"): a voz do vídeo é gerada a partir do roteiro, então o roteiro é exatamente o que o vídeo fala. */}
+                <section className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <h4 className="flex items-center gap-2 text-sm font-bold"><FileText className="h-4 w-4 text-white/60" />Transcrição</h4>
+                    <span className="text-[11px] text-white/40">o que o vídeo fala · {r.texto.trim().split(/\s+/).filter(Boolean).length} palavras · ~{Math.max(1, Math.round(r.texto.trim().split(/\s+/).filter(Boolean).length / 2.6))} s de voz</span>
+                    <button type="button" onClick={() => { void navigator.clipboard.writeText(r.texto); toast.success("Transcrição copiada"); }} className="ml-auto flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-xs text-white/60 hover:bg-white/5"><Copy className="h-3 w-3" />Copiar</button>
+                  </div>
+                  <p className="max-h-72 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-white/85">{r.texto}</p>
+                </section>
               </section>
 
               <section className="flex min-h-0 flex-col border-t border-white/10 bg-[#0b141a] lg:border-l lg:border-t-0">
