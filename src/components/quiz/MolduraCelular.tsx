@@ -51,3 +51,29 @@ export function MolduraCelular({ escuro, children }: { escuro: boolean; children
     </div>
   );
 }
+
+// Celular completo na tela (14/11, Davi: "preciso conseguir ver o celular completo, as informações saem cortadas"): a moldura de 395 × 820 é ENCOLHIDA
+// para caber no espaço que a caixa tem (altura e largura), em vez de ser cortada ou obrigar a rolar. O que for mais longo que a tela rola dentro dela, como no celular.
+export function MolduraCelularEscalada({ escuro, children }: { escuro: boolean; children: ReactNode }) {
+  const caixa = useRef<HTMLDivElement>(null);
+  const [escala, setEscala] = useState(0.7);
+  useEffect(() => {
+    const el = caixa.current;
+    if (!el) return;
+    const medir = () => setEscala(Math.min(1, Math.max(0.4, Math.min((el.clientHeight - 8) / 820, (el.clientWidth - 4) / 395))));
+    medir();
+    const obs = new ResizeObserver(medir);
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+  return (
+    <div ref={caixa} className="flex min-h-[360px] min-w-0 flex-1 justify-center overflow-hidden">
+      <div className="shrink-0" style={{ width: 395 * escala, height: 820 * escala }}>
+        {/* transform em vez de zoom: no app do Mac o zoom encolhia o iframe duas vezes. */}
+        <div className="flex h-[820px] w-[395px] origin-top-left flex-col" style={{ transform: `scale(${escala})` }}>
+          <MolduraCelular escuro={escuro}>{children}</MolduraCelular>
+        </div>
+      </div>
+    </div>
+  );
+}

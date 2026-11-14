@@ -15,7 +15,7 @@ import { aprovarEPassarParaRoy, pareceEsbocoDeQuiz } from "@/lib/quiz/passarPara
 import { diffBlocos, type Bloco } from "@/lib/conteudo/diffBlocos";
 import { ConversaEntrega } from "./ConversaEntrega";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
-import { MolduraCelular } from "@/components/quiz/MolduraCelular";
+import { MolduraCelularEscalada } from "@/components/quiz/MolduraCelular";
 import { QrPrevia } from "@/components/quiz/QrPrevia";
 import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
 import { moverBloco, adicionarPergunta, AjustesDaTela, desligarCaptura, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, excluirTelaExtra, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
@@ -345,9 +345,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "testar" ? (
                   noCelular ? (
-                    <MolduraCelular escuro={quiz.estrutura.tema === "escuro"}>
+                    <MolduraCelularEscalada escuro={quiz.estrutura.tema === "escuro"}>
                       <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia />
-                    </MolduraCelular>
+                    </MolduraCelularEscalada>
                   ) : (
                     <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste />
                   )
