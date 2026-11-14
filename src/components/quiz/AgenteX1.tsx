@@ -18,7 +18,7 @@ const partirMensagens = separarMensagens;
 const ehAjuste = (t: string) => /^\s*\[ajuste\]/i.test(t);
 const AJUDA = "Oi, aqui é a Gabriela, a agente que cuida da inteligência do seu agente de vendas. Fico aqui o tempo todo e lembro de tudo que você pedir: ordens, ajustes, regras. Conta do jeito que quiser: qual é o produto, para quem é, quanto custa e onde se compra. Pode colar a página de vendas também. Eu organizo ao lado e te pergunto o que faltar.";
 
-export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: string; perfis: string[] }) {
+export function AgenteX1({ quizId, titulo, perfis, preencher = false }: { quizId: string; titulo: string; perfis: string[]; preencher?: boolean }) {
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [config, setConfig] = useState<ConfigAgente | null>(null);
   const [modo, setModo] = useState<"construir" | "simular">("construir");
@@ -239,7 +239,7 @@ export function AgenteX1({ quizId, titulo, perfis }: { quizId: string; titulo: s
   const P = config.produto;
 
   return (
-    <div className="grid h-[calc(100svh-300px)] min-h-[600px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className={cn("grid overflow-hidden", preencher ? "min-h-[560px] flex-1" : "h-[calc(100svh-300px)] min-h-[600px]", "rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]")}>
       <section className="flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r">
         <div className="flex items-center gap-1 border-b border-white/10 bg-[#111b21] p-2">
           {([["construir", "Gabriela · montar a inteligência", Hammer], ["simular", "Testar o agente", FlaskConical]] as const).map(([m, r, I]) => (

@@ -34,8 +34,8 @@ const FILAS: { id: Fila; rotulo: string; dica: string; Icone: typeof Inbox; cor:
 ];
 const NOMES_STATUS: Record<StatusLead, string> = { novo: "Novo", em_contato: "Em contato", convertido: "Convertido" };
 
-export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }: {
-  quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void; onApagar: (ids: string[]) => Promise<void>;
+export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, preencher = false }: {
+  preencher?: boolean; quizId: string; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; onStatus: (l: LeadQuiz, s: StatusLead) => void; onApagar: (ids: string[]) => Promise<void>;
 }) {
   const [abordagens, setAbordagens] = useState<Abordagem[] | null>(null);
   const [proprios, setProprios] = useState<Modelo[]>([]);
@@ -360,7 +360,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
   const filaAtual = FILAS.find((f) => f.id === fila)!;
 
   return (
-    <div className={cn("grid h-[calc(100svh-300px)] min-h-[600px] grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]", temAgente && "xl:grid-cols-[200px_320px_minmax(0,1fr)_300px]")}>
+    <div className={cn("grid grid-rows-[minmax(0,1fr)]", preencher ? "min-h-[560px] flex-1" : "h-[calc(100svh-300px)] min-h-[600px]", " overflow-hidden rounded-2xl border border-white/10 bg-[#0b141a] text-white lg:grid-cols-[200px_320px_minmax(0,1fr)]", temAgente && "xl:grid-cols-[200px_320px_minmax(0,1fr)_300px]")}>
       {dialogoConexao}
       {/* Filas */}
       <aside className="flex min-h-0 flex-col gap-1 overflow-y-auto border-b border-white/10 bg-[#111b21] p-2 lg:border-b-0 lg:border-r">
@@ -466,7 +466,8 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
               </div>
             </div>
 
-            <footer className="space-y-2 bg-[#202c33] p-3">
+            {/* Agente conversando: o rodapé de escrever à mão some (como no WhatsApp, o chat fica com a tela); "Pausar e assumir" traz ele de volta. */}
+            {!["conversando", "abordar"].includes(agentes.get(lead.id)?.estado ?? "") && <footer className="space-y-2 bg-[#202c33] p-3">
               <div className="flex gap-1.5 overflow-x-auto pb-0.5">
                 <button type="button" onClick={() => void abordar()} disabled={!clienteId || ["abordar", "conversando"].includes(agentes.get(lead.id)?.estado ?? "")} title="O agente escreve e manda a primeira mensagem pelo WhatsApp e segue a conversa sozinho"
                   className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1 text-xs font-bold text-black hover:bg-emerald-400 disabled:opacity-50">
@@ -519,7 +520,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar }
                 )}
                 <span className="ml-auto text-white/40">Variáveis nos modelos: {"{nome}"} e {"{perfil}"}</span>
               </div>
-            </footer>
+            </footer>}
           </>
         )}
       </section>

@@ -340,8 +340,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     agente={andamento?.quem ?? info?.responsavel ?? "o agente"}
                     onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz} onPedir={pedirAoAgente} />
                 ) : quiz?.estrutura && abaQuiz === "metricas" ? (
-                  <div className="w-full">
-                    <MetricasDoQuiz quiz={quiz} />
+                  <div className="flex h-full min-h-0 w-full flex-col">
+                    <MetricasDoQuiz quiz={quiz} preencher />
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "testar" ? (
                   noCelular ? (

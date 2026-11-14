@@ -23,6 +23,6 @@ export function QuizMetricas({ quiz, respostas, onFechar }: {
 }
 
 /** O painel do quiz (11/11/2026): métricas, leads, respostas, funil e configurações. Funciona antes de publicar (zerado). */
-export function MetricasDoQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> }) {
-  return <PainelQuiz quiz={quiz} />;
+export function MetricasDoQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura">; preencher?: boolean }) {
+  return <PainelQuiz quiz={quiz} preencher={preencher} />;
 }

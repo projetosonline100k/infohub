@@ -42,7 +42,7 @@ const PERIODOS = [["hoje", "Hoje"], [7, "7 dias"], [14, "14 dias"], [30, "30 dia
 const fracaoDeHoje = () => { const i = new Date(); i.setHours(0, 0, 0, 0); return Math.max(0.01, (Date.now() - i.getTime()) / 86_400_000); };
 const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
 
-export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> }) {
+export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura">; preencher?: boolean }) {
   const [aba, setAba] = useState<Aba>("metricas");
   const [periodo, setPeriodo] = useState<number | "hoje">(14);
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
@@ -113,7 +113,7 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
   if (!painel || !leads || !conversao) return <div className="flex justify-center py-16"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>;
 
   return (
-    <div className="dark space-y-4 rounded-2xl bg-[#060a12] px-3 pb-1 pt-3 text-foreground sm:px-4 sm:pt-4">
+    <div className={cn("dark space-y-4 rounded-2xl bg-[#060a12] px-3 pb-1 pt-3 text-foreground sm:px-4 sm:pt-4", preencher && "flex h-full min-h-0 flex-col")}>
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1">
           {ABAS.map(([a, r, Icone]) => (
@@ -134,15 +134,15 @@ export function PainelQuiz({ quiz }: { quiz: Pick<QuizResumo, "id" | "titulo" | 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} eventos={eventos ?? []} passos={passos} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
       {aba === "x1" && (
-        <div className="space-y-3">
+        <div className={cn("space-y-3", preencher && "flex min-h-0 flex-1 flex-col")}>
           <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1 text-sm">
             {([["conversas", "Conversas"], ["agente", "Inteligência do agente"]] as const).map(([v, r]) => (
               <button key={v} type="button" onClick={() => setX1Vista(v)} className={cn("rounded-xl px-3.5 py-1.5", x1Vista === v ? "bg-cyan-400/10 font-semibold text-cyan-200" : "text-white/60 hover:text-white")}>{r}</button>
             ))}
           </div>
           {x1Vista === "conversas"
-            ? <X1Quiz quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />
-            : <AgenteX1 quizId={quiz.id} titulo={quiz.titulo} perfis={(estrutura?.perfis ?? []).map((p) => p.nome)} />}
+            ? <X1Quiz preencher={preencher} quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />
+            : <AgenteX1 preencher={preencher} quizId={quiz.id} titulo={quiz.titulo} perfis={(estrutura?.perfis ?? []).map((p) => p.nome)} />}
         </div>
       )}
       {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
