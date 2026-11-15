@@ -15,6 +15,7 @@ import { DocumentEditor } from "@/components/documentos/DocumentEditor";
 import { AssistantOrb } from "./AssistantOrb";
 import { AssistantPanel } from "./AssistantPanel";
 import { JarvisNotificationCard } from "./JarvisNotificationCard";
+import { useProgramandoAtlas } from "@/hooks/useProgramandoAtlas";
 import { useSaudePc } from "@/hooks/useSaudePc";
 import { AssistantHourAlert } from "./AssistantHourAlert";
 import { AssistantFocusPrompt } from "./AssistantFocusPrompt";
@@ -1138,8 +1139,12 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
     else hoverTimer.current = window.setTimeout(() => setOrbeHover(false), 900);
   };
   const mostrarSaude = variant === "window" && !open && orbeHover && saudePc.nivel !== "ok" && saudePc.avisos.length > 0;
+  // O que o Atlas está programando (15/11, Davi: "passando o mouse no Atlas, ver se tem algo sendo programado").
+  const programando = useProgramandoAtlas(variant === "window" && isDesktop());
+  useEffect(() => { if (orbeHover) void programando.recarregar(); }, [orbeHover]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const mostrarProgramando = variant === "window" && !open && orbeHover && !mostrarSaude && programando.carregado;
   const temBalaoVisivel = !!(
-    mostrarSaude ||
+    mostrarSaude || mostrarProgramando ||
     alarmeAtlas.atual || dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
     priorityOneNudge.mostrar || (variant !== "window" && (!!paraRevisar.atual || !!luaAberta || !!mensagens.atual || !!shirley.atual)) || startDayPrompt.mostrar || endOfDayPrompt.mostrar || performanceReminder.lembrete || performanceReminder.destaqueMeta ||
     sleepMorningPrompt.mostrar
@@ -1296,6 +1301,23 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
           </span>
         ))}
         {saudePc.avisos.length > 2 && <span className="block text-[10px] text-muted-foreground">+{saudePc.avisos.length - 2} {saudePc.avisos.length - 2 === 1 ? "alerta" : "alertas"}</span>}
+      </span>
+    </JarvisNotificationCard>
+  ) : null;
+  const programandoJsx = mostrarProgramando ? (
+    <JarvisNotificationCard titulo={programando.emAndamento ? "Atlas está programando" : "Atlas não está programando agora"}>
+      <span className="block space-y-1">
+        {programando.emAndamento ? (
+          <>
+            <span className="block text-[12px] font-semibold leading-snug">{programando.emAndamento.titulo}</span>
+            <span className="block text-[11px] text-muted-foreground">há {programando.emAndamento.ha} · pedido de {programando.emAndamento.origem}</span>
+          </>
+        ) : <span className="block text-[11px] text-muted-foreground">Nenhum pedido em andamento.</span>}
+        {(programando.naFila > 0 || programando.aguardando > 0) && (
+          <span className="block text-[11px] text-muted-foreground">
+            {programando.naFila > 0 && `${programando.naFila} na fila`}{programando.naFila > 0 && programando.aguardando > 0 && " · "}{programando.aguardando > 0 && `${programando.aguardando} esperando a sua aprovação`}
+          </span>
+        )}
       </span>
     </JarvisNotificationCard>
   ) : null;
@@ -1653,7 +1675,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
                 sempre visível, com o card OU o painel empilhado por cima
                 dela (nunca os dois juntos: um só aparece com o painel
                 fechado, o outro só com o painel aberto). */}
-            {!open && (notificacaoJsx || saudeJsx)}
+            {!open && (notificacaoJsx || saudeJsx || programandoJsx)}
             {open && (
               // min(): nunca maior que a janela (descontando o p-6 e a orbe
               // empilhada embaixo) — se a janela sair menor, o painel encolhe
