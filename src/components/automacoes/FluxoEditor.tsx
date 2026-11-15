@@ -61,6 +61,18 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
             </div>))}
           </div>)}
       </div>
+      {/* Números do bloco, como no ManyChat: enviadas, abertas (visto) e respostas, com a porcentagem. */}
+      {data.numeros && no.tipo === "mensagem" && data.numeros.enviadas > 0 && (() => {
+        const n = data.numeros, pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : "—");
+        const col = (rot: string, v: string, sub: string, dica: string) => (
+          <div className="px-1 py-1.5" title={dica}><p className="text-[13px] font-semibold text-white">{v}</p><p className="text-white/50">{rot}</p><p className="text-white/35">{sub}</p></div>);
+        return (
+          <div className="grid grid-cols-3 divide-x divide-white/10 border-t border-white/10 text-center text-[10px]">
+            {col("Enviadas", String(n.enviadas), "pessoas", "Quantas vezes esta mensagem foi enviada")}
+            {col("Abertas", n.rastreadas ? pct(n.abertas, n.rastreadas) : "—", n.rastreadas ? `${n.abertas} de ${n.rastreadas}` : "só novas", "Abriu a conversa (visto da Meta) ou respondeu depois. Conta só as mensagens enviadas a partir de 15/11.")}
+            {col("Respostas", pct(n.respostas, n.enviadas), `${n.respostas} de ${n.enviadas}`, "Tocaram num botão ou responderam esta mensagem")}
+          </div>);
+      })()}
       {/* saídas que não são botões da própria mensagem (próximo, sim/não, outra resposta) */}
       {saidas.filter((s) => !botoes.some((b) => b.id === s.id)).map((s) => (
         <div key={s.id} className="relative flex items-center justify-end border-t border-white/10 px-3 py-1.5 text-[11px] text-white/60">

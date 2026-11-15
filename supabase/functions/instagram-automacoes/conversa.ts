@@ -6,7 +6,7 @@ const GRAPH = "https://graph.instagram.com/v23.0";
 
 export type MensagemLog = {
   ig_user_id: string; contato_id: string; mid?: string | null; de_mim: boolean; origem: "contato" | "fluxo" | "automacao" | "davi" | "instagram";
-  tipo?: "texto" | "comentario" | "midia" | "botao"; texto?: string | null; fluxo_id?: string | null;
+  tipo?: "texto" | "comentario" | "midia" | "botao"; texto?: string | null; fluxo_id?: string | null; no_id?: string | null;
 };
 
 /** Guarda a mensagem; a mesma mensagem (mesmo mid) que a Meta reenvia não entra duas vezes. Nunca derruba o robô. */
@@ -14,7 +14,7 @@ export async function registrarMensagem(admin: Admin, m: MensagemLog) {
   try {
     const { error } = await admin.from("instagram_mensagens").insert({
       ig_user_id: m.ig_user_id, contato_id: m.contato_id, mid: m.mid ?? null, de_mim: m.de_mim, origem: m.origem, tipo: m.tipo ?? "texto",
-      texto: (m.texto ?? "").slice(0, 4000) || null, fluxo_id: m.fluxo_id ?? null,
+      texto: (m.texto ?? "").slice(0, 4000) || null, fluxo_id: m.fluxo_id ?? null, no_id: m.no_id ?? null,
     });
     if (error && error.code !== "23505") console.error("many hub: mensagem não guardada:", error.message);
   } catch (e) { console.error("many hub:", (e as Error).message); }
@@ -41,3 +41,14 @@ export function textoComBotoes(texto: string, botoes: { titulo: string }[]) {
 }
 
 export const JANELA_RESPOSTA_MS = 24 * 60 * 60 * 1000;
+
+/** A pessoa viu/respondeu: as mensagens que a conta mandou a ela (até `ate`) passam a "abertas" (uma vez só). */
+export async function marcarLidas(admin: Admin, igUserId: string, contatoId: string, ate?: string | null) {
+  try {
+    let q = admin.from("instagram_mensagens").update({ lida_em: new Date().toISOString() })
+      .eq("ig_user_id", igUserId).eq("contato_id", contatoId).eq("de_mim", true).is("lida_em", null);
+    if (ate) q = q.lte("enviada_em", ate);
+    const { error } = await q;
+    if (error) console.error("many hub: lidas:", error.message);
+  } catch (e) { console.error("many hub:", (e as Error).message); }
+}

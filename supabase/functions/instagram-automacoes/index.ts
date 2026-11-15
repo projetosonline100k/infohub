@@ -21,7 +21,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { continuarFluxo, iniciarFluxo, retomarEsperas } from "./fluxos.ts";
-import { garantirContato, JANELA_RESPOSTA_MS, registrarMensagem } from "./conversa.ts";
+import { garantirContato, JANELA_RESPOSTA_MS, marcarLidas, registrarMensagem } from "./conversa.ts";
 
 const GRAPH = "https://graph.instagram.com/v23.0";
 const APP_URL = Deno.env.get("APP_URL") ?? "https://infopro-hub.vercel.app";
@@ -78,6 +78,7 @@ type Mensageria = {
   sender?: { id?: string };
   recipient?: { id?: string };
   postback?: { mid?: string; title?: string; payload?: string };
+  read?: { mid?: string };
   message?: {
     mid?: string;
     text?: string;
@@ -207,6 +208,7 @@ async function processar(admin: any, igUserId: string, evento: Evento) {
   await registrarMensagem(admin, { ig_user_id: igUserId, contato_id: evento.autorId, mid: evento.eventoId, de_mim: false, origem: "contato",
     tipo: evento.origem === "comentario" ? "comentario" : evento.payload ? "botao" : evento.texto ? "texto" : "midia", texto: evento.texto || evento.payload || "" });
   await garantirContato(admin, await tokenAtual(admin, conexao as Conexao), igUserId, evento.autorId, evento.autorUsername);
+  if (evento.origem !== "comentario") await marcarLidas(admin, igUserId, evento.autorId);   // quem responde ou toca num botão viu as mensagens anteriores
 
   // Funil: mensagem da pessoa depois de receber uma DM (últimos 7 dias) = respondeu.
   // Roda antes de criar o disparo desta mensagem, então ela não conta para si mesma.
@@ -432,7 +434,7 @@ async function callbackOAuth(url: URL, admin: any, supabaseUrl: string) {
       token_atualizado_em: new Date().toISOString(),
     }, { onConflict: "ig_user_id" });
 
-    const inscricao = await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=comments,messages`, {
+    const inscricao = await fetch(`${GRAPH}/me/subscribed_apps?subscribed_fields=comments,messages,messaging_seen`, {
       method: "POST", headers: { Authorization: `Bearer ${longo.access_token}` },
     });
     if (!inscricao.ok) console.error("inscrição do webhook falhou:", await inscricao.text());
@@ -622,6 +624,17 @@ serve(async (req) => {
     if (ecos.length) {
       await new Promise((r) => setTimeout(r, 1500));   // dá tempo de o robô guardar a que ele mesmo mandou (mesmo mid)
       for (const m of ecos) await registrarMensagem(admin, { ig_user_id: entry.id, contato_id: m.recipient!.id!, mid: m.message!.mid ?? null, de_mim: true, origem: "instagram", texto: m.message!.text ?? "" });
+    }
+    // Visto (15/11): a Meta avisa quando a pessoa abre a conversa; tudo que a conta mandou até a mensagem vista conta como aberto.
+    for (const m of (entry.messaging ?? []).filter((x) => x.read && x.sender?.id)) {
+      try {
+        let ate: string | null = null;
+        if (m.read!.mid) {
+          const { data: msg } = await admin.from("instagram_mensagens").select("enviada_em").eq("ig_user_id", entry.id).eq("mid", m.read!.mid).maybeSingle();
+          ate = (msg as { enviada_em?: string } | null)?.enviada_em ?? null;
+        }
+        await marcarLidas(admin, entry.id, m.sender!.id!, ate);
+      } catch (e) { console.error("instagram-automacoes: visto:", (e as Error).message); }
     }
     const eventos: Evento[] = [
       ...(entry.changes ?? []).filter((c) => c.field === "comments" && c.value).map((c) => doComentario(c.value!)),

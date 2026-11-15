@@ -83,7 +83,7 @@ async function andar(admin: Admin, d: Deps, conexao: ConexaoFluxo, fluxo: Fluxo,
           recipient: primeira ? { comment_id: exec.comment_id } : { id: exec.contato_id },
           message: corpoDaMensagem(no),
         }) as { message_id?: string } | null;
-        await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: resp?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id,
+        await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: resp?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id, no_id: no.id,
           texto: textoComBotoes((no.dados.texto ?? "").trim(), [...respostasDoNo(no), ...linksDoNo(no)]) });
       } catch (e) {
         const msg = (e as Error).message;

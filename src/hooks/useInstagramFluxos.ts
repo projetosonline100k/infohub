@@ -11,7 +11,7 @@ export interface FluxoInstagram {
   correspondencia: "contem" | "exata" | "trecho"; media_ids: string[] | null; respostas_comentario: string[]; grafo: GrafoFluxo; disparos: number;
   criado_em?: string;
 }
-export type NumerosDoNo = { enviadas: number; respostas: number };
+export type NumerosDoNo = { enviadas: number; respostas: number; rastreadas: number; abertas: number };   // rastreadas/abertas: só mensagens enviadas depois de 15/11 (guardam o bloco e o "visto")
 type Execucao = { fluxo_id: string; estado: string; historico: { no: string; tipo: string }[] | null };
 
 /** Fluxos de mensagem (migração 20261113170000): lista da conta, salvar, ligar/desligar, apagar, e os números de cada bloco. */
@@ -19,17 +19,20 @@ export function useInstagramFluxos(igUserId: string | undefined) {
   const { user } = useAuth();
   const [fluxos, setFluxos] = useState<FluxoInstagram[]>([]);
   const [execucoes, setExecucoes] = useState<Execucao[]>([]);
+  const [aberturas, setAberturas] = useState<{ fluxo_id: string; no_id: string; lida_em: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
   const carregar = useCallback(async () => {
     if (!user || !igUserId) { setFluxos([]); setExecucoes([]); setLoading(false); return; }
-    const [f, e] = await Promise.all([
+    const [f, e, ab] = await Promise.all([
       db.from("instagram_fluxos").select("*").eq("ig_user_id", igUserId).order("criado_em", { ascending: false }),
       db.from("instagram_fluxo_execucoes").select("fluxo_id, estado, historico").eq("ig_user_id", igUserId).order("criado_em", { ascending: false }).limit(2000),
+      db.from("instagram_mensagens").select("fluxo_id, no_id, lida_em").eq("ig_user_id", igUserId).eq("de_mim", true).not("no_id", "is", null).limit(20000),
     ]);
     if (f.error) throw f.error;
     setFluxos((f.data ?? []) as FluxoInstagram[]);
     setExecucoes((e.data ?? []) as Execucao[]);
+    setAberturas((ab.data ?? []) as { fluxo_id: string; no_id: string; lida_em: string | null }[]);
     setLoading(false);
   }, [user, igUserId]);
   useEffect(() => { setLoading(true); carregar().catch((er) => { console.error("fluxos:", er); setLoading(false); }); }, [carregar]);
@@ -42,13 +45,17 @@ export function useInstagramFluxos(igUserId: string | undefined) {
       p.total++; if (x.estado === "fim") p.fim++; if (x.estado === "erro") p.erro++;
       const nos = (por[x.fluxo_id] ??= {});
       for (const h of x.historico ?? []) {
-        const n = (nos[h.no] ??= { enviadas: 0, respostas: 0 });
+        const n = (nos[h.no] ??= { enviadas: 0, respostas: 0, rastreadas: 0, abertas: 0 });
         if (h.tipo === "mensagem") n.enviadas++;
         if (h.tipo.startsWith("resposta:")) n.respostas++;
       }
     }
+    for (const a of aberturas) {
+      const n = ((por[a.fluxo_id] ??= {})[a.no_id] ??= { enviadas: 0, respostas: 0, rastreadas: 0, abertas: 0 });
+      n.rastreadas++; if (a.lida_em) n.abertas++;
+    }
     return { porNo: por, pessoas };
-  }, [execucoes]);
+  }, [execucoes, aberturas]);
 
   const salvar = async (form: Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">, id?: string) => {
     if (!user || !igUserId) throw new Error("Conecte uma conta do Instagram primeiro.");
