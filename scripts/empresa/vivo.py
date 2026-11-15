@@ -89,14 +89,17 @@ def atender(rodar_claude, log=print):
             historico="\n".join(f"- {'Davi' if papel == 'davi' else p['nome']}: {texto[:1500]}" for papel, texto in p["historico"]) or "(começo da conversa)",
             novas="\n".join(f"- {t}" for t in p["novas"]))
         info = {}
-        ok, texto = rodar_claude(prompt, minutos=25, chrome=True, sessao=p["sessao"], info=info, turnos=60, ferramentas=FERRAMENTAS)
-        if not ok and p["sessao"]:   # a sessão guardada pode ter expirado: recomeça limpa
+        ok, texto = rodar_claude(prompt, minutos=25, chrome=True, sessao=p["sessao"], info=info, turnos=60, ferramentas=FERRAMENTAS, cancelar=lambda: briefing.cancelada(p["bid"]))
+        if not ok and p["sessao"] and texto != "cancelado":   # a sessão guardada pode ter expirado: recomeça limpa
             info = {}
-            ok, texto = rodar_claude(prompt, minutos=25, chrome=True, info=info, turnos=60, ferramentas=FERRAMENTAS)
+            ok, texto = rodar_claude(prompt, minutos=25, chrome=True, info=info, turnos=60, ferramentas=FERRAMENTAS, cancelar=lambda: briefing.cancelada(p["bid"]))
         q = c.cursor()
         if info.get("session_id"):
             q.execute("UPDATE public.briefings SET sessao_vivo = %s WHERE id = %s", (info["session_id"], p["bid"]))
         c.commit()
+        if not ok and texto == "cancelado":
+            log("vivo: cancelado pelo Davi")
+            return
         briefing.responder(p["bid"], texto if ok and texto.strip() else f"⚠️ Não consegui responder agora: {texto or 'sem resposta'}")
         q.execute("UPDATE public.briefing_mensagens SET status = 'respondida' WHERE briefing_id = %s AND status = 'lida' AND papel = 'davi'", (p["bid"],))
         c.commit()

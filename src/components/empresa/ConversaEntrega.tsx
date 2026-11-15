@@ -162,6 +162,17 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   useEffect(() => { if (textoInicial) setTexto(textoInicial); }, [textoInicial, setTexto]);
 
   const esperando = esperandoResposta(mensagens);
+  // Cancelar o pedido (15/11, Davi): as mensagens pendentes viram "canceladas"; o ouvinte para o que estiver rodando em poucos segundos.
+  const [cancelando, setCancelando] = useState(false);
+  const cancelarPedido = async () => {
+    if (!conversaId) return;
+    setCancelando(true);
+    const { error } = await db.from("briefing_mensagens").update({ status: "cancelada" }).eq("briefing_id", conversaId).eq("papel", "davi").in("status", ["enviada", "lida"]);
+    setCancelando(false);
+    if (error) { toast.error("Não consegui cancelar"); return; }
+    toast.success(`Pedido cancelado: ${nome} para o que estava fazendo em instantes`);
+    void carregar(conversaId);
+  };
   useEffect(() => { onEsperando?.(esperando); }, [esperando, onEsperando]);
   useEffect(() => () => onEsperando?.(false), [onEsperando]);
   useEffect(() => {
@@ -274,16 +285,19 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
               m.papel === "davi" ? "rounded-br-md bg-primary text-primary-foreground" : "rounded-bl-md bg-muted")}>
               {m.papel !== "davi" && emGrupo && <span className="mb-0.5 block text-[11px] font-semibold text-primary">{nomeDe(m.membro_id)}</span>}
               <TextoMensagem texto={m.texto} />
-              <span className="mt-0.5 block text-right text-[10px] opacity-60">{format(new Date(m.criada_em), "HH:mm", { locale: ptBR })}</span>
+              <span className="mt-0.5 block text-right text-[10px] opacity-60">{m.status === "cancelada" && <span className="mr-1.5 font-semibold">cancelado ·</span>}{format(new Date(m.criada_em), "HH:mm", { locale: ptBR })}</span>
             </div>
           </div>
         ))}
         {esperando && (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
             {fazendo ? `${nome}: ${fazendo} · ${duracaoCurta(esperou)}`
               : esperou > 180 && !emGrupo && !pegou ? "Ninguém respondeu ainda. O ouvinte do Atlas está ligado neste Mac?"
               : `${emGrupo ? `${[...participantes.map((p) => nomeDe(p)), nome].join(", ")} lendo e respondendo, um de cada vez…` : `${nome} está lendo…`}${esperou >= 60 ? ` · ${duracaoCurta(esperou)}` : ""}`}
+          
+            <button type="button" onClick={() => void cancelarPedido()} disabled={cancelando} title={`Cancelar o pedido: ${nome} para o que está fazendo`}
+              className="ml-auto shrink-0 rounded-full border border-rose-400/50 px-2.5 py-0.5 text-[11px] font-medium text-rose-500 hover:bg-rose-500/10 disabled:opacity-50 dark:text-rose-300">{cancelando ? "Cancelando…" : "Cancelar"}</button>
           </p>
         )}
         <div ref={fimRef} />

@@ -27,6 +27,17 @@ BEGIN
     RAISE EXCEPTION 'dono não carimbado'; END IF;
 END $$;
 
+-- Cancelar (15/11): o dono cancela o pedido pendente; não consegue marcar como respondido nem mexer em status de outra forma.
+DO $$
+BEGIN
+  BEGIN UPDATE public.briefing_mensagens SET status = 'respondida' WHERE briefing_id = '10000000-0000-0000-0000-000000000187'; RAISE EXCEPTION 'dono marcou respondida';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  UPDATE public.briefing_mensagens SET status = 'cancelada' WHERE briefing_id = '10000000-0000-0000-0000-000000000187' AND status IN ('enviada', 'lida');
+  IF (SELECT status FROM public.briefing_mensagens WHERE briefing_id = '10000000-0000-0000-0000-000000000187') <> 'cancelada' THEN RAISE EXCEPTION 'cancelar não funcionou'; END IF;
+  BEGIN UPDATE public.briefing_mensagens SET status = 'enviada' WHERE briefing_id = '10000000-0000-0000-0000-000000000187'; RAISE EXCEPTION 'dono reabriu pedido cancelado';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
+
 -- O app não fala pelo funcionário.
 DO $$
 BEGIN

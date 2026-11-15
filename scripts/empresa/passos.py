@@ -123,7 +123,7 @@ class Gravador:
             pass
 
 
-def rodar(cmd, minutos, cwd=None, env=None, atividade=None):
+def rodar(cmd, minutos, cwd=None, env=None, atividade=None, cancelar=None):
     """Roda o comando do Claude (montado com `--output-format json`) ao vivo. Devolve (dados, erro):
     `dados` = o mesmo JSON final de antes; `erro` = texto quando não deu (tempo, sem resposta)."""
     cmd = list(cmd)
@@ -145,6 +145,21 @@ def rodar(cmd, minutos, cwd=None, env=None, atividade=None):
             p.kill()
         relogio = threading.Timer(minutos * 60, matar)
         relogio.start()
+        cancelado = threading.Event()
+        parou = threading.Event()
+
+        def vigiar():
+            """O Davi cancelou o pedido (botão no chat): para o Claude na hora. Confere a cada 3 s."""
+            while not parou.wait(3):
+                try:
+                    if cancelar and cancelar():
+                        cancelado.set()
+                        p.kill()
+                        return
+                except Exception:  # noqa: BLE001  (rede/banco fora: tenta de novo)
+                    pass
+        if cancelar:
+            threading.Thread(target=vigiar, daemon=True).start()
         final = None
         try:
             for linha in p.stdout:
@@ -165,8 +180,11 @@ def rodar(cmd, minutos, cwd=None, env=None, atividade=None):
             p.wait()
         finally:
             relogio.cancel()
+            parou.set()
             if gravador:
                 gravador.fechar()
+        if cancelado.is_set():
+            return None, 'cancelado'
         if estourou.is_set():
             return None, f"O Claude passou de {minutos} min e foi interrompido."
         if final is None:

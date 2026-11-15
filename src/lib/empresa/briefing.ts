@@ -19,7 +19,7 @@ export type MensagemBriefing = {
   id: string;
   papel: "davi" | "funcionario";
   texto: string;
-  status: "enviada" | "lida" | "respondida" | null;
+  status: "enviada" | "lida" | "respondida" | "cancelada" | null;
   criada_em: string;
 };
 
@@ -32,7 +32,7 @@ export const ROTULO_CONSIGO: Record<Consigo, string> = {
 // Esperando o funcionário: a última mensagem é do Davi e ainda não foi respondida.
 export function esperandoResposta(mensagens: MensagemBriefing[]): boolean {
   const ultima = mensagens[mensagens.length - 1];
-  return !!ultima && ultima.papel === "davi" && ultima.status !== "respondida";
+  return !!ultima && ultima.papel === "davi" && ultima.status !== "respondida" && ultima.status !== "cancelada";
 }
 
 // Há quanto tempo o Davi espera (para avisar se o ouvinte estiver desligado).

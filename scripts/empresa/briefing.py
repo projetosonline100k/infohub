@@ -65,6 +65,31 @@ def pegar(ignorar=()):
         c.close()
 
 
+def cancelada(bid):
+    """O Davi cancelou o pedido que está sendo atendido: há mensagem cancelada há pouco e nenhuma ainda 'lida' (em andamento)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""SELECT EXISTS (SELECT 1 FROM public.briefing_mensagens WHERE briefing_id = %s AND papel = 'davi' AND status = 'cancelada'
+                                      AND criada_em > now() - interval '3 hours')
+                        AND NOT EXISTS (SELECT 1 FROM public.briefing_mensagens WHERE briefing_id = %s AND papel = 'davi' AND status = 'lida')""", (bid, bid))
+        return bool(q.fetchone()[0])
+    finally:
+        c.rollback()
+        c.close()
+
+
+def limpar_agora(bid):
+    """Depois de cancelar: some o "o que está fazendo agora" da tela."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.briefings SET proposta = NULL WHERE id = %s", (bid,))
+        c.commit()
+    finally:
+        c.close()
+
+
 def reenfileirar():
     """Ao ligar o ouvinte: mensagem 'lida' sem resposta é de um atendimento que caiu no meio. Volta pra fila."""
     c = connect()
