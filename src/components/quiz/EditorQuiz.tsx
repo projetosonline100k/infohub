@@ -170,7 +170,7 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
           // transform em vez de zoom: no app do Mac o zoom encolhia o iframe duas vezes.
           <div className="shrink-0" style={{ width: 395 * escala, height: 820 * escala, filter: "drop-shadow(0 0 2px rgba(34,211,238,.9)) drop-shadow(0 0 28px rgba(34,211,238,.35))" }}>
             <div className="flex h-[820px] w-[395px] origin-top-left flex-col" style={{ transform: `scale(${escala})` }}>
-              <MolduraCelular escuro={estrutura.tema === "escuro"}>
+              <MolduraCelular escuro={estrutura.tema === "escuro"} visual={estrutura.visual}>
                 <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} respostas={respostas} />
               </MolduraCelular>
             </div>

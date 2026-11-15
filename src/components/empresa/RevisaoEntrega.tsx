@@ -434,7 +434,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   <div className="flex min-h-0 w-full flex-1 gap-3">
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                       {noCelular ? (
-                        <MolduraCelularEscalada escuro={quiz.estrutura.tema === "escuro"}>
+                        <MolduraCelularEscalada escuro={quiz.estrutura.tema === "escuro"} visual={quiz.estrutura.visual}>
                           <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia irPara={saltoTeste} onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
                         </MolduraCelularEscalada>
                       ) : (

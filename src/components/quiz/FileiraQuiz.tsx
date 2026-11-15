@@ -72,7 +72,7 @@ export function FileiraQuiz({ quizId, titulo, estrutura, editarTudo, agente, onM
               </button>
             </div>
             <div className="flex h-[820px] flex-col">
-              <MolduraCelular escuro={estrutura.tema === "escuro"}>
+              <MolduraCelular escuro={estrutura.tema === "escuro"} visual={estrutura.visual}>
                 <QuizPlayer titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={l.passo} perfilFixo={l.perfil}
                   editar={editar} onMudar={onMudar} onImagem={onImagem} />
               </MolduraCelular>
