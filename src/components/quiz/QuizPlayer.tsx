@@ -1493,12 +1493,12 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
             {p.selo && <span className="absolute -top-2.5 right-4 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase text-white" style={{ background: cor }}>{p.selo}</span>}
             <div className="flex items-center gap-3">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-fit flex-1">
                 <p className="text-base font-extrabold leading-tight">{p.nome}{p.oculto && <span className="ml-2 text-xs font-medium text-white/50">(oculto)</span>}</p>
-                {o.planos_acesso && <p className="flex items-center gap-1 text-xs font-medium" style={{ color: verde }}><Check className="h-3 w-3 shrink-0" strokeWidth={3} />{o.planos_acesso}</p>}
-                <p className="text-xs text-white/60">{p.com_bonus !== false && <span className="font-semibold" style={{ color: verde }}>+ {o.bonus?.length ?? 0} bônus inclusos</span>}</p>
+                {o.planos_acesso && <p className="flex items-center gap-1 whitespace-nowrap text-xs font-medium" style={{ color: verde }}><Check className="h-3 w-3 shrink-0" strokeWidth={3} />{o.planos_acesso}</p>}
+                <p className="whitespace-nowrap text-xs text-white/60">{p.com_bonus !== false && <span className="font-semibold" style={{ color: verde }}>+ {o.bonus?.length ?? 0} bônus inclusos</span>}</p>
               </div>
-              <div className="text-right">
+              <div className="shrink-0 text-right">
                 {p.preco_de && <p className="text-xs text-white/50"><s>{p.preco_de}</s></p>}
                 <p className="text-lg font-extrabold leading-tight">{p.preco}</p>
                 {p.parcelas && <p className="text-xs text-white/60">ou {p.parcelas.n}x de {p.parcelas.valor}</p>}
