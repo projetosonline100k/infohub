@@ -86,7 +86,12 @@ export function OrbitaTrio({ opcoes, sel, meta, aoAlternar, quadro, cor, escuro,
       </div>
 
       <div ref={caixa} className="relative mx-auto aspect-square w-full max-w-[360px]">
-        {quadro && <img src={quadro} alt="" draggable={false} className="absolute left-1/2 top-1/2 z-0 h-[40%] w-[40%] -translate-x-1/2 -translate-y-1/2 object-contain motion-safe:animate-empolgado" />}
+        {/* O centramento fica no invólucro: a animação "empolgado" usa transform e anularia o -translate da imagem. */}
+        {quadro && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 z-0 h-[40%] w-[40%] -translate-x-1/2 -translate-y-1/2">
+            <img src={quadro} alt="" draggable={false} className="h-full w-full object-contain motion-safe:animate-empolgado" />
+          </div>
+        )}
         {opcoes.map((o, k) => {
           const ang = (-90 + (360 / n) * k) * (Math.PI / 180);
           const marcada = sel.includes(k);
