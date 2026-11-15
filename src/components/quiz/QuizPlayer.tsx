@@ -548,8 +548,8 @@ function Escala({ q, base, escolhida, aoEscolher, f }: { q: EstruturaQuiz["pergu
 
 // Escala em velocímetro (15/11/2026, Davi, pelo Roy: "a pessoa só move o ponteiro"): meio-círculo com degradê vermelho → verde, o emoji de cada opção em volta do arco,
 // um ponteiro que a pessoa arrasta (ou toca num ponto) e que encaixa na opção mais próxima, e uma pílula com o nome da opção. Começa no meio, sem resposta até mexer.
-function Velocimetro({ q, escolhida, aoEscolher, f }: { q: EstruturaQuiz["perguntas"][number]; escolhida: number | undefined; aoEscolher: (k: number) => void; f: (t?: string) => string }) {
-  const { cor, escuro } = useContext(QuizCtx);
+function Velocimetro({ q, base, escolhida, aoEscolher, f }: { q: EstruturaQuiz["perguntas"][number]; base: string; escolhida: number | undefined; aoEscolher: (k: number) => void; f: (t?: string) => string }) {
+  const { cor, escuro, editar } = useContext(QuizCtx);
   const n = q.opcoes.length;
   const svg = useRef<SVGSVGElement>(null);
   const arrastando = useRef(false);
@@ -594,6 +594,16 @@ function Velocimetro({ q, escolhida, aoEscolher, f }: { q: EstruturaQuiz["pergun
           {escolhida === undefined ? "Mova o ponteiro" : f(q.opcoes[escolhida].texto)}
         </span>
       </div>
+      {editar && (
+        <div className="mt-3 grid gap-1" style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}>
+          {q.opcoes.map((o, k) => (
+            <div key={k} className="flex flex-col items-center gap-1 rounded-xl px-1 py-2 text-center">
+              <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-2xl leading-none" />
+              <Txt caminho={`${base}.opcoes.${k}.texto`} valor={o.texto} className="text-[12px] leading-tight" />
+            </div>
+          ))}
+        </div>
+      )}
       <p className={cn("mt-3 flex items-center justify-center gap-1.5 text-center text-xs", escuro ? "text-white/70" : "text-gray-500")}>
         <Lightbulb className="h-3.5 w-3.5 shrink-0 text-amber-400" />Arraste o marcador para o nível que mais representa você.
       </p>
@@ -1086,8 +1096,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
                   : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
                 {q.estilo === "escala" && !q.multipla
-                  ? (e.escala_visual === "velocimetro" && !editar
-                    ? <Velocimetro q={q} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
+                  ? (e.escala_visual === "velocimetro"
+                    ? <Velocimetro q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
                     : <Escala q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />)
                   : <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
