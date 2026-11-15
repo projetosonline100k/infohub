@@ -61,7 +61,9 @@ export const aguardaResposta = (no: NoFluxo) => no.tipo === "mensagem" && respos
 
 export type ProblemaFluxo = { no?: string; texto: string };
 /** Confere o fluxo antes de ativar: o que a Meta recusaria e o que deixaria o robô parado. */
-export function problemasDoFluxo(g: GrafoFluxo): ProblemaFluxo[] {
+/** `whatsapp` (15/11): o mesmo editor serve ao WhatsApp, que não tem as regras da Meta (texto com botões, mistura de botões, janela de 24 h): a espera vai até 7 dias. */
+export function problemasDoFluxo(g: GrafoFluxo, opcoes?: { whatsapp?: boolean }): ProblemaFluxo[] {
+  const wa = !!opcoes?.whatsapp;
   const p: ProblemaFluxo[] = [];
   if (!primeiroNo(g)) p.push({ no: "inicio", texto: "Ligue o início a uma primeira mensagem." });
   for (const n of g.nos) {
@@ -69,20 +71,20 @@ export function problemasDoFluxo(g: GrafoFluxo): ProblemaFluxo[] {
       const texto = (n.dados.texto ?? "").trim();
       const r = respostasDoNo(n), l = linksDoNo(n);
       if (!texto) p.push({ no: n.id, texto: "Mensagem sem texto." });
-      if (r.length && l.length) p.push({ no: n.id, texto: "Use só botões de resposta ou só botões de link na mesma mensagem (a Meta não mistura)." });
-      if (l.length > MAX_BOTOES_LINK) p.push({ no: n.id, texto: `No máximo ${MAX_BOTOES_LINK} botões de link por mensagem.` });
-      if (r.length > MAX_RESPOSTAS) p.push({ no: n.id, texto: `No máximo ${MAX_RESPOSTAS} botões de resposta.` });
-      if (l.length && texto.length > LIMITE_TEXTO) p.push({ no: n.id, texto: `Com botão de link o texto vai até ${LIMITE_TEXTO} caracteres.` });
-      if (texto.length > LIMITE_TEXTO_SIMPLES) p.push({ no: n.id, texto: `O texto passa de ${LIMITE_TEXTO_SIMPLES} caracteres.` });
+      if (!wa && r.length && l.length) p.push({ no: n.id, texto: "Use só botões de resposta ou só botões de link na mesma mensagem (a Meta não mistura)." });
+      if (!wa && l.length > MAX_BOTOES_LINK) p.push({ no: n.id, texto: `No máximo ${MAX_BOTOES_LINK} botões de link por mensagem.` });
+      if (!wa && r.length > MAX_RESPOSTAS) p.push({ no: n.id, texto: `No máximo ${MAX_RESPOSTAS} botões de resposta.` });
+      if (!wa && l.length && texto.length > LIMITE_TEXTO) p.push({ no: n.id, texto: `Com botão de link o texto vai até ${LIMITE_TEXTO} caracteres.` });
+      if (!wa && texto.length > LIMITE_TEXTO_SIMPLES) p.push({ no: n.id, texto: `O texto passa de ${LIMITE_TEXTO_SIMPLES} caracteres.` });
       for (const b of n.dados.botoes ?? []) {
         if (!b.titulo.trim()) p.push({ no: n.id, texto: "Botão sem título." });
-        if (b.titulo.length > LIMITE_TITULO_BOTAO) p.push({ no: n.id, texto: `O título do botão “${b.titulo}” passa de ${LIMITE_TITULO_BOTAO} caracteres.` });
+        if (!wa && b.titulo.length > LIMITE_TITULO_BOTAO) p.push({ no: n.id, texto: `O título do botão “${b.titulo}” passa de ${LIMITE_TITULO_BOTAO} caracteres.` });
         if (b.tipo === "link" && !/^https?:\/\/\S+$/.test(b.url ?? "")) p.push({ no: n.id, texto: `O botão “${b.titulo}” precisa de um link https://…` });
       }
     }
     if (n.tipo === "esperar") {
       const m = n.dados.minutos ?? 0;
-      if (!(m >= 1 && m <= MINUTOS_MAX_ESPERA)) p.push({ no: n.id, texto: "A espera vai de 1 minuto a 24 horas (a janela de resposta da Meta fecha em 24 h)." });
+      if (!(m >= 1 && m <= (wa ? 7 * 24 * 60 : MINUTOS_MAX_ESPERA))) p.push({ no: n.id, texto: wa ? "A espera vai de 1 minuto a 7 dias." : "A espera vai de 1 minuto a 24 horas (a janela de resposta da Meta fecha em 24 h)." });
     }
     if (n.tipo === "condicao" && n.dados.condicao === "texto_contem" && !(n.dados.palavra ?? "").trim()) p.push({ no: n.id, texto: "Escreva a palavra que a condição procura." });
     if (n.tipo === "condicao" && !destinoDe(g, n.id, "sim") && !destinoDe(g, n.id, "nao")) p.push({ no: n.id, texto: "A condição não leva a lugar nenhum." });

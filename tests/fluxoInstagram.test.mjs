@@ -75,3 +75,16 @@ test('gatilho do fluxo por trecho', () => {
   assert.equal(f.fluxoBate({ palavras_chave: ['insta'], correspondencia: 'contem' }, 'instalivors'), false);
   assert.equal(f.fluxoBate({ palavras_chave: ['insta'], correspondencia: 'trecho' }, 'bom dia'), false);
 });
+
+test('modo WhatsApp: sem as regras da Meta e com espera de até 7 dias', () => {
+  const g = {
+    nos: [{ id: 'inicio', tipo: 'inicio', x: 0, y: 0, dados: {} },
+      { id: 'm1', tipo: 'mensagem', x: 1, y: 0, dados: { texto: 'a'.repeat(1200), botoes: [{ id: 'b1', titulo: 'Um título bem comprido demais para a Meta', tipo: 'resposta' }] } },
+      { id: 'e1', tipo: 'esperar', x: 2, y: 0, dados: { minutos: 3 * 24 * 60 } }],
+    ligacoes: [{ de: 'inicio', saida: 'proximo', para: 'm1' }, { de: 'm1', saida: 'b1', para: 'e1' }],
+  };
+  assert.ok(f.problemasDoFluxo(g).length >= 2);                       // Instagram recusa: texto longo, título longo, espera > 24 h
+  assert.deepEqual(f.problemasDoFluxo(g, { whatsapp: true }), []);   // WhatsApp aceita
+  g.nos[2].dados.minutos = 8 * 24 * 60;
+  assert.ok(f.problemasDoFluxo(g, { whatsapp: true }).some((p) => p.texto.includes('7 dias')));
+});

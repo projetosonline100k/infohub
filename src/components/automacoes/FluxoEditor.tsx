@@ -87,7 +87,8 @@ const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
 
-export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFechar, onSalvar }: {
+export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFechar, onSalvar, whatsapp = false }: {
+  whatsapp?: boolean;   // 15/11: o mesmo editor serve aos fluxos do WhatsApp (sem palavra-chave nem regras da Meta)
   aberto: boolean; fluxo: FluxoInstagram | null; inicial?: RascunhoFluxo | null; contaNome: string; numeros: Record<string, NumerosDoNo>;
   onFechar: () => void; onSalvar: (f: Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">, id?: string) => Promise<void>;
 }) {
@@ -113,7 +114,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
     setSel(fluxo || inicial?.grafo ? null : "m1");
   }, [aberto, fluxo, inicial]);
 
-  const problemas = useMemo(() => problemasDoFluxo(grafo), [grafo]);
+  const problemas = useMemo(() => problemasDoFluxo(grafo, { whatsapp }), [grafo, whatsapp]);
   const porNo = useMemo(() => { const m = new Map<string, string[]>(); for (const p of problemas) if (p.no) m.set(p.no, [...(m.get(p.no) ?? []), p.texto]); return m; }, [problemas]);
   const palavrasLista = useMemo(() => palavras.split(/[,\n]/).map((p) => p.trim()).filter(Boolean), [palavras]);
 
@@ -161,7 +162,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
     if (!nome.trim()) { toast.error("Dê um nome ao fluxo"); return; }
     const quer = ativar ?? ativo;
     if (quer) {
-      if (!palavrasLista.length) { toast.error("Escreva ao menos uma palavra-chave para ativar"); return; }
+      if (!whatsapp && !palavrasLista.length) { toast.error("Escreva ao menos uma palavra-chave para ativar"); return; }
       if (problemas.length) { toast.error(`Arrume antes de ativar: ${problemas[0].texto}`); return; }
     }
     setSalvando(true);
@@ -187,12 +188,12 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
   return (
     <Dialog open={aberto} onOpenChange={(a) => { if (!a) onFechar(); }}>
       <DialogContent className="dark flex h-[94vh] max-h-[94vh] w-[98vw] max-w-[1600px] flex-col gap-0 overflow-hidden border-white/10 bg-[#0a1520] p-0 text-white [&>button]:hidden">
-        <DialogDescription className="sr-only">Editor do fluxo de mensagens do Instagram</DialogDescription>
+        <DialogDescription className="sr-only">Editor do fluxo de mensagens</DialogDescription>
         <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-[#0c1b27] px-4 py-2.5">
           <DialogTitle className="sr-only">Fluxo de mensagens</DialogTitle>
           <Input value={nome} onChange={(e) => setNome(e.target.value)} className="h-9 w-64 border-white/15 bg-black/20 font-semibold" aria-label="Nome do fluxo" />
           <span className="text-xs text-white/50">{contaNome}</span>
-          <label className="ml-2 flex items-center gap-2 text-xs text-white/70"><Switch checked={ativo} onCheckedChange={(v) => { if (v && (problemas.length || !palavrasLista.length)) { toast.error(problemas[0]?.texto ?? "Escreva ao menos uma palavra-chave"); return; } setAtivo(v); }} />{ativo ? "Ativo" : "Desativado"}</label>
+          <label className="ml-2 flex items-center gap-2 text-xs text-white/70"><Switch checked={ativo} onCheckedChange={(v) => { if (v && (problemas.length || (!whatsapp && !palavrasLista.length))) { toast.error(problemas[0]?.texto ?? "Escreva ao menos uma palavra-chave"); return; } setAtivo(v); }} />{ativo ? "Ativo" : "Desativado"}</label>
           <div className="ml-auto flex items-center gap-2">
             {problemas.length > 0 && <span className="flex items-center gap-1 text-xs text-amber-300"><AlertTriangle className="h-4 w-4" />{problemas.length} ponto{problemas.length === 1 ? "" : "s"} a arrumar</span>}
             <Button variant="outline" size="sm" onClick={onFechar} className="border-white/20 bg-transparent text-white hover:bg-white/10">Fechar</Button>
@@ -217,8 +218,9 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
           <aside className="min-h-0 space-y-4 overflow-y-auto border-t border-white/10 bg-[#0b141a] p-4 lg:border-l lg:border-t-0">
             {!no || no.tipo === "inicio" ? (
               <div className="space-y-3">
-                <h3 className="flex items-center gap-2 text-sm font-bold"><Zap className="h-4 w-4 text-amber-300" />Gatilho do fluxo</h3>
-                <label className="block space-y-1 text-xs text-white/60">Palavras (separe por vírgula)
+                <h3 className="flex items-center gap-2 text-sm font-bold"><Zap className="h-4 w-4 text-amber-300" />{whatsapp ? "Como o fluxo começa" : "Gatilho do fluxo"}</h3>
+                {whatsapp && <div className="space-y-2 rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/65"><p>No WhatsApp o fluxo começa quando <b>você</b> clica em <b>Iniciar fluxo</b> no chat de um lead (X1). Não há palavra-chave.</p><p>As <b>respostas</b> viram uma lista numerada (“1) … 2) …”) e a pessoa responde o número ou o texto. Os <b>links</b> vão por extenso na mensagem. Ligue o fluxo (chave “Ativo” no topo) para ele aparecer na lista do chat.</p><p>O robô para sozinho se você escrever na conversa, e nunca manda entre 23h e 7h.</p></div>}
+                {!whatsapp && (<><label className="block space-y-1 text-xs text-white/60">Palavras (separe por vírgula)
                   <Textarea rows={2} value={palavras} onChange={(e) => setPalavras(e.target.value)} placeholder="instalivros, quero, livro" className="border-white/15 bg-black/20 text-sm text-white" /></label>
                 <div className="space-y-1.5"><p className="text-xs text-white/60">Quando a palavra vale</p>
                   {([["contem", "Contém a palavra", "“eu quero instalivros” dispara; “instalivors” não"], ["trecho", "Contém o trecho", "basta o pedaço: “insta” pega instalivros, instalivors, insta livros…"], ["exata", "Só a palavra", "a mensagem inteira tem de ser a palavra"]] as const).map(([v, r, d]) => (
@@ -232,10 +234,11 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
                 {gatilhos.includes("comentario") && (
                   <label className="block space-y-1 text-xs text-white/60">Respostas públicas no comentário (uma por linha; sorteia uma)
                     <Textarea rows={3} value={respostas} onChange={(e) => setRespostas(e.target.value)} placeholder={"Te mandei no direct! 📩\nConfere sua DM 😉"} className="border-white/15 bg-black/20 text-sm text-white" /></label>)}
-                <div className="rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/60">
+                </>)}
+                {!whatsapp && <div className="rounded-xl bg-white/5 p-3 text-xs leading-relaxed text-white/60">
                   <p className="font-semibold text-white/80">Como a Meta funciona</p>
                   <p>A primeira mensagem de um comentário abre a conversa. As próximas só saem <b>depois que a pessoa responde</b> (toca num botão ou escreve), e valem por 24 h. Por isso a primeira mensagem deve ter botões de resposta.</p>
-                </div>
+                </div>}
                 {problemas.length > 0 && <ul className="space-y-1 rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">{problemas.map((p, i) => <li key={i}>• {p.texto}</li>)}</ul>}
               </div>
             ) : (

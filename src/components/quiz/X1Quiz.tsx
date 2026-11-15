@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Brain, Loader2, PanelLeft, List, MessageCircle, Pause, Play, Plus, RefreshCw, RotateCcw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
+import { Bot, Check, Mic, CheckCheck, ChevronRight, Copy, Flame, Inbox, Brain, Loader2, PanelLeft, List, Workflow, MessageCircle, Pause, Play, Plus, RefreshCw, RotateCcw, Repeat2, Search, Send, Sparkles, Trash2, Trophy, UserX, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
@@ -382,6 +382,47 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
     if (error) { setExigirAprovacao(!novo); toast.error("Não consegui mudar"); return; }
     toast.success(novo ? "Agora o agente mostra a mensagem e só envia depois que você aprovar" : "O agente volta a enviar sozinho, sem pedir aprovação");
   };
+  // Fluxos do WhatsApp (15/11, Davi: "fluxos de mensagens também no WhatsApp, tipo o Many Hub"): inicia um fluxo para o lead aberto e acompanha onde ele está.
+  type FluxoLista = { id: string; nome: string };
+  type ExecFluxo = { id: string; resposta_id: string; fluxo_id: string; estado: string; motivo: string | null; no_atual: string | null; criado_em: string };
+  const [fluxosWa, setFluxosWa] = useState<FluxoLista[]>([]);
+  const [execsWa, setExecsWa] = useState<Map<string, ExecFluxo>>(new Map());
+  const [menuFluxo, setMenuFluxo] = useState(false);
+  useEffect(() => {
+    if (!clienteId) return;
+    let vivo = true;
+    const ler = async () => {
+      const [f, e] = await Promise.all([
+        db.from("whatsapp_fluxos").select("id, nome").eq("cliente_id", clienteId).eq("ativo", true).order("nome"),
+        db.from("whatsapp_fluxo_execucoes").select("id, resposta_id, fluxo_id, estado, motivo, no_atual, criado_em").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000),
+      ]);
+      if (!vivo) return;
+      setFluxosWa((f.data ?? []) as FluxoLista[]);
+      const m = new Map<string, ExecFluxo>();
+      for (const x of (e.data ?? []) as ExecFluxo[]) if (!m.has(x.resposta_id)) m.set(x.resposta_id, x);   // a mais nova de cada lead
+      setExecsWa(m);
+    };
+    void ler();
+    const t = window.setInterval(() => { if (!document.hidden) void ler(); }, 5000);
+    return () => { vivo = false; window.clearInterval(t); };
+  }, [clienteId]);
+  const iniciarFluxo = async (fluxoId: string) => {
+    if (!lead || !clienteId) return;
+    if (!telefoneWa(lead.whatsapp)) { toast.error("Esse lead não tem um WhatsApp válido"); return; }
+    setMenuFluxo(false);
+    const nome = fluxosWa.find((x) => x.id === fluxoId)?.nome ?? "fluxo";
+    if (!(await confirmar(`Iniciar o fluxo “${nome}” para ${nomeDe(lead)}?`, { botao: "Iniciar e mandar", destrutivo: false, descricao: "O robô manda a primeira mensagem pelo WhatsApp do projeto e segue o fluxo sozinho. Se o agente automático estiver conversando com essa pessoa, ele é pausado." }))) return;
+    const { error } = await db.from("whatsapp_fluxo_execucoes").insert({ fluxo_id: fluxoId, cliente_id: clienteId, resposta_id: lead.id, estado: "iniciar" });
+    if (error) { toast.error("Não consegui iniciar o fluxo"); return; }
+    toast.success(`Fluxo “${nome}” iniciado: a primeira mensagem sai em instantes`);
+  };
+  const mudarFluxo = async (estado: "pausado" | "parado" | "rodando") => {
+    const x = lead && execsWa.get(lead.id);
+    if (!x) return;
+    const { error } = await db.from("whatsapp_fluxo_execucoes").update({ estado, motivo: estado === "pausado" ? "Você pausou" : estado === "parado" ? "Você parou o fluxo" : null }).eq("id", x.id);
+    if (error) { toast.error("Não consegui mudar o fluxo"); return; }
+    setExecsWa((m) => new Map(m).set(x.resposta_id, { ...x, estado, motivo: null }));
+  };
   // Recomeçar: o agente esquece a conversa (o que veio antes deixa de contar) e abre de novo com a primeira mensagem.
   const recomecar = async () => {
     const a = lead && agentes.get(lead.id);
@@ -507,6 +548,16 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                 {(Object.keys(NOMES_STATUS) as StatusLead[]).map((s) => <option key={s} value={s}>{NOMES_STATUS[s]}</option>)}
               </select>
               <button type="button" onClick={() => void onApagar([lead.id])} title="Apagar este lead" className="rounded-full border border-white/15 p-1.5 text-white/60 hover:border-rose-400/50 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
+              {fluxosWa.length > 0 && (
+                <span className="relative shrink-0">
+                    <button type="button" onClick={() => setMenuFluxo((v) => !v)} title="Começa um fluxo de mensagens (Fluxos) para este lead"
+                      className="flex items-center gap-1.5 rounded-full border border-emerald-400/40 px-3 py-1 text-xs text-emerald-200 hover:bg-emerald-500/10"><Workflow className="h-3.5 w-3.5" />Iniciar fluxo</button>
+                    {menuFluxo && (
+                      <div className="absolute right-0 top-full z-30 mt-1 max-h-60 w-56 overflow-y-auto rounded-xl border border-white/15 bg-[#202c33] p-1 shadow-2xl">
+                        {fluxosWa.map((f) => <button key={f.id} type="button" onClick={() => void iniciarFluxo(f.id)} className="block w-full truncate rounded-lg px-3 py-1.5 text-left text-sm hover:bg-white/10">{f.nome}</button>)}
+                      </div>)}
+                  </span>
+                )}
               <span className="hidden items-center gap-0.5 lg:flex">
                 <button type="button" onClick={() => mudarLay({ verF: !lay.verF })} title={lay.verF ? "Ocultar as filas" : "Mostrar as filas"} className={cn("rounded-full p-1.5 hover:bg-white/10", lay.verF ? "text-white/70" : "text-white/35")}><PanelLeft className="h-4 w-4" /></button>
                 <button type="button" onClick={() => mudarLay({ verL: !lay.verL })} title={lay.verL ? "Ocultar a lista de leads" : "Mostrar a lista de leads"} className={cn("rounded-full p-1.5 hover:bg-white/10", lay.verL ? "text-white/70" : "text-white/35")}><List className="h-4 w-4" /></button>
@@ -532,6 +583,23 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                 </div>);
             })()}
 
+            {(() => {
+              const x = execsWa.get(lead.id);
+              if (!x || ["fim", "parado"].includes(x.estado) && Date.now() - Date.parse(x.criado_em) > 86_400_000) return null;
+              const nome = fluxosWa.find((f) => f.id === x.fluxo_id)?.nome ?? "fluxo";
+              const rot: Record<string, string> = { iniciar: "vai começar…", rodando: "em andamento", aguardando_resposta: "esperando a resposta do lead", aguardando_tempo: "esperando o tempo", pausado: "pausado", fim: "terminou", parado: "parado", erro: "deu erro" };
+              const viva = ["iniciar", "rodando", "aguardando_resposta", "aguardando_tempo"].includes(x.estado);
+              return (
+                <div className={cn("flex flex-wrap items-center gap-2 border-b px-4 py-1.5 text-xs", viva ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-200" : x.estado === "erro" ? "border-amber-400/40 bg-amber-500/10 text-amber-200" : "border-white/10 bg-white/5 text-white/70")}>
+                  <Workflow className="h-4 w-4 shrink-0" /><b>Fluxo “{nome}”</b><span className="text-white/60">{rot[x.estado] ?? x.estado}</span>
+                  {x.motivo && <span className="min-w-0 flex-1 truncate text-white/60" title={x.motivo}>{x.motivo}</span>}
+                  <span className="ml-auto flex gap-1.5">
+                    {viva && <button type="button" onClick={() => void mudarFluxo("pausado")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Pause className="h-3 w-3" />Pausar</button>}
+                    {x.estado === "pausado" && <button type="button" onClick={() => void mudarFluxo("rodando")} className="flex items-center gap-1 rounded-full border border-white/20 px-2.5 py-0.5 hover:bg-white/10"><Play className="h-3 w-3" />Retomar</button>}
+                    {(viva || x.estado === "pausado") && <button type="button" onClick={() => void mudarFluxo("parado")} className="rounded-full border border-rose-400/40 px-2.5 py-0.5 text-rose-200 hover:bg-rose-500/10">Parar</button>}
+                  </span>
+                </div>);
+            })()}
             <div className="min-h-0 flex-1 overflow-y-auto bg-[#0b141a] bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.025),transparent_40%),radial-gradient(circle_at_80%_70%,rgba(255,255,255,0.02),transparent_40%)] px-4 py-3">
               <div className={cn("mx-auto flex flex-col gap-1.5", cheia ? "max-w-3xl text-[16px]" : "max-w-2xl")}>
                 <div className="mx-auto mb-2 max-w-md rounded-lg bg-[#182229] px-3 py-2 text-center text-xs text-white/65">
@@ -571,6 +639,7 @@ export function X1Quiz({ quizId, leads, estados, perguntas, onStatus, onApagar, 
                   className="flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10 disabled:opacity-60">
                   {abordando === lead.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{abordando === lead.id ? "Escrevendo…" : "Só rascunhar"}
                 </button>
+
                 {modelos.map((m) => (
                   <span key={m.id} className="group flex shrink-0 items-center">
                     <button type="button" onClick={() => escolherModelo(m)} title={preencherModelo(m.texto, { nome: lead.nome, perfil: lead.perfil })}

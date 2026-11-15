@@ -19,6 +19,7 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz, montarPassos, rotuloDoPasso, type EstruturaQuiz, type QuizResumo } from "@/lib/quiz/quiz";
 import { X1Quiz } from "./X1Quiz";
 import { AgenteX1 } from "./AgenteX1";
+import { FluxosWhatsapp } from "./FluxosWhatsapp";
 import { VendasUtm } from "./VendasUtm";
 import { AfiliadosQuiz } from "./AfiliadosQuiz";
 import { RenomearLink } from "./RenomearLink";
@@ -110,7 +111,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
     return () => window.clearInterval(t);
   }, [carregar]);
 
-  const [x1Vista, setX1Vista] = useState<"conversas" | "agente">("conversas");
+  const [x1Vista, setX1Vista] = useState<"conversas" | "agente" | "fluxos">("conversas");
   // Tela cheia do X1 (14/11, Davi: "tela inteira, tipo o WhatsApp, tudo é grande"): o chat ocupa a janela toda.
   const [x1Cheia, setX1Cheia] = useState(false);
   // Dentro de uma janela de diálogo (Radix), tudo que fica FORA dela fica travado (cliques bloqueados e foco preso): por isso a tela cheia
@@ -185,7 +186,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
       {aba === "x1" && (
         <div className={cn("space-y-3", preencher && "flex min-h-0 flex-1 flex-col")}>
           <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1 text-sm">
-            {([["conversas", "Conversas"], ["agente", "Inteligência do agente"]] as const).map(([v, r]) => (
+            {([["conversas", "Conversas"], ["agente", "Inteligência do agente"], ["fluxos", "Fluxos"]] as const).map(([v, r]) => (
               <button key={v} type="button" onClick={() => setX1Vista(v)} className={cn("rounded-xl px-3.5 py-1.5", x1Vista === v ? "bg-cyan-400/10 font-semibold text-cyan-200" : "text-white/60 hover:text-white")}>{r}</button>
             ))}
             {x1Vista === "conversas" && <button type="button" onClick={abrirCheia} title="Abrir as conversas em tela cheia" className="flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-white/60 hover:text-white"><Maximize2 className="h-3.5 w-3.5" />Tela cheia</button>}
@@ -203,6 +204,8 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
               </div>, alvoCheia ?? document.body)
             : x1Vista === "conversas"
             ? <X1Quiz preencher={preencher} quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />
+            : x1Vista === "fluxos"
+            ? <FluxosWhatsapp quizId={quiz.id} />
             : <AgenteX1 preencher={preencher} quizId={quiz.id} titulo={quiz.titulo} perfis={(estrutura?.perfis ?? []).map((p) => p.nome)} />}
         </div>
       )}
