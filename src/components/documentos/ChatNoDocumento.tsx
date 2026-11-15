@@ -19,6 +19,7 @@ import { proximoNumeroHeadline } from "@/lib/conteudo/blocoReferencia";
 import { cartoesDoHtml, escolherReferencias, palavrasDoPedido } from "@/lib/documentos/quadro";
 import { alinhar } from "@/lib/conteudo/trechos";
 import { acharCerebroDoPerfil, novoCerebroDoPerfil } from "@/lib/conteudo/perfisRoteiro";
+import { aplicarMemoria, lerMemoria, pedidoDeMemoria, vale as valeGuardar } from "@/lib/conteudo/memoriaCerebro";
 import {
   ehRevisao, linhasDoTexto, montarPedido, montarRevisao, separarNotas, textoParaHtml,
   type AgenteEscrita, type CerebroEscrita, type Conversa, type FormatoEscrita, type Revisao,
@@ -460,6 +461,31 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
   useEffect(() => gravar("docchat:skillsOff", skillsOff), [skillsOff]);
   useEffect(() => gravar("docchat:para", para), [para]);
   useEffect(() => gravar("docchat:modelo", modelo), [modelo]);
+  // Memória automática (15/11, Davi: "vou jogando as informações no chat e ele vai guardando no cérebro, como um chat do Claude"): depois de cada mensagem,
+  // um segundo pedido decide se há algo durável sobre o perfil e acrescenta na seção certa do cérebro (ou cria uma). Desfazer no aviso.
+  const [memoria, setMemoria] = useState<boolean>(() => ler("docchat:memoria", true));
+  useEffect(() => gravar("docchat:memoria", memoria), [memoria]);
+  const escRef = useRef(esc);
+  escRef.current = esc;
+  const guardarNaMemoria = async (mensagem: string, alvo: CerebroEscrita) => {
+    const id = crypto.randomUUID();
+    try {
+      const resposta = await escreverComClaude(id, pedidoDeMemoria(alvo, mensagem), modelo === "opus" ? "sonnet" : modelo, () => undefined);
+      const itens = lerMemoria(resposta);
+      const atual = escRef.current;
+      if (!itens.length || !atual) return;
+      const base = atual.cerebros.find((c) => c.id === alvo.id);
+      if (!base) return;
+      const { cerebro: novo, resumo } = aplicarMemoria(base, itens);
+      if (!resumo.length) return;
+      if (!(await salvarCerebros(atual.cerebros.map((c) => (c.id === base.id ? novo : c))))) return;
+      toast.success(`🧠 Guardei no cérebro de ${base.nome}`, {
+        description: resumo.map((r) => `${r.criou ? "Nova seção" : "Em"} “${r.secao}”: ${r.novas.slice(0, 2).join(" · ")}${r.novas.length > 2 ? ` (+${r.novas.length - 2})` : ""}`).join("\n"),
+        duration: 9000,
+        action: { label: "Desfazer", onClick: () => { const a = escRef.current; if (a) void salvarCerebros(a.cerebros.map((c) => (c.id === base.id ? base : c))); } },
+      });
+    } catch { /* a memória é um extra: se falhar, o pedido principal segue normal */ }
+  };
 
   // ⌘I abre e fecha (o itálico continua no botão da barra de ferramentas).
   useEffect(() => {
@@ -650,6 +676,7 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
     if (rodando.current.size || lote) return;
     if (!isDesktop()) { toast.info("O chat do documento usa o Claude do Mac: abra o documento no app Infopro Hub."); return; }
     const pedido = texto.trim();
+    if (memoria && cerebro && pedido && valeGuardar(pedido)) void guardarNaMemoria(pedido, cerebro);
     const fila = escolhidasOrdem.length ? escolhidasOrdem : [null];
     if (!pedido && !escolhidasOrdem.length) return;
     setTexto("");
@@ -1174,6 +1201,13 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
                 <button type="button" disabled={escrevendo} onClick={() => setCerebrosAbertos(cerebro.id)} title={`Editar o cérebro de ${cerebro.nome}`}
                   className="-ml-1 grid h-5 w-5 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-primary disabled:opacity-40">
                   <Pencil className="h-3 w-3" />
+                </button>
+              )}
+              {esc && cerebro && (
+                <button type="button" onClick={() => setMemoria((v) => !v)} aria-pressed={memoria}
+                  title={memoria ? `Memória ligada: o que você contar sobre ${cerebro.nome} é guardado sozinho no cérebro. Clique para desligar.` : "Memória desligada: nada é guardado sozinho no cérebro."}
+                  className={`flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] ${memoria ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300" : "text-muted-foreground"}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${memoria ? "bg-emerald-500" : "bg-muted-foreground/50"}`} />memória
                 </button>
               )}
               <select value={modelo} onChange={(e) => setModelo(e.target.value)} disabled={escrevendo}
