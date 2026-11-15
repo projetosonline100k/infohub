@@ -72,7 +72,7 @@ interface Ctx {
   mudarImagem: (caminho: string, arquivo: File | null) => void;
   // 25/10 (Davi): no teste da revisão também dá pra enviar a foto/áudio que falta, sem entrar no Editar.
   podeEnviar: boolean;
-  aoClicarOferta?: () => void;   // métrica: clique no link da oferta
+  aoClicarOferta?: (plano?: string) => void;   // métrica: clique no link da oferta (e qual plano estava escolhido)
   /** Antes de abrir o checkout: leva nome, e-mail e WhatsApp que a pessoa já deu para o formulário de compra (Eduzz). */
   linkDeCompra?: (url: string) => string;
   /** Identidade visual do quiz (estrutura.visual): cor e texto dos botões principais. */
@@ -745,7 +745,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   // topo e o conteúdo centralizado; a cada tela nova o pai volta a rolagem pro início.
   telaCheia?: boolean; onTrocarTela?: () => void;
   // Métricas do link público (15/10): cada tela alcançada e o clique na oferta.
-  onEvento?: (tipo: "passo" | "cta", passo?: number) => void;
+  onEvento?: (tipo: "passo" | "cta", passo?: number, detalhe?: string) => void;
   /** Modo teste (15/11): avisa em que tela o quiz está (e o perfil do resultado) para o mapa mental destacar o bloco. */
   onPasso?: (passo: number, perfilId: string | null) => void;
   /** Modo teste (15/11): o mapa mental manda o teste para uma tela (`n` muda a cada clique, para repetir o mesmo destino). `respostas`: o caminho escolhido (ex.: gênero Mulher). */
@@ -826,7 +826,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   };
   const ctx: Ctx = {
     editar, mostrarFaltas: !!teste, cor, escuro, botao: v?.botao ? { fundo: v.botao, texto: v.botao_texto ?? "#010F24" } : undefined, podeEnviar: !!onImagem && !!onMudar,
-    aoClicarOferta: () => evento.current?.("cta"),
+    aoClicarOferta: (plano) => evento.current?.("cta", undefined, plano),
     linkDeCompra: editar ? undefined : (u) => comDadosDoLead(u, { nome: contato.nome, email: contato.email, whatsapp: contato.whatsapp }),
     mudarTexto: (c, v) => onMudar?.(comValor(e, c, v)),
     mudarImagem: (c, arq) => {
@@ -1737,7 +1737,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
         )}
       </div>}
       {url
-        ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
+        ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.(plano?.nome)} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
         : <div className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] opacity-90" style={{ background: verde }}><Txt caminho="oferta.cta_texto" valor={texto} />{!editar && <span className="ml-2 text-xs font-medium">(link ainda não definido)</span>}</div>}
       {o.garantia && (
         <div className="flex items-start gap-3 rounded-2xl border p-4 text-sm" style={{ borderColor: `${verde}55`, background: `${verde}10` }}>

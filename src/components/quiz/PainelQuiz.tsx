@@ -69,7 +69,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
       if (lista.length < 2) { if (vivo) setFamilia(null); return; }   // sem versões: os dados do próprio quiz bastam
       const ids = lista.map((x) => x.id);
       const [e, l] = await Promise.all([
-        db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").in("quiz_id", ids).order("criado_em", { ascending: false }).limit(100000),
+        db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm, detalhe").in("quiz_id", ids).order("criado_em", { ascending: false }).limit(100000),
         db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").in("quiz_id", ids).order("criada_em", { ascending: false }).limit(10000),
       ]);
       if (vivo) setFamilia({ eventos: (e.data ?? []) as EventoQuiz[], leads: ((l.data ?? []) as LeadQuiz[]).map((x) => ({ ...x, respostas: x.respostas ?? [], status: x.status ?? "novo" })) });
@@ -80,7 +80,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
   const carregar = useCallback(async () => {
     setCarregando(true);
     const [e, l] = await Promise.all([
-      db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).limit(50000),
+      db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm, detalhe").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).limit(50000),
       db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).limit(5000),
     ]);
     setEventos((e.data ?? []) as EventoQuiz[]);

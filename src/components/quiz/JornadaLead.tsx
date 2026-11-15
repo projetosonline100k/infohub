@@ -35,7 +35,7 @@ export function JornadaLead({ lead, eventos, passos }: { lead: LeadQuiz; eventos
         {j.duracaoSeg != null && <span className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-white/80"><Timer className="h-3 w-3" />{duracaoCurta(j.duracaoSeg)} no quiz</span>}
         <span className="rounded-full bg-white/10 px-2.5 py-1 text-white/80">Viu {vistos.length} de {passos.length} telas</span>
         {j.terminou && <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 font-semibold text-emerald-300"><CheckCircle2 className="h-3 w-3" />Terminou o quiz</span>}
-        {j.clicouOferta ? <span className="flex items-center gap-1 rounded-full bg-fuchsia-500/20 px-2.5 py-1 font-semibold text-fuchsia-200"><MousePointerClick className="h-3 w-3" />Clicou na oferta</span>
+        {j.clicouOferta ? <span className="flex items-center gap-1 rounded-full bg-fuchsia-500/20 px-2.5 py-1 font-semibold text-fuchsia-200"><MousePointerClick className="h-3 w-3" />Clicou na oferta{j.ofertaClicada ? ` · ${j.ofertaClicada}` : ""}</span>
           : <span className="rounded-full bg-white/5 px-2.5 py-1 text-white/45">Não clicou na oferta</span>}
         {!acabou && <span className="flex items-center gap-1 rounded-full bg-rose-500/15 px-2.5 py-1 font-semibold text-rose-300"><PauseCircle className="h-3 w-3" />Parou em: {paradoRotulo}</span>}
         {!j.temEventos && <span className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-200">Lead antigo: sem registro de tempo, só as respostas</span>}

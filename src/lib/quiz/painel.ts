@@ -2,7 +2,7 @@
 // (visitas, funil, tendência contra o período anterior, insight, leads por etapa). Sem React nem importações: testável.
 
 export type UtmLida = { utm_source?: string; utm_medium?: string; utm_campaign?: string; utm_content?: string; utm_term?: string } | null;
-export interface EventoQuiz { sessao: string; tipo: "visita" | "passo" | "fim" | "cta"; passo: number; criado_em: string; utm?: UtmLida }
+export interface EventoQuiz { sessao: string; tipo: "visita" | "passo" | "fim" | "cta"; passo: number; criado_em: string; utm?: UtmLida; detalhe?: string | null }
 export type StatusLead = "novo" | "em_contato" | "convertido";
 export interface LeadQuiz {
   id: string; perfil: string | null; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string;

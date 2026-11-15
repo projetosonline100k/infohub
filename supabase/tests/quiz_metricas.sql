@@ -32,6 +32,7 @@ BEGIN
   PERFORM public.registrar_evento_quiz('qm-teste', s, 'passo', 1);
   PERFORM public.registrar_evento_quiz('qm-teste', s, 'passo', 2);
   PERFORM public.registrar_evento_quiz('qm-teste', s, 'cta');
+  PERFORM public.registrar_evento_quiz('qm-teste', s, 'cta', -1, NULL, 'Plano Semestral');   -- clicou de novo, em outro plano: vale o último
   PERFORM public.registrar_evento_quiz('qm-teste', s, 'hackear');      -- tipo inválido: ignora
   PERFORM public.registrar_evento_quiz('qm-rascunho', s, 'visita');    -- não publicado: ignora
   BEGIN
@@ -46,6 +47,7 @@ SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000691'
 SET LOCAL ROLE authenticated;
 DO $$
 BEGIN
+  IF (SELECT detalhe FROM public.quiz_eventos WHERE quiz_id = '10000000-0000-0000-0000-000000000694' AND tipo = 'cta') IS DISTINCT FROM 'Plano Semestral' THEN RAISE EXCEPTION 'o plano clicado não foi guardado'; END IF;
   IF (SELECT count(*) FROM public.quiz_eventos WHERE quiz_id = '10000000-0000-0000-0000-000000000694') <> 4 THEN
     RAISE EXCEPTION 'esperava 4 eventos (visita, 2 passos, cta), veio %', (SELECT count(*) FROM public.quiz_eventos WHERE quiz_id = '10000000-0000-0000-0000-000000000694'); END IF;
   IF EXISTS (SELECT 1 FROM public.quiz_eventos WHERE quiz_id = '10000000-0000-0000-0000-000000000695') THEN RAISE EXCEPTION 'contou quiz não publicado'; END IF;

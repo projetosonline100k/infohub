@@ -17,20 +17,21 @@ export interface Jornada {
   ultimoPasso: number;        // índice da última tela que viu (-1: nenhuma)
   terminou: boolean;          // chegou ao fim das perguntas
   clicouOferta: boolean;
+  ofertaClicada: string | null;   // o plano em que clicou (Anual, Semestral…): só nos cliques depois de 15/11, quando o quiz passou a guardar
   duracaoSeg: number | null;  // da entrada até o último evento
   maisLenta: number | null;   // índice do passo em que mais demorou
 }
 
-export function jornadaDoLead(lead: Pick<LeadQuiz, "respostas" | "sessao" | "criada_em">, eventos: Pick<EventoQuiz, "sessao" | "tipo" | "passo" | "criado_em">[], passos: PassoInfo[]): Jornada {
+export function jornadaDoLead(lead: Pick<LeadQuiz, "respostas" | "sessao" | "criada_em">, eventos: Pick<EventoQuiz, "sessao" | "tipo" | "passo" | "criado_em" | "detalhe">[], passos: PassoInfo[]): Jornada {
   const meus = lead.sessao ? eventos.filter((e) => e.sessao === lead.sessao).sort((a, b) => Date.parse(a.criado_em) - Date.parse(b.criado_em)) : [];
   const abriu = new Map<number, string>();
-  let entrouEm: string | null = null, terminou = false, clicouOferta = false, ultimoEvento = 0;
+  let entrouEm: string | null = null, terminou = false, clicouOferta = false, ofertaClicada: string | null = null, ultimoEvento = 0;
   for (const e of meus) {
     ultimoEvento = Math.max(ultimoEvento, Date.parse(e.criado_em));
     if (e.tipo === "visita" && !entrouEm) entrouEm = e.criado_em;
     if (e.tipo === "passo" && !abriu.has(e.passo)) abriu.set(e.passo, e.criado_em);
     if (e.tipo === "fim") terminou = true;
-    if (e.tipo === "cta") clicouOferta = true;
+    if (e.tipo === "cta") { clicouOferta = true; ofertaClicada = e.detalhe ?? ofertaClicada; }
   }
   const temEventos = meus.length > 0;
   const perguntasIdx = passos.map((p, i) => (p.tipo === "pergunta" ? i : -1)).filter((i) => i >= 0);
@@ -51,7 +52,7 @@ export function jornadaDoLead(lead: Pick<LeadQuiz, "respostas" | "sessao" | "cri
   const comTempo = lista.filter((p) => p.segundos != null);
   const maisLenta = comTempo.length ? comTempo.reduce((a, b) => ((b.segundos ?? 0) > (a.segundos ?? 0) ? b : a)).indice : null;
   const duracaoSeg = entrouEm && ultimoEvento ? Math.max(0, Math.round((ultimoEvento - Date.parse(entrouEm)) / 1000)) : null;
-  return { passos: lista, temEventos, entrouEm, ultimoPasso, terminou, clicouOferta, duracaoSeg, maisLenta };
+  return { passos: lista, temEventos, entrouEm, ultimoPasso, terminou, clicouOferta, ofertaClicada, duracaoSeg, maisLenta };
 }
 
 export const duracaoCurta = (seg: number | null): string => {

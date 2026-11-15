@@ -118,11 +118,11 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
     } catch { return null; }
   })());
   const estrutura = useMemo(() => (quiz ? propagarUtm(quiz.estrutura, utm.current) : null), [quiz]);
-  const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number) => {
+  const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number, detalhe?: string) => {
     // O .then é o que envia: a consulta do Supabase só sai quando alguém espera a resposta. Sem ele (15–25/10)
     // nenhuma visita/tela/fim foi gravada e as métricas ficaram zeradas.
     if (previa) return;
-    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1, p_utm: utm.current } as never).then(() => undefined);
+    void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1, p_utm: utm.current, p_detalhe: detalhe ?? null } as never).then(() => undefined);
   }, [slug, previa]);
   useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
 

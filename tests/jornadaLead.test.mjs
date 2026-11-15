@@ -34,3 +34,9 @@ test('lead antigo sem eventos: usa só as respostas guardadas', () => {
 test('duração em texto curto', () => {
   assert.equal(j.duracaoCurta(45), '45s'); assert.equal(j.duracaoCurta(125), '2min 5s'); assert.equal(j.duracaoCurta(120), '2min'); assert.equal(j.duracaoCurta(null), '—');
 });
+
+test('oferta clicada: guarda o plano do clique (o último) e fica nulo nos cliques antigos', () => {
+  const r = j.jornadaDoLead(lead, [ev('visita', -1, 0), { ...ev('cta', -1, 10), detalhe: 'Plano Anual' }], passos);
+  assert.equal(r.clicouOferta, true); assert.equal(r.ofertaClicada, 'Plano Anual');
+  assert.equal(j.jornadaDoLead(lead, [ev('visita', -1, 0), ev('cta', -1, 10)], passos).ofertaClicada, null);
+});
