@@ -1,5 +1,5 @@
 import { JornadaLead } from "./JornadaLead";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, X as FecharIcone } from "lucide-react";
 import { isDesktop } from "@/lib/platform";
@@ -85,6 +85,21 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
   const [x1Vista, setX1Vista] = useState<"conversas" | "agente">("conversas");
   // Tela cheia do X1 (14/11, Davi: "tela inteira, tipo o WhatsApp, tudo é grande"): o chat ocupa a janela toda.
   const [x1Cheia, setX1Cheia] = useState(false);
+  // Dentro de uma janela de diálogo (Radix), tudo que fica FORA dela fica travado (cliques bloqueados e foco preso): por isso a tela cheia
+  // é montada DENTRO do diálogo (15/11: "fica travado em tela cheia, não consigo mexer em nada"). Fora de diálogo, cobre a janela inteira.
+  const ancora = useRef<HTMLSpanElement>(null);
+  const [alvoCheia, setAlvoCheia] = useState<HTMLElement | null>(null);
+  const overflowAntes = useRef("");
+  const abrirCheia = () => {
+    const dlg = ancora.current?.closest<HTMLElement>('[role="dialog"]') ?? null;
+    if (dlg) { overflowAntes.current = dlg.style.overflow; dlg.scrollTo({ top: 0 }); dlg.style.overflow = "hidden"; }
+    setAlvoCheia(dlg);
+    setX1Cheia(true);
+  };
+  const fecharCheia = useCallback(() => {
+    setAlvoCheia((dlg) => { if (dlg) dlg.style.overflow = overflowAntes.current; return null; });
+    setX1Cheia(false);
+  }, []);
   const estrutura = quiz.estrutura as EstruturaQuiz | null;
   const passos = useMemo<PassoInfo[]>(() => {
     if (!estrutura) return [];
@@ -119,6 +134,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
 
   return (
     <div className={cn("dark space-y-4 rounded-2xl bg-[#060a12] px-3 pb-1 pt-3 text-foreground sm:px-4 sm:pt-4", preencher && "flex h-full min-h-0 flex-col")}>
+      <span ref={ancora} hidden />
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1">
           {ABAS.map(([a, r, Icone]) => (
@@ -144,19 +160,19 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
             {([["conversas", "Conversas"], ["agente", "Inteligência do agente"]] as const).map(([v, r]) => (
               <button key={v} type="button" onClick={() => setX1Vista(v)} className={cn("rounded-xl px-3.5 py-1.5", x1Vista === v ? "bg-cyan-400/10 font-semibold text-cyan-200" : "text-white/60 hover:text-white")}>{r}</button>
             ))}
-            {x1Vista === "conversas" && <button type="button" onClick={() => setX1Cheia(true)} title="Abrir as conversas em tela cheia" className="flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-white/60 hover:text-white"><Maximize2 className="h-3.5 w-3.5" />Tela cheia</button>}
+            {x1Vista === "conversas" && <button type="button" onClick={abrirCheia} title="Abrir as conversas em tela cheia" className="flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-white/60 hover:text-white"><Maximize2 className="h-3.5 w-3.5" />Tela cheia</button>}
           </div>
           {x1Vista === "conversas" && x1Cheia
             ? createPortal(
-              <div className="dark fixed inset-0 z-[150] flex flex-col bg-[#060a12] text-white">
-                <div className={cn("flex items-center gap-3 border-b border-white/10 px-4 py-2", isDesktop() && "pl-24 pt-3")}>
+              <div className={cn("dark z-[150] flex flex-col bg-[#060a12] text-white", alvoCheia ? "absolute inset-0 rounded-[inherit]" : "fixed inset-0")}>
+                <div className={cn("flex items-center gap-3 border-b border-white/10 px-4 py-2", isDesktop() && !alvoCheia && "pl-24 pt-3")}>
                   <p className="text-sm font-semibold">X1 · {quiz.titulo}</p>
-                  <button type="button" onClick={() => setX1Cheia(false)} title="Sair da tela cheia (Esc)" className="ml-auto flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1 text-xs hover:bg-white/10"><FecharIcone className="h-3.5 w-3.5" />Sair da tela cheia</button>
+                  <button type="button" onClick={fecharCheia} title="Sair da tela cheia (Esc)" className="ml-auto flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1 text-xs hover:bg-white/10"><FecharIcone className="h-3.5 w-3.5" />Sair da tela cheia</button>
                 </div>
-                <div className="flex min-h-0 flex-1 flex-col p-3" onKeyDown={(e) => { if (e.key === "Escape") setX1Cheia(false); }}>
+                <div className="flex min-h-0 flex-1 flex-col p-3" onKeyDown={(e) => { if (e.key === "Escape") fecharCheia(); }}>
                   <X1Quiz preencher cheia quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />
                 </div>
-              </div>, document.body)
+              </div>, alvoCheia ?? document.body)
             : x1Vista === "conversas"
             ? <X1Quiz preencher={preencher} quizId={quiz.id} leads={leads} estados={estados} perguntas={perguntas} onStatus={mudarStatus} onApagar={apagarLeads} />
             : <AgenteX1 preencher={preencher} quizId={quiz.id} titulo={quiz.titulo} perfis={(estrutura?.perfis ?? []).map((p) => p.nome)} />}
