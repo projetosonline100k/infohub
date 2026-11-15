@@ -92,6 +92,17 @@ test('conversão: clicou no checkout, comprou (por e-mail) e reembolso', () => {
   assert.deepEqual(r, { leads: 4, clicaram: 3, compraram: 2, receita: 144, quentes: 1 });
 });
 
+test('compra anterior ao lead não conta (cliente antigo que refez o quiz)', () => {
+  const leads = [{ id: 'r', email: 'renan@x.co', sessao: null, criada_em: '2026-11-14T23:39:55Z' }];   // 20:39 em Brasília: dia 14
+  const vendas = [
+    { transacao_id: 'antiga', tipo: 'venda', comprador_email: 'renan@x.co', valor: 19.9, data: '2026-09-01' },   // plano mensal de setembro
+    { transacao_id: 'ontem', tipo: 'venda', comprador_email: 'renan@x.co', valor: 5, data: '2026-11-13' },
+  ];
+  assert.equal(m.estadoDosLeads(leads, [], vendas).get('r').compra, null);
+  const depois = [...vendas, { transacao_id: 'nova', tipo: 'venda', comprador_email: 'renan@x.co', valor: 137, data: '2026-11-14' }];
+  assert.deepEqual(m.estadoDosLeads(leads, [], depois).get('r').compra, { valor: 137, data: '2026-11-14' });   // no mesmo dia do lead conta
+});
+
 test('"hoje" (dias fracionado): só a janela de hoje, comparação com ontem e visitas por hora', () => {
   const AGORA = Date.parse('2026-11-12T15:00:00Z');
   const hoje = (h) => new Date(AGORA - h * 3_600_000).toISOString();
