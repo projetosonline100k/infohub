@@ -77,6 +77,7 @@ export interface OfertaQuiz {
   faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
   /** Planos para escolher (15/11, Davi: anual em destaque com bônus, semestral e trimestral sem bônus). Sem `planos`, vale o plano único acima. */
   planos?: PlanoOferta[];
+  planos_acesso?: string;   // linha "✓ …" embaixo do nome em todos os cartões de plano (ex.: "Acesso completo ao Instalivros")
 }
 export interface PlanoOferta {
   id: string; nome: string; preco?: string; preco_de?: string; parcelas?: { n: number; valor: string }; cta_url?: string;
