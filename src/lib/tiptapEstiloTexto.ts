@@ -14,7 +14,18 @@ import Highlight from "@tiptap/extension-highlight";
 export function limparEstiloColado(html: string): string {
   // Copiado de dentro do próprio editor (Infopro): mantém tudo, inclusive as
   // cores e o marca-texto aplicados aqui.
-  if (html.includes("data-pm-slice")) return html;
+  // 15/11 (Davi: "quando eu colo, não respeita o tamanho que está e vem bem maior"): mesmo copiado daqui, o TAMANHO e a fonte do texto de origem
+  // não vêm junto (o texto assume o tamanho de onde foi colado); cor e marca-texto continuam.
+  if (html.includes("data-pm-slice")) {
+    const dentro = new DOMParser().parseFromString(html, "text/html");
+    dentro.body.querySelectorAll<HTMLElement>("[style]").forEach((el) => {
+      el.style.removeProperty("font-size");
+      el.style.removeProperty("line-height");
+      el.style.removeProperty("font-family");
+      if (!el.getAttribute("style")?.trim()) el.removeAttribute("style");
+    });
+    return dentro.body.innerHTML;   // o data-pm-slice é atributo do primeiro elemento: segue no texto
+  }
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.body.querySelectorAll("[style]").forEach((el) => el.removeAttribute("style"));
   doc.body.querySelectorAll("[color], [bgcolor], [face]").forEach((el) => {
