@@ -179,6 +179,8 @@ export interface EstruturaQuiz {
   fases?: { nome: string; de: string }[];
   /** Estrela + confete + som ao concluir cada fase (padrão: liga; `false` desliga). */
   fases_comemorar?: boolean;
+  /** Curva da barra dentro de cada fase: "vturb" corre rápido no começo e desacelera no fim; "linear" (padrão) avança igual. */
+  progresso?: "vturb" | "linear";
   /** Sem tela de perfil: depois do plano vem direto a oferta (Davi, 10/11: "não existe perfil na minha copy"). */
   sem_resultado?: boolean;
 }

@@ -420,7 +420,7 @@ function confeteFase() {
 
 // Barra de progresso por fases, como a do 12min: "← Voltar" arredondado, a marca no meio e uma linha com uma
 // bolinha por fase (✓ nas que já passaram, anel escuro na atual) e o nome da fase embaixo.
-function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, onVoltar }: { fases: string[]; atual: number; frac: number; cor: string; escuro: boolean; comemorar?: boolean; onVoltar?: () => void }) {
+function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, vturb = false, onVoltar }: { fases: string[]; atual: number; frac: number; cor: string; escuro: boolean; comemorar?: boolean; vturb?: boolean; onVoltar?: () => void }) {
   const n = fases.length;
   // Ao entrar numa fase mais adiante, a bolinha da anterior vira estrela com confete e som (voltar não comemora).
   const maior = useRef(atual);
@@ -434,7 +434,9 @@ function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, onVolta
     const t = setTimeout(() => setRecem(-1), 900);
     return () => clearTimeout(t);
   }, [atual, comemorar]);
-  const fill = Math.min(100, ((atual + frac) / n) * 100);
+  // Estilo vturb: dentro da fase a barra enche rápido no começo e desacelera (ease-out); nunca passa da bolinha.
+  const visual = vturb ? 1 - Math.pow(1 - frac, 2.2) : frac;
+  const fill = Math.min(100, ((atual + visual) / n) * 100);
   const claro = escuro ? "rgba(255,255,255,.14)" : `${cor}26`;
   return (
     <div className="shrink-0 space-y-1.5">
@@ -447,7 +449,7 @@ function BarraFases({ fases, atual, frac, cor, escuro, comemorar = true, onVolta
       <div className={cn("relative mx-1 pt-1", n > 1 && atual === n - 2 ? "pb-9" : "pb-5")}>
         <div className="relative h-5">
           <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full" style={{ background: claro }} />
-          <div className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full transition-all duration-500" style={{ width: `${fill}%`, background: cor }} />
+          <div className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full transition-all duration-500 ease-out" style={{ width: `${fill}%`, background: cor }} />
           <span className="absolute left-0 top-1/2 h-2.5 w-2.5 -translate-y-1/2 rounded-full" style={{ background: cor }} />
           {fases.map((nome, i) => {
             const feito = i < atual, ativo = i === atual;
@@ -935,7 +937,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           </div>
         )}
         {passo.tipo !== "intro" && passo.tipo !== "fim" && fasesInfo ? (
-          <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} comemorar={e.fases_comemorar !== false} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
+          <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} comemorar={e.fases_comemorar !== false} vturb={e.progresso === "vturb"} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
         ) : passo.tipo !== "intro" && passo.tipo !== "fim" ? (
           <div className={cn("h-2 shrink-0 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progresso}%`, background: cor, boxShadow: `0 0 12px ${cor}` }} />
