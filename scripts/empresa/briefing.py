@@ -236,6 +236,7 @@ def contexto(bid, como=None):
                       ' — ele vê o documento mudando na tela. Quem passa a peça adiante é o Davi (arrastando).'
                       ' Se ele disser como quer o trabalho (critério), anote também nos aprendizados (aprender.py) para valer nas próximas.')
         if quiz:
+            print('VERSÕES DO QUIZ (teste A/B): se a mensagem do Davi começa com "[Versão V2 do quiz]" (ou V3…), o pedido vale SÓ para essa versão: use `python3 scripts/quiz/quiz.py ver <atividade_id> --versao 2` e `python3 scripts/quiz/quiz.py salvar <atividade_id> --versao 2` (o número da versão) e NÃO mexa no quiz original (V1). Sem esse aviso, é o original.')
             print(f'É um QUIZ (docs/QUIZ.md), status {quiz[0]}. '
                   + ('O Davi está revisando o ESBOÇO (o documento acima): ajuste o documento com o entregar; quem aprova é ele.' if quiz[0] == 'esboco'
                      else (f'O quiz já está PUBLICADO (status {quiz[0]}): o que você salvar muda o link que o público está usando NA HORA. Mudança pequena e clara: faça. Mudança grande (trocar perguntas, perfis, oferta): confirme com o Davi antes. Veja: python3 scripts/quiz/quiz.py ver {atividade_id} · ajuste: python3 scripts/quiz/quiz.py salvar {atividade_id} (JSON inteiro). Não use o entregar.'

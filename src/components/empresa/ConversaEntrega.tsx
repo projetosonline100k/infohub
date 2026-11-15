@@ -35,7 +35,7 @@ interface Colega { id: string; nome: string; eh_ia: boolean }
 // Conversa em grupo (15/10): "Chamar" põe outro funcionário IA na conversa;
 // cada um responde pela sua área e cada fala mostra quem disse.
 // melhoriaId (16/10): a mesma conversa, sobre uma melhoria do kanban do Pedro (pendências).
-export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais, onEnviou, onAndamento, pedidoExterno }: {
+export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nome, textoInicial, onDocumentoMudou, onEsperando, participantesIniciais, onEnviou, onAndamento, pedidoExterno, prefixoMensagem }: {
   clienteId: string; tarefaId?: string; melhoriaId?: string; membroId: string; nome: string; textoInicial?: string; onDocumentoMudou: () => void;
   onEsperando?: (esperando: boolean) => void;
   /** Conversa em grupo desde o começo (ex.: chat da esteira com o trio, 17/10). */
@@ -46,6 +46,8 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
   onAndamento?: (a: Andamento) => void;
   /** Pedido mandado de fora do chat (ex.: o campo embaixo de cada tela na vista em fileira); envia ao mudar o id. */
   pedidoExterno?: { id: number; texto: string } | null;
+  /** Marca que vai antes de cada mensagem (ex.: "[Versão V2 do quiz]": o funcionário aplica o pedido só naquela versão). */
+  prefixoMensagem?: string;
 }) {
   const sobre = melhoriaId ? { campo: "melhoria_id", id: melhoriaId } : { campo: "atividade_id", id: tarefaId ?? "" };
   // O que ele está fazendo agora (briefing.py agora): "lendo o documento", "reescrevendo as chamadas"…
@@ -175,7 +177,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
     setEnviando(true);
     try {
       const id = await garantirConversa();
-      const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: valor });
+      const { error } = await supabase.from("briefing_mensagens").insert({ briefing_id: id, cliente_id: clienteId, papel: "davi", texto: prefixoMensagem ? `${prefixoMensagem} ${valor}` : valor });
       if (error) throw error;
       onEnviou?.();
       if (!externo) { setTexto(""); fotos.limpar(); mencao.limpar(); }

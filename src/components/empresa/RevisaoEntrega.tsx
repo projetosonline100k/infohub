@@ -515,11 +515,10 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   )}
                   {/* Fica montada mesmo escondida: o chat não perde o andamento nem o rascunho. */}
                   {quiz?.variante_de && lateralQuiz === "conversa" && (
-                    <p className="shrink-0 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-                      Você está na <b>V{quiz.versao}</b>. O que você escrever aqui o agente aplica no <b>V1 (original)</b>, não na V{quiz.versao}. Para mudar a V{quiz.versao}, edite direto na tela (Editar a tela, fluxo, textos).
-                    </p>
+                    <p className="shrink-0 rounded-lg border border-emerald-400/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                      Você está na <b>V{quiz.versao}</b>: o que você pedir aqui o agente aplica só na <b>V{quiz.versao}</b>, sem mexer no V1 (original).</p>
                   )}
-                  {info?.responsavelId && <div className={cn("min-h-0 flex-1", editorQuiz && lateralQuiz !== "conversa" && "hidden")}><ConversaEntrega key={tarefaId} clienteId={clienteId} tarefaId={tarefa.id} membroId={info.responsavelId}
+                  {info?.responsavelId && <div className={cn("min-h-0 flex-1", editorQuiz && lateralQuiz !== "conversa" && "hidden")}><ConversaEntrega key={tarefaId} prefixoMensagem={quiz?.variante_de ? `[Versão V${quiz.versao} do quiz]` : undefined} clienteId={clienteId} tarefaId={tarefa.id} membroId={info.responsavelId}
                     nome={info.responsavel ?? "Funcionário"} onDocumentoMudou={recarregarDoc} onEsperando={setEscrevendo} onAndamento={setAndamento} pedidoExterno={pedidoTela} /></div>}
                 </div>
               )}

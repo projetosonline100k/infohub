@@ -1,10 +1,10 @@
 """Quiz do Infopro (Conteúdo → Quiz). Usado pelo Roy na etapa 2 (criar) e nos ajustes.
 Formato e fluxo: docs/QUIZ.md.
 
-  python3 scripts/quiz/quiz.py ver <atividade_id>              → status, slug e a estrutura atual
+  python3 scripts/quiz/quiz.py ver <atividade_id> [--versao N]   → status, slug e a estrutura atual (N = versão do teste A/B: 2, 3…)
   python3 scripts/quiz/quiz.py de-esboco <atividade_id>         → esboço aprovado de OUTRO funcionário (ex.: Ítalo)
                                                                    vira tarefa do Roy já na etapa 2 (criar o quiz)
-  python3 scripts/quiz/quiz.py salvar <atividade_id> <<'FIM'   → valida e salva a estrutura
+  python3 scripts/quiz/quiz.py salvar <atividade_id> [--versao N] <<'FIM'   → valida e salva a estrutura
   { ...json... }
   FIM
 
@@ -84,17 +84,22 @@ def validar(e):
     return erros
 
 
-def _quiz(q, aid):
-    q.execute("""SELECT id, status, slug, titulo, estrutura FROM quizzes WHERE atividade_id = %s
+def _quiz(q, aid, versao=None):
+    """O quiz da tarefa; com `versao` (2, 3…), a versão de teste A/B dele (15/11: o Davi marca a V2 na tela e o que ele pede no chat vale para ela)."""
+    q.execute("""SELECT id, status, slug, titulo, estrutura FROM quizzes WHERE atividade_id = %s AND variante_de IS NULL
                   ORDER BY criado_em DESC LIMIT 1""", (aid,))
+    raiz = q.fetchone()
+    if not versao or versao == 1 or not raiz:
+        return raiz
+    q.execute("""SELECT id, status, slug, titulo, estrutura FROM quizzes WHERE variante_de = %s AND versao = %s""", (raiz[0], versao))
     return q.fetchone()
 
 
-def ver(aid):
+def ver(aid, versao=None):
     c = connect()
     try:
         q = c.cursor()
-        r = _quiz(q, aid)
+        r = _quiz(q, aid, versao)
     finally:
         c.rollback()
         c.close()
@@ -105,7 +110,7 @@ def ver(aid):
     print(json.dumps(estrutura, ensure_ascii=False, indent=1) if estrutura else '(sem estrutura ainda)')
 
 
-def salvar(aid, bruto):
+def salvar(aid, bruto, versao=None):
     try:
         e = json.loads(bruto)
     except json.JSONDecodeError as erro:
@@ -116,9 +121,9 @@ def salvar(aid, bruto):
     c = connect()
     try:
         q = c.cursor()
-        r = _quiz(q, aid)
+        r = _quiz(q, aid, versao)
         if not r:
-            raise SystemExit('nenhum quiz ligado a esta tarefa')
+            raise SystemExit('nenhum quiz ligado a esta tarefa' + (f' (versão V{versao})' if versao else ''))
         qid, status = r[0], r[1]
         if status in ('esboco', 'cancelado'):
             raise SystemExit(f'o quiz está em "{status}": a estrutura só entra depois do esboço aprovado')
@@ -183,12 +188,13 @@ def de_esboco(origem):
 
 if __name__ == '__main__':
     a = sys.argv[1:]
+    versao = int(a[a.index('--versao') + 1]) if '--versao' in a and a.index('--versao') + 1 < len(a) else None
     if len(a) >= 2 and a[0] == 'ver':
-        ver(a[1])
+        ver(a[1], versao)
     elif len(a) >= 2 and a[0] == 'de-esboco':
         de_esboco(a[1])
     elif len(a) >= 2 and a[0] == 'salvar':
-        salvar(a[1], sys.stdin.read())
+        salvar(a[1], sys.stdin.read(), versao)
     else:
         print(__doc__)
         sys.exit(1)
