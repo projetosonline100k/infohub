@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import type { EstruturaQuiz } from "@/lib/quiz/quiz";
+import { textoDoNumero } from "@/lib/quiz/numeros";
 import { propagarUtm, utmDaUrl, type Utm } from "@/lib/quiz/utm";
 
 // /quiz/:slug — o quiz publicado, aberto pra qualquer pessoa (sem login).
@@ -133,8 +134,9 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
         ) : !quiz ? (
           <p className="my-auto text-center opacity-70">Este quiz não está disponível.</p>
         ) : (
-          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={estrutura ?? quiz.estrutura} onFim={async ({ escolhas, perfil, contato }) => {
-            const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: q.opcoes[escolhas[q.id]]?.texto ?? null }));
+          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={estrutura ?? quiz.estrutura} onFim={async ({ escolhas, numeros, perfil, contato }) => {
+            // Pergunta de número (roleta/régua): vai o número que a pessoa escolheu ("20 min/dia"), não a faixa.
+            const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: numeros[q.id] !== undefined ? textoDoNumero(q.numero, numeros[q.id]) : q.opcoes[escolhas[q.id]]?.texto ?? null }));
             if (previa) return;
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,

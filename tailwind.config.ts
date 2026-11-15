@@ -104,6 +104,8 @@ export default {
       keyframes: {
         empolgado: { "0%, 100%": { transform: "translateY(0) rotate(-2deg) scale(1)" }, "50%": { transform: "translateY(-8px) rotate(2deg) scale(1.05)" } },
         "desenhar-linha": { from: { strokeDashoffset: "1" }, to: { strokeDashoffset: "0" } },
+        // Projeção do quiz (V2): o livro cai de cima e assenta no lugar, com a inclinação final em --rot.
+        "livro-cai": { "0%": { transform: "translateY(-280px) rotate(-14deg)", opacity: "0" }, "20%": { opacity: "1" }, "70%": { transform: "translateY(4px) rotate(var(--rot, 0deg))" }, "100%": { transform: "translateY(0) rotate(var(--rot, 0deg))", opacity: "1" } },
         "ponto-entra": { from: { transform: "scale(0)", opacity: "0" }, to: { transform: "scale(1)", opacity: "1" } },
         "fluxo-traco": { to: { strokeDashoffset: "-12" } },
         // Abertura do quiz: foguete chega com o mascote, ele pula, o foguete vai embora e ele desce de paraquedas.
@@ -195,6 +197,7 @@ export default {
       animation: {
         empolgado: "empolgado 1.1s ease-in-out infinite",
         "desenhar-linha": "desenhar-linha 1.8s ease-out 0.3s both",
+        "livro-cai": "livro-cai 0.7s cubic-bezier(0.3, 0.7, 0.4, 1) both",
         "ponto-entra": "ponto-entra 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both",
         "fluxo-traco": "fluxo-traco 1.2s linear infinite",
         "foguete-entra": "foguete-entra 0.9s cubic-bezier(0.2, 0.9, 0.3, 1) both",

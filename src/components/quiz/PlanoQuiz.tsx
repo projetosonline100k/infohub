@@ -10,8 +10,8 @@ import type { PerfilQuiz } from "@/lib/quiz/quiz";
 const curto = (t: string, n = 78) => (t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t);
 
 /** "Com base nas suas respostas, seu perfil é X, porque…" */
-export function PerfilTela({ perfil, razoes, titulo, botao, cor, escuro, suave }: {
-  perfil: PerfilQuiz | null; razoes: RazaoDoPerfil[]; titulo: ReactNode; botao: ReactNode; cor: string; escuro: boolean; suave: string;
+export function PerfilTela({ perfil, razoes, titulo, botao, numeros, cor, escuro, suave }: {
+  perfil: PerfilQuiz | null; razoes: RazaoDoPerfil[]; titulo: ReactNode; botao: ReactNode; numeros?: ReactNode; cor: string; escuro: boolean; suave: string;
 }) {
   return (
     <div className="space-y-5 py-2 text-center">
@@ -33,6 +33,7 @@ export function PerfilTela({ perfil, razoes, titulo, botao, cor, escuro, suave }
           ))}
         </div>
       )}
+      {numeros}
       <div className="sticky bottom-3 z-10 pt-1 text-left">{botao}</div>
     </div>
   );

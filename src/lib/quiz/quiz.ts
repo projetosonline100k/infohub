@@ -1,5 +1,6 @@
 import { PUBLIC_SITE_URL } from "@/lib/shareUrl";
 import type { ConfigPlano } from "./plano";
+import { preencherNumeros, type ConfigNumero } from "./numeros";
 
 // Quiz do Infopro (docs/QUIZ.md). O Roy monta a estrutura; a página pública
 // /quiz/<slug> roda o quiz e o resultado é o perfil com mais pontos.
@@ -14,10 +15,16 @@ export interface OpcaoQuiz {
   imagens?: Record<string, string>;
   /** Igual a `imagens`, mas com emoji (ex.: "genero=2" → "🧑‍🎓"): aparece no lugar do desenho. */
   emojis?: Record<string, string>;
+  /** Perguntas numéricas (estilo "roleta"/"regua"): a opção vale para números até `ate` (a última pega o resto). O texto da opção é o selo da roleta. */
+  ate?: number;
+  /** Tela "perfil" com `plano_numeros`: o nome do momento no resumo ("Ritual da manhã"). Sem ele, vale o texto da opção. */
+  ritual?: string;
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
-  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones" | "lado" | "escala";
+  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones" | "lado" | "escala" | "roleta" | "regua";
+  /** estilo "roleta" (roleta vertical) e "regua" (régua arrastável) — 15/11: a resposta é um número, guardado para os textos ({numero:id}). */
+  numero?: ConfigNumero;
   botao?: boolean;      // marca a resposta e só segue no botão Continuar (sem avançar sozinho)
   multipla?: boolean;   // "escolha quantas quiser": marca várias e segue no botão Continuar (conta a 1ª escolhida no perfil)
   /** estilo "lado" (13/11): a pessoa marca exatamente `meta` itens (padrão 3) e a barra de baixo enche até liberar o Continuar. estilo "escala": uma opção numa trilha com emoji (as opções precisam de `emoji`). */
@@ -29,12 +36,43 @@ export interface PerfilQuiz {
   /** Tela "perfil" (13/11): emoji do perfil e a frase curta embaixo do nome ("Quando você pega ritmo, vai longe"). */
   emoji?: string; frase?: string;
 }
+export interface ConfigMentores {
+  /** Pergunta de escolha (múltipla) dos mentores. */
+  pergunta: string;
+  /** Livros por ano de cada mentor (pelo texto da opção). Só números com fonte pública. */
+  dados: Record<string, { livros_ano?: number; fonte?: string }>;
+  /** Barra "Você" com o número de uma pergunta de roleta (ex.: livros_ano). */
+  voce?: { pergunta: string; rotulo?: string };
+  /** Título quando nenhum mentor escolhido tem número: mostra os que têm. */
+  titulo_geral?: string;
+}
+export interface ConfigDepoimentoAnimado {
+  texto: string; autor?: string;
+  /** Trechos do texto: o riscado ("odiava ler") e o grifado. */
+  riscado?: string; grifado?: string;
+  numeros?: { rotulo: string; antes: number; agora: number }[];
+}
+export interface ConfigPlanoNumeros {
+  titulo?: string;
+  /** Ids das perguntas: régua de minutos, momento do dia, objetivo e (opcional) a roleta de livros. */
+  minutos: string; momento: string; objetivo: string;
+}
 export interface Depoimento { nome?: string; texto?: string; imagem?: string }
 export interface BarraFixa { rotulo: string; valor: number; legenda?: string; destaque?: boolean }
 export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
-  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros";
+  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso";
+  /** Tela "barras_mentores" (15/11): barras de livros por ano dos mentores que a pessoa escolheu. */
+  mentores?: ConfigMentores;
+  /** Tela "depoimento_animado" (15/11): o depoimento se escreve sozinho, com trecho riscado e grifado, e os números "antes → agora" contam. */
+  depoimento_animado?: ConfigDepoimentoAnimado;
+  /** Tela "projecao" (15/11): "lendo X min por dia você termina N livros em 12 meses", com livros caindo e empilhando. */
+  projecao?: { pergunta: string };
+  /** Tela "compromisso" (15/11): a pessoa desenha um ✓ com o dedo para liberar o botão. */
+  compromisso?: { limpar?: string };
+  /** Tela "perfil" (15/11): resumo do plano em números (minutos/dia, momento, resumos/semana, livros em 12 meses, objetivo). */
+  plano_numeros?: ConfigPlanoNumeros;
   /** Tela "plano_livros" (13/11): como escolher os livros do plano (ver src/lib/quiz/plano.ts). */
   plano?: ConfigPlano;
   titulo?: string; texto?: string; botao?: string;
@@ -244,9 +282,9 @@ function comNome(texto: string, nome?: string): string {
     .replace(/(^|[.!?…]\s*)\{nome\}\s*,?\s*(\S)/gu, (_t, antes: string, letra: string) => antes + letra.toLocaleUpperCase("pt-BR"))
     .replace(/\s*,?\s*\{nome\}/g, "");
 }
-export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas: Record<string, number>, perfil: PerfilQuiz | null, nome?: string): string {
+export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas: Record<string, number>, perfil: PerfilQuiz | null, nome?: string, numeros: Record<string, number> = {}): string {
   if (!texto) return "";
-  return comNome(texto, nome)
+  return preencherNumeros(comNome(texto, nome), e.perguntas, numeros)
     .replace(/\{perfil\}/g, perfil?.nome ?? "")
     .replace(/\{resposta:([\w-]+)\}/g, (_, id: string) => {
       const q = e.perguntas.find((p) => p.id === id);
