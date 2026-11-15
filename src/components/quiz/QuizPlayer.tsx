@@ -1500,7 +1500,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
               <div className="text-right">
                 {p.preco_de && <p className="text-xs text-white/50"><s>{p.preco_de}</s></p>}
                 <p className="text-lg font-extrabold leading-tight">{p.preco}</p>
-                {p.parcelas && <p className="text-xs text-white/60">{p.parcelas.n}x de {p.parcelas.valor}</p>}
+                {p.parcelas && <p className="text-xs text-white/60">ou {p.parcelas.n}x de {p.parcelas.valor}</p>}
                 {p.equivalente && <p className="text-[11px] font-semibold" style={{ color: verde }}>{p.equivalente}</p>}
               </div>
             </div>
@@ -1536,8 +1536,8 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
         )}
       </div>}
       {url
-        ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: roxo, boxShadow: `0 8px 24px -8px ${roxo}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
-        : <div className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] opacity-90" style={{ background: roxo }}><Txt caminho="oferta.cta_texto" valor={texto} />{!editar && <span className="ml-2 text-xs font-medium">(link ainda não definido)</span>}</div>}
+        ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
+        : <div className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] opacity-90" style={{ background: verde }}><Txt caminho="oferta.cta_texto" valor={texto} />{!editar && <span className="ml-2 text-xs font-medium">(link ainda não definido)</span>}</div>}
       {o.garantia && (
         <div className="flex items-start gap-3 rounded-2xl border p-4 text-sm" style={{ borderColor: `${verde}55`, background: `${verde}10` }}>
           <ShieldCheck className="mt-0.5 h-6 w-6 shrink-0" style={{ color: verde }} />
