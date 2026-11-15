@@ -72,6 +72,10 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   // 03/11: canvas do fluxo (ou lista) + o celular editável à direita; "logica" é o formulário da tela.
   const [lateralQuiz, setLateralQuiz] = useState<"logica" | "conversa">("conversa");
   const [mapaQuiz, setMapaQuiz] = useState<"fluxo" | "lista">("fluxo");
+  // Mapa mental no modo Testar (15/11, Davi: "mesmo no testar, ver o mapa mental e, conforme eu clico, aparecer nele"): destaca a tela em que o teste está.
+  const [mapaNoTeste, setMapaNoTeste] = useState(() => { try { return localStorage.getItem("quiz-teste-mapa") === "1"; } catch { return false; } });
+  const alternarMapaTeste = () => setMapaNoTeste((v) => { try { localStorage.setItem("quiz-teste-mapa", v ? "0" : "1"); } catch { /* sem armazenamento */ } return !v; });
+  const [passoTeste, setPassoTeste] = useState<{ pos: number; perfil: string | null }>({ pos: 0, perfil: null });
   const laminas = useMemo(() => (quiz?.estrutura ? laminasDoQuiz(quiz.estrutura) : []), [quiz?.estrutura]);
   const iTela = Math.max(0, laminas.findIndex((l) => l.chave === telaSel));
   const tela = laminas[iTela];
@@ -300,6 +304,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                           className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs", (c === "celular") === noCelular ? "border-primary bg-primary/10 font-medium" : "hover:bg-muted")}><Icone className="h-3.5 w-3.5" />{c === "celular" ? "Celular" : "Computador"}</button>
                       );
                     })}
+                    <button type="button" onClick={alternarMapaTeste} aria-pressed={mapaNoTeste} title="Mostra o mapa mental do quiz ao lado e destaca a tela em que você está"
+                      className={cn("flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs", mapaNoTeste ? "border-cyan-400 bg-cyan-400/10 font-medium" : "hover:bg-muted")}><Workflow className="h-3.5 w-3.5" />Mapa mental</button>
                   </div>
                 )}
                 {quiz?.estrutura && abaQuiz === "editar" && tela ? (
@@ -344,13 +350,27 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <MetricasDoQuiz quiz={quiz} preencher />
                   </div>
                 ) : quiz?.estrutura && abaQuiz === "testar" ? (
-                  noCelular ? (
-                    <MolduraCelularEscalada escuro={quiz.estrutura.tema === "escuro"}>
-                      <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia />
-                    </MolduraCelularEscalada>
-                  ) : (
-                    <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste />
-                  )
+                  <div className="flex min-h-0 w-full flex-1 gap-3">
+                    <div className="min-w-0 flex-1 overflow-y-auto">
+                      {noCelular ? (
+                        <MolduraCelularEscalada escuro={quiz.estrutura.tema === "escuro"}>
+                          <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
+                        </MolduraCelularEscalada>
+                      ) : (
+                        <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
+                      )}
+                    </div>
+                    {mapaNoTeste && (() => {
+                      const atual = laminas.find((l) => l.passo === passoTeste.pos && (!l.perfil || l.perfil === passoTeste.perfil)) ?? laminas.find((l) => l.passo === passoTeste.pos) ?? laminas[0];
+                      return (
+                        <div className="hidden h-full min-h-[420px] w-[52%] min-w-[340px] shrink-0 flex-col rounded-2xl border border-white/10 bg-[#0a1019] p-3 md:flex">
+                          <p className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold text-white"><Workflow className="h-4 w-4 text-cyan-300" />Você está em: <span className="font-normal text-white/70">{atual?.rotulo ?? "—"}</span></p>
+                          <div className="min-h-0 flex-1">
+                            <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={atual?.chave ?? ""} onEscolher={() => { /* só acompanha o teste */ }} onAdicionar={() => { /* só acompanha o teste */ }} />
+                          </div>
+                        </div>);
+                    })()}
+                  </div>
                 ) : quiz?.estrutura && abaQuiz === "andamento" ? (
                   <AndamentoEntrega andamento={andamento} faltas={faltasQuiz} onTestar={() => setAbaQuiz("editar")} onVerEsboco={() => setAbaQuiz("esboco")} />
                 ) : carregando ? (
