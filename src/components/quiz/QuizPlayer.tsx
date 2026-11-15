@@ -1483,7 +1483,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
               <div className="min-w-0 flex-1">
                 <p className="text-base font-extrabold leading-tight">{p.nome}{p.oculto && <span className="ml-2 text-xs font-medium text-white/50">(oculto)</span>}</p>
-                <p className="text-xs text-white/60">{p.com_bonus !== false ? <span className="font-semibold" style={{ color: verde }}>+ {o.bonus?.length ?? 0} bônus inclusos</span> : "Sem bônus"}</p>
+                <p className="text-xs text-white/60">{p.com_bonus !== false && <span className="font-semibold" style={{ color: verde }}>+ {o.bonus?.length ?? 0} bônus inclusos</span>}</p>
               </div>
               <div className="text-right">
                 {p.preco_de && <p className="text-xs text-white/50"><s>{p.preco_de}</s></p>}
