@@ -12,6 +12,7 @@ import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosP
 import { comDadosDoLead } from "@/lib/quiz/utm";
 import { montarPlano, razoesDoPerfil, temaDaOpcao, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
+import { OrbitaTrio } from "./OrbitaQuiz";
 import { AreaDoCheck, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
 
@@ -982,6 +983,32 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     : <ReguaNumero key={q.id} config={cfg} valor={numeros[q.id]} aoMudar={(n) => definirNumero(q, n)} cor={cor} escuro={escuro} suave={suave} />}
                   <div className="sticky bottom-3 z-10 pt-1">
                     <Botao onClick={() => { if (numeros[q.id] === undefined) definirNumero(q, valor); avancar(); }}>Continuar</Botao>
+                  </div>
+                  {pos > 1 && !editar && !travado && (
+                    <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
+                  )}
+                </div>
+              );
+            }
+            if (q.estilo === "orbita") {
+              // Monte seu trio (15/11, V2): habilidades em bolhas em volta do mascote; as escolhidas sobem para as vagas 1·2·3.
+              const meta = metaDaSelecao(q);
+              const sel = marcadas[q.id] ?? [];
+              const completa = sel.length >= meta;
+              return (
+                <div className="space-y-3">
+                  <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-center text-xl font-bold leading-snug" />
+                  <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-center text-sm", suave)} />
+                  <OrbitaTrio opcoes={q.opcoes} sel={sel} meta={meta} aoAlternar={(k) => alternar(q.id, k, meta)} quadro={quadrosM?.[12]} cor={cor} escuro={escuro} suave={suave} editar={editar} />
+                  <div className="sticky bottom-3 z-10 pt-1">
+                    {completa
+                      ? <Botao onClick={avancar}>Continuar</Botao>
+                      : (
+                        <button type="button" disabled={!editar} aria-disabled="true" onClick={editar ? avancar : undefined}
+                          className={cn("flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-bold shadow-none", escuro ? "bg-white/10 text-white/40" : "bg-gray-200 text-gray-400")}>
+                          <Lock className="h-4 w-4" />Escolha mais {meta - sel.length}
+                        </button>
+                      )}
                   </div>
                   {pos > 1 && !editar && !travado && (
                     <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
