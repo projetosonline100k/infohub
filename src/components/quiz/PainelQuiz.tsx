@@ -547,13 +547,15 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
   const [salvandoSlug, setSalvandoSlug] = useState(false);
   const [f, setF] = useState({ nome: "", origem: "instagram", meio: "bio", campanha: "", conteudo: "", curto: "" });
   const base = linkDoQuiz(slug);
+  // Cada link aponta para o quiz principal (sorteio), só para o V1 (?ab=0) ou para uma versão específica (o endereço dela).
+  const baseDe = (l: Pick<LinkQuiz, "destino">) => (l.destino === "v1" ? `${linkDoQuiz(slug)}?ab=0` : l.destino ? linkDoQuiz(l.destino) : linkDoQuiz(slug));
   const campo = "rounded-lg border border-white/10 bg-[#0a1520] px-3 py-1.5 text-sm text-white outline-none focus:border-cyan-400/50";
 
   const carregar = useCallback(async () => {
     const { data: q } = await db.from("quizzes").select("cliente_id").eq("id", quizId).maybeSingle();
     const cid = (q as { cliente_id: string } | null)?.cliente_id ?? null;
     setClienteId(cid);
-    const { data: l } = await db.from("quiz_links").select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").eq("quiz_id", quizId).order("criado_em");
+    const { data: l } = await db.from("quiz_links").select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, destino, criado_em").eq("quiz_id", quizId).order("criado_em");
     setLinks((l ?? []) as LinkQuiz[]);
     const ids = ((l ?? []) as { id: string }[]).map((x) => x.id);
     if (ids.length) {
@@ -587,7 +589,12 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
   };
   // Gerar link rápido (15/11, Davi: "ao clicar em gerar novo link, já vem para onde é — Bio, Reels… — o nome da conta e v1, v2, v3…").
   const DESTINOS = ["Bio", "Reels", "Story", "Direct", "Comentário", "Anúncio", "Site"];
-  const [rapido, setRapido] = useState({ destino: "Bio", conta: "" });
+  const [rapido, setRapido] = useState({ destino: "Bio", conta: "", versao: "ab" });   // versao: "ab" (principal), "v1" ou o endereço de uma versão
+  const [versoes, setVersoes] = useState<{ slug: string; versao: number; status: string }[]>([]);
+  useEffect(() => {
+    void db.from("quizzes").select("slug, versao, status").eq("variante_de", quizId).order("versao").then(({ data }) => setVersoes((data ?? []) as { slug: string; versao: number; status: string }[]));
+  }, [quizId]);
+  const rotuloVersao = (v: string) => (v === "ab" ? (versoes.length ? "A/B" : "V1") : v === "v1" ? "V1" : `V${versoes.find((x) => x.slug === v)?.versao ?? "?"}`);
   const [contasIg, setContasIg] = useState<string[]>([]);
   useEffect(() => {
     void db.from("instagram_conexoes").select("username").then(({ data }) => {
@@ -596,12 +603,14 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
       setRapido((r) => (r.conta ? r : { ...r, conta: nomes[0] ?? "" }));
     });
   }, []);
-  const proximaVersao = (destino: string, conta: string) => 1 + (links ?? []).filter((l) => l.utm_medium === (normalizarUtm(destino) || "") && l.utm_campaign === (normalizarUtm(conta) || "")).length;
   const gerarRapido = () => {
     const conta = rapido.conta.replace(/^@/, "").trim();
     if (!conta) { toast.error("Escreva o nome da conta (ex.: instalivrosapp)"); return; }
-    const n = proximaVersao(rapido.destino, conta);
-    void criar({ nome: `${rapido.destino} · @${conta} · v${n}`, origem: "instagram", meio: rapido.destino, campanha: conta, conteudo: `v${n}`, curto: `${conta}-${rapido.destino}-v${n}` });
+    const rot = rotuloVersao(rapido.versao), cont = normalizarUtm(rot);
+    const repetidos = (links ?? []).filter((l) => l.utm_medium === (normalizarUtm(rapido.destino) || "") && l.utm_campaign === (normalizarUtm(conta) || "") && (l.utm_content ?? "").replace(/-\d+$/, "") === cont).length;
+    const sufixo = repetidos ? `-${repetidos + 1}` : "";   // o mesmo destino, conta e versão de novo: vira -2, -3 (cada link conta os próprios números)
+    void criar({ nome: `${rapido.destino} · @${conta} · ${rot}${repetidos ? ` (${repetidos + 1})` : ""}`, origem: "instagram", meio: rapido.destino, campanha: conta, conteudo: `${cont}${sufixo}`, curto: `${conta}-${rapido.destino}-${cont}${sufixo}`,
+      destino: rapido.versao === "ab" ? null : rapido.versao } as typeof f & { destino: string | null });
   };
   const criar = async (d: typeof f = f) => {
     if (!d.nome.trim() || !clienteId) return;
@@ -612,8 +621,8 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
     if (igual) { toast.error(`Já existe o link “${igual.nome}” com a mesma origem, meio e campanha: os números dos dois se misturariam. Mude a campanha ou o conteúdo.`); return; }
     const { data: criado, error } = await db.from("quiz_links").insert({
       quiz_id: quizId, cliente_id: clienteId, nome: d.nome.trim(), utm_source: origem, utm_medium: normalizarUtm(d.meio) || null,
-      utm_campaign: normalizarUtm(d.campanha || d.nome) || null, utm_content: normalizarUtm(d.conteudo) || null,
-    }).select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").single();
+      utm_campaign: normalizarUtm(d.campanha || d.nome) || null, utm_content: normalizarUtm(d.conteudo) || null, destino: (d as { destino?: string | null }).destino ?? null,
+    }).select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, destino, criado_em").single();
     if (error || !criado) { toast.error("Não consegui criar o link"); return; }
     const curto = await criarCurto(criado as LinkQuiz, d.curto || d.nome);
     setF({ ...f, nome: "", campanha: "", conteudo: "", curto: "" });
@@ -624,7 +633,7 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
   const criarCurto = async (l: LinkQuiz, desejado: string): Promise<boolean> => {
     if (!clienteId) return false;
     const base = codigoCurto(desejado) ?? codigoCurto(l.nome) ?? "link";
-    const destino = linkRastreado(linkDoQuiz(slug), l);
+    const destino = linkRastreado(baseDe(l), l);
     for (let i = 0; i < 4; i++) {
       const codigo = i === 0 ? base : `${base.slice(0, 35)}-${Math.random().toString(36).slice(2, 5)}`;
       const { error } = await db.from("links_curtos").insert({ codigo, destino, cliente_id: clienteId, quiz_link_id: l.id });
@@ -670,10 +679,19 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
               <input list="contas-ig-quiz" value={rapido.conta} onChange={(e) => setRapido((r) => ({ ...r, conta: e.target.value }))} placeholder="nome da conta (ex.: instalivrosapp)" className={cn(campo, "w-60")} />
               <datalist id="contas-ig-quiz">{contasIg.map((c) => <option key={c} value={c} />)}</datalist>
             </label>
-            <span className="rounded-lg bg-black/40 px-2.5 py-1.5 text-xs text-white/70">{rapido.conta.trim() ? `${rapido.destino} · @${rapido.conta.replace(/^@/, "").trim()} · v${proximaVersao(rapido.destino, rapido.conta.replace(/^@/, "").trim())}` : "o nome do link aparece aqui"}</span>
+            {versoes.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-white/55">Versão do quiz
+                <select value={rapido.versao} onChange={(e) => setRapido((r) => ({ ...r, versao: e.target.value }))} className={cn(campo, "py-1.5")}>
+                  <option value="ab">Sorteio A/B (link principal)</option>
+                  <option value="v1">Só a V1 (original)</option>
+                  {versoes.filter((v) => v.versao > 1).map((v) => <option key={v.slug} value={v.slug}>Só a V{v.versao}{v.status !== "publicado" ? " (não publicada)" : ""}</option>)}
+                </select>
+              </label>
+            )}
+            <span className="rounded-lg bg-black/40 px-2.5 py-1.5 text-xs text-white/70">{rapido.conta.trim() ? `${rapido.destino} · @${rapido.conta.replace(/^@/, "").trim()} · ${rotuloVersao(rapido.versao)}` : "o nome do link aparece aqui"}</span>
             <button type="button" disabled={!clienteId || !rapido.conta.trim()} onClick={gerarRapido} className="flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40"><Plus className="h-4 w-4" />Gerar link</button>
           </div>
-          <p className="text-[11px] text-white/45">Cria o link com a origem Instagram, o destino e a conta já marcados, e numera sozinho (v1, v2, v3…) quando você gera outro igual. Para algo diferente, use o formulário abaixo.</p>
+          <p className="text-[11px] text-white/45">Cria o link com a origem Instagram, o destino e a conta já marcados, e marca a versão do quiz que você escolheu (V1, V2…; o sorteio A/B é o link principal). Repetindo o mesmo destino, conta e versão, ele numera (2), (3)… Para algo diferente, use o formulário abaixo.</p>
         </div>
         <p className="pt-1 text-xs font-medium text-white/50">Link personalizado</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_1.1fr_auto]">
@@ -690,7 +708,7 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
           : (
             <div className="space-y-2">
               {links.map((l) => {
-                const url = linkRastreado(base, l);
+                const url = linkRastreado(baseDe(l), l);
                 const curto = curtos.find((c) => c.quiz_link_id === l.id);
                 const urlCurta = curto ? enderecoCurto(new URL(base).origin, curto.codigo) : null;
                 const e = estatisticaDoLink(l, linhas), v = vendasDoLink(l, vendas);

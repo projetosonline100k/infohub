@@ -23,6 +23,7 @@ export default function QuizPublico({ previa = false }: { previa?: boolean }) {
   const [sorteado, setSorteado] = useState<string | null>(previa ? token : null);
   useEffect(() => {
     if (previa) { setSorteado(token); return; }
+    if (new URLSearchParams(window.location.search).get("ab") === "0") { setSorteado(slugDaUrl); return; }   // link só do original (V1): pula o sorteio
     let vivo = true;
     void (async () => {
       let escolhido = slugDaUrl;

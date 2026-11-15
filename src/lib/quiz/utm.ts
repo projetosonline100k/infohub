@@ -4,7 +4,7 @@
 
 export const UTM_CHAVES = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
 export type Utm = Partial<Record<(typeof UTM_CHAVES)[number], string>>;
-export interface LinkQuiz { id: string; nome: string; utm_source: string; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; utm_term: string | null; criado_em: string }
+export interface LinkQuiz { id: string; nome: string; utm_source: string; utm_medium: string | null; utm_campaign: string | null; utm_content: string | null; utm_term: string | null; destino?: string | null; criado_em: string }
 
 /** "Bio do Instagram" → "bio-do-instagram" (minúsculo, sem acento nem espaço): UTM com formato único soma certo. */
 export const normalizarUtm = (v: string) =>
