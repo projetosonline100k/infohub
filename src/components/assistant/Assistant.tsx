@@ -1142,7 +1142,7 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // O que o Atlas está programando (15/11, Davi: "passando o mouse no Atlas, ver se tem algo sendo programado").
   const programando = useProgramandoAtlas(variant === "window" && isDesktop());
   useEffect(() => { if (orbeHover) void programando.recarregar(); }, [orbeHover]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const mostrarProgramando = variant === "window" && !open && orbeHover && !mostrarSaude && programando.carregado;
+  const mostrarProgramando = variant === "window" && !open && orbeHover && programando.carregado;
   const temBalaoVisivel = !!(
     mostrarSaude || mostrarProgramando ||
     alarmeAtlas.atual || dialogoExcedido || celebracao || cobranca || cobrancaIA.cobranca || promptDesvio || horaAlerta || resumoSessao || acessibilidadeFaltando ||
@@ -1291,6 +1291,21 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
   // Rodada 12: extraído numa variável só pra poder ser posicionado
   // diferente por variant (empilhado com a orbe na nativa — ver mais
   // abaixo — vs. flutuando acima dela na embutida, como sempre foi).
+  const programandoConteudo = (
+    <span className="block space-y-1">
+      {programando.emAndamento ? (
+        <>
+          <span className="block text-[12px] font-semibold leading-snug">{programando.emAndamento.titulo}</span>
+          <span className="block text-[11px] text-muted-foreground">há {programando.emAndamento.ha} · pedido de {programando.emAndamento.origem}</span>
+        </>
+      ) : <span className="block text-[11px] text-muted-foreground">Nenhum pedido em andamento.</span>}
+      {(programando.naFila > 0 || programando.aguardando > 0) && (
+        <span className="block text-[11px] text-muted-foreground">
+          {programando.naFila > 0 && `${programando.naFila} na fila`}{programando.naFila > 0 && programando.aguardando > 0 && " · "}{programando.aguardando > 0 && `${programando.aguardando} esperando a sua aprovação`}
+        </span>
+      )}
+    </span>
+  );
   const saudeJsx = mostrarSaude ? (
     <JarvisNotificationCard titulo={saudePc.nivel === "critico" ? "Seu Mac está sobrecarregado" : "Seu Mac está ficando pesado"}>
       <span className="block space-y-1.5">
@@ -1302,24 +1317,16 @@ export function Assistant({ variant = "embedded" }: { variant?: "embedded" | "wi
         ))}
         {saudePc.avisos.length > 2 && <span className="block text-[10px] text-muted-foreground">+{saudePc.avisos.length - 2} {saudePc.avisos.length - 2 === 1 ? "alerta" : "alertas"}</span>}
       </span>
+      {mostrarProgramando && (
+        <span className="mt-2 block space-y-1 border-t border-border/60 pt-2">
+          <span className="block text-[12px] font-semibold">{programando.emAndamento ? "Atlas está programando" : "Atlas não está programando agora"}</span>
+          {programandoConteudo}
+        </span>
+      )}
     </JarvisNotificationCard>
   ) : null;
-  const programandoJsx = mostrarProgramando ? (
-    <JarvisNotificationCard titulo={programando.emAndamento ? "Atlas está programando" : "Atlas não está programando agora"}>
-      <span className="block space-y-1">
-        {programando.emAndamento ? (
-          <>
-            <span className="block text-[12px] font-semibold leading-snug">{programando.emAndamento.titulo}</span>
-            <span className="block text-[11px] text-muted-foreground">há {programando.emAndamento.ha} · pedido de {programando.emAndamento.origem}</span>
-          </>
-        ) : <span className="block text-[11px] text-muted-foreground">Nenhum pedido em andamento.</span>}
-        {(programando.naFila > 0 || programando.aguardando > 0) && (
-          <span className="block text-[11px] text-muted-foreground">
-            {programando.naFila > 0 && `${programando.naFila} na fila`}{programando.naFila > 0 && programando.aguardando > 0 && " · "}{programando.aguardando > 0 && `${programando.aguardando} esperando a sua aprovação`}
-          </span>
-        )}
-      </span>
-    </JarvisNotificationCard>
+  const programandoJsx = mostrarProgramando && !mostrarSaude ? (
+    <JarvisNotificationCard titulo={programando.emAndamento ? "Atlas está programando" : "Atlas não está programando agora"}>{programandoConteudo}</JarvisNotificationCard>
   ) : null;
   const notificacaoJsx = alarmeAtlas.atual ? (
     <AlarmeAtlasCard alarme={alarmeAtlas.atual} onResponder={alarmeAtlas.responder} />
