@@ -659,7 +659,7 @@ function Botao({ children, onClick, href }: { children: React.ReactNode; onClick
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
-export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, onPasso, passoFixo, perfilFixo, respostas }: {
+export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, onPasso, irPara, passoFixo, perfilFixo, respostas }: {
   titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; teste?: boolean;
   editar?: boolean; onMudar?: (e: EstruturaQuiz) => void; onImagem?: (arquivo: File) => Promise<string>;
   // Link público no celular (15/10): ocupa a tela toda, barra de progresso fixa no
@@ -669,6 +669,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   onEvento?: (tipo: "passo" | "cta", passo?: number) => void;
   /** Modo teste (15/11): avisa em que tela o quiz está (e o perfil do resultado) para o mapa mental destacar o bloco. */
   onPasso?: (passo: number, perfilId: string | null) => void;
+  /** Modo teste (15/11): o mapa mental manda o teste para uma tela (`n` muda a cada clique, para repetir o mesmo destino). `respostas`: o caminho escolhido (ex.: gênero Mulher). */
+  irPara?: { n: number; passo: number; perfil?: string | null; respostas?: Record<string, number> };
   /** Vista em fileira da revisão (25/10): mostra só esta tela, sem avançar; no fim, o resultado deste perfil. */
   passoFixo?: number; perfilFixo?: string;
   /** Respostas já dadas (ex.: { genero: 1 }) para mostrar um caminho do quiz no editor: as imagens que dependem delas já aparecem. */
@@ -694,7 +696,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const [enviando, setEnviando] = useState(false);
   const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
   const passo = passos[Math.min(pos, passos.length - 1)];
-  const perfil = useMemo(() => (perfilFixo ? e.perfis.find((p) => p.id === perfilFixo) ?? null : calcularPerfil(e, escolhas)), [e, escolhas, perfilFixo]);
+  const [perfilSalto, setPerfilSalto] = useState<string | null>(null);   // perfil do resultado escolhido no mapa (modo teste)
+  const perfil = useMemo(() => (perfilFixo ? e.perfis.find((p) => p.id === perfilFixo) ?? null : (perfilSalto && e.perfis.find((p) => p.id === perfilSalto)) || calcularPerfil(e, escolhas)), [e, escolhas, perfilFixo, perfilSalto]);
   const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
   const f = (t?: string) => preencher(t, e, escolhas, perfil, contato.nome);
   const temTelaResultado = telas.some((t) => t.tipo === "resultado");
@@ -711,6 +714,15 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const evento = useRef(onEvento);
   evento.current = onEvento;
   useEffect(() => { trocou.current?.(); if (pos > 0) evento.current?.("passo", pos); }, [pos]);
+  const ultimoSalto = useRef(irPara?.n ?? 0);
+  useEffect(() => {
+    if (!irPara || irPara.n === ultimoSalto.current) return;
+    ultimoSalto.current = irPara.n;
+    if (irPara.respostas) setEscolhas((r) => ({ ...r, ...irPara.respostas }));
+    setPerfilSalto(irPara.perfil ?? null);
+    setPos(Math.max(0, Math.min(irPara.passo, passos.length - 1)));
+  }, [irPara, passos.length]);
+  useEffect(() => { if (passos[Math.min(pos, passos.length - 1)]?.tipo !== "fim") setPerfilSalto(null); }, [pos, passos]);
   const avisoPasso = useRef(onPasso);
   avisoPasso.current = onPasso;
   useEffect(() => { avisoPasso.current?.(pos, perfil?.id ?? null); }, [pos, perfil?.id]);

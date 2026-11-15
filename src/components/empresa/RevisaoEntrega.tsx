@@ -76,6 +76,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [mapaNoTeste, setMapaNoTeste] = useState(() => { try { return localStorage.getItem("quiz-teste-mapa") === "1"; } catch { return false; } });
   const alternarMapaTeste = () => setMapaNoTeste((v) => { try { localStorage.setItem("quiz-teste-mapa", v ? "0" : "1"); } catch { /* sem armazenamento */ } return !v; });
   const [passoTeste, setPassoTeste] = useState<{ pos: number; perfil: string | null }>({ pos: 0, perfil: null });
+  const [saltoTeste, setSaltoTeste] = useState<{ n: number; passo: number; perfil?: string | null; respostas?: Record<string, number> }>({ n: 0, passo: 0 });
   const laminas = useMemo(() => (quiz?.estrutura ? laminasDoQuiz(quiz.estrutura) : []), [quiz?.estrutura]);
   const iTela = Math.max(0, laminas.findIndex((l) => l.chave === telaSel));
   const tela = laminas[iTela];
@@ -354,10 +355,10 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
                       {noCelular ? (
                         <MolduraCelularEscalada escuro={quiz.estrutura.tema === "escuro"}>
-                          <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
+                          <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste telaCheia irPara={saltoTeste} onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
                         </MolduraCelularEscalada>
                       ) : (
-                        <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
+                        <QuizPlayer key={chaveQuiz} titulo={quiz.titulo} estrutura={quiz.estrutura} teste irPara={saltoTeste} onPasso={(pos, perfil) => setPassoTeste({ pos, perfil })} />
                       )}
                     </div>
                     {mapaNoTeste && (() => {
@@ -366,7 +367,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                         <div className="hidden h-full min-h-[420px] w-[52%] min-w-[340px] shrink-0 flex-col rounded-2xl border border-white/10 bg-[#0a1019] p-3 md:flex">
                           <p className="mb-2 flex shrink-0 items-center gap-2 text-sm font-semibold text-white"><Workflow className="h-4 w-4 text-cyan-300" />Você está em: <span className="font-normal text-white/70">{atual?.rotulo ?? "—"}</span></p>
                           <div className="min-h-0 flex-1">
-                            <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={atual?.chave ?? ""} onEscolher={() => { /* só acompanha o teste */ }} onAdicionar={() => { /* só acompanha o teste */ }} />
+                            <FluxoQuiz quizId={quiz.id} estrutura={quiz.estrutura} laminas={laminas} faltas={faltasQuiz} selecionada={atual?.chave ?? ""} onEscolher={(chave, variante) => { const l = laminas.find((x) => x.chave === chave); if (l) setSaltoTeste((a) => ({ n: a.n + 1, passo: l.passo, perfil: l.perfil ?? null, respostas: variante ? { [variante.pid]: variante.idx } : undefined })); }}
+                              onAdicionar={() => { /* o mapa do teste não cria telas */ }} />
                           </div>
                         </div>);
                     })()}
