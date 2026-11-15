@@ -104,23 +104,36 @@ export function ReguaNumero({ config, valor, aoMudar, cor, escuro, suave }: { co
 
 // ---------------------------------------------------------------- Barras pelos mentores (Ziggur 10)
 
-export interface BarraMentor { nome: string; livros: number; fonte?: string; voce?: boolean }
+export interface BarraMentor { nome: string; livros?: number; fato?: string; foto?: string; fonte?: string; voce?: boolean }
 
 /** Uma barra por mentor (livros por ano); a barra "Você" aparece em destaque. As barras crescem quando a tela entra. */
 export function BarrasMentores({ barras, fontes, cor, escuro, suave }: { barras: BarraMentor[]; fontes: string[] } & Visual) {
-  const maior = Math.max(1, ...barras.map((b) => b.livros));
+  const maior = Math.max(1, ...barras.map((b) => b.livros ?? 0));
   const [entrou, setEntrou] = useState(false);
   useEffect(() => { const t = setTimeout(() => setEntrou(true), 150); return () => clearTimeout(t); }, []);
   return (
     <div className="space-y-3">
-      {barras.map((b, k) => (
-        <div key={b.nome} className="space-y-1">
-          <div className="flex justify-between text-sm"><span className={cn("font-semibold", b.voce && "underline decoration-2 underline-offset-4")}>{b.nome}</span><span className="font-bold tabular-nums">{b.livros} livros/ano</span></div>
-          <div className={cn("h-4 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-gray-200")}>
-            <div className="h-full rounded-full transition-[width] duration-1000 ease-out" style={{ width: entrou ? `${(b.livros / maior) * 100}%` : "0%", transitionDelay: `${k * 150}ms`, background: b.voce ? "#94a3b8" : cor }} />
+      {/* Lista longa (até 10 mentores) rola dentro do card para o Continuar não sair da tela. */}
+      <div className="max-h-[42dvh] space-y-3 overflow-y-auto pr-1">
+        {barras.map((b, k) => (
+          <div key={b.nome} className="space-y-1">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="flex min-w-0 items-center gap-2">
+                {b.foto && <img src={b.foto} alt="" draggable={false} className="h-7 w-7 shrink-0 rounded-full object-cover" />}
+                <span className={cn("font-semibold", b.voce && "underline decoration-2 underline-offset-4")}>{b.nome}</span>
+              </span>
+              {b.livros !== undefined
+                ? <span className="shrink-0 font-bold tabular-nums">{b.livros} livros/ano</span>
+                : <span className={cn("text-right text-xs", suave)}>{b.fato}</span>}
+            </div>
+            {b.livros !== undefined && (
+              <div className={cn("h-4 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-gray-200")}>
+                <div className="h-full rounded-full transition-[width] duration-1000 ease-out" style={{ width: entrou ? `${(b.livros / maior) * 100}%` : "0%", transitionDelay: `${k * 150}ms`, background: b.voce ? "#94a3b8" : cor }} />
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
       {fontes.length > 0 && <p className={cn("text-[11px] leading-snug", suave)}>Fonte: {fontes.join("; ")}.</p>}
     </div>
   );

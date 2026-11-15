@@ -40,7 +40,7 @@ export interface ConfigMentores {
   /** Pergunta de escolha (múltipla) dos mentores. */
   pergunta: string;
   /** Livros por ano de cada mentor (pelo texto da opção). Só números com fonte pública. */
-  dados: Record<string, { livros_ano?: number; fonte?: string }>;
+  dados: Record<string, { livros_ano?: number; fato?: string; fonte?: string }>;
   /** Barra "Você" com o número de uma pergunta de roleta (ex.: livros_ano). */
   voce?: { pergunta: string; rotulo?: string };
   /** Título quando nenhum mentor escolhido tem número: mostra os que têm. */
@@ -179,6 +179,8 @@ export interface EstruturaQuiz {
   fases?: { nome: string; de: string }[];
   /** Estrela + confete + som ao concluir cada fase (padrão: liga; `false` desliga). */
   fases_comemorar?: boolean;
+  /** Link pequeno "← Voltar" embaixo do botão principal (padrão: liga; `false` desliga, como na V2; o Voltar do topo continua). */
+  voltar_embaixo?: boolean;
   /** Curva da barra dentro de cada fase: "vturb" corre rápido no começo e desacelera no fim; "linear" (padrão) avança igual. */
   progresso?: "vturb" | "linear";
   /** Sem tela de perfil: depois do plano vem direto a oferta (Davi, 10/11: "não existe perfil na minha copy"). */

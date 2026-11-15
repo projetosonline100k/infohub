@@ -670,7 +670,7 @@ function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, 
             {ok("OK", contatoOk, enviando)}
             {(cap?.nota || editar) && <p className={cn("flex items-center justify-center gap-1.5 text-center text-xs", suave)}><Lock className="h-3 w-3 shrink-0" /><Txt caminho="captura.nota" valor={cap?.nota} /></p>}
             {selos}
-            <button type="button" onClick={() => ir(0)} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
+            {e.voltar_embaixo !== false && <button type="button" onClick={() => ir(0)} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>}
           </form>
         )}
         {fase === 2 && (
@@ -996,7 +996,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <div className="sticky bottom-3 z-10 pt-1">
                     <Botao onClick={() => { if (numeros[q.id] === undefined) definirNumero(q, valor); avancar(); }}>Continuar</Botao>
                   </div>
-                  {pos > 1 && !editar && !travado && (
+                  {pos > 1 && !editar && !travado && e.voltar_embaixo !== false && (
                     <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                   )}
                 </div>
@@ -1022,7 +1022,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                         </button>
                       )}
                   </div>
-                  {pos > 1 && !editar && !travado && (
+                  {pos > 1 && !editar && !travado && e.voltar_embaixo !== false && (
                     <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                   )}
                 </div>
@@ -1077,7 +1077,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                         </button>
                       )}
                   </div>
-                  {pos > 1 && !editar && !travado && (
+                  {pos > 1 && !editar && !travado && e.voltar_embaixo !== false && (
                     <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                   )}
                 </div>
@@ -1148,7 +1148,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     <ContinuarTravavel liberado={q.multipla ? !!marcadas[q.id]?.length : escolhas[q.id] !== undefined} falta={q.multipla ? "Escolha pelo menos uma" : "Escolha uma opção"} onClick={avancar} />
                   </div>
                 )}
-                {pos > 1 && !editar && !travado && (
+                {pos > 1 && !editar && !travado && e.voltar_embaixo !== false && (
                   <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                 )}
               </div>
@@ -1165,16 +1165,23 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               if (t.tipo === "barras_mentores" && t.mentores) {
                 const m = t.mentores;
                 const pq = perguntas.find((x) => x.id === m.pergunta);
-                const escolhidos = (marcadas[m.pergunta] ?? []).map((k) => pq?.opcoes[k]?.texto).filter((x): x is string => !!x);
+                const escolhidos = (marcadas[m.pergunta] ?? []).map((k) => ({ nome: pq?.opcoes[k]?.texto, foto: pq?.opcoes[k]?.imagem })).filter((x): x is { nome: string; foto: string | undefined } => !!x.nome);
                 const comDado = (nome: string) => typeof m.dados[nome]?.livros_ano === "number";
-                const mostrar = escolhidos.filter(comDado);
-                const geral = mostrar.length === 0;   // nenhum dos escolhidos tem número público: mostra os que têm
-                const nomes = geral ? Object.keys(m.dados).filter(comDado) : mostrar;
-                const barras: BarraMentor[] = nomes.map((n) => ({ nome: n, livros: m.dados[n].livros_ano as number, fonte: m.dados[n].fonte }));
+                // Mostra todos os que a pessoa marcou: número vira barra, fato vira texto, sem nenhum dos dois a linha some.
+                const mostrar = escolhidos.filter((x) => comDado(x.nome) || !!m.dados[x.nome]?.fato);
+                const geral = mostrar.length === 0;   // nenhum dos escolhidos tem dado público: mostra os que têm número
+                const lista = geral ? Object.keys(m.dados).filter(comDado).map((nome) => ({ nome, foto: pq?.opcoes.find((o) => o.texto === nome)?.imagem })) : mostrar;
+                const barras: BarraMentor[] = lista.map((x) => ({ nome: x.nome, foto: x.foto, livros: m.dados[x.nome]?.livros_ano, fato: m.dados[x.nome]?.fato, fonte: m.dados[x.nome]?.fonte }));
+                const nomes = lista.map((x) => x.nome);
                 const vq = m.voce && perguntas.find((x) => x.id === m.voce?.pergunta);
                 if (vq && numeros[vq.id] !== undefined) barras.push({ nome: m.voce?.rotulo ?? "Você", livros: numeros[vq.id], voce: true });
-                const media = barras.filter((b) => !b.voce).length ? Math.round(barras.filter((b) => !b.voce).reduce((s, b) => s + b.livros, 0) / barras.filter((b) => !b.voce).length) : 0;
+                const comNumero = barras.filter((b) => !b.voce && b.livros !== undefined);
+                const media = comNumero.length ? Math.round(comNumero.reduce((s, b) => s + (b.livros ?? 0), 0) / comNumero.length) : 0;
+                // Uma pessoa só: "Ele lê cerca de N"; duas ou mais: "Eles leem, em média, N".
+                const singular = nomes.length === 1;
                 titulo = (geral && m.titulo_geral ? f(m.titulo_geral) : titulo).replace(/\{mentores\}/g, listaEmTexto(nomes)).replace(/\{media_livros\}/g, String(media));
+                if (!geral) titulo = singular ? titulo.replace(/Eles (liam|leem), em média,?/, "Ele lê cerca de").replace(/\bEles (liam|leem)\b/, "Ele lê") : titulo.replace(/\bEles liam\b/, "Eles leem");
+                if (!geral && !comNumero.length) titulo = f(`Você escolheu ${listaEmTexto(nomes)}`);
                 corpo = <BarrasMentores barras={barras} fontes={[...new Set(barras.filter((b) => !b.voce && b.fonte).map((b) => b.fonte as string))]} {...visual} />;
               } else if (t.tipo === "depoimento_animado" && t.depoimento_animado) {
                 corpo = <DepoimentoAnimado key={t.id} cfg={t.depoimento_animado} {...visual} />;
@@ -1239,7 +1246,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     </button>
                   </div>
                 )}
-                {pos > 1 && !editar && !travado && (
+                {pos > 1 && !editar && !travado && e.voltar_embaixo !== false && (
                   <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
                 )}
               </form>
