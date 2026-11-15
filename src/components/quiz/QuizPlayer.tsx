@@ -1490,7 +1490,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
           <button key={p.id} type="button" onClick={() => setPlanoId(p.id)} aria-pressed={on}
             className="relative block w-full rounded-2xl border-2 p-4 text-left transition-colors"
             style={{ borderColor: on ? cor : "rgba(255,255,255,0.15)", background: on ? `${cor}1f` : "rgba(255,255,255,0.04)" }}>
-            {p.selo && <span className="absolute -top-2.5 right-4 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase text-[#0a1020]" style={{ background: cor }}>{p.selo}</span>}
+            {p.selo && <span className="absolute -top-2.5 right-4 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase text-white" style={{ background: cor }}>{p.selo}</span>}
             <div className="flex items-center gap-3">
               <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
               <div className="min-w-0 flex-1">
