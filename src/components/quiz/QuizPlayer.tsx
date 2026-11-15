@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher, primeiroNome,
-  type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
+  type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz, type VisualQuiz,
 } from "@/lib/quiz/quiz";
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
 import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
@@ -74,6 +74,8 @@ interface Ctx {
   aoClicarOferta?: () => void;   // métrica: clique no link da oferta
   /** Antes de abrir o checkout: leva nome, e-mail e WhatsApp que a pessoa já deu para o formulário de compra (Eduzz). */
   linkDeCompra?: (url: string) => string;
+  /** Identidade visual do quiz (estrutura.visual): cor e texto dos botões principais. */
+  botao?: { fundo: string; texto: string };
 }
 const QuizCtx = createContext<Ctx>({ editar: false, mostrarFaltas: false, cor: "#0ea5e9", escuro: false, mudarTexto: () => {}, mudarImagem: () => {}, podeEnviar: false });
 
@@ -652,10 +654,17 @@ function ContinuarTravavel({ liberado, falta, onClick, rotulo = "Continuar" }: {
   );
 }
 
+// Variáveis CSS da identidade visual (usadas por .quiz-visual em index.css).
+const varsDoVisual = (v: VisualQuiz) => ({
+  "--qv-texto": v.texto ?? "#FFFFFF", "--qv-texto-2": v.texto_2 ?? "#AAB6D0",
+  "--qv-card": v.card ?? "rgba(8,31,79,.5)", "--qv-borda": v.borda_card ?? "rgba(129,160,255,.25)",
+} as React.CSSProperties);
+
 function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
-  const { cor, editar, aoClicarOferta, linkDeCompra } = useContext(QuizCtx);
-  const cls = "h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]";
-  const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}` };
+  const { cor: corQuiz, editar, aoClicarOferta, linkDeCompra, botao } = useContext(QuizCtx);
+  const cor = botao?.fundo ?? corQuiz;
+  const cls = cn("h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]", !botao && "text-white");
+  const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(botao && { color: botao.texto }) };
   if (editar) return <div className={cn(cls, "flex items-center justify-center px-4 py-3")} style={estilo}>{children}</div>;
   if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()}>{children}</a></Button>;
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
@@ -679,8 +688,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   respostas?: Record<string, number>;
 }) {
   const e = estrutura;
+  const v = e.visual;
   const cor = corDoQuiz(e);
-  const escuro = e.tema === "escuro";
+  const escuro = e.tema === "escuro" || !!v;
   const perguntas = e.perguntas ?? [];
   const telas = e.telas ?? [];
   const pedir = e.captura?.ativa === false ? [] : (e.captura?.pedir ?? []);
@@ -747,7 +757,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     onMudar(n);
   };
   const ctx: Ctx = {
-    editar, mostrarFaltas: !!teste, cor, escuro, podeEnviar: !!onImagem && !!onMudar,
+    editar, mostrarFaltas: !!teste, cor, escuro, botao: v?.botao ? { fundo: v.botao, texto: v.botao_texto ?? "#010F24" } : undefined, podeEnviar: !!onImagem && !!onMudar,
     aoClicarOferta: () => evento.current?.("cta"),
     linkDeCompra: editar ? undefined : (u) => comDadosDoLead(u, { nome: contato.nome, email: contato.email, whatsapp: contato.whatsapp }),
     mudarTexto: (c, v) => onMudar?.(comValor(e, c, v)),
@@ -847,9 +857,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     <QuizCtx.Provider value={ctx}>
       {/* O quiz usa sempre a própria paleta (quiz-claro / quiz-escuro em index.css), não o tema do Infopro
           (25/10, Davi: "o fundo do quiz está da mesma cor do Infopro; preciso que mostre a cor original"). */}
-      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro",
+      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro", v && "quiz-visual",
         telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}
-        style={passo.tipo === "tela" && telas[passo.indice]?.fundo ? { background: telas[passo.indice].fundo } : undefined}>
+        style={v ? { ...varsDoVisual(v), ...(telaCheia ? {} : { background: v.fundo_css }) } : passo.tipo === "tela" && telas[passo.indice]?.fundo ? { background: telas[passo.indice].fundo } : undefined}>
         {teste && !editar && !travado && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
         {editar && !travado && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
@@ -1566,7 +1576,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
   const urlBase = plano ? plano.cta_url : (o.cta_url || perfil?.cta_url);
   const url = urlBase && linkDeCompra ? linkDeCompra(urlBase) : urlBase;
   const texto = o.cta_texto || perfil?.cta_texto || "Ativar meu plano";
-  const verde = "#34d399", roxo = "#9aa7ff";
+  const verde = e.visual?.botao ?? "#34d399", roxo = "#9aa7ff";
   const de = o.preco_de, por = o.preco_por ?? o.preco;
   const cartoesDePlano = () => (
     <div className="space-y-2.5">
@@ -1635,7 +1645,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
     </div>
   );
   return (
-    <div className="space-y-7 bg-[#0a1020] p-5 text-white [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]">   {/* ponta a ponta: o fundo escuro vai até as bordas da tela, também em cima e embaixo (sem faixa branca) */}
+    <div className={cn("space-y-7 p-5 text-white", !e.visual && "bg-[#0a1020] [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]")}>   {/* ponta a ponta: o fundo escuro vai até as bordas da tela, também em cima e embaixo (sem faixa branca) */}
       {(o.headline || editar) && <Txt caminho="oferta.headline" valor={o.headline} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />}
       {!!o.itens?.length && (
         <section className="space-y-3">

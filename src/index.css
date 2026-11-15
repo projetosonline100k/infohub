@@ -601,6 +601,12 @@ html.tema-papel-preto .document-editor .ProseMirror mark { background-color: hsl
   --primary: 0 0% 96%; --primary-foreground: 0 0% 9%; --ring: 0 0% 60%;
   color-scheme: dark;
 }
+/* Identidade visual do quiz (estrutura.visual, 15/11): cards/campos translúcidos com borda azulada e textos da paleta.
+   As cores vêm das variáveis --qv-* que o QuizPlayer põe no quiz; o fundo é o gradiente da própria página. */
+.quiz-visual { color: var(--qv-texto); --foreground: 0 0% 100%; --muted-foreground: 220 30% 75%; --border: 220 100% 75% / 0.25; --input: 220 100% 75% / 0.25; }
+.quiz-visual :is(.bg-white\/5, .bg-white\/\[0\.04\]) { background-color: var(--qv-card); }
+.quiz-visual :is(.border-white\/15, .border-white\/20) { border-color: var(--qv-borda); }
+.quiz-visual :is(.text-neutral-400, .text-muted-foreground, .text-white\/60) { color: var(--qv-texto-2); }
 :is(.quiz-claro, .quiz-escuro), :is(.quiz-claro, .quiz-escuro) :is(.bg-background, .bg-card, .bg-popover, .bg-sidebar) {
   background-image: none !important;
 }

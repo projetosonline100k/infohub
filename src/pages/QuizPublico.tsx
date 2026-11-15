@@ -50,7 +50,10 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
   const [carregando, setCarregando] = useState(true);
   const rolagem = useRef<HTMLDivElement>(null);
   const escuro = !quiz || quiz.estrutura.tema === "escuro";
-  const fundo = escuro ? FUNDO_ESCURO : FUNDO_CLARO;
+  const visual = quiz?.estrutura.visual;
+  const fundo = visual?.base ?? (escuro ? FUNDO_ESCURO : FUNDO_CLARO);
+  const barra = visual?.barra ?? fundo;
+  const imagemDeFundo = visual?.fundo_css;
 
   useEffect(() => {
     void (previa ? supabase.rpc("quiz_rascunho" as never, { p_token: slug } as never) : supabase.rpc("quiz_publico" as never, { p_slug: slug } as never)).then(({ data }) => {
@@ -72,13 +75,13 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
     const criada = !meta;
     if (!meta) { meta = document.createElement("meta"); meta.name = "theme-color"; document.head.appendChild(meta); }
     const corAntes = meta.content;
-    meta.content = fundo;
+    meta.content = barra;
     return () => {
       html.style.removeProperty("background"); body.style.removeProperty("background");
       [html.style.background, body.style.background, html.style.overscrollBehavior, body.style.overscrollBehavior, body.style.overflow] = antes;
       if (criada) meta?.remove(); else if (meta) meta.content = corAntes;
     };
-  }, [fundo]);
+  }, [fundo, barra]);
 
   const voltarAoTopo = useCallback(() => { rolagem.current?.scrollTo({ top: 0 }); }, []);
 
@@ -125,8 +128,8 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
 
   return (
     <div ref={rolagem}
-      className={escuro ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "quiz-claro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
-      style={{ touchAction: "pan-y" }}>
+      className={visual ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none text-neutral-100" : escuro ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "quiz-claro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
+      style={{ touchAction: "pan-y", ...(imagemDeFundo ? { background: imagemDeFundo } : {}) }}>
       {previa && <div className="sticky top-0 z-50 -mb-px bg-amber-400 px-3 py-1 text-center text-[11px] font-semibold text-amber-950">Prévia — não publicado</div>}
       <div className="flex min-h-full flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-[max(env(safe-area-inset-top),1.25rem)] sm:py-12">
         {carregando ? (

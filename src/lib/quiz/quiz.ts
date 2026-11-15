@@ -148,7 +148,20 @@ export interface PerguntaNome { depois_de: string; titulo?: string; texto?: stri
   /** Texto do link discreto que segue sem nome (ex.: "Prefiro não dizer"). Sem ele, não há como pular. */
   pular?: string }
 export interface SeloQuiz { texto: string; destaque?: string }
+/** Identidade visual do quiz (Davi, 15/11): um fundo único em todas as telas, textos, cards e botão. Sem isso o quiz usa só `tema` + `cor`. */
+export interface VisualQuiz {
+  /** Qualquer `background` CSS (gradiente). Vale para a página inteira e para todas as telas. */
+  fundo_css: string;
+  /** Cor da página e da barra do navegador (fica atrás do gradiente). */
+  base: string; barra?: string;
+  texto?: string; texto_2?: string;
+  /** Fundo e borda dos cards, opções, balões e campos. */
+  card?: string; borda_card?: string;
+  /** Botões principais e o texto escuro em cima deles. */
+  botao?: string; botao_texto?: string;
+}
 export interface EstruturaQuiz {
+  visual?: VisualQuiz;
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };
   perguntas: PerguntaQuiz[];
   perfis: PerfilQuiz[];
