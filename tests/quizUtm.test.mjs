@@ -106,3 +106,10 @@ test('dados do lead só vão para a Eduzz: outros sites e links inválidos ficam
   assert.equal(r.searchParams.has('email'), false);
   assert.equal(r.searchParams.has('phone'), false);
 });
+
+test('propagarUtm leva a UTM também para os links dos planos', () => {
+  const e = { oferta: { cta_url: 'https://chk.eduzz.com/A', planos: [{ cta_url: 'https://chk.eduzz.com/B' }, {}] } };
+  const n = u.propagarUtm(e, { utm_source: 'ig' });
+  assert.match(n.oferta.planos[0].cta_url, /utm_source=ig/);
+  assert.equal(n.oferta.planos[1].cta_url, undefined);
+});

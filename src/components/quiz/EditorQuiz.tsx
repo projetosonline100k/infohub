@@ -278,6 +278,13 @@ export function AjustesDaTela({ estrutura, lamina, numero, chavePedido, agente, 
         <Campo rotulo="Preço" valor={estrutura.oferta.preco} onSalvar={(v) => mudar((e) => { e.oferta!.preco = v; })} />
         <Campo rotulo="Botão da oferta" valor={estrutura.oferta.cta_texto} onSalvar={(v) => mudar((e) => { e.oferta!.cta_texto = v; })} />
         <Campo rotulo="Link do botão" valor={estrutura.oferta.cta_url} onSalvar={(v) => mudar((e) => { e.oferta!.cta_url = v; })} />
+        {estrutura.oferta.planos?.map((p, i) => <div key={p.id} className="space-y-2 rounded-lg border p-2">
+          <p className="text-xs font-semibold">Plano {i + 1}{p.oculto ? " (oculto no público)" : ""}</p>
+          <Campo rotulo="Nome" valor={p.nome} onSalvar={(v) => mudar((e) => { e.oferta!.planos![i].nome = v; })} />
+          <Campo rotulo="Preço" valor={p.preco} onSalvar={(v) => mudar((e) => { e.oferta!.planos![i].preco = v; })} />
+          <Campo rotulo="Selo" valor={p.selo} onSalvar={(v) => mudar((e) => { e.oferta!.planos![i].selo = v || undefined; })} />
+          <Campo rotulo="Link do plano" valor={p.cta_url} onSalvar={(v) => mudar((e) => { e.oferta!.planos![i].cta_url = v; })} />
+        </div>)}
       </>}
       <div className="border-t pt-3">
         <p className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground"><Sparkles className="h-3.5 w-3.5" />Pedir ajuste desta tela</p>

@@ -1455,11 +1455,43 @@ function Resultado({ e, t, base, perfil, iPerfil, escolhas, nome, f, onSeguir, s
 function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; iPerfil?: number; f: (s?: string) => string; suave?: string }) {
   const { aoClicarOferta, editar, linkDeCompra } = useContext(QuizCtx);
   const o = e.oferta!;
-  const urlBase = o.cta_url || perfil?.cta_url;
+  const planos = (o.planos ?? []).filter((p) => editar || !p.oculto);
+  const [planoId, setPlanoId] = useState<string | null>(null);
+  const plano = planos.find((p) => p.id === planoId) ?? planos.find((p) => p.destaque) ?? planos[0];
+  const comBonus = !plano || plano.com_bonus !== false;
+  const urlBase = plano ? plano.cta_url : (o.cta_url || perfil?.cta_url);
   const url = urlBase && linkDeCompra ? linkDeCompra(urlBase) : urlBase;
   const texto = o.cta_texto || perfil?.cta_texto || "Ativar meu plano";
   const verde = "#34d399", roxo = "#9aa7ff";
   const de = o.preco_de, por = o.preco_por ?? o.preco;
+  const cartoesDePlano = () => (
+    <div className="space-y-2.5">
+      {planos.map((p) => {
+        const on = p.id === plano?.id;
+        const cor = corDoQuiz(e);
+        return (
+          <button key={p.id} type="button" onClick={() => setPlanoId(p.id)} aria-pressed={on}
+            className="relative block w-full rounded-2xl border-2 p-4 text-left transition-colors"
+            style={{ borderColor: on ? cor : "rgba(255,255,255,0.15)", background: on ? `${cor}1f` : "rgba(255,255,255,0.04)" }}>
+            {p.selo && <span className="absolute -top-2.5 right-4 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase text-[#0a1020]" style={{ background: cor }}>{p.selo}</span>}
+            <div className="flex items-center gap-3">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-base font-extrabold leading-tight">{p.nome}{p.oculto && <span className="ml-2 text-xs font-medium text-white/50">(oculto)</span>}</p>
+                <p className="text-xs text-white/60">{p.com_bonus !== false ? <span className="font-semibold" style={{ color: verde }}>+ {o.bonus?.length ?? 0} bônus inclusos</span> : "Sem bônus"}</p>
+              </div>
+              <div className="text-right">
+                {p.preco_de && <p className="text-xs text-white/50"><s>{p.preco_de}</s></p>}
+                <p className="text-lg font-extrabold leading-tight">{p.preco}</p>
+                {p.parcelas && <p className="text-xs text-white/60">{p.parcelas.n}x de {p.parcelas.valor}</p>}
+                {p.equivalente && <p className="text-[11px] font-semibold" style={{ color: verde }}>{p.equivalente}</p>}
+              </div>
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
   const compra = (k: number) => (
     <div key={k} className="space-y-4">
       <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />
@@ -1472,7 +1504,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
           </div>
         </div>
       )}
-      <div className="text-center">
+      {plano ? cartoesDePlano() : <div className="text-center">
         {o.parcelas ? (
           <>
             {de && <p className="text-sm text-white/60">De <s><Txt caminho="oferta.preco_de" valor={de} /></s> por apenas</p>}
@@ -1485,7 +1517,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
             <Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe && !de ? o.preco_detalhe : undefined} as="p" className="block text-sm text-white/60" />
           </>
         )}
-      </div>
+      </div>}
       {url
         ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: roxo, boxShadow: `0 8px 24px -8px ${roxo}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
         : <div className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] opacity-90" style={{ background: roxo }}><Txt caminho="oferta.cta_texto" valor={texto} />{!editar && <span className="ml-2 text-xs font-medium">(link ainda não definido)</span>}</div>}
@@ -1514,8 +1546,13 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
           {!!o.bonus?.length && (
             <div className="space-y-2.5 pt-3">
               <Txt caminho="oferta.bonus_titulo" valor={o.bonus_titulo ?? "Bônus"} as="h3" className="block text-lg font-extrabold" />
+              {plano && (
+                <p className="rounded-lg px-3 py-1.5 text-xs font-extrabold uppercase" style={comBonus ? { background: `${verde}22`, color: verde } : { background: "#f8717122", color: "#fca5a5" }}>
+                  {comBonus ? "Exclusivo do plano anual" : `Você perde os ${o.bonus.length} bônus neste plano. Escolha o anual para levar.`}
+                </p>
+              )}
               {o.bonus.map((b, k) => (
-                <div key={k} className="space-y-1 rounded-2xl border border-white/15 bg-white/5 p-4">
+                <div key={k} className={cn("space-y-1 rounded-2xl border border-white/15 bg-white/5 p-4 transition-opacity", !comBonus && "opacity-40 grayscale [&_p]:line-through")}>
                   <p className="text-sm font-extrabold leading-snug"><span aria-hidden>🎁 </span><Txt caminho={`oferta.bonus.${k}.titulo`} valor={b.titulo} /></p>
                   {(b.preco_de || b.preco_por) && (
                     <p className="text-sm font-semibold text-white/70">De <s><Txt caminho={`oferta.bonus.${k}.preco_de`} valor={b.preco_de} /></s> por <span className="font-extrabold" style={{ color: verde }}><Txt caminho={`oferta.bonus.${k}.preco_por`} valor={b.preco_por} /></span></p>

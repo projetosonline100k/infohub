@@ -75,6 +75,16 @@ export interface OfertaQuiz {
   depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { titulo: string; texto: string; preco_de?: string; preco_por?: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
   headline?: string;   // headline no topo da oferta; ==trecho== vira grifo
   faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
+  /** Planos para escolher (15/11, Davi: anual em destaque com bônus, semestral e trimestral sem bônus). Sem `planos`, vale o plano único acima. */
+  planos?: PlanoOferta[];
+}
+export interface PlanoOferta {
+  id: string; nome: string; preco?: string; preco_de?: string; parcelas?: { n: number; valor: string }; cta_url?: string;
+  destaque?: boolean;   // vem selecionado ao abrir
+  selo?: string;        // ex.: "Mais escolhido"
+  com_bonus?: boolean;  // só estes planos levam os bônus
+  oculto?: boolean;     // some do público (fica no editor) até o link estar certo
+  equivalente?: string; // ex.: "≈ R$12,25/mês"
 }
 export type CampoCaptura = "nome" | "email" | "whatsapp";
 // Captura (16/10, pedido do Davi: nome e WhatsApp para contato). Com `depois_de`

@@ -34,10 +34,11 @@ export function comUtm(url: string, utm: Utm): string {
 }
 
 /** Copia a estrutura levando a UTM da visita para os botões de compra (oferta e perfis). */
-export function propagarUtm<T extends { oferta?: { cta_url?: string } | null; perfis?: { cta_url?: string }[] }>(e: T, utm: Utm): T {
+export function propagarUtm<T extends { oferta?: { cta_url?: string; planos?: { cta_url?: string }[] } | null; perfis?: { cta_url?: string }[] }>(e: T, utm: Utm): T {
   if (!Object.keys(utm).length) return e;
   const n = structuredClone(e);
   if (n.oferta?.cta_url) n.oferta.cta_url = comUtm(n.oferta.cta_url, utm);
+  for (const pl of n.oferta?.planos ?? []) if (pl.cta_url) pl.cta_url = comUtm(pl.cta_url, utm);
   for (const p of n.perfis ?? []) if (p.cta_url) p.cta_url = comUtm(p.cta_url, utm);
   return n;
 }
