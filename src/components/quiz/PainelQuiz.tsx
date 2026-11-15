@@ -1,4 +1,5 @@
 import { JornadaLead } from "./JornadaLead";
+import { origemDoLead } from "@/lib/quiz/origem";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Maximize2, X as FecharIcone } from "lucide-react";
@@ -57,6 +58,10 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
   // e os números somam todas as versões (o link do original sorteia entre elas).
   const raizId = quiz.variante_de ?? quiz.id;
   const [slugRaiz, setSlugRaiz] = useState(quiz.variante_de ? "" : quiz.slug);
+  const [nomesAfiliados, setNomesAfiliados] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    void db.from("quiz_afiliados").select("codigo, nome").eq("quiz_id", raizId).then(({ data }) => setNomesAfiliados(new Map(((data ?? []) as { codigo: string; nome: string }[]).map((a) => [a.codigo.toLowerCase(), a.nome]))));
+  }, [raizId]);
   const [familia, setFamilia] = useState<{ eventos: EventoQuiz[]; leads: LeadQuiz[] } | null>(null);
   useEffect(() => {
     if (aba !== "afiliados" && aba !== "links") return;
@@ -176,7 +181,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
       {quiz.status !== "publicado" && <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
 
       {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
-      {aba === "leads" && <Leads leads={leads} estados={estados} perguntas={perguntas} eventos={eventos ?? []} passos={passos} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
+      {aba === "leads" && <Leads nomesAfiliados={nomesAfiliados} leads={leads} estados={estados} perguntas={perguntas} eventos={eventos ?? []} passos={passos} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
       {aba === "x1" && (
         <div className={cn("space-y-3", preencher && "flex min-h-0 flex-1 flex-col")}>
           <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0a1520] p-1 text-sm">
@@ -386,7 +391,7 @@ function LinhaLead({ l, perguntas, onStatus }: { l: LeadQuiz; perguntas: string[
 
 // ---------------------------------------------------------------- Leads
 
-export function Leads({ leads, estados, perguntas, perfis, eventos, passos, onApagar, onStatus }: { leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; eventos: EventoQuiz[]; passos: PassoInfo[]; perfis: { id: string; nome: string }[]; onApagar: (ids: string[]) => Promise<void>; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
+export function Leads({ leads, estados, perguntas, perfis, eventos, passos, onApagar, onStatus, nomesAfiliados = new Map() }: { nomesAfiliados?: Map<string, string>; leads: LeadQuiz[]; estados: Map<string, EstadoCompra>; perguntas: string[]; eventos: EventoQuiz[]; passos: PassoInfo[]; perfis: { id: string; nome: string }[]; onApagar: (ids: string[]) => Promise<void>; onStatus: (l: LeadQuiz, s: StatusLead) => void }) {
   const [busca, setBusca] = useState("");
   const [status, setStatus] = useState<"" | StatusLead>("");
   const [perfil, setPerfil] = useState("");
@@ -420,7 +425,7 @@ export function Leads({ leads, estados, perguntas, perfis, eventos, passos, onAp
       {filtrados.length === 0 ? <p className="py-10 text-center text-sm text-white/45">Nenhum lead com esse filtro.</p> : (
         <div className="mt-2 overflow-x-auto">
           <table className="w-full min-w-[900px] text-sm">
-            <thead className="text-left text-xs text-white/50"><tr><th className="w-8 py-1.5"><input type="checkbox" checked={todosMarcados} onChange={() => setMarcados(todosMarcados ? new Set() : new Set(idsFiltrados))} title="Marcar todos" /></th><th className="py-1.5 font-medium">Quando</th><th className="font-medium">Nome</th><th className="font-medium">E-mail</th><th className="font-medium">WhatsApp</th><th className="font-medium">Perfil</th><th className="font-medium">Etapa</th><th className="font-medium">Compra</th><th className="font-medium">Status</th></tr></thead>
+            <thead className="text-left text-xs text-white/50"><tr><th className="w-8 py-1.5"><input type="checkbox" checked={todosMarcados} onChange={() => setMarcados(todosMarcados ? new Set() : new Set(idsFiltrados))} title="Marcar todos" /></th><th className="py-1.5 font-medium">Quando</th><th className="font-medium">Nome</th><th className="font-medium">E-mail</th><th className="font-medium">WhatsApp</th><th className="font-medium">Perfil</th><th className="font-medium">Etapa</th><th className="font-medium">Origem</th><th className="font-medium">Compra</th><th className="font-medium">Status</th></tr></thead>
             <tbody>
               {filtrados.map((l) => {
                 const zap = l.whatsapp?.replace(/\D/g, "");
@@ -434,11 +439,15 @@ export function Leads({ leads, estados, perguntas, perfis, eventos, passos, onAp
                       <td onClick={(e) => e.stopPropagation()}>{zap ? <button type="button" onClick={() => void abrirLinkExterno(`https://wa.me/${zap.length <= 11 ? `55${zap}` : zap}`)} className="flex items-center gap-1 text-emerald-300 hover:underline"><MessageCircle className="h-3.5 w-3.5" />{l.whatsapp}</button> : "—"}</td>
                       <td className="text-white/70">{nomePerfil(l.perfil)}</td>
                       <td className="max-w-[180px] truncate text-white/70">{etapaDoLead(l, perguntas)}</td>
+                      <td className="max-w-[200px]">{(() => {
+                        const o = origemDoLead(l.utm, nomesAfiliados);
+                        return <span title={o.detalhe || o.rotulo} className={cn("block truncate rounded-full px-2 py-0.5 text-xs font-medium", o.tipo === "afiliado" ? "bg-amber-400/15 text-amber-200" : o.tipo === "link" ? "bg-fuchsia-500/15 text-fuchsia-200" : "bg-white/10 text-white/55")}>{o.rotulo}</span>;
+                      })()}</td>
                       <td><BadgeCompra estado={estados.get(l.id)} /></td>
                       <td onClick={(e) => e.stopPropagation()}><SeletorStatus l={l} onStatus={onStatus} /></td>
                     </tr>
                     {aberto === l.id && (
-                      <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={9} className="px-3 py-2">
+                      <tr key={`${l.id}-r`} className="bg-white/[0.03]"><td colSpan={10} className="px-3 py-2">
                         {passos.length > 0 && <JornadaLead lead={l} eventos={eventos} passos={passos} />}
                         <details className="mt-3 text-xs" open={passos.length === 0}><summary className="cursor-pointer text-white/45 hover:text-white/70">Respostas em lista</summary>
                           <ul className="mt-2 grid gap-x-6 gap-y-1 sm:grid-cols-2">{l.respostas.map((r, i) => <li key={i}><span className="text-white/50">{r.pergunta}</span> → <b className="text-white">{r.resposta ?? "—"}</b></li>)}</ul>
