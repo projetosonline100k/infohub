@@ -3,7 +3,7 @@ import ReactFlow, {
   Background, Controls, Handle, MarkerType, Position, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, Clock, GitBranch, Link2, Loader2, MessageCircle, Plus, Power, Trash2, X, Zap, type LucideIcon } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, Clock, GitBranch, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Trash2, X, Zap, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,12 +17,13 @@ import {
   type Botao, type GrafoFluxo, type NoFluxo, type TipoNo,
 } from "../../../supabase/functions/_shared/fluxo";
 import type { FluxoInstagram, NumerosDoNo } from "@/hooks/useInstagramFluxos";
+import { buscarPostsInstagram, type InstagramPost } from "@/hooks/useInstagramAutomacoes";
 
 // Editor de fluxo de mensagens do Instagram (13/11/2026, Davi: "automações igual ao dash do ManyChat").
 // Blocos ligados por setas, da esquerda para a direita: início → mensagem (com botões) → esperar → condição → fim.
 // Cada saída de um bloco (botão de resposta, "sim/não", "depois do tempo") tem o seu ponto de ligação.
 
-type Dados = { no: NoFluxo; selecionado: boolean; problemas: string[]; numeros?: NumerosDoNo };
+type Dados = { no: NoFluxo; selecionado: boolean; problemas: string[]; numeros?: NumerosDoNo; gatilhoTexto?: string };
 const VISUAL: Record<TipoNo, { nome: string; Icone: LucideIcon; cor: string }> = {
   inicio: { nome: "Gatilho", Icone: Zap, cor: "border-amber-300/70 bg-amber-300/10 text-amber-100" },
   mensagem: { nome: "Mensagem", Icone: MessageCircle, cor: "border-cyan-300/60 bg-cyan-300/10 text-cyan-100" },
@@ -30,6 +31,15 @@ const VISUAL: Record<TipoNo, { nome: string; Icone: LucideIcon; cor: string }> =
   condicao: { nome: "Condição", Icone: GitBranch, cor: "border-emerald-300/60 bg-emerald-300/10 text-emerald-100" },
   fim: { nome: "Fim", Icone: Power, cor: "border-rose-300/60 bg-rose-300/10 text-rose-100" },
 };
+
+// Gatilhos (15/11, Davi: "preciso conseguir selecionar o gatilho que eu quero, pode copiar do ManyChat"): cartões como no ManyChat. Os três primeiros o robô já atende;
+// os outros aparecem como "em breve" (a Meta ainda não entrega ou o robô ainda não trata).
+const TIPOS_GATILHO: { valor: "comentario" | "story" | "dm"; titulo: string; descricao: string; Icone: LucideIcon }[] = [
+  { valor: "comentario", titulo: "Comentário em post ou reel", descricao: "Alguém comenta uma palavra-chave no seu post ou reel. O fluxo abre a conversa no direct.", Icone: MessageSquareText },
+  { valor: "story", titulo: "Resposta a um story", descricao: "Alguém responde ao seu story com uma palavra-chave.", Icone: BookOpen },
+  { valor: "dm", titulo: "Mensagem direta (DM)", descricao: "Alguém manda a palavra-chave por direct para a conta.", Icone: Send },
+];
+const GATILHOS_EM_BREVE = ["Menção no story", "Comentário na live", "Clique em anúncio para o direct", "Link do Instagram (ig.me)"];
 
 const resumo = (no: NoFluxo) => {
   if (no.tipo === "mensagem") return (no.dados.texto ?? "").trim() || "Toque para escrever a mensagem";
@@ -52,7 +62,7 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
         {data.numeros && no.tipo === "mensagem" && <span className="ml-auto text-[10px] font-normal text-white/60" title="Enviadas · respostas">{data.numeros.enviadas} env · {data.numeros.respostas} resp</span>}
       </div>
       <div className="space-y-2 px-3 py-2.5">
-        <p className={cn("line-clamp-4 whitespace-pre-wrap text-[13px] leading-snug", no.tipo === "mensagem" && !(no.dados.texto ?? "").trim() && "text-white/40")}>{resumo(no)}</p>
+        <p className={cn("line-clamp-4 whitespace-pre-wrap text-[13px] leading-snug", no.tipo === "mensagem" && !(no.dados.texto ?? "").trim() && "text-white/40")}>{no.tipo === "inicio" && data.gatilhoTexto ? data.gatilhoTexto : resumo(no)}</p>
         {botoes.length > 0 && no.tipo === "mensagem" && (
           <div className="space-y-1">{botoes.map((b) => (
             <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs">
@@ -87,7 +97,8 @@ const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
 
-export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFechar, onSalvar, whatsapp = false }: {
+export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFechar, onSalvar, whatsapp = false, igUserId }: {
+  igUserId?: string;   // para escolher posts específicos no gatilho de comentário
   whatsapp?: boolean;   // 15/11: o mesmo editor serve aos fluxos do WhatsApp (sem palavra-chave nem regras da Meta)
   aberto: boolean; fluxo: FluxoInstagram | null; inicial?: RascunhoFluxo | null; contaNome: string; numeros: Record<string, NumerosDoNo>;
   onFechar: () => void; onSalvar: (f: Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">, id?: string) => Promise<void>;
@@ -98,6 +109,10 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
   const [palavras, setPalavras] = useState("");
   const [modoPalavra, setModoPalavra] = useState<"contem" | "trecho" | "exata">("contem");
   const [respostas, setRespostas] = useState("");
+  const [mediaIds, setMediaIds] = useState<string[] | null>(null);   // null = todos os posts e reels
+  const [posts, setPosts] = useState<InstagramPost[] | null>(null);
+  const [carregandoPosts, setCarregandoPosts] = useState(false);
+  const [erroPosts, setErroPosts] = useState<string | null>(null);
   const [grafo, setGrafo] = useState<GrafoFluxo>(grafoVazio());
   const [sel, setSel] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -108,20 +123,34 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
     // Automação nova já nasce com o gatilho ligado a uma primeira mensagem (como o ManyChat): é só escrever.
     const base: RascunhoFluxo = fluxo ?? inicial ?? {};
     setNome(base.nome ?? "Nova automação"); setAtivo(fluxo?.ativo ?? false);
+    setMediaIds(base.media_ids?.length ? base.media_ids : null);
     setGatilhos(base.gatilhos ?? ["comentario"]); setPalavras((base.palavras_chave ?? []).join(", "));
     setModoPalavra(base.correspondencia === "exata" || base.correspondencia === "trecho" ? base.correspondencia : "contem"); setRespostas((base.respostas_comentario ?? []).join("\n"));
     setGrafo(base.grafo?.nos?.length ? base.grafo : { nos: [{ id: "inicio", tipo: "inicio", x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem", x: 360, y: 0, dados: { texto: "" } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] });
     setSel(fluxo || inicial?.grafo ? null : "m1");
   }, [aberto, fluxo, inicial]);
 
+  useEffect(() => { setPosts(null); }, [igUserId]);
+  useEffect(() => {
+    if (!aberto || whatsapp || !igUserId || mediaIds === null || !gatilhos.includes("comentario") || posts || carregandoPosts) return;
+    setCarregandoPosts(true); setErroPosts(null);
+    buscarPostsInstagram(igUserId).then(setPosts).catch((e) => setErroPosts(e instanceof Error ? e.message : "Não deu para buscar os posts.")).finally(() => setCarregandoPosts(false));
+  }, [aberto, whatsapp, igUserId, mediaIds, gatilhos, posts, carregandoPosts]);
   const problemas = useMemo(() => problemasDoFluxo(grafo, { whatsapp }), [grafo, whatsapp]);
   const porNo = useMemo(() => { const m = new Map<string, string[]>(); for (const p of problemas) if (p.no) m.set(p.no, [...(m.get(p.no) ?? []), p.texto]); return m; }, [problemas]);
   const palavrasLista = useMemo(() => palavras.split(/[,\n]/).map((p) => p.trim()).filter(Boolean), [palavras]);
 
+  const textoGatilho = useMemo(() => {
+    if (whatsapp) return "Quando você clicar em Iniciar fluxo no chat do lead";
+    const tipos = TIPOS_GATILHO.filter((t) => gatilhos.includes(t.valor)).map((t) => t.titulo);
+    const palavra = palavrasLista.length ? `palavra: ${palavrasLista.slice(0, 3).join(", ")}${palavrasLista.length > 3 ? "…" : ""}` : "sem palavra ainda";
+    const post = gatilhos.includes("comentario") ? (mediaIds === null ? "todos os posts" : `${mediaIds.length} post${mediaIds.length === 1 ? "" : "s"}`) : "";
+    return [tipos.join(" · ") || "Escolha o gatilho", palavra, post].filter(Boolean).join("\n");
+  }, [whatsapp, gatilhos, palavrasLista, mediaIds]);
   const nodes = useMemo<Node<Dados>[]>(() => grafo.nos.map((n) => ({
     id: n.id, type: "bloco", position: { x: n.x, y: n.y }, draggable: true, deletable: n.tipo !== "inicio",
-    data: { no: n, selecionado: n.id === sel, problemas: porNo.get(n.id) ?? [], numeros: numeros[n.id] },
-  })), [grafo.nos, sel, porNo, numeros]);
+    data: { no: n, selecionado: n.id === sel, problemas: porNo.get(n.id) ?? [], numeros: numeros[n.id], gatilhoTexto: n.tipo === "inicio" ? textoGatilho : undefined },
+  })), [grafo.nos, sel, porNo, numeros, textoGatilho]);
   const edges = useMemo<Edge[]>(() => grafo.ligacoes.map((l) => ({
     id: `${l.de}:${l.saida}`, source: l.de, sourceHandle: l.saida, target: l.para, type: "smoothstep", interactionWidth: 24,
     markerEnd: { type: MarkerType.ArrowClosed, color: "#67e8f9" }, style: { stroke: "#67e8f9", strokeWidth: 2 },
@@ -161,13 +190,15 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
   const guardar = async (ativar?: boolean) => {
     if (!nome.trim()) { toast.error("Dê um nome ao fluxo"); return; }
     const quer = ativar ?? ativo;
+    if (!whatsapp && !gatilhos.length) { toast.error("Escolha ao menos um gatilho"); return; }
+    if (!whatsapp && gatilhos.includes("comentario") && mediaIds !== null && !mediaIds.length) { toast.error("Escolha ao menos um post ou volte para “todos os posts”"); return; }
     if (quer) {
       if (!whatsapp && !palavrasLista.length) { toast.error("Escreva ao menos uma palavra-chave para ativar"); return; }
       if (problemas.length) { toast.error(`Arrume antes de ativar: ${problemas[0].texto}`); return; }
     }
     setSalvando(true);
     try {
-      await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: modoPalavra, media_ids: fluxo?.media_ids ?? inicial?.media_ids ?? null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo }, fluxo?.id);
+      await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: modoPalavra, media_ids: gatilhos.includes("comentario") && mediaIds?.length ? mediaIds : null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo }, fluxo?.id);
       setAtivo(quer); toast.success(quer ? "Fluxo salvo e ativo" : "Fluxo salvo (desativado)"); onFechar();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Não consegui salvar"); } finally { setSalvando(false); }
   };
@@ -227,10 +258,44 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
                     <label key={v} className="flex items-start gap-2 text-xs text-white/80"><input type="radio" className="mt-0.5" checked={modoPalavra === v} onChange={() => setModoPalavra(v)} /><span><b>{r}</b> <span className="text-white/45">{d}</span></span></label>))}
                   {modoPalavra === "trecho" && palavrasLista.some((p) => p.replace(/[^a-zA-Z0-9]/g, "").length < 3) && <p className="rounded-lg bg-amber-500/10 p-2 text-[11px] text-amber-200">Trecho muito curto dispara em muita palavra (“in” aparece em quase tudo). Use 3 letras ou mais.</p>}
                 </div>
-                <div className="space-y-1.5"><p className="text-xs text-white/60">Quando vale</p>
-                  {GATILHOS.map((g) => (
-                    <label key={g.valor} className="flex items-start gap-2 text-xs text-white/80"><input type="checkbox" className="mt-0.5" checked={gatilhos.includes(g.valor)} onChange={(e) => setGatilhos((x) => e.target.checked ? [...x, g.valor] : x.filter((y) => y !== g.valor))} /><span><b>{g.rotulo}</b> <span className="text-white/45">{g.descricao}</span></span></label>))}
+                <div className="space-y-2"><p className="text-xs text-white/60">Escolha o gatilho (pode marcar mais de um)</p>
+                  {TIPOS_GATILHO.map((t) => {
+                    const on = gatilhos.includes(t.valor);
+                    return (
+                      <button key={t.valor} type="button" onClick={() => setGatilhos((x) => (on ? x.filter((y) => y !== t.valor) : [...x, t.valor]))} aria-pressed={on}
+                        className={cn("flex w-full items-start gap-2.5 rounded-xl border p-2.5 text-left", on ? "border-amber-300 bg-amber-300/10" : "border-white/15 hover:bg-white/5")}>
+                        <span className={cn("mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg", on ? "bg-amber-300 text-black" : "bg-white/10 text-white/70")}><t.Icone className="h-4 w-4" /></span>
+                        <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t.titulo}</span><span className="block text-[11px] leading-snug text-white/55">{t.descricao}</span></span>
+                        <span className={cn("mt-1 grid h-4 w-4 shrink-0 place-items-center rounded-full border", on ? "border-amber-300 bg-amber-300 text-black" : "border-white/30")}>{on && <Check className="h-3 w-3" />}</span>
+                      </button>);
+                  })}
+                  <details className="text-[11px] text-white/40"><summary className="cursor-pointer hover:text-white/60">Em breve (como no ManyChat)</summary>
+                    <ul className="mt-1 space-y-0.5 pl-3">{GATILHOS_EM_BREVE.map((g) => <li key={g}>• {g}</li>)}</ul></details>
                 </div>
+                {gatilhos.includes("comentario") && (
+                  <div className="space-y-2"><p className="text-xs text-white/60">Em quais posts e reels</p>
+                    <div className="inline-flex rounded-lg border border-white/15 p-0.5 text-xs">
+                      <button type="button" onClick={() => setMediaIds(null)} className={cn("rounded-md px-3 py-1", mediaIds === null ? "bg-white/15 font-semibold" : "text-white/60")}>Todos</button>
+                      <button type="button" onClick={() => setMediaIds((m) => m ?? [])} className={cn("rounded-md px-3 py-1", mediaIds !== null ? "bg-white/15 font-semibold" : "text-white/60")}>Escolher posts</button>
+                    </div>
+                    {mediaIds !== null && (
+                      !igUserId ? <p className="text-[11px] text-white/45">Conecte uma conta do Instagram para escolher os posts.</p>
+                      : carregandoPosts ? <p className="flex items-center gap-2 text-[11px] text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Buscando posts…</p>
+                      : erroPosts ? <p className="text-[11px] text-rose-300">{erroPosts}</p>
+                      : (
+                        <div className="grid max-h-64 grid-cols-3 gap-1.5 overflow-y-auto">
+                          {(posts ?? []).map((p) => {
+                            const marcado = mediaIds.includes(p.id), imagem = p.thumbnail_url || p.media_url;
+                            return (
+                              <button key={p.id} type="button" title={p.caption ?? ""} onClick={() => setMediaIds((m) => { const l = m ?? []; return l.includes(p.id) ? l.filter((x) => x !== p.id) : [...l, p.id]; })}
+                                className={cn("relative aspect-[4/5] overflow-hidden rounded-md border-2 bg-white/5", marcado ? "border-amber-300" : "border-transparent opacity-80 hover:opacity-100")}>
+                                {imagem && <img src={imagem} alt="" className="h-full w-full object-cover" loading="lazy" />}
+                                <span className="absolute inset-x-0 bottom-0 bg-black/60 px-1 py-0.5 text-[10px] text-white">{p.media_product_type === "REELS" ? "Reel" : "Post"} · {p.comments_count ?? 0} 💬</span>
+                                {marcado && <span className="absolute right-1 top-1 rounded-full bg-amber-300 p-0.5 text-black"><Check className="h-3 w-3" /></span>}
+                              </button>);
+                          })}
+                        </div>))}
+                  </div>)}
                 {gatilhos.includes("comentario") && (
                   <label className="block space-y-1 text-xs text-white/60">Respostas públicas no comentário (uma por linha; sorteia uma)
                     <Textarea rows={3} value={respostas} onChange={(e) => setRespostas(e.target.value)} placeholder={"Te mandei no direct! 📩\nConfere sua DM 😉"} className="border-white/15 bg-black/20 text-sm text-white" /></label>)}
