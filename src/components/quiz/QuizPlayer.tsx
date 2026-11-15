@@ -8,16 +8,18 @@ import {
   type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz,
 } from "@/lib/quiz/quiz";
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
+import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
 import { comDadosDoLead } from "@/lib/quiz/utm";
 import { montarPlano, razoesDoPerfil, temaDaOpcao, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
+import { AreaDoCheck, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
 // carregando no meio) → captura → resultado e oferta. Na página pública envia
 // a resposta; no Infopro (teste) não grava nada. Com `editar`, o Davi clica num
 // texto pra mudar a palavra e numa imagem pra enviar (onMudar/onImagem).
-export interface FimDoQuiz { escolhas: Record<string, number>; perfil: PerfilQuiz | null; contato: Partial<Record<CampoCaptura, string>> }
+export interface FimDoQuiz { escolhas: Record<string, number>; /** Respostas em número (roleta/régua), por id da pergunta. */ numeros: Record<string, number>; perfil: PerfilQuiz | null; contato: Partial<Record<CampoCaptura, string>> }
 
 const ROTULO_CAMPO: Record<CampoCaptura, { rotulo: string; tipo: string; exemplo: string }> = {
   nome: { rotulo: "Seu nome", tipo: "text", exemplo: "Como você se chama?" },
@@ -639,9 +641,9 @@ function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, s
 }
 
 // Continuar das perguntas que só seguem no botão: bloqueado (cinza, cadeado e o que falta) até a pessoa responder.
-function ContinuarTravavel({ liberado, falta, onClick }: { liberado: boolean; falta: string; onClick: () => void }) {
+function ContinuarTravavel({ liberado, falta, onClick, rotulo = "Continuar" }: { liberado: boolean; falta: string; onClick: () => void; rotulo?: string }) {
   const { escuro, editar } = useContext(QuizCtx);
-  if (liberado) return <Botao onClick={onClick}>Continuar</Botao>;
+  if (liberado) return <Botao onClick={onClick}>{rotulo}</Botao>;
   return (
     <button type="button" disabled={!editar} aria-disabled="true" onClick={editar ? onClick : undefined}
       className={cn("flex w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-bold shadow-none", escuro ? "bg-white/10 text-white/40" : "bg-gray-200 text-gray-400")}>
@@ -692,6 +694,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const respostasChave = JSON.stringify(respostas ?? {});
   useEffect(() => { if (respostas) setEscolhas((x) => ({ ...x, ...respostas })); }, [respostasChave]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [marcadas, setMarcadas] = useState<Record<string, number[]>>({});   // perguntas de "escolha quantas quiser"
+  const [numeros, setNumeros] = useState<Record<string, number>>({});   // perguntas de número (roleta/régua); escolhas guarda a faixa do número, para o perfil
+  const [desenhou, setDesenhou] = useState(false);   // tela "compromisso": já desenhou o ✓
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);
   const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
@@ -699,7 +703,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const [perfilSalto, setPerfilSalto] = useState<string | null>(null);   // perfil do resultado escolhido no mapa (modo teste)
   const perfil = useMemo(() => (perfilFixo ? e.perfis.find((p) => p.id === perfilFixo) ?? null : (perfilSalto && e.perfis.find((p) => p.id === perfilSalto)) || calcularPerfil(e, escolhas)), [e, escolhas, perfilFixo, perfilSalto]);
   const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
-  const f = (t?: string) => preencher(t, e, escolhas, perfil, contato.nome);
+  const f = (t?: string) => preencher(t, e, escolhas, perfil, contato.nome, numeros);
   const temTelaResultado = telas.some((t) => t.tipo === "resultado");
 
   // Depois da abertura, baixa as imagens das próximas telas: a troca de tela não fica esperando a imagem.
@@ -756,7 +760,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const gravar = async (dados: Partial<Record<CampoCaptura, string>>) => {
     if (enviado.current) return;
     setEnviando(true);
-    try { await onFim?.({ escolhas, perfil, contato: dados }); enviado.current = true; } finally { setEnviando(false); }
+    try { await onFim?.({ escolhas, numeros, perfil, contato: dados }); enviado.current = true; } finally { setEnviando(false); }
   };
   const terminar = async (dados: Partial<Record<CampoCaptura, string>>) => {
     await gravar(dados);
@@ -787,7 +791,30 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     setMarcadas((m) => ({ ...m, [qid]: nova }));
     setEscolhas((x) => { const y = { ...x }; if (nova.length) y[qid] = nova[0]; else delete y[qid]; return y; });
   };
-  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setContato({}); enviado.current = false; };
+  // Número da roleta/régua: guarda o valor e a faixa dele (a opção que dá os pontos de perfil e o selo).
+  const definirNumero = (q: EstruturaQuiz["perguntas"][number], n: number) => {
+    setNumeros((x) => ({ ...x, [q.id]: n }));
+    const k = faixaDoNumero(q, n);
+    setEscolhas((x) => { const y = { ...x }; if (k >= 0) y[q.id] = k; else delete y[q.id]; return y; });
+  };
+  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setNumeros({}); setDesenhou(false); setContato({}); enviado.current = false; };
+
+  // Resumo do plano em números (tela "perfil" com plano_numeros): só entram as linhas que a pessoa já respondeu.
+  const linhasDoPlano = (c: NonNullable<TelaQuiz["plano_numeros"]>): LinhaDoPlano[] => {
+    const lista: LinhaDoPlano[] = [];
+    const pergunta = (id: string) => perguntas.find((x) => x.id === id);
+    const min = numeros[c.minutos], cfg = pergunta(c.minutos)?.numero;
+    if (min !== undefined) lista.push({ emoji: "⏱️", rotulo: "Tempo por dia", valor: textoDoNumero(cfg, min) });
+    const mo = pergunta(c.momento)?.opcoes[escolhas[c.momento]];
+    if (mo) lista.push({ emoji: "🗓️", rotulo: "Momento do dia", valor: mo.ritual ?? mo.texto });
+    if (min !== undefined) {
+      lista.push({ emoji: "📖", rotulo: "Resumos por semana", valor: String(resumosPorSemana(min, cfg)) });
+      lista.push({ emoji: "📚", rotulo: "Livros em 12 meses", valor: String(livrosEm12Meses(min, cfg)) });
+    }
+    const ob = pergunta(c.objetivo)?.opcoes[escolhas[c.objetivo]];
+    if (ob) lista.push({ emoji: ob.emoji ?? "🎯", rotulo: "Seu objetivo", valor: ob.resumo ? ob.resumo.charAt(0).toLocaleUpperCase("pt-BR") + ob.resumo.slice(1) : ob.texto });
+    return lista;
+  };
 
   const meio = passos.filter((p) => p.tipo !== "intro" && p.tipo !== "fim").length;
   const progresso = passo.tipo === "intro" ? 0 : passo.tipo === "fim" ? 100 : Math.round((pos / (meio + 1)) * 100);
@@ -876,6 +903,27 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             };
             const livro = q.estilo === "livro";
             const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
+            if ((q.estilo === "roleta" || q.estilo === "regua") && q.numero) {
+              // Pergunta de número (15/11, V2): roleta vertical ou régua; sem mexer, vale o valor inicial.
+              const cfg = q.numero;
+              const valor = numeros[q.id] ?? limitesDoNumero(cfg).inicial;
+              const faixa = faixaDoNumero(q, valor);
+              return (
+                <div className="space-y-4">
+                  <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-center text-2xl font-bold leading-snug" />
+                  <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-center text-sm", suave)} />
+                  {q.estilo === "roleta"
+                    ? <RoletaNumero key={q.id} config={cfg} valor={numeros[q.id]} selo={faixa >= 0 ? f(q.opcoes[faixa].texto) : undefined} aoMudar={(n) => definirNumero(q, n)} cor={cor} escuro={escuro} suave={suave} />
+                    : <ReguaNumero key={q.id} config={cfg} valor={numeros[q.id]} aoMudar={(n) => definirNumero(q, n)} cor={cor} escuro={escuro} suave={suave} />}
+                  <div className="sticky bottom-3 z-10 pt-1">
+                    <Botao onClick={() => { if (numeros[q.id] === undefined) definirNumero(q, valor); avancar(); }}>Continuar</Botao>
+                  </div>
+                  {pos > 1 && !editar && !travado && (
+                    <button type="button" onClick={voltar} className={cn("flex items-center gap-1 text-xs hover:opacity-100", suave)}><ArrowLeft className="h-3 w-3" />Voltar</button>
+                  )}
+                </div>
+              );
+            }
             if (q.estilo === "lado") {
               // Seleção ao lado do mascote (desenho do Davi, 13/11): ele fica de um lado, a pessoa marca N itens no painel e a barra de baixo enche até completar.
               const meta = metaDaSelecao(q);
@@ -1004,11 +1052,50 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           {passo.tipo === "tela" && (() => {
             const t = telas[passo.indice];
             const base = `telas.${passo.indice}`;
+            if (t.tipo === "barras_mentores" || t.tipo === "depoimento_animado" || t.tipo === "projecao" || t.tipo === "compromisso") {
+              const visual = { cor, escuro, suave };
+              const botao = (rotulo: string) => <Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || rotulo} /></Botao>;
+              let corpo: ReactNode = null, titulo = f(t.titulo), rodape: ReactNode = botao("Continuar");
+              if (t.tipo === "barras_mentores" && t.mentores) {
+                const m = t.mentores;
+                const pq = perguntas.find((x) => x.id === m.pergunta);
+                const escolhidos = (marcadas[m.pergunta] ?? []).map((k) => pq?.opcoes[k]?.texto).filter((x): x is string => !!x);
+                const comDado = (nome: string) => typeof m.dados[nome]?.livros_ano === "number";
+                const mostrar = escolhidos.filter(comDado);
+                const geral = mostrar.length === 0;   // nenhum dos escolhidos tem número público: mostra os que têm
+                const nomes = geral ? Object.keys(m.dados).filter(comDado) : mostrar;
+                const barras: BarraMentor[] = nomes.map((n) => ({ nome: n, livros: m.dados[n].livros_ano as number, fonte: m.dados[n].fonte }));
+                const vq = m.voce && perguntas.find((x) => x.id === m.voce?.pergunta);
+                if (vq && numeros[vq.id] !== undefined) barras.push({ nome: m.voce?.rotulo ?? "Você", livros: numeros[vq.id], voce: true });
+                const media = barras.filter((b) => !b.voce).length ? Math.round(barras.filter((b) => !b.voce).reduce((s, b) => s + b.livros, 0) / barras.filter((b) => !b.voce).length) : 0;
+                titulo = (geral && m.titulo_geral ? f(m.titulo_geral) : titulo).replace(/\{mentores\}/g, listaEmTexto(nomes)).replace(/\{media_livros\}/g, String(media));
+                corpo = <BarrasMentores barras={barras} fontes={[...new Set(barras.filter((b) => !b.voce && b.fonte).map((b) => b.fonte as string))]} {...visual} />;
+              } else if (t.tipo === "depoimento_animado" && t.depoimento_animado) {
+                corpo = <DepoimentoAnimado key={t.id} cfg={t.depoimento_animado} {...visual} />;
+              } else if (t.tipo === "projecao" && t.projecao) {
+                const pq = perguntas.find((x) => x.id === t.projecao?.pergunta);
+                const min = numeros[t.projecao.pergunta] ?? (pq?.numero ? limitesDoNumero(pq.numero).inicial : 0);
+                corpo = <ProjecaoLivros key={t.id} livros={livrosEm12Meses(min, pq?.numero)} {...visual} />;
+                titulo = titulo.replace(/\{minutos\}/g, String(min)).replace(/\{livros\}/g, String(livrosEm12Meses(min, pq?.numero)));
+              } else if (t.tipo === "compromisso") {
+                corpo = <AreaDoCheck key={t.id} aoMudar={setDesenhou} rotuloLimpar={t.compromisso?.limpar} {...visual} />;
+                rodape = <ContinuarTravavel liberado={desenhou} falta="Desenhe um ✓ para confirmar" rotulo={t.botao || "Confirmar"} onClick={avancar} />;
+              }
+              return (
+                <div key={t.id} className="space-y-5 py-2">
+                  <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={titulo} as="h2" className="block text-2xl font-bold leading-snug" />
+                  {corpo}
+                  <Txt caminho={`${base}.texto`} valor={t.texto} mostrar={f(t.texto)} as="p" className={cn("block text-base leading-relaxed", suave)} />
+                  <div className="sticky bottom-3 z-10 pt-1">{rodape}</div>
+                </div>
+              );
+            }
             if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar || travado ? undefined : avancar} suave={suave} />;
             if (t.tipo === "perfil") {
               const razoes = razoesDoPerfil(perguntas, escolhas, perfil?.id ?? "");
               return <PerfilTela key={t.id} perfil={perfil} razoes={razoes} cor={cor} escuro={escuro} suave={suave}
                 titulo={<Txt caminho={`${base}.titulo`} valor={t.titulo || "Com base nas suas respostas, seu perfil é"} mostrar={f(t.titulo || "Com base nas suas respostas, seu perfil é")} as="p" className="block" />}
+                numeros={t.plano_numeros && <PlanoEmNumeros titulo={f(t.plano_numeros.titulo || "Seu plano em números")} linhas={linhasDoPlano(t.plano_numeros)} cor={cor} escuro={escuro} suave={suave} />}
                 botao={<Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || "Ver meu plano"} /></Botao>} />;
             }
             if (t.tipo === "plano_livros") return <PlanoLivros key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} />;

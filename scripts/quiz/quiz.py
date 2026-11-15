@@ -20,6 +20,8 @@ sys.path.insert(0, str(RAIZ / 'scripts'))
 from migration_db import connect  # noqa: E402
 
 
+TIPOS_DE_TELA = ('respiro', 'especialista', 'carregando', 'resultado', 'perfil', 'plano_livros', 'barras_mentores', 'depoimento_animado', 'projecao', 'compromisso')
+
 def validar(e):
     erros = []
     if not isinstance(e, dict):
@@ -61,8 +63,8 @@ def validar(e):
         erros.append('telas: tem que ser uma lista')
         telas = []
     for k, t in enumerate(telas, 1):
-        if not isinstance(t, dict) or t.get('tipo') not in ('respiro', 'especialista', 'carregando', 'resultado'):
-            erros.append(f'tela {k}: tipo tem que ser respiro, especialista, carregando ou resultado')
+        if not isinstance(t, dict) or t.get('tipo') not in TIPOS_DE_TELA:
+            erros.append(f'tela {k}: tipo tem que ser um destes: {", ".join(TIPOS_DE_TELA)}')
         elif t.get('depois_de') != 'intro' and t.get('depois_de') not in vistos:
             erros.append(f'tela {k}: depois_de "{t.get("depois_de")}" não é "intro" nem id de pergunta')
         elif not t.get('id'):
