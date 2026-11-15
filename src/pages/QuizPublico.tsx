@@ -15,9 +15,36 @@ const FUNDO_ESCURO = "#0a0a0a";   // bg-neutral-950
 const FUNDO_CLARO = "#ffffff";
 
 // previa (13/11): /quiz-previa/:token mostra o rascunho do quiz, mesmo publicado, sem gravar visita, passo nem lead.
+// Teste A/B (15/11): o link do quiz original sorteia entre ele e as versões publicadas marcadas no teste (quiz_ab_slugs). O sorteio fica fixo para o
+// visitante (localStorage) e tudo (visita, telas, lead) é gravado na versão sorteada, então cada versão tem as próprias métricas.
 export default function QuizPublico({ previa = false }: { previa?: boolean }) {
   const { slug: slugDaUrl = "", token = "" } = useParams();
-  const slug = previa ? token : slugDaUrl;
+  const [sorteado, setSorteado] = useState<string | null>(previa ? token : null);
+  useEffect(() => {
+    if (previa) { setSorteado(token); return; }
+    let vivo = true;
+    void (async () => {
+      let escolhido = slugDaUrl;
+      try {
+        const { data } = await supabase.rpc("quiz_ab_slugs" as never, { p_slug: slugDaUrl } as never);
+        const lista = Array.isArray(data) ? (data as string[]) : [];
+        if (lista.length > 1) {
+          const k = `quiz-ab:${slugDaUrl}`;
+          let guardado: string | null = null;
+          try { guardado = localStorage.getItem(k); } catch { /* sem armazenamento */ }
+          escolhido = guardado && lista.includes(guardado) ? guardado : lista[Math.floor(Math.random() * lista.length)];
+          try { localStorage.setItem(k, escolhido); } catch { /* sem armazenamento */ }
+        }
+      } catch { /* sem teste A/B: vale o link como está */ }
+      if (vivo) setSorteado(escolhido);
+    })();
+    return () => { vivo = false; };
+  }, [slugDaUrl, token, previa]);
+  if (sorteado === null) return <div className="fixed inset-0 flex items-center justify-center bg-neutral-950"><Loader2 className="h-5 w-5 animate-spin text-neutral-500" /></div>;
+  return <QuizPublicoConteudo key={sorteado} slug={sorteado} previa={previa} />;
+}
+
+function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }) {
   const [quiz, setQuiz] = useState<{ titulo: string; estrutura: EstruturaQuiz } | null>(null);
   const [carregando, setCarregando] = useState(true);
   const rolagem = useRef<HTMLDivElement>(null);

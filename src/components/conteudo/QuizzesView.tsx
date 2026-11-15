@@ -52,7 +52,7 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
     const [{ data: ms }, { data: qs }, { data: rs }] = await Promise.all([
       supabase.from("membros").select("id, nome").eq("cliente_id", clienteId).eq("eh_ia", true).ilike("nome", "roy").limit(1),
       db.from("quizzes").select("id, titulo, slug, status, pedido, atividade_id, estrutura, criado_em, publicado_em")
-        .eq("cliente_id", clienteId).neq("status", "cancelado").order("criado_em", { ascending: false }),
+        .eq("cliente_id", clienteId).is("variante_de", null).neq("status", "cancelado").order("criado_em", { ascending: false }),
       db.from("quiz_respostas").select("id, quiz_id, perfil, nome, email, whatsapp, criada_em, respostas")
         .eq("cliente_id", clienteId).order("criada_em", { ascending: false }).limit(2000),
     ]);

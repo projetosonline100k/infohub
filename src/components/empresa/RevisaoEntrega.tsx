@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { EntregaSemDocumento } from "./EntregaSemDocumento";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BarChart3, CheckCircle2, FileText, ExternalLink, Link2, QrCode, List, Loader2, MessageSquare, Monitor, Pencil, Play, Smartphone, Workflow } from "lucide-react";
+import { BarChart3, CheckCircle2, FileText, ExternalLink, Link2, QrCode, List, Loader2, MessageSquare, Monitor, Pencil, Play, Plus, Scale, Smartphone, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { QrPrevia } from "@/components/quiz/QrPrevia";
 import { FileiraQuiz } from "@/components/quiz/FileiraQuiz";
 import { moverBloco, adicionarPergunta, AjustesDaTela, desligarCaptura, duplicarPergunta, EstruturaDoQuiz, excluirPergunta, excluirTelaExtra, faltasDaLamina, PreviaDaTela } from "@/components/quiz/EditorQuiz";
 import { FluxoQuiz } from "@/components/quiz/FluxoQuiz";
+import { ComparativoVersoes, type VersaoQuiz } from "@/components/quiz/ComparativoVersoes";
 import { confirmar } from "@/components/DialogosGlobais";
 import { MetricasDoQuiz } from "@/components/quiz/QuizMetricas";
 import { faltasDoQuiz } from "@/lib/quiz/faltas";
@@ -61,7 +62,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
-  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; previa_token?: string; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; previa_token?: string; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null; variante_de?: string | null; versao?: number; ab_ativo?: boolean } | null>(null);
   const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
   // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
   // 02/11 (Davi: "mais fácil de usar, ver em qual etapa é cada coisa"): Editar (estrutura, tela grande e ajustes) é o
@@ -76,6 +77,13 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [mapaNoTeste, setMapaNoTeste] = useState(() => { try { return localStorage.getItem("quiz-teste-mapa") === "1"; } catch { return false; } });
   const alternarMapaTeste = () => setMapaNoTeste((v) => { try { localStorage.setItem("quiz-teste-mapa", v ? "0" : "1"); } catch { /* sem armazenamento */ } return !v; });
   const [passoTeste, setPassoTeste] = useState<{ pos: number; perfil: string | null }>({ pos: 0, perfil: null });
+  // Versões do quiz para teste A/B (15/11, Davi: "v2, v3… sem alterar o primeiro"): cada versão é um quiz próprio, ligado ao original (V1).
+  const [raizId, setRaizId] = useState<string | null>(null);
+  const [versoes, setVersoes] = useState<VersaoQuiz[]>([]);
+  const [versaoSel, setVersaoSel] = useState<string | null>(null);   // null = o original (V1)
+  const versaoSelRef = useRef<string | null>(null);
+  versaoSelRef.current = versaoSel;
+  const [comparando, setComparando] = useState(false);
   const [saltoTeste, setSaltoTeste] = useState<{ n: number; passo: number; perfil?: string | null; respostas?: Record<string, number> }>({ n: 0, passo: 0 });
   const laminas = useMemo(() => (quiz?.estrutura ? laminasDoQuiz(quiz.estrutura) : []), [quiz?.estrutura]);
   const iTela = Math.max(0, laminas.findIndex((l) => l.chave === telaSel));
@@ -119,10 +127,12 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     void (async () => {
       const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
-        db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada").eq("atividade_id", tarefaId).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+        db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo").eq("atividade_id", tarefaId).is("variante_de", null).order("criado_em", { ascending: false }).limit(1).maybeSingle()
           .then((r) => {
             if (!vivo) return;
             const novo = (r.data as typeof quiz) ?? null;
+            setRaizId(novo?.id ?? null);
+            if (versaoSelRef.current) return;   // há uma versão (V2…) aberta: não troca por cima dela
             const json = JSON.stringify(novo?.estrutura ?? null);
             if (json !== estruturaConhecida.current) { estruturaConhecida.current = json; setChaveQuiz((k) => k + 1); }
             setQuiz(novo);
@@ -146,7 +156,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     })();
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
-  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setAbaQuiz("editar"); setTelaSel(null); setLateralQuiz("conversa"); setAndamento(null); estruturaConhecida.current = ""; }, [tarefaId]);
+  useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setVersaoSel(null); setVersoes([]); setRaizId(null); setAbaQuiz("editar"); setTelaSel(null); setLateralQuiz("conversa"); setAndamento(null); estruturaConhecida.current = ""; }, [tarefaId]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
@@ -170,7 +180,17 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const alteracoesNaoPublicadas = !!quiz && quiz.status === "publicado" && JSON.stringify(quiz.estrutura) !== JSON.stringify(quiz.estrutura_publicada ?? quiz.estrutura);
   const publicar = async () => {
     if (!quiz) return;
-    if (quiz.status === "revisar") { await aprovar(); return; }
+    if (quiz.status === "revisar" && !quiz.variante_de) { await aprovar(); return; }
+    if (quiz.status === "revisar" && quiz.variante_de) {   // versão (V2…): publica direto, sem passar pela aprovação da entrega
+      setSalvando(true);
+      try {
+        const { error } = await db.from("quizzes").update({ status: "publicado", estrutura_publicada: quiz.estrutura }).eq("id", quiz.id);
+        if (error) throw error;
+        setQuiz({ ...quiz, status: "publicado", estrutura_publicada: quiz.estrutura });
+        toast.success(`V${quiz.versao} publicada: ela tem o próprio link. Para receber visitas do link principal, ligue "No teste A/B".`);
+      } catch (e) { toast.error(`Não consegui publicar: ${(e as { message?: string })?.message ?? "erro"}`); } finally { setSalvando(false); }
+      return;
+    }
     setSalvando(true);
     try {
       const { error } = await db.from("quizzes").update({ estrutura_publicada: quiz.estrutura }).eq("id", quiz.id);
@@ -179,6 +199,48 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
       toast.success("Publicado: as alterações já estão no link");
       onMudou?.();
     } catch { toast.error("Não consegui publicar"); } finally { setSalvando(false); }
+  };
+  const COLUNAS_QUIZ = "id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo";
+  const carregarVersoes = useCallback(async () => {
+    if (!raizId) { setVersoes([]); return; }
+    const { data } = await db.from("quizzes").select("id, versao, slug, status, ab_ativo").or(`id.eq.${raizId},variante_de.eq.${raizId}`).order("versao");
+    setVersoes((data ?? []) as VersaoQuiz[]);
+  }, [raizId]);
+  useEffect(() => { void carregarVersoes(); }, [carregarVersoes, quiz?.status, quiz?.ab_ativo]);
+  const abrirVersao = async (id: string | null) => {
+    const alvo = id ?? raizId;
+    if (!alvo) return;
+    const { data } = await db.from("quizzes").select(COLUNAS_QUIZ).eq("id", alvo).maybeSingle();
+    if (!data) { toast.error("Não consegui abrir essa versão"); return; }
+    setVersaoSel(id);
+    versaoSelRef.current = id;
+    estruturaConhecida.current = JSON.stringify((data as NonNullable<typeof quiz>).estrutura ?? null);
+    setChaveQuiz((k) => k + 1);
+    setTelaSel(null);
+    setQuiz(data as NonNullable<typeof quiz>);
+  };
+  const novaVersao = async () => {
+    if (!quiz || !raizId) return;
+    const original = versoes.find((v) => v.id === raizId);
+    const n = Math.max(1, ...versoes.map((v) => v.versao)) + 1;
+    const base = (original?.slug ?? quiz.slug).slice(0, 54);
+    setSalvando(true);
+    try {
+      const id = crypto.randomUUID();
+      const { error } = await db.from("quizzes").insert({ id, cliente_id: clienteId, titulo: quiz.titulo, slug: `${base}-v${n}`, status: "revisar", estrutura: quiz.estrutura, variante_de: raizId, versao: n });
+      if (error) throw error;
+      await carregarVersoes();
+      await abrirVersao(id);
+      toast.success(`V${n} criada como cópia de V${quiz.versao ?? 1}: mude o que quiser, o original não é alterado`);
+    } catch (e) { toast.error(`Não consegui criar a versão: ${(e as { message?: string })?.message ?? "erro"}`); } finally { setSalvando(false); }
+  };
+  const alternarAb = async () => {
+    if (!quiz || !quiz.variante_de) return;
+    const novo = !quiz.ab_ativo;
+    const { error } = await db.from("quizzes").update({ ab_ativo: novo }).eq("id", quiz.id);
+    if (error) { toast.error("Não consegui mudar o teste A/B"); return; }
+    setQuiz({ ...quiz, ab_ativo: novo });
+    toast.success(novo ? `V${quiz.versao} entra no teste A/B: o link do quiz passa a sortear entre as versões publicadas` : `V${quiz.versao} saiu do teste A/B`);
   };
   const passarParaRoy = async () => {
     setSalvando(true);
@@ -262,6 +324,24 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   ))}
                 </div>
                 <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-700 dark:text-sky-300">{ROTULO_STATUS[quiz.status]}</span>
+                {/* Versões para teste A/B: V1 é o original; V2, V3… são cópias que você muda sem mexer nele. */}
+                {versoes.length > 0 && (
+                  <span className="flex items-center gap-1 rounded-full bg-muted p-0.5 text-xs">
+                    {versoes.map((v) => {
+                      const ativa = (versaoSel ?? raizId) === v.id;
+                      return <button key={v.id} type="button" onClick={() => void abrirVersao(v.id === raizId ? null : v.id)} title={v.id === raizId ? "O quiz original" : `Versão ${v.versao}${v.ab_ativo ? " · no teste A/B" : ""}`}
+                        className={cn("rounded-full px-2.5 py-0.5 font-semibold", ativa ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground")}>V{v.versao}{v.ab_ativo && <span className="ml-1 text-[9px] font-normal text-emerald-600 dark:text-emerald-300">A/B</span>}</button>;
+                    })}
+                    <button type="button" onClick={() => void novaVersao()} disabled={salvando} title="Cria uma cópia deste quiz para testar uma mudança, sem alterar o original" className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-muted-foreground hover:text-foreground"><Plus className="h-3 w-3" />Nova versão</button>
+                  </span>
+                )}
+                {quiz.variante_de && (
+                  <button type="button" onClick={() => void alternarAb()} aria-pressed={!!quiz.ab_ativo} disabled={quiz.status !== "publicado" && !quiz.ab_ativo}
+                    title={quiz.status !== "publicado" ? "Publique esta versão primeiro" : "Ligado: o link do quiz principal sorteia entre o original e as versões marcadas"}
+                    className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium disabled:opacity-50", quiz.ab_ativo ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "hover:bg-muted")}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", quiz.ab_ativo ? "bg-emerald-500" : "bg-muted-foreground/50")} />No teste A/B</button>
+                )}
+                {versoes.length > 1 && <button type="button" onClick={() => setComparando(true)} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"><Scale className="h-3.5 w-3.5" />Comparar</button>}
                 <button type="button" onClick={() => setAbaQuiz("andamento")} title="O que ainda falta e o que o agente está fazendo"
                   className={cn("flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium", faltasQuiz.length ? "bg-amber-500/15 text-amber-700 dark:text-amber-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300", verEsboco && "ring-1 ring-current")}>
                   {andamento?.esperando && <Loader2 className="h-3 w-3 animate-spin" />}{faltasQuiz.length ? `Pendências: ${faltasQuiz.length}` : "Sem pendências"}
@@ -447,20 +527,21 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                   : quiz?.status === "revisar" ? "Teste o quiz. Aprovar publica e libera o link."
                   : "Converse com ele: elogio, ajuste ou refazer, ele entende pela conversa."}
               </p>
-              {noAr && <Button variant="outline" onClick={onFechar}>Fechar</Button>}
+              {(noAr || !!quiz?.variante_de) && <Button variant="outline" onClick={onFechar}>Fechar</Button>}
               {esbocoParaRoy && !noAr && (
                 <Button variant="outline" className="gap-1.5" disabled={salvando || escrevendo} onClick={() => void passarParaRoy()}
                   title="Aprova o esboço e o Roy cria o quiz no Infopro (aba Quiz)">
                   <CheckCircle2 className="h-4 w-4" />Aprovar e passar pro Roy criar o quiz
                 </Button>
               )}
-              {!noAr && <Button className="gap-1.5" disabled={salvando || escrevendo} title={escrevendo ? "Espere ele terminar a resposta" : undefined} onClick={() => void aprovar()}>
+              {!noAr && !quiz?.variante_de && <Button className="gap-1.5" disabled={salvando || escrevendo} title={escrevendo ? "Espere ele terminar a resposta" : undefined} onClick={() => void aprovar()}>
                 {salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}{quiz?.status === "esboco" ? "Aprovar esboço" : quiz?.status === "revisar" ? "Aprovar e publicar" : "Aprovar"}
               </Button>}
             </div>
           </>
         )}
       </DialogContent>
+      <ComparativoVersoes aberto={comparando} onFechar={() => setComparando(false)} clienteId={clienteId} versoes={versoes} />
       {quiz?.previa_token && <QrPrevia link={linkDaPreviaDoQuiz(quiz.previa_token)} aberto={qrPrevia} onFechar={() => setQrPrevia(false)} />}
     </Dialog>
   );
