@@ -162,6 +162,8 @@ export interface VisualQuiz {
 }
 export interface EstruturaQuiz {
   visual?: VisualQuiz;
+  /** Perguntas de estilo "escala" (15/11): "velocimetro" = meio-círculo com ponteiro arrastável; sem isso, a trilha reta. */
+  escala_visual?: "velocimetro";
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };
   perguntas: PerguntaQuiz[];
   perfis: PerfilQuiz[];

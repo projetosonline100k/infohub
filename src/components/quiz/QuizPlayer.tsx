@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
-import { Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
+import { Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Lightbulb, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
 import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -545,6 +545,61 @@ function Escala({ q, base, escolhida, aoEscolher, f }: { q: EstruturaQuiz["pergu
   );
 }
 
+// Escala em velocímetro (15/11/2026, Davi, pelo Roy: "a pessoa só move o ponteiro"): meio-círculo com degradê vermelho → verde, o emoji de cada opção em volta do arco,
+// um ponteiro que a pessoa arrasta (ou toca num ponto) e que encaixa na opção mais próxima, e uma pílula com o nome da opção. Começa no meio, sem resposta até mexer.
+function Velocimetro({ q, escolhida, aoEscolher, f }: { q: EstruturaQuiz["perguntas"][number]; escolhida: number | undefined; aoEscolher: (k: number) => void; f: (t?: string) => string }) {
+  const { cor, escuro } = useContext(QuizCtx);
+  const n = q.opcoes.length;
+  const svg = useRef<SVGSVGElement>(null);
+  const arrastando = useRef(false);
+  const CX = 160, CY = 160, R = 100, RE = 134;
+  const frac = (k: number) => (n > 1 ? k / (n - 1) : 0.5);
+  const ponto = (t: number, r: number) => ({ x: CX + r * Math.cos(Math.PI * (1 - t)), y: CY - r * Math.sin(Math.PI * (1 - t)) });
+  const doPonteiro = (clientX: number, clientY: number) => {
+    const el = svg.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const dx = clientX - (r.left + (r.width * CX) / 320), dy = clientY - (r.top + (r.height * CY) / 200);
+    const ang = dy > 0 ? (dx >= 0 ? 0 : Math.PI) : Math.atan2(-dy, dx);
+    aoEscolher(Math.max(0, Math.min(n - 1, Math.round((1 - ang / Math.PI) * (n - 1)))));
+  };
+  const t = escolhida === undefined ? 0.5 : frac(escolhida);
+  const SEG = 48;
+  const segmentos = Array.from({ length: SEG }, (_, i) => {
+    const a = ponto(i / SEG, R), b = ponto((i + 1.4) / SEG, R);
+    return <path key={i} d={`M${a.x},${a.y} A${R},${R} 0 0 1 ${b.x},${b.y}`} fill="none" strokeWidth={20} stroke={`hsl(${Math.round(((i + 0.5) / SEG) * 125)} 78% ${escuro ? 55 : 58}%)`} />;
+  });
+  const marcas = Array.from({ length: 21 }, (_, i) => { const a = ponto(i / 20, R - 14), b = ponto(i / 20, R - (i % 5 === 0 ? 22 : 19)); return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={escuro ? "rgba(255,255,255,.55)" : "rgba(15,23,42,.35)"} strokeWidth={i % 5 === 0 ? 1.6 : 1} strokeLinecap="round" />; });
+  const ponteiro = escuro ? "#ffffff" : cor;
+  return (
+    <div className={cn("rounded-2xl border p-4 shadow-sm", escuro ? "border-white/15 bg-white/5" : "border-gray-200 bg-white")}>
+      <svg ref={svg} viewBox="0 0 320 200" className="mx-auto block w-full max-w-[340px] touch-none select-none"
+        onPointerDown={(ev) => { arrastando.current = true; (ev.currentTarget as SVGSVGElement).setPointerCapture(ev.pointerId); doPonteiro(ev.clientX, ev.clientY); }}
+        onPointerMove={(ev) => { if (arrastando.current) doPonteiro(ev.clientX, ev.clientY); }}
+        onPointerUp={() => { arrastando.current = false; }} onPointerCancel={() => { arrastando.current = false; }}>
+        {segmentos}
+        {marcas}
+        {q.opcoes.map((o, k) => {
+          const p = ponto(frac(k), RE), sel = escolhida === k;
+          return <text key={k} x={p.x} y={p.y} textAnchor="middle" dominantBaseline="central" style={{ fontSize: sel ? 34 : 24, opacity: escolhida === undefined || sel ? 1 : 0.45, transition: "all .25s", cursor: "pointer" }}>{o.emoji}</text>;
+        })}
+        <g style={{ transformOrigin: `${CX}px ${CY}px`, transform: `rotate(${-90 + 180 * t}deg)`, transition: "transform .3s cubic-bezier(.3,1.4,.5,1)" }}>
+          <path d={`M${CX - 6},${CY} L${CX},${CY - R + 8} L${CX + 6},${CY} Z`} fill={ponteiro} />
+        </g>
+        <circle cx={CX} cy={CY} r={11} fill={ponteiro} />
+        <circle cx={CX} cy={CY} r={4.5} fill={escuro ? "#0f172a" : "#ffffff"} />
+      </svg>
+      <div className="-mt-3 flex justify-center">
+        <span className={cn("rounded-full px-5 py-2 text-base font-bold shadow-md transition-all", escolhida === undefined && "opacity-60")} style={{ background: cor, color: "#fff" }}>
+          {escolhida === undefined ? "Mova o ponteiro" : f(q.opcoes[escolhida].texto)}
+        </span>
+      </div>
+      <p className={cn("mt-3 flex items-center justify-center gap-1.5 text-center text-xs", escuro ? "text-white/70" : "text-gray-500")}>
+        <Lightbulb className="h-3.5 w-3.5 shrink-0 text-amber-400" />Arraste o marcador para o nível que mais representa você.
+      </p>
+    </div>
+  );
+}
+
 // Criar a conta em etapas (13/11/2026, Davi, com um desenho: "primeiro o nome, que é mais fácil; ao dar OK sai para o lado; aí e-mail e WhatsApp; ao dar OK sai para o lado;
 // aparece 'Conta criada!' com confete e embaixo o botão 'Ver meu plano personalizado'"). O lead é gravado quando e-mail e WhatsApp são confirmados (quem sair na última etapa não se perde).
 function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, escuro, suave, enviando, editar, onGravar, onVerPlano }: {
@@ -1004,7 +1059,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
                   : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
                 {q.estilo === "escala" && !q.multipla
-                  ? <Escala q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
+                  ? (e.escala_visual === "velocimetro" && !editar
+                    ? <Velocimetro q={q} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
+                    : <Escala q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />)
                   : <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
                   {q.opcoes.map((o, k) => {
                     const marcada = q.multipla ? (marcadas[q.id] ?? []).includes(k) : escolhas[q.id] === k;
