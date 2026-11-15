@@ -82,6 +82,9 @@ def atender(rodar_claude, log=print):
         if not p:
             return
         log("vivo:", p["nome"], f"— {len(p['novas'])} mensagem(ns)")
+        q0 = c.cursor()
+        q0.execute("UPDATE public.briefings SET proposta = NULL WHERE id = %s AND status = 'revisando'", (p["bid"],))   # some o "agora" velho da mensagem anterior
+        c.commit()
         manual = briefing.manual_do(p["nome"])
         prompt = PROMPT.format(
             nome=p["nome"], manual=f" e o seu manual em {manual.relative_to(manual.parents[2])}" if manual else "",
@@ -89,10 +92,10 @@ def atender(rodar_claude, log=print):
             historico="\n".join(f"- {'Davi' if papel == 'davi' else p['nome']}: {texto[:1500]}" for papel, texto in p["historico"]) or "(começo da conversa)",
             novas="\n".join(f"- {t}" for t in p["novas"]))
         info = {}
-        ok, texto = rodar_claude(prompt, minutos=25, chrome=True, sessao=p["sessao"], info=info, turnos=60, ferramentas=FERRAMENTAS, cancelar=lambda: briefing.cancelada(p["bid"]))
+        ok, texto = rodar_claude(prompt, minutos=25, chrome=True, sessao=p["sessao"], info=info, turnos=60, ferramentas=FERRAMENTAS, cancelar=lambda: briefing.cancelada(p["bid"]), ao_passo=lambda t, n: briefing.agora_auto(p["bid"], t, n))
         if not ok and p["sessao"] and texto != "cancelado":   # a sessão guardada pode ter expirado: recomeça limpa
             info = {}
-            ok, texto = rodar_claude(prompt, minutos=25, chrome=True, info=info, turnos=60, ferramentas=FERRAMENTAS, cancelar=lambda: briefing.cancelada(p["bid"]))
+            ok, texto = rodar_claude(prompt, minutos=25, chrome=True, info=info, turnos=60, ferramentas=FERRAMENTAS, cancelar=lambda: briefing.cancelada(p["bid"]), ao_passo=lambda t, n: briefing.agora_auto(p["bid"], t, n))
         q = c.cursor()
         if info.get("session_id"):
             q.execute("UPDATE public.briefings SET sessao_vivo = %s WHERE id = %s", (info["session_id"], p["bid"]))

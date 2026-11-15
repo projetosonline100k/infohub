@@ -85,7 +85,7 @@ def claude_bin():
     return max(achados, key=versao)
 
 
-def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None, atividade=None, programa=False, cancelar=None):
+def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None, turnos=60, ferramentas=None, atividade=None, programa=False, cancelar=None, ao_passo=None):
     """Roda o Claude em segundo plano e devolve (ok, texto do resultado).
     `sessao`: continua essa sessão (--resume). `info` (dict) recebe o
     session_id da execução, pra próxima continuar dela. `ferramentas`: troca
@@ -107,14 +107,14 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
         # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele. No servidor não há Chrome com a
         # extensão; o WhatsApp é lido pelo banco (whatsapp-ler.py).
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
-    return rodar_claude_com(cmd, minutos, cwd, info, atividade, cancelar)
+    return rodar_claude_com(cmd, minutos, cwd, info, atividade, cancelar, ao_passo)
 
 
-def rodar_claude_com(cmd, minutos, cwd=None, info=None, atividade=None, cancelar=None):
+def rodar_claude_com(cmd, minutos, cwd=None, info=None, atividade=None, cancelar=None, ao_passo=None):
     """Roda o comando do Claude já montado e devolve (ok, texto)."""
     env = {**os.environ, "PATH": f"{Path(PYTHON).parent}:/usr/bin:/bin:/usr/sbin:/sbin"}
-    if atividade or cancelar:
-        dados, erro = passos.rodar(cmd, minutos, cwd=cwd or RAIZ, env=env, atividade=atividade, cancelar=cancelar)
+    if atividade or cancelar or ao_passo:
+        dados, erro = passos.rodar(cmd, minutos, cwd=cwd or RAIZ, env=env, atividade=atividade, cancelar=cancelar, ao_passo=ao_passo)
         if erro:
             return False, erro
     else:
@@ -133,7 +133,7 @@ def rodar_claude_com(cmd, minutos, cwd=None, info=None, atividade=None, cancelar
         # 18/10: o filtro do Opus barrou por engano o roteiro do Junior ("This sometimes happens with
         # safe, normal conversations... can't respond with Opus"). Tenta de novo com o Sonnet.
         log("claude: filtro do Opus barrou; tentando com o Sonnet")
-        return rodar_claude_com(cmd + ["--model", "sonnet"], minutos, cwd, info, atividade, cancelar)
+        return rodar_claude_com(cmd + ["--model", "sonnet"], minutos, cwd, info, atividade, cancelar, ao_passo)
     if dados.get("is_error"):
         if "authenticate" in texto or "OAuth" in texto:
             texto = "O Claude em segundo plano está deslogado. Rode o login de novo (ver scripts/instalar-jarvis-ouvinte.sh)."
@@ -638,7 +638,7 @@ def _atender_briefing(bid):
         desde = datetime.now(timezone.utc)
         # 22/10: na revisão (ajuste pedido no chat), cada passo e imagem vai para a tarefa — o "Ao vivo" mostra.
         ok, texto = rodar_claude(_com_dono(modelo.format(bid=bid, hoje=f"{datetime.now():%d/%m/%Y}"), "briefings", bid), minutos=40 if modelo is PROMPT_REVISAO else 12,
-                                 atividade=_atividade_do_briefing(bid) if modelo is PROMPT_REVISAO else None, cancelar=lambda: briefing.cancelada(bid))
+                                 atividade=_atividade_do_briefing(bid) if modelo is PROMPT_REVISAO else None, cancelar=lambda: briefing.cancelada(bid), ao_passo=lambda t, n: briefing.agora_auto(bid, t, n))
         if texto == "cancelado" and not ok:
             log("briefing: cancelado pelo Davi —", bid)
             briefing.limpar_agora(bid)

@@ -12,6 +12,7 @@ Uso (no lugar do subprocess.run de quem chama o Claude):
     # `dados` é o mesmo JSON do `--output-format json` (result, session_id, is_error…)
 """
 import json
+import time
 import subprocess
 import tempfile
 import threading
@@ -48,6 +49,37 @@ def passo_de(bloco):
     if bloco.get('type') == 'text':
         linha = next((l.strip() for l in (bloco.get('text') or '').split('\n') if l.strip()), '')
         return {'tipo': 'nota', 'texto': linha[:240]} if len(linha) >= 15 else None
+    return None
+
+
+def descrever_passo(bloco):
+    """O que o funcionário está fazendo AGORA, em português simples (mostrado no chat enquanto o Davi espera). Cobre leitura, Chrome e tela, que o passo_de ignora."""
+    if bloco.get('type') == 'tool_use':
+        nome, ent = bloco.get('name') or '', bloco.get('input') or {}
+        arq = lambda k='file_path': Path(ent.get(k) or '').name
+        if nome == 'Read':
+            return f"Lendo {arq()}" if arq() else None
+        if nome in ('Grep', 'Glob'):
+            return f"Procurando {(ent.get('pattern') or '')[:60]}"
+        if nome == 'Bash':
+            c = (ent.get('command') or '').strip()
+            if any(x in c for x in IGNORAR):
+                return None
+            return (ent.get('description') or '').strip()[:110] or c.split('\n')[0][:110] or None
+        if nome in ('Write', 'Edit', 'NotebookEdit'):
+            return f"{'Criando' if nome == 'Write' else 'Ajustando'} {arq() or arq('notebook_path')}"
+        if nome == 'WebSearch':
+            return f"Pesquisando: {(ent.get('query') or '')[:90]}"
+        if nome == 'WebFetch':
+            return f"Abrindo {(ent.get('url') or '').split('//')[-1].split('/')[0]}"
+        if nome.startswith('mcp__') and 'chrome' in nome:
+            acao = nome.split('__')[-1]
+            if acao == 'navigate':
+                return f"Abrindo no Chrome: {(ent.get('url') or '')[:80]}"
+            if acao == 'computer':
+                return {'screenshot': 'Fotografando a tela', 'left_click': 'Clicando na tela', 'type': 'Digitando', 'scroll': 'Rolando a página'}.get(ent.get('action'), 'Mexendo na tela do Chrome')
+            return 'Usando o Chrome'
+        return None
     return None
 
 
@@ -123,7 +155,7 @@ class Gravador:
             pass
 
 
-def rodar(cmd, minutos, cwd=None, env=None, atividade=None, cancelar=None):
+def rodar(cmd, minutos, cwd=None, env=None, atividade=None, cancelar=None, ao_passo=None):
     """Roda o comando do Claude (montado com `--output-format json`) ao vivo. Devolve (dados, erro):
     `dados` = o mesmo JSON final de antes; `erro` = texto quando não deu (tempo, sem resposta)."""
     cmd = list(cmd)
@@ -161,12 +193,23 @@ def rodar(cmd, minutos, cwd=None, env=None, atividade=None, cancelar=None):
         if cancelar:
             threading.Thread(target=vigiar, daemon=True).start()
         final = None
+        ultimo_passo, n_passos = [0.0], [0]
         try:
             for linha in p.stdout:
                 try:
                     ev = json.loads(linha)
                 except ValueError:
                     continue
+                if ev.get('type') == 'assistant' and ao_passo:
+                    for bloco in (ev.get('message') or {}).get('content') or []:
+                        d = descrever_passo(bloco)
+                        agora_t = time.monotonic()
+                        if d and agora_t - ultimo_passo[0] >= 2:   # no máximo uma atualização a cada 2 s
+                            ultimo_passo[0] = agora_t; n_passos[0] += 1
+                            try:
+                                ao_passo(d, n_passos[0])
+                            except Exception:  # noqa: BLE001
+                                pass
                 if ev.get('type') == 'assistant' and gravador:
                     for bloco in (ev.get('message') or {}).get('content') or []:
                         passo = passo_de(bloco)

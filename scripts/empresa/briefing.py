@@ -450,6 +450,18 @@ def agora(bid, texto):
     print('OK')
 
 
+def agora_auto(bid, texto, n=None):
+    """O passo que o funcionário está dando agora, tirado do que ele realmente executa (o chat mostra no lugar do texto antigo)."""
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("UPDATE public.briefings SET proposta = jsonb_build_object('agora', %s::text) WHERE id = %s AND status = 'revisando'",
+                  ((f"passo {n}: " if n else "") + texto.strip()[:110], bid))
+        c.commit()
+    finally:
+        c.close()
+
+
 def status(bid):
     c = connect()
     try:
