@@ -11,6 +11,7 @@ import Agenda from "@/pages/Agenda";
 import Admin from "@/pages/Admin";
 import Automacoes from "@/pages/Automacoes";
 import Ponte from "@/pages/Ponte";
+import Conversas from "@/pages/Conversas";
 import Desenho from "@/pages/Desenho";
 import ModoFoco from "@/pages/ModoFoco";
 import Navegador from "@/pages/Navegador";
@@ -131,6 +132,7 @@ const ConteudoDaGuia = memo(function ConteudoDaGuia({ tabId, pathname, search, v
         <Route path="/admin" element={<Admin />} />
         <Route path="/automacoes" element={<Automacoes />} />
         <Route path="/ponte" element={<Ponte />} />
+        <Route path="/conversas" element={<Conversas />} />
         <Route path="/desenho/:id" element={<Desenho />} />
         <Route path="/foco" element={<ModoFoco />} />
         <Route path="/navegar" element={<Navegador />} />

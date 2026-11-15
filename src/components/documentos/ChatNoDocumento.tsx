@@ -246,8 +246,9 @@ interface Andamento { quem: string; etapa: string; fase: "pensando" | "escrevend
 // e `pedidoCerebro` (um contador) abre o cérebro do perfil para cadastrar as informações dele.
 // `tipo`: "perfil" = roteiros de outro perfil do mesmo vídeo; "video" = os roteiros de outro card do kanban (ex.: "7 roteiros", "7 novos roteiros").
 export interface BlocoPerfil { chave: string; nome: string; headlines: { numero: number; titulo: string }[]; tipo?: "perfil" | "video"; status?: string; total?: number }
-export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, blocos = [], pedidoCerebro = 0 }: { editor: Editor; clienteId: string | null; chave?: string | null; perfil?: { chave: string; nome: string } | null; blocos?: BlocoPerfil[]; pedidoCerebro?: number }) {
-  const [aberto, setAberto] = useState(false);
+// `pagina` (15/11, Davi: "um chat solto, igual ao Claude"): o chat vira uma página inteira, com a lista de conversas sempre ao lado e sem documento (o editor é só um rascunho invisível).
+export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, blocos = [], pedidoCerebro = 0, pagina = false }: { editor: Editor; clienteId: string | null; chave?: string | null; perfil?: { chave: string; nome: string } | null; blocos?: BlocoPerfil[]; pedidoCerebro?: number; pagina?: boolean }) {
+  const [aberto, setAberto] = useState(pagina);
   const [texto, setTexto] = useRascunho(`docchat:${chave ?? "sem"}`);
   // 24/10 (Davi: "quero que fiquem salvos, a ideia é virar um super cérebro"): as conversas ficam no banco
   // (conversas_documento, só o dono vê), agrupadas por conversa; o + começa outra sem apagar a anterior.
@@ -321,8 +322,9 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
   const [listaAberta, setListaAberta] = useState(false);
   const [itens, setItens] = useState<ItemConversa[] | null>(null);
   const [buscaConversa, setBuscaConversa] = useState("");
+  const concluidos = turnos.filter((t) => !t.rodando).length;
   useEffect(() => {
-    if (!listaAberta) return;
+    if (!listaAberta && !pagina) return;
     let cancelado = false;
     void (async () => {
       const { data } = await db.from("conversas_documento").select("conversa, chave, pedido, titulo, created_at")
@@ -338,12 +340,12 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
         const primeira = ls[ls.length - 1];   // vieram da mais nova para a mais velha
         return {
           id, titulo: ls.find((l) => l.titulo)?.titulo || primeira.pedido, chave: primeira.chave, quando: ls[0].created_at, trocas: ls.length,
-          onde: primeira.chave.startsWith("video:") ? "Roteiro de vídeo" : nomeDoc.get(primeira.chave) ?? "Documento",
+          onde: primeira.chave === "livre" ? "Conversa livre" : primeira.chave.startsWith("video:") ? "Roteiro de vídeo" : nomeDoc.get(primeira.chave) ?? "Documento",
         };
       }));
     })();
     return () => { cancelado = true; };
-  }, [listaAberta]);
+  }, [listaAberta, pagina, pagina ? concluidos : 0, pagina ? conversaId : ""]);   // eslint-disable-line react-hooks/exhaustive-deps
   const abrirConversa = async (id: string) => {
     const { data } = await db.from("conversas_documento").select(COLUNAS_CONVERSA).eq("conversa", id).order("created_at", { ascending: true });
     mostrar((data ?? []) as LinhaConversa[], id);
@@ -490,6 +492,7 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
   // ⌘I abre e fecha (o itálico continua no botão da barra de ferramentas).
   useEffect(() => {
     const aoTeclar = (e: KeyboardEvent) => {
+      if (pagina) return;
       if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "i") return;
       e.preventDefault();
       e.stopPropagation();
@@ -512,7 +515,7 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
     return () => window.removeEventListener("resize", medir);
   }, [aberto]);
   useEffect(() => {
-    if (!aberto) return;
+    if (!aberto || pagina) return;
     // Quem encolhe é a área abaixo das guias (DashboardLayout lê --painel-direita); fora do app (janela do Atlas) o body.
     const raiz = document.documentElement;
     const temGuias = !!document.querySelector("[data-barra-guias]");
@@ -897,6 +900,44 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
     ? `Pedir para ${escolhidasOrdem.map((e) => e.membro!.nome).join(" → ")}… (vazio = fazer a sua parte com o que está no documento)`
     : "Conversar com o Claude… (@ cita um documento)";
 
+  const listaEl = (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="space-y-2 border-b p-3">
+              <button type="button" onClick={novaConversa}
+                className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"><Plus className="h-4 w-4" />Nova conversa</button>
+              <label className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5">
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                <input value={buscaConversa} onChange={(e) => setBuscaConversa(e.target.value)} placeholder="Buscar conversas"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+              </label>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {itens === null ? <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : (() => {
+                const termo = buscaConversa.trim().toLowerCase();
+                const filtrados = itens.filter((i) => !termo || i.titulo.toLowerCase().includes(termo) || i.onde.toLowerCase().includes(termo));
+                const grupos: [string, ItemConversa[]][] = pagina ? [["Recentes", filtrados]] : [
+                  ["Neste documento", filtrados.filter((i) => i.chave === chave)],
+                  ["Recentes", filtrados.filter((i) => i.chave !== chave)],
+                ];
+                if (!filtrados.length) return <p className="p-3 text-sm text-muted-foreground">{termo ? "Nenhuma conversa com isso." : "Nenhuma conversa ainda."}</p>;
+                return grupos.filter(([, l]) => l.length).map(([rotulo, l]) => (
+                  <div key={rotulo} className="mb-3">
+                    <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{rotulo}</p>
+                    {l.map((i) => (
+                      <button key={i.id} type="button" onClick={() => void abrirConversa(i.id)}
+                        className={cn("block w-full rounded-lg px-2 py-1.5 text-left hover:bg-muted", i.id === conversaId && "bg-muted")}>
+                        <span className="block truncate text-sm">{i.titulo}</span>
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {i.chave !== chave && !(pagina && i.chave === "livre") && `${i.onde} · `}{new Date(i.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+  );
   return (
     <>
       {revisao}
@@ -927,72 +968,37 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
       )}
       {/* No body (portal): dentro do app, um ancestral com transform prendia o "fixed" na área da página
           e sobrava uma faixa branca à direita (24/10). */}
-      {createPortal(<aside
-        className="fixed bottom-0 right-0 z-50 flex flex-col border-l bg-background text-foreground shadow-2xl"
-        style={{ width: largura, top: topo }}
+      {(pagina ? (x: React.ReactElement) => <div className="flex h-full min-h-0"><div className="hidden w-[300px] shrink-0 flex-col border-r md:flex">{listaEl}</div>{x}</div> : (x: React.ReactElement) => createPortal(x, document.body))(<aside
+        className={pagina ? "relative flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground" : "fixed bottom-0 right-0 z-50 flex flex-col border-l bg-background text-foreground shadow-2xl"}
+        style={pagina ? undefined : { width: largura, top: topo }}
         onKeyDown={(e) => e.stopPropagation()}
       >
         {/* Borda esquerda: segure e arraste para os lados (dois cliques volta ao tamanho padrão). */}
-        <div role="separator" aria-label="Ajustar a largura do chat" title="Arraste para mudar a largura · dois cliques: tamanho padrão"
+        {!pagina && <div role="separator" aria-label="Ajustar a largura do chat" title="Arraste para mudar a largura · dois cliques: tamanho padrão"
           onPointerDown={arrastarBorda}
           onDoubleClick={() => { setLargura(LARGURA_PAINEL); try { localStorage.setItem(CHAVE_LARGURA, String(LARGURA_PAINEL)); } catch { /* sem storage */ } }}
           className="group absolute inset-y-0 -left-1.5 z-10 w-3 cursor-col-resize">
           <span className="absolute inset-y-0 left-1/2 w-0.5 -translate-x-1/2 bg-transparent transition-colors group-hover:bg-primary/50" />
-        </div>
+        </div>}
         {/* Cabeçalho: quem está no chat, nova conversa e fechar. */}
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <Sparkles className="h-4 w-4 text-primary" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold">{listaAberta ? "Conversas" : tituloConversa ?? turnos[0]?.pedido ?? "Nova conversa"}</p>
+            <p className="truncate text-sm font-semibold">{listaAberta && !pagina ? "Conversas" : tituloConversa ?? turnos[0]?.pedido ?? "Nova conversa"}</p>
             <p className="truncate text-[11px] text-muted-foreground">
-              {listaAberta ? "Todas as suas conversas, de qualquer documento" : `${escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"} · @ cita um documento`}
+              {listaAberta && !pagina ? "Todas as suas conversas, de qualquer documento" : `${escolhidasOrdem.length ? escolhidasOrdem.map((e) => e.membro!.nome).join(" → ") : "Claude"} · @ cita um documento`}
             </p>
           </div>
-          <button type="button" onClick={() => setListaAberta((v) => !v)} disabled={escrevendo} title="Conversas"
-            className={cn("rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30", listaAberta && "bg-muted text-foreground")}><History className="h-4 w-4" /></button>
-          <button type="button" onClick={novaConversa} disabled={escrevendo || (!turnos.length && !listaAberta)} title="Nova conversa (a anterior fica na lista)"
+          {!pagina && <button type="button" onClick={() => setListaAberta((v) => !v)} disabled={escrevendo} title="Conversas"
+            className={cn("rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30", listaAberta && "bg-muted text-foreground")}><History className="h-4 w-4" /></button>}
+          <button type="button" onClick={novaConversa} disabled={escrevendo || (!turnos.length && !listaAberta && !pagina)} title="Nova conversa (a anterior fica na lista)"
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30"><Plus className="h-4 w-4" /></button>
-          <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }} title="Fechar (⌘I); o que estiver escrevendo continua"
-            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>
+          {!pagina && <button type="button" onClick={() => { setAberto(false); editor.commands.focus(); }} title="Fechar (⌘I); o que estiver escrevendo continua"
+            className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"><X className="h-4 w-4" /></button>}
         </div>
 
-        {listaAberta ? (
-          <div className="flex min-h-0 flex-1 flex-col">
-            <div className="space-y-2 border-b p-3">
-              <button type="button" onClick={novaConversa}
-                className="flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-muted"><Plus className="h-4 w-4" />Nova conversa</button>
-              <label className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5">
-                <Search className="h-3.5 w-3.5 text-muted-foreground" />
-                <input value={buscaConversa} onChange={(e) => setBuscaConversa(e.target.value)} placeholder="Buscar conversas"
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
-              </label>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto p-2">
-              {itens === null ? <p className="flex items-center gap-2 p-3 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />Carregando…</p> : (() => {
-                const termo = buscaConversa.trim().toLowerCase();
-                const filtrados = itens.filter((i) => !termo || i.titulo.toLowerCase().includes(termo) || i.onde.toLowerCase().includes(termo));
-                const grupos: [string, ItemConversa[]][] = [
-                  ["Neste documento", filtrados.filter((i) => i.chave === chave)],
-                  ["Recentes", filtrados.filter((i) => i.chave !== chave)],
-                ];
-                if (!filtrados.length) return <p className="p-3 text-sm text-muted-foreground">{termo ? "Nenhuma conversa com isso." : "Nenhuma conversa ainda."}</p>;
-                return grupos.filter(([, l]) => l.length).map(([rotulo, l]) => (
-                  <div key={rotulo} className="mb-3">
-                    <p className="px-2 py-1 text-[11px] font-medium text-muted-foreground">{rotulo}</p>
-                    {l.map((i) => (
-                      <button key={i.id} type="button" onClick={() => void abrirConversa(i.id)}
-                        className={cn("block w-full rounded-lg px-2 py-1.5 text-left hover:bg-muted", i.id === conversaId && "bg-muted")}>
-                        <span className="block truncate text-sm">{i.titulo}</span>
-                        <span className="block truncate text-[11px] text-muted-foreground">
-                          {i.chave !== chave && `${i.onde} · `}{new Date(i.quando).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ));
-              })()}
-            </div>
-          </div>
+        {listaAberta && !pagina ? (
+          listaEl
         ) : (<>
         {/* A conversa. */}
         <div ref={listaConversa} className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
@@ -1020,7 +1026,7 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
                   </div>
                 ))}
                 {t.rodando && !t.resposta && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" />pensando…</p>}
-                {!t.rodando && t.resposta && (
+                {!t.rodando && t.resposta && !pagina && (
                   <button type="button" onClick={() => inserir(t)}
                     className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium hover:bg-muted">
                     <FileText className="h-3.5 w-3.5" />{t.inserido ? "Inserir de novo" : "Inserir no documento"}
@@ -1231,7 +1237,7 @@ export function ChatNoDocumento({ editor, clienteId, chave, perfil = null, bloco
           </div>
         </div>
         </>)}
-      </aside>, document.body)}
+      </aside>)}
     </>
   );
 }

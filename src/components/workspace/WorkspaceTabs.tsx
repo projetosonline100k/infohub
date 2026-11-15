@@ -121,6 +121,7 @@ const titleForPath = (path: string) => {
   if (path === "/admin") return "Administração";
   if (path === "/automacoes") return "Many Hub";
   if (path === "/ponte") return "Ponte";
+  if (path === "/conversas") return "Conversas";
   if (path === "/foco") return "Modo Foco";
   if (path.startsWith("/navegar")) {
     const url = new URLSearchParams(path.split("?")[1] ?? "").get("url");
