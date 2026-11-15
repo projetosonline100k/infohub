@@ -3,14 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDays, format, startOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { AlertTriangle, ArrowUp, ArrowDown, BarChart3, CalendarDays, CheckCircle2, ChevronDown, Coins, Copy, Link2, Loader2, MoreVertical, Percent, Search, ShoppingCart, UserPlus, Users } from "lucide-react";
+import { AlertTriangle, ArrowUp, ArrowDown, BarChart3, CalendarDays, CheckCircle2, ChevronDown, Coins, Copy, Link2, Loader2, MoreVertical, Percent, Search, ShoppingCart, Trash2, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/DialogosGlobais";
 import { RenomearLink } from "./RenomearLink";
 import { linkDoQuiz, type EstruturaQuiz } from "@/lib/quiz/quiz";
-import { codigoCurto, enderecoCurto, linkRastreado, propagarUtm, type LinkQuiz } from "@/lib/quiz/utm";
+import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, propagarUtm, type LinkQuiz } from "@/lib/quiz/utm";
 import type { EventoQuiz, LeadQuiz } from "@/lib/quiz/painel";
 import type { VendaUtm } from "@/lib/quiz/vendasUtm";
 import { codigoAfiliado, marcaDoAfiliado, resumirAfiliados, utmDoAfiliado, vendaNaJanela, type AfiliadoBase, type Atribuicao, type Janela, type ResumoAfiliado, type Via } from "@/lib/quiz/afiliados";
@@ -42,6 +42,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const [links, setLinks] = useState<LinkAfi[]>([]);
   const [curtos, setCurtos] = useState<Curto[]>([]);
   const [clienteId, setClienteId] = useState<string | null>(null);
+  const [versoes, setVersoes] = useState<{ slug: string; versao: number; status: string }[]>([]);
   const [f, setF] = useState({ nome: "", contato: "", comissao: "30" });
   const [criando, setCriando] = useState(false);
   const [novoAberto, setNovoAberto] = useState(false);
@@ -54,9 +55,11 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const carregar = useCallback(async () => {
     const { data: q } = await db.from("quizzes").select("cliente_id").eq("id", quizId).maybeSingle();
     setClienteId((q as { cliente_id: string } | null)?.cliente_id ?? null);
+    const { data: vs } = await db.from("quizzes").select("slug, versao, status").eq("variante_de", quizId).order("versao");
+    setVersoes((vs ?? []) as { slug: string; versao: number; status: string }[]);
     const { data: a } = await db.from("quiz_afiliados").select("id, codigo, nome, contato, comissao_pct, ativo, criado_em").eq("quiz_id", quizId).order("criado_em");
     setAfiliados(((a ?? []) as Afiliado[]).map((x) => ({ ...x, comissao_pct: Number(x.comissao_pct) })));
-    const { data: l } = await db.from("quiz_links").select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").eq("quiz_id", quizId).like("utm_content", "aff\\_%");
+    const { data: l } = await db.from("quiz_links").select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, destino, criado_em").eq("quiz_id", quizId).like("utm_content", "aff\\_%");
     setLinks((l ?? []) as LinkAfi[]);
     const ids = ((l ?? []) as { id: string }[]).map((x) => x.id);
     if (ids.length) { const { data: c } = await db.from("links_curtos").select("codigo, quiz_link_id, cliques").in("quiz_link_id", ids); setCurtos((c ?? []) as Curto[]); } else setCurtos([]);
@@ -135,8 +138,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   };
   const apagar = async (a: Afiliado) => {
     if (!(await confirmar(`Apagar o afiliado ${a.nome}?`, { descricao: "As vendas dele continuam marcadas com o código, mas passam a aparecer como “código desconhecido” até você recriar um afiliado com o mesmo código. O link curto dele deixa de funcionar.", botao: "Apagar" }))) return;
-    const lk = links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo));
-    if (lk) await db.from("quiz_links").delete().eq("id", lk.id);   // o link curto sai junto (ON DELETE CASCADE)
+    for (const lk of links.filter((l) => l.utm_content === marcaDoAfiliado(a.codigo))) await db.from("quiz_links").delete().eq("id", lk.id);   // os links curtos saem juntos (ON DELETE CASCADE)
     const { error } = await db.from("quiz_afiliados").delete().eq("id", a.id);
     if (error) { toast.error("Não consegui apagar"); return; }
     void carregar();
@@ -148,7 +150,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   const aConferir = resumo.atribuicoes.filter((a) => a.venda.tipo === "venda" && (a.via === "conflito" || a.via === "codigo_desconhecido"));
   const base = new URL(linkDoQuiz(slug)).origin;   // o endereço público (no app do Mac, window.location é localhost e não abre para ninguém)
   const lista = afiliados.filter((a) => (!filtro || a.id === filtro) && (!busca.trim() || a.nome.toLowerCase().includes(busca.trim().toLowerCase()) || a.codigo.includes(busca.trim().toLowerCase())));
-  const linkDe = (a: Afiliado) => links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo));
+  const linkDe = (a: Afiliado) => links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo) && l.utm_medium === "link") ?? links.find((l) => l.utm_content === marcaDoAfiliado(a.codigo));
   const curtoDe = (a: Afiliado) => { const lk = linkDe(a); return lk ? curtos.find((c) => c.quiz_link_id === lk.id) : undefined; };
 
   const Variacao = ({ atual, antes }: { atual: number; antes: number | undefined }) => {
@@ -256,7 +258,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
                           <DropdownMenu><DropdownMenuTrigger asChild><button type="button" className="rounded-lg p-1.5 text-white/60 hover:bg-white/10 hover:text-white"><MoreVertical className="h-4 w-4" /></button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="dark">
                               {curto && <DropdownMenuItem onClick={() => copiar(enderecoCurto(base, curto.codigo), "Link curto copiado")}>Copiar link curto</DropdownMenuItem>}
-                              {linkDe(a) && <DropdownMenuItem onClick={() => copiar(linkRastreado(linkDoQuiz(slug), linkDe(a)!), "Link completo copiado")}>Copiar link completo</DropdownMenuItem>}
+                              {linkDe(a) && <DropdownMenuItem onClick={() => copiar(linkRastreado(baseDoLink(linkDe(a)!, slug), linkDe(a)!), "Link completo copiado")}>Copiar link completo</DropdownMenuItem>}
                               <DropdownMenuItem onClick={() => setAberto(a.id)}>Ver detalhes e renomear link</DropdownMenuItem>
                               <DropdownMenuItem onClick={() => void atualizar(a, { ativo: !a.ativo })}>{a.ativo ? "Pausar" : "Reativar"}</DropdownMenuItem>
                               <DropdownMenuSeparator />
@@ -264,7 +266,7 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
                             </DropdownMenuContent></DropdownMenu>
                         </td>
                       </tr>
-                      {aberta && <tr><td colSpan={7} className="bg-black/20 px-4 py-4"><DetalheAfiliado a={a} r={r} curto={curto} lk={linkDe(a)} slug={slug} base={base} estrutura={estrutura} atribuicoes={resumo.atribuicoes} afiliados={afiliados} onCopiar={copiar} onAtualizar={atualizar} onRecarregar={() => void carregar()} /></td></tr>}
+                      {aberta && <tr><td colSpan={7} className="bg-black/20 px-4 py-4"><DetalheAfiliado a={a} r={r} curto={curto} lk={linkDe(a)} extras={links.filter((l) => l.utm_content === marcaDoAfiliado(a.codigo) && l.id !== linkDe(a)?.id)} curtos={curtos} versoes={versoes} clienteId={clienteId} quizId={quizId} slug={slug} base={base} estrutura={estrutura} atribuicoes={resumo.atribuicoes} afiliados={afiliados} onCopiar={copiar} onAtualizar={atualizar} onRecarregar={() => void carregar()} /></td></tr>}
                     </Fragment>
                   );
                 })}
@@ -304,11 +306,48 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   );
 }
 
-function DetalheAfiliado({ a, r, curto, lk, slug, base, estrutura, atribuicoes, afiliados, onCopiar, onAtualizar, onRecarregar }: {
-  a: Afiliado; r: ResumoAfiliado; curto: Curto | undefined; lk: LinkAfi | undefined; slug: string; base: string; estrutura: EstruturaQuiz | null; atribuicoes: Atribuicao[]; afiliados: Afiliado[];
+/** Endereço-base de um link: o principal (sorteio A/B), só o V1 (?ab=0) ou uma versão específica. */
+const baseDoLink = (l: Pick<LinkAfi, "destino"> | undefined, slug: string) => (l?.destino === "v1" ? `${linkDoQuiz(slug)}?ab=0` : l?.destino ? linkDoQuiz(l.destino) : linkDoQuiz(slug));
+const DESTINOS_LINK = ["Bio", "Reels", "Story", "Direct", "Comentário", "Anúncio", "Site"];
+
+function DetalheAfiliado({ a, r, curto, lk, extras, curtos, versoes, clienteId, quizId, slug, base, estrutura, atribuicoes, afiliados, onCopiar, onAtualizar, onRecarregar }: {
+  a: Afiliado; r: ResumoAfiliado; curto: Curto | undefined; lk: LinkAfi | undefined; extras: LinkAfi[]; curtos: Curto[]; versoes: { slug: string; versao: number; status: string }[]; clienteId: string | null; quizId: string; slug: string; base: string; estrutura: EstruturaQuiz | null; atribuicoes: Atribuicao[]; afiliados: Afiliado[];
   onCopiar: (t: string, ok: string) => void; onAtualizar: (a: Afiliado, m: Partial<Pick<Afiliado, "ativo" | "comissao_pct" | "nome" | "contato">>) => Promise<void>; onRecarregar: () => void;
 }) {
-  const completo = lk ? linkRastreado(linkDoQuiz(slug), lk) : "";
+  const completo = lk ? linkRastreado(baseDoLink(lk, slug), lk) : "";
+  // Mais links do mesmo afiliado (15/11, Davi: "no link do afiliado, poder criar links e escolher a versão"): todos levam o código dele (utm_content), então a venda continua sendo dele.
+  const [novo, setNovo] = useState({ destino: "Bio", versao: "ab" });
+  const [gerando, setGerando] = useState(false);
+  const rotuloVersao = (v: string) => (v === "ab" ? (versoes.length ? "A/B" : "V1") : v === "v1" ? "V1" : `V${versoes.find((x) => x.slug === v)?.versao ?? "?"}`);
+  const gerar = async () => {
+    if (!clienteId || gerando) return;
+    setGerando(true);
+    try {
+      const rot = rotuloVersao(novo.versao);
+      const medio = normalizarUtm(novo.destino);
+      const repetidos = [lk, ...extras].filter((x) => x && x.utm_medium === medio && (x.destino ?? "ab") === (novo.versao === "ab" ? "ab" : novo.versao)).length;
+      const { data: criado, error } = await db.from("quiz_links").insert({
+        quiz_id: quizId, cliente_id: clienteId, nome: `Afiliado: ${a.nome} · ${novo.destino} · ${rot}${repetidos ? ` (${repetidos + 1})` : ""}`,
+        utm_source: "afiliado", utm_medium: medio, utm_campaign: slug.slice(0, 60), utm_content: marcaDoAfiliado(a.codigo), destino: novo.versao === "ab" ? null : novo.versao,
+      }).select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, destino, criado_em").single();
+      if (error || !criado) { toast.error("Não consegui criar o link"); return; }
+      const destinoUrl = linkRastreado(baseDoLink(criado as LinkAfi, slug), criado as LinkAfi);
+      const baseCurta = codigoCurto(`${a.codigo}-${novo.destino}-${rot}`) ?? "afiliado";
+      for (let i = 0; i < 4; i++) {
+        const { error: e2 } = await db.from("links_curtos").insert({ codigo: i === 0 ? baseCurta : `${baseCurta.slice(0, 33)}-${Math.random().toString(36).slice(2, 5)}`, destino: destinoUrl, cliente_id: clienteId, quiz_link_id: (criado as { id: string }).id });
+        if (!e2) break;
+        if (!/duplicate|unique|23505/i.test(`${e2.message} ${e2.code}`)) break;
+      }
+      toast.success("Link criado: copie o curto e mande para o afiliado");
+      onRecarregar();
+    } finally { setGerando(false); }
+  };
+  const apagarLink = async (l: LinkAfi) => {
+    if (!(await confirmar("Apagar este link do afiliado?", { descricao: "O link curto também deixa de funcionar. As vendas já feitas continuam sendo dele." }))) return;
+    const { error } = await db.from("quiz_links").delete().eq("id", l.id);
+    if (error) { toast.error("Não consegui apagar"); return; }
+    onRecarregar();
+  };
   const compra = estrutura && lk ? propagarUtm(estrutura, { utm_source: lk.utm_source, ...(lk.utm_medium ? { utm_medium: lk.utm_medium } : {}), ...(lk.utm_campaign ? { utm_campaign: lk.utm_campaign } : {}), utm_content: lk.utm_content ?? "" }).oferta?.cta_url : undefined;
   const vendasDele = atribuicoes.filter((x) => x.codigo?.toLowerCase() === a.codigo.toLowerCase());
   return (
@@ -324,6 +363,40 @@ function DetalheAfiliado({ a, r, curto, lk, slug, base, estrutura, atribuicoes, 
           </div>
         ) : <p className="text-xs text-white/50">Sem link curto: use o link completo.</p>}
         {completo && <button type="button" onClick={() => onCopiar(completo, "Link completo copiado")} className="block max-w-full truncate rounded border border-white/10 px-2 py-1 text-left font-mono text-[11px] text-white/55 hover:text-white" title={completo}>{completo}</button>}
+        <div className="space-y-2 rounded-xl border border-amber-200/20 bg-amber-200/5 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">Mais links deste afiliado</p>
+          {extras.map((l) => {
+            const c = curtos.find((x) => x.quiz_link_id === l.id);
+            const url = c ? enderecoCurto(base, c.codigo) : linkRastreado(baseDoLink(l, slug), l);
+            return (
+              <div key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg bg-black/25 px-2.5 py-1.5 text-xs">
+                <span className="font-semibold text-white">{l.nome.replace(/^Afiliado: /, "")}</span>
+                <code className="min-w-0 flex-1 truncate text-amber-200" title={url}>{url}</code>
+                {c && <span className="text-white/50">{c.cliques} {c.cliques === 1 ? "clique" : "cliques"}</span>}
+                <button type="button" onClick={() => onCopiar(url, c ? "Link curto copiado" : "Link copiado")} className="rounded-lg px-2 py-0.5 font-bold text-black" style={{ backgroundColor: OURO }}>Copiar</button>
+                <button type="button" onClick={() => void apagarLink(l)} title="Apagar este link" className="rounded p-1 text-white/40 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>
+              </div>);
+          })}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-white/55">Gerar link para:</span>
+            {DESTINOS_LINK.map((d) => (
+              <button key={d} type="button" onClick={() => setNovo((n) => ({ ...n, destino: d }))}
+                className={cn("rounded-full border px-2.5 py-0.5 text-xs", novo.destino === d ? "border-amber-200 bg-amber-200/20 font-semibold text-amber-100" : "border-white/15 text-white/70 hover:bg-white/5")}>{d}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {versoes.length > 0 && (
+              <label className="flex items-center gap-1.5 text-xs text-white/55">Versão do quiz
+                <select value={novo.versao} onChange={(e) => setNovo((n) => ({ ...n, versao: e.target.value }))} className="rounded-lg border border-white/10 bg-[#0a1520] px-2 py-1 text-xs text-white">
+                  <option value="ab">Sorteio A/B (link principal)</option>
+                  <option value="v1">Só a V1 (original)</option>
+                  {versoes.filter((v) => v.versao > 1).map((v) => <option key={v.slug} value={v.slug}>Só a V{v.versao}{v.status !== "publicado" ? " (não publicada)" : ""}</option>)}
+                </select>
+              </label>
+            )}
+            <button type="button" disabled={gerando || !clienteId} onClick={() => void gerar()} className="flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-bold text-black disabled:opacity-40" style={{ backgroundColor: OURO }}>{gerando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}Gerar link {novo.destino} · {rotuloVersao(novo.versao)}</button>
+          </div>
+        </div>
         <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-white/60">
           <span>Nome <input defaultValue={a.nome} onBlur={(e) => { const v = e.target.value.trim().slice(0, 80); if (v && v !== a.nome) void onAtualizar(a, { nome: v }); else e.target.value = a.nome; }} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} className="w-40 rounded bg-white/10 px-2 py-1 text-white outline-none" /></span>
           <span>Comissão <input className="w-14 rounded bg-white/10 px-1.5 py-1 text-center text-white outline-none" defaultValue={String(a.comissao_pct).replace(".", ",")} inputMode="decimal" onBlur={(e) => { const v = Math.min(100, Math.max(0, Number(e.target.value.replace(",", ".")) || 0)); if (v !== a.comissao_pct) void onAtualizar(a, { comissao_pct: v }); }} />%</span>
