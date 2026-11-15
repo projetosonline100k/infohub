@@ -45,7 +45,7 @@ const PERIODOS = [["hoje", "Hoje"], [7, "7 dias"], [14, "14 dias"], [30, "30 dia
 const fracaoDeHoje = () => { const i = new Date(); i.setHours(0, 0, 0, 0); return Math.max(0.01, (Date.now() - i.getTime()) / 86_400_000); };
 const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
 
-export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura">; preencher?: boolean }) {
+export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> & { variante_de?: string | null }; preencher?: boolean }) {
   const [aba, setAba] = useState<Aba>("metricas");
   const [periodo, setPeriodo] = useState<number | "hoje">(14);
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
@@ -53,6 +53,29 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
   const [vendas, setVendas] = useState<VendaCompleta[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [slug, setSlug] = useState(quiz.slug);   // o endereço pode ser trocado na aba Links
+  // Afiliados e links são do quiz ORIGINAL (15/11, Davi: "afiliado é um só, não divide para V1 e V2"): estando numa versão (V2…), a aba usa o original
+  // e os números somam todas as versões (o link do original sorteia entre elas).
+  const raizId = quiz.variante_de ?? quiz.id;
+  const [slugRaiz, setSlugRaiz] = useState(quiz.variante_de ? "" : quiz.slug);
+  const [familia, setFamilia] = useState<{ eventos: EventoQuiz[]; leads: LeadQuiz[] } | null>(null);
+  useEffect(() => {
+    if (aba !== "afiliados" && aba !== "links") return;
+    let vivo = true;
+    void (async () => {
+      const { data: q } = await db.from("quizzes").select("id, slug, variante_de").or(`id.eq.${raizId},variante_de.eq.${raizId}`);
+      const lista = (q ?? []) as { id: string; slug: string; variante_de: string | null }[];
+      const raiz = lista.find((x) => x.id === raizId);
+      if (raiz && vivo) setSlugRaiz(raiz.slug);
+      if (lista.length < 2) { if (vivo) setFamilia(null); return; }   // sem versões: os dados do próprio quiz bastam
+      const ids = lista.map((x) => x.id);
+      const [e, l] = await Promise.all([
+        db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").in("quiz_id", ids).order("criado_em", { ascending: false }).limit(100000),
+        db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").in("quiz_id", ids).order("criada_em", { ascending: false }).limit(10000),
+      ]);
+      if (vivo) setFamilia({ eventos: (e.data ?? []) as EventoQuiz[], leads: ((l.data ?? []) as LeadQuiz[]).map((x) => ({ ...x, respostas: x.respostas ?? [], status: x.status ?? "novo" })) });
+    })();
+    return () => { vivo = false; };
+  }, [aba, raizId]);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -181,8 +204,8 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
       {aba === "vendas" && <VendasUtm quizId={quiz.id} eventos={eventos ?? []} leads={leads} vendas={vendas} dias={dias} />}
       {aba === "respostas" && <Respostas leads={leads} />}
       {aba === "funil" && <FunilCompleto painel={painel} />}
-      {aba === "afiliados" && <AfiliadosQuiz quizId={quiz.id} slug={slug} estrutura={estrutura} eventos={eventos ?? []} leads={leads} vendas={vendas} />}
-      {aba === "links" && <Links quizId={quiz.id} slug={slug} onSlug={setSlug} eventos={eventos ?? []} leads={leads} />}
+      {aba === "afiliados" && <AfiliadosQuiz quizId={raizId} slug={slugRaiz || slug} estrutura={estrutura} eventos={familia?.eventos ?? eventos ?? []} leads={familia?.leads ?? leads} vendas={vendas} />}
+      {aba === "links" && <Links quizId={raizId} slug={slugRaiz || slug} onSlug={quiz.variante_de ? setSlugRaiz : setSlug} eventos={familia?.eventos ?? eventos ?? []} leads={familia?.leads ?? leads} />}
       {aba === "config" && <Config quiz={{ ...quiz, slug }} total={leads.length} />}
     </div>
   );
@@ -562,19 +585,37 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
     onSlug(v);
     toast.success("Endereço trocado. O link antigo continua funcionando.");
   };
-  const criar = async () => {
-    if (!f.nome.trim() || !clienteId) return;
-    const origem = normalizarUtm(f.origem);
+  // Gerar link rápido (15/11, Davi: "ao clicar em gerar novo link, já vem para onde é — Bio, Reels… — o nome da conta e v1, v2, v3…").
+  const DESTINOS = ["Bio", "Reels", "Story", "Direct", "Comentário", "Anúncio", "Site"];
+  const [rapido, setRapido] = useState({ destino: "Bio", conta: "" });
+  const [contasIg, setContasIg] = useState<string[]>([]);
+  useEffect(() => {
+    void db.from("instagram_conexoes").select("username").then(({ data }) => {
+      const nomes = ((data ?? []) as { username: string | null }[]).map((x) => x.username).filter((x): x is string => !!x);
+      setContasIg(nomes);
+      setRapido((r) => (r.conta ? r : { ...r, conta: nomes[0] ?? "" }));
+    });
+  }, []);
+  const proximaVersao = (destino: string, conta: string) => 1 + (links ?? []).filter((l) => l.utm_medium === (normalizarUtm(destino) || "") && l.utm_campaign === (normalizarUtm(conta) || "")).length;
+  const gerarRapido = () => {
+    const conta = rapido.conta.replace(/^@/, "").trim();
+    if (!conta) { toast.error("Escreva o nome da conta (ex.: instalivrosapp)"); return; }
+    const n = proximaVersao(rapido.destino, conta);
+    void criar({ nome: `${rapido.destino} · @${conta} · v${n}`, origem: "instagram", meio: rapido.destino, campanha: conta, conteudo: `v${n}`, curto: `${conta}-${rapido.destino}-v${n}` });
+  };
+  const criar = async (d: typeof f = f) => {
+    if (!d.nome.trim() || !clienteId) return;
+    const origem = normalizarUtm(d.origem);
     if (!origem) { toast.error("Escolha a origem (instagram, tiktok…)"); return; }
     // Dois links com a mesma origem/meio/campanha/conteúdo contariam as MESMAS visitas e vendas (e cada um mostraria o total dos dois).
-    const igual = (links ?? []).find((x) => x.utm_source === origem && (x.utm_medium ?? "") === (normalizarUtm(f.meio) || "") && (x.utm_campaign ?? "") === (normalizarUtm(f.campanha || f.nome) || "") && (x.utm_content ?? "") === (normalizarUtm(f.conteudo) || ""));
+    const igual = (links ?? []).find((x) => x.utm_source === origem && (x.utm_medium ?? "") === (normalizarUtm(d.meio) || "") && (x.utm_campaign ?? "") === (normalizarUtm(d.campanha || d.nome) || "") && (x.utm_content ?? "") === (normalizarUtm(d.conteudo) || ""));
     if (igual) { toast.error(`Já existe o link “${igual.nome}” com a mesma origem, meio e campanha: os números dos dois se misturariam. Mude a campanha ou o conteúdo.`); return; }
     const { data: criado, error } = await db.from("quiz_links").insert({
-      quiz_id: quizId, cliente_id: clienteId, nome: f.nome.trim(), utm_source: origem, utm_medium: normalizarUtm(f.meio) || null,
-      utm_campaign: normalizarUtm(f.campanha || f.nome) || null, utm_content: normalizarUtm(f.conteudo) || null,
+      quiz_id: quizId, cliente_id: clienteId, nome: d.nome.trim(), utm_source: origem, utm_medium: normalizarUtm(d.meio) || null,
+      utm_campaign: normalizarUtm(d.campanha || d.nome) || null, utm_content: normalizarUtm(d.conteudo) || null,
     }).select("id, nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term, criado_em").single();
     if (error || !criado) { toast.error("Não consegui criar o link"); return; }
-    const curto = await criarCurto(criado as LinkQuiz, f.curto || f.nome);
+    const curto = await criarCurto(criado as LinkQuiz, d.curto || d.nome);
     setF({ ...f, nome: "", campanha: "", conteudo: "", curto: "" });
     toast.success(curto ? "Link criado: copie o link curto e use onde quiser divulgar" : "Link criado (o link curto não saiu: tente criar de novo na lista)");
     void carregar();
@@ -615,6 +656,26 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
 
       <section className={cn(cartao, "space-y-3")}>
         <div><h3 className="text-lg font-bold text-white">Links com nome (UTM)</h3><p className="text-xs text-white/55">Crie um link para cada lugar onde você divulga (bio, story, anúncio…). Quem entrar por ele fica marcado, e você vê aqui de onde vêm as visitas, os leads e as vendas.</p></div>
+        <div className="space-y-2 rounded-xl border border-cyan-400/25 bg-cyan-400/5 p-3">
+          <p className="text-sm font-semibold text-cyan-100">Gerar novo link</p>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 text-xs text-white/55">Para onde é:</span>
+            {DESTINOS.map((d) => (
+              <button key={d} type="button" onClick={() => setRapido((r) => ({ ...r, destino: d }))}
+                className={cn("rounded-full border px-3 py-1 text-xs", rapido.destino === d ? "border-cyan-300 bg-cyan-400/20 font-semibold text-cyan-100" : "border-white/15 text-white/70 hover:bg-white/5")}>{d}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs text-white/55">Conta
+              <input list="contas-ig-quiz" value={rapido.conta} onChange={(e) => setRapido((r) => ({ ...r, conta: e.target.value }))} placeholder="nome da conta (ex.: instalivrosapp)" className={cn(campo, "w-60")} />
+              <datalist id="contas-ig-quiz">{contasIg.map((c) => <option key={c} value={c} />)}</datalist>
+            </label>
+            <span className="rounded-lg bg-black/40 px-2.5 py-1.5 text-xs text-white/70">{rapido.conta.trim() ? `${rapido.destino} · @${rapido.conta.replace(/^@/, "").trim()} · v${proximaVersao(rapido.destino, rapido.conta.replace(/^@/, "").trim())}` : "o nome do link aparece aqui"}</span>
+            <button type="button" disabled={!clienteId || !rapido.conta.trim()} onClick={gerarRapido} className="flex items-center gap-1.5 rounded-lg bg-cyan-500 px-4 py-1.5 text-sm font-semibold text-black disabled:opacity-40"><Plus className="h-4 w-4" />Gerar link</button>
+          </div>
+          <p className="text-[11px] text-white/45">Cria o link com a origem Instagram, o destino e a conta já marcados, e numera sozinho (v1, v2, v3…) quando você gera outro igual. Para algo diferente, use o formulário abaixo.</p>
+        </div>
+        <p className="pt-1 text-xs font-medium text-white/50">Link personalizado</p>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1.2fr_1fr_1.1fr_auto]">
           <input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do link (ex.: Bio do Instagram)" className={campo} />
           <label className="block"><input list="origens-quiz" value={f.origem} onChange={(e) => setF({ ...f, origem: e.target.value })} placeholder="Origem" title="Origem (utm_source)" className={cn(campo, "w-full")} /><datalist id="origens-quiz">{ORIGENS.map((o) => <option key={o} value={o} />)}</datalist></label>
