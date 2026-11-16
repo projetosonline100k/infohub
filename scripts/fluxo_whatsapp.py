@@ -57,12 +57,21 @@ def primeiro_no(g):
     return destino(g, "inicio", "proximo")
 
 
+def preencher_variaveis(t, lead):
+    """{nome}, {nome_completo}, {perfil}, {email}, {whatsapp}: o que não existe some sem deixar vírgula ou espaço sobrando (mesma regra de preencherVariaveis em fluxo.ts)."""
+    lead = lead or {}
+    completo = (lead.get("nome") or "").strip()
+    valores = {"nome": completo.split(" ")[0] if completo else "", "nome_completo": completo, "perfil": (lead.get("perfil") or "").strip(),
+               "email": (lead.get("email") or "").strip(), "whatsapp": (lead.get("whatsapp") or "").strip(), "usuario": ""}
+    t = re.sub(r"\{(nome|nome_completo|usuario|perfil|email|whatsapp)\}", lambda m: valores.get(m.group(1), ""), t or "")
+    t = re.sub(r"[ \t]+([,.!?;:])", r"\1", t)
+    t = re.sub(r"(^|\n)[ \t]*[,;:][ \t]*", r"\1", t)
+    return re.sub(r"[ \t]{2,}", " ", t).strip()
+
+
 def texto_da_mensagem(no, lead):
-    """O texto como vai pelo WhatsApp: {nome}/{perfil} trocados; as opções viram lista numerada e os links vão por extenso."""
-    t = (no.get("dados", {}).get("texto") or "").strip()
-    nome = ((lead or {}).get("nome") or "").strip().split(" ")[0]
-    t = t.replace("{nome}", nome).replace("{perfil}", (lead or {}).get("perfil") or "")
-    t = re.sub(r"\s+,", ",", re.sub(r"^\s*,\s*", "", t)) if not nome else t
+    """O texto como vai pelo WhatsApp: variáveis trocadas; as opções viram lista numerada e os links vão por extenso."""
+    t = preencher_variaveis(no.get("dados", {}).get("texto") or "", lead)
     r, l = respostas_do_no(no), links_do_no(no)
     if r:
         t += "\n\n" + "\n".join(f"{i + 1}) {b.get('titulo', '').strip()}" for i, b in enumerate(r)) + "\n\nResponda com o número."
@@ -180,7 +189,7 @@ def rota_da_midia(tipo, mimetype=""):
     return "/api/sendFile", False, True
 
 
-def _enviar_midia_padrao(conta, chat_id, no, comportamento, log):
+def _enviar_midia_padrao(conta, chat_id, no, comportamento, log, lead=None):
     import base64, mimetypes, ssl, urllib.request
     d = no.get("dados", {})
     url = d.get("midia_url") or ""
@@ -195,7 +204,7 @@ def _enviar_midia_padrao(conta, chat_id, no, comportamento, log):
     with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "infopro-hub"}), timeout=60, context=ctx) as r:
         dados = base64.b64encode(r.read()).decode()
     rota, converter, aceita_legenda = rota_da_midia(d.get("midia_tipo", "arquivo"), mime)
-    legenda = (d.get("texto") or "").strip()
+    legenda = preencher_variaveis(d.get("texto") or "", lead)
     cfg = x1.waha_config(conta)
     corpo = {"session": cfg.get("sessao", "default"), "chatId": chat_id, "file": {"mimetype": mime, "data": dados, "filename": d.get("midia_nome") or "arquivo"}}
     if converter:
@@ -237,6 +246,8 @@ def _tratar(c, q, id_, log, enviar):
     lead = x1._contexto_lead(q, ex["resposta_id"])
     if not lead:
         _atualizar(q, id_, estado="parado", motivo="O lead não existe mais"); c.commit(); return
+    q.execute("SELECT email FROM public.quiz_respostas WHERE id = %s", (ex["resposta_id"],))
+    lead = {**lead, "email": (q.fetchone() or [""])[0] or ""}   # só para as variáveis das mensagens (o agente de IA não recebe o e-mail)
     q.execute("SELECT config FROM public.agentes_whatsapp WHERE cliente_id = %s", (ex["cliente_id"],))
     comportamento = ((q.fetchone() or [{}])[0] or {}).get("comportamento")
     q.execute("SELECT whatsapp_conta FROM public.clientes WHERE id = %s", (ex["cliente_id"],))
@@ -345,7 +356,7 @@ def _tratar(c, q, id_, log, enviar):
             if enviar:
                 enviar(conta, chat_id, f"[midia:{d.get('midia_tipo')}] {d.get('midia_url')} | {(d.get('texto') or '').strip()}", comportamento)
             else:
-                _enviar_midia_padrao(conta, chat_id, atual, comportamento, log)
+                _enviar_midia_padrao(conta, chat_id, atual, comportamento, log, lead)
             resumo = f"[{d.get('midia_tipo', 'arquivo')}] {(d.get('texto') or '').strip()}".strip()
             enviados_agora.append(resumo)
             recentes.append(x1.normalizar(resumo))
@@ -409,6 +420,7 @@ if __name__ == "__main__" and "--teste" in sys.argv:
          "ligacoes": [{"de": "inicio", "saida": "proximo", "para": "m1"}, {"de": "m1", "saida": "b1", "para": "m2"}]}
     m1 = no_por_id(g, "m1")
     assert primeiro_no(g)["id"] == "m1"
+    assert preencher_variaveis("Oi {nome}!", {}) == "Oi!" and preencher_variaveis("{nome}, vamos?", {}) == "vamos?" and preencher_variaveis("Plano de {nome_completo} ({perfil})", {"nome": "Ana Lima", "perfil": "Rei"}) == "Plano de Ana Lima (Rei)"
     assert texto_da_mensagem(m1, {"nome": "Ana Paula"}).startswith("Oi, Ana!") and "1) Quero" in texto_da_mensagem(m1, {}) and "Responda com o número" in texto_da_mensagem(m1, {})
     assert "Acessar: https://x.co" in texto_da_mensagem(no_por_id(g, "m2"), {})
     assert saida_da_resposta(m1, "1") == "b1" and saida_da_resposta(m1, " 2) ") == "b2" and saida_da_resposta(m1, "quero sim") == "b1" and saida_da_resposta(m1, "talvez") == "outro" and saida_da_resposta(m1, "9") == "outro"

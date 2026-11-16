@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { GATILHOS } from "@/lib/automacoes/instagram";
 import { cn } from "@/lib/utils";
 import {
-  LIMITE_TITULO_BOTAO, MAX_BOTOES_LINK, MAX_RESPOSTAS, grafoVazio, problemasDoFluxo, saidasDoNo,
+  LIMITE_TITULO_BOTAO, MAX_BOTOES_LINK, MAX_RESPOSTAS, VARIAVEIS_MENSAGEM, grafoVazio, problemasDoFluxo, saidasDoNo,
   type Botao, type GrafoFluxo, type NoFluxo, type TipoNo,
 } from "../../../supabase/functions/_shared/fluxo";
 import type { FluxoInstagram, NumerosDoNo } from "@/hooks/useInstagramFluxos";
@@ -121,6 +121,50 @@ function SetaDesligavel({ id, sourceX, sourceY, targetX, targetY, sourcePosition
   );
 }
 const tiposSeta = { desligavel: SetaDesligavel };
+/** Texto da mensagem: digitar "/" abre a lista de dados da pessoa (nome, @, e-mail…) e insere {chave} no cursor. */
+function TextoComVariaveis({ valor, aoMudar, whatsapp, ...resto }: { valor: string; aoMudar: (v: string) => void; whatsapp: boolean } & Omit<React.ComponentProps<typeof Textarea>, "value" | "onChange">) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const [menu, setMenu] = useState<{ ini: number; filtro: string } | null>(null);
+  const [ativa, setAtiva] = useState(0);
+  const lista = useMemo(() => VARIAVEIS_MENSAGEM.filter((v) => !v.so || v.so === (whatsapp ? "whatsapp" : "instagram")).filter((v) => !menu || (v.chave + " " + v.rotulo).toLowerCase().includes(menu.filtro.toLowerCase())), [whatsapp, menu]);
+  const detectar = (texto: string, cursor: number) => {
+    const m = /(?:^|\s)\/([\wà-ú]*)$/i.exec(texto.slice(0, cursor));
+    if (m) { setMenu({ ini: cursor - m[1].length - 1, filtro: m[1] }); setAtiva(0); } else setMenu(null);
+  };
+  const inserir = (chave: string) => {
+    if (!menu || !ref.current) return;
+    const cursor = ref.current.selectionStart;
+    const novo = valor.slice(0, menu.ini) + `{${chave}}` + valor.slice(cursor);
+    aoMudar(novo);
+    setMenu(null);
+    const pos = menu.ini + chave.length + 2;
+    requestAnimationFrame(() => { ref.current?.focus(); ref.current?.setSelectionRange(pos, pos); });
+  };
+  return (
+    <div className="relative">
+      <Textarea {...resto} ref={ref} value={valor}
+        onChange={(e) => { aoMudar(e.target.value); detectar(e.target.value, e.target.selectionStart); }}
+        onKeyDown={(e) => {
+          if (!menu || lista.length === 0) return;
+          if (e.key === "ArrowDown") { e.preventDefault(); setAtiva((a) => (a + 1) % lista.length); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setAtiva((a) => (a - 1 + lista.length) % lista.length); }
+          else if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); inserir(lista[ativa].chave); }
+          else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setMenu(null); }
+        }}
+        onBlur={() => setTimeout(() => setMenu(null), 150)} />
+      {menu && lista.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-white/15 bg-zinc-900 shadow-xl">
+          <p className="border-b border-white/10 px-3 py-1.5 text-[10px] uppercase tracking-wide text-white/40">Dados da pessoa</p>
+          {lista.map((v, i) => (
+            <button key={v.chave} type="button" onMouseDown={(e) => { e.preventDefault(); inserir(v.chave); }} onMouseEnter={() => setAtiva(i)}
+              className={cn("flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs", i === ativa ? "bg-cyan-300/15 text-cyan-100" : "text-white/75")}>
+              <span>{v.rotulo}</span><span className="text-white/40">ex.: {v.exemplo}</span>
+            </button>))}
+        </div>)}
+      <p className="mt-1 text-[10px] text-white/35">Digite <b>/</b> para inserir o nome da pessoa e outros dados.</p>
+    </div>);
+}
+
 const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
@@ -457,7 +501,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                   <button type="button" onClick={() => setSel(null)} title="Fechar" className="rounded-lg p-1.5 text-white/40 hover:bg-white/10"><X className="h-4 w-4" /></button></div>
                 {no.tipo === "mensagem" && (<>
                   <label className="block space-y-1 text-xs text-white/60">Mensagem
-                    <Textarea rows={6} value={no.dados.texto ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: e.target.value } }))} placeholder="Oi! Que bom que você quer. Quer receber o link agora?" className="border-white/15 bg-black/20 text-sm text-white" />
+                    <TextoComVariaveis rows={6} whatsapp={whatsapp} valor={no.dados.texto ?? ""} aoMudar={(v) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: v } }))} placeholder="Oi! Que bom que você quer. Quer receber o link agora?" className="border-white/15 bg-black/20 text-sm text-white" />
                     <span className="text-right text-[10px] text-white/40">{(no.dados.texto ?? "").length} caracteres</span></label>
                   <div className="space-y-2"><p className="text-xs text-white/60">Botões</p>
                     <div className="flex gap-1.5 text-xs">{([["nenhum", "Sem botões"], ["resposta", "Respostas"], ["link", "Links"]] as const).map(([v, r]) => (
@@ -493,7 +537,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                     <p className="text-[11px] text-white/40">Até 50 MB. Foto: png, jpg, webp ou gif. Áudio: mp3, m4a, ogg, wav. Vídeo: mp4. {whatsapp ? "O áudio sai como mensagem de voz." : "No direct o PDF vai como link."}</p>
                   </div>
                   <label className="block space-y-1 text-xs text-white/60">Legenda (opcional)
-                    <Textarea rows={3} value={no.dados.texto ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: e.target.value } }))} placeholder="Texto que acompanha a mídia" className="border-white/15 bg-black/20 text-sm text-white" />
+                    <TextoComVariaveis rows={3} whatsapp={whatsapp} valor={no.dados.texto ?? ""} aoMudar={(v) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: v } }))} placeholder="Texto que acompanha a mídia" className="border-white/15 bg-black/20 text-sm text-white" />
                     <span className="text-[10px] text-white/40">{whatsapp ? "No WhatsApp a legenda vai junto da foto, vídeo ou PDF; no áudio, vai logo depois como texto." : "No direct a legenda vai logo depois do anexo, como uma segunda mensagem."}</span></label>
                   {!whatsapp && <p className="rounded-lg bg-white/5 p-2 text-[11px] text-white/50">Anexos só saem depois que a pessoa respondeu (dentro das 24 h). Por isso a mídia não pode ser a primeira mensagem do comentário.</p>}</>)}
                 {no.tipo === "esperar" && (

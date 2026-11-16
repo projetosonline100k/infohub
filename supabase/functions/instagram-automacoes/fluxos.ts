@@ -4,8 +4,8 @@
 // em ../_shared/fluxo.ts; aqui ficam só o banco e a Meta.
 import { registrarMensagem, textoComBotoes } from "./conversa.ts";
 import {
-  aguardaResposta, destinoDe, fluxoBate, linksDoNo, primeiroNo, proximoPasso, respostasDoNo, saidaDaResposta,
-  type GrafoFluxo, type NoFluxo,
+  aguardaResposta, destinoDe, fluxoBate, linksDoNo, preencherVariaveis, primeiroNo, proximoPasso, respostasDoNo, saidaDaResposta,
+  type GrafoFluxo, type NoFluxo, type VarsMensagem,
 } from "../_shared/fluxo.ts";
 
 // deno-lint-ignore no-explicit-any
@@ -36,8 +36,8 @@ async function gravar(admin: Admin, id: string, campos: Record<string, unknown>)
   await admin.from("instagram_fluxo_execucoes").update({ ...campos, trava_ate: null, atualizado_em: agora() }).eq("id", id);
 }
 
-function corpoDaMensagem(no: NoFluxo) {
-  const texto = (no.dados.texto ?? "").trim();
+function corpoDaMensagem(no: NoFluxo, vars: VarsMensagem = {}) {
+  const texto = preencherVariaveis(no.dados.texto ?? "", vars);
   if (no.tipo === "midia") {
     // Foto, áudio e vídeo vão como anexo; a legenda sai logo depois como texto (a Meta não aceita as duas coisas na mesma mensagem). PDF: o direct não aceita, vai o link.
     const t = no.dados.midia_tipo, url = no.dados.midia_url ?? "";
@@ -59,6 +59,11 @@ async function andar(admin: Admin, d: Deps, conexao: ConexaoFluxo, fluxo: Fluxo,
   const grafo = fluxo.grafo;
   const historico = [...(exec.historico ?? [])];
   const marcar = (no: string, tipo: string) => historico.push({ no, tipo, em: agora() });
+  // Variáveis ({nome}, {usuario}): o nome vem do perfil guardado em instagram_contatos; sem nome, usa o @.
+  const { data: ficha } = await admin.from("instagram_contatos").select("nome, username").eq("ig_user_id", exec.ig_user_id).eq("contato_id", exec.contato_id).maybeSingle();
+  const usuario = (ficha as { username?: string | null } | null)?.username ?? exec.contato_username ?? null;
+  const nomeCompleto = ((ficha as { nome?: string | null } | null)?.nome ?? "").trim();
+  const vars: VarsMensagem = { nome: (nomeCompleto || (usuario ?? "")).split(" ")[0].replace(/^@/, ""), nome_completo: nomeCompleto || usuario || "", usuario: usuario ? `@${usuario}` : "" };
   let atual = inicio;
   let primeira = exec.historico.length === 0 && !!exec.comment_id;
   let janelaAte = exec.janela_ate;
@@ -87,14 +92,14 @@ async function andar(admin: Admin, d: Deps, conexao: ConexaoFluxo, fluxo: Fluxo,
         token ??= await d.tokenAtual(admin, conexao);
         const resp = await d.graph(`${exec.ig_user_id}/messages`, token, {
           recipient: primeira ? { comment_id: exec.comment_id } : { id: exec.contato_id },
-          message: corpoDaMensagem(no),
+          message: corpoDaMensagem(no, vars),
         }) as { message_id?: string } | null;
         const ehAnexo = no.tipo === "midia" && ["imagem", "audio", "video"].includes(no.dados.midia_tipo ?? "");
         await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: resp?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id, no_id: no.id,
           tipo: ehAnexo ? "midia" : undefined,
-          texto: ehAnexo ? `[${no.dados.midia_tipo}]` : textoComBotoes((no.dados.texto ?? "").trim(), [...respostasDoNo(no), ...linksDoNo(no)]) });
+          texto: ehAnexo ? `[${no.dados.midia_tipo}]` : textoComBotoes(preencherVariaveis(no.dados.texto ?? "", vars), [...respostasDoNo(no), ...linksDoNo(no)]) });
         if (ehAnexo && (no.dados.texto ?? "").trim()) {   // legenda: texto logo depois do anexo
-          const leg = await d.graph(`${exec.ig_user_id}/messages`, token, { recipient: { id: exec.contato_id }, message: { text: (no.dados.texto ?? "").trim() } }) as { message_id?: string } | null;
+          const leg = await d.graph(`${exec.ig_user_id}/messages`, token, { recipient: { id: exec.contato_id }, message: { text: preencherVariaveis(no.dados.texto ?? "", vars) } }) as { message_id?: string } | null;
           await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: leg?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id, no_id: no.id, texto: (no.dados.texto ?? "").trim() });
         }
       } catch (e) {

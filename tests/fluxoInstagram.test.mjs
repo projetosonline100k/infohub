@@ -101,3 +101,14 @@ test('bloco Mídia: precisa do arquivo, anda para o próximo e não pode abrir o
   const h = { nos: [...g.nos, { id: 'm2', tipo: 'mensagem', x: 2, y: 0, dados: { texto: 'oi' } }], ligacoes: [...g.ligacoes, { de: 'md', saida: 'proximo', para: 'm2' }] };
   assert.equal(f.proximoPasso(h, h.nos[1], { respondeu: false, ultimoTexto: '' }).tipo, 'enviar');   // a mídia é enviada como uma mensagem
 });
+
+test('variáveis das mensagens: troca e some sem deixar vírgula ou espaço', () => {
+  const v = { nome: 'Ana', nome_completo: 'Ana Lima', usuario: '@ana', perfil: 'Postura de Rei' };
+  assert.equal(f.preencherVariaveis('Oi {nome}! Você é {perfil}.', v), 'Oi Ana! Você é Postura de Rei.');
+  assert.equal(f.preencherVariaveis('{nome_completo} ({usuario})', v), 'Ana Lima (@ana)');
+  assert.equal(f.preencherVariaveis('Oi {nome}!', {}), 'Oi!');
+  assert.equal(f.preencherVariaveis('{nome}, tudo bem?', {}), 'tudo bem?');
+  assert.equal(f.preencherVariaveis('Seu e-mail: {email}', { email: ' a@b.co ' }), 'Seu e-mail: a@b.co');
+  assert.equal(f.preencherVariaveis('Sem variável', v), 'Sem variável');
+  assert.ok(f.VARIAVEIS_MENSAGEM.some((x) => x.chave === 'nome'));
+});

@@ -179,3 +179,19 @@ export function proximoPasso(g: GrafoFluxo, atual: NoFluxo, ctx: Contexto, max =
   }
   return { tipo: "fim", motivo: n ? "passos demais seguidos" : "o caminho acaba aqui" };
 }
+
+// Variáveis nas mensagens (16/11/2026, Davi: "aperto / e escolho uma opção especial, tipo o nome da pessoa"): {nome}, {usuario}… trocados na hora de enviar.
+export type VarsMensagem = { nome?: string | null; nome_completo?: string | null; usuario?: string | null; perfil?: string | null; email?: string | null; whatsapp?: string | null };
+export const VARIAVEIS_MENSAGEM: { chave: keyof VarsMensagem; rotulo: string; exemplo: string; so?: "whatsapp" | "instagram" }[] = [
+  { chave: "nome", rotulo: "Primeiro nome da pessoa", exemplo: "Ana" },
+  { chave: "nome_completo", rotulo: "Nome completo", exemplo: "Ana Paula Lima" },
+  { chave: "usuario", rotulo: "@ do Instagram", exemplo: "@anapaula", so: "instagram" },
+  { chave: "perfil", rotulo: "Perfil do quiz", exemplo: "Postura de Rei", so: "whatsapp" },
+  { chave: "email", rotulo: "E-mail", exemplo: "ana@email.com", so: "whatsapp" },
+  { chave: "whatsapp", rotulo: "WhatsApp", exemplo: "11 98888-7777", so: "whatsapp" },
+];
+/** Troca as variáveis; o que não existe some sem deixar vírgula ou espaço sobrando ("Oi {nome}!" sem nome vira "Oi!"). */
+export function preencherVariaveis(texto: string, v: VarsMensagem): string {
+  const t = (texto ?? "").replace(/\{(nome|nome_completo|usuario|perfil|email|whatsapp)\}/g, (_, k: keyof VarsMensagem) => (v[k] ?? "").toString().trim());
+  return t.replace(/[ \t]+([,.!?;:])/g, "$1").replace(/(^|\n)[ \t]*[,;:][ \t]*/g, "$1").replace(/[ \t]{2,}/g, " ").trim();
+}
