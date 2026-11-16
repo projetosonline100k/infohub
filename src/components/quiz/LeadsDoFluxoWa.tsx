@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Loader2, Play, Search, Tag as TagIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { telefoneWa } from "@/lib/quiz/x1";
+import type { GrafoFluxo, NoFluxo } from "../../../supabase/functions/_shared/fluxo";
 import type { ExecucaoWa, LeadFluxoWa, QuizWa } from "./FluxosWhatsapp";
 
 const ATIVAS = ["iniciar", "rodando", "aguardando_resposta", "aguardando_tempo", "pausado"];
@@ -10,8 +11,8 @@ const ESTADO: Record<string, string> = { iniciar: "Vai começar", rodando: "Envi
 const hora = (ms: number) => new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 /** Painel à esquerda do editor do fluxo do WhatsApp: números gerais, quem vai receber (com "Disparar agora") e quem já está no fluxo. */
-export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin, quizId, ativadoEm, leads, execs, quizzes, tagsPorLead, todasTags, disparar, mudarTag }: {
-  fluxoId: string; ativo: boolean; gatilho: string; gatilhoTag: string | null; esperaMin: number; quizId: string | null; ativadoEm: string | null;
+export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin, quizId, ativadoEm, grafo, leads, execs, quizzes, tagsPorLead, todasTags, disparar, mudarTag }: {
+  fluxoId: string; ativo: boolean; gatilho: string; gatilhoTag: string | null; esperaMin: number; quizId: string | null; ativadoEm: string | null; grafo: GrafoFluxo;
   leads: LeadFluxoWa[]; execs: ExecucaoWa[]; quizzes: QuizWa[]; tagsPorLead: Map<string, string[]>; todasTags: string[];
   disparar: (leadIds: string[]) => Promise<void>; mudarTag: (leadIds: string[], tag: string, remover: boolean) => Promise<void>;
 }) {
@@ -20,6 +21,35 @@ export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin,
   const [fPeriodo, setFPeriodo] = useState("tudo");
   const [fTag, setFTag] = useState("");     // "" = qualquer; "__sem" = sem nenhuma tag
   const [tagNova, setTagNova] = useState("");
+  const [aberto, setAberto] = useState<string | null>(null);
+  const noDe = (id?: string | null) => grafo.nos.find((n) => n.id === id);
+  const rotuloNo = (n?: NoFluxo) => {
+    if (!n) return "—";
+    const d = n.dados;
+    if (n.tipo === "mensagem") return `Mensagem: ${(d.texto ?? "").replace(/\s+/g, " ").trim().slice(0, 60) || "(vazia)"}`;
+    if (n.tipo === "midia") return `Mídia: ${d.midia_nome ?? d.midia_tipo ?? ""}`;
+    if (n.tipo === "esperar") return `Esperar ${d.minutos ?? 0} min`;
+    if (n.tipo === "tag") return `Tag ${d.tag_acao === "remover" ? "tirada" : "posta"}: ${d.tag_nome ?? ""}`;
+    if (n.tipo === "condicao") return "Condição";
+    if (n.tipo === "fim") return "Fim do fluxo";
+    return n.tipo;
+  };
+  const passosDe = (x: ExecucaoWa) => (x.historico ?? []).map((h) => {
+    const n = noDe(h.no);
+    if (h.tipo.startsWith("resposta:")) {
+      const sid = h.tipo.slice(9), b = (n?.dados.botoes ?? []).find((y) => y.id === sid);
+      return { em: h.em, icone: "💬", texto: `Respondeu: ${b ? b.titulo : "outra resposta (texto livre)"}` };
+    }
+    if (h.tipo === "mensagem") return { em: h.em, icone: h.lida ? "👁" : "✉️", texto: `${rotuloNo(n)}${h.lida ? " · lida" : ""}` };
+    if (h.tipo.startsWith("condicao:")) return { em: h.em, icone: "🔀", texto: `Condição: ${h.tipo.endsWith("sim") ? "sim" : "não"}` };
+    if (h.tipo === "espera" || h.tipo === "esperou") return { em: h.em, icone: "⏳", texto: rotuloNo(n) };
+    return { em: h.em, icone: h.tipo === "fim" ? "🏁" : "•", texto: rotuloNo(n) };
+  });
+  const ondeEsta = (x: ExecucaoWa) => {
+    const ult = (x.historico ?? []).filter((h) => h.tipo !== "fim").slice(-1)[0];
+    const id = ATIVAS.includes(x.estado) ? (x.no_atual ?? ult?.no) : ult?.no;
+    return rotuloNo(noDe(id));
+  };
   const [busca, setBusca] = useState("");
   const [enviando, setEnviando] = useState<string | null>(null);
   const minhas = useMemo(() => execs.filter((x) => x.fluxo_id === fluxoId), [execs, fluxoId]);
@@ -119,8 +149,15 @@ export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin,
         {lista.length === 0 && <p className="py-6 text-center text-xs text-white/40">{aba === "receber" ? "Ninguém esperando. Em “Base” estão os leads de outros dias." : "Ninguém aqui."}</p>}
         {lista.slice(0, 200).map(({ l, x }) => (
           <div key={l.id + (x?.id ?? "")} className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-2 text-xs">
-            <div className="min-w-0 flex-1"><p className="truncate font-medium">{nomeDe(l)}</p>
+            <div className={cn("min-w-0 flex-1", x && "cursor-pointer")} onClick={() => x && setAberto(aberto === x.id ? null : x.id)}><p className="truncate font-medium">{nomeDe(l)}</p>
               <p className="truncate text-[10px] text-white/45">{x ? `${ESTADO[x.estado] ?? x.estado}${x.estado === "aguardando_tempo" && x.proximo_em ? ` · ${hora(Date.parse(x.proximo_em))}` : ""}${RESPONDEU(x) ? " · respondeu" : ""}` : bloqueado(l) ? "Não receber" : `${hora(Date.parse(l.criada_em))} · ${previsao(l)}`}</p>
+              {x && <p className="mt-0.5 text-[10px] text-cyan-200/80">{ATIVAS.includes(x.estado) ? "Está em" : "Parou em"}: {ondeEsta(x)}</p>}
+              {x && aberto === x.id && (
+                <ol className="mt-1.5 space-y-1 border-l border-white/15 pl-2.5">
+                  {passosDe(x).map((p, i) => (<li key={i} className="text-[10px] leading-snug text-white/70"><span className="mr-1">{p.icone}</span>{p.texto}<span className="ml-1 text-white/35">{p.em ? hora(Date.parse(p.em)) : ""}</span></li>))}
+                  {x.motivo && <li className="text-[10px] text-rose-200">{x.motivo}</li>}
+                </ol>)}
+              {x && aberto !== x.id && <p className="text-[10px] text-white/30">Toque para ver o caminho e as respostas</p>}
               {(tagsPorLead.get(l.id) ?? []).length > 0 && <div className="mt-0.5 flex flex-wrap gap-1">{(tagsPorLead.get(l.id) ?? []).map((t) => (
                 <span key={t} className={cn("inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px]", t === "nao-receber" ? "bg-rose-500/20 text-rose-200" : "bg-pink-300/15 text-pink-100")}><TagIcon className="h-2.5 w-2.5" />{t}
                   <button type="button" title="Tirar esta tag" onClick={() => void mudarTag([l.id], t, true)}><X className="h-2.5 w-2.5 opacity-60 hover:opacity-100" /></button></span>))}</div>}</div>

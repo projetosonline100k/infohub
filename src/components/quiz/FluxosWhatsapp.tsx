@@ -13,7 +13,7 @@ import type { GrafoFluxo } from "../../../supabase/functions/_shared/fluxo";
 const db = supabase as unknown as SupabaseClient;
 interface FluxoWa { id: string; nome: string; ativo: boolean; grafo: GrafoFluxo; disparos: number; atualizado_em: string; gatilho: GatilhoWa["tipo"]; gatilho_espera_min: number; gatilho_quiz_id: string | null; ativado_em: string | null; gatilho_tag: string | null }
 export interface QuizWa { id: string; titulo: string; variante_de: string | null }
-export interface ExecucaoWa { id: string; fluxo_id: string; resposta_id: string; estado: string; no_atual: string | null; proximo_em: string | null; criado_em: string; historico: { no: string; tipo: string; em: string; lida?: boolean }[] | null }
+export interface ExecucaoWa { id: string; fluxo_id: string; resposta_id: string; estado: string; no_atual: string | null; proximo_em: string | null; motivo?: string | null; criado_em: string; historico: { no: string; tipo: string; em: string; lida?: boolean }[] | null }
 export interface LeadFluxoWa { id: string; quiz_id: string; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string }
 
 // Fluxos de mensagem do WhatsApp (15/11/2026, Davi: "criar fluxos de mensagens também no WhatsApp, tipo o Many Hub"): a mesma tela de blocos do Many Hub,
@@ -54,7 +54,7 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
       return tudo;
     };
     const [e, l, tg] = await Promise.all([
-      db.from("whatsapp_fluxo_execucoes").select("id, fluxo_id, resposta_id, estado, no_atual, proximo_em, criado_em, historico").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000).then((r) => (r.data ?? []) as ExecucaoWa[]),
+      db.from("whatsapp_fluxo_execucoes").select("id, fluxo_id, resposta_id, estado, no_atual, proximo_em, motivo, criado_em, historico").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000).then((r) => (r.data ?? []) as ExecucaoWa[]),
       paginas<LeadFluxoWa>((de, ate) => db.from("quiz_respostas").select("id, quiz_id, nome, email, whatsapp, criada_em").eq("cliente_id", clienteId).not("whatsapp", "is", null).order("criada_em", { ascending: false }).range(de, ate), 8000),
       paginas<{ resposta_id: string; tag: string }>((de, ate) => db.from("quiz_lead_tags").select("resposta_id, tag").eq("cliente_id", clienteId).order("criado_em").range(de, ate), 30000),
     ]);
@@ -118,7 +118,7 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
   };
   const editado = editando && editando !== "novo" ? (fluxos?.find((x) => x.id === editando.id) ?? editando) : null;
   const painel = useMemo(() => editado && (
-    <LeadsDoFluxoWa fluxoId={editado.id} ativo={editado.ativo} gatilho={editado.gatilho} gatilhoTag={editado.gatilho_tag} quizzes={todosQuizzes} tagsPorLead={tagsPorLead} todasTags={todasTags} mudarTag={mudarTag} esperaMin={editado.gatilho_espera_min} quizId={editado.gatilho_quiz_id} ativadoEm={editado.ativado_em}
+    <LeadsDoFluxoWa fluxoId={editado.id} ativo={editado.ativo} gatilho={editado.gatilho} gatilhoTag={editado.gatilho_tag} quizzes={todosQuizzes} tagsPorLead={tagsPorLead} todasTags={todasTags} mudarTag={mudarTag} esperaMin={editado.gatilho_espera_min} quizId={editado.gatilho_quiz_id} ativadoEm={editado.ativado_em} grafo={editado.grafo}
       leads={leads} execs={execs} disparar={(ids) => dispararLeads(editado.id, ids)} />
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [editado, leads, execs, todosQuizzes, tagsPorLead]);
