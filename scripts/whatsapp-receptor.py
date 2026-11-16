@@ -152,6 +152,8 @@ def guardar_voto(p):
     if not chat_id or chat_id.endswith("@g.us"):
         return
     ts = voto.get("timestamp") or time.time()
+    if ts > 1e11:   # o WAHA manda o voto em milissegundos
+        ts = ts / 1000
     texto = voto["selectedOptions"][0]
     mid = id_da_conta(f"voto_{(enquete.get('id') or voto.get('id') or '')}_{int(ts)}")
     c = connect()
