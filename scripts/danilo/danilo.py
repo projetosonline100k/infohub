@@ -899,6 +899,11 @@ if __name__ == "__main__":
         montar(a[1], refazer="--refazer" in a)
     elif cmd == "conferir":
         conferir(a[1], so_olhar="--so-olhar" in a)
+    elif cmd == "enquadrar":   # enquadrar <edicao_id> <referencia.png> [bloco,bloco…] [--cy-ref 0.3]  (scripts/danilo/enquadrar.py)
+        import enquadrar as _enq
+        cy = float(a[a.index("--cy-ref") + 1]) if "--cy-ref" in a else None
+        resto = [x for x in a[3:] if not x.startswith("--") and x != str(cy)]
+        print(_enq.enquadrar(pasta(a[1]), a[2], resto[0].split(",") if resto and resto[0] != "todos" else None, cy))
     elif cmd == "versao":
         print(*nova_versao(a[1]))
     elif cmd == "registrar-dark":   # registrar-dark <pasta> "<título>" [--tarefa <id>] [--nota "Dark para 26/10."]

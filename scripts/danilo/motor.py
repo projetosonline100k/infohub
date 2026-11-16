@@ -438,7 +438,14 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
     fc.append("".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[vc][ac]")
     z = expressao_zoom(projeto, mapa)
     cor = filtro_cor(projeto)
-    fc.append(f"[vc]fps={FPS},scale=w='{LW}*({z})':h='{LH}*({z})':eval=frame:flags={'bilinear' if previa else 'lanczos'},"
+    # O crop limita x e y ao tamanho do PRIMEIRO quadro que recebe, e o scale com eval=frame muda de tamanho a cada quadro: com o zoom de abertura em 1,12
+    # o foco nunca passava de 12% de deslocamento (16/11: o rosto não subia mesmo com foco_y 0,7). Solução: o vídeo ampliado é colado (overlay, que lê o
+    # tamanho de cada quadro) numa tela preta fixa do tamanho do maior zoom, e o crop corta dessa tela.
+    zmax = max([1.0] + [max(float(k.get("z", 1)), float(k.get("de", 1))) for k in blocos_zoom(projeto)])
+    PW, PH = int(LW * zmax + 1) // 2 * 2, int(LH * zmax + 1) // 2 * 2
+    fc.append(f"[vc]fps={FPS},scale=w='{LW}*({z})':h='{LH}*({z})':eval=frame:flags={'bilinear' if previa else 'lanczos'}[vzoom]")
+    fc.append(f"color=c=black:s={PW}x{PH}:r={FPS}[vtela]")
+    fc.append(f"[vtela][vzoom]overlay=0:0:shortest=1,"
               f"crop={LW}:{LH}:'{expressao_foco_x(projeto, mapa, LW, z)}':'{expressao_foco_y(projeto, mapa, LH, z)}',setsar=1,{cor}[vbase]")
     ultimo, entrada = "vbase", 1
     # Instalivros: nesses trechos o apresentador desce pra metade de baixo (a abertura e,

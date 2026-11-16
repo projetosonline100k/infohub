@@ -286,6 +286,22 @@ Leia este documento como o contexto operacional de Davi. Primeiro confira quais 
 
 ---
 
+## Enquadrar o Davi como uma referência (16/11/2026)
+
+Quando o Davi mandar uma imagem de referência ("deixa o vídeo igual a esta", "sobe o personagem", "mais perto como nesta foto"), **não tente valores às cegas e não gere uma versão por tentativa**. Calcule:
+
+```
+cd ~/Infopro-hub/scripts/danilo
+python3 danilo.py enquadrar <edicao_id> <imagem_de_referencia.png> <bloco,bloco…>
+```
+
+- Ele acha o rosto na referência e no bruto, calcula o `z`, o `foco_x` e o `foco_y` de cada bloco de zoom indicado (ids em `projeto.json › zooms`; sem ids, só mexe nos blocos que já têm foco) e guarda o projeto antigo em `versoes/`.
+- Abra `<pasta da edição>/_enquadre.jpg`: referência à esquerda, resultado à direita. **Olhe e confira** antes de gerar a versão (rosto na mesma altura, mesmas mãos e mesa). Se a altura do rosto ainda destoar, repita com `--cy-ref 0.30` (altura do rosto na referência, de 0 a 1, de cima para baixo).
+- Só então rode `python3 danilo.py versao <edicao_id>` (uma vez).
+- A conta: `rosto_na_tela = z · rosto_no_bruto − foco · (z − 1)`. Subir o personagem = aumentar `foco_y`; levá-lo para a direita = diminuir `foco_x`. `foco` vai de 0 a 1.
+- Para os vídeos de tela dividida ou de capa de livro por cima, mexa só nos blocos de zoom de tela cheia; legenda, headline e capa não mudam de lugar.
+- Corrigido em 16/11: o motor antes limitava o deslocamento do foco ao do primeiro quadro (zoom de abertura), então `foco_y` alto quase não subia o rosto. Agora o vídeo ampliado é colado numa tela preta do tamanho do maior zoom e o recorte sai dela (`motor.py`, `zmax`).
+
 ## Parte B — como o Danilo roda no Infopro (estado em 15/10/2026)
 
 Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pelo Davi ("gostei… a edição está boa").
