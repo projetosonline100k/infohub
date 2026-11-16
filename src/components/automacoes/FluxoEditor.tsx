@@ -106,7 +106,8 @@ const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
 
-export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFechar, onSalvar, whatsapp = false, igUserId, gatilhoWaInicial, quizzesWa = [] }: {
+export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numerosTudo, numerosDoPeriodo, onFechar, onSalvar, whatsapp = false, igUserId, gatilhoWaInicial, quizzesWa = [] }: {
+  numerosDoPeriodo?: (desde: number | null, ate: number | null) => Record<string, NumerosDoNo>;   // números dos blocos numa janela de dias
   gatilhoWaInicial?: GatilhoWa; quizzesWa?: { id: string; titulo: string }[];   // só no WhatsApp
   igUserId?: string;   // para escolher posts específicos no gatilho de comentário
   whatsapp?: boolean;   // 15/11: o mesmo editor serve aos fluxos do WhatsApp (sem palavra-chave nem regras da Meta)
@@ -119,6 +120,19 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
   const [palavras, setPalavras] = useState("");
   const [modoPalavra, setModoPalavra] = useState<"contem" | "trecho" | "exata">("contem");
   const [respostas, setRespostas] = useState("");
+  // Números por dia (16/11, Davi: "preciso filtrar por dia para conferir os dias"): os blocos mostram só o que aconteceu na janela escolhida.
+  const [periodo, setPeriodo] = useState<"tudo" | "hoje" | "ontem" | "7" | "14" | "30" | "dia">("tudo");
+  const [dia, setDia] = useState("");
+  const janela = useMemo(() => {
+    const ini = new Date(); ini.setHours(0, 0, 0, 0);
+    const d = (n: number) => ini.getTime() - n * 86_400_000;
+    if (periodo === "hoje") return [ini.getTime(), null] as const;
+    if (periodo === "ontem") return [d(1), ini.getTime()] as const;
+    if (periodo === "7" || periodo === "14" || periodo === "30") return [d(Number(periodo) - 1), null] as const;
+    if (periodo === "dia" && dia) { const a = new Date(`${dia}T00:00:00`).getTime(); return [a, a + 86_400_000] as const; }
+    return [null, null] as const;
+  }, [periodo, dia]);
+  const numeros = useMemo(() => (numerosDoPeriodo ? numerosDoPeriodo(janela[0], janela[1]) : numerosTudo), [numerosDoPeriodo, numerosTudo, janela]);
   const [gatilhoWa, setGatilhoWa] = useState<GatilhoWa>({ tipo: "manual", espera_min: 0, quiz_id: null });
   const [mediaIds, setMediaIds] = useState<string[] | null>(null);   // null = todos os posts e reels
   const [posts, setPosts] = useState<InstagramPost[] | null>(null);
@@ -242,6 +256,13 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros, onFech
           <Input value={nome} onChange={(e) => setNome(e.target.value)} className="h-9 w-64 border-white/15 bg-black/20 font-semibold" aria-label="Nome do fluxo" />
           <span className="text-xs text-white/50">{contaNome}</span>
           <label className="ml-2 flex items-center gap-2 text-xs text-white/70"><Switch checked={ativo} onCheckedChange={(v) => { if (v && (problemas.length || (!whatsapp && !palavrasLista.length))) { toast.error(problemas[0]?.texto ?? "Escreva ao menos uma palavra-chave"); return; } setAtivo(v); }} />{ativo ? "Ativo" : "Desativado"}</label>
+          {!whatsapp && fluxo && (
+            <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5 text-[11px]" title="Os números de cada mensagem mostram só este período">
+              <span className="px-1.5 text-white/45">Números</span>
+              {([["tudo", "Tudo"], ["hoje", "Hoje"], ["ontem", "Ontem"], ["7", "7 dias"], ["14", "14 dias"], ["30", "30 dias"]] as const).map(([v, r]) => (
+                <button key={v} type="button" onClick={() => setPeriodo(v)} className={cn("rounded-md px-2 py-1", periodo === v ? "bg-cyan-400/20 font-semibold text-cyan-100" : "text-white/60 hover:text-white")}>{r}</button>))}
+              <input type="date" value={dia} onChange={(e) => { setDia(e.target.value); if (e.target.value) setPeriodo("dia"); }} className={cn("rounded-md bg-transparent px-1.5 py-0.5 [color-scheme:dark]", periodo === "dia" ? "bg-cyan-400/20 text-cyan-100" : "text-white/60")} title="Escolher um dia" />
+            </div>)}
           <div className="ml-auto flex items-center gap-2">
             {problemas.length > 0 && <span className="flex items-center gap-1 text-xs text-amber-300"><AlertTriangle className="h-4 w-4" />{problemas.length} ponto{problemas.length === 1 ? "" : "s"} a arrumar</span>}
             <Button variant="outline" size="sm" onClick={onFechar} className="border-white/20 bg-transparent text-white hover:bg-white/10">Fechar</Button>
