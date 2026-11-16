@@ -123,7 +123,7 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
               {([["edicao", "Edição de vídeos"], ["programacao", "Programação (Dalila)"]] as const).map(([v, r]) => (
                 <button key={v} type="button" onClick={() => setAba(v)} className={cn("rounded-xl px-4 py-1.5", aba === v ? "bg-violet-500 font-bold text-white" : "text-white/65 hover:text-white")}>{r}</button>))}
             </div>
-            {aba === "programacao" && escritorioId ? <ProgramacaoDalila clienteId={escritorioId} onProgramar={(tipo, id) => { onFechar(); onProgramar?.(tipo, id); }} /> : <>
+            {aba === "programacao" && escritorioId ? <ProgramacaoDalila clienteId={escritorioId} onAbrirEdicao={(e) => { onAbrirEdicao?.(e); }} onProgramar={(tipo, id) => { onFechar(); onProgramar?.(tipo, id); }} /> : <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               {tile("todos", Layers, itens.length, "Vídeos no projeto", "text-white", "bg-white/10")}
               {tile("fila", Clock, conta.fila, "Na fila", "text-sky-300", "bg-sky-500/15")}

@@ -5,6 +5,7 @@ import { ptBR } from "date-fns/locale";
 import { CalendarDays, CheckCircle2, Clapperboard, GalleryHorizontal, ListChecks, Loader2, Pencil, Send, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import type { EdicaoResumo } from "./EditorVideo";
 import { CalendarioPosts, SemInstagram, carregarAgenda, instagramDoProjeto, type ItemAgenda } from "./ProgramarCarrossel";
 
 const db = supabase as unknown as SupabaseClient;
@@ -12,6 +13,9 @@ interface Post {
   tipo: "carrossel" | "reel"; id: string; titulo: string; status: string; quando: string | null;
   tarefaId: string | null; pelaDalila: boolean; capa: string | null;
 }
+/** O que ainda NÃO está programado mas já está a caminho da Dalila: edição esperando a aprovação, vídeo sendo preparado, pronto para ela escolher o dia. */
+interface Entrando { chave: string; tipo: "reel" | "carrossel"; titulo: string; etapa: 1 | 2 | 3 | 4; texto: string; erro: boolean; video: string | null; capa: string | null; edicao?: EdicaoResumo }
+const ETAPAS = ["Edição", "Sua aprovação", "Preparando", "Dalila programa", "Programado"];
 interface TarefaDalila { id: string; titulo: string; data_vencimento: string | null }
 
 const quandoTexto = (iso: string | null) => {
@@ -23,7 +27,8 @@ const quandoTexto = (iso: string | null) => {
 
 /** Guia "Programação" (16/11/2026, Davi: "quero ver a Dalila, o calendário, se ela vai programar algo, alterar"): o calendário de posts do projeto, o que está programado
  *  (marcando o que a Dalila escolheu sozinha), o que já saiu e a fila dela. Clicar num post abre a tela de dia, hora e legenda (a mesma de Programados). */
-export function ProgramacaoDalila({ clienteId, onProgramar }: { clienteId: string; onProgramar: (tipo: "carrossel" | "reel", tarefaId: string) => void }) {
+export function ProgramacaoDalila({ clienteId, onProgramar, onAbrirEdicao }: { clienteId: string; onProgramar: (tipo: "carrossel" | "reel", tarefaId: string) => void; onAbrirEdicao?: (e: EdicaoResumo) => void }) {
+  const [entrando, setEntrando] = useState<Entrando[]>([]);
   const [posts, setPosts] = useState<Post[] | null>(null);
   const [agenda, setAgenda] = useState<ItemAgenda[]>([]);
   const [tarefas, setTarefas] = useState<TarefaDalila[]>([]);
@@ -47,6 +52,26 @@ export function ProgramacaoDalila({ clienteId, onProgramar }: { clienteId: strin
         .map((r) => ({ tipo: "reel" as const, id: r.id, titulo: r.titulo, status: r.status, quando: r.publicado_em ?? r.programado_para, tarefaId: r.tarefa_data_id, pelaDalila: !!r.programado_pela_dalila_em, capa: null })),
     ];
     setPosts(lista); setAgenda(ag); setTemInstagram(!!ig);
+    // A caminho da Dalila (16/11, Davi: "o vídeo que acabou de ficar pronto já entrasse na fila da Dalila e eu pudesse ver"): edição em revisão, vídeo sendo preparado, pronto para ela programar.
+    const [eds, pre, carsAprov] = await Promise.all([
+      db.from("edicoes_video").select("id, titulo, status, mensagem, versao, final_drive, duracao, formato, opcoes_formato, previa_url, projeto_em")
+        .eq("cliente_id", clienteId).eq("status", "revisar").or("formato.is.null,formato.neq.dark").order("atualizado_em", { ascending: false }),
+      db.from("reels").select("id, titulo, status, mensagem, edicao_id").eq("cliente_id", clienteId).in("status", ["preparando", "pronto", "erro"]).order("atualizado_em", { ascending: false }),
+      db.from("carrosseis").select("id, numero, tema, paginas, status").eq("cliente_id", clienteId).eq("status", "aprovado"),
+    ]);
+    const reelsPre = (pre.data || []) as { id: string; titulo: string; status: string; mensagem: string | null; edicao_id: string }[];
+    const previas = new Map<string, string | null>();
+    if (reelsPre.length) {
+      const { data: e2 } = await db.from("edicoes_video").select("id, previa_url").in("id", reelsPre.map((r) => r.edicao_id));
+      for (const e of (e2 || []) as { id: string; previa_url: string | null }[]) previas.set(e.id, e.previa_url);
+    }
+    const nova: Entrando[] = [
+      ...((eds.data || []) as EdicaoResumo[]).map((e) => ({ chave: `ed-${e.id}`, tipo: "reel" as const, titulo: e.titulo, etapa: 1 as const, texto: "Pronto: esperando a sua aprovação", erro: false, video: e.previa_url ?? null, capa: null, edicao: e })),
+      ...reelsPre.map((r) => ({ chave: `reel-${r.id}`, tipo: "reel" as const, titulo: r.titulo, etapa: (r.status === "preparando" ? 2 : 3) as 2 | 3, erro: r.status === "erro",
+        texto: r.status === "erro" ? (r.mensagem ?? "Deu erro ao preparar o vídeo") : r.status === "pronto" ? "Pronto: a Dalila escolhe o primeiro dia livre" : (r.mensagem ?? "Dalila preparando o vídeo e a legenda"), video: previas.get(r.edicao_id) ?? null, capa: null })),
+      ...((carsAprov.data || []) as { id: string; numero: number | null; tema: string; paginas: string[] | null }[]).map((c) => ({ chave: `car-${c.id}`, tipo: "carrossel" as const, titulo: `${c.numero ? `${String(c.numero).padStart(3, "0")} · ` : ""}${c.tema}`, etapa: 3 as const, erro: false, texto: "Aprovado: a Dalila escolhe o primeiro dia livre", video: null, capa: c.paginas?.[0] ?? null })),
+    ];
+    setEntrando(nova);
     const dalilaId = ((dal.data || []) as { id: string }[])[0]?.id;
     if (dalilaId) {
       const { data: t } = await db.from("atividades").select("id, titulo, data_vencimento").eq("responsavel_id", dalilaId).is("deleted_at", null).eq("concluida", false).order("data_vencimento", { nullsFirst: false }).limit(20);
@@ -102,6 +127,33 @@ export function ProgramacaoDalila({ clienteId, onProgramar }: { clienteId: strin
   return (
     <div className="space-y-4">
       {temInstagram === false && <SemInstagram />}
+      {entrando.length > 0 && (
+        <section className="space-y-2 rounded-2xl border border-violet-400/30 bg-violet-500/5 p-4">
+          <h3 className="flex items-center gap-2 text-lg font-bold"><Sparkles className="h-5 w-5 text-violet-300" />A caminho da Dalila ({entrando.length})</h3>
+          <div className="grid gap-2 lg:grid-cols-2">
+            {entrando.map((e) => (
+              <div key={e.chave} className="flex gap-3 rounded-xl border border-white/10 bg-[#0c1320] p-3">
+                <span className="relative h-24 w-16 shrink-0 overflow-hidden rounded-lg bg-black/40">
+                  {e.video ? <video src={`${e.video}#t=1`} preload="metadata" muted playsInline className="h-full w-full object-cover" />
+                    : e.capa ? <img src={e.capa} alt="" className="h-full w-full object-cover" />
+                    : <span className="flex h-full w-full items-center justify-center text-violet-300"><Clapperboard className="h-6 w-6" /></span>}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold" title={e.titulo}>{e.titulo}</span>
+                  <span className={cn("mt-0.5 block text-xs", e.erro ? "text-rose-300" : "text-white/60")}>{e.texto}</span>
+                  <span className="mt-2 flex items-center gap-1" aria-label={`Etapa: ${ETAPAS[e.etapa]}`}>
+                    {ETAPAS.map((n, i) => (
+                      <span key={n} className="flex flex-1 flex-col gap-1">
+                        <span className={cn("h-1.5 rounded-full", i < e.etapa ? "bg-emerald-400" : i === e.etapa ? (e.erro ? "bg-rose-400" : "animate-pulse bg-violet-400") : "bg-white/15")} />
+                        <span className={cn("truncate text-[9px]", i === e.etapa ? "font-semibold text-white" : "text-white/35")}>{n}</span>
+                      </span>))}
+                  </span>
+                  {e.edicao && onAbrirEdicao && <button type="button" onClick={() => onAbrirEdicao(e.edicao!)} className="mt-2 rounded-lg bg-violet-500 px-3 py-1 text-xs font-semibold text-white hover:bg-violet-400">Ver e aprovar</button>}
+                </span>
+              </div>))}
+          </div>
+          <p className="text-[11px] text-white/40">Depois que você aprova, o Mac prepara o vídeo e a legenda e a Dalila programa sozinha no primeiro dia livre (reel às 18h, carrossel às 10h, dark às 12h). Ele aparece em “Próximos posts” e você pode mudar o dia.</p>
+        </section>)}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {tile(CalendarDays, contagem.programados, "Programados", "text-cyan-300", "bg-cyan-500/15")}
         {tile(Send, contagem.hoje, "Saem hoje", "text-amber-300", "bg-amber-500/15")}
