@@ -112,3 +112,12 @@ test('variáveis das mensagens: troca e some sem deixar vírgula ou espaço', ()
   assert.equal(f.preencherVariaveis('Sem variável', v), 'Sem variável');
   assert.ok(f.VARIAVEIS_MENSAGEM.some((x) => x.chave === 'nome'));
 });
+
+test('bloco Tag: só no WhatsApp e precisa de nome', () => {
+  const g = { nos: [{ id: 'inicio', tipo: 'inicio', x: 0, y: 0, dados: {} }, { id: 't', tipo: 'tag', x: 1, y: 0, dados: { tag_acao: 'adicionar', tag_nome: '' } }, { id: 'f', tipo: 'fim', x: 2, y: 0, dados: {} }],
+    ligacoes: [{ de: 'inicio', saida: 'proximo', para: 't' }, { de: 't', saida: 'proximo', para: 'f' }] };
+  assert.ok(f.problemasDoFluxo(g, { whatsapp: true }).some((p) => /nome da tag/i.test(p.texto)));
+  assert.ok(f.problemasDoFluxo(g).some((p) => /só funciona nos fluxos do WhatsApp/.test(p.texto)));
+  g.nos[1].dados.tag_nome = 'nao-receber';
+  assert.ok(!f.problemasDoFluxo(g, { whatsapp: true }).some((p) => p.no === 't'));
+});

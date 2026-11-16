@@ -134,14 +134,20 @@ def disparar_gatilhos(c, q, log=print):
     """Começa, para cada fluxo ativo com gatilho de negócio, a execução dos leads que cumpriram o acontecimento. No máximo 10 por rodada."""
     q.execute("SELECT id, nome, gatilho FROM public.whatsapp_fluxos WHERE ativo AND gatilho <> 'manual' AND ativado_em IS NOT NULL")
     for fid, nome, gatilho in q.fetchall():
-        cond = _CONDICAO.get(gatilho)
+        if gatilho == "tag":   # vale para a base inteira: quem tem a tag (mesmo antes de o fluxo ligar) entra
+            cond = "EXISTS (SELECT 1 FROM public.quiz_lead_tags t WHERE t.resposta_id = r.id AND t.tag = lower(btrim(f.gatilho_tag)))"
+            so_novos = ""
+        else:
+            cond = _CONDICAO.get(gatilho)
+            so_novos = "AND r.criada_em >= f.ativado_em"
         if not cond:
             continue
         q.execute(f"""INSERT INTO public.whatsapp_fluxo_execucoes (fluxo_id, cliente_id, user_id, resposta_id, estado, origem)
                        SELECT f.id, f.cliente_id, f.user_id, r.id, 'iniciar', 'gatilho'
                          FROM public.whatsapp_fluxos f JOIN public.quiz_respostas r ON r.cliente_id = f.cliente_id
-                        WHERE f.id = %s AND (f.gatilho_quiz_id IS NULL OR r.quiz_id = f.gatilho_quiz_id)
-                          AND r.criada_em >= f.ativado_em AND r.whatsapp IS NOT NULL AND btrim(r.whatsapp) <> ''
+                        WHERE f.id = %s AND (f.gatilho_quiz_id IS NULL OR r.quiz_id = f.gatilho_quiz_id OR r.quiz_id IN (SELECT id FROM public.quizzes WHERE variante_de = f.gatilho_quiz_id))
+                          {so_novos} AND r.whatsapp IS NOT NULL AND btrim(r.whatsapp) <> ''
+                          AND NOT EXISTS (SELECT 1 FROM public.quiz_lead_tags nr WHERE nr.resposta_id = r.id AND nr.tag = 'nao-receber')
                           AND NOT EXISTS (SELECT 1 FROM public.whatsapp_fluxo_execucoes x WHERE x.resposta_id = r.id AND (x.fluxo_id = f.id OR x.estado IN ('iniciar', 'rodando', 'aguardando_resposta', 'aguardando_tempo')))
                           AND {cond}
                         ORDER BY r.criada_em LIMIT 10 ON CONFLICT DO NOTHING RETURNING resposta_id""", (fid,))
@@ -404,6 +410,17 @@ def _tratar(c, q, id_, log, enviar):
             sim = avaliar_condicao(atual, respondeu, ultimo_texto)
             anotar(atual["id"], "condicao:" + ("sim" if sim else "nao"))
             atual = destino(grafo, atual["id"], "sim" if sim else "nao"); continue
+        if tipo == "tag":
+            d = atual.get("dados", {}); nome_tag = (d.get("tag_nome") or "").strip().lower()[:40]
+            if nome_tag:
+                if d.get("tag_acao") == "remover":
+                    q.execute("DELETE FROM public.quiz_lead_tags WHERE resposta_id = %s AND tag = %s", (ex["resposta_id"], nome_tag))
+                else:
+                    q.execute("""INSERT INTO public.quiz_lead_tags (cliente_id, user_id, resposta_id, tag, origem)
+                                 SELECT cliente_id, user_id, id, %s, 'fluxo' FROM public.quiz_respostas WHERE id = %s ON CONFLICT DO NOTHING""", (nome_tag, ex["resposta_id"]))
+                c.commit()
+            anotar(atual["id"], "tag")
+            atual = destino(grafo, atual["id"], "proximo"); continue
         if tipo == "midia":
             if not x1.no_horario():
                 novo = {"estado": "rodando", "no_atual": atual["id"], "proximo_em": agora() + timedelta(minutes=15)}

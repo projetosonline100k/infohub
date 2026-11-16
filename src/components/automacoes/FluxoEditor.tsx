@@ -3,7 +3,7 @@ import ReactFlow, {
   Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MarkerType, Position, applyNodeChanges, getSmoothStepPath, type EdgeProps, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, BookOpen, Check, Clock, FileText, GitBranch, ImageIcon, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Trash2, Upload, X, Zap, type LucideIcon } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, Clock, FileText, GitBranch, ImageIcon, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Tag, Trash2, Upload, X, Zap, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ const VISUAL: Record<TipoNo, { nome: string; Icone: LucideIcon; cor: string }> =
   inicio: { nome: "Gatilho", Icone: Zap, cor: "border-amber-300/70 bg-amber-300/10 text-amber-100" },
   mensagem: { nome: "Mensagem", Icone: MessageCircle, cor: "border-cyan-300/60 bg-cyan-300/10 text-cyan-100" },
   midia: { nome: "Mídia", Icone: ImageIcon, cor: "border-sky-300/60 bg-sky-300/10 text-sky-100" },
+  tag: { nome: "Tag", Icone: Tag, cor: "border-pink-300/60 bg-pink-300/10 text-pink-100" },
   esperar: { nome: "Esperar", Icone: Clock, cor: "border-violet-300/60 bg-violet-300/10 text-violet-100" },
   condicao: { nome: "Condição", Icone: GitBranch, cor: "border-emerald-300/60 bg-emerald-300/10 text-emerald-100" },
   fim: { nome: "Fim", Icone: Power, cor: "border-rose-300/60 bg-rose-300/10 text-rose-100" },
@@ -42,19 +43,21 @@ const TIPOS_GATILHO: { valor: "comentario" | "story" | "dm"; titulo: string; des
   { valor: "dm", titulo: "Mensagem direta (DM)", descricao: "Alguém manda a palavra-chave por direct para a conta.", Icone: Send },
 ];
 // Gatilhos de negócio do WhatsApp (15/11, Davi: "a pessoa virou lead e não comprou → X; a pessoa comprou → Y"): o robô olha os leads sozinho.
-export type GatilhoWa = { tipo: "manual" | "virou_lead" | "lead_sem_compra" | "checkout_sem_compra" | "comprou"; espera_min: number; quiz_id: string | null };
+export type GatilhoWa = { tipo: "manual" | "virou_lead" | "lead_sem_compra" | "checkout_sem_compra" | "comprou" | "tag"; espera_min: number; quiz_id: string | null; tag?: string | null };
 export const TIPOS_GATILHO_WA: { valor: GatilhoWa["tipo"]; titulo: string; descricao: string; espera: string | null }[] = [
   { valor: "manual", titulo: "Eu inicio pelo chat", descricao: "Você clica em “Iniciar fluxo” no chat de um lead.", espera: null },
   { valor: "virou_lead", titulo: "A pessoa virou lead", descricao: "Terminou o quiz e deixou o WhatsApp.", espera: "Depois de" },
   { valor: "lead_sem_compra", titulo: "Virou lead e não comprou", descricao: "Passou o tempo escolhido desde que virou lead e ainda não comprou. Se comprar no meio do fluxo, ele para.", espera: "Se não comprar em" },
   { valor: "checkout_sem_compra", titulo: "Foi ao checkout e não comprou", descricao: "Clicou no botão de compra, passou o tempo escolhido e não comprou. Se comprar no meio do fluxo, ele para.", espera: "Se não comprar em" },
   { valor: "comprou", titulo: "A pessoa comprou", descricao: "Uma venda com o e-mail do lead entrou (sem reembolso). Bom para agradecer e dar as boas-vindas.", espera: "Depois de" },
+  { valor: "tag", titulo: "Tem a tag…", descricao: "Toda pessoa que tem a tag escolhida entra no fluxo, inclusive quem já está na sua base. Cada pessoa entra uma vez só.", espera: null },
 ];
 const GATILHOS_EM_BREVE = ["Menção no story", "Comentário na live", "Clique em anúncio para o direct", "Link do Instagram (ig.me)"];
 
 const resumo = (no: NoFluxo) => {
   if (no.tipo === "mensagem") return (no.dados.texto ?? "").trim() || "Toque para escrever a mensagem";
   if (no.tipo === "midia") return no.dados.midia_url ? `${{ imagem: "Foto", audio: "Áudio", video: "Vídeo", arquivo: "Arquivo" }[no.dados.midia_tipo ?? "arquivo"]}${no.dados.midia_nome ? ` · ${no.dados.midia_nome}` : ""}${(no.dados.texto ?? "").trim() ? `\n${(no.dados.texto ?? "").trim()}` : ""}` : "Toque para escolher a foto, o áudio, o vídeo ou o arquivo";
+  if (no.tipo === "tag") return no.dados.tag_nome ? `${no.dados.tag_acao === "remover" ? "Tirar" : "Pôr"} a tag “${no.dados.tag_nome}”` : "Toque para escolher a tag";
   if (no.tipo === "esperar") { const m = no.dados.minutos ?? 0; return m >= 60 && m % 60 === 0 ? `${m / 60} h` : `${m} min`; }
   if (no.tipo === "condicao") return no.dados.condicao === "texto_contem" ? `Resposta contém “${no.dados.palavra ?? ""}”` : "A pessoa respondeu?";
   if (no.tipo === "inicio") return "Quando a palavra chegar";
@@ -176,10 +179,10 @@ const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
 
-export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numerosTudo, numerosDoPeriodo, onFechar, onSalvar, painelEsquerda, whatsapp = false, igUserId, gatilhoWaInicial, quizzesWa = [] }: {
+export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numerosTudo, numerosDoPeriodo, onFechar, onSalvar, painelEsquerda, whatsapp = false, igUserId, gatilhoWaInicial, quizzesWa = [], tagsWa = [] }: {
   painelEsquerda?: React.ReactNode;   // coluna à esquerda (WhatsApp: leads a receber / no fluxo)
   numerosDoPeriodo?: (desde: number | null, ate: number | null) => Record<string, NumerosDoNo>;   // números dos blocos numa janela de dias
-  gatilhoWaInicial?: GatilhoWa; quizzesWa?: { id: string; titulo: string }[];   // só no WhatsApp
+  gatilhoWaInicial?: GatilhoWa; quizzesWa?: { id: string; titulo: string }[]; tagsWa?: string[];   // só no WhatsApp
   igUserId?: string;   // para escolher posts específicos no gatilho de comentário
   whatsapp?: boolean;   // 15/11: o mesmo editor serve aos fluxos do WhatsApp (sem palavra-chave nem regras da Meta)
   aberto: boolean; fluxo: FluxoInstagram | null; inicial?: RascunhoFluxo | null; contaNome: string; numeros: Record<string, NumerosDoNo>;
@@ -278,6 +281,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
     if (whatsapp) {
       const t = TIPOS_GATILHO_WA.find((x) => x.valor === gatilhoWa.tipo)!;
       if (t.valor === "manual") return "Quando você clicar em Iniciar fluxo no chat do lead";
+      if (t.valor === "tag") return `Quem tem a tag “${gatilhoWa.tag ?? ""}”`;
       const m = gatilhoWa.espera_min, esp = !m ? "na hora" : m % 1440 === 0 ? `${m / 1440} dia${m / 1440 === 1 ? "" : "s"}` : m % 60 === 0 ? `${m / 60} h` : `${m} min`;
       return `${t.titulo}\n${t.espera ? `${t.espera}: ${esp}` : ""}`;
     }
@@ -335,7 +339,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
   const adicionar = (tipo: Exclude<TipoNo, "inicio">) => {
     const id = novoId();
     const base = grafo.nos.find((n) => n.id === sel) ?? grafo.nos.find((n) => n.id === "inicio")!;
-    const dados = tipo === "mensagem" ? { texto: "" } : tipo === "midia" ? { texto: "" } : tipo === "esperar" ? { minutos: 10 } : tipo === "condicao" ? { condicao: "respondeu" as const } : {};
+    const dados = tipo === "mensagem" ? { texto: "" } : tipo === "midia" ? { texto: "" } : tipo === "tag" ? { tag_acao: "adicionar" as const, tag_nome: "" } : tipo === "esperar" ? { minutos: 10 } : tipo === "condicao" ? { condicao: "respondeu" as const } : {};
     const novo: NoFluxo = { id, tipo, x: base.x + 360, y: base.y + (grafo.nos.filter((n) => n.x > base.x + 100 && n.x < base.x + 700).length) * 40, dados };
     // se o bloco escolhido tem uma saída livre, já liga
     const livre = saidasDoNo(base).find((s) => !grafo.ligacoes.some((l) => l.de === base.id && l.saida === s.id));
@@ -402,7 +406,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
           {painelEsquerda}
           <div className="relative min-h-0">
             <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-[#0b1220]/90 p-1.5 backdrop-blur">
-              {(["mensagem", "midia", "esperar", "condicao", "fim"] as const).map((t) => { const v = VISUAL[t]; return (
+              {(whatsapp ? ["mensagem", "midia", "tag", "esperar", "condicao", "fim"] as const : ["mensagem", "midia", "esperar", "condicao", "fim"] as const).map((t) => { const v = VISUAL[t]; return (
                 <button key={t} type="button" onClick={() => adicionar(t)} className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:brightness-125", v.cor)}><Plus className="h-3 w-3" /><v.Icone className="h-3.5 w-3.5" />{v.nome}</button>); })}
             </div>
             <ReactFlow nodes={nodes} edges={edges} nodeTypes={tipos} edgeTypes={tiposSeta} onNodesChange={onNodesChange} onConnect={ligar} onInit={(i) => { instancia.current = i; window.setTimeout(() => i.fitView({ padding: 0.3, maxZoom: 0.9 }), 60); }}
@@ -430,7 +434,17 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                           <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{t.titulo}</span><span className="block text-[11px] leading-snug text-white/55">{t.descricao}</span></span>
                         </button>);
                     })}
-                    {gatilhoWa.tipo !== "manual" && (() => {
+                    {gatilhoWa.tipo === "tag" && (
+                      <div className="space-y-2 rounded-xl bg-white/5 p-3 text-xs text-white/70">
+                        <label className="flex flex-wrap items-center gap-2">Tag
+                          <Input list="tags-wa" value={gatilhoWa.tag ?? ""} onChange={(e) => setGatilhoWa((g) => ({ ...g, tag: e.target.value.toLowerCase().slice(0, 40) }))} placeholder="ex.: quer-black-friday" className="h-8 w-56 border-white/15 bg-black/20 text-white" /></label>
+                        <datalist id="tags-wa">{tagsWa.map((t) => <option key={t} value={t} />)}</datalist>
+                        {quizzesWa.length > 1 && (
+                          <label className="flex flex-wrap items-center gap-2">Só do quiz
+                            <select value={gatilhoWa.quiz_id ?? ""} onChange={(e) => setGatilhoWa((g) => ({ ...g, quiz_id: e.target.value || null }))} className="h-8 max-w-full rounded-md border border-white/15 bg-black/20 px-2 text-sm"><option value="">todos os quizzes e versões</option>{quizzesWa.map((q) => <option key={q.id} value={q.id}>{q.titulo} (e versões)</option>)}</select></label>)}
+                        <p className="text-[11px] text-amber-200/80">⚠ Quem <b>já tem</b> a tag entra assim que você ligar o fluxo (até 10 por minuto). Quem tem a tag <b>nao-receber</b> nunca entra.</p>
+                      </div>)}
+                    {gatilhoWa.tipo !== "manual" && gatilhoWa.tipo !== "tag" && (() => {
                       const t = TIPOS_GATILHO_WA.find((x) => x.valor === gatilhoWa.tipo)!;
                       const m = gatilhoWa.espera_min, un = m > 0 && m % 1440 === 0 ? "dia" : m > 0 && m % 60 === 0 ? "h" : "min";
                       const n = un === "dia" ? m / 1440 : un === "h" ? m / 60 : m;
@@ -554,6 +568,14 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                     <TextoComVariaveis rows={3} whatsapp={whatsapp} valor={no.dados.texto ?? ""} aoMudar={(v) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: v } }))} placeholder="Texto que acompanha a mídia" className="border-white/15 bg-black/20 text-sm text-white" />
                     <span className="text-[10px] text-white/40">{whatsapp ? "No WhatsApp a legenda vai junto da foto, vídeo ou PDF; no áudio, vai logo depois como texto." : "No direct a legenda vai logo depois do anexo, como uma segunda mensagem."}</span></label>
                   {!whatsapp && <p className="rounded-lg bg-white/5 p-2 text-[11px] text-white/50">Anexos só saem depois que a pessoa respondeu (dentro das 24 h). Por isso a mídia não pode ser a primeira mensagem do comentário.</p>}</>)}
+                {no.tipo === "tag" && (<>
+                  <label className="block space-y-1 text-xs text-white/60">O que fazer
+                    <select value={no.dados.tag_acao ?? "adicionar"} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, tag_acao: e.target.value as "adicionar" | "remover" } }))} className="h-9 w-full rounded-md border border-white/15 bg-black/20 px-2 text-sm text-white"><option value="adicionar">Pôr a tag na pessoa</option><option value="remover">Tirar a tag da pessoa</option></select></label>
+                  <label className="block space-y-1 text-xs text-white/60">Nome da tag
+                    <Input list="tags-wa-no" value={no.dados.tag_nome ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, tag_nome: e.target.value.toLowerCase().slice(0, 40) } }))} placeholder="ex.: nao-receber" className="border-white/15 bg-black/20 text-sm text-white" /></label>
+                  <datalist id="tags-wa-no">{["nao-receber", ...tagsWa.filter((t) => t !== "nao-receber")].map((t) => <option key={t} value={t} />)}</datalist>
+                  <p className="text-[11px] text-white/45">Use o bloco no caminho de um botão (ex.: “Bloquear contato” → tag <b>nao-receber</b>) para marcar a pessoa. Quem tem <b>nao-receber</b> não entra em nenhum fluxo automático.</p>
+                </>)}
                 {no.tipo === "esperar" && (
                   <label className="block space-y-1 text-xs text-white/60">Esperar quanto tempo?
                     <div className="flex gap-2"><Input type="number" min={1} value={(no.dados.minutos ?? 10) >= 60 && (no.dados.minutos ?? 0) % 60 === 0 ? (no.dados.minutos ?? 0) / 60 : no.dados.minutos ?? 10} className="h-9 w-24 border-white/15 bg-black/20"

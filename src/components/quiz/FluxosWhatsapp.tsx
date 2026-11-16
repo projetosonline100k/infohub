@@ -11,7 +11,8 @@ import type { FluxoInstagram, NumerosDoNo } from "@/hooks/useInstagramFluxos";
 import type { GrafoFluxo } from "../../../supabase/functions/_shared/fluxo";
 
 const db = supabase as unknown as SupabaseClient;
-interface FluxoWa { id: string; nome: string; ativo: boolean; grafo: GrafoFluxo; disparos: number; atualizado_em: string; gatilho: GatilhoWa["tipo"]; gatilho_espera_min: number; gatilho_quiz_id: string | null; ativado_em: string | null }
+interface FluxoWa { id: string; nome: string; ativo: boolean; grafo: GrafoFluxo; disparos: number; atualizado_em: string; gatilho: GatilhoWa["tipo"]; gatilho_espera_min: number; gatilho_quiz_id: string | null; ativado_em: string | null; gatilho_tag: string | null }
+export interface QuizWa { id: string; titulo: string; variante_de: string | null }
 export interface ExecucaoWa { id: string; fluxo_id: string; resposta_id: string; estado: string; no_atual: string | null; proximo_em: string | null; criado_em: string; historico: { no: string; tipo: string; em: string; lida?: boolean }[] | null }
 export interface LeadFluxoWa { id: string; quiz_id: string; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string }
 
@@ -21,6 +22,7 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [fluxos, setFluxos] = useState<FluxoWa[] | null>(null);
   const [quizzes, setQuizzes] = useState<{ id: string; titulo: string }[]>([]);
+  const [todosQuizzes, setTodosQuizzes] = useState<QuizWa[]>([]);
   const [editando, setEditando] = useState<FluxoWa | "novo" | null>(null);
 
   const carregar = useCallback(async () => {
@@ -28,28 +30,40 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
     const cid = (q as { cliente_id: string } | null)?.cliente_id ?? null;
     setClienteId(cid);
     if (!cid) return;
-    const { data } = await db.from("whatsapp_fluxos").select("id, nome, ativo, grafo, disparos, atualizado_em, gatilho, gatilho_espera_min, gatilho_quiz_id, ativado_em").eq("cliente_id", cid).order("criado_em", { ascending: false });
+    const { data } = await db.from("whatsapp_fluxos").select("id, nome, ativo, grafo, disparos, atualizado_em, gatilho, gatilho_espera_min, gatilho_quiz_id, ativado_em, gatilho_tag").eq("cliente_id", cid).order("criado_em", { ascending: false });
     setFluxos((data ?? []) as FluxoWa[]);
     const { data: qs } = await db.from("quizzes").select("id, titulo").eq("cliente_id", cid).is("variante_de", null).neq("status", "cancelado").order("criado_em", { ascending: false });
     setQuizzes((qs ?? []) as { id: string; titulo: string }[]);
+    const { data: tq } = await db.from("quizzes").select("id, titulo, variante_de").eq("cliente_id", cid).neq("status", "cancelado");
+    setTodosQuizzes((tq ?? []) as QuizWa[]);
   }, [quizId]);
   useEffect(() => { void carregar(); }, [carregar]);
 
   // Execuções (quem está/esteve em cada fluxo) e leads do projeto: base dos números por bloco e do painel "A receber". Atualiza a cada 8 s com o editor aberto.
   const [execs, setExecs] = useState<ExecucaoWa[]>([]);
   const [leads, setLeads] = useState<LeadFluxoWa[]>([]);
+  const [tags, setTags] = useState<{ resposta_id: string; tag: string }[]>([]);
+  const tagsPorLead = useMemo(() => { const m = new Map<string, string[]>(); for (const t of tags) m.set(t.resposta_id, [...(m.get(t.resposta_id) ?? []), t.tag]); return m; }, [tags]);
+  const todasTags = useMemo(() => [...new Set(tags.map((t) => t.tag))].sort(), [tags]);
   const lerMovimento = useCallback(async () => {
     if (!clienteId) return;
-    const [{ data: e }, { data: l }] = await Promise.all([
-      db.from("whatsapp_fluxo_execucoes").select("id, fluxo_id, resposta_id, estado, no_atual, proximo_em, criado_em, historico").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000),
-      db.from("quiz_respostas").select("id, quiz_id, nome, email, whatsapp, criada_em").eq("cliente_id", clienteId).not("whatsapp", "is", null).order("criada_em", { ascending: false }).limit(1500),
+    // o servidor entrega no máximo 1000 linhas por pedido: busca em páginas
+    const paginas = async <T,>(consulta: (de: number, ate: number) => PromiseLike<{ data: T[] | null }>, max: number): Promise<T[]> => {
+      const tudo: T[] = [];
+      for (let de = 0; de < max; de += 1000) { const { data } = await consulta(de, de + 999); tudo.push(...(data ?? [])); if ((data ?? []).length < 1000) break; }
+      return tudo;
+    };
+    const [e, l, tg] = await Promise.all([
+      db.from("whatsapp_fluxo_execucoes").select("id, fluxo_id, resposta_id, estado, no_atual, proximo_em, criado_em, historico").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000).then((r) => (r.data ?? []) as ExecucaoWa[]),
+      paginas<LeadFluxoWa>((de, ate) => db.from("quiz_respostas").select("id, quiz_id, nome, email, whatsapp, criada_em").eq("cliente_id", clienteId).not("whatsapp", "is", null).order("criada_em", { ascending: false }).range(de, ate), 8000),
+      paginas<{ resposta_id: string; tag: string }>((de, ate) => db.from("quiz_lead_tags").select("resposta_id, tag").eq("cliente_id", clienteId).order("criado_em").range(de, ate), 30000),
     ]);
-    setExecs((e ?? []) as ExecucaoWa[]); setLeads((l ?? []) as LeadFluxoWa[]);
+    setExecs(e); setLeads(l); setTags(tg);
   }, [clienteId]);
   useEffect(() => {
     if (!clienteId) return;
     void lerMovimento();
-    const t = window.setInterval(() => { if (!document.hidden) void lerMovimento(); }, 8000);
+    const t = window.setInterval(() => { if (!document.hidden) void lerMovimento(); }, 20000);
     return () => window.clearInterval(t);
   }, [clienteId, lerMovimento]);
   const numerosDoFluxo = useCallback((fluxoId: string, desde: number | null, ate: number | null): Record<string, NumerosDoNo> => {
@@ -88,20 +102,36 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
     toast.success(`${ids.length} lead${ids.length === 1 ? "" : "s"} entrando no fluxo`);
     await lerMovimento();
   };
+  const mudarTag = async (ids: string[], tag: string, remover: boolean) => {
+    const t = tag.trim().toLowerCase().slice(0, 40);
+    if (!clienteId || !t || ids.length === 0) return;
+    if (ids.length > 1 && !(await confirmar(`${remover ? "Tirar" : "Pôr"} a tag “${t}” ${remover ? "de" : "em"} ${ids.length} leads?`, { botao: remover ? "Tirar" : "Pôr a tag", destrutivo: false, descricao: t === "nao-receber" ? "Quem tem “nao-receber” sai de todos os disparos automáticos." : undefined }))) return;
+    for (let i = 0; i < ids.length; i += 400) {
+      const parte = ids.slice(i, i + 400);
+      const { error } = remover
+        ? await db.from("quiz_lead_tags").delete().eq("cliente_id", clienteId).eq("tag", t).in("resposta_id", parte)
+        : await db.from("quiz_lead_tags").upsert(parte.map((id) => ({ cliente_id: clienteId, resposta_id: id, tag: t })), { onConflict: "resposta_id,tag", ignoreDuplicates: true });
+      if (error) { toast.error("Não consegui mexer na tag: " + error.message); return; }
+    }
+    toast.success(`${remover ? "Tag tirada" : "Tag posta"}: ${t} (${ids.length})`);
+    await lerMovimento();
+  };
   const editado = editando && editando !== "novo" ? (fluxos?.find((x) => x.id === editando.id) ?? editando) : null;
   const painel = useMemo(() => editado && (
-    <LeadsDoFluxoWa fluxoId={editado.id} ativo={editado.ativo} gatilho={editado.gatilho} esperaMin={editado.gatilho_espera_min} quizId={editado.gatilho_quiz_id} ativadoEm={editado.ativado_em}
+    <LeadsDoFluxoWa fluxoId={editado.id} ativo={editado.ativo} gatilho={editado.gatilho} gatilhoTag={editado.gatilho_tag} quizzes={todosQuizzes} tagsPorLead={tagsPorLead} todasTags={todasTags} mudarTag={mudarTag} esperaMin={editado.gatilho_espera_min} quizId={editado.gatilho_quiz_id} ativadoEm={editado.ativado_em}
       leads={leads} execs={execs} disparar={(ids) => dispararLeads(editado.id, ids)} />
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ), [editado, leads, execs]);
+  ), [editado, leads, execs, todosQuizzes, tagsPorLead]);
 
   const comoFluxoEditor = (f: FluxoWa): FluxoInstagram => ({ id: f.id, user_id: "", ig_user_id: "", nome: f.nome, ativo: f.ativo, gatilhos: ["comentario"], palavras_chave: [], correspondencia: "contem", media_ids: null, respostas_comentario: [], grafo: f.grafo, disparos: f.disparos });
   const salvar = async (form: Pick<FluxoInstagram, "nome" | "ativo" | "grafo"> & { gatilho_wa?: GatilhoWa }, id?: string) => {
     if (!clienteId) throw new Error("Projeto não encontrado");
-    const g = form.gatilho_wa ?? { tipo: "manual" as const, espera_min: 0, quiz_id: null };
+    const g = form.gatilho_wa ?? { tipo: "manual" as const, espera_min: 0, quiz_id: null, tag: null };
+    const gatilho_tag = g.tipo === "tag" ? (g.tag ?? "").trim().toLowerCase() || null : null;
+    if (g.tipo === "tag" && !gatilho_tag) throw new Error("Escolha a tag do gatilho");
     const { error } = id
-      ? await db.from("whatsapp_fluxos").update({ nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho: g.tipo, gatilho_espera_min: g.espera_min, gatilho_quiz_id: g.quiz_id, atualizado_em: new Date().toISOString() }).eq("id", id)
-      : await db.from("whatsapp_fluxos").insert({ cliente_id: clienteId, nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho: g.tipo, gatilho_espera_min: g.espera_min, gatilho_quiz_id: g.quiz_id });
+      ? await db.from("whatsapp_fluxos").update({ nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho: g.tipo, gatilho_espera_min: g.espera_min, gatilho_quiz_id: g.quiz_id, gatilho_tag, atualizado_em: new Date().toISOString() }).eq("id", id)
+      : await db.from("whatsapp_fluxos").insert({ cliente_id: clienteId, nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho: g.tipo, gatilho_espera_min: g.espera_min, gatilho_quiz_id: g.quiz_id, gatilho_tag });
     if (error) throw error;
     await carregar();
   };
@@ -140,7 +170,7 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
                 </div>);
             })}
           </div>)}
-      <FluxoEditor whatsapp quizzesWa={quizzes} gatilhoWaInicial={editando && editando !== "novo" ? { tipo: editando.gatilho, espera_min: editando.gatilho_espera_min, quiz_id: editando.gatilho_quiz_id } : undefined} aberto={editando !== null} fluxo={editando && editando !== "novo" ? comoFluxoEditor(editando) : null} inicial={editando === "novo" ? { nome: "Novo fluxo" } : null}
+      <FluxoEditor whatsapp quizzesWa={quizzes} tagsWa={todasTags} gatilhoWaInicial={editando && editando !== "novo" ? { tipo: editando.gatilho, espera_min: editando.gatilho_espera_min, quiz_id: editando.gatilho_quiz_id, tag: editando.gatilho_tag } : undefined} aberto={editando !== null} fluxo={editando && editando !== "novo" ? comoFluxoEditor(editando) : null} inicial={editando === "novo" ? { nome: "Novo fluxo" } : null}
         contaNome="WhatsApp do projeto" numeros={{}} numerosDoPeriodo={editado ? (d, a) => numerosDoFluxo(editado.id, d, a) : undefined} painelEsquerda={painel} onFechar={() => setEditando(null)}
         onSalvar={(form, id) => salvar({ nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho_wa: form.gatilho_wa }, id)} />
     </div>

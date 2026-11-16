@@ -6,7 +6,7 @@
 //   condicao → "sim" | "nao"
 //   fim      → nenhuma
 
-export type TipoNo = "inicio" | "mensagem" | "midia" | "esperar" | "condicao" | "fim";
+export type TipoNo = "inicio" | "mensagem" | "midia" | "esperar" | "tag" | "condicao" | "fim";
 export type TipoMidia = "imagem" | "audio" | "video" | "arquivo";
 export type Botao = { id: string; titulo: string; tipo: "resposta" | "link"; url?: string };
 export type CondicaoTipo = "respondeu" | "texto_contem";
@@ -14,6 +14,8 @@ export type DadosNo = {
   texto?: string;               // mensagem
   botoes?: Botao[];             // mensagem: ou só respostas, ou só links (a Meta não mistura os dois)
   minutos?: number;             // esperar
+  tag_acao?: "adicionar" | "remover";   // tag (só WhatsApp): põe ou tira uma etiqueta do lead
+  tag_nome?: string;
   condicao?: CondicaoTipo;      // condicao
   palavra?: string;             // condicao texto_contem
   midia_url?: string;           // midia: endereço público do arquivo (balde fluxo-midias)
@@ -46,6 +48,7 @@ export function saidasDoNo(no: NoFluxo): { id: string; rotulo: string }[] {
     case "inicio": return [{ id: "proximo", rotulo: "" }];
     case "esperar": return [{ id: "proximo", rotulo: "" }];
     case "midia": return [{ id: "proximo", rotulo: "" }];
+    case "tag": return [{ id: "proximo", rotulo: "" }];
     case "condicao": return [{ id: "sim", rotulo: "Sim" }, { id: "nao", rotulo: "Não" }];
     case "mensagem": {
       const r = respostasDoNo(no);
@@ -92,6 +95,10 @@ export function problemasDoFluxo(g: GrafoFluxo, opcoes?: { whatsapp?: boolean })
     if (n.tipo === "midia") {
       if (!/^https:\/\/\S+$/.test(n.dados.midia_url ?? "")) p.push({ no: n.id, texto: "Escolha o arquivo da mídia." });
       if ((n.dados.texto ?? "").length > 1000) p.push({ no: n.id, texto: "A legenda passa de 1000 caracteres." });
+    }
+    if (n.tipo === "tag") {
+      if (!wa) p.push({ no: n.id, texto: "O bloco Tag só funciona nos fluxos do WhatsApp." });
+      else if (!(n.dados.tag_nome ?? "").trim()) p.push({ no: n.id, texto: "Escreva o nome da tag." });
     }
     if (n.tipo === "esperar") {
       const m = n.dados.minutos ?? 0;
