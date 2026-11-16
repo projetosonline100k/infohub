@@ -114,6 +114,53 @@ def enquadrar(pasta, referencia, blocos=None, cy_ref=None):
     return alvo, resultados
 
 
+def verificar(pasta, referencia, blocos=None, cy_ref=None, tol_pos=0.06, tol_larg=0.15):
+    """Mede o vídeo JÁ GERADO (previa.mp4) contra a referência. Devolve (ok, linhas). Só dê o trabalho por feito quando isto passar:
+    olhar não basta, medir. Um bloco falha se o rosto estiver mais de `tol_pos` longe (em fração do quadro) ou com a largura fora de `tol_larg`."""
+    sys.path.insert(0, str(Path(__file__).parent))
+    import motor
+    pasta = Path(pasta)
+    previa, projeto_json = pasta / "previa.mp4", pasta / "projeto.json"
+    if not previa.exists():
+        return False, ["sem previa.mp4: gere a versão antes (danilo.py versao <edicao_id>)"]
+    if previa.stat().st_mtime < projeto_json.stat().st_mtime:
+        return False, ["a prévia é MAIS ANTIGA que o projeto.json: gere a versão (danilo.py versao <edicao_id>) e verifique de novo"]
+    projeto = json.loads(projeto_json.read_text())
+    ref = _rosto(referencia)
+    if not ref:
+        return False, ["não achei rosto na referência"]
+    alvo = _como_9x16(ref)
+    if cy_ref is not None:
+        alvo["cy"] = cy_ref
+    mapa = motor.Mapa(motor.trechos_mantidos(projeto))
+    tmp = pasta / "_tmp"
+    tmp.mkdir(exist_ok=True)
+    zooms = projeto.get("zooms") or []
+    escolhidos = [k for k in zooms if (k["id"] in blocos if blocos else ("foco_x" in k or "foco_y" in k))]
+    linhas, ok = [], True
+    for k in escolhidos:
+        t_final = mapa.para_final(k["inicio"] + min(1.0, (k["fim"] - k["inicio"]) / 2), "inicio")
+        if t_final is None:
+            linhas.append(f"{k['id']}: esse trecho foi cortado do vídeo (nada a conferir)")
+            continue
+        vel = projeto.get("velocidade") or 1
+        if vel != 1 and projeto.get("formato") != "papel":   # o vídeo pronto é acelerado: o tempo na prévia é o do mapa dividido pela velocidade
+            t_final = t_final / vel
+        arq = tmp / f"ver_{k['id']}.png"
+        _quadro(previa, t_final, arq)
+        r = _rosto(arq)
+        if not r:
+            ok = False
+            linhas.append(f"{k['id']} (em {t_final:.1f}s): FALHOU — não achei o rosto no vídeo gerado (coberto por capa/headline ou fora do quadro?)")
+            continue
+        dx, dy, dw = r["cx"] - alvo["cx"], r["cy"] - alvo["cy"], r["w"] / alvo["w"] - 1
+        bom = abs(dx) <= tol_pos and abs(dy) <= tol_pos and abs(dw) <= tol_larg
+        ok &= bom
+        linhas.append(f"{k['id']} (em {t_final:.1f}s): {'OK' if bom else 'FALHOU'} — rosto x {r['cx']:.2f} (alvo {alvo['cx']:.2f}), y {r['cy']:.2f} (alvo {alvo['cy']:.2f}), largura {r['w']:.2f} (alvo {alvo['w']:.2f})"
+                      + ("" if bom else f" → ajuste: foco_y {'+' if dy > 0 else '-'}{abs(dy) / max(k.get('z', 1.3) - 1, 0.1):.2f}, foco_x {'+' if dx > 0 else '-'}{abs(dx) / max(k.get('z', 1.3) - 1, 0.1):.2f}, z × {1 / (1 + dw):.2f}"))
+    return ok, linhas
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if len(a) < 2:

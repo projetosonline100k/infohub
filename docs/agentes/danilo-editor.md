@@ -298,6 +298,7 @@ python3 danilo.py enquadrar <edicao_id> <imagem_de_referencia.png> <bloco,bloco�
 - Ele acha o rosto na referência e no bruto, calcula o `z`, o `foco_x` e o `foco_y` de cada bloco de zoom indicado (ids em `projeto.json › zooms`; sem ids, só mexe nos blocos que já têm foco) e guarda o projeto antigo em `versoes/`.
 - Abra `<pasta da edição>/_enquadre.jpg`: referência à esquerda, resultado à direita. **Olhe e confira** antes de gerar a versão (rosto na mesma altura, mesmas mãos e mesa). Se a altura do rosto ainda destoar, repita com `--cy-ref 0.30` (altura do rosto na referência, de 0 a 1, de cima para baixo).
 - Só então rode `python3 danilo.py versao <edicao_id>` (uma vez).
+- **Prove que ficou certo:** `python3 danilo.py verificar <edicao_id> <imagem_de_referencia.png> <blocos>` mede o vídeo que acabou de ser gerado contra a referência (posição e largura do rosto). Se disser `NÃO PASSOU`, aplique o ajuste sugerido, rode `enquadrar`/`versao`/`verificar` de novo (até 3 tentativas). **Só diga ao Davi que está pronto quando o resultado for `PASSOU`**, e escreva os números medidos na resposta.
 - A conta: `rosto_na_tela = z · rosto_no_bruto − foco · (z − 1)`. Subir o personagem = aumentar `foco_y`; levá-lo para a direita = diminuir `foco_x`. `foco` vai de 0 a 1.
 - Para os vídeos de tela dividida ou de capa de livro por cima, mexa só nos blocos de zoom de tela cheia; legenda, headline e capa não mudam de lugar.
 - Corrigido em 16/11: o motor antes limitava o deslocamento do foco ao do primeiro quadro (zoom de abertura), então `foco_y` alto quase não subia o rosto. Agora o vídeo ampliado é colado numa tela preta do tamanho do maior zoom e o recorte sai dela (`motor.py`, `zmax`).
@@ -395,3 +396,15 @@ Foi montado na conversa geral do Infopro (13 e 14/10). O piloto foi aprovado pel
 1. Depois do "Aprovar", a tarefa segue para a Dalila postar.
 2. Fazer o manual do Instalivros (pasta `Instalivros/EDIÇÃO/{BRUTOS,EDITADOS,APROVADOS}`). A automação e o estilo já estão ligados (20/10); falta o Davi aprovar o piloto (bruto 01).
 3. Vídeo de demonstração com fundo verde do INSTALIVROS: o Davi ainda não mandou.
+
+
+## Regra geral: teste antes de entregar (16/11/2026)
+
+O Davi passou mais de uma hora pedindo o mesmo ajuste e o Danilo respondia "ajustei" sem que mudasse nada. Isso não pode se repetir. Em QUALQUER ajuste pedido no chat do editor:
+
+1. **Defina como medir.** Traduza o pedido em algo mensurável (posição do rosto, tamanho, tempo de uma cena, volume, texto na tela) e escreva a meta com números.
+2. **Faça por cálculo, não por tentativa.** Se existe ferramenta que calcula (`enquadrar`, `quadros`, `ouvir`), use. Valor chutado é último recurso.
+3. **Teste barato primeiro.** Gere só um quadro ou trecho curto (`quadros`, `_enquadre.jpg`) e olhe; versão completa só depois, uma vez.
+4. **Meça o resultado gerado**, não o projeto: extraia quadros do `previa.mp4` novo e compare com a meta (`verificar`). Confira também que a prévia é posterior ao `projeto.json`.
+5. **Se não passou, entenda por quê antes de repetir.** Se duas tentativas seguidas não mudaram o resultado como o esperado, desconfie do motor/serviço (foi assim que se achou o defeito do foco): leia o código, teste a conta isolada, confira se o serviço está com o código novo.
+6. **Na resposta**, diga o que mediu (antes → depois) e o que NÃO conseguiu garantir. Nunca escreva "ajustei" sem ter conferido o vídeo gerado.

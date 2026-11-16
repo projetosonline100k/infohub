@@ -904,6 +904,14 @@ if __name__ == "__main__":
         cy = float(a[a.index("--cy-ref") + 1]) if "--cy-ref" in a else None
         resto = [x for x in a[3:] if not x.startswith("--") and x != str(cy)]
         print(_enq.enquadrar(pasta(a[1]), a[2], resto[0].split(",") if resto and resto[0] != "todos" else None, cy))
+    elif cmd == "verificar":   # verificar <edicao_id> <referencia.png> [bloco,bloco…] [--cy-ref 0.3]: mede o vídeo gerado contra a referência (sai com código 1 se falhar)
+        import enquadrar as _enq
+        cy = float(a[a.index("--cy-ref") + 1]) if "--cy-ref" in a else None
+        resto = [x for x in a[3:] if not x.startswith("--") and x != str(cy)]
+        ok, linhas = _enq.verificar(pasta(a[1]), a[2], resto[0].split(",") if resto and resto[0] != "todos" else None, cy)
+        print("\n".join(linhas))
+        print("RESULTADO:", "PASSOU" if ok else "NÃO PASSOU — ajuste e gere a versão de novo")
+        raise SystemExit(0 if ok else 1)
     elif cmd == "versao":
         print(*nova_versao(a[1]))
     elif cmd == "registrar-dark":   # registrar-dark <pasta> "<título>" [--tarefa <id>] [--nota "Dark para 26/10."]
