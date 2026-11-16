@@ -92,6 +92,10 @@ export function problemasDoFluxo(g: GrafoFluxo, opcoes?: { whatsapp?: boolean })
         if (b.tipo === "link" && !/^https?:\/\/\S+$/.test(b.url ?? "")) p.push({ no: n.id, texto: `O botão “${b.titulo}” precisa de um link https://…` });
       }
     }
+    if (n.tipo === "mensagem" && n.dados.midia_url) {
+      if (!/^https:\/\/\S+$/.test(n.dados.midia_url)) p.push({ no: n.id, texto: "A imagem da mensagem precisa ser reenviada." });
+      else if (!wa && primeiroNo(g)?.id === n.id) p.push({ no: n.id, texto: "A primeira mensagem (a que responde o comentário) não pode levar imagem: a Meta só aceita anexo depois que a pessoa responde." });
+    }
     if (n.tipo === "midia") {
       if (!/^https:\/\/\S+$/.test(n.dados.midia_url ?? "")) p.push({ no: n.id, texto: "Escolha o arquivo da mídia." });
       if ((n.dados.texto ?? "").length > 1000) p.push({ no: n.id, texto: "A legenda passa de 1000 caracteres." });

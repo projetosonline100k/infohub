@@ -90,6 +90,10 @@ async function andar(admin: Admin, d: Deps, conexao: ConexaoFluxo, fluxo: Fluxo,
       }
       try {
         token ??= await d.tokenAtual(admin, conexao);
+        if (no.tipo === "mensagem" && no.dados.midia_tipo === "imagem" && no.dados.midia_url && !primeira) {   // imagem da mensagem: sai antes do texto
+          const img = await d.graph(`${exec.ig_user_id}/messages`, token, { recipient: { id: exec.contato_id }, message: { attachment: { type: "image", payload: { url: no.dados.midia_url, is_reusable: false } } } }) as { message_id?: string } | null;
+          await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: img?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id, no_id: no.id, tipo: "midia", texto: "[imagem]" });
+        }
         const resp = await d.graph(`${exec.ig_user_id}/messages`, token, {
           recipient: primeira ? { comment_id: exec.comment_id } : { id: exec.contato_id },
           message: corpoDaMensagem(no, vars),
