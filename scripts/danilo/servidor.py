@@ -254,6 +254,50 @@ def empilhado(destino):
 
 
 _gerando_montagem = set()
+_gerando_leve = set()
+_leve_ultima = {}
+_leve_erro = {}
+
+
+def previa_leve(pasta, projeto):
+    """Prévia PRONTA do editor (16/11, Davi: "em cima roda, em baixo não"): o mesmo render da prévia (540p, com folhas, zoom, legendas e música) de um projeto
+    ainda não salvo, num arquivo só (previa-leve-<hash>.mp4). O player toca esse vídeo único em vez de empilhar vários <video>, que travavam no Mac de 8 GB.
+    Só vale a última versão pedida: se o Davi mexeu de novo antes de começar, a anterior é pulada."""
+    import hashlib
+    if projeto.get("formato") == "dark":
+        return {"pronto": False, "erro": "dark"}
+    atual = json.loads((pasta / "projeto.json").read_text())
+    for campo in ("fonte", "duracao_fonte", "palavras"):   # o app não troca o bruto
+        projeto[campo] = atual.get(campo)
+    chave = hashlib.sha1(json.dumps({k: v for k, v in projeto.items() if k != "palavras"}, sort_keys=True).encode()).hexdigest()[:12]
+    destino = pasta / f"previa-leve-{chave}.mp4"
+    if destino.exists():
+        return {"pronto": True, "arquivo": destino.name}
+    if chave in _leve_erro:
+        return {"pronto": False, "erro": _leve_erro[chave]}
+    if not (pasta / "proxy.mp4").exists():
+        proxy(pasta)
+        return {"pronto": False}
+    _leve_ultima[str(pasta)] = chave
+    if chave not in _gerando_leve:
+        _gerando_leve.add(chave)
+
+        def gerar():
+            try:
+                with _fila:
+                    if _leve_ultima.get(str(pasta)) != chave:    # ele já mexeu de novo: essa não vale mais
+                        return
+                    motor.renderizar(pasta, previa=True, projeto=projeto, saida=destino, leve=True)
+                    novos = sorted(pasta.glob("previa-leve-*.mp4"), key=lambda x: x.stat().st_mtime)
+                    for velho in novos[:-3]:                 # guarda só as 3 últimas
+                        velho.unlink(missing_ok=True)
+            except Exception as e:
+                log("prévia leve erro", traceback.format_exc()[-300:])
+                _leve_erro[chave] = str(e)[:160]
+            finally:
+                _gerando_leve.discard(chave)
+        threading.Thread(target=gerar, daemon=True).start()
+    return {"pronto": False}
 
 
 def montagem(pasta, segs):
@@ -455,6 +499,8 @@ class Handler(BaseHTTPRequestHandler):
                 if q.get("previa", ["1"])[0] != "0":    # previa=0: só salva (corte ao vivo no editor)
                     threading.Thread(target=gerar_previa, args=(id_,), daemon=True).start()
                 return self._json(202, {"ok": True})
+            if acao == "previa-leve":
+                return self._json(200, previa_leve(pasta, json.loads(corpo)["projeto"]))
             if acao == "montagem":
                 return self._json(200, montagem(pasta, json.loads(corpo)["segs"]))
             if acao == "midia":

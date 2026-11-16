@@ -388,13 +388,34 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   useEffect(() => {
     if (web && previaWeb && chaveNuvem) setMontagem({ chave: chaveNuvem, arquivo: previaWeb });
   }, [web, previaWeb, chaveNuvem]);
-  const modoMontagem = !!montagem && montagem.chave === chaveSegs;
+  // Prévia PRONTA (16/11, Davi: "em cima roda, em baixo não"): o servidor monta o vídeo com tudo (folhas, zoom, legendas, música) e o player toca só ele.
+  // Empilhar vários <video> (o bruto + as folhas com transparência) travava o vídeo de baixo no Mac de 8 GB. Mexeu de novo: volta ao modo por camadas até a nova ficar pronta.
+  const [leve, setLeve] = useState<{ chave: string; arquivo: string } | null>(null);
+  const [leveFalhou, setLeveFalhou] = useState<string | null>(null);
+  const chaveProj = useMemo(() => (projeto ? JSON.stringify({ ...projeto, palavras: undefined }) : ""), [projeto]);
+  useEffect(() => {
+    if (!cfg || web || !edicao || !proxyPronto || !projeto || (projeto as { formato?: string }).formato === "dark") return;
+    let vivo = true, timer = 0;
+    const corpo = JSON.stringify({ projeto });
+    const pedir = () => void fetch(url("previa-leve"), { method: "POST", body: corpo })
+      .then((r) => (r.ok ? r.json() : null)).then((d) => {
+        if (!vivo) return;
+        if (d?.pronto) { setLeve({ chave: chaveProj, arquivo: d.arquivo }); setLeveFalhou(null); }
+        else if (d?.erro) setLeveFalhou(chaveProj);
+        else timer = window.setTimeout(pedir, 1500);
+      }).catch(() => { if (vivo) timer = window.setTimeout(pedir, 4000); });
+    timer = window.setTimeout(pedir, 1200);   // espera ele parar de mexer
+    return () => { vivo = false; window.clearTimeout(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cfg, web, edicao, proxyPronto, url, chaveProj]);
+  const compostaPronta = !web && !!leve && leve.chave === chaveProj;
+  const modoMontagem = compostaPronta || (!!montagem && montagem.chave === chaveSegs);
   const modoRef = useRef(modoMontagem); modoRef.current = modoMontagem;
   const segsQRef = useRef(segsQ); segsQRef.current = segsQ;
   const tocandoRef = useRef(tocando); tocandoRef.current = tocando;
   // Vídeos do player na memória (videoNoMac.ts): o bruto original é pesado demais, esse toca pelo servidor.
-  const arquivoA = modoMontagem ? montagem!.arquivo : arquivoPlayer;
-  const srcA = useVideoNoMac(web ? "" : url(`arquivo/${arquivoA}`), !web && /^(proxy|montagem-)/.test(arquivoA));
+  const arquivoA = compostaPronta ? leve!.arquivo : modoMontagem ? montagem!.arquivo : arquivoPlayer;
+  const srcA = useVideoNoMac(web ? "" : url(`arquivo/${arquivoA}`), !web && /^(proxy|montagem-|previa-leve-)/.test(arquivoA));
   const srcB = useVideoNoMac(web ? "" : url(`arquivo/${arquivoPlayer}`), !web && arquivoPlayer === "proxy.mp4");
   const srcPrevia = useVideoNoMac(web ? "" : url(`arquivo/previa.mp4?v=${estado?.versao}`), !web && !!estado?.versao);
   useEffect(() => {   // trocou de modo: o player A assume; a reserva para
@@ -719,22 +740,22 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   }, [web, url]);
 
   // Elementos ativos no instante atual (pra desenhar por cima do player).
-  const legAtivas = web ? [] : projeto?.legendas.filter((l) => tFonte >= l.inicio && tFonte < l.fim) ?? [];
+  const legAtivas = web || compostaPronta ? [] : projeto?.legendas.filter((l) => tFonte >= l.inicio && tFonte < l.fim) ?? [];
   // Vídeos por cima entram montados 3 s antes (escondidos, parados no começo): já carregados e decodificados
   // quando chegam, em vez de começar a baixar na hora e o GIF/quadro travar na entrada (26/10).
   // As animações do papel vêm todas ao abrir (são leves): nenhuma chega atrasada na hora de entrar.
   const srcsAlfa = (projeto?.midias ?? []).filter((m) => m.tipo === "video" && (m.chroma || m.alfa) && relativo(m.arquivo))
     .map((m) => url(`arquivo/${relativo(m.arquivo)!.replace(/[^/]+$/, (n) => `_alfa/${n.replace(/\.[^.]+$/, "")}.empilhado.mp4`)}`)).join("|");
   useEffect(() => { if (srcsAlfa) preCarregarVideos(srcsAlfa.split("|")); }, [srcsAlfa]);
-  const midAtivas = web ? [] : projeto?.midias.filter((m) => tFonte >= m.inicio - (m.tipo === "video" ? 3 : 0) && tFonte < m.fim) ?? [];
-  const noBuraco = projeto && !web ? !!lacunaEm(projeto, tFonte) : false;
+  const midAtivas = web || compostaPronta ? [] : projeto?.midias.filter((m) => tFonte >= m.inicio - (m.tipo === "video" ? 3 : 0) && tFonte < m.fim) ?? [];
+  const noBuraco = projeto && !web && !compostaPronta ? !!lacunaEm(projeto, tFonte) : false;
   const nivelZoom = zoomNoFinal(zoomsFinais, tFinal);
   const cor = previaCor(projeto?.cor ?? "cinema", projeto?.ajuste_cor);
   const naDivisao = !!projeto && telasDivididas(projeto).some((td) => tFonte >= td.inicio && tFonte < td.fim);
   // Tela dividida (igual ao motor): do quadro já com zoom, a faixa recorte–recorte+960 (padrão 230–1190) desce pra metade de baixo.
   const recorte = Math.round(1920 * (projeto?.recorte_dividida ?? 0.12));
   const antesDoZoom = (y: number) => 1920 * 0.32 + (y - 1920 * 0.32) / nivelZoom;
-  const estiloVideo: React.CSSProperties = web ? {} : {
+  const estiloVideo: React.CSSProperties = web || compostaPronta ? {} : {
     filter: cor.filtro || undefined, transformOrigin: "50% 32%",
     transform: naDivisao ? `translateY(${(960 - recorte) * escala}px) scale(${nivelZoom})` : `scale(${nivelZoom})`,
     ...(naDivisao && { clipPath: `inset(${(antesDoZoom(recorte) / 19.2).toFixed(3)}% 0 ${(100 - antesDoZoom(recorte + 960) / 19.2).toFixed(3)}% 0)` }),
@@ -813,7 +834,7 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                       onEnded={() => { if (i === ativoRef.current) setTocando(false); }} />
                   ))}
                   {srcMusica && <audio ref={musRef} src={srcMusica} loop preload="auto" />}
-                  {!web && cor.quente !== 0 && (
+                  {!web && !compostaPronta && cor.quente !== 0 && (
                     <div className="pointer-events-none absolute inset-0"
                       style={{ background: cor.quente > 0 ? `rgba(255,150,40,${(cor.quente * 0.35).toFixed(3)})` : `rgba(40,140,255,${(-cor.quente * 0.35).toFixed(3)})`, mixBlendMode: "soft-light" }} />
                   )}
@@ -866,9 +887,9 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
                   <button type="button" onClick={alternarPlay} className="rounded-full bg-zinc-200 p-1.5 text-zinc-900" title="Espaço">{tocando ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button>
                   <button type="button" onClick={() => irParaFinal(tFinal + 5)} className="rounded p-1 hover:bg-zinc-700" title="+5 s">+5s</button>
                   <span className="font-mono text-sky-300">{timecode(tFinal)}</span><span className="font-mono text-zinc-500">/ {timecode(durFinal)}</span>
-                  <span className={cn("rounded px-1.5 py-0.5 text-[10px]", modoMontagem ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300")}
-                    title={modoMontagem ? "Tocando a prévia já montada com os cortes (liso)" : "Montando a prévia com os cortes novos (alguns segundos); até lá pode engasgar nos cortes"}>
-                    {modoMontagem ? "liso" : <span className="inline-flex items-center gap-1"><Loader2 className="h-2.5 w-2.5 animate-spin" />montando</span>}
+                  <span className={cn("rounded px-1.5 py-0.5 text-[10px]", compostaPronta || (modoMontagem && web) ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/15 text-amber-300")}
+                    title={compostaPronta ? "Tocando a prévia pronta (um vídeo só, com folhas, zoom e legendas): liso" : leveFalhou === chaveProj ? "Não consegui montar a prévia pronta: tocando por camadas, que pode engasgar" : "Atualizando a prévia pronta (alguns segundos); até lá toca por camadas e pode engasgar"}>
+                    {compostaPronta || (modoMontagem && web) ? "liso" : leveFalhou === chaveProj ? "por camadas" : <span className="inline-flex items-center gap-1"><Loader2 className="h-2.5 w-2.5 animate-spin" />atualizando prévia…</span>}
                   </span>
                 </div>
               </div>

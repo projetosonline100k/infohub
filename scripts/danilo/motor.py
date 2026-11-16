@@ -346,15 +346,34 @@ def mascara(w, h, destino, raio=34):
 
 
 # ---------------------------------------------------------------- montagem
-def renderizar(pasta, previa=False, progresso=None):
+def _copia_empilhada(arquivo, w, h, pasta):
+    """Prévia leve (16/11): cópia H.264 de um vídeo com transparência já no tamanho em que ele aparece, com a imagem em cima e a transparência embaixo.
+    Decodificar o ProRes 4444 original em todo render era o que deixava a prévia lenta; a cópia é feita uma vez e reaproveitada nas próximas."""
+    arq = Path(arquivo)
+    st = arq.stat()
+    we, he = w // 2 * 2, h // 2 * 2
+    destino = pasta / "_tmp" / f"leve_{arq.stem}_{we}x{he}_{int(st.st_mtime)}_{st.st_size}.mp4"
+    if destino.exists():
+        return destino, we, he
+    destino.parent.mkdir(exist_ok=True)
+    tmp = destino.with_name(destino.name + ".tmp.mp4")
+    subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(arq), "-an", "-filter_complex",
+                    f"[0:v]fps={FPS},scale={we}:{he},format=yuva444p,split[c][a];[a]alphaextract[m];[c]format=yuv444p[r];[r][m]vstack,format=yuv420p[v]",
+                    "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "30", "-bf", "0", "-movflags", "+faststart", str(tmp)], check=True)
+    tmp.replace(destino)
+    return destino, we, he
+
+
+def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, leve=False):
     """previa=True: monta tudo em 540×960 a partir do proxy.mp4 (540p, o mesmo do
     player) — decodificar o bruto 4K HEVC era o que deixava a prévia lenta.
     O final lê o bruto com decodificação de hardware (VideoToolbox).
-    progresso(fração 0–1) é chamado durante a montagem."""
+    progresso(fração 0–1) é chamado durante a montagem.
+    projeto/saida (16/11, prévia leve do editor): renderiza um projeto ainda não salvo e grava num arquivo à parte, sem mexer em previa.mp4."""
     pasta = Path(pasta)
     k = 0.5 if previa else 1.0
     LW, LH = int(LARG * k), int(ALT * k)
-    projeto = json.loads((pasta / "projeto.json").read_text())
+    projeto = projeto if projeto is not None else json.loads((pasta / "projeto.json").read_text())
     if projeto.get("formato") == "dark":
         # Formato dark (19/10): só a voz, a tela inteira é o papel desenhado (dark.py,
         # com dark_cenas.py e legendas.json na pasta da edição).
@@ -448,8 +467,19 @@ def renderizar(pasta, previa=False, progresso=None):
             ultimo, entrada = f"ov{n}", entrada + 1
             continue
         elif m.get("alfa"):   # vídeo com transparência (folhas rasgadas do Instalivros, ProRes 4444): sem moldura nem fade
-            args += ["-itsoffset", f"{a:.3f}", "-i", m["arquivo"]]
-            fc.append(f"[{entrada}:v]fps={FPS},scale={w}:{h},format=rgba[im{n}]")
+            emp = None
+            if leve and previa:
+                try:
+                    emp = _copia_empilhada(m["arquivo"], w, h, pasta)
+                except Exception:   # sem a cópia leve, segue com o original (mais lento)
+                    emp = None
+            if emp:
+                args += ["-itsoffset", f"{a:.3f}", "-i", str(emp[0])]
+                fc.append(f"[{entrada}:v]fps={FPS},split[ec{n}][ea{n}];[ec{n}]crop={emp[1]}:{emp[2]}:0:0[cc{n}];[ea{n}]crop={emp[1]}:{emp[2]}:0:{emp[2]},format=gray[am{n}];"
+                          f"[cc{n}][am{n}]alphamerge,scale={w}:{h},format=rgba[im{n}]")
+            else:
+                args += ["-itsoffset", f"{a:.3f}", "-i", m["arquivo"]]
+                fc.append(f"[{entrada}:v]fps={FPS},scale={w}:{h},format=rgba[im{n}]")
             fc.append(f"[{ultimo}][im{n}]overlay={x}:{y}:eof_action=pass:enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
             ultimo, entrada = f"ov{n}", entrada + 1
             continue
@@ -509,7 +539,7 @@ def renderizar(pasta, previa=False, progresso=None):
         fc.append(f"[anormal]atempo={vel}[aout]")
         dur = dur / vel
     (pasta / "_tmp_filtro.txt").write_text(";\n".join(fc))
-    saida = pasta / ("previa.mp4" if previa else "final.mp4")
+    saida = Path(saida) if saida else pasta / ("previa.mp4" if previa else "final.mp4")
     temp = saida.with_suffix(".tmp.mp4")
     qualidade = ["-preset", "ultrafast", "-crf", "28"] if previa else ["-preset", "medium", "-crf", "21"]
     args += ["-filter_complex_script", str(pasta / "_tmp_filtro.txt"), "-map", "[vout]", "-map", "[aout]",
