@@ -406,7 +406,8 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
     segs = trechos_mantidos(projeto)
     mapa = Mapa(segs)
     dur = mapa.duracao
-    gerar_ass(projeto, mapa, pasta / "_tmp_legendas.ass")
+    tag = f"-{Path(saida).stem}" if saida else ""   # prévia leve não pisa nos arquivos temporários de outra renderização
+    gerar_ass(projeto, mapa, pasta / f"_tmp_legendas{tag}.ass")
 
     proxy = pasta / "proxy.mp4"
     if previa and proxy.exists():
@@ -511,7 +512,7 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
                   f"fade=t=out:st={max(a, b - 0.35):.2f}:d=0.35:alpha=1[im{n}]")
         fc.append(f"[{ultimo}][im{n}]overlay={x}:{y}:eof_action=pass:enable='between(t,{a:.2f},{b:.2f})'[ov{n}]")
         ultimo, entrada = f"ov{n}", entrada + 2
-    fc.append(f"[{ultimo}]subtitles={pasta / '_tmp_legendas.ass'}:fontsdir={FONTES},format=yuv420p[vout]")
+    fc.append(f"[{ultimo}]subtitles={pasta / f'_tmp_legendas{tag}.ass'}:fontsdir={FONTES},format=yuv420p[vout]")
     fc.append("[ac]highpass=f=70,loudnorm=I=-15:TP=-1.5:LRA=9,aresample=48000[voz0]")
     # efeitos sonoros (22/10, Instalivros): som de papel em cada troca de cena (transicao.py)
     efs = []
@@ -534,9 +535,9 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
     if mus and Path(mus["arquivo"]).exists():
         # Abaixa sozinha quando o Davi fala: a curva vira um áudio de ganho multiplicado na música.
         gravar_ganho(curva_musica(nivel_voz(onda_voz(pasta, projeto), mapa), mus.get("abaixar", 0.35)),
-                     pasta / "_tmp_ganho.f32")
+                     pasta / f"_tmp_ganho{tag}.f32")
         args += ["-stream_loop", "-1", "-i", mus["arquivo"], "-f", "f32le", "-ar", "1000", "-ac", "1", "-i",
-                 str(pasta / "_tmp_ganho.f32")]
+                 str(pasta / f"_tmp_ganho{tag}.f32")]
         fc.append(f"[{entrada}:a]atrim=0:{dur:.2f},asetpts=PTS-STARTPTS,volume={mus.get('volume', 0.07)},"
                   f"afade=t=in:d=1.5,afade=t=out:st={max(0, dur - 3):.2f}:d=3,aresample=48000,"
                   f"aformat=sample_fmts=flt:channel_layouts=stereo[mus0]")
@@ -553,24 +554,31 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
         fc.append(f"[vnormal]setpts=PTS/{vel}[vout]")
         fc.append(f"[anormal]atempo={vel}[aout]")
         dur = dur / vel
-    (pasta / "_tmp_filtro.txt").write_text(";\n".join(fc))
+    (pasta / f"_tmp_filtro{tag}.txt").write_text(";\n".join(fc))
     saida = Path(saida) if saida else pasta / ("previa.mp4" if previa else "final.mp4")
     temp = saida.with_suffix(".tmp.mp4")
     qualidade = ["-preset", "ultrafast", "-crf", "28"] if previa else ["-preset", "medium", "-crf", "21"]
-    args += ["-filter_complex_script", str(pasta / "_tmp_filtro.txt"), "-map", "[vout]", "-map", "[aout]",
+    args += ["-filter_complex_script", str(pasta / f"_tmp_filtro{tag}.txt"), "-map", "[vout]", "-map", "[aout]",
              "-c:v", "libx264", *qualidade, "-profile:v", "high", "-pix_fmt", "yuv420p", "-r", str(FPS),
              "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", "-t", f"{dur:.2f}",
              "-progress", "pipe:1", "-nostats", str(temp)]
-    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    for linha in proc.stdout:
-        if progresso and linha.startswith("out_time_us=") and linha[12:].strip().isdigit():
-            try:
-                progresso(min(1.0, int(linha[12:]) / 1e6 / max(dur, 0.1)))
-            except Exception:
-                pass
-    erro = proc.stderr.read()
-    if proc.wait() != 0:
-        raise RuntimeError(f"ffmpeg falhou: {erro.strip()[-300:]}")
+    for tentativa in (1, 2):
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for linha in proc.stdout:
+            if progresso and linha.startswith("out_time_us=") and linha[12:].strip().isdigit():
+                try:
+                    progresso(min(1.0, int(linha[12:]) / 1e6 / max(dur, 0.1)))
+                except Exception:
+                    pass
+        erro = proc.stderr.read()
+        codigo = proc.wait()
+        if codigo == 0:
+            break
+        # Morreu sem dizer nada (código negativo = sinal, ex.: memória ou reinício do serviço): tenta de novo uma vez antes de desistir.
+        if tentativa == 1 and not erro.strip():
+            temp.unlink(missing_ok=True)
+            continue
+        raise RuntimeError(f"ffmpeg falhou (código {codigo}): {erro.strip()[-300:] or 'sem mensagem; possível falta de memória ou reinício do serviço'}")
     if projeto.get("formato") == "papel" and (pasta / "papel_cenas.py").exists():
         # Formato papel: tela dividida com o papel desenhado em cima (papel.py).
         import papel
