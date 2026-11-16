@@ -12,6 +12,7 @@ O desenho do fluxo é o mesmo do Many Hub (src/components/automacoes/FluxoEditor
 import json
 import re
 import sys
+import threading
 import time
 import unicodedata
 import urllib.parse
@@ -235,6 +236,36 @@ def atualizar_lidas(c, q, log=print):
             log("fluxo WhatsApp: não consegui ver as leituras de", str(id_)[:8], repr(e)[:120])
 
 
+_EM_ANDAMENTO = {}
+_TRAVA_THREADS = threading.Lock()
+
+
+def _tratar_seguro(c, q, id_, log, enviar=None):
+    try:
+        _tratar(c, q, id_, log, enviar)
+    except Exception as e:  # noqa: BLE001
+        c.rollback()
+        log("fluxo WhatsApp: erro", str(id_)[:8], repr(e)[:200])
+        _atualizar(q, id_, estado="erro", motivo=f"Erro: {e}"[:300])
+        c.commit()
+
+
+def _tratar_em_thread(id_, log):
+    c2 = None
+    try:
+        c2 = connect()
+        _tratar_seguro(c2, c2.cursor(), id_, log)
+    except Exception as e:  # noqa: BLE001
+        log("fluxo WhatsApp: erro na thread", str(id_)[:8], repr(e)[:160])
+    finally:
+        try:
+            if c2:
+                c2.close()
+        finally:
+            with _TRAVA_THREADS:
+                _EM_ANDAMENTO.pop(id_, None)
+
+
 def passada(log=print, enviar=None):
     """O ouvinte chama a cada 5 s; aqui dentro olha 1 vez por segundo (a resposta do lead à enquete precisa de resposta rápida). Em teste (`enviar`), uma vez só."""
     if enviar:
@@ -262,23 +293,28 @@ def _passada_uma(log=print, enviar=None):
         except Exception as e:  # noqa: BLE001
             c.rollback()
             log("fluxo WhatsApp: erro nas leituras —", repr(e)[:200])
-        q.execute("""SELECT id FROM public.whatsapp_fluxo_execucoes
+        q.execute("""SELECT id, estado FROM public.whatsapp_fluxo_execucoes
                       WHERE (estado IN ('iniciar', 'rodando', 'aguardando_tempo')
                              OR (estado = 'aguardando_resposta' AND (cursor_em IS NULL OR EXISTS (   -- só olha quem tem resposta nova (a passada roda a cada 1 s)
                                    SELECT 1 FROM public.whatsapp_mensagens m WHERE m.chat_id = whatsapp_fluxo_execucoes.chat_id AND m.conta = whatsapp_fluxo_execucoes.conta
                                       AND NOT m.de_mim AND COALESCE(m.enviada_em, m.recebida_em) > whatsapp_fluxo_execucoes.cursor_em))))
                         AND (trava_ate IS NULL OR trava_ate < now()) AND (proximo_em IS NULL OR proximo_em <= now())
-                      ORDER BY atualizado_em LIMIT 5""")
-        ids = [r[0] for r in q.fetchall()]
+                      ORDER BY (estado = 'aguardando_resposta') DESC, atualizado_em LIMIT 12""")
+        linhas = q.fetchall()
         c.commit()
-        for id_ in ids:
-            try:
-                _tratar(c, q, id_, log, enviar)
-            except Exception as e:  # noqa: BLE001
-                c.rollback()
-                log("fluxo WhatsApp: erro", str(id_)[:8], repr(e)[:200])
-                _atualizar(q, id_, estado="erro", motivo=f"Erro: {e}"[:300])
-                c.commit()
+        if enviar:   # teste: um de cada vez, na mesma conexão
+            for id_, _est in linhas[:5]:
+                _tratar_seguro(c, q, id_, log, enviar)
+            return
+        # Cada lead anda na sua própria thread: um envio demora ~25 s (pausa de "digitando", foto, vídeo) e não pode segurar a resposta de quem acabou de votar.
+        # Respostas têm 4 vagas só delas; inícios/esperas, 2.
+        for id_, est in linhas:
+            tipo = "resp" if est == "aguardando_resposta" else "ini"
+            with _TRAVA_THREADS:
+                if id_ in _EM_ANDAMENTO or sum(1 for t in _EM_ANDAMENTO.values() if t == tipo) >= (4 if tipo == "resp" else 2):
+                    continue
+                _EM_ANDAMENTO[id_] = tipo
+            threading.Thread(target=_tratar_em_thread, args=(id_, log), daemon=True).start()
     finally:
         c.close()
 
