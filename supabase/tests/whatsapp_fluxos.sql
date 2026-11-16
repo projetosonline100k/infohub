@@ -23,6 +23,10 @@ BEGIN
   BEGIN UPDATE public.whatsapp_fluxo_execucoes SET estado = 'fim'; RAISE EXCEPTION 'dono forjou fim'; EXCEPTION WHEN insufficient_privilege OR check_violation THEN NULL; END;
   BEGIN UPDATE public.whatsapp_fluxo_execucoes SET no_atual = 'x'; RAISE EXCEPTION 'dono mexeu no bloco'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   UPDATE public.whatsapp_fluxos SET nome = 'Boas-vindas 2' WHERE id = '10000000-0000-0000-0000-000000000497';
+  UPDATE public.whatsapp_fluxos SET gatilho = 'comprou', gatilho_espera_min = 30 WHERE id = '10000000-0000-0000-0000-000000000497';
+  IF (SELECT ativado_em FROM public.whatsapp_fluxos WHERE id = '10000000-0000-0000-0000-000000000497') IS NULL THEN RAISE EXCEPTION 'ativado_em não foi carimbado'; END IF;
+  BEGIN UPDATE public.whatsapp_fluxos SET gatilho = 'inventado'; RAISE EXCEPTION 'gatilho inventado'; EXCEPTION WHEN check_violation THEN NULL; END;
+  BEGIN UPDATE public.whatsapp_fluxos SET ativado_em = '2020-01-01'; RAISE EXCEPTION 'dono mexeu no ativado_em'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
   BEGIN UPDATE public.whatsapp_fluxos SET disparos = 99; RAISE EXCEPTION 'dono mexeu nos disparos'; EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
 RESET ROLE;

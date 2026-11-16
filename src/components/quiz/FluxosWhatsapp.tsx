@@ -5,18 +5,19 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/DialogosGlobais";
-import { FluxoEditor } from "@/components/automacoes/FluxoEditor";
+import { FluxoEditor, TIPOS_GATILHO_WA, type GatilhoWa } from "@/components/automacoes/FluxoEditor";
 import type { FluxoInstagram } from "@/hooks/useInstagramFluxos";
 import type { GrafoFluxo } from "../../../supabase/functions/_shared/fluxo";
 
 const db = supabase as unknown as SupabaseClient;
-interface FluxoWa { id: string; nome: string; ativo: boolean; grafo: GrafoFluxo; disparos: number; atualizado_em: string }
+interface FluxoWa { id: string; nome: string; ativo: boolean; grafo: GrafoFluxo; disparos: number; atualizado_em: string; gatilho: GatilhoWa["tipo"]; gatilho_espera_min: number; gatilho_quiz_id: string | null }
 
 // Fluxos de mensagem do WhatsApp (15/11/2026, Davi: "criar fluxos de mensagens também no WhatsApp, tipo o Many Hub"): a mesma tela de blocos do Many Hub,
 // guardada em whatsapp_fluxos. Quem anda pelos blocos é o robô do Mac (scripts/fluxo_whatsapp.py) quando você clica em "Iniciar fluxo" no chat de um lead.
 export function FluxosWhatsapp({ quizId }: { quizId: string }) {
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [fluxos, setFluxos] = useState<FluxoWa[] | null>(null);
+  const [quizzes, setQuizzes] = useState<{ id: string; titulo: string }[]>([]);
   const [editando, setEditando] = useState<FluxoWa | "novo" | null>(null);
 
   const carregar = useCallback(async () => {
@@ -24,17 +25,20 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
     const cid = (q as { cliente_id: string } | null)?.cliente_id ?? null;
     setClienteId(cid);
     if (!cid) return;
-    const { data } = await db.from("whatsapp_fluxos").select("id, nome, ativo, grafo, disparos, atualizado_em").eq("cliente_id", cid).order("criado_em", { ascending: false });
+    const { data } = await db.from("whatsapp_fluxos").select("id, nome, ativo, grafo, disparos, atualizado_em, gatilho, gatilho_espera_min, gatilho_quiz_id").eq("cliente_id", cid).order("criado_em", { ascending: false });
     setFluxos((data ?? []) as FluxoWa[]);
+    const { data: qs } = await db.from("quizzes").select("id, titulo").eq("cliente_id", cid).is("variante_de", null).neq("status", "cancelado").order("criado_em", { ascending: false });
+    setQuizzes((qs ?? []) as { id: string; titulo: string }[]);
   }, [quizId]);
   useEffect(() => { void carregar(); }, [carregar]);
 
   const comoFluxoEditor = (f: FluxoWa): FluxoInstagram => ({ id: f.id, user_id: "", ig_user_id: "", nome: f.nome, ativo: f.ativo, gatilhos: ["comentario"], palavras_chave: [], correspondencia: "contem", media_ids: null, respostas_comentario: [], grafo: f.grafo, disparos: f.disparos });
-  const salvar = async (form: Pick<FluxoInstagram, "nome" | "ativo" | "grafo">, id?: string) => {
+  const salvar = async (form: Pick<FluxoInstagram, "nome" | "ativo" | "grafo"> & { gatilho_wa?: GatilhoWa }, id?: string) => {
     if (!clienteId) throw new Error("Projeto não encontrado");
+    const g = form.gatilho_wa ?? { tipo: "manual" as const, espera_min: 0, quiz_id: null };
     const { error } = id
-      ? await db.from("whatsapp_fluxos").update({ nome: form.nome, ativo: form.ativo, grafo: form.grafo, atualizado_em: new Date().toISOString() }).eq("id", id)
-      : await db.from("whatsapp_fluxos").insert({ cliente_id: clienteId, nome: form.nome, ativo: form.ativo, grafo: form.grafo });
+      ? await db.from("whatsapp_fluxos").update({ nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho: g.tipo, gatilho_espera_min: g.espera_min, gatilho_quiz_id: g.quiz_id, atualizado_em: new Date().toISOString() }).eq("id", id)
+      : await db.from("whatsapp_fluxos").insert({ cliente_id: clienteId, nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho: g.tipo, gatilho_espera_min: g.espera_min, gatilho_quiz_id: g.quiz_id });
     if (error) throw error;
     await carregar();
   };
@@ -67,15 +71,15 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
                 <div key={f.id} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3">
                   <button type="button" role="switch" aria-checked={f.ativo} onClick={() => void alternar(f)} title={f.ativo ? "Ativo: aparece em “Iniciar fluxo”" : "Desligado"}
                     className={cn("relative h-5 w-9 shrink-0 rounded-full transition-colors", f.ativo ? "bg-emerald-500" : "bg-white/20")}><span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all", f.ativo ? "left-[18px]" : "left-0.5")} /></button>
-                  <div className="min-w-0 flex-1"><p className="truncate font-semibold">{f.nome}</p><p className="text-xs text-white/50">{blocos} mensagem{blocos === 1 ? "" : "ns"} · iniciado {f.disparos} {f.disparos === 1 ? "vez" : "vezes"}</p></div>
+                  <div className="min-w-0 flex-1"><p className="truncate font-semibold">{f.nome}</p><p className="text-xs text-white/50">{blocos} mensagem{blocos === 1 ? "" : "ns"} · iniciado {f.disparos} {f.disparos === 1 ? "vez" : "vezes"}</p><p className="truncate text-[11px] text-emerald-300/80">{TIPOS_GATILHO_WA.find((x) => x.valor === f.gatilho)?.titulo ?? "Eu inicio pelo chat"}{f.gatilho !== "manual" && f.gatilho_espera_min > 0 ? ` · após ${f.gatilho_espera_min % 1440 === 0 ? `${f.gatilho_espera_min / 1440} d` : f.gatilho_espera_min % 60 === 0 ? `${f.gatilho_espera_min / 60} h` : `${f.gatilho_espera_min} min`}` : ""}</p></div>
                   <button type="button" onClick={() => setEditando(f)} title="Editar" className="rounded-lg border border-white/15 p-1.5 text-white/70 hover:bg-white/10"><Pencil className="h-4 w-4" /></button>
                   <button type="button" onClick={() => void apagar(f)} title="Apagar" className="rounded-lg p-1.5 text-white/40 hover:bg-rose-500/15 hover:text-rose-300"><Trash2 className="h-4 w-4" /></button>
                 </div>);
             })}
           </div>)}
-      <FluxoEditor whatsapp aberto={editando !== null} fluxo={editando && editando !== "novo" ? comoFluxoEditor(editando) : null} inicial={editando === "novo" ? { nome: "Novo fluxo" } : null}
+      <FluxoEditor whatsapp quizzesWa={quizzes} gatilhoWaInicial={editando && editando !== "novo" ? { tipo: editando.gatilho, espera_min: editando.gatilho_espera_min, quiz_id: editando.gatilho_quiz_id } : undefined} aberto={editando !== null} fluxo={editando && editando !== "novo" ? comoFluxoEditor(editando) : null} inicial={editando === "novo" ? { nome: "Novo fluxo" } : null}
         contaNome="WhatsApp do projeto" numeros={{}} onFechar={() => setEditando(null)}
-        onSalvar={(form, id) => salvar({ nome: form.nome, ativo: form.ativo, grafo: form.grafo }, id)} />
+        onSalvar={(form, id) => salvar({ nome: form.nome, ativo: form.ativo, grafo: form.grafo, gatilho_wa: form.gatilho_wa }, id)} />
     </div>
   );
 }

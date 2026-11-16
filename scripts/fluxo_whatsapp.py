@@ -102,11 +102,54 @@ def _atualizar(q, id_, **campos):
               (*[json.dumps(v, ensure_ascii=False) if k == "historico" else v for k, v in campos.items()], id_))
 
 
+# ---------------------------------------------------------------- gatilhos de negócio (15/11: "virou lead e não comprou → X; comprou → Y")
+# Lead elegível = do projeto do fluxo (e do quiz escolhido), com WhatsApp, criado DEPOIS de o fluxo ser ligado, ainda sem execução deste fluxo por gatilho e sem outro fluxo andando.
+# "Comprou" = venda (sem reembolso) com o e-mail do lead, de data igual ou posterior ao dia em que ele virou lead; as vendas são as dos produtos do projeto.
+_COMPRA = """EXISTS (SELECT 1 FROM public.vendas_plataforma_eventos v JOIN public.produtos_cliente p ON p.id = v.produto_id
+                   WHERE p.cliente_id = f.cliente_id AND v.tipo = 'venda' AND lower(btrim(v.comprador_email)) = lower(btrim(r.email))
+                     AND v.data >= (r.criada_em AT TIME ZONE 'America/Sao_Paulo')::date
+                     AND NOT EXISTS (SELECT 1 FROM public.vendas_plataforma_eventos rb WHERE rb.produto_id = v.produto_id AND rb.tipo = 'reembolso' AND rb.transacao_id = v.transacao_id))"""
+_CONDICAO = {
+    "virou_lead": "r.criada_em + make_interval(mins => f.gatilho_espera_min) <= now()",
+    "lead_sem_compra": f"r.criada_em + make_interval(mins => f.gatilho_espera_min) <= now() AND NOT {_COMPRA}",
+    "checkout_sem_compra": f"""EXISTS (SELECT 1 FROM public.quiz_eventos ev WHERE ev.sessao = r.sessao AND ev.tipo = 'cta'
+                                      AND ev.criado_em + make_interval(mins => f.gatilho_espera_min) <= now()) AND NOT {_COMPRA}""",
+    "comprou": f"""{_COMPRA} AND (SELECT max(v.recebido_em) FROM public.vendas_plataforma_eventos v JOIN public.produtos_cliente p ON p.id = v.produto_id
+                                   WHERE p.cliente_id = f.cliente_id AND v.tipo = 'venda' AND lower(btrim(v.comprador_email)) = lower(btrim(r.email))) + make_interval(mins => f.gatilho_espera_min) <= now()""",
+}
+
+
+def disparar_gatilhos(c, q, log=print):
+    """Começa, para cada fluxo ativo com gatilho de negócio, a execução dos leads que cumpriram o acontecimento. No máximo 10 por rodada."""
+    q.execute("SELECT id, nome, gatilho FROM public.whatsapp_fluxos WHERE ativo AND gatilho <> 'manual' AND ativado_em IS NOT NULL")
+    for fid, nome, gatilho in q.fetchall():
+        cond = _CONDICAO.get(gatilho)
+        if not cond:
+            continue
+        q.execute(f"""INSERT INTO public.whatsapp_fluxo_execucoes (fluxo_id, cliente_id, user_id, resposta_id, estado, origem)
+                       SELECT f.id, f.cliente_id, f.user_id, r.id, 'iniciar', 'gatilho'
+                         FROM public.whatsapp_fluxos f JOIN public.quiz_respostas r ON r.cliente_id = f.cliente_id
+                        WHERE f.id = %s AND (f.gatilho_quiz_id IS NULL OR r.quiz_id = f.gatilho_quiz_id)
+                          AND r.criada_em >= f.ativado_em AND r.whatsapp IS NOT NULL AND btrim(r.whatsapp) <> ''
+                          AND NOT EXISTS (SELECT 1 FROM public.whatsapp_fluxo_execucoes x WHERE x.resposta_id = r.id AND (x.fluxo_id = f.id OR x.estado IN ('iniciar', 'rodando', 'aguardando_resposta', 'aguardando_tempo')))
+                          AND {cond}
+                        ORDER BY r.criada_em LIMIT 10 ON CONFLICT DO NOTHING RETURNING resposta_id""", (fid,))
+        novos = q.fetchall()
+        c.commit()
+        if novos:
+            log(f"fluxo WhatsApp: gatilho “{gatilho}” de “{nome}” começou para {len(novos)} lead(s)")
+
+
 def passada(log=print, enviar=None):
     """Trata as execuções que têm algo a fazer. `enviar(conta, chat_id, texto, comportamento)` existe para teste."""
     c = connect()
     try:
         q = c.cursor()
+        try:
+            disparar_gatilhos(c, q, log)
+        except Exception as e:  # noqa: BLE001
+            c.rollback()
+            log("fluxo WhatsApp: erro nos gatilhos —", repr(e)[:200])
         q.execute("""SELECT id FROM public.whatsapp_fluxo_execucoes
                       WHERE estado IN ('iniciar', 'rodando', 'aguardando_resposta', 'aguardando_tempo')
                         AND (trava_ate IS NULL OR trava_ate < now()) AND (proximo_em IS NULL OR proximo_em <= now())
@@ -143,6 +186,15 @@ def _tratar(c, q, id_, log, enviar):
     if not f:
         _atualizar(q, id_, estado="erro", motivo="O fluxo foi apagado"); c.commit(); return
     nome_fluxo, grafo = f[0], f[1]
+    q.execute("SELECT gatilho FROM public.whatsapp_fluxos WHERE id = %s", (ex["fluxo_id"],))
+    gatilho = (q.fetchone() or ["manual"])[0]
+    if gatilho in ("lead_sem_compra", "checkout_sem_compra"):
+        # fluxo de "ainda não comprou": se a pessoa comprar no meio, ele para (ninguém quer cobrar quem já pagou)
+        q.execute("""SELECT EXISTS (SELECT 1 FROM public.vendas_plataforma_eventos v JOIN public.produtos_cliente p ON p.id = v.produto_id JOIN public.quiz_respostas r ON r.id = %s
+                              WHERE p.cliente_id = %s AND v.tipo = 'venda' AND lower(btrim(v.comprador_email)) = lower(btrim(r.email))
+                                AND v.data >= (r.criada_em AT TIME ZONE 'America/Sao_Paulo')::date)""", (ex["resposta_id"], ex["cliente_id"]))
+        if q.fetchone()[0]:
+            _atualizar(q, id_, estado="parado", motivo="Comprou: o fluxo parou sozinho"); c.commit(); return
     lead = x1._contexto_lead(q, ex["resposta_id"])
     if not lead:
         _atualizar(q, id_, estado="parado", motivo="O lead não existe mais"); c.commit(); return
