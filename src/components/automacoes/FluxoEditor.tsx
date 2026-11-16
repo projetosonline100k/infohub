@@ -147,18 +147,55 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
   const [salvando, setSalvando] = useState(false);
   const instancia = useRef<ReactFlowInstance | null>(null);
 
+  // O que você escreve não se perde (16/11, Davi: "o que eu deixar escrito, mesmo que eu não salve, não pode mudar; eu tinha configurado e do nada sumiu"):
+  // (1) a tela só recomeça quando abre OU troca de fluxo (antes, qualquer atualização da página por trás refazia tudo e apagava a configuração);
+  // (2) o que ainda não foi salvo fica guardado como rascunho neste Mac e volta quando você reabrir o fluxo.
+  const propsRef = useRef({ fluxo, inicial, gatilhoWaInicial });
+  propsRef.current = { fluxo, inicial, gatilhoWaInicial };
+  const chaveRascunho = `fluxo-rascunho:${whatsapp ? "wa" : "ig"}:${fluxo?.id ?? "novo"}`;
+  const baseJson = useRef("");
+  const [temRascunho, setTemRascunho] = useState(false);
+  const carregarBase = useCallback((usarRascunho: boolean) => {
+    const { fluxo: fl, inicial: ini, gatilhoWaInicial: gwa } = propsRef.current;
+    const base: RascunhoFluxo = fl ?? ini ?? {};
+    const estado = {
+      nome: base.nome ?? "Nova automação", ativo: fl?.ativo ?? false, mediaIds: base.media_ids?.length ? base.media_ids : null,
+      gatilhoWa: gwa ?? { tipo: "manual" as const, espera_min: 0, quiz_id: null }, gatilhos: base.gatilhos ?? ["comentario"], palavras: (base.palavras_chave ?? []).join(", "),
+      modoPalavra: (base.correspondencia === "exata" || base.correspondencia === "trecho" ? base.correspondencia : "contem") as "contem" | "trecho" | "exata", respostas: (base.respostas_comentario ?? []).join("\n"),
+      // Automação nova já nasce com o gatilho ligado a uma primeira mensagem (como o ManyChat): é só escrever.
+      grafo: base.grafo?.nos?.length ? base.grafo : { nos: [{ id: "inicio", tipo: "inicio" as const, x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem" as const, x: 360, y: 0, dados: { texto: "" } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] },
+    };
+    baseJson.current = JSON.stringify(estado);
+    let usado = estado;
+    let achou = false;
+    if (usarRascunho) {
+      try { const r = localStorage.getItem(chaveRascunho); if (r) { usado = { ...estado, ...JSON.parse(r) }; achou = true; } } catch { /* sem rascunho */ }
+    } else { try { localStorage.removeItem(chaveRascunho); } catch { /* sem storage */ } }
+    setNome(usado.nome); setAtivo(usado.ativo); setMediaIds(usado.mediaIds); setGatilhoWa(usado.gatilhoWa); setGatilhos(usado.gatilhos); setPalavras(usado.palavras);
+    setModoPalavra(usado.modoPalavra); setRespostas(usado.respostas); setGrafo(usado.grafo);
+    setSel(fl || ini?.grafo || achou ? null : "m1");
+    setTemRascunho(achou);
+    if (achou) toast.info("Voltei com o que você tinha escrito e não salvou. “Descartar alterações” volta ao salvo.", { duration: 6000 });
+  }, [chaveRascunho]);
+  const carregadoPara = useRef("");
   useEffect(() => {
-    if (!aberto) return;
-    // Automação nova já nasce com o gatilho ligado a uma primeira mensagem (como o ManyChat): é só escrever.
-    const base: RascunhoFluxo = fluxo ?? inicial ?? {};
-    setNome(base.nome ?? "Nova automação"); setAtivo(fluxo?.ativo ?? false);
-    setMediaIds(base.media_ids?.length ? base.media_ids : null);
-    setGatilhoWa(gatilhoWaInicial ?? { tipo: "manual", espera_min: 0, quiz_id: null });
-    setGatilhos(base.gatilhos ?? ["comentario"]); setPalavras((base.palavras_chave ?? []).join(", "));
-    setModoPalavra(base.correspondencia === "exata" || base.correspondencia === "trecho" ? base.correspondencia : "contem"); setRespostas((base.respostas_comentario ?? []).join("\n"));
-    setGrafo(base.grafo?.nos?.length ? base.grafo : { nos: [{ id: "inicio", tipo: "inicio", x: 0, y: 0, dados: {} }, { id: "m1", tipo: "mensagem", x: 360, y: 0, dados: { texto: "" } }], ligacoes: [{ de: "inicio", saida: "proximo", para: "m1" }] });
-    setSel(fluxo || inicial?.grafo ? null : "m1");
-  }, [aberto, fluxo, inicial, gatilhoWaInicial]);
+    if (!aberto) { carregadoPara.current = ""; return; }
+    if (carregadoPara.current === chaveRascunho) return;   // a página por trás atualizou: não mexe no que está na tela
+    carregadoPara.current = chaveRascunho;
+    carregarBase(true);
+  }, [aberto, chaveRascunho, carregarBase]);
+  // Guarda o rascunho enquanto você mexe (só se for diferente do salvo).
+  useEffect(() => {
+    if (!aberto || carregadoPara.current !== chaveRascunho) return;
+    const t = window.setTimeout(() => {
+      const atual = JSON.stringify({ nome, ativo, mediaIds, gatilhoWa, gatilhos, palavras, modoPalavra, respostas, grafo });
+      try {
+        if (atual === baseJson.current) { localStorage.removeItem(chaveRascunho); setTemRascunho(false); }
+        else { localStorage.setItem(chaveRascunho, atual); setTemRascunho(true); }
+      } catch { /* sem storage */ }
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [aberto, chaveRascunho, nome, ativo, mediaIds, gatilhoWa, gatilhos, palavras, modoPalavra, respostas, grafo]);
 
   useEffect(() => { setPosts(null); }, [igUserId]);
   useEffect(() => {
@@ -250,6 +287,8 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
     setSalvando(true);
     try {
       await onSalvar({ nome: nome.trim(), ativo: quer, gatilhos: gatilhos.length ? gatilhos : ["comentario"], palavras_chave: palavrasLista, correspondencia: modoPalavra, media_ids: gatilhos.includes("comentario") && mediaIds?.length ? mediaIds : null, respostas_comentario: respostas.split("\n").map((r) => r.trim()).filter(Boolean), grafo, ...(whatsapp ? { gatilho_wa: gatilhoWa } : {}) }, fluxo?.id);
+      try { localStorage.removeItem(chaveRascunho); } catch { /* sem storage */ }
+      setTemRascunho(false);
       setAtivo(quer); toast.success(quer ? "Fluxo salvo e ativo" : "Fluxo salvo (desativado)"); onFechar();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Não consegui salvar"); } finally { setSalvando(false); }
   };
@@ -285,6 +324,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
             </div>)}
           <div className="ml-auto flex items-center gap-2">
             {problemas.length > 0 && <span className="flex items-center gap-1 text-xs text-amber-300"><AlertTriangle className="h-4 w-4" />{problemas.length} ponto{problemas.length === 1 ? "" : "s"} a arrumar</span>}
+            {temRascunho && <Button variant="outline" size="sm" onClick={() => carregarBase(false)} title="Volta ao que está salvo e apaga o rascunho" className="border-amber-300/40 bg-transparent text-amber-200 hover:bg-amber-300/10">Descartar alterações</Button>}
             <Button variant="outline" size="sm" onClick={onFechar} className="border-white/20 bg-transparent text-white hover:bg-white/10">Fechar</Button>
             <Button size="sm" disabled={salvando} onClick={() => void guardar()}>{salvando && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar</Button>
           </div>
