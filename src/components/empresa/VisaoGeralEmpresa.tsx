@@ -884,7 +884,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       <DashDark membro={dashDark} aberto={!!dashDark} onFechar={() => setDashDark(null)} escritorioId={clienteId}
         onConversar={() => { if (dashDark) conversarCom(dashDark.id); setDashDark(null); }} />
       <DashDanilo membro={dashDanilo} aberto={!!dashDanilo} onFechar={() => setDashDanilo(null)} escritorioId={clienteId}
-        onConversar={() => { if (dashDanilo) conversarCom(dashDanilo.id); setDashDanilo(null); }} />
+        onConversar={() => { if (dashDanilo) conversarCom(dashDanilo.id); setDashDanilo(null); }}
+        onAbrirEdicao={(e) => { setDashDanilo(null); setEdicaoAberta(e); }} />
       <AoVivoTarefa alvo={aoVivo} onFechar={() => setAoVivo(null)} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
