@@ -22,7 +22,10 @@ export interface OpcaoQuiz {
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
-  imagem?: string; imagem_nota?: string; estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones" | "lado" | "orbita" | "escala" | "roleta" | "regua";
+  imagem?: string; imagem_nota?: string;
+  /** Foto da pergunta que depende de uma resposta anterior (16/11): chave "<id da pergunta>=<nº da opção>" (ex.: "genero=1" → foto de mulher). Sem resposta, vale `imagem`. */
+  imagens?: Record<string, string>;
+  estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones" | "lado" | "orbita" | "escala" | "roleta" | "regua";
   /** estilo "roleta" (roleta vertical) e "regua" (régua arrastável) — 15/11: a resposta é um número, guardado para os textos ({numero:id}). */
   numero?: ConfigNumero;
   botao?: boolean;      // marca a resposta e só segue no botão Continuar (sem avançar sozinho)

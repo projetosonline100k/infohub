@@ -88,12 +88,12 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, var
   const variaveis = useMemo(() => {
     const origem = new Map<string, string>(), usa = new Map<string, string>();
     estrutura.perguntas.forEach((q, i) => {
-      q.opcoes.forEach((o) => Object.keys(o.imagens ?? {}).forEach((k) => {
+      [...Object.keys(q.imagens ?? {}), ...q.opcoes.flatMap((o) => Object.keys(o.imagens ?? {}))].forEach((k) => {
         const pid = k.split("=")[0], j = estrutura.perguntas.findIndex((x) => x.id === pid);
         if (j < 0) return;
         const nome = pid === "genero" ? "gênero" : `P${j + 1}`;
         origem.set(pid, nome); usa.set(q.id, `${nome} (P${j + 1})`);
-      }));
+      });
       void i;
     });
     return { origem, usa };
@@ -105,7 +105,7 @@ export function FluxoQuiz({ quizId, estrutura, laminas, faltas, selecionada, var
     laminas.forEach((l) => {
       if (l.tipo !== "pergunta") return;
       const q = estrutura.perguntas[l.indice!];
-      const chave = q?.opcoes.flatMap((o) => Object.keys(o.imagens ?? {}))[0];
+      const chave = [...Object.keys(q?.imagens ?? {}), ...(q?.opcoes.flatMap((o) => Object.keys(o.imagens ?? {})) ?? [])][0];
       const origem = chave ? estrutura.perguntas.find((x) => x.id === chave.split("=")[0]) : undefined;
       if (origem && origem.opcoes.length > 1) m.set(l.chave, { pid: origem.id, nomes: origem.opcoes.map((o) => o.texto) });
     });

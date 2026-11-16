@@ -975,6 +975,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               for (const [chave, url] of Object.entries(o.imagens ?? {})) { const [pid, i] = chave.split("="); if (escolhas[pid] === Number(i)) return url; }
               return o.imagem;
             };
+            let fotoPergunta = q.imagem;
+            for (const [chave, url] of Object.entries(q.imagens ?? {})) { const [pid, i] = chave.split("="); if (escolhas[pid] === Number(i)) { fotoPergunta = url; break; } }
             const emojiDe = (o: (typeof q.opcoes)[number]) => {
               for (const [chave, em] of Object.entries(o.emojis ?? {})) { const [pid, i] = chave.split("="); if (escolhas[pid] === Number(i)) return em; }
               return undefined;
@@ -1094,9 +1096,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                       </>
                     : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
                 {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />}
-                {(q.imagem || q.imagem_nota) && (livro
-                  ? <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
-                  : <Img caminho={`${base}.imagem`} url={q.imagem} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
+                {(fotoPergunta || q.imagem_nota) && (livro
+                  ? <Img caminho={`${base}.imagem`} url={fotoPergunta} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
+                  : <Img caminho={`${base}.imagem`} url={fotoPergunta} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
                 {q.estilo === "escala" && !q.multipla
                   ? (e.escala_visual === "velocimetro"
                     ? <Velocimetro q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
