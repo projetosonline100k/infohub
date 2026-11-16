@@ -38,6 +38,12 @@ async function gravar(admin: Admin, id: string, campos: Record<string, unknown>)
 
 function corpoDaMensagem(no: NoFluxo) {
   const texto = (no.dados.texto ?? "").trim();
+  if (no.tipo === "midia") {
+    // Foto, áudio e vídeo vão como anexo; a legenda sai logo depois como texto (a Meta não aceita as duas coisas na mesma mensagem). PDF: o direct não aceita, vai o link.
+    const t = no.dados.midia_tipo, url = no.dados.midia_url ?? "";
+    if (t === "imagem" || t === "audio" || t === "video") return { attachment: { type: t === "imagem" ? "image" : t, payload: { url, is_reusable: false } } };
+    return { text: [texto, url].filter(Boolean).join("\n") };
+  }
   const respostas = respostasDoNo(no), links = linksDoNo(no);
   if (respostas.length) {
     return { text: texto, quick_replies: respostas.map((b) => ({ content_type: "text", title: b.titulo.slice(0, 20), payload: b.id })) };
@@ -83,8 +89,14 @@ async function andar(admin: Admin, d: Deps, conexao: ConexaoFluxo, fluxo: Fluxo,
           recipient: primeira ? { comment_id: exec.comment_id } : { id: exec.contato_id },
           message: corpoDaMensagem(no),
         }) as { message_id?: string } | null;
+        const ehAnexo = no.tipo === "midia" && ["imagem", "audio", "video"].includes(no.dados.midia_tipo ?? "");
         await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: resp?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id, no_id: no.id,
-          texto: textoComBotoes((no.dados.texto ?? "").trim(), [...respostasDoNo(no), ...linksDoNo(no)]) });
+          tipo: ehAnexo ? "midia" : undefined,
+          texto: ehAnexo ? `[${no.dados.midia_tipo}]` : textoComBotoes((no.dados.texto ?? "").trim(), [...respostasDoNo(no), ...linksDoNo(no)]) });
+        if (ehAnexo && (no.dados.texto ?? "").trim()) {   // legenda: texto logo depois do anexo
+          const leg = await d.graph(`${exec.ig_user_id}/messages`, token, { recipient: { id: exec.contato_id }, message: { text: (no.dados.texto ?? "").trim() } }) as { message_id?: string } | null;
+          await registrarMensagem(admin, { ig_user_id: exec.ig_user_id, contato_id: exec.contato_id, mid: leg?.message_id ?? null, de_mim: true, origem: "fluxo", fluxo_id: fluxo.id, no_id: no.id, texto: (no.dados.texto ?? "").trim() });
+        }
       } catch (e) {
         const msg = (e as Error).message;
         marcar(no.id, "erro");

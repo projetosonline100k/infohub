@@ -6,7 +6,8 @@
 //   condicao → "sim" | "nao"
 //   fim      → nenhuma
 
-export type TipoNo = "inicio" | "mensagem" | "esperar" | "condicao" | "fim";
+export type TipoNo = "inicio" | "mensagem" | "midia" | "esperar" | "condicao" | "fim";
+export type TipoMidia = "imagem" | "audio" | "video" | "arquivo";
 export type Botao = { id: string; titulo: string; tipo: "resposta" | "link"; url?: string };
 export type CondicaoTipo = "respondeu" | "texto_contem";
 export type DadosNo = {
@@ -15,7 +16,11 @@ export type DadosNo = {
   minutos?: number;             // esperar
   condicao?: CondicaoTipo;      // condicao
   palavra?: string;             // condicao texto_contem
-};
+  midia_url?: string;           // midia: endereço público do arquivo (balde fluxo-midias)
+  midia_tipo?: TipoMidia;       // midia: imagem, áudio, vídeo ou arquivo (PDF)
+  midia_nome?: string;          // midia: nome do arquivo (aparece no WhatsApp quando é um documento)
+  midia_mimetype?: string;
+};   // midia: o texto (`texto`) é a legenda
 export type NoFluxo = { id: string; tipo: TipoNo; x: number; y: number; dados: DadosNo };
 export type Ligacao = { de: string; saida: string; para: string };
 export type GrafoFluxo = { nos: NoFluxo[]; ligacoes: Ligacao[] };
@@ -40,6 +45,7 @@ export function saidasDoNo(no: NoFluxo): { id: string; rotulo: string }[] {
   switch (no.tipo) {
     case "inicio": return [{ id: "proximo", rotulo: "" }];
     case "esperar": return [{ id: "proximo", rotulo: "" }];
+    case "midia": return [{ id: "proximo", rotulo: "" }];
     case "condicao": return [{ id: "sim", rotulo: "Sim" }, { id: "nao", rotulo: "Não" }];
     case "mensagem": {
       const r = respostasDoNo(no);
@@ -66,6 +72,7 @@ export function problemasDoFluxo(g: GrafoFluxo, opcoes?: { whatsapp?: boolean })
   const wa = !!opcoes?.whatsapp;
   const p: ProblemaFluxo[] = [];
   if (!primeiroNo(g)) p.push({ no: "inicio", texto: "Ligue o início a uma primeira mensagem." });
+  else if (!opcoes?.whatsapp && primeiroNo(g)!.tipo === "midia") p.push({ no: primeiroNo(g)!.id, texto: "A primeira mensagem (a que responde o comentário) só pode ser texto: ponha uma mensagem antes da mídia." });
   for (const n of g.nos) {
     if (n.tipo === "mensagem") {
       const texto = (n.dados.texto ?? "").trim();
@@ -81,6 +88,10 @@ export function problemasDoFluxo(g: GrafoFluxo, opcoes?: { whatsapp?: boolean })
         if (!wa && b.titulo.length > LIMITE_TITULO_BOTAO) p.push({ no: n.id, texto: `O título do botão “${b.titulo}” passa de ${LIMITE_TITULO_BOTAO} caracteres.` });
         if (b.tipo === "link" && !/^https?:\/\/\S+$/.test(b.url ?? "")) p.push({ no: n.id, texto: `O botão “${b.titulo}” precisa de um link https://…` });
       }
+    }
+    if (n.tipo === "midia") {
+      if (!/^https:\/\/\S+$/.test(n.dados.midia_url ?? "")) p.push({ no: n.id, texto: "Escolha o arquivo da mídia." });
+      if ((n.dados.texto ?? "").length > 1000) p.push({ no: n.id, texto: "A legenda passa de 1000 caracteres." });
     }
     if (n.tipo === "esperar") {
       const m = n.dados.minutos ?? 0;
@@ -160,7 +171,7 @@ export type PassoPlanejado =
 export function proximoPasso(g: GrafoFluxo, atual: NoFluxo, ctx: Contexto, max = 25): PassoPlanejado {
   let n: NoFluxo | null = atual;
   for (let i = 0; i < max && n; i++) {
-    if (n.tipo === "mensagem") return { tipo: "enviar", no: n };
+    if (n.tipo === "mensagem" || n.tipo === "midia") return { tipo: "enviar", no: n };
     if (n.tipo === "esperar") return { tipo: "esperar_tempo", no: n, minutos: Math.max(1, Math.min(MINUTOS_MAX_ESPERA, n.dados.minutos ?? 1)) };
     if (n.tipo === "condicao") { n = destinoDe(g, n.id, avaliarCondicao(n, ctx) ? "sim" : "nao"); continue; }
     if (n.tipo === "fim") return { tipo: "fim", no: n, motivo: "fim do fluxo" };

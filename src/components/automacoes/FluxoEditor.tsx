@@ -3,8 +3,9 @@ import ReactFlow, {
   Background, Controls, Handle, MarkerType, Position, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, BookOpen, Check, Clock, GitBranch, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Trash2, X, Zap, type LucideIcon } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, Clock, FileText, GitBranch, ImageIcon, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Trash2, Upload, X, Zap, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -27,6 +28,7 @@ type Dados = { no: NoFluxo; selecionado: boolean; problemas: string[]; numeros?:
 const VISUAL: Record<TipoNo, { nome: string; Icone: LucideIcon; cor: string }> = {
   inicio: { nome: "Gatilho", Icone: Zap, cor: "border-amber-300/70 bg-amber-300/10 text-amber-100" },
   mensagem: { nome: "Mensagem", Icone: MessageCircle, cor: "border-cyan-300/60 bg-cyan-300/10 text-cyan-100" },
+  midia: { nome: "Mídia", Icone: ImageIcon, cor: "border-sky-300/60 bg-sky-300/10 text-sky-100" },
   esperar: { nome: "Esperar", Icone: Clock, cor: "border-violet-300/60 bg-violet-300/10 text-violet-100" },
   condicao: { nome: "Condição", Icone: GitBranch, cor: "border-emerald-300/60 bg-emerald-300/10 text-emerald-100" },
   fim: { nome: "Fim", Icone: Power, cor: "border-rose-300/60 bg-rose-300/10 text-rose-100" },
@@ -52,6 +54,7 @@ const GATILHOS_EM_BREVE = ["Menção no story", "Comentário na live", "Clique e
 
 const resumo = (no: NoFluxo) => {
   if (no.tipo === "mensagem") return (no.dados.texto ?? "").trim() || "Toque para escrever a mensagem";
+  if (no.tipo === "midia") return no.dados.midia_url ? `${{ imagem: "Foto", audio: "Áudio", video: "Vídeo", arquivo: "Arquivo" }[no.dados.midia_tipo ?? "arquivo"]}${no.dados.midia_nome ? ` · ${no.dados.midia_nome}` : ""}${(no.dados.texto ?? "").trim() ? `\n${(no.dados.texto ?? "").trim()}` : ""}` : "Toque para escolher a foto, o áudio, o vídeo ou o arquivo";
   if (no.tipo === "esperar") { const m = no.dados.minutos ?? 0; return m >= 60 && m % 60 === 0 ? `${m / 60} h` : `${m} min`; }
   if (no.tipo === "condicao") return no.dados.condicao === "texto_contem" ? `Resposta contém “${no.dados.palavra ?? ""}”` : "A pessoa respondeu?";
   if (no.tipo === "inicio") return "Quando a palavra chegar";
@@ -72,6 +75,7 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
       </div>
       <div className="space-y-2 px-3 py-2.5">
         <p className={cn("line-clamp-4 whitespace-pre-wrap text-[13px] leading-snug", no.tipo === "mensagem" && !(no.dados.texto ?? "").trim() && "text-white/40")}>{no.tipo === "inicio" && data.gatilhoTexto ? data.gatilhoTexto : resumo(no)}</p>
+        {no.tipo === "midia" && no.dados.midia_tipo === "imagem" && no.dados.midia_url && <img src={no.dados.midia_url} alt="" className="max-h-32 w-full rounded-lg object-cover" loading="lazy" />}
         {botoes.length > 0 && no.tipo === "mensagem" && (
           <div className="space-y-1">{botoes.map((b) => (
             <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs">
@@ -187,6 +191,22 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
     markerEnd: { type: MarkerType.ArrowClosed, color: "#67e8f9" }, style: { stroke: "#67e8f9", strokeWidth: 2 },
   })), [grafo.ligacoes]);
 
+  const [subindoMidia, setSubindoMidia] = useState(false);
+  const enviarMidia = async (id: string, arquivo: File) => {
+    const mime = arquivo.type || "";
+    const tipo: "imagem" | "audio" | "video" | "arquivo" = mime.startsWith("image/") ? "imagem" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "arquivo";
+    if (arquivo.size > 50 * 1024 * 1024) { toast.error("O arquivo passa de 50 MB"); return; }
+    setSubindoMidia(true);
+    try {
+      const { data: u } = await supabase.auth.getUser();
+      const ext = (arquivo.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+      const caminho = `${u.user?.id}/${Date.now()}-${Math.random().toString(36).slice(2, 6)}.${ext}`;
+      const { error } = await supabase.storage.from("fluxo-midias").upload(caminho, arquivo, { contentType: mime || undefined });
+      if (error) throw error;
+      const url = supabase.storage.from("fluxo-midias").getPublicUrl(caminho).data.publicUrl;
+      mudarNo(id, (n) => ({ ...n, dados: { ...n.dados, midia_url: url, midia_tipo: tipo, midia_nome: arquivo.name.slice(0, 120), midia_mimetype: mime } }));
+    } catch (e) { toast.error(`Não consegui enviar o arquivo: ${(e as { message?: string })?.message ?? "erro"}`); } finally { setSubindoMidia(false); }
+  };
   const mudarNo = (id: string, f: (n: NoFluxo) => NoFluxo) => setGrafo((g) => ({ ...g, nos: g.nos.map((n) => (n.id === id ? f(n) : n)) }));
   const onNodesChange = useCallback((ch: NodeChange[]) => {
     setGrafo((g) => {
@@ -209,7 +229,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
   const adicionar = (tipo: Exclude<TipoNo, "inicio">) => {
     const id = novoId();
     const base = grafo.nos.find((n) => n.id === sel) ?? grafo.nos.find((n) => n.id === "inicio")!;
-    const dados = tipo === "mensagem" ? { texto: "" } : tipo === "esperar" ? { minutos: 10 } : tipo === "condicao" ? { condicao: "respondeu" as const } : {};
+    const dados = tipo === "mensagem" ? { texto: "" } : tipo === "midia" ? { texto: "" } : tipo === "esperar" ? { minutos: 10 } : tipo === "condicao" ? { condicao: "respondeu" as const } : {};
     const novo: NoFluxo = { id, tipo, x: base.x + 360, y: base.y + (grafo.nos.filter((n) => n.x > base.x + 100 && n.x < base.x + 700).length) * 40, dados };
     // se o bloco escolhido tem uma saída livre, já liga
     const livre = saidasDoNo(base).find((s) => !grafo.ligacoes.some((l) => l.de === base.id && l.saida === s.id));
@@ -272,7 +292,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
         <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="relative min-h-0">
             <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-[#0b1220]/90 p-1.5 backdrop-blur">
-              {(["mensagem", "esperar", "condicao", "fim"] as const).map((t) => { const v = VISUAL[t]; return (
+              {(["mensagem", "midia", "esperar", "condicao", "fim"] as const).map((t) => { const v = VISUAL[t]; return (
                 <button key={t} type="button" onClick={() => adicionar(t)} className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:brightness-125", v.cor)}><Plus className="h-3 w-3" /><v.Icone className="h-3.5 w-3.5" />{v.nome}</button>); })}
             </div>
             <ReactFlow nodes={nodes} edges={edges} nodeTypes={tipos} onNodesChange={onNodesChange} onConnect={ligar} onInit={(i) => { instancia.current = i; window.setTimeout(() => i.fitView({ padding: 0.3, maxZoom: 0.9 }), 60); }}
@@ -399,6 +419,27 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                     {(modoBotoes === "resposta" && (no.dados.botoes ?? []).length < MAX_RESPOSTAS) && <Button type="button" variant="outline" size="sm" onClick={() => addBotao("resposta")} className="w-full border-white/20 bg-transparent text-white hover:bg-white/10"><Plus className="mr-1 h-3.5 w-3.5" />Botão de resposta</Button>}
                     {(modoBotoes === "link" && (no.dados.botoes ?? []).length < MAX_BOTOES_LINK) && <Button type="button" variant="outline" size="sm" onClick={() => addBotao("link")} className="w-full border-white/20 bg-transparent text-white hover:bg-white/10"><Plus className="mr-1 h-3.5 w-3.5" />Botão de link</Button>}
                   </div></>)}
+                {no.tipo === "midia" && (<>
+                  <div className="space-y-2">
+                    <p className="text-xs text-white/60">Arquivo</p>
+                    {no.dados.midia_url && (
+                      <div className="space-y-1.5 rounded-lg border border-white/10 bg-black/20 p-2">
+                        {no.dados.midia_tipo === "imagem" && <img src={no.dados.midia_url} alt="" className="max-h-48 w-full rounded object-contain" />}
+                        {no.dados.midia_tipo === "audio" && <audio src={no.dados.midia_url} controls className="w-full" />}
+                        {no.dados.midia_tipo === "video" && <video src={no.dados.midia_url} controls className="max-h-48 w-full rounded" />}
+                        {no.dados.midia_tipo === "arquivo" && <p className="flex items-center gap-2 text-sm"><FileText className="h-4 w-4" />{no.dados.midia_nome ?? "arquivo"}</p>}
+                        <p className="truncate text-[11px] text-white/40">{no.dados.midia_nome}</p>
+                      </div>)}
+                    <label className={cn("flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/25 px-3 py-2.5 text-xs hover:bg-white/5", subindoMidia && "pointer-events-none opacity-60")}>
+                      {subindoMidia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{no.dados.midia_url ? "Trocar o arquivo" : "Enviar foto, áudio, vídeo ou PDF"}
+                      <input type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,audio/*,video/mp4,video/quicktime,video/webm,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void enviarMidia(no.id, f); }} />
+                    </label>
+                    <p className="text-[11px] text-white/40">Até 50 MB. Foto: png, jpg, webp ou gif. Áudio: mp3, m4a, ogg, wav. Vídeo: mp4. {whatsapp ? "O áudio sai como mensagem de voz." : "No direct o PDF vai como link."}</p>
+                  </div>
+                  <label className="block space-y-1 text-xs text-white/60">Legenda (opcional)
+                    <Textarea rows={3} value={no.dados.texto ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: e.target.value } }))} placeholder="Texto que acompanha a mídia" className="border-white/15 bg-black/20 text-sm text-white" />
+                    <span className="text-[10px] text-white/40">{whatsapp ? "No WhatsApp a legenda vai junto da foto, vídeo ou PDF; no áudio, vai logo depois como texto." : "No direct a legenda vai logo depois do anexo, como uma segunda mensagem."}</span></label>
+                  {!whatsapp && <p className="rounded-lg bg-white/5 p-2 text-[11px] text-white/50">Anexos só saem depois que a pessoa respondeu (dentro das 24 h). Por isso a mídia não pode ser a primeira mensagem do comentário.</p>}</>)}
                 {no.tipo === "esperar" && (
                   <label className="block space-y-1 text-xs text-white/60">Esperar quanto tempo?
                     <div className="flex gap-2"><Input type="number" min={1} value={(no.dados.minutos ?? 10) >= 60 && (no.dados.minutos ?? 0) % 60 === 0 ? (no.dados.minutos ?? 0) / 60 : no.dados.minutos ?? 10} className="h-9 w-24 border-white/15 bg-black/20"

@@ -168,6 +168,45 @@ def passada(log=print, enviar=None):
         c.close()
 
 
+def rota_da_midia(tipo, mimetype=""):
+    """Qual rota do WAHA leva cada tipo de mídia (mesma escolha do app, src-tauri/src/whatsapp.rs): foto → sendImage, áudio → sendVoice (mensagem de voz, convertida),
+    vídeo → sendVideo (convertido), GIF e documentos → sendFile. Devolve (rota, converter, aceita_legenda)."""
+    if tipo == "imagem" and mimetype not in ("image/gif", "image/svg+xml"):
+        return "/api/sendImage", False, True
+    if tipo == "audio":
+        return "/api/sendVoice", True, False
+    if tipo == "video":
+        return "/api/sendVideo", True, True
+    return "/api/sendFile", False, True
+
+
+def _enviar_midia_padrao(conta, chat_id, no, comportamento, log):
+    import base64, mimetypes, ssl, urllib.request
+    d = no.get("dados", {})
+    url = d.get("midia_url") or ""
+    if not url.startswith("https://"):
+        raise ValueError("A mídia não tem arquivo")
+    mime = d.get("midia_mimetype") or mimetypes.guess_type(url.split("?")[0])[0] or "application/octet-stream"
+    try:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except Exception:  # noqa: BLE001
+        ctx = None
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "infopro-hub"}), timeout=60, context=ctx) as r:
+        dados = base64.b64encode(r.read()).decode()
+    rota, converter, aceita_legenda = rota_da_midia(d.get("midia_tipo", "arquivo"), mime)
+    legenda = (d.get("texto") or "").strip()
+    cfg = x1.waha_config(conta)
+    corpo = {"session": cfg.get("sessao", "default"), "chatId": chat_id, "file": {"mimetype": mime, "data": dados, "filename": d.get("midia_nome") or "arquivo"}}
+    if converter:
+        corpo["convert"] = True
+    if legenda and aceita_legenda:
+        corpo["caption"] = legenda
+    x1.waha_post(cfg, rota, corpo)
+    if legenda and not aceita_legenda:   # áudio não leva legenda: o texto vai logo depois
+        x1.waha_post(cfg, "/api/sendText", {"session": cfg.get("sessao", "default"), "chatId": chat_id, "text": legenda})
+
+
 def _enviar_padrao(conta, chat_id, texto, comportamento, log):
     return x1.enviar_partes(conta, chat_id, [texto], log, comportamento, recentes=None)
 
@@ -298,6 +337,20 @@ def _tratar(c, q, id_, log, enviar):
             sim = avaliar_condicao(atual, respondeu, ultimo_texto)
             anotar(atual["id"], "condicao:" + ("sim" if sim else "nao"))
             atual = destino(grafo, atual["id"], "sim" if sim else "nao"); continue
+        if tipo == "midia":
+            if not x1.no_horario():
+                novo = {"estado": "rodando", "no_atual": atual["id"], "proximo_em": agora() + timedelta(minutes=15)}
+                ex["adiado"] = True; break
+            d = atual.get("dados", {})
+            if enviar:
+                enviar(conta, chat_id, f"[midia:{d.get('midia_tipo')}] {d.get('midia_url')} | {(d.get('texto') or '').strip()}", comportamento)
+            else:
+                _enviar_midia_padrao(conta, chat_id, atual, comportamento, log)
+            resumo = f"[{d.get('midia_tipo', 'arquivo')}] {(d.get('texto') or '').strip()}".strip()
+            enviados_agora.append(resumo)
+            recentes.append(x1.normalizar(resumo))
+            anotar(atual["id"], "mensagem")
+            atual = destino(grafo, atual["id"], "proximo"); continue
         if tipo == "mensagem":
             if not x1.no_horario():   # de madrugada espera amanhecer
                 novo = {"estado": "rodando", "no_atual": atual["id"], "proximo_em": agora() + timedelta(minutes=15)}
@@ -361,4 +414,6 @@ if __name__ == "__main__" and "--teste" in sys.argv:
     assert saida_da_resposta(m1, "1") == "b1" and saida_da_resposta(m1, " 2) ") == "b2" and saida_da_resposta(m1, "quero sim") == "b1" and saida_da_resposta(m1, "talvez") == "outro" and saida_da_resposta(m1, "9") == "outro"
     assert aguarda_resposta(m1) and not aguarda_resposta(no_por_id(g, "m2"))
     assert avaliar_condicao(no_por_id(g, "c1"), False, "qual o PREÇO?") and not avaliar_condicao(no_por_id(g, "c1"), False, "preços") and avaliar_condicao({"dados": {"condicao": "respondeu"}}, True, "")
+    assert rota_da_midia("imagem", "image/png") == ("/api/sendImage", False, True) and rota_da_midia("imagem", "image/gif")[0] == "/api/sendFile"
+    assert rota_da_midia("audio") == ("/api/sendVoice", True, False) and rota_da_midia("video")[0] == "/api/sendVideo" and rota_da_midia("arquivo")[0] == "/api/sendFile"
     print("fluxo_whatsapp: autoteste ok")

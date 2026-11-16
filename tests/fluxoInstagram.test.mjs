@@ -88,3 +88,16 @@ test('modo WhatsApp: sem as regras da Meta e com espera de até 7 dias', () => {
   g.nos[2].dados.minutos = 8 * 24 * 60;
   assert.ok(f.problemasDoFluxo(g, { whatsapp: true }).some((p) => p.texto.includes('7 dias')));
 });
+
+test('bloco Mídia: precisa do arquivo, anda para o próximo e não pode abrir o fluxo do Instagram', () => {
+  const g = { nos: [{ id: 'inicio', tipo: 'inicio', x: 0, y: 0, dados: {} }, { id: 'md', tipo: 'midia', x: 1, y: 0, dados: {} }], ligacoes: [{ de: 'inicio', saida: 'proximo', para: 'md' }] };
+  const t = f.problemasDoFluxo(g).map((p) => p.texto).join('|');
+  assert.match(t, /Escolha o arquivo/); assert.match(t, /primeira mensagem/);
+  assert.ok(!f.problemasDoFluxo(g, { whatsapp: true }).some((p) => /primeira mensagem/.test(p.texto)));   // no WhatsApp pode abrir com mídia
+  g.nos[1].dados = { midia_url: 'https://x.co/a.png', midia_tipo: 'imagem' };
+  assert.ok(!f.problemasDoFluxo(g, { whatsapp: true }).some((p) => /arquivo/.test(p.texto)));
+  assert.deepEqual(f.saidasDoNo(g.nos[1]).map((s) => s.id), ['proximo']);
+  assert.equal(f.aguardaResposta(g.nos[1]), false);
+  const h = { nos: [...g.nos, { id: 'm2', tipo: 'mensagem', x: 2, y: 0, dados: { texto: 'oi' } }], ligacoes: [...g.ligacoes, { de: 'md', saida: 'proximo', para: 'm2' }] };
+  assert.equal(f.proximoPasso(h, h.nos[1], { respondeu: false, ultimoTexto: '' }).tipo, 'enviar');   // a mídia é enviada como uma mensagem
+});
