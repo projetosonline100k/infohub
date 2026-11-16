@@ -80,12 +80,13 @@ export function ConectarContaDialog({ aberto, onFechar, contasIds = [], recarreg
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="conta-cliente">De quem é a conta?</Label>
+            <Label htmlFor="conta-cliente">Qual conta conectar?</Label>
             <select id="conta-cliente" value={clienteId} onChange={(e) => { setClienteId(e.target.value); setLink(null); setQr(""); setVerQr(false); }}
               className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm">
-              <option value="">Meu perfil</option>
-              {clientes.map((c) => <option key={c.id} value={c.id}>{c.nome_especialista}</option>)}
+              <option value="">Só conectar uma conta (sem vincular a ninguém)</option>
+              {clientes.length > 0 && <optgroup label="Vincular a um cliente">{clientes.map((c) => <option key={c.id} value={c.id}>{c.nome_especialista}</option>)}</optgroup>}
             </select>
+            <p className="text-[11px] text-muted-foreground">{clienteId ? "A conta fica ligada a esse cliente (ele vê as automações dela)." : "Serve para a sua conta ou qualquer outra: quem autorizar o link vira uma conta nova aqui, sem precisar cadastrar cliente."}</p>
           </div>
 
           {!link ? (
