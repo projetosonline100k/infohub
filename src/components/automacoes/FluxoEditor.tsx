@@ -289,6 +289,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
   })), [grafo.ligacoes]);
 
   const [subindoMidia, setSubindoMidia] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
   const enviarMidia = async (id: string, arquivo: File) => {
     const mime = arquivo.type || "";
     const tipo: "imagem" | "audio" | "video" | "arquivo" = mime.startsWith("image/") ? "imagem" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "arquivo";
@@ -530,8 +531,12 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                         {no.dados.midia_tipo === "arquivo" && <p className="flex items-center gap-2 text-sm"><FileText className="h-4 w-4" />{no.dados.midia_nome ?? "arquivo"}</p>}
                         <p className="truncate text-[11px] text-white/40">{no.dados.midia_nome}</p>
                       </div>)}
-                    <label className={cn("flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/25 px-3 py-2.5 text-xs hover:bg-white/5", subindoMidia && "pointer-events-none opacity-60")}>
-                      {subindoMidia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{no.dados.midia_url ? "Trocar o arquivo" : "Enviar foto, áudio, vídeo ou PDF"}
+                    <label
+                      onDragOver={(e) => { e.preventDefault(); setArrastando(true); }}
+                      onDragLeave={() => setArrastando(false)}
+                      onDrop={(e) => { e.preventDefault(); setArrastando(false); const f = e.dataTransfer.files?.[0]; if (f) void enviarMidia(no.id, f); }}
+                      className={cn("flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/25 px-3 text-xs hover:bg-white/5", arrastando ? "border-cyan-300 bg-cyan-300/10 py-8 text-cyan-100" : "py-2.5", subindoMidia && "pointer-events-none opacity-60")}>
+                      {subindoMidia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}{arrastando ? "Solte aqui" : no.dados.midia_url ? "Trocar o arquivo (ou arraste)" : "Enviar ou arrastar foto, áudio, vídeo ou PDF"}
                       <input type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,audio/*,video/mp4,video/quicktime,video/webm,application/pdf" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void enviarMidia(no.id, f); }} />
                     </label>
                     <p className="text-[11px] text-white/40">Até 50 MB. Foto: png, jpg, webp ou gif. Áudio: mp3, m4a, ogg, wav. Vídeo: mp4. {whatsapp ? "O áudio sai como mensagem de voz." : "No direct o PDF vai como link."}</p>
