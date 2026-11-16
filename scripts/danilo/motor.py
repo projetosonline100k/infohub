@@ -280,9 +280,10 @@ def expressao_zoom(projeto, mapa):
     return expr
 
 
-def expressao_foco_x(projeto, mapa, LW):
+def expressao_foco_x(projeto, mapa, LW, z):
     """x do recorte do zoom. foco_x (0 a 1, padrão 0,5 = centro) é a posição horizontal do quadro que
-    fica parada durante o zoom: bloco.foco_x ou, se não tiver, projeto.foco_x. Tudo 0,5 = igual ao de antes."""
+    fica parada durante o zoom: bloco.foco_x ou, se não tiver, projeto.foco_x. z = mesma expressão do scale.
+    O `iw` do crop é a largura do 1º quadro (eval=frame não o atualiza), então a sobra é LW*(z-1) calculada aqui."""
     padrao = float(projeto.get("foco_x", 0.5))
     expr, usou = f"{padrao:.4f}", padrao != 0.5
     for k in reversed(sorted(blocos_zoom(projeto), key=lambda z: z["inicio"])):
@@ -291,7 +292,7 @@ def expressao_foco_x(projeto, mapa, LW):
         if iv and f != padrao:
             usou = True
             expr = f"if(between(t,{iv[0]:.3f},{iv[1]:.3f}),{min(max(f, 0), 1):.4f},{expr})"
-    return f"(iw-{LW})*({expr})" if usou else f"(iw-{LW})/2"
+    return f"{LW}*(({z})-1)*({expr})" if usou else f"{LW}*(({z})-1)/2"
 
 
 # ---------------------------------------------------------------- cor (Lumetri)
@@ -428,7 +429,7 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
     z = expressao_zoom(projeto, mapa)
     cor = filtro_cor(projeto)
     fc.append(f"[vc]fps={FPS},scale=w='{LW}*({z})':h='{LH}*({z})':eval=frame:flags={'bilinear' if previa else 'lanczos'},"
-              f"crop={LW}:{LH}:'{expressao_foco_x(projeto, mapa, LW)}':(ih-{LH})*0.32,setsar=1,{cor}[vbase]")
+              f"crop={LW}:{LH}:'{expressao_foco_x(projeto, mapa, LW, z)}':(ih-{LH})*0.32,setsar=1,{cor}[vbase]")
     ultimo, entrada = "vbase", 1
     # Instalivros: nesses trechos o apresentador desce pra metade de baixo (a abertura e,
     # desde 21/10, as animações em papel rasgado do meio do vídeo). Um trecho só ou uma lista.
