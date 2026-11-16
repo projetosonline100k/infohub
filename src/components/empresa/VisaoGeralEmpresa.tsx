@@ -15,6 +15,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { FilaPessoa } from "./FilaPessoa";
 import { DashDark } from "./DashDark";
+import { DashDanilo } from "./DashDanilo";
 import { EscritorioSalas, type CelulaEscritorio } from "./EscritorioSalas";
 import { AoVivoTarefa, type AlvoAoVivo } from "./AoVivoTarefa";
 import { EditorVideo, type EdicaoResumo } from "./EditorVideo";
@@ -119,9 +120,10 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [membroAberto, setMembroAberto] = useState<MembroResumo | null>(null);
   const [chatPedido, setChatPedido] = useState<{ membroId: string; n: number } | null>(null);
   const [dashDark, setDashDark] = useState<MembroResumo | null>(null);
+  const [dashDanilo, setDashDanilo] = useState<MembroResumo | null>(null);
   const conversarCom = (id: string) => setChatPedido((p) => ({ membroId: id, n: (p?.n ?? 0) + 1 }));
   // IA de vídeos dark (Lauro) abre o dash; as outras IAs abrem o chat; pessoa abre a fila.
-  const abrirMembro = (m: MembroResumo) => { if (ehDark(m)) setDashDark(m); else if (m.eh_ia) conversarCom(m.id); else setMembroAberto(m); };
+  const abrirMembro = (m: MembroResumo) => { if (ehDark(m)) setDashDark(m); else if (m.eh_ia && m.nome.trim().toLowerCase() === "danilo") setDashDanilo(m); else if (m.eh_ia) conversarCom(m.id); else setMembroAberto(m); };
   // 22/10: clicar numa tarefa sendo executada abre o "Ao vivo" dela (não a ficha da pessoa).
   const [aoVivo, setAoVivo] = useState<AlvoAoVivo | null>(null);
   const [mundo3d, setMundo3d] = useState(false);
@@ -881,6 +883,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
       )}
       <DashDark membro={dashDark} aberto={!!dashDark} onFechar={() => setDashDark(null)} escritorioId={clienteId}
         onConversar={() => { if (dashDark) conversarCom(dashDark.id); setDashDark(null); }} />
+      <DashDanilo membro={dashDanilo} aberto={!!dashDanilo} onFechar={() => setDashDanilo(null)} escritorioId={clienteId}
+        onConversar={() => { if (dashDanilo) conversarCom(dashDanilo.id); setDashDanilo(null); }} />
       <AoVivoTarefa alvo={aoVivo} onFechar={() => setAoVivo(null)} />
       <EquipeMessenger clienteId={clienteId} pessoas={pessoasChat} onAbrirFila={setMembroAberto} onMudou={() => { void carregar(); }} pedido={chatPedido} />
       <ProgramarSemana clienteId={clienteId} aberto={tvAberta} semana={semana} membros={membros} onFechar={() => setTvAberta(false)}
