@@ -21,10 +21,9 @@ const mmss = (s: number | null) => (s == null ? "" : `${String(Math.floor(s / 60
 const percentual = (msg: string | null) => { const m = /(\d{1,3})\s*%/.exec(msg ?? ""); return m ? Math.min(100, Number(m[1])) : null; };
 
 /** Edição de vídeos (abre ao clicar no Danilo; 16/11/2026, Davi: "a visualização parecida com essa"): banner, números por etapa, grade de vídeos com miniatura e status. */
-export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdicao, onProgramar, escritorioId }: {
+export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdicao, escritorioId }: {
   membro: MembroResumo | null; aberto: boolean; onFechar: () => void; onConversar: () => void; escritorioId: string | null;
   onAbrirEdicao?: (e: EdicaoResumo) => void;
-  onProgramar?: (tipo: "carrossel" | "reel", tarefaId: string) => void;   // abre a tela de dia/hora/legenda de um post programado
 }) {
   const [aba, setAba] = useState<"edicao" | "programacao">("edicao");
   const [edicoes, setEdicoes] = useState<(EdicaoVideo & { resumo: EdicaoResumo })[] | null>(null);
@@ -123,7 +122,7 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
               {([["edicao", "Edição de vídeos"], ["programacao", "Programação (Dalila)"]] as const).map(([v, r]) => (
                 <button key={v} type="button" onClick={() => setAba(v)} className={cn("rounded-xl px-4 py-1.5", aba === v ? "bg-violet-500 font-bold text-white" : "text-white/65 hover:text-white")}>{r}</button>))}
             </div>
-            {aba === "programacao" && escritorioId ? <ProgramacaoDalila clienteId={escritorioId} onAbrirEdicao={(e) => { onAbrirEdicao?.(e); }} onProgramar={(tipo, id) => { onFechar(); onProgramar?.(tipo, id); }} /> : <>
+            {aba === "programacao" && escritorioId ? <ProgramacaoDalila clienteId={escritorioId} onAbrirEdicao={(e) => { onAbrirEdicao?.(e); }} /> : <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               {tile("todos", Layers, itens.length, "Vídeos no projeto", "text-white", "bg-white/10")}
               {tile("fila", Clock, conta.fila, "Na fila", "text-sky-300", "bg-sky-500/15")}
