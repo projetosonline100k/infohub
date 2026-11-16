@@ -12,6 +12,7 @@ O desenho do fluxo é o mesmo do Many Hub (src/components/automacoes/FluxoEditor
 import json
 import re
 import sys
+import time
 import unicodedata
 import urllib.parse
 import urllib.request
@@ -185,6 +186,7 @@ def disparar_gatilhos(c, q, log=print):
 
 
 _ULT_LIDAS = [0.0]
+_ULT_GATILHOS = [0.0]
 
 
 def _mensagens_do_chat(conta, chat_id):
@@ -234,12 +236,24 @@ def atualizar_lidas(c, q, log=print):
 
 
 def passada(log=print, enviar=None):
+    """O ouvinte chama a cada 5 s; aqui dentro olha 1 vez por segundo (a resposta do lead à enquete precisa de resposta rápida). Em teste (`enviar`), uma vez só."""
+    if enviar:
+        return _passada_uma(log, enviar)
+    for i in range(5):
+        _passada_uma(log, None)
+        if i < 4:
+            time.sleep(1)
+
+
+def _passada_uma(log=print, enviar=None):
     """Trata as execuções que têm algo a fazer. `enviar(conta, chat_id, texto, comportamento)` existe para teste."""
     c = connect()
     try:
         q = c.cursor()
         try:
-            disparar_gatilhos(c, q, log)
+            if time.time() - _ULT_GATILHOS[0] >= 20:   # a passada roda a cada 1 s; os gatilhos de negócio só precisam olhar de vez em quando
+                _ULT_GATILHOS[0] = time.time()
+                disparar_gatilhos(c, q, log)
         except Exception as e:  # noqa: BLE001
             c.rollback()
             log("fluxo WhatsApp: erro nos gatilhos —", repr(e)[:200])
@@ -249,7 +263,10 @@ def passada(log=print, enviar=None):
             c.rollback()
             log("fluxo WhatsApp: erro nas leituras —", repr(e)[:200])
         q.execute("""SELECT id FROM public.whatsapp_fluxo_execucoes
-                      WHERE estado IN ('iniciar', 'rodando', 'aguardando_resposta', 'aguardando_tempo')
+                      WHERE (estado IN ('iniciar', 'rodando', 'aguardando_tempo')
+                             OR (estado = 'aguardando_resposta' AND (cursor_em IS NULL OR EXISTS (   -- só olha quem tem resposta nova (a passada roda a cada 1 s)
+                                   SELECT 1 FROM public.whatsapp_mensagens m WHERE m.chat_id = whatsapp_fluxo_execucoes.chat_id AND m.conta = whatsapp_fluxo_execucoes.conta
+                                      AND NOT m.de_mim AND COALESCE(m.enviada_em, m.recebida_em) > whatsapp_fluxo_execucoes.cursor_em))))
                         AND (trava_ate IS NULL OR trava_ate < now()) AND (proximo_em IS NULL OR proximo_em <= now())
                       ORDER BY atualizado_em LIMIT 5""")
         ids = [r[0] for r in q.fetchall()]
@@ -408,7 +425,10 @@ def _tratar(c, q, id_, log, enviar):
                     q.execute("UPDATE public.whatsapp_fluxo_execucoes SET trava_ate = NULL WHERE id = %s", (id_,))
                 c.commit(); return
             ultimo = max(m[3] for m in novas_lead)
-            if (agora() - ultimo).total_seconds() < DEBOUNCE_S:   # ainda digitando
+            voto = all(str(m[0]).split(":")[-1].startswith("voto_") for m in novas_lead)   # tocou numa opção da enquete: não há o que esperar digitar
+            if voto:   # e responde rápido: "digitando…" curtinho
+                comportamento = {**(comportamento or {}), "pausa_min_s": 0.4, "pausa_max_s": 1.2, "ms_por_letra": 3}
+            if not voto and (agora() - ultimo).total_seconds() < DEBOUNCE_S:   # ainda digitando
                 q.execute("UPDATE public.whatsapp_fluxo_execucoes SET trava_ate = NULL WHERE id = %s", (id_,)); c.commit(); return
             texto = "\n".join(m[2] for m in novas_lead)
             saida = saida_da_resposta(no_atual, texto) if no_atual else "outro"
