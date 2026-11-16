@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import { useWorkspaceTabsOpcional } from "@/components/workspace/WorkspaceTabs";
 import { abrirDocumentoLinkado, idDoLink, linkDoDocumento } from "@/lib/linksInternos";
 import { EscolherDocumento } from "./EscolherDocumento";
+import { alternar as alternarRecolhivel, converter as converterRecolhivel, quebrar as quebrarTexto, type Recolhivel } from "@/lib/mapaMentalRecolhivel";
 import { useTheme } from "@/hooks/useTheme";
 import { useMapaMentalColaboracao } from "@/hooks/useMapaMentalColaboracao";
 import { PresencaAvatares } from "./PresencaAvatares";
@@ -518,6 +519,8 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   // (customData.kanban) com um card React de verdade desenhado por cima na
   // posição/tamanho dele (ver MindMapKanbanCard e recomputeKanbanBoxes).
   const [kanbanBoxes, setKanbanBoxes] = useState<{ elementId: string; atividadeId: string; left: number; top: number; width: number; height: number; zoom: number; selected: boolean }[]>([]);
+  // Títulos recolhíveis em textos (customData.recolhivel): botão ▸/▾ desenhado ao lado da linha do título (ver aplicarRecolhivel).
+  const [recolhiveis, setRecolhiveis] = useState<{ id: string; left: number; top: number; altura: number; aberto: boolean; zoom: number }[]>([]);
   const [atividadesPorId, setAtividadesPorId] = useState<Record<string, MindMapKanbanAtividade | null>>({});
   const knownAtividadeIdsRef = useRef<Set<string>>(new Set());
   const [colunas, setColunas] = useState<ColunaAtividade[]>([]);
@@ -557,6 +560,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
     return () => document.removeEventListener("keydown", repassar);
   }, []);
   const excalidrawApiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const aplicarRecolhivelRef = useRef<(id: string, texto: string, dados: Recolhivel) => void>(() => undefined);
   // Botão direito num texto que está sendo editado (com palavras selecionadas): o menu do Excalidraw não abre
   // (é o campo de texto do navegador). Mostra um menu próprio com "Linkar…" que linka o bloco de texto inteiro.
   useEffect(() => {
@@ -585,6 +589,18 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
         b.addEventListener("click", () => { fechar(); fn(); });
         m.appendChild(b);
       };
+      const ini = ta.selectionStart, fim = ta.selectionEnd;
+      if (fim > ini) {   // palavras selecionadas: viram o título que abre e fecha o texto que vem depois
+        botao("Transformar em título (abrir e fechar)", () => {
+          const texto = ta.value;
+          ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));   // confirma a edição antes de mexer no texto
+          window.setTimeout(() => {
+            const r = converterRecolhivel(texto, ini, fim);
+            if (!r) { toast.error("Selecione a palavra que vira título, com texto depois dela para esconder."); return; }
+            aplicarRecolhivelRef.current(id, r.texto, r.dados);
+          }, 80);
+        });
+      }
       botao("Linkar a documento, nota ou desenho…", () => setAlvosLink([id]));
       botao("Copiar", () => { ta.focus(); document.execCommand("copy"); });
       botao("Recortar", () => { ta.focus(); document.execCommand("cut"); });
@@ -829,6 +845,36 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   // no mapa (não só selecionado/hover, ao contrário dos pontinhos de conexão
   // — o card precisa aparecer sempre) e dispara a busca dos que ainda não
   // estão no cache.
+  // Troca o texto de um elemento (título recolhível): quebra nas linhas da largura dele e refaz a altura, que o Excalidraw só recalcula ao digitar.
+  const aplicarRecolhivel = useCallback((id: string, texto: string, dados: Recolhivel) => {
+    const api = excalidrawApiRef.current;
+    const el = api?.getSceneElementsIncludingDeleted().find((x) => x.id === id);
+    if (!api || !el || el.type !== "text") return;
+    const css = MENU_FONTES.find((f) => f.familia === el.fontFamily)?.css ?? MENU_FONTES[0].css;
+    const ctx = document.createElement("canvas").getContext("2d");
+    if (ctx) ctx.font = `${el.fontSize}px ${css}`;
+    const medir = (t: string) => (ctx ? ctx.measureText(t).width : t.length * el.fontSize * 0.55);
+    const fixa = el.autoResize === false;
+    const visivel = fixa ? quebrarTexto(texto, el.width, medir) : texto;
+    const linhas = visivel.split("\n");
+    const largura = fixa ? el.width : Math.max(...linhas.map(medir), 10);
+    api.updateScene({
+      elements: api.getSceneElementsIncludingDeleted().map((x) => (x.id === id
+        ? newElementWith(el, { text: visivel, originalText: texto, width: largura, height: linhas.length * el.fontSize * (el.lineHeight ?? 1.25), customData: { ...(el.customData || {}), recolhivel: dados } })
+        : x)),
+      captureUpdate: CaptureUpdateAction.IMMEDIATELY,
+    });
+  }, []);
+  aplicarRecolhivelRef.current = aplicarRecolhivel;
+  const alternarTitulo = useCallback((id: string) => {
+    const api = excalidrawApiRef.current;
+    const el = api?.getSceneElementsIncludingDeleted().find((x) => x.id === id);
+    const rec = (el?.customData as { recolhivel?: Recolhivel } | undefined)?.recolhivel;
+    if (!el || el.type !== "text" || !rec) return;
+    const r = alternarRecolhivel(el.originalText ?? el.text, rec);
+    if (!r) { toast.error("Não achei o título neste texto. Edite o texto e selecione o título de novo."); return; }
+    aplicarRecolhivel(id, r.texto, r.dados);
+  }, [aplicarRecolhivel]);
   const recomputeKanbanBoxes = useCallback(() => {
     const elements = elementsRef.current;
     const appState = appStateRef.current;
@@ -864,6 +910,18 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       });
     });
     setKanbanBoxes(boxes);
+    const titulosRec: typeof recolhiveis = [];
+    elements.forEach((e) => {
+      if (e.isDeleted || e.type !== "text") return;
+      const rec = (e.customData as { recolhivel?: Recolhivel } | undefined)?.recolhivel;
+      if (!rec) return;
+      const linhas = e.text.split("\n");
+      const n = Math.max(0, linhas.findIndex((l) => l.includes("▾ ") || l.includes("▸ ")));
+      const altLinha = e.fontSize * (e.lineHeight ?? 1.25);
+      const topLeft = sceneCoordsToViewportCoords({ sceneX: e.x, sceneY: e.y + n * altLinha }, appState);
+      titulosRec.push({ id: e.id, left: topLeft.x - appState.offsetLeft, top: topLeft.y - appState.offsetTop, altura: altLinha * appState.zoom.value, aberto: rec.aberto, zoom: appState.zoom.value });
+    });
+    setRecolhiveis((antes) => (JSON.stringify(antes) === JSON.stringify(titulosRec) ? antes : titulosRec));
     if (boxes.length > 0) void garantirColunas();
     if (aBuscar.length > 0) void fetchAtividadesKanban(aBuscar);
   }, [fetchAtividadesKanban, garantirColunas]);
@@ -2043,6 +2101,15 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
             />
           );
         })}
+
+        {/* Setas dos títulos recolhíveis (customData.recolhivel): abrem e fecham o texto que vem depois do título. */}
+        {recolhiveis.map((r) => (
+          <button key={r.id} type="button" title={r.aberto ? "Fechar (esconde o texto do título)" : "Abrir"} onClick={() => alternarTitulo(r.id)}
+            className="absolute z-30 flex items-center justify-center rounded-md border bg-background/90 text-foreground shadow-sm hover:bg-accent"
+            style={{ left: r.left - Math.max(22, 22 * r.zoom) - 4, top: r.top + Math.max(0, (r.altura - Math.max(20, 20 * r.zoom)) / 2), width: Math.max(22, 22 * r.zoom), height: Math.max(20, 20 * r.zoom) }}>
+            <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", !r.aberto && "-rotate-90")} />
+          </button>
+        ))}
 
         {/* Prévia da conexão sendo arrastada + destaque do alvo válido. */}
         {connectionDrag && appStateRef.current && (
