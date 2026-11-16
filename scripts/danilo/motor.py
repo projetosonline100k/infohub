@@ -26,6 +26,7 @@ projeto.json:
   cor            "cinema" | "natural" | "quente" | "frio" | "vibrante" | "pb"
   ajuste_cor     {exposicao, contraste, saturacao, temperatura} de -100 a 100 (estilo Lumetri)
   tela_dividida  [{inicio, fim, saida?}] (Instalivros; saida = s da metade de baixo descendo no fim)
+  legenda_tamanho  tamanho da legenda (padrão 58; 46 no Instalivros)
   velocidade     1,2 = vídeo pronto 20% mais rápido (o editor toca a montagem na mesma velocidade)
   efeitos        [{id, arquivo, inicio, volume}]: efeito sonoro no tempo do bruto (papel nas trocas, transicao.py)
 
@@ -122,6 +123,7 @@ def ts(t):
 
 
 def gerar_ass(projeto, mapa, destino):
+    leg_tam = projeto.get("legenda_tamanho") or (46 if projeto.get("estilo") == "instalivros" else 58)
     ass = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {LARG}
@@ -131,7 +133,7 @@ WrapStyle: 2
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Head,Arial,74,&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,4.5,2,2,60,60,0,1
-Style: Leg,Arial,{46 if projeto.get("estilo") == "instalivros" else 58},&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
+Style: Leg,Arial,{int(leg_tam)},&H000AD6FF,&H000AD6FF,&H00101010,&H64000000,-1,0,0,0,100,100,0,0,1,3.6,1.5,5,60,60,0,1
 Style: Dest,Arial,88,&H00101010,&H00101010,&H000AD6FF,&H64000000,-1,0,0,0,100,100,3,0,3,18,0,5,60,60,0,1
 
 [Events]
