@@ -169,7 +169,8 @@ const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
 
-export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numerosTudo, numerosDoPeriodo, onFechar, onSalvar, whatsapp = false, igUserId, gatilhoWaInicial, quizzesWa = [] }: {
+export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numerosTudo, numerosDoPeriodo, onFechar, onSalvar, painelEsquerda, whatsapp = false, igUserId, gatilhoWaInicial, quizzesWa = [] }: {
+  painelEsquerda?: React.ReactNode;   // coluna à esquerda (WhatsApp: leads a receber / no fluxo)
   numerosDoPeriodo?: (desde: number | null, ate: number | null) => Record<string, NumerosDoNo>;   // números dos blocos numa janela de dias
   gatilhoWaInicial?: GatilhoWa; quizzesWa?: { id: string; titulo: string }[];   // só no WhatsApp
   igUserId?: string;   // para escolher posts específicos no gatilho de comentário
@@ -376,7 +377,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
           <Input value={nome} onChange={(e) => setNome(e.target.value)} className="h-9 w-64 border-white/15 bg-black/20 font-semibold" aria-label="Nome do fluxo" />
           <span className="text-xs text-white/50">{contaNome}</span>
           <label className="ml-2 flex items-center gap-2 text-xs text-white/70"><Switch checked={ativo} onCheckedChange={(v) => { if (v && (problemas.length || (!whatsapp && !palavrasLista.length))) { toast.error(problemas[0]?.texto ?? "Escreva ao menos uma palavra-chave"); return; } setAtivo(v); }} />{ativo ? "Ativo" : "Desativado"}</label>
-          {!whatsapp && fluxo && (
+          {numerosDoPeriodo && fluxo && (
             <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5 text-[11px]" title="Os números de cada mensagem mostram só este período">
               <span className="px-1.5 text-white/45">Números</span>
               {([["tudo", "Tudo"], ["hoje", "Hoje"], ["ontem", "Ontem"], ["7", "7 dias"], ["14", "14 dias"], ["30", "30 dias"]] as const).map(([v, r]) => (
@@ -390,7 +391,8 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
             <Button size="sm" disabled={salvando} onClick={() => void guardar()}>{salvando && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}Salvar</Button>
           </div>
         </div>
-        <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className={cn("grid min-h-0 flex-1", painelEsquerda ? "lg:grid-cols-[300px_minmax(0,1fr)_360px]" : "lg:grid-cols-[minmax(0,1fr)_360px]")}>
+          {painelEsquerda}
           <div className="relative min-h-0">
             <div className="absolute left-3 top-3 z-10 flex flex-wrap gap-1.5 rounded-xl border border-white/10 bg-[#0b1220]/90 p-1.5 backdrop-blur">
               {(["mensagem", "midia", "esperar", "condicao", "fim"] as const).map((t) => { const v = VISUAL[t]; return (
