@@ -78,7 +78,7 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
       </div>
       <div className="space-y-2 px-3 py-2.5">
         <p className={cn("line-clamp-4 whitespace-pre-wrap text-[13px] leading-snug", no.tipo === "mensagem" && !(no.dados.texto ?? "").trim() && "text-white/40")}>{no.tipo === "inicio" && data.gatilhoTexto ? data.gatilhoTexto : resumo(no)}</p>
-        {no.tipo === "midia" && no.dados.midia_tipo === "imagem" && no.dados.midia_url && <img src={no.dados.midia_url} alt="" className="max-h-32 w-full rounded-lg object-cover" loading="lazy" />}
+        {(no.tipo === "midia" || no.tipo === "mensagem") && no.dados.midia_tipo === "imagem" && no.dados.midia_url && <img src={no.dados.midia_url} alt="" className="max-h-32 w-full rounded-lg object-cover" loading="lazy" />}
         {botoes.length > 0 && no.tipo === "mensagem" && (
           <div className="space-y-1">{botoes.map((b) => (
             <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs">
