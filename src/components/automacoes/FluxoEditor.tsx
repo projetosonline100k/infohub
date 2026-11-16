@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
-  Background, Controls, Handle, MarkerType, Position, applyNodeChanges, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
+  Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MarkerType, Position, applyNodeChanges, getSmoothStepPath, type EdgeProps, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { AlertTriangle, BookOpen, Check, Clock, FileText, GitBranch, ImageIcon, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Trash2, Upload, X, Zap, type LucideIcon } from "lucide-react";
@@ -106,6 +106,21 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
   );
 }
 const tipos = { bloco: BlocoFluxo };
+// Seta com um × no meio (16/11, Davi: "conecto algo e não consigo mais desconectar"): um clique desliga os dois blocos (antes só dava para apagar com a tecla Delete).
+function SetaDesligavel({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, data }: EdgeProps<{ aoDesligar?: () => void }>) {
+  const [caminho, lx, ly] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  return (
+    <>
+      <BaseEdge id={id} path={caminho} markerEnd={markerEnd} style={style} interactionWidth={24} />
+      <EdgeLabelRenderer>
+        <button type="button" title="Desligar estes dois blocos" onClick={(e) => { e.stopPropagation(); data?.aoDesligar?.(); }}
+          className="nodrag nopan absolute grid h-5 w-5 place-items-center rounded-full border border-white/30 bg-[#0b1220] text-white/60 shadow hover:scale-110 hover:border-rose-300 hover:bg-rose-500 hover:text-white"
+          style={{ transform: `translate(-50%, -50%) translate(${lx}px, ${ly}px)`, pointerEvents: "all" }}><X className="h-3 w-3" /></button>
+      </EdgeLabelRenderer>
+    </>
+  );
+}
+const tiposSeta = { desligavel: SetaDesligavel };
 const novoId = () => `n${Math.random().toString(36).slice(2, 8)}`;
 
 export type RascunhoFluxo = Partial<Omit<FluxoInstagram, "id" | "ig_user_id" | "disparos" | "user_id">>;
@@ -224,7 +239,8 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
     data: { no: n, selecionado: n.id === sel, problemas: porNo.get(n.id) ?? [], numeros: numeros[n.id], gatilhoTexto: n.tipo === "inicio" ? textoGatilho : undefined },
   })), [grafo.nos, sel, porNo, numeros, textoGatilho]);
   const edges = useMemo<Edge[]>(() => grafo.ligacoes.map((l) => ({
-    id: `${l.de}:${l.saida}`, source: l.de, sourceHandle: l.saida, target: l.para, type: "smoothstep", interactionWidth: 24,
+    id: `${l.de}:${l.saida}`, source: l.de, sourceHandle: l.saida, target: l.para, type: "desligavel", interactionWidth: 24,
+    data: { aoDesligar: () => setGrafo((g) => ({ ...g, ligacoes: g.ligacoes.filter((x) => !(x.de === l.de && x.saida === l.saida)) })) },
     markerEnd: { type: MarkerType.ArrowClosed, color: "#67e8f9" }, style: { stroke: "#67e8f9", strokeWidth: 2 },
   })), [grafo.ligacoes]);
 
@@ -335,7 +351,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
               {(["mensagem", "midia", "esperar", "condicao", "fim"] as const).map((t) => { const v = VISUAL[t]; return (
                 <button key={t} type="button" onClick={() => adicionar(t)} className={cn("flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:brightness-125", v.cor)}><Plus className="h-3 w-3" /><v.Icone className="h-3.5 w-3.5" />{v.nome}</button>); })}
             </div>
-            <ReactFlow nodes={nodes} edges={edges} nodeTypes={tipos} onNodesChange={onNodesChange} onConnect={ligar} onInit={(i) => { instancia.current = i; window.setTimeout(() => i.fitView({ padding: 0.3, maxZoom: 0.9 }), 60); }}
+            <ReactFlow nodes={nodes} edges={edges} nodeTypes={tipos} edgeTypes={tiposSeta} onNodesChange={onNodesChange} onConnect={ligar} onInit={(i) => { instancia.current = i; window.setTimeout(() => i.fitView({ padding: 0.3, maxZoom: 0.9 }), 60); }}
               onNodeClick={(_, n) => setSel(n.id)} onPaneClick={() => setSel(null)} onNodesDelete={(ns) => apagarNos(ns.map((n) => n.id))}
               onEdgesDelete={(es) => setGrafo((g) => ({ ...g, ligacoes: g.ligacoes.filter((l) => !es.some((e) => e.id === `${l.de}:${l.saida}`)) }))}
               minZoom={0.2} maxZoom={1.4} deleteKeyCode={["Backspace", "Delete"]} proOptions={{ hideAttribution: true }} className="bg-[radial-gradient(circle_at_1px_1px,rgba(255,255,255,0.07)_1px,transparent_0)] [background-size:22px_22px]">
