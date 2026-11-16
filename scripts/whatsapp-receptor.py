@@ -142,6 +142,29 @@ def chat_do_id(id_msg):
     return None
 
 
+def guardar_voto(p):
+    """Voto numa enquete (evento poll.vote do WAHA) vira uma mensagem de texto da pessoa com o nome da opção escolhida:
+    é assim que o fluxo do WhatsApp lê o "botão" que ela tocou (scripts/fluxo_whatsapp.py, saida_da_resposta)."""
+    voto, enquete = p.get("vote") or {}, p.get("poll") or {}
+    if voto.get("fromMe") or not voto.get("selectedOptions"):
+        return
+    chat_id = normalizar(chat_do_id(enquete.get("id")) or voto.get("from") or voto.get("participant"))
+    if not chat_id or chat_id.endswith("@g.us"):
+        return
+    ts = voto.get("timestamp") or time.time()
+    texto = voto["selectedOptions"][0]
+    mid = id_da_conta(f"voto_{(enquete.get('id') or voto.get('id') or '')}_{int(ts)}")
+    c = connect()
+    try:
+        q = c.cursor()
+        q.execute("""INSERT INTO public.whatsapp_mensagens (id, user_id, chat_id, chat_nome, eh_grupo, autor_id, autor_nome, de_mim, tipo, texto, enviada_em, conta)
+                     VALUES (%s,%s,%s,%s,false,%s,%s,false,'texto',%s, to_timestamp(%s), %s) ON CONFLICT (id) DO NOTHING""",
+                  (mid, dono(), chat_id, nome_do_chat(chat_id), chat_id, nome_do_chat(chat_id), texto, ts, CONTA))
+        c.commit()
+    finally:
+        c.close()
+
+
 def guardar(p):
     de_mim = bool(p.get("fromMe"))
     chat_id = normalizar(chat_do_id(p.get("id")) or (p.get("to") if de_mim else p.get("from")))
@@ -590,6 +613,8 @@ class Webhook(BaseHTTPRequestHandler):
             evento = json.loads(corpo)
             if evento.get("event") in ("message", "message.any") and evento.get("payload", {}).get("id"):
                 guardar(evento["payload"])
+            elif evento.get("event") == "poll.vote":
+                guardar_voto(evento.get("payload") or {})
         except Exception as e:
             log("webhook: erro", repr(e)[:300])
 

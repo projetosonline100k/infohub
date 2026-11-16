@@ -71,11 +71,18 @@ def preencher_variaveis(t, lead):
     return re.sub(r"[ \t]{2,}", " ", t).strip()
 
 
+def usa_enquete(no):
+    """Duas ou mais respostas viram uma ENQUETE do WhatsApp (a pessoa toca para votar; é o mais parecido com botão que um número comum permite).
+    Uma resposta só (a enquete exige 2+), mais de 12 ou título com mais de 100 caracteres: cai na lista numerada."""
+    r = respostas_do_no(no)
+    return 2 <= len(r) <= 12 and all(0 < len((b.get("titulo") or "").strip()) <= 100 for b in r)
+
+
 def texto_da_mensagem(no, lead):
     """O texto como vai pelo WhatsApp: variáveis trocadas; as opções viram lista numerada e os links vão por extenso."""
     t = preencher_variaveis(no.get("dados", {}).get("texto") or "", lead)
     r, l = respostas_do_no(no), links_do_no(no)
-    if r:
+    if r and not usa_enquete(no):
         t += "\n\n" + "\n".join(f"{i + 1}) {b.get('titulo', '').strip()}" for i, b in enumerate(r)) + "\n\nResponda com o número."
     if l:
         t += "\n\n" + "\n".join(f"{b.get('titulo', '').strip()}: {b.get('url', '')}" for b in l)
@@ -282,6 +289,13 @@ def _enviar_padrao(conta, chat_id, texto, comportamento, log):
     return x1.enviar_partes(conta, chat_id, [texto], log, comportamento, recentes=None)
 
 
+def _enviar_enquete(conta, chat_id, no, log):
+    cfg = x1.waha_config(conta)
+    opcoes = [(b.get("titulo") or "").strip() for b in respostas_do_no(no)]
+    x1.waha_post(cfg, "/api/sendPoll", {"session": cfg.get("sessao", "default"), "chatId": chat_id,
+                                        "poll": {"name": "Toque para escolher 👇", "options": opcoes, "multipleAnswers": False}})
+
+
 def _tratar(c, q, id_, log, enviar):
     q.execute("""UPDATE public.whatsapp_fluxo_execucoes SET trava_ate = now() + interval '6 minutes'
                   WHERE id = %s AND estado IN ('iniciar', 'rodando', 'aguardando_resposta', 'aguardando_tempo') AND (trava_ate IS NULL OR trava_ate < now())
@@ -444,6 +458,8 @@ def _tratar(c, q, id_, log, enviar):
                 enviar(conta, chat_id, texto, comportamento)
             else:
                 _enviar_padrao(conta, chat_id, texto, comportamento, log)
+                if usa_enquete(atual):
+                    _enviar_enquete(conta, chat_id, atual, log)
             enviados_agora.append(texto)
             recentes.append(x1.normalizar(texto))
             anotar(atual["id"], "mensagem")
@@ -494,7 +510,7 @@ if __name__ == "__main__" and "--teste" in sys.argv:
     m1 = no_por_id(g, "m1")
     assert primeiro_no(g)["id"] == "m1"
     assert preencher_variaveis("Oi {nome}!", {}) == "Oi!" and preencher_variaveis("{nome}, vamos?", {}) == "vamos?" and preencher_variaveis("Plano de {nome_completo} ({perfil})", {"nome": "Ana Lima", "perfil": "Rei"}) == "Plano de Ana Lima (Rei)"
-    assert texto_da_mensagem(m1, {"nome": "Ana Paula"}).startswith("Oi, Ana!") and "1) Quero" in texto_da_mensagem(m1, {}) and "Responda com o número" in texto_da_mensagem(m1, {})
+    assert texto_da_mensagem(m1, {"nome": "Ana Paula"}).startswith("Oi, Ana!") and usa_enquete(m1) and "1) Quero" not in texto_da_mensagem(m1, {})
     assert "Acessar: https://x.co" in texto_da_mensagem(no_por_id(g, "m2"), {})
     assert saida_da_resposta(m1, "1") == "b1" and saida_da_resposta(m1, " 2) ") == "b2" and saida_da_resposta(m1, "quero sim") == "b1" and saida_da_resposta(m1, "talvez") == "outro" and saida_da_resposta(m1, "9") == "outro"
     assert aguarda_resposta(m1) and not aguarda_resposta(no_por_id(g, "m2"))
@@ -504,6 +520,10 @@ if __name__ == "__main__" and "--teste" in sys.argv:
     assert _m and _h[0]["lida"] is True and _h[1]["lida"] is True, _h
     _h, _m = marcar_lidas([{"no": "a", "tipo": "mensagem", "em": "2026-11-16T10:00:00+00:00"}], [{"fromMe": True, "ackName": "DEVICE", "timestamp": 1}], datetime.fromisoformat("2026-11-16T13:00:00+00:00").timestamp())
     assert _h[0]["lida"] is False, _h
+    _n = {"dados": {"texto": "Oi", "botoes": [{"id": "a", "tipo": "resposta", "titulo": "Sim"}, {"id": "b", "tipo": "resposta", "titulo": "Não"}]}}
+    assert usa_enquete(_n) and "Responda com o número" not in texto_da_mensagem(_n, {})
+    _n["dados"]["botoes"] = _n["dados"]["botoes"][:1]
+    assert not usa_enquete(_n) and "1) Sim" in texto_da_mensagem(_n, {})
     assert rota_da_midia("imagem", "image/png") == ("/api/sendImage", False, True) and rota_da_midia("imagem", "image/gif")[0] == "/api/sendFile"
     assert rota_da_midia("audio") == ("/api/sendVoice", True, False) and rota_da_midia("video")[0] == "/api/sendVideo" and rota_da_midia("arquivo")[0] == "/api/sendFile"
     print("fluxo_whatsapp: autoteste ok")
