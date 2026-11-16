@@ -19,7 +19,7 @@ from pathlib import Path
 
 FF = Path.home() / ".infopro-hub" / "creator-bin" / "ffmpeg"
 L, A = 90, 160            # quadro reduzido (9:16) para medir
-SUGESTOES = 6
+SUGESTOES = 8
 DISTANCIA_MS = 6000       # sugestões espaçadas, para não serem o mesmo momento
 
 
@@ -50,6 +50,35 @@ def pontuar(px):
     return traco_cima, nit_cima + nit_baixo, traco_baixo, vazio_cima
 
 
+def _papel_e_tinta(px):
+    """Metade de cima é a folha de papel com desenhos (tela dividida)? E quanto dela já está desenhado (traços escuros ou vermelhos)?
+    Folha = fundo claro e quase uniforme; tinta = fração de pixels bem mais escuros que a folha. Quadro cheio com o Davi não é folha (tinta = 0)."""
+    topo = sorted(px[:(A // 2) * L])
+    mediana = topo[len(topo) // 2]
+    if mediana < 150:
+        return False, 0.0
+    perto = sum(1 for v in topo if abs(v - mediana) <= 30) / len(topo)
+    if perto < 0.72:       # folha rasgando (transição com o Davi aparecendo por baixo) ou outra cena: não é folha limpa
+        return False, 0.0
+    escuro = sum(1 for v in topo if v < 90) / len(topo)
+    if escuro > 0.045:     # mancha escura (o rasgo da transição mostrando o Davi) não é traço de desenho
+        return False, 0.0
+    base = sorted(px[(A // 2) * L:])
+    if base[len(base) // 2] > 150:   # embaixo tem que ter o Davi (cena escura): folha cheia sem ele é a tela final
+        return False, 0.0
+    tinta = sum(1 for v in topo if v < mediana - 45) / len(topo)
+    return True, tinta
+
+
+def _quadro_valido(video, ms):
+    r = subprocess.run([str(FF), "-hide_banner", "-loglevel", "error", "-ss", f"{ms / 1000:.3f}", "-i", str(video), "-frames:v", "1",
+                        "-vf", f"scale={L}:{A},format=gray", "-f", "rawvideo", "-"], capture_output=True)
+    if r.returncode != 0 or len(r.stdout) < L * A:
+        return False
+    e_papel, tinta = _papel_e_tinta(r.stdout[:L * A])
+    return e_papel and tinta >= 0.01
+
+
 def escolher(video, segundos=None):
     """Lista de instantes (ms), o melhor primeiro."""
     r = subprocess.run([str(FF), "-hide_banner", "-loglevel", "error", "-i", str(video),
@@ -64,14 +93,29 @@ def escolher(video, segundos=None):
     if not medidos:
         return [0]
     maior = [max(m[k] for _, m in medidos) or 1 for k in range(3)]
+    # 16/11 (Davi: "nenhuma das capas mostra os desenhos em cima"): nos vídeos de tela dividida a capa precisa ter a folha JÁ desenhada.
+    # Se o vídeo tem folha, só ela concorre, e ganha o quadro com mais tinta (e rosto nítido embaixo).
+    folha = {i: _papel_e_tinta(quadros[i]) for i, _ in medidos}
+    com_folha = [i for i, (e_papel, t) in folha.items() if e_papel and t >= 0.01]
     notas = []
-    for i, (traco, nit, baixo, vazio) in medidos:
-        nota = 0.55 * traco / maior[0] + 0.25 * nit / maior[1] + 0.20 * baixo / maior[2] - 0.6 * vazio
-        notas.append((nota, i * 1000 + 500))   # meio do segundo: longe do corte
+    if len(com_folha) >= 3:
+        tinta_max = max(folha[i][1] for i in com_folha) or 1
+        por_i = dict(medidos)
+        for i in com_folha:
+            nota = 0.75 * folha[i][1] / tinta_max + 0.25 * por_i[i][2] / maior[2]
+            notas.append((nota, i * 1000 + 500))
+    else:
+        for i, (traco, nit, baixo, vazio) in medidos:
+            nota = 0.55 * traco / maior[0] + 0.25 * nit / maior[1] + 0.20 * baixo / maior[2] - 0.6 * vazio
+            notas.append((nota, i * 1000 + 500))   # meio do segundo: longe do corte
     notas.sort(reverse=True)
     escolhidos = []
+    modo_folha = len(com_folha) >= 3
     for _, ms in notas:
         if all(abs(ms - e) >= DISTANCIA_MS for e in escolhidos):
+            # O quadro medido é o do segundo cheio; a capa vai para o meio dele. Confere o quadro EXATO do instante escolhido (o rasgo da transição dura meio segundo).
+            if modo_folha and not _quadro_valido(video, ms):
+                continue
             escolhidos.append(ms)
         if len(escolhidos) == SUGESTOES:
             break

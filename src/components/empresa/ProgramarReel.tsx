@@ -161,7 +161,7 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
                 <Textarea value={legenda} onChange={(e) => setLegenda(e.target.value)} className="min-h-[220px] flex-1 text-sm" />
               </label>
             </div>
-            {pronto && <CapaDoReel video={reel.video_url!} capa={capa} sugestoes={reel.capa_sugestoes ?? []} ocupado={trocandoCapa}
+            {pronto && <CapaDoReel video={reel.video_url!} videoRef={videoRef} duracao={reel.duracao ?? null} capa={capa} sugestoes={reel.capa_sugestoes ?? []} ocupado={trocandoCapa}
               onEscolher={(ms) => void trocarCapa(ms)}
               onQuadroAtual={() => videoRef.current && void trocarCapa(Math.round(videoRef.current.currentTime * 1000))} />}
             {naoPublicou && <p className="rounded-md border border-rose-500/30 bg-rose-500/5 p-2 text-sm text-rose-600 dark:text-rose-400">{naoPublicou}</p>}
@@ -233,11 +233,15 @@ export function ProgramarReel({ tarefaId, onFechar }: { tarefaId: string | null;
 }
 
 // Quadros sugeridos pela Dalila (o 1º é o dela) + "usar o quadro do vídeo acima".
-function CapaDoReel({ video, capa, sugestoes, ocupado, onEscolher, onQuadroAtual }: {
-  video: string; capa: number | null; sugestoes: number[]; ocupado: boolean;
+function CapaDoReel({ video, videoRef, duracao, capa, sugestoes, ocupado, onEscolher, onQuadroAtual }: {
+  video: string; videoRef: React.RefObject<HTMLVideoElement>; duracao: number | null; capa: number | null; sugestoes: number[]; ocupado: boolean;
   onEscolher: (ms: number) => void; onQuadroAtual: () => void;
 }) {
   const opcoes = capa != null && !sugestoes.includes(capa) ? [capa, ...sugestoes] : sugestoes;
+  // Escolher o momento: a barra anda pelo vídeo acima (o quadro parado aparece lá) e "Usar este quadro" vira a capa.
+  const [seg, setSeg] = useState(capa != null ? capa / 1000 : 0);
+  const total = duracao && duracao > 1 ? Number(duracao) : 60;
+  const ir = (t: number) => { setSeg(t); const v = videoRef.current; if (v) { v.pause(); v.currentTime = t; } };
   return (
     <div className="space-y-2 rounded-md border p-3 text-sm">
       <p className="flex items-center gap-2 text-muted-foreground">
@@ -248,16 +252,26 @@ function CapaDoReel({ video, capa, sugestoes, ocupado, onEscolher, onQuadroAtual
         <div className="flex gap-2 overflow-x-auto pb-1">
           {opcoes.map((ms) => (
             <button key={ms} type="button" disabled={ocupado} onClick={() => onEscolher(ms)} title={`Quadro em ${(ms / 1000).toFixed(1)}s`}
-              className={`relative w-16 shrink-0 overflow-hidden rounded-md border-2 ${ms === capa ? "border-primary" : "border-transparent hover:border-muted-foreground/40"}`}>
+              className={`relative w-20 shrink-0 overflow-hidden rounded-md border-2 ${ms === capa ? "border-primary" : "border-transparent hover:border-muted-foreground/40"}`}>
               <video src={`${video}#t=${ms / 1000}`} muted playsInline preload="metadata" className="pointer-events-none aspect-[9/16] w-full bg-black object-cover" />
               {ms === capa && <span className="absolute right-0.5 top-0.5 rounded-full bg-primary p-0.5 text-primary-foreground"><Check className="h-3 w-3" /></span>}
             </button>
           ))}
         </div>
       )}
-      <button type="button" disabled={ocupado} onClick={onQuadroAtual} className="text-xs font-medium text-primary hover:underline disabled:opacity-50">
-        Usar como capa o quadro parado no vídeo acima
-      </button>
+      <div className="space-y-1.5 rounded-md bg-muted/50 p-2">
+        <p className="text-xs text-muted-foreground">Escolher o momento: arraste a barra (o vídeo acima mostra o quadro) e use como capa.</p>
+        <div className="flex items-center gap-2">
+          <input type="range" min={0} max={total} step={0.1} value={seg} onChange={(e) => ir(Number(e.target.value))} className="h-2 flex-1 cursor-pointer accent-primary" aria-label="Momento da capa" />
+          <span className="w-12 text-right font-mono text-xs tabular-nums">{seg.toFixed(1)}s</span>
+          <button type="button" disabled={ocupado} onClick={() => onEscolher(Math.round(seg * 1000))} className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:opacity-90 disabled:opacity-50">Usar este quadro</button>
+        </div>
+        <div className="flex items-center gap-3 text-[11px]">
+          <button type="button" onClick={() => ir(Math.max(0, seg - 1))} className="text-primary hover:underline">−1s</button>
+          <button type="button" onClick={() => ir(Math.min(total, seg + 1))} className="text-primary hover:underline">+1s</button>
+          <button type="button" disabled={ocupado} onClick={onQuadroAtual} className="ml-auto font-medium text-primary hover:underline disabled:opacity-50">Usar o quadro onde o vídeo está parado</button>
+        </div>
+      </div>
     </div>
   );
 }

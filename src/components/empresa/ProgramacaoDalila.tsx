@@ -178,6 +178,7 @@ export function ProgramacaoDalila({ clienteId, onAbrirEdicao }: { clienteId: str
         {tile(Sparkles, contagem.dalila, "Dalila escolheu o dia", "text-pink-300", "bg-pink-500/15")}
         {tile(CheckCircle2, contagem.semana, "Publicados na semana", "text-emerald-300", "bg-emerald-500/15")}
       </div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2.2fr)_minmax(320px,1fr)]">
       <section className="rounded-2xl border border-white/10 bg-[#0c1320] p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h3 className="flex items-center gap-2 text-lg font-bold"><CalendarDays className="h-5 w-5 text-cyan-300" />Calendário</h3>
@@ -197,7 +198,7 @@ export function ProgramacaoDalila({ clienteId, onAbrirEdicao }: { clienteId: str
             const vids = videosCal.filter((v) => v.dia === dia);
             const passado = dia < hojeDia;
             return (
-              <div key={dia} className={cn("flex min-h-[132px] flex-col gap-1 rounded-xl border p-1.5", dia === hojeDia ? "border-sky-400 bg-sky-500/5" : "border-white/10 bg-black/20", passado && !doDia.length && "opacity-50")}>
+              <div key={dia} className={cn("flex min-h-[150px] flex-col gap-1 rounded-xl border p-1.5", dia === hojeDia ? "border-sky-400 bg-sky-500/5" : "border-white/10 bg-black/20", passado && !doDia.length && "opacity-50")}>
                 <span className={cn("text-xs font-semibold", dia === hojeDia ? "text-sky-300" : "text-white/70")}>{d.getDate()}{d.getDate() === 1 ? ` ${format(d, "MMM", { locale: ptBR })}` : ""}</span>
                 {doDia.map((p) => {
                   const podeAbrir = (p.status === "programado" && !!p.tarefaId) || (p.status === "publicado" && !!p.permalink);
@@ -233,6 +234,7 @@ export function ProgramacaoDalila({ clienteId, onAbrirEdicao }: { clienteId: str
           {publicados.length > 0 && <><h3 className="pt-2 text-sm font-semibold text-white/60">Já publicados</h3>{publicados.map(linha)}</>}
           <p className="text-[11px] text-white/40">Clique num post programado para mudar dia, hora ou legenda. A Dalila programa sozinha o primeiro dia livre (carrossel às 10h, reel às 18h, dark às 12h).</p>
         </section>
+      </div>
       </div>
       <ProgramarCarrossel tarefaId={programar?.tipo === "carrossel" ? programar.tarefaId : null} onFechar={() => { setProgramar(null); void ler(); }} />
       <ProgramarReel tarefaId={programar?.tipo === "reel" ? programar.tarefaId : null} onFechar={() => { setProgramar(null); void ler(); }} />
