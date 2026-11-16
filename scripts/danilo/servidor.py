@@ -46,6 +46,25 @@ TIPOS = {".mp4": "video/mp4", ".mov": "video/quicktime", ".jpg": "image/jpeg", "
          ".wav": "audio/wav", ".json": "application/json"}
 ACERVO = BASE / "acervo"   # músicas livres (domínio público/CC0); títulos em acervo/musicas.json
 _fila = threading.Lock()  # uma montagem por vez (o Mac tem 8 GB)
+# Prioridade (16/11, "o Danilo está demorando de novo"): as prévias leves do editor (uma a cada mexida) disputavam a mesma fila e faziam a versão
+# OFICIAL (gerar versão, aprovar) esperar vários minutos. Quem gera versão oficial avisa aqui; as leves esperam a vez e só entram quando não há oficial.
+_oficiais = 0
+_trava_oficiais = threading.Lock()
+
+
+class _Oficial:
+    def __enter__(self):
+        global _oficiais
+        with _trava_oficiais:
+            _oficiais += 1
+        _fila.acquire()
+
+    def __exit__(self, *_):
+        global _oficiais
+        _fila.release()
+        with _trava_oficiais:
+            _oficiais -= 1
+
 
 
 def log(*p):
@@ -98,7 +117,7 @@ def andamento(id_, texto):
 
 
 def gerar_previa(id_):
-    with _fila:
+    with _Oficial():
         try:
             dark = json.loads((pasta_de(id_) / "projeto.json").read_text()).get("formato") == "dark"
             if not dark and not (pasta_de(id_) / "proxy.mp4").exists():   # dark: a fonte é só a voz, sem vídeo
@@ -107,7 +126,7 @@ def gerar_previa(id_):
                     __import__("time").sleep(2)
                 fazer_proxy(pasta_de(id_))
             status(id_, "renderizando", "Gerando a nova versão…")
-            _, dur = motor.renderizar(pasta_de(id_), previa=True, progresso=andamento(id_, "Gerando a nova versão…"))
+            _, dur = motor.renderizar(pasta_de(id_), previa=True, leve=True, progresso=andamento(id_, "Gerando a nova versão…"))   # leve: as folhas com transparência vêm das cópias H.264 (a prévia levava 4-5 min decodificando ProRes)
             db("UPDATE public.edicoes_video SET status = 'revisar', mensagem = null, duracao = %s, versao = versao + 1, "
                "atualizado_em = now() WHERE id = %s", (round(dur, 1), id_))
             log("prévia ok", id_)
@@ -284,13 +303,23 @@ def previa_leve(pasta, projeto):
 
         def gerar():
             try:
-                with _fila:
-                    if _leve_ultima.get(str(pasta)) != chave:    # ele já mexeu de novo: essa não vale mais
+                while True:
+                    while _oficiais > 0:                          # versão oficial na frente: a prévia leve espera
+                        __import__("time").sleep(2)
+                    if _leve_ultima.get(str(pasta)) != chave:     # ele já mexeu de novo: essa não vale mais
                         return
+                    _fila.acquire()
+                    if _oficiais > 0:                             # apareceu uma oficial enquanto esperava a trava: devolve e deixa passar
+                        _fila.release()
+                        continue
+                    break
+                try:
                     motor.renderizar(pasta, previa=True, projeto=projeto, saida=destino, leve=True)
-                    novos = sorted(pasta.glob("previa-leve-*.mp4"), key=lambda x: x.stat().st_mtime)
-                    for velho in novos[:-3]:                 # guarda só as 3 últimas
-                        velho.unlink(missing_ok=True)
+                finally:
+                    _fila.release()
+                novos = sorted(pasta.glob("previa-leve-*.mp4"), key=lambda x: x.stat().st_mtime)
+                for velho in novos[:-3]:                      # guarda só as 3 últimas
+                    velho.unlink(missing_ok=True)
             except Exception as e:
                 log("prévia leve erro", traceback.format_exc()[-300:])
                 _leve_erro[chave] = str(e)[:160]
