@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { ROTULO_DANILO, type EdicaoVideo, type EtapaDanilo } from "@/lib/empresa/dashDanilo";
 import { etapaEsteira } from "@/lib/empresa/dashDark";
 import type { EdicaoResumo } from "./EditorVideo";
+import { ProgramacaoDalila } from "./ProgramacaoDalila";
 import type { MembroResumo } from "@/lib/empresa/visaoGeral";
 import { cn } from "@/lib/utils";
 
@@ -20,10 +21,12 @@ const mmss = (s: number | null) => (s == null ? "" : `${String(Math.floor(s / 60
 const percentual = (msg: string | null) => { const m = /(\d{1,3})\s*%/.exec(msg ?? ""); return m ? Math.min(100, Number(m[1])) : null; };
 
 /** Edição de vídeos (abre ao clicar no Danilo; 16/11/2026, Davi: "a visualização parecida com essa"): banner, números por etapa, grade de vídeos com miniatura e status. */
-export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdicao, escritorioId }: {
+export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdicao, onProgramar, escritorioId }: {
   membro: MembroResumo | null; aberto: boolean; onFechar: () => void; onConversar: () => void; escritorioId: string | null;
   onAbrirEdicao?: (e: EdicaoResumo) => void;
+  onProgramar?: (tipo: "carrossel" | "reel", tarefaId: string) => void;   // abre a tela de dia/hora/legenda de um post programado
 }) {
+  const [aba, setAba] = useState<"edicao" | "programacao">("edicao");
   const [edicoes, setEdicoes] = useState<(EdicaoVideo & { resumo: EdicaoResumo })[] | null>(null);
   const [erro, setErro] = useState(false);
   const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -34,7 +37,7 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
   useEffect(() => {
     if (!aberto || !membro || !escritorioId) return;
     let vivo = true;
-    setEdicoes(null); setErro(false); setFiltro("todos"); setBusca(""); setLimite(48);
+    setEdicoes(null); setErro(false); setAba("edicao"); setFiltro("todos"); setBusca(""); setLimite(48);
     const ler = async () => {
       const { data, error } = await db.from("edicoes_video")
         .select("id, titulo, status, mensagem, versao, final_drive, duracao, formato, opcoes_formato, previa_url, projeto_em, cliente_id, criado_em, atualizado_em, video_vertical_id")
@@ -116,6 +119,11 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
               <span className="hidden h-24 w-24 items-center justify-center rounded-3xl bg-white/5 ring-1 ring-white/10 sm:flex"><Clapperboard className="h-12 w-12 text-violet-300" /></span>
             </div>
 
+            <div className="flex w-fit gap-1 rounded-2xl border border-white/10 bg-[#0c1320] p-1 text-sm">
+              {([["edicao", "Edição de vídeos"], ["programacao", "Programação (Dalila)"]] as const).map(([v, r]) => (
+                <button key={v} type="button" onClick={() => setAba(v)} className={cn("rounded-xl px-4 py-1.5", aba === v ? "bg-violet-500 font-bold text-white" : "text-white/65 hover:text-white")}>{r}</button>))}
+            </div>
+            {aba === "programacao" && escritorioId ? <ProgramacaoDalila clienteId={escritorioId} onProgramar={(tipo, id) => { onFechar(); onProgramar?.(tipo, id); }} /> : <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
               {tile("todos", Layers, itens.length, "Vídeos no projeto", "text-white", "bg-white/10")}
               {tile("fila", Clock, conta.fila, "Na fila", "text-sky-300", "bg-sky-500/15")}
@@ -159,6 +167,7 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
                     </button>))}
                 </div>)}
             {visiveis.length > limite && <button type="button" onClick={() => setLimite((n) => n + 48)} className="mx-auto flex items-center gap-1.5 rounded-xl border border-white/15 px-4 py-2 text-sm text-white/75 hover:bg-white/10">Ver mais<ChevronDown className="h-4 w-4" /></button>}
+            </>}
           </div>)}
       </DialogContent>
     </Dialog>
