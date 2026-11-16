@@ -1434,7 +1434,27 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
   // reserializa a cena inteira e agenda o autosave — mesmo mecanismo do
   // Documento/Caderno. Também cuida da "ramificação instantânea" e do
   // indicador de conexões ocultas no bloco selecionado.
+  const imagensRenovadasRef = useRef<Set<string>>(new Set());
+  const renovarImagens = useCallback(() => {
+    for (const ms of [400, 1800]) window.setTimeout(() => {
+      const api = excalidrawApiRef.current;
+      if (!api || !mountedRef.current) return;
+      const todos = api.getSceneElementsIncludingDeleted();
+      if (!todos.some((e) => e.type === "image" && !e.isDeleted)) return;
+      api.updateScene({ elements: todos.map((e) => (e.type === "image" ? ({ ...e } as ExcalidrawElement) : e)), captureUpdate: CaptureUpdateAction.NEVER });
+    }, ms);
+  }, []);
   const handleChange = useCallback((elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
+    // Imagem que aparece (colada, solta, vinda de outra pessoa ou do salvo) ou muda de arquivo: renova o desenho dela depois que carregar.
+    // No tema escuro o Excalidraw inverte a tela toda e desinverte as fotos; se a foto for desenhada antes de carregar (ou antes do tema valer),
+    // fica guardada "em negativo". Recriar o elemento força um desenho novo, já com a foto carregada.
+    for (const el of elements) {
+      if (el.type !== "image" || el.isDeleted || !el.fileId) continue;
+      const chave = `${el.id}:${el.fileId}`;
+      if (imagensRenovadasRef.current.has(chave)) continue;
+      imagensRenovadasRef.current.add(chave);
+      renovarImagens();
+    }
     elementsRef.current = elements;
     appStateRef.current = appState;
 
@@ -1794,6 +1814,7 @@ export function MindMapEditor({ documentoId, onClose, embedded = false, onTrocar
       api.updateScene({ appState: { viewBackgroundColor: novo }, captureUpdate: CaptureUpdateAction.NEVER });
     }
   }, [theme]);
+  useEffect(() => { renovarImagens(); }, [theme, renovarImagens]);
 
   // Manda a posição do mouse pros outros que estiverem no mapa agora —
   // é isso que faz aparecer o cursor colorido deles se mexendo, igual Miro.
