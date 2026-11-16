@@ -15,7 +15,7 @@ import { GATILHOS } from "@/lib/automacoes/instagram";
 import { cn } from "@/lib/utils";
 import {
   LIMITE_TITULO_BOTAO, MAX_BOTOES_LINK, MAX_RESPOSTAS, VARIAVEIS_MENSAGEM, grafoVazio, problemasDoFluxo, saidasDoNo,
-  type Botao, type GrafoFluxo, type NoFluxo, type TipoNo,
+  type Botao, type CondicaoTipo, type GrafoFluxo, type NoFluxo, type TipoNo,
 } from "../../../supabase/functions/_shared/fluxo";
 import type { FluxoInstagram, NumerosDoNo } from "@/hooks/useInstagramFluxos";
 import { buscarPostsInstagram, type InstagramPost } from "@/hooks/useInstagramAutomacoes";
@@ -59,7 +59,7 @@ const resumo = (no: NoFluxo) => {
   if (no.tipo === "midia") return no.dados.midia_url ? `${{ imagem: "Foto", audio: "Áudio", video: "Vídeo", arquivo: "Arquivo" }[no.dados.midia_tipo ?? "arquivo"]}${no.dados.midia_nome ? ` · ${no.dados.midia_nome}` : ""}${(no.dados.texto ?? "").trim() ? `\n${(no.dados.texto ?? "").trim()}` : ""}` : "Toque para escolher a foto, o áudio, o vídeo ou o arquivo";
   if (no.tipo === "tag") return no.dados.tag_nome ? `${no.dados.tag_acao === "remover" ? "Tirar" : "Pôr"} a tag “${no.dados.tag_nome}”` : "Toque para escolher a tag";
   if (no.tipo === "esperar") { const m = no.dados.minutos ?? 0; return m >= 60 && m % 60 === 0 ? `${m / 60} h` : `${m} min`; }
-  if (no.tipo === "condicao") return no.dados.condicao === "texto_contem" ? `Resposta contém “${no.dados.palavra ?? ""}”` : "A pessoa respondeu?";
+  if (no.tipo === "condicao") return ({ texto_contem: `Resposta contém “${no.dados.palavra ?? ""}”`, comprou: "Já comprou?", checkout: "Foi ao checkout?", tem_tag: `Tem a tag “${no.dados.tag_nome ?? ""}”?`, perfil: `Perfil é “${no.dados.palavra ?? ""}”?` } as Record<string, string>)[no.dados.condicao ?? ""] ?? "A pessoa respondeu?";
   if (no.tipo === "inicio") return "Quando a palavra chegar";
   return "O fluxo termina aqui";
 };
@@ -585,11 +585,16 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                         <option value="min">minutos</option><option value="h">horas</option></select></div>
                     <span className="text-[11px] text-white/40">De 1 minuto a 24 horas (a janela da Meta fecha em 24 h).</span></label>)}
                 {no.tipo === "condicao" && (<>
-                  <label className="block space-y-1 text-xs text-white/60">Pergunta do bloco
-                    <select value={no.dados.condicao ?? "respondeu"} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, condicao: e.target.value as "respondeu" | "texto_contem" } }))} className="h-9 w-full rounded-md border border-white/15 bg-black/20 px-2 text-sm">
-                      <option value="respondeu">A pessoa respondeu desde o início?</option><option value="texto_contem">A última resposta contém a palavra…</option></select></label>
+                  <label className="block space-y-1 text-xs text-white/60">O que conferir
+                    <select value={no.dados.condicao ?? "respondeu"} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, condicao: e.target.value as CondicaoTipo } }))} className="h-9 w-full rounded-md border border-white/15 bg-black/20 px-2 text-sm">
+                      <optgroup label="Conversa"><option value="respondeu">A pessoa respondeu desde o início?</option><option value="texto_contem">A última resposta contém a palavra…</option></optgroup>
+                      {whatsapp && (<optgroup label="Negócio (confere de verdade)"><option value="comprou">Já comprou?</option><option value="checkout">Foi ao checkout (clicou em comprar)?</option><option value="tem_tag">Tem a tag…</option><option value="perfil">O perfil do quiz é…</option></optgroup>)}
+                    </select></label>
                   {no.dados.condicao === "texto_contem" && <Input value={no.dados.palavra ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, palavra: e.target.value } }))} placeholder="palavra" className="h-9 border-white/15 bg-black/20" />}
-                  <p className="text-[11px] text-white/45">Ligue a saída “Sim” e a saída “Não” aos blocos que seguem.</p></>)}
+                  {no.dados.condicao === "perfil" && <Input value={no.dados.palavra ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, palavra: e.target.value } }))} placeholder="ex.: Postura de Rei" className="h-9 border-white/15 bg-black/20" />}
+                  {no.dados.condicao === "tem_tag" && <><Input list="tags-wa-cond" value={no.dados.tag_nome ?? ""} onChange={(e) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, tag_nome: e.target.value.toLowerCase().slice(0, 40) } }))} placeholder="ex.: nao-receber" className="h-9 border-white/15 bg-black/20" /><datalist id="tags-wa-cond">{tagsWa.map((t) => <option key={t} value={t} />)}</datalist></>}
+                  {(no.dados.condicao === "comprou" || no.dados.condicao === "checkout") && <p className="text-[11px] text-white/45">{no.dados.condicao === "comprou" ? "Confere no momento em que o fluxo chega aqui: venda (sem reembolso) com o e-mail do lead, de depois que ele virou lead." : "Confere se o lead clicou no botão de compra do quiz."}</p>}
+                  <p className="text-[11px] text-white/45">Ligue a saída “Sim” e a saída “Não” aos blocos que seguem. Dica: ponha uma <b>Espera</b> antes para dar tempo da pessoa comprar.</p></>)}
                 {no.tipo === "fim" && <p className="text-xs text-white/55">O fluxo termina aqui para essa pessoa.</p>}
                 {(porNo.get(no.id) ?? []).length > 0 && <ul className="space-y-1 rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200">{(porNo.get(no.id) ?? []).map((p, i) => <li key={i}>• {p}</li>)}</ul>}
               </div>

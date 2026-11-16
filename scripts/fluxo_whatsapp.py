@@ -112,6 +112,26 @@ def avaliar_condicao(no, respondeu, ultimo_texto):
     return bool(respondeu)
 
 
+def condicao_do_banco(q, ex, no):
+    """Condições que olham o negócio (16/11, Davi: "se a pessoa comprou ou não comprou… conferir de verdade"): compra, ida ao checkout, tag, perfil do quiz.
+    None = a condição não é do banco (resposta e texto vêm do chat)."""
+    d = no.get("dados", {}); tipo = d.get("condicao")
+    if tipo == "comprou":
+        cond = _COMPRA
+    elif tipo == "checkout":
+        cond = "EXISTS (SELECT 1 FROM public.quiz_eventos ev WHERE ev.sessao = r.sessao AND ev.tipo = 'cta')"
+    elif tipo == "tem_tag":
+        cond = "EXISTS (SELECT 1 FROM public.quiz_lead_tags t WHERE t.resposta_id = r.id AND t.tag = lower(btrim(%s)))"
+    elif tipo == "perfil":
+        cond = "lower(btrim(coalesce(r.perfil, ''))) = lower(btrim(%s))"
+    else:
+        return None
+    params = [d.get("tag_nome") or ""] if tipo == "tem_tag" else [d.get("palavra") or ""] if tipo == "perfil" else []
+    q.execute(f"SELECT {cond} FROM public.quiz_respostas r JOIN public.whatsapp_fluxos f ON f.id = %s WHERE r.id = %s", (*params, ex["fluxo_id"], ex["resposta_id"]))
+    r = q.fetchone()
+    return bool(r and r[0])
+
+
 # ---------------------------------------------------------------- banco e WhatsApp
 
 def _atualizar(q, id_, **campos):
@@ -421,7 +441,9 @@ def _tratar(c, q, id_, log, enviar):
             anotar(atual["id"], "espera")
             novo = {"estado": "aguardando_tempo", "no_atual": atual["id"], "proximo_em": agora() + timedelta(minutes=minutos)}; break
         if tipo == "condicao":
-            sim = avaliar_condicao(atual, respondeu, ultimo_texto)
+            sim = condicao_do_banco(q, ex, atual)
+            if sim is None:
+                sim = avaliar_condicao(atual, respondeu, ultimo_texto)
             anotar(atual["id"], "condicao:" + ("sim" if sim else "nao"))
             atual = destino(grafo, atual["id"], "sim" if sim else "nao"); continue
         if tipo == "tag":

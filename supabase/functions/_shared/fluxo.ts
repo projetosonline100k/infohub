@@ -9,7 +9,7 @@
 export type TipoNo = "inicio" | "mensagem" | "midia" | "esperar" | "tag" | "condicao" | "fim";
 export type TipoMidia = "imagem" | "audio" | "video" | "arquivo";
 export type Botao = { id: string; titulo: string; tipo: "resposta" | "link"; url?: string };
-export type CondicaoTipo = "respondeu" | "texto_contem";
+export type CondicaoTipo = "respondeu" | "texto_contem" | "comprou" | "checkout" | "tem_tag" | "perfil";   // as quatro últimas: só WhatsApp (olham o negócio)
 export type DadosNo = {
   texto?: string;               // mensagem
   botoes?: Botao[];             // mensagem: ou só respostas, ou só links (a Meta não mistura os dois)
@@ -17,7 +17,7 @@ export type DadosNo = {
   tag_acao?: "adicionar" | "remover";   // tag (só WhatsApp): põe ou tira uma etiqueta do lead
   tag_nome?: string;
   condicao?: CondicaoTipo;      // condicao
-  palavra?: string;             // condicao texto_contem
+  palavra?: string;             // condicao texto_contem (ou o perfil, em "perfil")
   midia_url?: string;           // midia: endereço público do arquivo (balde fluxo-midias)
   midia_tipo?: TipoMidia;       // midia: imagem, áudio, vídeo ou arquivo (PDF)
   midia_nome?: string;          // midia: nome do arquivo (aparece no WhatsApp quando é um documento)
@@ -105,6 +105,11 @@ export function problemasDoFluxo(g: GrafoFluxo, opcoes?: { whatsapp?: boolean })
       if (!(m >= 1 && m <= (wa ? 7 * 24 * 60 : MINUTOS_MAX_ESPERA))) p.push({ no: n.id, texto: wa ? "A espera vai de 1 minuto a 7 dias." : "A espera vai de 1 minuto a 24 horas (a janela de resposta da Meta fecha em 24 h)." });
     }
     if (n.tipo === "condicao" && n.dados.condicao === "texto_contem" && !(n.dados.palavra ?? "").trim()) p.push({ no: n.id, texto: "Escreva a palavra que a condição procura." });
+    if (n.tipo === "condicao" && ["comprou", "checkout", "tem_tag", "perfil"].includes(n.dados.condicao ?? "")) {
+      if (!wa) p.push({ no: n.id, texto: "Essa condição só funciona nos fluxos do WhatsApp." });
+      else if (n.dados.condicao === "tem_tag" && !(n.dados.tag_nome ?? "").trim()) p.push({ no: n.id, texto: "Escreva o nome da tag que a condição confere." });
+      else if (n.dados.condicao === "perfil" && !(n.dados.palavra ?? "").trim()) p.push({ no: n.id, texto: "Escreva o perfil do quiz que a condição confere." });
+    }
     if (n.tipo === "condicao" && !destinoDe(g, n.id, "sim") && !destinoDe(g, n.id, "nao")) p.push({ no: n.id, texto: "A condição não leva a lugar nenhum." });
   }
   // blocos soltos (sem entrada) nunca rodam
