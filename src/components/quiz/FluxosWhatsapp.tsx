@@ -12,7 +12,7 @@ import type { GrafoFluxo } from "../../../supabase/functions/_shared/fluxo";
 
 const db = supabase as unknown as SupabaseClient;
 interface FluxoWa { id: string; nome: string; ativo: boolean; grafo: GrafoFluxo; disparos: number; atualizado_em: string; gatilho: GatilhoWa["tipo"]; gatilho_espera_min: number; gatilho_quiz_id: string | null; ativado_em: string | null }
-export interface ExecucaoWa { id: string; fluxo_id: string; resposta_id: string; estado: string; proximo_em: string | null; criado_em: string; historico: { no: string; tipo: string; em: string }[] | null }
+export interface ExecucaoWa { id: string; fluxo_id: string; resposta_id: string; estado: string; no_atual: string | null; proximo_em: string | null; criado_em: string; historico: { no: string; tipo: string; em: string; lida?: boolean }[] | null }
 export interface LeadFluxoWa { id: string; quiz_id: string; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string }
 
 // Fluxos de mensagem do WhatsApp (15/11/2026, Davi: "criar fluxos de mensagens também no WhatsApp, tipo o Many Hub"): a mesma tela de blocos do Many Hub,
@@ -41,7 +41,7 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
   const lerMovimento = useCallback(async () => {
     if (!clienteId) return;
     const [{ data: e }, { data: l }] = await Promise.all([
-      db.from("whatsapp_fluxo_execucoes").select("id, fluxo_id, resposta_id, estado, proximo_em, criado_em, historico").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000),
+      db.from("whatsapp_fluxo_execucoes").select("id, fluxo_id, resposta_id, estado, no_atual, proximo_em, criado_em, historico").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(2000),
       db.from("quiz_respostas").select("id, quiz_id, nome, email, whatsapp, criada_em").eq("cliente_id", clienteId).not("whatsapp", "is", null).order("criada_em", { ascending: false }).limit(1500),
     ]);
     setExecs((e ?? []) as ExecucaoWa[]); setLeads((l ?? []) as LeadFluxoWa[]);
@@ -55,14 +55,27 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
   const numerosDoFluxo = useCallback((fluxoId: string, desde: number | null, ate: number | null): Record<string, NumerosDoNo> => {
     const dentro = (iso?: string | null) => { if (desde === null && ate === null) return true; if (!iso) return false; const t = Date.parse(iso); return (desde === null || t >= desde) && (ate === null || t < ate); };
     const nos: Record<string, NumerosDoNo> = {};
+    const ATIVAS = ["iniciar", "rodando", "aguardando_resposta", "aguardando_tempo", "pausado"];
+    const no = (id: string) => (nos[id] ??= { enviadas: 0, respostas: 0, rastreadas: 0, abertas: 0, chegaram: 0, aqui: 0, saiu: 0 });
     for (const x of execs) {
       if (x.fluxo_id !== fluxoId) continue;
-      for (const h of x.historico ?? []) {
-        if (!dentro(h.em)) continue;
-        const n = (nos[h.no] ??= { enviadas: 0, respostas: 0, rastreadas: 0, abertas: 0 });
-        if (h.tipo === "mensagem" || h.tipo === "midia") n.enviadas++;
+      const hist = x.historico ?? [];
+      const vistos = new Set<string>();
+      hist.forEach((h, i) => {
+        if (!dentro(h.em)) return;
+        const n = no(h.no);
+        if (!vistos.has(h.no)) { vistos.add(h.no); n.chegaram = (n.chegaram ?? 0) + 1; }
+        if (h.tipo === "mensagem" || h.tipo === "midia") {
+          n.enviadas++;
+          const respondeu = hist.slice(i + 1).some((y) => y.no === h.no && y.tipo.startsWith("resposta:"));
+          if (h.lida === true || respondeu) { n.rastreadas++; n.abertas++; } else if (h.lida === false) n.rastreadas++;
+        }
         if (h.tipo.startsWith("resposta:")) n.respostas++;
-      }
+      });
+      // onde a pessoa está agora e onde parou: a última parada do histórico (ou o bloco atual)
+      const ult = hist[hist.length - 1];
+      if (ATIVAS.includes(x.estado)) { const id = x.no_atual ?? ult?.no; if (id && dentro(x.criado_em)) no(id).aqui = (no(id).aqui ?? 0) + 1; }
+      else if ((x.estado === "parado" || x.estado === "erro") && ult && dentro(ult.em)) no(ult.no).saiu = (no(ult.no).saiu ?? 0) + 1;
     }
     return nos;
   }, [execs]);

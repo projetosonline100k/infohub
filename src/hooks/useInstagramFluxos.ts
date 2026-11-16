@@ -11,7 +11,7 @@ export interface FluxoInstagram {
   correspondencia: "contem" | "exata" | "trecho"; media_ids: string[] | null; respostas_comentario: string[]; grafo: GrafoFluxo; disparos: number;
   criado_em?: string;
 }
-export type NumerosDoNo = { enviadas: number; respostas: number; rastreadas: number; abertas: number };   // rastreadas/abertas: só mensagens enviadas depois de 15/11 (guardam o bloco e o "visto")
+export type NumerosDoNo = { enviadas: number; respostas: number; rastreadas: number; abertas: number; chegaram?: number; aqui?: number; saiu?: number };   // rastreadas/abertas: só mensagens enviadas depois de 15/11 (guardam o bloco e o "visto")
 type Execucao = { fluxo_id: string; estado: string; historico: { no: string; tipo: string; em?: string }[] | null };
 
 /** Fluxos de mensagem (migração 20261113170000): lista da conta, salvar, ligar/desligar, apagar, e os números de cada bloco. */

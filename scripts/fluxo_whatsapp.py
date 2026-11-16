@@ -13,6 +13,8 @@ import json
 import re
 import sys
 import unicodedata
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -149,6 +151,55 @@ def disparar_gatilhos(c, q, log=print):
             log(f"fluxo WhatsApp: gatilho “{gatilho}” de “{nome}” começou para {len(novos)} lead(s)")
 
 
+_ULT_LIDAS = [0.0]
+
+
+def _mensagens_do_chat(conta, chat_id):
+    cfg = x1.waha_config(conta)
+    url = f"{cfg.get('waha_url', 'http://localhost:3000')}/api/{cfg.get('sessao', 'default')}/chats/{urllib.parse.quote(chat_id, safe='')}/messages?limit=60&downloadMedia=false"
+    req = urllib.request.Request(url, headers={"X-Api-Key": cfg["waha_api_key"]})
+    with urllib.request.urlopen(req, timeout=25) as r:
+        return json.loads(r.read() or b"[]")
+
+
+def marcar_lidas(historico, mensagens, agora_ts):
+    """Marca em cada entrada "mensagem" do histórico se a pessoa viu (✓✓ azul = READ/PLAYED no WAHA). Devolve (historico novo, mudou).
+    `lida: true` quando alguma mensagem nossa enviada naquele trecho (ou depois) foi lida; `lida: false` só depois de 2 h sem leitura (aí entra na conta da taxa)."""
+    lidas = sorted(m["timestamp"] for m in mensagens if m.get("fromMe") and str(m.get("ackName", "")).upper() in ("READ", "PLAYED") and m.get("timestamp"))
+    ultima_lida = lidas[-1] if lidas else None
+    mudou = False
+    for h in historico:
+        if h.get("tipo") != "mensagem" or h.get("lida") is True or not h.get("em"):
+            continue
+        t = datetime.fromisoformat(h["em"]).timestamp()
+        if ultima_lida is not None and ultima_lida >= t - 5:   # leitura é cumulativa: se uma mensagem nossa mais nova foi lida, as anteriores também
+            h["lida"] = True; mudou = True
+        elif agora_ts - t > 7200 and h.get("lida") is None:
+            h["lida"] = False; mudou = True
+    return historico, mudou
+
+
+def atualizar_lidas(c, q, log=print):
+    """A cada ~5 min confere no WhatsApp quais mensagens dos fluxos já foram lidas (execuções dos últimos 10 dias)."""
+    import time
+    if time.time() - _ULT_LIDAS[0] < 300:
+        return
+    _ULT_LIDAS[0] = time.time()
+    q.execute("""SELECT id, chat_id, conta, historico FROM public.whatsapp_fluxo_execucoes
+                  WHERE chat_id IS NOT NULL AND criado_em > now() - interval '10 days' AND historico @> '[{"tipo":"mensagem"}]'::jsonb
+                    AND EXISTS (SELECT 1 FROM jsonb_array_elements(historico) h WHERE h->>'tipo' = 'mensagem' AND h->'lida' IS DISTINCT FROM 'true'::jsonb AND coalesce(h->>'lida', '') <> 'false')
+                  ORDER BY atualizado_em DESC LIMIT 40""")
+    for id_, chat, conta, hist in q.fetchall():
+        try:
+            novo, mudou = marcar_lidas(list(hist or []), _mensagens_do_chat(conta, chat), time.time())
+            if mudou:
+                q.execute("UPDATE public.whatsapp_fluxo_execucoes SET historico = %s::jsonb WHERE id = %s", (json.dumps(novo, ensure_ascii=False), id_))
+                c.commit()
+        except Exception as e:  # noqa: BLE001
+            c.rollback()
+            log("fluxo WhatsApp: não consegui ver as leituras de", str(id_)[:8], repr(e)[:120])
+
+
 def passada(log=print, enviar=None):
     """Trata as execuções que têm algo a fazer. `enviar(conta, chat_id, texto, comportamento)` existe para teste."""
     c = connect()
@@ -159,6 +210,11 @@ def passada(log=print, enviar=None):
         except Exception as e:  # noqa: BLE001
             c.rollback()
             log("fluxo WhatsApp: erro nos gatilhos —", repr(e)[:200])
+        try:
+            atualizar_lidas(c, q, log)
+        except Exception as e:  # noqa: BLE001
+            c.rollback()
+            log("fluxo WhatsApp: erro nas leituras —", repr(e)[:200])
         q.execute("""SELECT id FROM public.whatsapp_fluxo_execucoes
                       WHERE estado IN ('iniciar', 'rodando', 'aguardando_resposta', 'aguardando_tempo')
                         AND (trava_ate IS NULL OR trava_ate < now()) AND (proximo_em IS NULL OR proximo_em <= now())
@@ -426,6 +482,11 @@ if __name__ == "__main__" and "--teste" in sys.argv:
     assert saida_da_resposta(m1, "1") == "b1" and saida_da_resposta(m1, " 2) ") == "b2" and saida_da_resposta(m1, "quero sim") == "b1" and saida_da_resposta(m1, "talvez") == "outro" and saida_da_resposta(m1, "9") == "outro"
     assert aguarda_resposta(m1) and not aguarda_resposta(no_por_id(g, "m2"))
     assert avaliar_condicao(no_por_id(g, "c1"), False, "qual o PREÇO?") and not avaliar_condicao(no_por_id(g, "c1"), False, "preços") and avaliar_condicao({"dados": {"condicao": "respondeu"}}, True, "")
+    _h, _m = marcar_lidas([{"no": "a", "tipo": "mensagem", "em": "2026-11-16T10:00:00+00:00"}, {"no": "b", "tipo": "mensagem", "em": "2026-11-16T10:05:00+00:00"}],
+                          [{"fromMe": True, "ackName": "READ", "timestamp": int(datetime.fromisoformat("2026-11-16T10:05:02+00:00").timestamp())}], 0)
+    assert _m and _h[0]["lida"] is True and _h[1]["lida"] is True, _h
+    _h, _m = marcar_lidas([{"no": "a", "tipo": "mensagem", "em": "2026-11-16T10:00:00+00:00"}], [{"fromMe": True, "ackName": "DEVICE", "timestamp": 1}], datetime.fromisoformat("2026-11-16T13:00:00+00:00").timestamp())
+    assert _h[0]["lida"] is False, _h
     assert rota_da_midia("imagem", "image/png") == ("/api/sendImage", False, True) and rota_da_midia("imagem", "image/gif")[0] == "/api/sendFile"
     assert rota_da_midia("audio") == ("/api/sendVoice", True, False) and rota_da_midia("video")[0] == "/api/sendVideo" and rota_da_midia("arquivo")[0] == "/api/sendFile"
     print("fluxo_whatsapp: autoteste ok")
