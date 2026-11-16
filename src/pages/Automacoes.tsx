@@ -275,7 +275,7 @@ export default function Automacoes() {
 
       <FluxoEditor igUserId={conta?.ig_user_id} numerosDoPeriodo={fluxoAberto?.fluxo ? (d, a) => fluxosDaConta.numerosDoFluxo(fluxoAberto.fluxo!.id, d, a) : undefined} aberto={!!fluxoAberto} fluxo={fluxoAberto?.fluxo ?? null} inicial={fluxoAberto?.inicial ?? null} contaNome={conta ? `@${conta.username ?? conta.ig_user_id}` : ""} numeros={fluxoAberto?.fluxo ? fluxosDaConta.numeros.porNo[fluxoAberto.fluxo.id] ?? {} : {}}
         onFechar={() => setFluxoAberto(null)} onSalvar={salvarFluxo} />
-      <ConectarContaDialog aberto={conectarAberto} onFechar={() => { setConectarAberto(false); recarregar(); }} />
+      <ConectarContaDialog aberto={conectarAberto} onFechar={() => { setConectarAberto(false); recarregar(); }} contasIds={contas.map((c) => c.ig_user_id)} recarregar={recarregar} />
 
       <AutomacaoDialog
         aberto={dialogAberto}
