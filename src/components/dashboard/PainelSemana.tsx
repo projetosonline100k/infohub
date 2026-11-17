@@ -43,11 +43,10 @@ export function PainelSemana() {
   const [carregando, setCarregando] = useState(true);
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [tarefas, setTarefas] = useState<TarefaSemana[]>([]);
-  const [faturMes, setFaturMes] = useState(0);
-  const [faturSemana, setFaturSemana] = useState(0);
+  const [diarioBruto, setDiarioBruto] = useState<{ dia: string; produto_id: string; cliente_id: string; valor: number }[]>([]);
+  const [produtosSel, setProdutosSel] = useState<Set<string> | null>(null);   // produtos marcados no gráfico: o faturamento acompanha (null = todos)
   const [metaMes, setMetaMes] = useState<{ id: string; valor: number | null } | null>(null);
   const [metaAnterior, setMetaAnterior] = useState<number | null>(null);
-  const [diarioMes, setDiarioMes] = useState<{ dia: string; cliente_id: string; valor: number }[]>([]);
   const [metasProj, setMetasProj] = useState<Record<string, { id: string; valor: number }>>({});
   const [editandoProj, setEditandoProj] = useState<{ id: string; texto: string } | null>(null);
   const [novaTarefa, setNovaTarefa] = useState<Record<string, string>>({});
@@ -102,12 +101,9 @@ export function PainelSemana() {
       setProjetos(lista);
       setTarefas(tarefasDaSemana(comConclusaoDaEquipe((ts.data ?? []) as (TarefaSemana & { situacao?: string | null })[]), semana));
       const dias = (diario.data ?? []) as { data: string; receita: number | null; reembolsos: number | null }[];
-      const soma = (de: string, ate: string) => dias.filter((d) => d.data >= de && d.data <= ate).reduce((s, d) => s + Number(d.receita ?? 0) - Number(d.reembolsos ?? 0), 0);
-      setDiarioMes(dias.filter((d) => d.data >= mes.inicio && d.data <= mes.fim).map((d) => ({ dia: d.data, cliente_id: produtoDoCliente.get((d as unknown as { produto_id: string }).produto_id) ?? "", valor: Number(d.receita ?? 0) - Number(d.reembolsos ?? 0) })));
+      setDiarioBruto(dias.map((d) => { const pid = (d as unknown as { produto_id: string }).produto_id; return { dia: d.data, produto_id: pid, cliente_id: produtoDoCliente.get(pid) ?? "", valor: Number(d.receita ?? 0) - Number(d.reembolsos ?? 0) }; }));
       setFundos(Object.fromEntries(((fd.data ?? []) as { cliente_id: string; url: string }[]).map((r) => [r.cliente_id, r.url])));
       setMetasProj(Object.fromEntries(((mp.data ?? []) as { id: string; cliente_id: string; meta_faturamento: number }[]).map((r) => [r.cliente_id, { id: r.id, valor: Number(r.meta_faturamento) }])));
-      setFaturMes(soma(mes.inicio, mes.fim));
-      setFaturSemana(soma(semana, fim));
       const mmd = mm.data as { id: string; meta_faturamento: number | null } | null;
       setMetaMes(mmd ? { id: mmd.id, valor: mmd.meta_faturamento == null ? null : Number(mmd.meta_faturamento) } : null);
       setMetaAnterior(((ma.data as { meta_faturamento: number | null } | null)?.meta_faturamento) ?? null);
@@ -252,6 +248,10 @@ export function PainelSemana() {
   const metasDosSelecionados = selecionados.map((p) => metasProj[p.id]?.valor ?? 0);
   const meta = metaDoMes(metasDosSelecionados, metaTotalManual);
   const somaDasMetas = metasDosSelecionados.some((v) => v > 0);
+  const doSelecionado = (d: { produto_id: string }) => !produtosSel || produtosSel.has(d.produto_id);
+  const diarioMes = useMemo(() => diarioBruto.filter((d) => doSelecionado(d) && d.dia >= mes.inicio && d.dia <= mes.fim), [diarioBruto, produtosSel, mes.inicio, mes.fim]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const faturMes = diarioMes.reduce((n, d) => n + d.valor, 0);
+  const faturSemana = diarioBruto.filter((d) => doSelecionado(d) && d.dia >= semana && d.dia <= domingoDe(semana)).reduce((n, d) => n + d.valor, 0);
   const faltaMeta = faltaParaMeta(faturMes, meta);
   const fatPorProjeto = useMemo(() => { const m = new Map<string, number>(); diarioMes.forEach((d) => m.set(d.cliente_id, (m.get(d.cliente_id) ?? 0) + d.valor)); return m; }, [diarioMes]);
   const pctMeta = meta && meta > 0 ? Math.min(100, Math.round((faturMes / meta) * 100)) : null;
@@ -357,7 +357,7 @@ export function PainelSemana() {
       </div>
 
       {/* Faturamento por produto: o gráfico do Dash detalhado, sem as abas de período e sem os três números */}
-      <FaturamentoGeral soGrafico slotProdutos={slotProdutos} />
+      <FaturamentoGeral soGrafico slotProdutos={slotProdutos} onSelecao={setProdutosSel} />
       </div>
 
       {/* Projetos */}

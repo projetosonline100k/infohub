@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,12 +75,16 @@ const formatarMoeda = (valor: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 
 /** `soGrafico` (Visão da semana, 17/11/2026): sem as abas de período, sem os três números e sem a barra de cima; fica só o gráfico por produto. `slotProdutos`: onde o seletor de produtos aparece (a engrenagem da tela). */
-export const FaturamentoGeral = ({ soGrafico = false, slotProdutos = null }: { soGrafico?: boolean; slotProdutos?: HTMLElement | null }) => {
+export const FaturamentoGeral = ({ soGrafico = false, slotProdutos = null, onSelecao }: { soGrafico?: boolean; slotProdutos?: HTMLElement | null; onSelecao?: (ids: Set<string>) => void }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState<ProdutoInfo[]>([]);
   const [lancamentos, setLancamentos] = useState<LancamentoDiario[]>([]);
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  // Quem usa o gráfico (Visão da semana) acompanha quais produtos estão marcados.
+  const onSelecaoRef = useRef(onSelecao);
+  onSelecaoRef.current = onSelecao;
+  useEffect(() => { if (!loading) onSelecaoRef.current?.(selecionados); }, [selecionados, loading]);
   const [filtro, setFiltro] = useState<FiltroPeriodo>("30dias");
   const [personalizadoInicio, setPersonalizadoInicio] = useState<Date>();
   const [personalizadoFim, setPersonalizadoFim] = useState<Date>();
