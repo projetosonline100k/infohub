@@ -9,11 +9,13 @@ import { ROTULO_DANILO, type EdicaoVideo, type EtapaDanilo } from "@/lib/empresa
 import { etapaEsteira } from "@/lib/empresa/dashDark";
 import type { EdicaoResumo } from "./EditorVideo";
 import { ProgramacaoDalila } from "./ProgramacaoDalila";
+import { RoteirosClone } from "./RoteirosClone";
 import type { MembroResumo } from "@/lib/empresa/visaoGeral";
 import { cn } from "@/lib/utils";
 
 const db = supabase as unknown as SupabaseClient;
 const hojeBrasilia = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+const INSTALIVROS = "e354f4be-8a8d-4c34-8f47-f85e5981b8d3";   // só o Instalivros gera vídeo a partir do roteiro (Core Clone)
 const PASTA_ENTRADA = "https://drive.google.com/drive/folders/177Bylb55x0CqLHO0b3Tmjb2070BtcZNN";   // "Precisa de edição": de onde o Danilo pega os brutos
 type Filtro = "todos" | "fila" | "edicao" | "revisao" | "concluido";
 const GRUPO: Record<EtapaDanilo, Exclude<Filtro, "todos">> = { fila: "fila", criando: "edicao", edicao: "edicao", revisao: "revisao", pronto: "concluido", programado: "concluido", postado: "concluido" };
@@ -112,6 +114,7 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
                 <p className="mt-1 text-sm text-white/65">Coloque o bruto na pasta do Drive; o {membro?.nome} pega, edita e deixa em revisão aqui.</p>
                 <div className="mt-4 flex flex-wrap gap-2.5">
                   <a href={PASTA_ENTRADA} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-full bg-violet-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-400"><UploadCloud className="h-4 w-4" />Enviar vídeos</a>
+                  {escritorioId === INSTALIVROS && <RoteirosClone clienteId={INSTALIVROS} />}
                   <button type="button" onClick={onConversar} className="inline-flex items-center gap-2 rounded-full border border-white/20 px-5 py-2.5 text-sm font-medium text-white/85 hover:bg-white/10"><MessageCircle className="h-4 w-4" />Conversar com o {membro?.nome}</button>
                 </div>
               </div>

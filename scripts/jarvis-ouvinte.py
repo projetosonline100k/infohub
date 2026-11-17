@@ -54,6 +54,7 @@ import vivo  # noqa: E402  (modo vivo do chat: só no Mac, com Chrome e comandos
 import fila  # noqa: E402  (fila de desenvolvimento: ninguém programa, todos disparam para a fila — 12/11)
 import estilo_dark  # noqa: E402  (conversa do estilo de vídeo dos perfis da esteira dark — 12/11)
 import agente_whatsapp  # noqa: E402  (inteligência do agente do WhatsApp: pedido do X1 → Claude, 12/11)
+import clone_roteiros  # roteiros do Instalivros → vídeos no Core Clone (17/11): Chrome do Davi, só no Mac
 import kdu  # Kdu (gestor de tráfego IA, 17/11): lê o Gerenciador de Anúncios pelo Chrome do Davi; só no Mac
 import treino  # modo treino do Atlas (16/11): grava o que o Davi faz no Mac e repete depois; só no Mac
 import fluxo_whatsapp  # noqa: E402  (fluxos de mensagem no WhatsApp, 15/11; só no Mac, onde está o WAHA)
@@ -322,6 +323,10 @@ def atender_estilo_vivo():
 
 def atender_estilo():
     estilo_dark.atender(rodar_claude, log)
+
+
+def atender_clone():
+    return clone_roteiros.passada(rodar_claude, log)
 
 
 def atender_kdu():
@@ -943,7 +948,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (kdu, treino, briefing, execucao, vivo, chatbot_assistente, agente_whatsapp, agente_x1, fluxo_whatsapp, estilo_dark, melhorias, cobranca_rodada, esteira, vigia):
+        for m in (clone_roteiros, kdu, treino, briefing, execucao, vivo, chatbot_assistente, agente_whatsapp, agente_x1, fluxo_whatsapp, estilo_dark, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
@@ -1078,6 +1083,7 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("vivo", atender_vivo, 2), daemon=True).start()   # só o Mac tem Chrome e é do Davi
         threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()
+        threading.Thread(target=laco, args=("clone-roteiros", atender_clone, 30), daemon=True).start()   # Core Clone pelo Chrome do Davi
         threading.Thread(target=laco, args=("kdu-ads", atender_kdu, 30), daemon=True).start()   # Facebook Ads pelo Chrome do Davi
         # 14/11: a Conversa "ao vivo" (🖥️) é só deste Mac. O resto da Conversa fica com o servidor (pegar_mensagens separa).
         threading.Thread(target=laco, args=("conversa", atender_conversa, 3), daemon=True).start()
