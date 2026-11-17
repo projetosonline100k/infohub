@@ -52,9 +52,8 @@ const DashGeral = () => {
   const [filtroEntrega, setFiltroEntrega] = useState<FiltroEntrega>("esta_semana");
   const [verTodasAtrasadas, setVerTodasAtrasadas] = useState(false);
   const [verTodasEntregar, setVerTodasEntregar] = useState(false);
-  // Visão da semana (17/11/2026): painel novo, aberto por padrão; "Detalhado" é o dash de tarefas e faturamento de sempre.
-  const [aba, setAbaEstado] = useState<"semana" | "detalhado">(() => { try { return localStorage.getItem("dashgeral:aba") === "detalhado" ? "detalhado" : "semana"; } catch { return "semana"; } });
-  const setAba = (a: "semana" | "detalhado") => { setAbaEstado(a); try { localStorage.setItem("dashgeral:aba", a); } catch { /* sem storage */ } };
+  // Visão da semana (17/11/2026) é a tela do Dash geral; o painel de tarefas de antes continua em /?detalhado=1.
+  const detalhado = new URLSearchParams(window.location.search).has("detalhado");
 
   useEffect(() => {
     carregarResumo();
@@ -169,17 +168,10 @@ const DashGeral = () => {
 
   const semResponsavel = pendentes.filter((a) => !a.responsavel_nome).length;
 
-  const abas = (
-    <div className="flex w-fit gap-1 rounded-xl border bg-card p-1 text-sm">
-      {([["semana", "Visão da semana"], ["detalhado", "Detalhado"]] as const).map(([v, r]) => (
-        <button key={v} type="button" onClick={() => setAba(v)} className={cn("rounded-lg px-4 py-1.5", aba === v ? "bg-primary font-semibold text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>{r}</button>))}
-    </div>
-  );
-  if (aba === "semana") return <div className="space-y-5">{abas}<PainelSemana /></div>;
+  if (!detalhado) return <PainelSemana />;
 
   return (
     <div className="space-y-6">
-      {abas}
       <div>
         <h1 className="mb-2 text-4xl font-bold text-foreground">Dash geral</h1>
         <p className="text-muted-foreground">Como estão suas tarefas agora</p>

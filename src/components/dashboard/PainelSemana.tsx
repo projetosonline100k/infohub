@@ -5,12 +5,11 @@ import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, Chevr
 import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
-import { useAuth } from "@/auth/AuthProvider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
-import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, serieDiaria, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, saudacao, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
+import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, serieDiaria, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
 // Visão da semana (17/11/2026, Davi: "no dash geral, quero criar algo parecido com esse dash, e que seja funcional"): faturamento do mês contra a meta do mês,
 // Missão da Semana (checklist), e um cartão por projeto com as tarefas da semana (dá para concluir aqui), progresso, Meta Ads, leads e vendas dos últimos 7 dias.
@@ -29,8 +28,6 @@ const novoId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? 
 
 export function PainelSemana() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const nome = ((user?.user_metadata?.nome as string | undefined) || user?.email?.split("@")[0]?.split(".")[0] || "").replace(/^./, (c) => c.toUpperCase());
   const hoje = hojeIso();
   const [semana, setSemana] = useState(segundaDe(new Date()));
   const [carregando, setCarregando] = useState(true);
@@ -200,17 +197,12 @@ export function PainelSemana() {
   const nomeDe = (id: string) => projetos.find((p) => p.id === id)?.nome ?? "";
   const pctMeta = meta && meta > 0 ? Math.min(100, Math.round((faturMes / meta) * 100)) : null;
 
-  const emExecucao = selecionados.filter((p) => { const g = progresso(tarefasPorProjeto.get(p.id) ?? []); return g.total > 0 && g.pct < 100; }).length;
   const contagem = (f: FiltroTarefas) => selecionados.reduce((n, p) => n + filtrar(tarefasPorProjeto.get(p.id) ?? [], f, hoje).length, 0);
   const missao = efetivo.missao;
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">{saudacao(new Date().getHours())}{nome ? `, ${nome}` : ""} 👋</h1>
-          <p className="text-sm text-muted-foreground">Visão da semana · {emExecucao} {emExecucao === 1 ? "projeto" : "projetos"} em execução</p>
-        </div>
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-1 rounded-xl border bg-card px-2 py-1.5 text-sm">
           <CalendarDays className="mx-1 h-4 w-4 text-muted-foreground" />
           <span className="min-w-[110px] text-center font-medium">Semana {rotuloSemana(semana)}</span>
