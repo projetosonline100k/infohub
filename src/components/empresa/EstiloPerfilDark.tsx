@@ -297,11 +297,14 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado, flutuan
               </div>
               {chat}
             </div>)}
+          {/* No app do Mac, enquanto ele trabalha a bolinha é a da janela flutuante: só uma por vez. */}
+          {!(esperando && isDesktop() && !aberta) && (
           <button type="button" onClick={() => { setAberta((a) => !a); if (!vivo && !aberta) void alternarVivo(); }} title={aberta ? "Esconder o Lauro" : "Chamar o Lauro: ele abre coisas, mexe no seu Mac e no Chrome e muda o que você pedir"}
             className={cn("relative grid h-14 w-14 place-items-center rounded-full border-2 border-cyan-300/70 bg-[#0c1b27] shadow-xl shadow-cyan-500/20 transition-transform hover:scale-105", esperando && "animate-pulse border-amber-300")}>
             <span className="flex gap-2"><span className="h-2.5 w-2.5 rounded-full bg-cyan-300" /><span className="h-2.5 w-2.5 rounded-full bg-cyan-300" /></span>
             {(esperando || (vivo && !aberta)) && <span className={cn("absolute right-0.5 top-0.5 h-3 w-3 rounded-full ring-2 ring-[#0c1b27]", esperando ? "bg-amber-400" : "bg-emerald-400")} />}
           </button>
+          )}
         </div>
       </div>
     );
