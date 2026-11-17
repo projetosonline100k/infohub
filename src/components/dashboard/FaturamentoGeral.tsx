@@ -73,7 +73,8 @@ interface PontoGrafico {
 const formatarMoeda = (valor: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 
-export const FaturamentoGeral = () => {
+/** `soGrafico` (Visão da semana, 17/11/2026: "isso não precisa"): sem as abas de período e sem os três números de cima; fica o gráfico por produto e o seletor de produtos. */
+export const FaturamentoGeral = ({ soGrafico = false }: { soGrafico?: boolean }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState<ProdutoInfo[]>([]);
@@ -301,6 +302,7 @@ export const FaturamentoGeral = () => {
     <div className="space-y-4">
       {/* Filtros */}
       <div className="flex items-center justify-between flex-wrap gap-2">
+        {!soGrafico ? (
         <div className="flex items-center bg-muted rounded-lg p-0.5 flex-wrap">
           {OPCOES_FILTRO.map((opcao) => (
             <button
@@ -317,6 +319,7 @@ export const FaturamentoGeral = () => {
             </button>
           ))}
         </div>
+        ) : <span />}
 
         <div className="flex items-center gap-2">
           {filtro === "personalizado" && (
@@ -386,6 +389,7 @@ export const FaturamentoGeral = () => {
         </Card>
       ) : (
         <>
+          {!soGrafico && (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <StatTile icon={DollarSign} label="Receita no período" value={formatarMoeda(totais.receita)} tone="good" />
             <StatTile
@@ -401,6 +405,7 @@ export const FaturamentoGeral = () => {
               tone={crescimento === null ? "neutral" : crescimento >= 0 ? "good" : "warning"}
             />
           </div>
+          )}
 
           <Card className="p-5 shadow-sm">
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">

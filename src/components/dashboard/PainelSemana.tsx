@@ -247,8 +247,8 @@ export function PainelSemana() {
         </div>
       </div>
 
-      {/* Faturamento por produto: o mesmo gráfico e os mesmos números do Dash detalhado (receita, lucro, crescimento, linha por produto) */}
-      <FaturamentoGeral />
+      {/* Faturamento por produto: o gráfico do Dash detalhado, sem as abas de período e sem os três números */}
+      <FaturamentoGeral soGrafico />
 
       {/* Missão da Semana */}
       <div className="grid gap-4 overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-card to-amber-500/10 p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_1.2fr] lg:gap-8">
