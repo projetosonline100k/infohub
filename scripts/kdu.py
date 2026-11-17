@@ -1,5 +1,6 @@
 """Kdu, gestor de tráfego (IA) do setor Marketing (17/11/2026): lê o Gerenciador de Anúncios do Facebook pelo Chrome do Davi e grava em ads_*.
 
+Serve a cada escritório que tem o Kdu no Marketing (Davi, Instalivros…): o pedido do dash diz de qual projeto é.
 Roda SÓ no Mac (o ouvinte com --so-codigo, onde estão o Chrome e o login do Facebook do Davi). A cada passada:
   1. há pedido do dash (ads_coletas.status = 'pedida')? atende o mais antigo;
   2. senão, se a última coleta boa tem mais de HORAS_AUTO horas e o Davi está usando o Mac, faz uma automática.
@@ -16,7 +17,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from migration_db import connect  # noqa: E402
 
-CLIENTE = "e4b24f93-0eda-43fc-b50e-3ebe24f8905f"   # escritório do Davi (o Marketing dele)
 HORAS_AUTO = 8
 FERRAMENTAS = ["Read"]   # + Chrome (chrome=True)
 
@@ -24,7 +24,7 @@ PROMPT = """Você é o Kdu, gestor de tráfego (IA) do Davi. Missão agora: LER 
 
 Como fazer (ferramentas mcp__claude-in-chrome; o Chrome do Davi já está logado no Facebook):
 1. Abra https://adsmanager.facebook.com/adsmanager/manage/campaigns . Se pedir login, senha ou verificação, PARE e responda o JSON com "erro": "precisa logar no Facebook no Chrome". Nunca digite senha.
-2. Se houver mais de uma conta de anúncios, use a que o Davi está usando agora (a que abrir) e anote o nome em "conta".
+2. Projeto: **{projeto}**. Se houver mais de uma conta de anúncios, escolha a deste projeto (procure o nome dele no seletor de contas; se só houver uma, use ela) e anote o nome em "conta". Só traga campanhas desta conta.
 3. Período: últimos {dias} dias até hoje ({hoje}). Coloque as colunas de desempenho: Status de entrega, Orçamento, Valor usado, Resultados (e o tipo), Impressões, Alcance, Cliques no link (ou cliques), Valor de conversão da compra / retorno do investimento, se existirem. Use Detalhamento > Por tempo > Dia para ter uma linha por campanha e por dia. Role/pagine até pegar TODAS as campanhas que tiveram gasto no período (e as ativas, mesmo sem gasto).
 4. Leia a tabela com get_page_text/read_page (e screenshot se precisar conferir). Converta números brasileiros (R$ 1.234,56 → 1234.56). Não invente número que não aparece: deixe 0 e explique em "observacoes".
 5. Avisos: liste em "alertas" o que merece a atenção do Davi (campanha gastando sem resultado, custo por resultado subindo, orçamento acabando, anúncio reprovado, entrega limitada, campanha ativa sem gasto). Máximo 8, só os que importam, com o motivo em números.
@@ -112,7 +112,7 @@ def validar(d, hoje=None):
     return camps, diario, alertas
 
 
-def gravar(camps, diario, alertas, conta):
+def gravar(CLIENTE, camps, diario, alertas, conta):
     for c in camps:
         _db("""INSERT INTO public.ads_campanhas (cliente_id, user_id, conta, campanha_ref, nome, status, objetivo, orcamento_diario, atualizado_em)
                SELECT %s, user_id, %s, %s, %s, %s, %s, %s, now() FROM public.clientes WHERE id = %s
@@ -131,8 +131,9 @@ def gravar(camps, diario, alertas, conta):
             (CLIENTE, a["nivel"], a["titulo"], a["detalhe"], a["ref"], CLIENTE, a["titulo"]))
 
 
-def coletar(rodar_claude, log, dias=30):
-    prompt = PROMPT.format(dias=dias, hoje=date.today().isoformat())
+def coletar(cliente, rodar_claude, log, dias=30):
+    nome = (_db("SELECT nome_especialista FROM public.clientes WHERE id = %s", (cliente,)) or [[cliente]])[0][0]
+    prompt = PROMPT.format(dias=dias, hoje=date.today().isoformat(), projeto=nome)
     ok, texto = rodar_claude(prompt, minutos=25, chrome=True, turnos=90, ferramentas=FERRAMENTAS)
     if not ok:
         return False, f"o Claude não terminou: {texto[:160]}", 0, 0
@@ -144,7 +145,7 @@ def coletar(rodar_claude, log, dias=30):
     camps, diario, alertas = validar(d)
     if not camps and not diario:
         return False, "o Gerenciador não trouxe nenhuma campanha com dados" + (f" ({d.get('observacoes')})" if d.get("observacoes") else ""), 0, 0
-    gravar(camps, diario, alertas, d.get("conta"))
+    gravar(cliente, camps, diario, alertas, d.get("conta"))
     dias_cobertos = len({m["dia"] for m in diario})
     msg = f"{len(camps)} campanha(s), {dias_cobertos} dia(s) de números" + (f" · {d['observacoes'][:140]}" if d.get("observacoes") else "")
     return True, msg, len(camps), dias_cobertos
@@ -152,23 +153,24 @@ def coletar(rodar_claude, log, dias=30):
 
 def passada(rodar_claude, log=print):
     pedido = _db("""UPDATE public.ads_coletas SET status = 'coletando', mensagem = 'O Kdu abriu o Gerenciador de Anúncios no seu Chrome…'
-                     WHERE id = (SELECT id FROM public.ads_coletas WHERE cliente_id = %s AND status = 'pedida' ORDER BY pedida_em LIMIT 1 FOR UPDATE SKIP LOCKED)
-                 RETURNING id, periodo_dias""", (CLIENTE,))
+                     WHERE id = (SELECT id FROM public.ads_coletas WHERE status = 'pedida' ORDER BY pedida_em LIMIT 1 FOR UPDATE SKIP LOCKED)
+                 RETURNING id, periodo_dias, cliente_id""")
     origem = "manual"
     if not pedido:
-        recente = _db("""SELECT 1 FROM public.ads_coletas WHERE cliente_id = %s AND (status = 'coletando' OR (status IN ('ok', 'erro') AND concluida_em > now() - make_interval(hours => %s)))""", (CLIENTE, HORAS_AUTO))
-        if recente:
-            return
-        ja_coletou = _db("SELECT 1 FROM public.ads_coletas WHERE cliente_id = %s AND status = 'ok' LIMIT 1", (CLIENTE,))
-        if not ja_coletou:   # a 1ª coleta é sempre pedida pelo Davi (ele precisa saber que o Kdu vai usar o Chrome dele)
-            return
-        pedido = _db("""INSERT INTO public.ads_coletas (cliente_id, user_id, origem, status, mensagem) SELECT id, user_id, 'auto', 'coletando', 'Atualização automática' FROM public.clientes WHERE id = %s
-                        RETURNING id, periodo_dias""", (CLIENTE,))
-        origem = "auto"
-    cid, dias = str(pedido[0][0]), pedido[0][1]
-    log(f"kdu ({origem}): coletando {dias} dias")
+        # Automática: só para escritório que já teve uma coleta boa (a 1ª é sempre pedida pelo Davi: ele precisa saber que o Kdu vai usar o Chrome dele)
+        for (cli,) in _db("SELECT DISTINCT cliente_id::text FROM public.ads_coletas WHERE status = 'ok'"):
+            if _db("""SELECT 1 FROM public.ads_coletas WHERE cliente_id = %s AND (status = 'coletando' OR (status IN ('ok', 'erro') AND concluida_em > now() - make_interval(hours => %s)))""", (cli, HORAS_AUTO)):
+                continue
+            pedido = _db("""INSERT INTO public.ads_coletas (cliente_id, user_id, origem, status, mensagem) SELECT id, user_id, 'auto', 'coletando', 'Atualização automática' FROM public.clientes WHERE id = %s
+                            RETURNING id, periodo_dias, cliente_id""", (cli,))
+            origem = "auto"
+            break
+    if not pedido:
+        return
+    cid, dias, cliente = str(pedido[0][0]), pedido[0][1], str(pedido[0][2])
+    log(f"kdu ({origem}): coletando {dias} dias de {cliente[:8]}")
     try:
-        ok, msg, _n, _d = coletar(rodar_claude, log, dias)
+        ok, msg, _n, _d = coletar(cliente, rodar_claude, log, dias)
     except Exception as e:  # noqa: BLE001
         ok, msg = False, f"erro: {repr(e)[:160]}"
     _db("UPDATE public.ads_coletas SET status = %s, mensagem = %s, concluida_em = now() WHERE id = %s", ("ok" if ok else "erro", msg[:300], cid))
