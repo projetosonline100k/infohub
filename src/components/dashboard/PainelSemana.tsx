@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowRight, BarChart3, CalendarClock, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, SlidersHorizontal, Target, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, SlidersHorizontal, Target, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
@@ -9,8 +9,6 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { useGoogleCalendar } from "@/hooks/useGoogleCalendar";
-import { COR_FEITO, type GoogleCalendarEvent } from "@/lib/googleCalendar";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, serieDiaria, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, saudacao, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
@@ -190,20 +188,6 @@ export function PainelSemana() {
     } catch (e) { toast.error(`Não consegui criar a tarefa: ${e instanceof Error ? e.message : ""}`); }
   };
 
-  // Compromissos da semana: eventos do Google Calendar já conectado na Agenda.
-  const ancora = useMemo(() => new Date(`${semana}T12:00:00`), [semana]);
-  const calendario = useGoogleCalendar(ancora);
-  const compromissos = useMemo(() => {
-    const fimSem = domingoDe(semana);
-    const item = (e: GoogleCalendarEvent) => {
-      const dt = e.start.dateTime;
-      const dia = dt ? `${new Date(dt).getFullYear()}-${String(new Date(dt).getMonth() + 1).padStart(2, "0")}-${String(new Date(dt).getDate()).padStart(2, "0")}` : (e.start.date ?? "");
-      const hora = dt ? new Date(dt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "Dia todo";
-      return { id: `${e.calendarId}:${e.id}`, titulo: e.summary || "Sem título", dia, hora, feito: e.colorId === COR_FEITO, local: e.location ?? "" };
-    };
-    return calendario.events.filter((e) => e.status !== "cancelled").map(item).filter((i) => i.dia >= semana && i.dia <= fimSem).sort((a, b) => a.dia.localeCompare(b.dia) || (a.hora === "Dia todo" ? -1 : b.hora === "Dia todo" ? 1 : a.hora.localeCompare(b.hora)));
-  }, [calendario.events, semana]);
-
   const metaTotalManual = metaMes ? metaMes.valor : metaAnterior;   // mês sem meta própria herda a do mês anterior
   const metasDosSelecionados = selecionados.map((p) => metasProj[p.id]?.valor ?? 0);
   const meta = metaDoMes(metasDosSelecionados, metaTotalManual);
@@ -333,36 +317,6 @@ export function PainelSemana() {
             </form>
           )}
         </div>
-      </div>
-
-      {/* Compromissos da semana (Google Calendar da Agenda) */}
-      <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">
-        <div className="mb-2 flex items-center gap-2">
-          <CalendarClock className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-bold text-foreground">Compromissos da Semana</h2>
-          <span className="text-sm text-muted-foreground">({compromissos.length})</span>
-          <button type="button" onClick={() => navigate("/agenda")} className="ml-auto text-xs text-primary hover:underline">Abrir agenda</button>
-        </div>
-        {calendario.loading ? <Loader2 className="mx-auto my-4 h-5 w-5 animate-spin text-muted-foreground" />
-          : !calendario.connected ? <p className="text-sm text-muted-foreground">Conecte o Google Calendar na <button type="button" onClick={() => navigate("/agenda")} className="text-primary underline">Agenda</button> para ver seus compromissos aqui.</p>
-          : compromissos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum compromisso nesta semana.</p> : (
-          <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
-            {Array.from(new Set(compromissos.map((c) => c.dia))).map((dia) => {
-              const [a, m, d] = dia.split("-").map(Number);
-              const dow = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][new Date(a, m - 1, d).getDay()];
-              return (
-                <div key={dia} className="py-1.5">
-                  <p className={cn("text-xs font-bold uppercase tracking-wide", dia === hoje ? "text-primary" : "text-muted-foreground")}>{dow} {d}{dia === hoje ? " · hoje" : ""}</p>
-                  <ul className="mt-0.5 space-y-0.5">
-                    {compromissos.filter((c) => c.dia === dia).map((c) => (
-                      <li key={c.id} className="flex items-baseline gap-2 text-sm">
-                        <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{c.hora}</span>
-                        <span className={cn("min-w-0 flex-1 truncate", c.feito && "text-muted-foreground line-through")} title={c.local ? `${c.titulo} · ${c.local}` : c.titulo}>{c.titulo}</span>
-                      </li>))}
-                  </ul>
-                </div>);
-            })}
-          </div>)}
       </div>
 
       {/* Projetos */}
