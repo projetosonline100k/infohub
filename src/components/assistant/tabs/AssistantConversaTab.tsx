@@ -1,13 +1,15 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowUp, Loader2, Sparkles, Trash2, Zap } from "lucide-react";
+import { ArrowUp, ImagePlus, Loader2, Sparkles, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/DialogosGlobais";
 import { falar } from "@/lib/desktop/voz";
+import { useImagensChat } from "@/hooks/useImagensChat";
+import { LINHA_IMAGEM } from "@/lib/empresa/imagemChat";
 
 interface Mensagem {
   id: string;
@@ -154,14 +156,17 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
   // Ao vivo (14/11, Davi: "o Atlas com as funções do ao vivo, acessar o PC, guiar, mexer no Infopro"): a mensagem leva a marca 🖥️ e o ouvinte do Mac atende com Chrome, terminal e o app.
   const [aoVivo, setAoVivo] = useState(() => { try { return localStorage.getItem("atlas-ao-vivo") === "1"; } catch { return false; } });
   const alternarAoVivo = () => setAoVivo((v) => { const n = !v; try { localStorage.setItem("atlas-ao-vivo", n ? "1" : "0"); } catch { /* sem armazenamento */ } return n; });
+  // Imagens (16/11, Davi: "eu consigo subir imagem aqui no Atlas?"): colar (⌘V), arrastar ou clicar no clipe; viram linhas "🖼️ <link>" e o Atlas olha antes de responder.
+  const fotos = useImagensChat();
+  const seletorImagem = useRef<HTMLInputElement>(null);
   const enviar = async (comando?: string) => {
-    const conteudo = (comando ?? texto).trim();
-    if (!conteudo || !user?.id || enviando) return;
+    const conteudo = comando ?? fotos.comImagens(texto.trim()).trim();
+    if (!conteudo || !user?.id || enviando || (!comando && fotos.subindo > 0)) return;
     setEnviando(true);
     const { error } = await supabase.from("jarvis_conversa").insert({ papel: "davi", texto: aoVivo && !comando ? `${PREFIXO_AO_VIVO} ${conteudo}` : conteudo, status: "enviada" });
     setEnviando(false);
     if (error) { toast.error("Não consegui enviar"); return; }
-    if (!comando) setTexto("");
+    if (!comando) { setTexto(""); fotos.limpar(); }
     setAgora(Date.now());
     void carregar();
   };
@@ -191,7 +196,8 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
   const semResposta = pendente?.status === "enviada" && agora - new Date(pendente.criada_em).getTime() > ESPERA_MAXIMA_MS;
 
   return (
-    <div className="-mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col">
+    <div {...fotos.props} className="relative -mx-4 -my-4 flex h-[calc(100%+2rem)] flex-col">
+      <fotos.Soltar />
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5 text-[11px] text-muted-foreground">
         <span className="inline-flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" /> Inteligência do Infopro</span>
         <span className="ml-auto" />
@@ -229,7 +235,16 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
               <div className={cn("flex", minha ? "justify-end" : "justify-start")}>
                 <div className={cn("max-w-[85%] rounded-2xl px-3 py-2", minha ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted")}>
                   {minha
-                    ? <p className="whitespace-pre-wrap">{m.texto === COMANDO_COBRAR ? "⚡ Me cobra agora" : m.texto.startsWith("/analisar ") ? "🎬 Analisar reels para cliente (Creator)" : m.texto.startsWith("/ideia ") ? "💡 Separar ideia de headline (Creator)" : m.texto.startsWith(PREFIXO_AO_VIVO) ? m.texto.slice(PREFIXO_AO_VIVO.length).trim() : m.texto}</p>
+                    ? (() => {
+                      const exibido = String(m.texto === COMANDO_COBRAR ? "⚡ Me cobra agora" : m.texto.startsWith("/analisar ") ? "🎬 Analisar reels para cliente (Creator)" : m.texto.startsWith("/ideia ") ? "💡 Separar ideia de headline (Creator)" : m.texto.startsWith(PREFIXO_AO_VIVO) ? m.texto.slice(PREFIXO_AO_VIVO.length).trim() : m.texto);
+                      const linhas = exibido.split("\n");
+                      const imgs = linhas.map((l) => LINHA_IMAGEM.exec(l.trim())?.[1]).filter((u): u is string => !!u);
+                      const resto = linhas.filter((l) => !LINHA_IMAGEM.test(l.trim())).join("\n").trim();
+                      return (<>
+                        {imgs.length > 0 && <span className="mb-1 flex flex-wrap gap-1.5">{imgs.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer"><img src={u} alt="imagem enviada" className="max-h-40 max-w-full rounded-lg border border-primary-foreground/30 object-cover" /></a>)}</span>}
+                        {resto && <p className="whitespace-pre-wrap">{resto}</p>}
+                      </>);
+                    })()
                     : <TextoMarkdown texto={m.texto} />}
                   <div className={cn("mt-0.5 text-right text-[10px]", minha ? "text-primary-foreground/70" : "text-muted-foreground")}>{format(new Date(m.criada_em), "HH:mm")}</div>
                 </div>
@@ -261,6 +276,8 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
         </button>
         {aoVivo && <span className="text-[10px] text-muted-foreground">usa o Chrome e o Mac, guia e mexe no Infopro</span>}
       </div>
+      <fotos.Pendentes />
+      <input ref={seletorImagem} type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; if (fs.length) void fotos.subir(fs); }} />
       <form
         className="flex items-end gap-2 p-2"
         onSubmit={(e) => { e.preventDefault(); void enviar(); }}
@@ -277,9 +294,11 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
           className="max-h-32 min-h-[36px] flex-1 resize-none rounded-xl border border-border bg-background px-3 py-2 text-[13px] outline-none focus:ring-1 focus:ring-ring"
           style={{ height: Math.min(128, 36 + Math.max(0, texto.split("\n").length - 1) * 18) }}
         />
+        <button type="button" onClick={() => seletorImagem.current?.click()} aria-label="Enviar imagem" title="Enviar imagem (ou cole com ⌘V, ou arraste para cá)"
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-border text-muted-foreground hover:bg-accent hover:text-foreground"><ImagePlus className="h-4 w-4" /></button>
         <button
           type="submit"
-          disabled={!texto.trim() || enviando}
+          disabled={(!texto.trim() && fotos.imagens.length === 0) || enviando || fotos.subindo > 0}
           aria-label="Enviar"
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
         >

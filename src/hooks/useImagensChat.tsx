@@ -54,5 +54,5 @@ export function useImagensChat() {
       Solte o print aqui
     </div>
   ) : null);
-  return { imagens, subindo, arrastando, props, comImagens, limpar: () => setImagens([]), Pendentes, Soltar };
+  return { imagens, subindo, subir, arrastando, props, comImagens, limpar: () => setImagens([]), Pendentes, Soltar };
 }
