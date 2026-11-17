@@ -1050,8 +1050,6 @@ if __name__ == "__main__":
             log("caffeinate não subiu —", repr(e)[:120])
     if SO_CODIGO:
         fluxos = (("execucao", lambda: execucao.reenfileirar(sistema=True), "tarefa(s) de programação interrompida(s)"),
-                  ("agente-x1", agente_x1.reenfileirar, "conversa(s) do agente do X1 destravada(s)"),
-                  ("fluxo-whatsapp", fluxo_whatsapp.reenfileirar, "execução(ões) de fluxo do WhatsApp destravada(s)"),
                   ("vivo", vivo.reenfileirar, "mensagem(ns) do modo vivo interrompida(s)"),
                   ("chatbot-vivo", chatbot_assistente.reenfileirar_vivo, "pedido(s) do chatbot ao vivo"),
                   ("melhorias", melhorias.reenfileirar, "melhoria(s) interrompida(s)"))
@@ -1059,6 +1057,8 @@ if __name__ == "__main__":
         fluxos = (("briefing", briefing.reenfileirar, "mensagem(ns) de atendimento interrompido"),
                   ("chatbot", chatbot_assistente.reenfileirar, "pedido(s) do assistente do chatbot"),
                   ("agente", agente_whatsapp.reenfileirar, "pedido(s) da inteligência do agente"),
+                  ("agente-x1", agente_x1.reenfileirar, "conversa(s) do agente do X1 destravada(s)"),
+                  ("fluxo-whatsapp", fluxo_whatsapp.reenfileirar, "execução(ões) de fluxo do WhatsApp destravada(s)"),
                   ("estilo", estilo_dark.reenfileirar, "pedido(s) do estilo de vídeo dark"),
                   ("execucao", lambda: execucao.reenfileirar(sistema=False if SEM_CODIGO else None), "tarefa(s) interrompida(s)"))
         if not SEM_CODIGO:
@@ -1075,8 +1075,6 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("vivo", atender_vivo, 2), daemon=True).start()   # só o Mac tem Chrome e é do Davi
         threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()
-        threading.Thread(target=laco, args=("agente-x1", atender_agente_x1, 5), daemon=True).start()   # o WAHA está neste Mac
-        threading.Thread(target=laco, args=("fluxo-whatsapp", atender_fluxo_whatsapp, 5), daemon=True).start()
         threading.Thread(target=laco, args=("kdu-ads", atender_kdu, 30), daemon=True).start()   # Facebook Ads pelo Chrome do Davi
         # 14/11: a Conversa "ao vivo" (🖥️) é só deste Mac. O resto da Conversa fica com o servidor (pegar_mensagens separa).
         threading.Thread(target=laco, args=("conversa", atender_conversa, 3), daemon=True).start()
@@ -1090,6 +1088,9 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("chatbot", atender_chatbot, 2), daemon=True).start()
         threading.Thread(target=laco, args=("agente", atender_agente, 2), daemon=True).start()
         threading.Thread(target=laco, args=("estilo", atender_estilo, 2), daemon=True).start()
+        # 17/11 (Davi: "meu Mac está pesado"): o agente do X1 e os fluxos do WhatsApp rodam no SERVIDOR, onde está o WAHA (sem túnel, sem depender do Mac ligado).
+        threading.Thread(target=laco, args=("agente-x1", atender_agente_x1, 5), daemon=True).start()
+        threading.Thread(target=laco, args=("fluxo-whatsapp", atender_fluxo_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     if not SEM_CODIGO:
         threading.Thread(target=laco, args=("melhorias", atender_melhorias, 20), daemon=True).start()
