@@ -9,6 +9,7 @@ import { ROTULO_DANILO, type EdicaoVideo, type EtapaDanilo } from "@/lib/empresa
 import { etapaEsteira } from "@/lib/empresa/dashDark";
 import type { EdicaoResumo } from "./EditorVideo";
 import { ProgramacaoDalila } from "./ProgramacaoDalila";
+import { MolduraDash } from "./MolduraDash";
 import { RoteirosClone } from "./RoteirosClone";
 import type { MembroResumo } from "@/lib/empresa/visaoGeral";
 import { cn } from "@/lib/utils";
@@ -23,7 +24,8 @@ const mmss = (s: number | null) => (s == null ? "" : `${String(Math.floor(s / 60
 const percentual = (msg: string | null) => { const m = /(\d{1,3})\s*%/.exec(msg ?? ""); return m ? Math.min(100, Number(m[1])) : null; };
 
 /** Edição de vídeos (abre ao clicar no Danilo; 16/11/2026, Davi: "a visualização parecida com essa"): banner, números por etapa, grade de vídeos com miniatura e status. */
-export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdicao, escritorioId }: {
+export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdicao, escritorioId, embutido }: {
+  embutido?: boolean;
   membro: MembroResumo | null; aberto: boolean; onFechar: () => void; onConversar: () => void; escritorioId: string | null;
   onAbrirEdicao?: (e: EdicaoResumo) => void;
 }) {
@@ -102,8 +104,7 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
   const abrir = (e: (typeof itens)[number]) => { onAbrirEdicao?.(e.resumo); };
 
   return (
-    <Dialog open={aberto} onOpenChange={(o) => !o && onFechar()}>
-      <DialogContent className="dark max-h-[92vh] w-[96vw] max-w-[1240px] overflow-y-auto border-white/10 bg-[#070b14] p-5 text-white sm:p-6 [&>button]:text-white/70">
+    <MolduraDash embutido={embutido} aberto={aberto} onFechar={onFechar} className="dark max-h-[92vh] w-[96vw] max-w-[1240px] overflow-y-auto border-white/10 bg-[#070b14] p-5 text-white sm:p-6 [&>button]:text-white/70">
         <DialogDescription className="sr-only">Vídeos em edição do Danilo</DialogDescription>
         {erro ? <><DialogTitle className="sr-only">Edição de vídeos</DialogTitle><p className="text-sm text-rose-300">Não consegui carregar as edições agora.</p></>
           : !edicoes ? <><DialogTitle className="sr-only">Edição de vídeos</DialogTitle><Loader2 className="mx-auto my-16 h-6 w-6 animate-spin text-white/50" /></> : (
@@ -171,7 +172,6 @@ export function DashDanilo({ membro, aberto, onFechar, onConversar, onAbrirEdica
             {visiveis.length > limite && <button type="button" onClick={() => setLimite((n) => n + 48)} className="mx-auto flex items-center gap-1.5 rounded-xl border border-white/15 px-4 py-2 text-sm text-white/75 hover:bg-white/10">Ver mais<ChevronDown className="h-4 w-4" /></button>}
             </>}
           </div>)}
-      </DialogContent>
-    </Dialog>
+    </MolduraDash>
   );
 }

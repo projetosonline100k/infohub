@@ -38,6 +38,7 @@ import { NovoFuncionario, type MembroParaEditar } from "./NovoFuncionario";
 import { NovoEscritorio } from "./NovoEscritorio";
 import { registrarVisuais, type Visual } from "./BonecoMesa";
 import { CabecaBoneco } from "./BonecoMesa";
+import { PainelSetor } from "./PainelSetor";
 import { OrbitaEmpresa } from "./OrbitaEmpresa";
 import { ProgramarSemana, TelaTv } from "./TvEscritorio";
 import { useSemanaEquipe } from "@/hooks/useSemanaEquipe";
@@ -123,6 +124,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
   const [dashDark, setDashDark] = useState<MembroResumo | null>(null);
   const [dashDanilo, setDashDanilo] = useState<MembroResumo | null>(null);
   const [dashKdu, setDashKdu] = useState<MembroResumo | null>(null);
+  const [setorPainel, setSetorPainel] = useState<string | null>(null);   // clique no setor da órbita: todos os funcionários dele, uma guia cada
   const conversarCom = (id: string) => setChatPedido((p) => ({ membroId: id, n: (p?.n ?? 0) + 1 }));
   // IA de vídeos dark (Lauro) abre o dash; as outras IAs abrem o chat; pessoa abre a fila.
   const abrirMembro = (m: MembroResumo) => { if (ehDark(m)) setDashDark(m); else if (m.eh_ia && m.nome.trim().toLowerCase() === "danilo") setDashDanilo(m); else if (m.eh_ia && m.nome.trim().toLowerCase() === "kdu") setDashKdu(m); else if (m.eh_ia) conversarCom(m.id); else setMembroAberto(m); };
@@ -772,7 +774,7 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             const m = membros.find((x) => x.id === t.responsavel_id);
             setAoVivo({ atividadeId: t.id, titulo: t.titulo, nome: m?.nome ?? "", ehIa: !!m?.eh_ia, progresso: t.progresso ?? null });
           }}
-          onPessoa={(m) => { abrirMembro(m); }}
+          onPessoa={(m) => { abrirMembro(m); }} onSetor={setSetorPainel}
           topo={<div className="flex gap-2">
             <button type="button" onClick={() => setEscritorio({ editando: null })}
               className="flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-xs font-medium hover:bg-white/10"><Plus className="h-3.5 w-3.5" />Setor</button>
@@ -883,6 +885,8 @@ export function VisaoGeralEmpresa({ clienteId, onIrPara, onAbrirAtividades }: {
             onAbrirTarefa={(f) => f.tarefa && setAoVivo({ atividadeId: f.tarefa.id, titulo: f.tarefa.titulo, nome: f.nome, ehIa: f.ehIa, progresso: f.tarefa.progresso })} />
         </Suspense>
       )}
+      <PainelSetor clienteId={clienteId} setorNome={setores.find((x) => x.id === setorPainel)?.nome ?? "Setor"} membros={membros.filter((m) => m.setor_id === setorPainel)} aberto={!!setorPainel}
+        onFechar={() => setSetorPainel(null)} onMudou={() => void carregar()} onAbrirEdicao={(e) => { setSetorPainel(null); setEdicaoAberta(e); }} />
       <DashDark membro={dashDark} aberto={!!dashDark} onFechar={() => setDashDark(null)} escritorioId={clienteId}
         onConversar={() => { if (dashDark) conversarCom(dashDark.id); setDashDark(null); }} />
       <DashKdu membro={dashKdu} aberto={!!dashKdu} onFechar={() => setDashKdu(null)} escritorioId={clienteId}

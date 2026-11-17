@@ -1,3 +1,4 @@
+import { MolduraDash } from "./MolduraDash";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDistanceToNowStrict } from "date-fns";
@@ -32,7 +33,8 @@ interface Recursos { paginas: { id: string; nome: string; instagram_id: string |
 const ROTULO_ACAO: Record<string, string> = { conectar: "Conectou o Facebook", ligar: "Ligou", pausar: "Pausou", verba: "Mudou a verba", ligar_recusado: "Recusou ligar (teto)", verba_recusada: "Recusou a verba (teto)", criar_campanha: "Criou campanha", criar_conjunto: "Criou conjunto", criar_anuncio: "Criou anúncio", criativo: "Enviou criativo" };
 
 /** Dash do Kdu no estilo UTMify (17/11/2026): campanhas, conjuntos e anúncios com chave liga/desliga, verba, vendas e lucro pelos UTMs; criar e subir criativo. Dados pela API da Meta (edge facebook-ads). */
-export function DashKdu({ membro, aberto, onFechar, onConversar, escritorioId }: {
+export function DashKdu({ membro, aberto, onFechar, onConversar, escritorioId, embutido }: {
+  embutido?: boolean;
   membro: MembroResumo | null; aberto: boolean; onFechar: () => void; onConversar: () => void; escritorioId: string | null;
 }) {
   const [status, setStatus] = useState<Status | null>(null);
@@ -158,8 +160,7 @@ export function DashKdu({ membro, aberto, onFechar, onConversar, escritorioId }:
   const expiraEm = status?.expira_em ? Date.parse(status.expira_em) : null;
 
   return (
-    <Dialog open={aberto} onOpenChange={(o) => !o && onFechar()}>
-      <DialogContent className="dark max-h-[94vh] w-[97vw] max-w-[1400px] overflow-y-auto border-white/10 bg-[#070b14] p-5 text-white sm:p-6 [&>button]:text-white/70">
+    <MolduraDash embutido={embutido} aberto={aberto} onFechar={onFechar} className="dark max-h-[94vh] w-[97vw] max-w-[1400px] overflow-y-auto border-white/10 bg-[#070b14] p-5 text-white sm:p-6 [&>button]:text-white/70">
         <DialogDescription className="sr-only">Facebook Ads: campanhas, conjuntos, anúncios, criativos e contas</DialogDescription>
         <DialogHeader className="space-y-0"><DialogTitle className="sr-only">Facebook Ads</DialogTitle></DialogHeader>
         <div className="space-y-4">
@@ -285,8 +286,7 @@ export function DashKdu({ membro, aberto, onFechar, onConversar, escritorioId }:
               </>)}
         </div>
         {criando && conta && <CriarDialog conta={conta} criativos={criativos} campanhas={linhas} aoFechar={() => { setCriando(false); void lerDados(); }} />}
-      </DialogContent>
-    </Dialog>
+    </MolduraDash>
   );
 }
 

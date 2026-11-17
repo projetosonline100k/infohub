@@ -71,12 +71,14 @@ interface NoSetor {
 }
 type Deslocamentos = Record<string, Ponto>;   // "s:<id>" setor, "a:<id>" agente, "decisoes"
 
-export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, acoes, hoje, onTarefa, onPessoa, topo }: {
+export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, acoes, hoje, onTarefa, onPessoa, onSetor, topo }: {
   clienteId: string;
   setores: { id: string; nome: string; descricao: string | null }[];
   membros: MembroResumo[]; tarefas: TarefaResumo[]; pessoas: PessoaFabrica[]; acoes: AcaoFabrica[];
   categorias?: string[]; rotuloCategoria?: Record<string, string>; hoje: string;
   onTarefa: (t: TarefaResumo) => void; onPessoa: (m: MembroResumo) => void;
+  /** Clique no círculo do setor: abre o painel com uma guia por funcionário (se não vier, só enquadra o setor). */
+  onSetor?: (setorId: string) => void;
   topo?: ReactNode;
 }) {
   // Concluídas dos últimos 7 dias ("concluído", últimas entregas, indicadores).
@@ -447,7 +449,7 @@ export function OrbitaEmpresa({ clienteId, setores, membros, tarefas, pessoas, a
               const aceso = acaoFoco?.setorId === s.id || setorFoco === s.id;
               return (
                 <g key={s.id} data-no="" transform={`translate(${s.x} ${s.y})`} opacity={apagado(s.id) ? 0.25 : 1} style={{ transition: "opacity .4s", cursor: "grab" }}
-                  onPointerDown={(e) => comecarNo(e, `s:${s.id}`, () => (setorFoco === s.id ? visaoGeral() : focarSetor(s)))}>
+                  onPointerDown={(e) => comecarNo(e, `s:${s.id}`, () => (onSetor && s.agentes.length ? onSetor(s.id) : setorFoco === s.id ? visaoGeral() : focarSetor(s)))}>
                   <circle r={R_SETOR + 12} fill={s.cor} opacity={aceso ? 0.35 : 0.14} filter="url(#orb-glow)" />
                   <circle r={R_SETOR} fill="url(#orb-esfera)" stroke={s.cor} strokeWidth={aceso ? 3 : 2} />
                   {s.esperando.length > 0 && <circle r={R_SETOR + 7} fill="none" stroke="#fbbf24" strokeOpacity=".7" strokeWidth="1.4" strokeDasharray="3 6" className="orb-gira" />}
