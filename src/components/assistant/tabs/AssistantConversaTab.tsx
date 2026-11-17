@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ArrowUp, ImagePlus, Loader2, Sparkles, Trash2, Zap } from "lucide-react";
+import { ArrowUp, GraduationCap, ImagePlus, Loader2, Sparkles, Square, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -18,6 +18,8 @@ interface Mensagem {
   status: "enviada" | "lida" | "respondida" | null;
   criada_em: string;
 }
+
+const textoDoTreino = (t: string) => (t.startsWith("/treino iniciar ") ? `🔴 Modo treino: vou gravar “${t.slice(16)}”` : t === "/treino parar" ? "⏹ Parar treino" : t);
 
 // "Me cobra agora" (botão ou ⌘1): manda este comando pra Inteligência do
 // Infopro, que analisa o momento e publica uma cobrança na hora (o mesmo
@@ -192,6 +194,19 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
     else setMensagens([]);
   };
 
+  // Modo treino (16/11, Davi: "eu ativo, faço a atividade, depois o Atlas vai repetindo"): o gravador roda no Mac; aqui só se liga e se desliga.
+  // Está gravando se a última resposta sobre treino foi "🔴 Gravando…".
+  const treinando = (() => {
+    const ultima = [...mensagens].reverse().find((m) => m.papel === "claude" && /^(🔴 Gravando|✅ Aprendi|Não consegui começar|Não estou gravando|Gravei|Já estou gravando)/.test(m.texto));
+    return !!ultima && (ultima.texto.startsWith("🔴 Gravando") || ultima.texto.startsWith("Já estou gravando"));
+  })();
+  const [nomeTreino, setNomeTreino] = useState<string | null>(null);   // não nulo = pedindo o nome da tarefa
+  const comecarTreino = () => {
+    const nome = (nomeTreino ?? "").trim();
+    if (!nome) return;
+    setNomeTreino(null);
+    void enviar(`${PREFIXO_AO_VIVO} /treino iniciar ${nome}`);
+  };
   const pendente = [...mensagens].reverse().find((m) => m.papel === "davi" && (m.status === "enviada" || m.status === "lida"));
   const semResposta = pendente?.status === "enviada" && agora - new Date(pendente.criada_em).getTime() > ESPERA_MAXIMA_MS;
 
@@ -236,7 +251,7 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
                 <div className={cn("max-w-[85%] rounded-2xl px-3 py-2", minha ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-muted")}>
                   {minha
                     ? (() => {
-                      const exibido = String(m.texto === COMANDO_COBRAR ? "⚡ Me cobra agora" : m.texto.startsWith("/analisar ") ? "🎬 Analisar reels para cliente (Creator)" : m.texto.startsWith("/ideia ") ? "💡 Separar ideia de headline (Creator)" : m.texto.startsWith(PREFIXO_AO_VIVO) ? m.texto.slice(PREFIXO_AO_VIVO.length).trim() : m.texto);
+                      const exibido = String(m.texto === COMANDO_COBRAR ? "⚡ Me cobra agora" : m.texto.startsWith("/analisar ") ? "🎬 Analisar reels para cliente (Creator)" : m.texto.startsWith("/ideia ") ? "💡 Separar ideia de headline (Creator)" : m.texto.startsWith(PREFIXO_AO_VIVO) ? textoDoTreino(m.texto.slice(PREFIXO_AO_VIVO.length).trim()) : m.texto);
                       const linhas = exibido.split("\n");
                       const imgs = linhas.map((l) => LINHA_IMAGEM.exec(l.trim())?.[1]).filter((u): u is string => !!u);
                       const resto = linhas.filter((l) => !LINHA_IMAGEM.test(l.trim())).join("\n").trim();
@@ -274,7 +289,25 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
           className={`flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${aoVivo ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-600 dark:text-emerald-300" : "border-border text-muted-foreground hover:bg-muted"}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${aoVivo ? "animate-pulse bg-emerald-500" : "bg-muted-foreground/50"}`} />{aoVivo ? "Ao vivo ligado" : "Ao vivo"}
         </button>
-        {aoVivo && <span className="text-[10px] text-muted-foreground">usa o Chrome e o Mac, guia e mexe no Infopro</span>}
+        {aoVivo && !treinando && nomeTreino === null && <span className="text-[10px] text-muted-foreground">usa o Chrome e o Mac, guia e mexe no Infopro</span>}
+        {treinando ? (
+          <button type="button" onClick={() => void enviar(`${PREFIXO_AO_VIVO} /treino parar`)} disabled={enviando}
+            title="Para de gravar: o Atlas olha o que você fez e monta o passo a passo para repetir"
+            className="ml-auto flex items-center gap-1.5 rounded-full border border-rose-500/60 bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-500" /><Square className="h-3 w-3" />Parar treino
+          </button>
+        ) : nomeTreino !== null ? (
+          <form className="ml-auto flex items-center gap-1" onSubmit={(e) => { e.preventDefault(); comecarTreino(); }}>
+            <input autoFocus value={nomeTreino} onChange={(e) => setNomeTreino(e.target.value)} onKeyDown={(e) => { if (e.key === "Escape") setNomeTreino(null); }} placeholder="Nome da tarefa (ex.: postar reel)"
+              className="h-6 w-44 rounded-full border border-border bg-background px-2.5 text-[11px] outline-none focus:ring-1 focus:ring-ring" />
+            <button type="submit" disabled={!nomeTreino.trim() || enviando} className="rounded-full bg-rose-500 px-2.5 py-0.5 text-[11px] font-semibold text-white disabled:opacity-40">Gravar</button>
+          </form>
+        ) : (
+          <button type="button" onClick={() => setNomeTreino("")} title="Modo treino: você faz a tarefa uma vez no Mac e o Atlas aprende para repetir depois"
+            className="ml-auto flex items-center gap-1.5 rounded-full border border-border px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent">
+            <GraduationCap className="h-3 w-3" />Modo treino
+          </button>
+        )}
       </div>
       <fotos.Pendentes />
       <input ref={seletorImagem} type="file" accept="image/*" multiple hidden onChange={(e) => { const fs = [...(e.target.files ?? [])]; e.target.value = ""; if (fs.length) void fotos.subir(fs); }} />

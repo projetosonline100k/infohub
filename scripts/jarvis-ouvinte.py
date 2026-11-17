@@ -54,6 +54,7 @@ import vivo  # noqa: E402  (modo vivo do chat: só no Mac, com Chrome e comandos
 import fila  # noqa: E402  (fila de desenvolvimento: ninguém programa, todos disparam para a fila — 12/11)
 import estilo_dark  # noqa: E402  (conversa do estilo de vídeo dos perfis da esteira dark — 12/11)
 import agente_whatsapp  # noqa: E402  (inteligência do agente do WhatsApp: pedido do X1 → Claude, 12/11)
+import treino  # modo treino do Atlas (16/11): grava o que o Davi faz no Mac e repete depois; só no Mac
 import fluxo_whatsapp  # noqa: E402  (fluxos de mensagem no WhatsApp, 15/11; só no Mac, onde está o WAHA)
 import agente_x1  # noqa: E402  (agente automático do X1: aborda e responde os leads pelo WhatsApp do projeto, 13/11; só no Mac, onde está o WAHA)
 import chatbot_assistente  # noqa: E402  (assistente do Chatbot: pedido do app → Claude do Davi, 10/11)
@@ -371,6 +372,18 @@ def atender_conversa():
         if not novas:
             return
     vivas = [m for m in novas if m["texto"].startswith(PREFIXO_AO_VIVO)]
+    treinos = [m for m in vivas if m["texto"][len(PREFIXO_AO_VIVO):].lstrip().startswith("/treino")]
+    for m in treinos:   # modo treino: grava o que o Davi faz e repete depois (scripts/treino.py)
+        log("treino:", m["texto"][:80])
+        try:
+            resposta = treino.comando(m["texto"][len(PREFIXO_AO_VIVO):].strip(), rodar_claude, FERRAMENTAS_AO_VIVO, log)
+        except Exception as e:  # noqa: BLE001
+            resposta = f"⚠️ O modo treino falhou: {e}"
+        subprocess.run([PYTHON, str(RAIZ / "scripts/jarvis-conversa.py"), "responder", m["id"]], input=resposta, text=True, cwd=RAIZ)
+    vivas = [m for m in vivas if m not in treinos]
+    novas = [m for m in novas if m not in treinos]
+    if not novas:
+        return
     if vivas:
         atender_ao_vivo(vivas, historico)
         novas = [m for m in novas if not m["texto"].startswith(PREFIXO_AO_VIVO)]
@@ -922,7 +935,7 @@ def recarregar_modulos():
         if time.time() - _recarregado[0] < 30:
             return
         _recarregado[0] = time.time()
-        for m in (briefing, execucao, vivo, chatbot_assistente, agente_whatsapp, agente_x1, fluxo_whatsapp, estilo_dark, melhorias, cobranca_rodada, esteira, vigia):
+        for m in (treino, briefing, execucao, vivo, chatbot_assistente, agente_whatsapp, agente_x1, fluxo_whatsapp, estilo_dark, melhorias, cobranca_rodada, esteira, vigia):
             try:
                 importlib.reload(m)
             except Exception as e:  # código com erro: segue com a versão anterior
