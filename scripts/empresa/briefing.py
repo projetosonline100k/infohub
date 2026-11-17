@@ -50,10 +50,12 @@ def pegar(ignorar=()):
     c = connect()
     try:
         q = c.cursor()
-        # Modo vivo (10/11): a conversa é do Claude do Mac (vivo.py); o servidor não pega.
+        # Modo vivo (10/11): a conversa é do Claude do Mac (vivo.py); o servidor não pega as mensagens do Davi.
+        # Mensagem de outra pessoa da equipe (ex.: a Jaci) o Mac não obedece (controla o PC dele): o servidor atende como chat normal.
         q.execute("""UPDATE public.briefing_mensagens SET status = 'lida'
                       WHERE status = 'enviada' AND NOT (briefing_id = ANY(%s::uuid[]))
-                        AND NOT EXISTS (SELECT 1 FROM public.briefings bv WHERE bv.id = briefing_id AND bv.modo_vivo)
+                        AND NOT (papel = 'davi' AND EXISTS (SELECT 1 FROM public.briefings bv WHERE bv.id = briefing_id AND bv.modo_vivo)
+                                 AND autor_id IS NOT DISTINCT FROM (SELECT id FROM auth.users WHERE lower(email) = 'eu.daviqueiroz22@gmail.com'))
                       RETURNING briefing_id""", (list(ignorar),))
         ids = sorted({str(r[0]) for r in q.fetchall()})
         # Revisão: o "fazendo agora" da rodada anterior sai antes da nova resposta.

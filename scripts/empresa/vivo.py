@@ -46,13 +46,7 @@ def _pegar(c):
     davi = _uid_davi(q)
     if not davi:
         return None
-    q.execute("""UPDATE public.briefing_mensagens bm SET status = 'respondida'
-                   FROM public.briefings b
-                  WHERE bm.briefing_id = b.id AND b.modo_vivo AND bm.status = 'enviada' AND bm.papel = 'davi'
-                    AND bm.autor_id IS DISTINCT FROM %s RETURNING bm.briefing_id""", (davi,))
-    for (bid,) in {(r[0],) for r in q.fetchall()}:
-        q.execute("""INSERT INTO public.briefing_mensagens(briefing_id, papel, texto, membro_id)
-                     SELECT b.id, 'funcionario', 'Modo vivo: só obedeço mensagem do Davi. Essa eu ignorei.', b.membro_id FROM public.briefings b WHERE b.id = %s""", (bid,))
+    # Mensagem de outra pessoa (ex.: a Jaci) não é obedecida aqui (este Claude controla o Mac do Davi): fica 'enviada' e o servidor (briefing.pegar) atende como chat normal.
     q.execute("""SELECT bm.briefing_id FROM public.briefing_mensagens bm JOIN public.briefings b ON b.id = bm.briefing_id
                   WHERE b.modo_vivo AND bm.status = 'enviada' AND bm.papel = 'davi' AND bm.autor_id = %s
                   ORDER BY bm.criada_em LIMIT 1""", (davi,))
