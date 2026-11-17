@@ -259,9 +259,12 @@ export function PainelSemana() {
         </Popover>
       </div>
 
-      {/* Faturamento do mês: valor, meta (soma das metas dos projetos), quanto falta e onde entrou */}
-      <div className="space-y-5 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-card p-4 shadow-sm sm:p-5">
-        <div className="grid items-center gap-4 sm:grid-cols-[auto_1fr_auto] sm:gap-6">
+      {/* Meta de faturamento e gráfico de vendas lado a lado */}
+      <div className="grid items-stretch gap-5 xl:grid-cols-2">
+      {/* Faturamento do mês: valor, meta (soma das metas dos projetos) e quanto falta */}
+      <div className="flex flex-col justify-center space-y-5 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-card p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-5">
+          <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-emerald-500/60 bg-emerald-500/10 text-emerald-500"><Wallet className="h-7 w-7" /></span>
             <div>
@@ -269,15 +272,6 @@ export function PainelSemana() {
               <p className="text-3xl font-extrabold tracking-tight text-foreground">{carregando ? "…" : brl(faturMes)}</p>
               <p className="text-[11px] text-muted-foreground">Nesta semana: {carregando ? "…" : brl(faturSemana)}</p>
             </div>
-          </div>
-          <div>
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
-              <span className="text-muted-foreground">{pctMeta === null ? "Defina a meta do mês (ou a de cada projeto) para acompanhar" : `${pctMeta}% da meta do mês`}</span>
-              {faltaMeta && (faltaMeta.falta > 0
-                ? <span className="font-semibold text-foreground">Faltam <span className="text-lg text-emerald-500">{brl(faltaMeta.falta)}</span> para bater a meta</span>
-                : <span className="font-semibold text-emerald-500">Meta batida! +{brl(faltaMeta.passou)} acima</span>)}
-            </div>
-            <div className="h-6 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all" style={{ width: `${pctMeta ?? 0}%` }} /></div>
           </div>
           <div className="flex items-center gap-3">
             <Target className="h-9 w-9 text-primary" />
@@ -295,11 +289,22 @@ export function PainelSemana() {
               )}
             </div>
           </div>
+          </div>
+          <div>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+              <span className="text-muted-foreground">{pctMeta === null ? "Defina a meta do mês (ou a de cada projeto) para acompanhar" : `${pctMeta}% da meta do mês`}</span>
+              {faltaMeta && (faltaMeta.falta > 0
+                ? <span className="font-semibold text-foreground">Faltam <span className="text-lg text-emerald-500">{brl(faltaMeta.falta)}</span> para bater a meta</span>
+                : <span className="font-semibold text-emerald-500">Meta batida! +{brl(faltaMeta.passou)} acima</span>)}
+            </div>
+            <div className="h-6 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all" style={{ width: `${pctMeta ?? 0}%` }} /></div>
+          </div>
         </div>
       </div>
 
       {/* Faturamento por produto: o gráfico do Dash detalhado, sem as abas de período e sem os três números */}
       <FaturamentoGeral soGrafico slotProdutos={slotProdutos} />
+      </div>
 
       {/* Projetos */}
       {carregando && !projetos.length ? <Loader2 className="mx-auto my-10 h-6 w-6 animate-spin text-muted-foreground" />
