@@ -90,3 +90,20 @@ export function serieDiaria(linhas: { dia: string; cliente_id: string; valor: nu
   }
   return out;
 }
+
+/** Diferença em dias entre duas datas AAAA-MM-DD (positivo = `a` depois de `b`). */
+export function diasEntre(a: string, b: string): number {
+  const [a1, m1, d1] = a.split("-").map(Number), [a2, m2, d2] = b.split("-").map(Number);
+  return Math.round((Date.UTC(a1, m1 - 1, d1) - Date.UTC(a2, m2 - 1, d2)) / 86400000);
+}
+/** Selo do prazo de uma tarefa aberta: Atrasada, Hoje, Amanhã, Em 2 dias… (a partir de 7 dias, a data). */
+export function rotuloPrazo(venc: string | null, hoje: string): { txt: string; tom: "atraso" | "hoje" | "breve" | "longe" } | null {
+  const v = (venc ?? "").slice(0, 10);
+  if (!v) return null;
+  const d = diasEntre(v, hoje);
+  if (d < 0) return { txt: "Atrasada", tom: "atraso" };
+  if (d === 0) return { txt: "Hoje", tom: "hoje" };
+  if (d === 1) return { txt: "Amanhã", tom: "breve" };
+  if (d < 7) return { txt: `Em ${d} dias`, tom: "breve" };
+  return { txt: `${v.slice(8, 10)}/${v.slice(5, 7)}`, tom: "longe" };
+}

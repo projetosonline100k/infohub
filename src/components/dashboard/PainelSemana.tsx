@@ -14,7 +14,7 @@ import { comConclusaoDaEquipe } from "@/lib/atividades/concluidaEquipe";
 import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
 import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
-import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
+import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, rotuloPrazo, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
 // Visão da semana (17/11/2026, Davi: "no dash geral, quero criar algo parecido com esse dash, e que seja funcional"): faturamento do mês contra a meta do mês,
 // Missão da Semana (checklist), e um cartão por projeto com as tarefas da semana (dá para concluir aqui), progresso, Meta Ads, leads e vendas dos últimos 7 dias.
@@ -410,8 +410,8 @@ export function PainelSemana() {
                 </div>
                 <ul className="mt-3 divide-y divide-border/60">
                   {visiveis.slice(0, lim).map((t) => {
-                    const venc = (t.data_vencimento ?? "").slice(0, 10);
-                    const marca = !t.concluida && venc ? (venc < hoje ? { txt: "Atrasada", cls: "bg-destructive/15 text-destructive" } : venc === hoje ? { txt: "Hoje", cls: "bg-primary/15 text-primary" } : null) : null;
+                    const prazo = t.concluida ? null : rotuloPrazo(t.data_vencimento, hoje);
+                    const marca = prazo && { txt: prazo.txt, cls: { atraso: "bg-destructive/15 text-destructive", hoje: "bg-primary/15 text-primary", breve: "bg-amber-500/15 text-amber-500", longe: "bg-muted text-muted-foreground" }[prazo.tom] };
                     return (
                       <li key={t.id} className="flex items-center gap-2.5 py-2">
                         <Checkbox checked={t.concluida} onCheckedChange={(v) => void concluir(t, v === true)} />

@@ -52,3 +52,15 @@ test('quanto falta, meta do mês e série diária', () => {
   const s = d.serieDiaria([{ dia: '2026-11-03', cliente_id: 'a', valor: 10 }, { dia: '2026-11-03', cliente_id: 'a', valor: 5 }, { dia: '2026-11-03', cliente_id: 'b', valor: 7 }, { dia: '2026-12-01', cliente_id: 'a', valor: 99 }, { dia: '2026-11-04', cliente_id: 'x', valor: 1 }], '2026-11-01', '2026-11-30', ['a', 'b']);
   assert.equal(s.length, 30); assert.deepEqual(s[2], { dia: '3', a: 15, b: 7 }); assert.deepEqual(s[3], { dia: '4', a: 0, b: 0 });
 });
+
+test('selo do prazo', () => {
+  const h = '2026-11-17';
+  assert.deepEqual(d.rotuloPrazo('2026-11-10', h), { txt: 'Atrasada', tom: 'atraso' });
+  assert.deepEqual(d.rotuloPrazo('2026-11-17', h), { txt: 'Hoje', tom: 'hoje' });
+  assert.deepEqual(d.rotuloPrazo('2026-11-18', h), { txt: 'Amanhã', tom: 'breve' });
+  assert.deepEqual(d.rotuloPrazo('2026-11-19', h), { txt: 'Em 2 dias', tom: 'breve' });
+  assert.deepEqual(d.rotuloPrazo('2026-11-23', h), { txt: 'Em 6 dias', tom: 'breve' });
+  assert.deepEqual(d.rotuloPrazo('2026-11-24', h), { txt: '24/11', tom: 'longe' });
+  assert.deepEqual(d.rotuloPrazo('2026-12-01', '2026-11-30'), { txt: 'Amanhã', tom: 'breve' });
+  assert.equal(d.rotuloPrazo(null, h), null);
+});
