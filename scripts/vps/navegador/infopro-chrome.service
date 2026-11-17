@@ -1,0 +1,11 @@
+[Unit]
+Description=Chrome do servidor (ChatGPT logado do Lauro), controlado por CDP em 127.0.0.1:9222
+After=infopro-xvfb.service infopro-openbox.service
+Requires=infopro-xvfb.service
+[Service]
+Environment=DISPLAY=:99 HOME=/root
+ExecStart=/usr/bin/google-chrome --no-sandbox --user-data-dir=/root/.infopro-hub/chrome-vps --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 --window-size=1400,860 --window-position=0,0 --no-first-run --no-default-browser-check --disable-session-crashed-bubble --lang=pt-BR https://chatgpt.com/
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target

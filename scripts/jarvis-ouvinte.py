@@ -110,6 +110,9 @@ def rodar_claude(prompt, minutos, chrome=False, sessao=None, info=None, cwd=None
         # Claude in Chrome (WhatsApp Web): liga e libera as ferramentas dele. No servidor não há Chrome com a
         # extensão; o WhatsApp é lido pelo banco (whatsapp-ler.py).
         cmd += ["--chrome", "--allowedTools", "mcp__claude-in-chrome"]
+    elif chrome and (Path.home() / ".infopro-hub" / "mcp-chrome-vps.json").exists():
+        # Servidor (17/11): Chrome próprio numa tela virtual, com o ChatGPT logado (scripts/vps/navegador/LEIA-ME.md), controlado por Playwright MCP via CDP.
+        cmd += ["--mcp-config", str(Path.home() / ".infopro-hub" / "mcp-chrome-vps.json"), "--allowedTools", "mcp__chrome-vps"]
     return rodar_claude_com(cmd, minutos, cwd, info, atividade, cancelar, ao_passo)
 
 

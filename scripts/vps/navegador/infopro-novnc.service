@@ -1,0 +1,10 @@
+[Unit]
+Description=noVNC (tela remota no navegador, só local: 127.0.0.1:6080)
+After=infopro-vnc.service
+Requires=infopro-vnc.service
+[Service]
+ExecStart=/usr/bin/websockify --web=/usr/share/novnc 127.0.0.1:6080 127.0.0.1:5900
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target
