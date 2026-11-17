@@ -18,13 +18,13 @@ export function somarDias(dia: string, n: number): string {
 export const domingoDe = (segunda: string) => somarDias(segunda, 6);
 export const hojeIso = () => iso(new Date());
 
-/** Tarefas que contam na semana: vencem nela, estão atrasadas e abertas, ou foram concluídas nela. */
+/** Tarefas que contam na semana (mesma regra da tela de Atividades): abertas que vencem nela ou já passaram, e concluídas NELA (no dia em que foram concluídas). */
 export function tarefasDaSemana(ts: TarefaSemana[], segunda: string): TarefaSemana[] {
   const fim = domingoDe(segunda);
   return ts.filter((t) => {
     const venc = (t.data_vencimento ?? "").slice(0, 10);
     const feitaNaSemana = !!t.concluida_em && t.concluida_em.slice(0, 10) >= segunda && t.concluida_em.slice(0, 10) <= fim;
-    if (t.concluida) return feitaNaSemana || (venc >= segunda && venc <= fim);
+    if (t.concluida) return feitaNaSemana;   // como na tela de Atividades: concluída conta no dia em que foi concluída
     return !!venc && venc <= fim;   // aberta: vence na semana ou já passou
   });
 }

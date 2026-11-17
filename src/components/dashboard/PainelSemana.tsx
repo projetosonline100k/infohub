@@ -10,6 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
+import { comConclusaoDaEquipe } from "@/lib/atividades/concluidaEquipe";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
@@ -71,7 +72,7 @@ export function PainelSemana() {
       const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma, mp, fd] = await Promise.all([
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").eq("semana", semana).maybeSingle(),
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").lt("semana", semana).order("semana", { ascending: false }).limit(1).maybeSingle(),
-        db.from("atividades").select("id, titulo, cliente_id, concluida, data_vencimento, concluida_em").is("deleted_at", null).in("cliente_id", ids)
+        db.from("atividades").select("id, titulo, cliente_id, concluida, data_vencimento, concluida_em, situacao").is("deleted_at", null).in("cliente_id", ids)
           .or(`and(concluida.eq.false,data_vencimento.lte.${fim}),concluida_em.gte.${semana}T00:00:00-03:00`).limit(2000),
         db.from("produtos_cliente").select("id, cliente_id").in("cliente_id", ids),
         db.from("quiz_respostas").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${mes.inicio}T00:00:00-03:00`).lte("criada_em", `${mes.fim}T23:59:59-03:00`).limit(10000),
@@ -96,7 +97,7 @@ export function PainelSemana() {
       for (const c of (ct.data ?? []) as { cliente_id: string }[]) if (c.cliente_id) get(c.cliente_id).ads = "conectada";
       for (const c of (ca.data ?? []) as { cliente_id: string; status: string | null }[]) { const x = get(c.cliente_id); if (c.status === "ativa") x.ads = "ativa"; else if (x.ads !== "ativa") x.ads = "pausada"; }
       setProjetos(lista);
-      setTarefas(tarefasDaSemana((ts.data ?? []) as TarefaSemana[], semana));
+      setTarefas(tarefasDaSemana(comConclusaoDaEquipe((ts.data ?? []) as (TarefaSemana & { situacao?: string | null })[]), semana));
       const dias = (diario.data ?? []) as { data: string; receita: number | null; reembolsos: number | null }[];
       const soma = (de: string, ate: string) => dias.filter((d) => d.data >= de && d.data <= ate).reduce((s, d) => s + Number(d.receita ?? 0) - Number(d.reembolsos ?? 0), 0);
       setDiarioMes(dias.filter((d) => d.data >= mes.inicio && d.data <= mes.fim).map((d) => ({ dia: d.data, cliente_id: produtoDoCliente.get((d as unknown as { produto_id: string }).produto_id) ?? "", valor: Number(d.receita ?? 0) - Number(d.reembolsos ?? 0) })));

@@ -13,10 +13,10 @@ test('semana de segunda a domingo', () => {
   assert.equal(d.domingoDe('2026-11-16'), '2026-11-22');
   assert.equal(d.somarDias('2026-12-28', 7), '2027-01-04');
 });
-test('tarefas da semana: vencem nela, atrasadas abertas ou concluídas nela', () => {
+test('tarefas da semana: abertas que vencem nela ou atrasadas, e concluídas nela', () => {
   const r = d.tarefasDaSemana([
     t({ id: 'a', data_vencimento: '2026-11-18' }), t({ id: 'b', data_vencimento: '2026-11-10' }), t({ id: 'c', data_vencimento: '2026-11-25' }),
-    t({ id: 'd', concluida: true, concluida_em: '2026-11-17T10:00:00Z', data_vencimento: '2026-11-10' }), t({ id: 'e', concluida: true, concluida_em: '2026-11-05T10:00:00Z', data_vencimento: '2026-11-05' }), t({ id: 'f' }),
+    t({ id: 'd', concluida: true, concluida_em: '2026-11-17T10:00:00Z', data_vencimento: '2026-11-10' }), t({ id: 'e', concluida: true, concluida_em: '2026-11-05T10:00:00Z', data_vencimento: '2026-11-05' }), t({ id: 'f' }), t({ id: 'g', concluida: true, concluida_em: '2026-10-16T10:00:00Z', data_vencimento: '2026-11-18' }),
   ], '2026-11-16').map((x) => x.id);
   assert.deepEqual(r, ['a', 'b', 'd']);
 });
