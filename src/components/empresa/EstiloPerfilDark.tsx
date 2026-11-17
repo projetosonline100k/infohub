@@ -28,7 +28,9 @@ const CAMPOS: { chave: Exclude<keyof EstiloDark, "referencias" | "voz">; rotulo:
 ];
 const intro = (nome: string): Msg => ({ papel: "assistant", texto: `Oi! Aqui é o Lauro. Vamos montar juntos o estilo do vídeo do ${nome}. Me conta como você imagina esse vídeo: o clima, o tipo de assunto, o que você já viu por aí e gostou. Pode colar links de referência que eu abro e te digo o que dá para aproveitar. Eu vou preenchendo o estilo ao lado e te perguntando o que faltar.` });
 
-export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { perfil: PerfilDark | null; onFechar: () => void; onMudou: () => void; onApagado: () => void }) {
+export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado, flutuante = false }: { perfil: PerfilDark | null; onFechar: () => void; onMudou: () => void; onApagado: () => void; flutuante?: boolean }) {
+  // flutuante (17/11, Davi: "o Lauro flutuando quando eu abrir a área dele"): só o chat, numa bolinha que abre um cartão no canto, sem a ficha do estilo.
+  const [aberta, setAberta] = useState(false);
   const [nome, setNome] = useState("");
   const [arroba, setArroba] = useState("");
   const [clienteId, setClienteId] = useState("");
@@ -201,17 +203,8 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
   };
   const { feitos, total, faltando } = completudeEstilo(estilo);
   const campo = "w-full rounded-lg border border-white/10 bg-[#0a1520] px-3 py-2 text-sm text-white outline-none focus:border-amber-200/60";
-
-  return (
-    <Dialog open={!!perfil} onOpenChange={(a) => { if (!a) onFechar(); }}>
-      <DialogContent className="dark flex h-[88vh] max-h-[88vh] w-[96vw] max-w-6xl flex-col gap-0 overflow-hidden border-white/10 bg-[#0c1b27] p-0 text-white">
-        <DialogDescription className="sr-only">Conversa para montar o estilo do vídeo do perfil</DialogDescription>
-        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-3">
-          <DialogTitle className="flex items-center gap-2 text-lg">{nome || perfil?.nome} <span className="text-sm font-normal text-white/50">· estilo do vídeo</span>{salvando && <Loader2 className="h-4 w-4 animate-spin text-white/50" />}</DialogTitle>
-        </div>
-        {perfil && (
-          <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
-            <section className={cn("relative flex min-h-0 flex-col border-b border-white/10 lg:border-b-0 lg:border-r", arrastando && "ring-2 ring-inset ring-amber-300/70")}
+  const chat = (
+            <section className={cn("relative flex min-h-0 flex-1 flex-col", !flutuante && "border-b border-white/10 lg:border-b-0 lg:border-r", arrastando && "ring-2 ring-inset ring-amber-300/70")}
               onDragOver={(e) => { if (e.dataTransfer.types.includes("Files")) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setArrastando(true); } }}
               onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setArrastando(false); }}
               onDrop={(e) => { if (e.dataTransfer.files.length) { e.preventDefault(); aceitar(e.dataTransfer.files); } setArrastando(false); }}>
@@ -273,6 +266,41 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado }: { per
                 <button type="button" disabled={!texto.trim() && anexos.length === 0} onClick={() => void enviar()} className="self-end rounded-full bg-emerald-500 p-2.5 text-black disabled:opacity-40"><Send className="h-4 w-4" /></button>
               </div>
             </section>
+  );
+
+  if (flutuante) {
+    if (!perfil) return null;
+    return (
+      <div className="pointer-events-none sticky bottom-0 z-50 h-0">
+        <div className="pointer-events-auto absolute bottom-3 right-3 flex flex-col items-end gap-3">
+          {aberta && (
+            <div className="flex h-[min(640px,76vh)] w-[min(430px,92vw)] flex-col overflow-hidden rounded-2xl border border-white/15 bg-[#0c1b27] shadow-2xl shadow-black/60">
+              <div className="flex items-center gap-2 border-b border-white/10 bg-[#0f2231] px-3 py-2">
+                <span className="text-sm font-semibold">Lauro</span><span className="text-xs text-white/45">· {perfil.nome}</span>
+                <button type="button" onClick={() => setAberta(false)} title="Fechar (o Lauro continua trabalhando)" className="ml-auto rounded-lg p-1 text-white/60 hover:bg-white/10"><X className="h-4 w-4" /></button>
+              </div>
+              {chat}
+            </div>)}
+          <button type="button" onClick={() => { setAberta((a) => !a); if (!vivo && !aberta) void alternarVivo(); }} title={aberta ? "Esconder o Lauro" : "Chamar o Lauro: ele abre coisas, mexe no seu Mac e no Chrome e muda o que você pedir"}
+            className={cn("relative grid h-14 w-14 place-items-center rounded-full border-2 border-cyan-300/70 bg-[#0c1b27] shadow-xl shadow-cyan-500/20 transition-transform hover:scale-105", esperando && "animate-pulse border-amber-300")}>
+            <span className="flex gap-2"><span className="h-2.5 w-2.5 rounded-full bg-cyan-300" /><span className="h-2.5 w-2.5 rounded-full bg-cyan-300" /></span>
+            {(esperando || (vivo && !aberta)) && <span className={cn("absolute right-0.5 top-0.5 h-3 w-3 rounded-full ring-2 ring-[#0c1b27]", esperando ? "bg-amber-400" : "bg-emerald-400")} />}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Dialog open={!!perfil} onOpenChange={(a) => { if (!a) onFechar(); }}>
+      <DialogContent className="dark flex h-[88vh] max-h-[88vh] w-[96vw] max-w-6xl flex-col gap-0 overflow-hidden border-white/10 bg-[#0c1b27] p-0 text-white">
+        <DialogDescription className="sr-only">Conversa para montar o estilo do vídeo do perfil</DialogDescription>
+        <div className="flex items-center gap-3 border-b border-white/10 px-5 py-3">
+          <DialogTitle className="flex items-center gap-2 text-lg">{nome || perfil?.nome} <span className="text-sm font-normal text-white/50">· estilo do vídeo</span>{salvando && <Loader2 className="h-4 w-4 animate-spin text-white/50" />}</DialogTitle>
+        </div>
+        {perfil && (
+          <div className="grid min-h-0 flex-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,420px)]">
+            {chat}
 
             <section className="min-h-0 space-y-3 overflow-y-auto p-4">
               <div>

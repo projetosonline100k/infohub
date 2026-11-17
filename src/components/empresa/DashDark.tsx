@@ -70,6 +70,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar, escritorioId =
   const [historico, setHistorico] = useState(false);
   const [cadastrados, setCadastrados] = useState<PerfilDark[]>([]);
   const [perfilAberto, setPerfilAberto] = useState<string | null>(null);
+  const [perfilDoLauro, setPerfilDoLauro] = useState<string | null>(null);   // perfil com quem o Lauro flutuante conversa (o escolhido na aba Roteiros; senão o primeiro)
   const [aba, setAba] = useState<"esteira" | "roteiros">("esteira");
   const [nomeNovo, setNomeNovo] = useState("");
   const [criandoPerfil, setCriandoPerfil] = useState(false);
@@ -185,7 +186,7 @@ export function DashDark({ membro, aberto, onFechar, onConversar, escritorioId =
                 <button key={v} type="button" onClick={() => setAba(v)} className={cn("rounded-xl px-4 py-1.5", aba === v ? "bg-[#f3c98b] font-bold text-black" : "text-white/65 hover:text-white")}>{r}</button>
               ))}
             </div>
-            {aba === "roteiros" ? <RoteirosDark perfis={cadastrados.map((p) => ({ id: p.id, nome: p.nome, modo_vivo: p.modo_vivo, estilo: p.estilo }))} onConversar={(id) => setPerfilAberto(id)} /> : <>
+            {aba === "roteiros" ? <RoteirosDark perfis={cadastrados.map((p) => ({ id: p.id, nome: p.nome, modo_vivo: p.modo_vivo, estilo: p.estilo }))} onConversar={(id) => setPerfilAberto(id)} onPerfil={setPerfilDoLauro} /> : <>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {KPIS.map(({ chave, Icone, cor }) => (
                 <div key={chave} className={cn(painel, "flex flex-col items-center gap-1 px-3 py-4")}>
@@ -287,6 +288,8 @@ export function DashDark({ membro, aberto, onFechar, onConversar, escritorioId =
             </>}
           </div>
         )}
+        {!erro && resumo && cadastrados.length > 0 && (
+          <EstiloPerfilDark flutuante perfil={cadastrados.find((p) => p.id === perfilDoLauro) ?? cadastrados[0]} onFechar={() => undefined} onMudou={() => setRecarga((n) => n + 1)} onApagado={() => undefined} />)}
       </DialogContent>
       <Dialog open={novoAberto} onOpenChange={setNovoAberto}>
         <DialogContent className="dark max-w-sm border-white/10 bg-[#0c1b27] text-white">

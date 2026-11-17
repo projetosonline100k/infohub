@@ -28,8 +28,9 @@ const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julh
 const hojeBrasilia = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
 const campo = "w-full rounded-lg border border-white/10 bg-[#0a1520] px-3 py-2 text-sm text-white outline-none focus:border-amber-200/60";
 
-export function RoteirosDark({ perfis, onConversar }: { perfis: PerfilRoteiro[]; onConversar: (perfilId: string) => void }) {
+export function RoteirosDark({ perfis, onConversar, onPerfil }: { perfis: PerfilRoteiro[]; onConversar: (perfilId: string) => void; onPerfil?: (perfilId: string) => void }) {
   const [perfilId, setPerfilId] = useState(perfis[0]?.id ?? "");
+  useEffect(() => { if (perfilId) onPerfil?.(perfilId); }, [perfilId, onPerfil]);
   const [roteiros, setRoteiros] = useState<RoteiroDark[] | null>(null);
   const hoje = hojeBrasilia();
   const [mes, setMes] = useState({ ano: Number(hoje.slice(0, 4)), mes: Number(hoje.slice(5, 7)) });

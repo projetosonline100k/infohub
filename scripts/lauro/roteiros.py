@@ -7,6 +7,8 @@ O Davi sobe o roteiro no app (aba Roteiros do dash do Lauro); o Lauro lê o rote
         novo = editando (começou a produzir) | revisar (vídeo pronto: o Davi vê no estúdio e aprova; use --arquivo) | erro (travou: diga o porquê em --obs)
         --arquivo: caminho do vídeo (cada versão num arquivo novo: video_v1.mp4, video_v2.mp4…); fica no histórico de versões do estúdio do Davi
   python3 scripts/lauro/roteiros.py data <id> AAAA-MM-DD                    muda o dia de postagem
+  python3 scripts/lauro/roteiros.py programar <id> AAAA-MM-DDTHH:MM [--legenda "..."]   programa a PUBLICAÇÃO no Instagram (horário de Brasília). Só depois do ok do Davi no chat!
+  python3 scripts/lauro/roteiros.py desprogramar <id>                       desmarca a publicação (volta para "aprovado"; só antes de publicar)
 
 <id> pode ser o começo do id (8 caracteres bastam).
 """
@@ -40,6 +42,8 @@ def main():
     b = sub.add_parser("contexto"); b.add_argument("id")
     c_ = sub.add_parser("status"); c_.add_argument("id"); c_.add_argument("novo", choices=STATUS); c_.add_argument("--obs"); c_.add_argument("--arquivo")
     d = sub.add_parser("data"); d.add_argument("id"); d.add_argument("dia")
+    e = sub.add_parser("programar"); e.add_argument("id"); e.add_argument("quando"); e.add_argument("--legenda")
+    f = sub.add_parser("desprogramar"); f.add_argument("id")
     arg = p.parse_args()
     c = connect()
     try:
@@ -67,6 +71,24 @@ def main():
             q.execute("UPDATE public.esteira_dark_roteiros SET data_postagem = %s, atualizado_em = now() WHERE id = %s", (arg.dia, r[0]))
             c.commit()
             print(f"V{r[2]} ({r[9]}): dia {arg.dia}")
+        elif arg.cmd in ("programar", "desprogramar"):
+            r = _achar(q, arg.id)
+            # As funções do Hub conferem o login do Davi: roda como ele (conexão de serviço + claims do dono), igual à tela.
+            q.execute("SELECT id FROM auth.users WHERE lower(email) = 'eu.daviqueiroz22@gmail.com'")
+            uid = str(q.fetchone()[0])
+            q.execute("SELECT set_config('request.jwt.claims', %s, true), set_config('request.jwt.claim.sub', %s, true), set_config('role', 'authenticated', true)", (json.dumps({"sub": uid, "role": "authenticated"}), uid))
+            if arg.cmd == "programar":
+                from datetime import datetime, timezone, timedelta
+                try:
+                    quando = datetime.fromisoformat(arg.quando).replace(tzinfo=timezone(timedelta(hours=-3)))
+                except ValueError:
+                    sys.exit("Use AAAA-MM-DDTHH:MM (horário de Brasília).")
+                q.execute("SELECT public.programar_roteiro_dark(%s::uuid, %s::timestamptz, %s)", (r[0], quando.isoformat(), arg.legenda or r[3]))
+                print(f"V{r[2]} ({r[9]}): programado para {arg.quando} (Brasília)")
+            else:
+                q.execute("SELECT public.desprogramar_roteiro_dark(%s::uuid)", (r[0],))
+                print(f"V{r[2]} ({r[9]}): desmarcado (volta para aprovado)")
+            c.commit()
     finally:
         c.close()
 
