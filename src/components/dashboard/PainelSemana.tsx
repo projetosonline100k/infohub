@@ -48,7 +48,7 @@ export function PainelSemana() {
   const [lista, setLista] = useState(false);
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [editandoMeta, setEditandoMeta] = useState<string | null>(null);
-  const [novaMissao, setNovaMissao] = useState("");
+  const [novaMissao, setNovaMissao] = useState<Record<string, string>>({});   // texto digitado em cada projeto
   const linhaRef = useRef<Linha | null>(null);
   linhaRef.current = linha;
 
@@ -112,8 +112,9 @@ export function PainelSemana() {
   const tarefasPorProjeto = useMemo(() => { const mp = new Map<string, TarefaSemana[]>(); tarefas.forEach((t) => { if (t.cliente_id) mp.set(t.cliente_id, [...(mp.get(t.cliente_id) ?? []), t]); }); return mp; }, [tarefas]);
   const selecionados = useMemo(() => {
     if (efetivo.projetos) return projetos.filter((p) => efetivo.projetos!.includes(p.id));
-    return projetos.filter((p) => (tarefasPorProjeto.get(p.id)?.length ?? 0) > 0).slice(0, 8);   // sem escolha: os que têm tarefa na semana
-  }, [projetos, efetivo.projetos, tarefasPorProjeto]);
+    const comMissao = new Set(efetivo.missao.map((i) => i.cliente_id));
+    return projetos.filter((p) => (tarefasPorProjeto.get(p.id)?.length ?? 0) > 0 || comMissao.has(p.id)).slice(0, 8);   // sem escolha: os que têm tarefa na semana
+  }, [projetos, efetivo.projetos, efetivo.missao, tarefasPorProjeto]);
 
   const salvar = async (patch: Partial<Pick<Linha, "meta_faturamento" | "missao" | "projetos">>) => {
     const base = { ...efetivo, ...patch };
@@ -153,6 +154,13 @@ export function PainelSemana() {
     if (error) { toast.error("Não consegui atualizar a tarefa"); void carregar(); }
   };
 
+  const missaoDe = (id: string) => missao.filter((i) => i.cliente_id === id);
+  const adicionarMissao = (id: string) => {
+    const t = (novaMissao[id] ?? "").trim();
+    if (!t) return;
+    setNovaMissao((n) => ({ ...n, [id]: "" }));
+    void salvar({ missao: [...missao, { id: novoId(), texto: t.slice(0, 160), feito: false, cliente_id: id }] });
+  };
   const salvarMetaProjeto = async (clienteId: string, valor: number | null) => {
     const atual = metasProj[clienteId];
     if (valor == null || valor <= 0) {
@@ -250,33 +258,6 @@ export function PainelSemana() {
       {/* Faturamento por produto: o gráfico do Dash detalhado, sem as abas de período e sem os três números */}
       <FaturamentoGeral soGrafico />
 
-      {/* Missão da Semana */}
-      <div className="grid gap-4 overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-card to-amber-500/10 p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_1.2fr] lg:gap-8">
-        <div className="flex items-center gap-4">
-          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl border border-primary/50 bg-primary/10 text-primary"><Flag className="h-8 w-8" /></span>
-          <div>
-            <h2 className="text-2xl font-extrabold tracking-tight text-foreground">Missão da <span className="text-primary">Semana</span></h2>
-            <p className="mt-1 text-sm text-muted-foreground">{missao.length ? `${missao.filter((i) => i.feito).length} de ${missao.length} cumpridas` : "Escreva o que precisa acontecer nesta semana."}</p>
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          {missao.map((i) => (
-            <div key={i.id} className="group flex items-center gap-2.5">
-              <Checkbox checked={i.feito} onCheckedChange={(v) => void salvar({ missao: missao.map((x) => (x.id === i.id ? { ...x, feito: v === true } : x)) })} />
-              <input defaultValue={i.texto} onBlur={(e) => { const t = e.target.value.trim(); if (t && t !== i.texto) void salvar({ missao: missao.map((x) => (x.id === i.id ? { ...x, texto: t.slice(0, 160) } : x)) }); }}
-                className={cn("min-w-0 flex-1 bg-transparent text-sm outline-none", i.feito && "text-muted-foreground line-through")} />
-              <button type="button" onClick={() => void salvar({ missao: missao.filter((x) => x.id !== i.id) })} title="Tirar" className="opacity-0 transition-opacity group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button>
-            </div>
-          ))}
-          {missao.length < 30 && (
-            <form className="flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); const t = novaMissao.trim(); if (!t) return; setNovaMissao(""); void salvar({ missao: [...missao, { id: novoId(), texto: t.slice(0, 160), feito: false }] }); }}>
-              <Plus className="h-4 w-4 text-muted-foreground" />
-              <input value={novaMissao} onChange={(e) => setNovaMissao(e.target.value)} placeholder="Adicionar à missão…" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
-            </form>
-          )}
-        </div>
-      </div>
-
       {/* Projetos */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-bold text-foreground">Projetos <span className="text-primary">({selecionados.length})</span></h2>
@@ -333,6 +314,21 @@ export function PainelSemana() {
                   <button type="button" onClick={() => setAbertos((s) => { const n = new Set(s); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} aria-label="Ver mais"><ChevronDown className={cn("h-5 w-5 text-muted-foreground transition-transform", aberto && "rotate-180")} /></button>
                 </div>
                 <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full transition-all" style={{ width: `${g.pct}%`, background: cor }} /></div>
+                <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/[0.07] p-2.5">
+                  <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-500"><Flag className="h-3.5 w-3.5" />Missão da Semana{missaoDe(p.id).length > 0 && <span className="font-normal normal-case tracking-normal text-amber-500/70">· {missaoDe(p.id).filter((i) => i.feito).length}/{missaoDe(p.id).length}</span>}</p>
+                  {missaoDe(p.id).map((i) => (
+                    <div key={i.id} className="group flex items-center gap-2 py-0.5">
+                      <Checkbox checked={i.feito} onCheckedChange={(v) => void salvar({ missao: missao.map((x) => (x.id === i.id ? { ...x, feito: v === true } : x)) })} className="border-amber-400 data-[state=checked]:border-amber-400 data-[state=checked]:bg-amber-400 data-[state=checked]:text-black" />
+                      <input defaultValue={i.texto} onBlur={(e) => { const t = e.target.value.trim(); if (t && t !== i.texto) void salvar({ missao: missao.map((x) => (x.id === i.id ? { ...x, texto: t.slice(0, 160) } : x)) }); }}
+                        className={cn("min-w-0 flex-1 bg-transparent text-sm font-medium outline-none", i.feito ? "text-amber-500/50 line-through" : "text-amber-500")} />
+                      <button type="button" onClick={() => void salvar({ missao: missao.filter((x) => x.id !== i.id) })} title="Tirar" className="opacity-0 transition-opacity group-hover:opacity-100"><Trash2 className="h-3.5 w-3.5 text-muted-foreground hover:text-destructive" /></button>
+                    </div>
+                  ))}
+                  <form className="flex items-center gap-2 pt-0.5" onSubmit={(e) => { e.preventDefault(); adicionarMissao(p.id); }}>
+                    <Plus className="h-3.5 w-3.5 text-amber-500/60" />
+                    <input value={novaMissao[p.id] ?? ""} onChange={(e) => setNovaMissao((n) => ({ ...n, [p.id]: e.target.value }))} placeholder="Adicionar à missão…" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-amber-500/40" />
+                  </form>
+                </div>
                 <ul className="mt-3 divide-y divide-border/60">
                   {visiveis.slice(0, lim).map((t) => {
                     const venc = (t.data_vencimento ?? "").slice(0, 10);

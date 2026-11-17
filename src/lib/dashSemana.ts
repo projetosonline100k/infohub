@@ -1,6 +1,6 @@
 // Visão da semana do Dash geral: contas puras (semana de segunda a domingo, progresso dos projetos, faturamento).
 export interface TarefaSemana { id: string; titulo: string; cliente_id: string | null; concluida: boolean; data_vencimento: string | null; concluida_em: string | null }
-export interface ItemMissao { id: string; texto: string; feito: boolean }
+export interface ItemMissao { id: string; texto: string; feito: boolean; cliente_id?: string }
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 

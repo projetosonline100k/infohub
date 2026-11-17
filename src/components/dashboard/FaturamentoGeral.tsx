@@ -411,7 +411,7 @@ export const FaturamentoGeral = ({ soGrafico = false }: { soGrafico?: boolean })
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
               Faturamento por produto
             </h3>
-            <div className="h-64 w-full">
+            <div className={soGrafico ? "h-36 w-full" : "h-64 w-full"}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={dadosGrafico} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
