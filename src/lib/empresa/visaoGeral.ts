@@ -33,7 +33,7 @@ export const ehNomeCoordenador = (nome: string) => /^(atlas|jarvis)$/i.test(nome
 export const ehCoordenador = (m: { eh_ia: boolean; nome: string }) => m.eh_ia && ehNomeCoordenador(m.nome);
 /** IA de vídeos dark (Lauro): ao clicar nela abre o dash de vídeos dark em vez do chat. */
 export const ehDark = (m: { eh_ia: boolean; funcao: string | null }) => m.eh_ia && /\bdark\b/i.test(m.funcao ?? "");
-const IAS_AUTONOMAS = new Set(["atlas", "jarvis", "pedro", "dalila", "ítalo", "italo", "gabriel", "roy", "danilo"]);
+const IAS_AUTONOMAS = new Set(["atlas", "jarvis", "pedro", "dalila", "ítalo", "italo", "gabriel", "roy", "danilo", "kdu"]);
 export const ehIaOperaria = (m: MembroResumo) => m.eh_ia && !IAS_AUTONOMAS.has(m.nome.toLowerCase());
 
 export interface SetorResumo {
