@@ -13,6 +13,7 @@ import json
 import re
 import sys
 import unicodedata
+import ssl
 import urllib.request
 from pathlib import Path
 
@@ -94,7 +95,12 @@ def baixar(url, destino):
     destino.parent.mkdir(parents=True, exist_ok=True)
     parcial = destino.with_name("." + destino.name + ".part")   # nome com ponto: o Danilo ignora até a cópia terminar
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=120) as r, open(parcial, "wb") as f:
+    try:   # o Python do Mac (framework) vem sem certificados: usa os do certifi (é o que a conexão do banco já usa)
+        import certifi
+        contexto = ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        contexto = None
+    with urllib.request.urlopen(req, timeout=120, context=contexto) as r, open(parcial, "wb") as f:
         while True:
             bloco = r.read(1024 * 1024)
             if not bloco:
@@ -141,10 +147,30 @@ def enviar(rodar_claude, log):
     return True
 
 
+def _baixar_e_marcar(id_, titulo, url, log):
+    _marcar([id_], "baixando", "Baixando o vídeo…", video_url=url)
+    try:
+        arq = baixar(url, DESTINO / nome_do_arquivo(id_, titulo))
+        _marcar([id_], "baixado", "Baixado: o Danilo já pode editar.", arquivo=arq.name, baixado_em="now")
+        log("clone: baixado", arq.name)
+    except Exception as e:  # noqa: BLE001
+        _marcar([id_], "erro", f"Pronto no Core Clone, mas o download falhou: {str(e)[:160]}. Toque em tentar de novo: baixo sem gerar outro vídeo.", video_url=url)
+
+
 def acompanhar(rodar_claude, log):
-    gerando = _db("SELECT id, titulo, roteiro, enviado_em, EXTRACT(EPOCH FROM now() - enviado_em) / 60 FROM public.clone_roteiros WHERE status = 'conferir' AND cliente_id = %s ORDER BY criado_em", (INSTALIVROS,))
+    gerando = _db("SELECT id, titulo, roteiro, enviado_em, EXTRACT(EPOCH FROM now() - enviado_em) / 60, video_url FROM public.clone_roteiros WHERE status = 'conferir' AND cliente_id = %s ORDER BY criado_em", (INSTALIVROS,))
     if not gerando:
         return False
+    # Já sei o link (o vídeo estava pronto e só o download falhou): baixa direto, sem abrir o Core Clone de novo.
+    sem_link = []
+    for g in gerando:
+        if url_valida(g[5]):
+            _baixar_e_marcar(g[0], g[1], g[5], log)
+        else:
+            sem_link.append(g)
+    gerando = sem_link
+    if not gerando:
+        return True
     itens = "\n".join(f"{i}. começo do roteiro: \"{' '.join(g[2].split())[:90]}\" (enviado há {int(g[4] or 0)} min)" for i, g in enumerate(gerando, 1))
     ok, texto = rodar_claude(PROMPT_CHECAGEM.format(site=SITE, itens=itens), minutos=15, chrome=True, turnos=70, ferramentas=FERRAMENTAS)
     d = extrair_json(texto) if ok else None
@@ -163,13 +189,7 @@ def acompanhar(rodar_claude, log):
         v = por_n.get(i) or {}
         st = v.get("status")
         if st == "pronto" and url_valida(v.get("url")):
-            _marcar([id_], "baixando", "Baixando o vídeo…", video_url=v["url"])
-            try:
-                arq = baixar(v["url"], DESTINO / nome_do_arquivo(id_, titulo))
-                _marcar([id_], "baixado", "Baixado: o Danilo já pode editar.", arquivo=arq.name, baixado_em="now")
-                log("clone: baixado", arq.name)
-            except Exception as e:  # noqa: BLE001
-                _marcar([id_], "erro", f"Pronto no Core Clone, mas o download falhou: {str(e)[:160]}", video_url=v["url"])
+            _baixar_e_marcar(id_, titulo, v["url"], log)
         elif st == "falhou":
             _marcar([id_], "erro", "O Core Clone marcou este vídeo como falhou. Confira lá e mande o roteiro de novo.")
         elif st == "nao_achei":

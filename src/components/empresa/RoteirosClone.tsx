@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 // tanto sozinho quanto vários, e você já começar a gerar os vídeos, aguardar, baixar e aí sim começar a editar").
 // O Mac (scripts/clone_roteiros.py) manda ao clone.corestudio.ai pelo Chrome do Davi, espera ficar pronto, baixa e o Danilo edita.
 const db = supabase as unknown as SupabaseClient;
-interface Linha { id: string; titulo: string; status: string; mensagem: string | null; criado_em: string; lote_id: string }
+interface Linha { id: string; titulo: string; status: string; mensagem: string | null; criado_em: string; lote_id: string; video_url: string | null }
 const PERFIL = "BookMan-1-Dia";
 const ETAPA: Record<string, { rotulo: string; cor: string; ativo?: boolean }> = {
   fila: { rotulo: "Na fila", cor: "bg-white/10 text-white/70" },
@@ -35,7 +35,7 @@ export function RoteirosClone({ clienteId }: { clienteId: string }) {
 
   const carregar = useCallback(async () => {
     const desde = new Date(Date.now() - 3 * 86400_000).toISOString();
-    const { data } = await db.from("clone_roteiros").select("id, titulo, status, mensagem, criado_em, lote_id").eq("cliente_id", clienteId).gte("criado_em", desde).neq("status", "cancelado").order("criado_em", { ascending: false }).limit(60);
+    const { data } = await db.from("clone_roteiros").select("id, titulo, status, mensagem, criado_em, lote_id, video_url").eq("cliente_id", clienteId).gte("criado_em", desde).neq("status", "cancelado").order("criado_em", { ascending: false }).limit(60);
     setLinhas((data ?? []) as Linha[]);
   }, [clienteId]);
   useEffect(() => {
@@ -59,7 +59,8 @@ export function RoteirosClone({ clienteId }: { clienteId: string }) {
     toast.success(validos.length === 1 ? "Roteiro na fila: já vou gerar o vídeo" : `${validos.length} roteiros na fila: já vou gerar os vídeos`);
     setCampos([""]); setAberto(false); void carregar();
   };
-  const tentarDeNovo = async (id: string) => { const { error } = await db.from("clone_roteiros").update({ status: "fila", mensagem: null }).eq("id", id); if (error) toast.error("Não consegui"); else void carregar(); };
+  // Se o vídeo já ficou pronto (só o download falhou), tentar de novo é baixar: nunca gera outro vídeo.
+  const tentarDeNovo = async (l: Linha) => { const { error } = await db.from("clone_roteiros").update({ status: l.video_url ? "conferir" : "fila", mensagem: null }).eq("id", l.id); if (error) toast.error("Não consegui"); else void carregar(); };
   const cancelar = async (id: string) => { const { error } = await db.from("clone_roteiros").update({ status: "cancelado" }).eq("id", id); if (error) toast.error("Só dá para cancelar o que ainda está na fila"); else void carregar(); };
   // O robô só olha o Core Clone quando o Davi confirma (sem ficar indo e voltando no site).
   const confirmarProntos = async () => {
@@ -107,7 +108,7 @@ export function RoteirosClone({ clienteId }: { clienteId: string }) {
                 {e.ativo ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-white/60" /> : l.status === "baixado" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-300" /> : <span className="h-3.5 w-3.5 shrink-0" />}
                 <span className="min-w-0 flex-1 truncate" title={l.titulo}>{l.titulo}</span>
                 <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px]", e.cor)} title={l.mensagem ?? undefined}>{e.rotulo}</span>
-                {l.status === "erro" && <button type="button" onClick={() => void tentarDeNovo(l.id)} title={l.mensagem ?? "Tentar de novo"} className="text-white/60 hover:text-white"><RotateCcw className="h-3.5 w-3.5" /></button>}
+                {l.status === "erro" && <button type="button" onClick={() => void tentarDeNovo(l)} title={l.mensagem ?? "Tentar de novo"} className="text-white/60 hover:text-white"><RotateCcw className="h-3.5 w-3.5" /></button>}
                 {l.status === "fila" && <button type="button" onClick={() => void cancelar(l.id)} title="Cancelar" className="text-white/40 hover:text-rose-300"><X className="h-3.5 w-3.5" /></button>}
                 {(l.status === "erro" || l.status === "baixado") && <button type="button" onClick={() => void apagar(l.id)} title="Tirar da lista" className="text-white/30 hover:text-rose-300"><Trash2 className="h-3.5 w-3.5" /></button>}
               </div>
