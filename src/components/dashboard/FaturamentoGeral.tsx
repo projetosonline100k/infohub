@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -73,8 +74,8 @@ interface PontoGrafico {
 const formatarMoeda = (valor: number) =>
   new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
 
-/** `soGrafico` (Visão da semana, 17/11/2026: "isso não precisa"): sem as abas de período e sem os três números de cima; fica o gráfico por produto e o seletor de produtos. */
-export const FaturamentoGeral = ({ soGrafico = false }: { soGrafico?: boolean }) => {
+/** `soGrafico` (Visão da semana, 17/11/2026): sem as abas de período, sem os três números e sem a barra de cima; fica só o gráfico por produto. `slotProdutos`: onde o seletor de produtos aparece (a engrenagem da tela). */
+export const FaturamentoGeral = ({ soGrafico = false, slotProdutos = null }: { soGrafico?: boolean; slotProdutos?: HTMLElement | null }) => {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState<ProdutoInfo[]>([]);
@@ -298,10 +299,36 @@ export const FaturamentoGeral = ({ soGrafico = false }: { soGrafico?: boolean })
     );
   }
 
+  const listaProdutos = (
+    <>
+              <p className="text-xs text-muted-foreground px-2 pb-2">Mostrar no gráfico</p>
+              <div className="max-h-64 overflow-y-auto scrollbar-thin space-y-0.5">
+                {produtos.map((produto) => (
+                  <label
+                    key={produto.id}
+                    className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer"
+                  >
+                    <Checkbox
+                      checked={selecionados.has(produto.id)}
+                      onCheckedChange={() => toggleProduto(produto.id)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm truncate">{produto.nome}</p>
+                      {produto.clienteNome && (
+                        <p className="text-xs text-muted-foreground truncate">{produto.clienteNome}</p>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
+    </>
+  );
+
   return (
     <div className="space-y-4">
+      {soGrafico && slotProdutos && createPortal(<div className="space-y-0.5">{listaProdutos}</div>, slotProdutos)}
       {/* Filtros */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className={cn("flex items-center justify-between flex-wrap gap-2", soGrafico && "hidden")}>
         {!soGrafico ? (
         <div className="flex items-center bg-muted rounded-lg p-0.5 flex-wrap">
           {OPCOES_FILTRO.map((opcao) => (
@@ -356,26 +383,7 @@ export const FaturamentoGeral = ({ soGrafico = false }: { soGrafico?: boolean })
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-64 p-2" align="end">
-              <p className="text-xs text-muted-foreground px-2 pb-2">Mostrar no gráfico</p>
-              <div className="max-h-64 overflow-y-auto scrollbar-thin space-y-0.5">
-                {produtos.map((produto) => (
-                  <label
-                    key={produto.id}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={selecionados.has(produto.id)}
-                      onCheckedChange={() => toggleProduto(produto.id)}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm truncate">{produto.nome}</p>
-                      {produto.clienteNome && (
-                        <p className="text-xs text-muted-foreground truncate">{produto.clienteNome}</p>
-                      )}
-                    </div>
-                  </label>
-                ))}
-              </div>
+              {listaProdutos}
             </PopoverContent>
           </Popover>
         </div>

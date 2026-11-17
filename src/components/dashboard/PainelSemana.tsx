@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, SlidersHorizontal, Target, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, Settings, Target, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -45,6 +45,7 @@ export function PainelSemana() {
   const [linha, setLinha] = useState<Linha | null>(null);
   const [anterior, setAnterior] = useState<Linha | null>(null);
   const [filtro, setFiltro] = useState<FiltroTarefas>("todas");
+  const [slotProdutos, setSlotProdutos] = useState<HTMLDivElement | null>(null);   // onde o seletor de produtos do gráfico aparece (dentro da engrenagem)
   const [lista, setLista] = useState(false);
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [editandoMeta, setEditandoMeta] = useState<string | null>(null);
@@ -206,14 +207,56 @@ export function PainelSemana() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-end gap-3">
-        <div className="flex items-center gap-1 rounded-xl border bg-card px-2 py-1.5 text-sm">
-          <CalendarDays className="mx-1 h-4 w-4 text-muted-foreground" />
-          <span className="min-w-[110px] text-center font-medium">Semana {rotuloSemana(semana)}</span>
-          <button type="button" onClick={() => setSemana(somarDias(semana, -7))} className="rounded-md p-1 hover:bg-muted" aria-label="Semana anterior"><ChevronLeft className="h-4 w-4" /></button>
-          <button type="button" onClick={() => setSemana(segundaDe(new Date()))} disabled={semana === segundaDe(new Date())} className="rounded-md px-1.5 py-1 text-xs hover:bg-muted disabled:opacity-40">Hoje</button>
-          <button type="button" onClick={() => setSemana(somarDias(semana, 7))} className="rounded-md p-1 hover:bg-muted" aria-label="Próxima semana"><ChevronRight className="h-4 w-4" /></button>
-        </div>
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-xs text-muted-foreground">Semana {rotuloSemana(semana)}</span>
+        <Popover>
+          <PopoverTrigger asChild><button type="button" title="Semana, filtros e projetos" aria-label="Ajustes da visão" className="grid h-9 w-9 place-items-center rounded-xl border bg-card text-muted-foreground hover:text-foreground"><Settings className="h-4.5 w-4.5" /></button></PopoverTrigger>
+          <PopoverContent align="end" className="max-h-[80vh] w-80 space-y-4 overflow-y-auto p-3">
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Semana</p>
+              <div className="flex items-center gap-1 rounded-xl border px-2 py-1.5 text-sm">
+                <CalendarDays className="mx-1 h-4 w-4 text-muted-foreground" />
+                <span className="flex-1 text-center font-medium">{rotuloSemana(semana)}</span>
+                <button type="button" onClick={() => setSemana(somarDias(semana, -7))} className="rounded-md p-1 hover:bg-muted" aria-label="Semana anterior"><ChevronLeft className="h-4 w-4" /></button>
+                <button type="button" onClick={() => setSemana(segundaDe(new Date()))} disabled={semana === segundaDe(new Date())} className="rounded-md px-1.5 py-1 text-xs hover:bg-muted disabled:opacity-40">Hoje</button>
+                <button type="button" onClick={() => setSemana(somarDias(semana, 7))} className="rounded-md p-1 hover:bg-muted" aria-label="Próxima semana"><ChevronRight className="h-4 w-4" /></button>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tarefas nos cartões</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {FILTROS.map(([v, rotulo, Icone]) => (
+                  <button key={v} type="button" onClick={() => setFiltro(v)}
+                    className={cn("inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 text-sm", filtro === v ? "border-primary bg-primary/10 font-semibold text-primary" : "text-muted-foreground hover:text-foreground")}>
+                    <Icone className="h-3.5 w-3.5" />{rotulo} <span className="tabular-nums">({contagem(v)})</span>
+                  </button>))}
+              </div>
+            </div>
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Visual</p>
+              <div className="flex w-fit rounded-xl border p-0.5">
+                <button type="button" onClick={() => setLista(false)} className={cn("flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm", !lista && "bg-primary/15 text-primary")}><LayoutGrid className="h-4 w-4" />Cartões</button>
+                <button type="button" onClick={() => setLista(true)} className={cn("flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm", lista && "bg-primary/15 text-primary")}><List className="h-4 w-4" />Lista</button>
+              </div>
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Projetos ({selecionados.length})</p>
+              {projetos.map((p) => {
+                const marcado = selecionados.some((s) => s.id === p.id);
+                return (
+                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted">
+                    <Checkbox checked={marcado} onCheckedChange={(v) => { const atuais = selecionados.map((s) => s.id); void salvar({ projetos: v === true ? [...atuais, p.id] : atuais.filter((x) => x !== p.id) }); }} />
+                    <span className="min-w-0 flex-1 truncate">{p.nome}</span>
+                    <span className="text-[11px] tabular-nums text-muted-foreground">{tarefasPorProjeto.get(p.id)?.length ?? 0}</span>
+                  </label>);
+              })}
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Produtos no gráfico</p>
+              <div ref={setSlotProdutos} />
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Faturamento do mês: valor, meta (soma das metas dos projetos), quanto falta e onde entrou */}
@@ -256,39 +299,9 @@ export function PainelSemana() {
       </div>
 
       {/* Faturamento por produto: o gráfico do Dash detalhado, sem as abas de período e sem os três números */}
-      <FaturamentoGeral soGrafico />
+      <FaturamentoGeral soGrafico slotProdutos={slotProdutos} />
 
       {/* Projetos */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold text-foreground">Projetos <span className="text-primary">({selecionados.length})</span></h2>
-        <div className="flex flex-wrap items-center gap-2">
-          {FILTROS.map(([v, rotulo, Icone]) => (
-            <button key={v} type="button" onClick={() => setFiltro(v)}
-              className={cn("inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-sm", filtro === v ? "border-primary bg-primary/10 font-semibold text-primary" : "bg-card text-muted-foreground hover:text-foreground")}>
-              <Icone className="h-3.5 w-3.5" />{rotulo} <span className="tabular-nums">({contagem(v)})</span>
-            </button>))}
-          <Popover>
-            <PopoverTrigger asChild><button type="button" className="inline-flex items-center gap-1.5 rounded-xl border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground"><SlidersHorizontal className="h-3.5 w-3.5" />Projetos</button></PopoverTrigger>
-            <PopoverContent align="end" className="w-64 space-y-1 p-2">
-              <p className="px-1 pb-1 text-xs text-muted-foreground">Quais projetos aparecem nesta visão:</p>
-              {projetos.map((p) => {
-                const marcado = selecionados.some((s) => s.id === p.id);
-                return (
-                  <label key={p.id} className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-muted">
-                    <Checkbox checked={marcado} onCheckedChange={(v) => { const atuais = selecionados.map((s) => s.id); void salvar({ projetos: v === true ? [...atuais, p.id] : atuais.filter((x) => x !== p.id) }); }} />
-                    <span className="min-w-0 flex-1 truncate">{p.nome}</span>
-                    <span className="text-[11px] tabular-nums text-muted-foreground">{tarefasPorProjeto.get(p.id)?.length ?? 0}</span>
-                  </label>);
-              })}
-            </PopoverContent>
-          </Popover>
-          <div className="flex rounded-xl border bg-card p-0.5">
-            <button type="button" onClick={() => setLista(false)} className={cn("rounded-lg p-1.5", !lista && "bg-primary/15 text-primary")} aria-label="Cartões"><LayoutGrid className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setLista(true)} className={cn("rounded-lg p-1.5", lista && "bg-primary/15 text-primary")} aria-label="Lista"><List className="h-4 w-4" /></button>
-          </div>
-        </div>
-      </div>
-
       {carregando && !projetos.length ? <Loader2 className="mx-auto my-10 h-6 w-6 animate-spin text-muted-foreground" />
         : selecionados.length === 0 ? <p className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">Nenhum projeto com tarefa nesta semana. Use “Projetos” para escolher quais aparecem aqui.</p>
         : (
