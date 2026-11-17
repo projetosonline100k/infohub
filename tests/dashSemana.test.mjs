@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import ts from 'typescript';
 const js = ts.transpileModule(fs.readFileSync('src/lib/dashSemana.ts', 'utf8'), { compilerOptions: { module: 'ESNext', target: 'ES2022' } }).outputText;
 const d = await import('data:text/javascript;base64,' + Buffer.from(js).toString('base64'));
-const t = (o) => ({ id: 'x', titulo: 'T', cliente_id: 'c', concluida: false, data_vencimento: null, concluida_em: null, ...o });
+const t = (o) => ({ id: 'x', titulo: 'T', cliente_id: 'c', concluida: false, data_atividade: null, data_vencimento: null, concluida_em: null, ...o });
 
 test('semana de segunda a domingo', () => {
   assert.equal(d.segundaDe(new Date(2026, 10, 17)), '2026-11-16');   // terça
@@ -13,12 +13,13 @@ test('semana de segunda a domingo', () => {
   assert.equal(d.domingoDe('2026-11-16'), '2026-11-22');
   assert.equal(d.somarDias('2026-12-28', 7), '2027-01-04');
 });
-test('tarefas da semana: abertas que vencem nela ou atrasadas, e concluídas nela', () => {
+test('tarefas da semana: mesma regra do "Esta semana" do quadro de Atividades (data da atividade na semana)', () => {
   const r = d.tarefasDaSemana([
-    t({ id: 'a', data_vencimento: '2026-11-18' }), t({ id: 'b', data_vencimento: '2026-11-10' }), t({ id: 'c', data_vencimento: '2026-11-25' }),
-    t({ id: 'd', concluida: true, concluida_em: '2026-11-17T10:00:00Z', data_vencimento: '2026-11-10' }), t({ id: 'e', concluida: true, concluida_em: '2026-11-05T10:00:00Z', data_vencimento: '2026-11-05' }), t({ id: 'f' }), t({ id: 'g', concluida: true, concluida_em: '2026-10-16T10:00:00Z', data_vencimento: '2026-11-18' }),
+    t({ id: 'a', data_atividade: '2026-11-18' }), t({ id: 'b', data_atividade: '2026-11-10', data_vencimento: '2026-11-10' }), t({ id: 'c', data_atividade: '2026-11-25' }),
+    t({ id: 'd', concluida: true, data_atividade: '2026-11-16', concluida_em: '2026-11-17T10:00:00Z' }), t({ id: 'e', concluida: true, data_atividade: '2026-09-12', concluida_em: '2026-11-17T10:00:00Z' }), t({ id: 'f' }),
+    t({ id: 'g', data_atividade: '2026-11-22' }),
   ], '2026-11-16').map((x) => x.id);
-  assert.deepEqual(r, ['a', 'b', 'd']);
+  assert.deepEqual(r, ['a', 'd', 'g']);
 });
 test('progresso, ordem e filtros', () => {
   const ts = [t({ id: '1', concluida: true, data_vencimento: '2026-11-16' }), t({ id: '2', data_vencimento: '2026-11-17' }), t({ id: '3', data_vencimento: '2026-11-19' }), t({ id: '4', data_vencimento: '2026-11-15' })];

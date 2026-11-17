@@ -72,8 +72,8 @@ export function PainelSemana() {
       const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma, mp, fd] = await Promise.all([
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").eq("semana", semana).maybeSingle(),
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").lt("semana", semana).order("semana", { ascending: false }).limit(1).maybeSingle(),
-        db.from("atividades").select("id, titulo, cliente_id, concluida, data_vencimento, concluida_em, situacao").is("deleted_at", null).in("cliente_id", ids)
-          .or(`and(concluida.eq.false,data_vencimento.lte.${fim}),concluida_em.gte.${semana}T00:00:00-03:00`).limit(2000),
+        db.from("atividades").select("id, titulo, cliente_id, concluida, data_atividade, data_vencimento, concluida_em, situacao").is("deleted_at", null).in("cliente_id", ids)
+          .gte("data_atividade", semana).lte("data_atividade", fim).limit(2000),
         db.from("produtos_cliente").select("id, cliente_id").in("cliente_id", ids),
         db.from("quiz_respostas").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${mes.inicio}T00:00:00-03:00`).lte("criada_em", `${mes.fim}T23:59:59-03:00`).limit(10000),
         db.from("chatbot_leads").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${mes.inicio}T00:00:00-03:00`).lte("criada_em", `${mes.fim}T23:59:59-03:00`).limit(10000),
@@ -449,7 +449,7 @@ export function PainelSemana() {
             );
           })}
         </div>)}
-      <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><ArrowRight className="h-3 w-3" />Faturamento = receita menos reembolsos lançados nos produtos dos projetos, no mês inteiro. Tarefas: as que vencem na semana, as atrasadas e as concluídas nela.</p>
+      <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><ArrowRight className="h-3 w-3" />Faturamento = receita menos reembolsos lançados nos produtos dos projetos, no mês inteiro. Tarefas: as mesmas do filtro “Esta semana” do quadro de Atividades de cada projeto.</p>
     </div>
   );
 }
