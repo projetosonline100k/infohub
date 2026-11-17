@@ -177,6 +177,22 @@ def _preparar_publicacao(log):
     threading.Thread(target=_roda, daemon=True).start()
 
 
+def _laco_preparo():
+    """16/11: a preparação do vídeo aprovado dependia de o Lauro estar livre (era chamada no começo de cada pedido do modo vivo, e um pedido leva ~12 min:
+    com a fila de roteiros cheia o vídeo aprovado ficava horas em "preparando o vídeo para o Instagram"). Agora tem o próprio laço, a cada 30 s."""
+    while True:
+        try:
+            _preparar_publicacao(print)
+        except Exception as e:  # noqa: BLE001
+            print("lauro publicar (laço):", repr(e)[:160])
+        time.sleep(30)
+
+
+if not getattr(threading, "_lauro_preparo_ativo", False):   # um só laço, mesmo com o módulo recarregado a cada 30 s
+    threading._lauro_preparo_ativo = True  # type: ignore[attr-defined]
+    threading.Thread(target=_laco_preparo, daemon=True, name="lauro-preparo").start()
+
+
 def atender_vivo(rodar_claude, log=print):
     """Mac: atende UM pedido pendente de perfil em modo vivo, escrito pelo Davi (autor_id), com o Chrome dele."""
     _garantir_rapido(rodar_claude, log)
