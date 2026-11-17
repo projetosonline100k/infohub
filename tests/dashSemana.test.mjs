@@ -41,3 +41,12 @@ test('mês da semana (o da quinta-feira)', () => {
   assert.equal(d.mesDaSemana('2026-11-30').inicio, '2026-12-01');                                                  // 30/11 a 6/12: quinta é 3/12
   assert.equal(d.mesDaSemana('2028-02-21').fim, '2028-02-29');
 });
+
+test('quanto falta, meta do mês e série diária', () => {
+  assert.deepEqual(d.faltaParaMeta(499.92, 5000), { falta: 4500.08, passou: 0 });
+  assert.deepEqual(d.faltaParaMeta(6000, 5000), { falta: 0, passou: 1000 });
+  assert.equal(d.faltaParaMeta(10, null), null); assert.equal(d.faltaParaMeta(10, 0), null);
+  assert.equal(d.metaDoMes([3000, 2000], 9999), 5000); assert.equal(d.metaDoMes([], 9999), 9999); assert.equal(d.metaDoMes([0], null), null);
+  const s = d.serieDiaria([{ dia: '2026-11-03', cliente_id: 'a', valor: 10 }, { dia: '2026-11-03', cliente_id: 'a', valor: 5 }, { dia: '2026-11-03', cliente_id: 'b', valor: 7 }, { dia: '2026-12-01', cliente_id: 'a', valor: 99 }, { dia: '2026-11-04', cliente_id: 'x', valor: 1 }], '2026-11-01', '2026-11-30', ['a', 'b']);
+  assert.equal(s.length, 30); assert.deepEqual(s[2], { dia: '3', a: 15, b: 7 }); assert.deepEqual(s[3], { dia: '4', a: 0, b: 0 });
+});

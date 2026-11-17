@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, SlidersHorizontal, Target, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowRight, BarChart3, CalendarClock, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, SlidersHorizontal, Target, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { brl, domingoDe, filtrar, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, saudacao, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
+import { useGoogleCalendar } from "@/hooks/useGoogleCalendar";
+import { COR_FEITO, type GoogleCalendarEvent } from "@/lib/googleCalendar";
+import { criarAtividade } from "@/lib/atividades/criarAtividade";
+import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, serieDiaria, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, saudacao, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
 // Visão da semana (17/11/2026, Davi: "no dash geral, quero criar algo parecido com esse dash, e que seja funcional"): faturamento do mês contra a meta do mês,
 // Missão da Semana (checklist), e um cartão por projeto com as tarefas da semana (dá para concluir aqui), progresso, Meta Ads, leads e vendas dos últimos 7 dias.
@@ -38,6 +42,10 @@ export function PainelSemana() {
   const [faturSemana, setFaturSemana] = useState(0);
   const [metaMes, setMetaMes] = useState<{ id: string; valor: number | null } | null>(null);
   const [metaAnterior, setMetaAnterior] = useState<number | null>(null);
+  const [diarioMes, setDiarioMes] = useState<{ dia: string; cliente_id: string; valor: number }[]>([]);
+  const [metasProj, setMetasProj] = useState<Record<string, { id: string; valor: number }>>({});
+  const [editandoProj, setEditandoProj] = useState<{ id: string; texto: string } | null>(null);
+  const [novaTarefa, setNovaTarefa] = useState<Record<string, string>>({});
   const [metricas, setMetricas] = useState<Record<string, Metricas>>({});
   const [linha, setLinha] = useState<Linha | null>(null);
   const [anterior, setAnterior] = useState<Linha | null>(null);
@@ -58,7 +66,7 @@ export function PainelSemana() {
       const { data: cs } = await supabase.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista");
       const lista = ((cs ?? []) as { id: string; nome_especialista: string }[]).map((c) => ({ id: c.id, nome: c.nome_especialista }));
       const ids = lista.map((c) => c.id);
-      const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma] = await Promise.all([
+      const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma, mp] = await Promise.all([
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").eq("semana", semana).maybeSingle(),
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").lt("semana", semana).order("semana", { ascending: false }).limit(1).maybeSingle(),
         db.from("atividades").select("id, titulo, cliente_id, concluida, data_vencimento, concluida_em").is("deleted_at", null).in("cliente_id", ids)
@@ -70,6 +78,7 @@ export function PainelSemana() {
         db.from("ads_contas").select("cliente_id").in("cliente_id", ids),
         db.from("painel_mensal").select("id, meta_faturamento").eq("mes", mes.inicio).maybeSingle(),
         db.from("painel_mensal").select("meta_faturamento").lt("mes", mes.inicio).order("mes", { ascending: false }).limit(1).maybeSingle(),
+        db.from("painel_mensal_projeto").select("id, cliente_id, meta_faturamento").eq("mes", mes.inicio),
       ]);
       const produtoDoCliente = new Map<string, string>(((prods.data ?? []) as { id: string; cliente_id: string }[]).map((p) => [p.id, p.cliente_id]));
       const pids = [...produtoDoCliente.keys()];
@@ -87,6 +96,8 @@ export function PainelSemana() {
       setTarefas(tarefasDaSemana((ts.data ?? []) as TarefaSemana[], semana));
       const dias = (diario.data ?? []) as { data: string; receita: number | null; reembolsos: number | null }[];
       const soma = (de: string, ate: string) => dias.filter((d) => d.data >= de && d.data <= ate).reduce((s, d) => s + Number(d.receita ?? 0) - Number(d.reembolsos ?? 0), 0);
+      setDiarioMes(dias.filter((d) => d.data >= mes.inicio && d.data <= mes.fim).map((d) => ({ dia: d.data, cliente_id: produtoDoCliente.get((d as unknown as { produto_id: string }).produto_id) ?? "", valor: Number(d.receita ?? 0) - Number(d.reembolsos ?? 0) })));
+      setMetasProj(Object.fromEntries(((mp.data ?? []) as { id: string; cliente_id: string; meta_faturamento: number }[]).map((r) => [r.cliente_id, { id: r.id, valor: Number(r.meta_faturamento) }])));
       setFaturMes(soma(mes.inicio, mes.fim));
       setFaturSemana(soma(semana, fim));
       const mmd = mm.data as { id: string; meta_faturamento: number | null } | null;
@@ -147,8 +158,64 @@ export function PainelSemana() {
     if (error) { toast.error("Não consegui atualizar a tarefa"); void carregar(); }
   };
 
-  const meta = metaMes ? metaMes.valor : metaAnterior;   // mês sem meta própria herda a do mês anterior
+  const salvarMetaProjeto = async (clienteId: string, valor: number | null) => {
+    const atual = metasProj[clienteId];
+    if (valor == null || valor <= 0) {
+      if (!atual) return;
+      setMetasProj((m) => { const n = { ...m }; delete n[clienteId]; return n; });
+      const { error } = await db.from("painel_mensal_projeto").delete().eq("id", atual.id);
+      if (error) { toast.error("Não consegui tirar a meta"); void carregar(); }
+      return;
+    }
+    if (atual?.id) {
+      setMetasProj((m) => ({ ...m, [clienteId]: { id: atual.id, valor } }));
+      const { error } = await db.from("painel_mensal_projeto").update({ meta_faturamento: valor, atualizado_em: new Date().toISOString() }).eq("id", atual.id);
+      if (error) toast.error("Não consegui salvar a meta");
+    } else {
+      const { data, error } = await db.from("painel_mensal_projeto").insert({ mes: mes.inicio, cliente_id: clienteId, meta_faturamento: valor }).select("id").maybeSingle();
+      if (error) { toast.error("Não consegui salvar a meta"); return; }
+      setMetasProj((m) => ({ ...m, [clienteId]: { id: (data as { id: string } | null)?.id ?? "", valor } }));
+    }
+  };
+  // Tarefa criada aqui entra na atividade do projeto (mesma função do resto do app) e já aparece no cartão: vence hoje, ou na segunda da semana vista se ela for futura.
+  const adicionarTarefa = async (clienteId: string) => {
+    const titulo = (novaTarefa[clienteId] ?? "").trim();
+    if (!titulo) return;
+    setNovaTarefa((n) => ({ ...n, [clienteId]: "" }));
+    try {
+      const venc = hoje >= semana && hoje <= domingoDe(semana) ? hoje : semana;
+      await criarAtividade({ titulo: titulo.slice(0, 200), clienteId, pastaId: null, dataAtividade: venc, dataVencimento: venc, statusKey: "backlog", concluida: false, ordem: Date.now() % 1_000_000 });
+      toast.success("Tarefa criada no projeto");
+      void carregar();
+    } catch (e) { toast.error(`Não consegui criar a tarefa: ${e instanceof Error ? e.message : ""}`); }
+  };
+
+  // Compromissos da semana: eventos do Google Calendar já conectado na Agenda.
+  const ancora = useMemo(() => new Date(`${semana}T12:00:00`), [semana]);
+  const calendario = useGoogleCalendar(ancora);
+  const compromissos = useMemo(() => {
+    const fimSem = domingoDe(semana);
+    const item = (e: GoogleCalendarEvent) => {
+      const dt = e.start.dateTime;
+      const dia = dt ? `${new Date(dt).getFullYear()}-${String(new Date(dt).getMonth() + 1).padStart(2, "0")}-${String(new Date(dt).getDate()).padStart(2, "0")}` : (e.start.date ?? "");
+      const hora = dt ? new Date(dt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "Dia todo";
+      return { id: `${e.calendarId}:${e.id}`, titulo: e.summary || "Sem título", dia, hora, feito: e.colorId === COR_FEITO, local: e.location ?? "" };
+    };
+    return calendario.events.filter((e) => e.status !== "cancelled").map(item).filter((i) => i.dia >= semana && i.dia <= fimSem).sort((a, b) => a.dia.localeCompare(b.dia) || (a.hora === "Dia todo" ? -1 : b.hora === "Dia todo" ? 1 : a.hora.localeCompare(b.hora)));
+  }, [calendario.events, semana]);
+
+  const metaTotalManual = metaMes ? metaMes.valor : metaAnterior;   // mês sem meta própria herda a do mês anterior
+  const metasDosSelecionados = selecionados.map((p) => metasProj[p.id]?.valor ?? 0);
+  const meta = metaDoMes(metasDosSelecionados, metaTotalManual);
+  const somaDasMetas = metasDosSelecionados.some((v) => v > 0);
+  const faltaMeta = faltaParaMeta(faturMes, meta);
+  const fatPorProjeto = useMemo(() => { const m = new Map<string, number>(); diarioMes.forEach((d) => m.set(d.cliente_id, (m.get(d.cliente_id) ?? 0) + d.valor)); return m; }, [diarioMes]);
+  const idsGrafico = selecionados.filter((p) => (fatPorProjeto.get(p.id) ?? 0) !== 0).map((p) => p.id);
+  const serie = useMemo(() => serieDiaria(diarioMes, mes.inicio, mes.fim, idsGrafico), [diarioMes, mes.inicio, mes.fim, idsGrafico]);
+  const corDe = (id: string) => CORES[Math.max(0, selecionados.findIndex((p) => p.id === id)) % CORES.length];
+  const nomeDe = (id: string) => projetos.find((p) => p.id === id)?.nome ?? "";
   const pctMeta = meta && meta > 0 ? Math.min(100, Math.round((faturMes / meta) * 100)) : null;
+
   const emExecucao = selecionados.filter((p) => { const g = progresso(tarefasPorProjeto.get(p.id) ?? []); return g.total > 0 && g.pct < 100; }).length;
   const contagem = (f: FiltroTarefas) => selecionados.reduce((n, p) => n + filtrar(tarefasPorProjeto.get(p.id) ?? [], f, hoje).length, 0);
   const missao = efetivo.missao;
@@ -169,32 +236,74 @@ export function PainelSemana() {
         </div>
       </div>
 
-      {/* Faturamento do mês */}
-      <div className="grid items-center gap-4 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-card p-4 shadow-sm sm:grid-cols-[auto_1fr_auto] sm:gap-6 sm:p-5">
-        <div className="flex items-center gap-3">
-          <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-emerald-500/60 bg-emerald-500/10 text-emerald-500"><Wallet className="h-7 w-7" /></span>
+      {/* Faturamento do mês: valor, meta (soma das metas dos projetos), quanto falta e onde entrou */}
+      <div className="space-y-5 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-card p-4 shadow-sm sm:p-5">
+        <div className="grid items-center gap-4 sm:grid-cols-[auto_1fr_auto] sm:gap-6">
+          <div className="flex items-center gap-3">
+            <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-emerald-500/60 bg-emerald-500/10 text-emerald-500"><Wallet className="h-7 w-7" /></span>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Faturamento do Mês · {mes.rotulo}</p>
+              <p className="text-3xl font-extrabold tracking-tight text-foreground">{carregando ? "…" : brl(faturMes)}</p>
+              <p className="text-[11px] text-muted-foreground">Nesta semana: {carregando ? "…" : brl(faturSemana)}</p>
+            </div>
+          </div>
           <div>
-            <p className="text-sm font-semibold text-foreground">Faturamento do Mês · {mes.rotulo}</p>
-            <p className="text-3xl font-extrabold tracking-tight text-foreground">{carregando ? "…" : brl(faturMes)}</p>
-            <p className="text-[11px] text-muted-foreground">Nesta semana: {carregando ? "…" : brl(faturSemana)}</p>
+            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+              <span className="text-muted-foreground">{pctMeta === null ? "Defina a meta do mês (ou a de cada projeto) para acompanhar" : `${pctMeta}% da meta do mês`}</span>
+              {faltaMeta && (faltaMeta.falta > 0
+                ? <span className="font-semibold text-foreground">Faltam <span className="text-lg text-emerald-500">{brl(faltaMeta.falta)}</span> para bater a meta</span>
+                : <span className="font-semibold text-emerald-500">Meta batida! +{brl(faltaMeta.passou)} acima</span>)}
+            </div>
+            <div className="h-6 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all" style={{ width: `${pctMeta ?? 0}%` }} /></div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Target className="h-9 w-9 text-primary" />
+            <div>
+              <p className="text-xs text-muted-foreground">Meta do Mês{somaDasMetas ? " · soma dos projetos" : ""}</p>
+              {editandoMeta !== null && !somaDasMetas ? (
+                <input autoFocus value={editandoMeta} onChange={(e) => setEditandoMeta(e.target.value)} placeholder="ex.: 10000 ou 10k"
+                  onBlur={() => { const v = lerMeta(editandoMeta); setEditandoMeta(null); if (v !== metaTotalManual) void salvarMeta(v); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditandoMeta(null); }}
+                  className="w-32 rounded-md border bg-background px-2 py-1 text-lg font-bold outline-none focus:border-primary" />
+              ) : somaDasMetas ? (
+                <p className="text-xl font-bold text-foreground" title="Soma das metas dos projetos: mude a meta em cada cartão">{meta ? brl(meta) : "—"}</p>
+              ) : (
+                <button type="button" onClick={() => setEditandoMeta(meta ? String(meta) : "")} title="Clique para mudar a meta do mês (ou defina a meta em cada projeto)" className="text-xl font-bold text-foreground hover:text-primary">{meta ? brl(meta) : "Definir meta"}</button>
+              )}
+            </div>
           </div>
         </div>
-        <div>
-          <p className="mb-1.5 text-sm text-muted-foreground">{pctMeta === null ? "Defina a meta do mês para acompanhar" : `${pctMeta}% da meta do mês`}</p>
-          <div className="h-3.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all" style={{ width: `${pctMeta ?? 0}%` }} /></div>
-        </div>
-        <div className="flex items-center gap-3">
-          <Target className="h-9 w-9 text-primary" />
+        {/* Onde entrou: dias do mês empilhados por projeto + ranking */}
+        <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
           <div>
-            <p className="text-xs text-muted-foreground">Meta do Mês</p>
-            {editandoMeta !== null ? (
-              <input autoFocus value={editandoMeta} onChange={(e) => setEditandoMeta(e.target.value)} placeholder="ex.: 10000 ou 10k"
-                onBlur={() => { const v = lerMeta(editandoMeta); setEditandoMeta(null); if (v !== meta) void salvarMeta(v); }}
-                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditandoMeta(null); }}
-                className="w-32 rounded-md border bg-background px-2 py-1 text-lg font-bold outline-none focus:border-primary" />
-            ) : (
-              <button type="button" onClick={() => setEditandoMeta(meta ? String(meta) : "")} title="Clique para mudar a meta do mês" className="text-xl font-bold text-foreground hover:text-primary">{meta ? brl(meta) : "Definir meta"}</button>
-            )}
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Faturamento por dia · {mes.rotulo}</p>
+            {idsGrafico.length === 0 ? <p className="grid h-40 place-items-center rounded-xl border border-dashed text-sm text-muted-foreground">Nenhuma venda lançada neste mês ainda.</p> : (
+              <div className="h-44 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={serie} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
+                    <XAxis dataKey="dia" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} interval={2} />
+                    <YAxis tickLine={false} axisLine={false} width={44} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v))} />
+                    <Tooltip cursor={{ fill: "hsl(var(--muted))", fillOpacity: 0.5 }} contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 10, fontSize: 12 }}
+                      labelFormatter={(d) => `Dia ${d}`} formatter={(v: number, id: string) => [brl(v), nomeDe(id)]} />
+                    {idsGrafico.map((id) => <Bar key={id} dataKey={id} stackId="d" fill={corDe(id)} stroke="hsl(var(--card))" strokeWidth={1} />)}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>)}
+          </div>
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Onde mais entrou</p>
+            <ul className="space-y-1.5">
+              {[...selecionados].sort((a, b) => (fatPorProjeto.get(b.id) ?? 0) - (fatPorProjeto.get(a.id) ?? 0)).slice(0, 6).map((p) => {
+                const v = fatPorProjeto.get(p.id) ?? 0;
+                const pj = faturMes > 0 ? Math.round((v / faturMes) * 100) : 0;
+                return (
+                  <li key={p.id} className="text-sm">
+                    <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: corDe(p.id) }} /><span className="min-w-0 flex-1 truncate">{p.nome}</span><span className="tabular-nums font-semibold">{brl(v)}</span><span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">{pj}%</span></div>
+                  </li>);
+              })}
+              {selecionados.length === 0 && <li className="text-sm text-muted-foreground">Escolha os projetos em “Projetos”.</li>}
+            </ul>
           </div>
         </div>
       </div>
@@ -224,6 +333,36 @@ export function PainelSemana() {
             </form>
           )}
         </div>
+      </div>
+
+      {/* Compromissos da semana (Google Calendar da Agenda) */}
+      <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">
+        <div className="mb-2 flex items-center gap-2">
+          <CalendarClock className="h-5 w-5 text-primary" />
+          <h2 className="text-lg font-bold text-foreground">Compromissos da Semana</h2>
+          <span className="text-sm text-muted-foreground">({compromissos.length})</span>
+          <button type="button" onClick={() => navigate("/agenda")} className="ml-auto text-xs text-primary hover:underline">Abrir agenda</button>
+        </div>
+        {calendario.loading ? <Loader2 className="mx-auto my-4 h-5 w-5 animate-spin text-muted-foreground" />
+          : !calendario.connected ? <p className="text-sm text-muted-foreground">Conecte o Google Calendar na <button type="button" onClick={() => navigate("/agenda")} className="text-primary underline">Agenda</button> para ver seus compromissos aqui.</p>
+          : compromissos.length === 0 ? <p className="text-sm text-muted-foreground">Nenhum compromisso nesta semana.</p> : (
+          <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 xl:grid-cols-3">
+            {Array.from(new Set(compromissos.map((c) => c.dia))).map((dia) => {
+              const [a, m, d] = dia.split("-").map(Number);
+              const dow = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][new Date(a, m - 1, d).getDay()];
+              return (
+                <div key={dia} className="py-1.5">
+                  <p className={cn("text-xs font-bold uppercase tracking-wide", dia === hoje ? "text-primary" : "text-muted-foreground")}>{dow} {d}{dia === hoje ? " · hoje" : ""}</p>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {compromissos.filter((c) => c.dia === dia).map((c) => (
+                      <li key={c.id} className="flex items-baseline gap-2 text-sm">
+                        <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{c.hora}</span>
+                        <span className={cn("min-w-0 flex-1 truncate", c.feito && "text-muted-foreground line-through")} title={c.local ? `${c.titulo} · ${c.local}` : c.titulo}>{c.titulo}</span>
+                      </li>))}
+                  </ul>
+                </div>);
+            })}
+          </div>)}
       </div>
 
       {/* Projetos */}
@@ -275,7 +414,7 @@ export function PainelSemana() {
                 <div className="flex items-center gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white" style={{ background: cor }}>{p.nome.slice(0, 1).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => navigate(`/clientes/${p.id}`)} className="block max-w-full truncate text-left text-lg font-bold text-foreground hover:underline">{p.nome}</button>
+                    <button type="button" onClick={() => navigate(`/clientes/${p.id}?secao=atividades`)} title="Abrir as atividades do projeto" className="block max-w-full truncate text-left text-lg font-bold text-foreground hover:underline">{p.nome}</button>
                     <p className="flex items-center gap-1.5 text-xs"><span className={cn("h-2 w-2 rounded-full", g.total === 0 ? "bg-muted-foreground" : g.pct === 100 ? "bg-emerald-500" : "bg-emerald-400")} /><span className={g.total === 0 ? "text-muted-foreground" : "text-emerald-500"}>{status}</span></p>
                   </div>
                   <span className="text-xl font-bold tabular-nums text-foreground">{g.pct}%</span>
@@ -296,6 +435,36 @@ export function PainelSemana() {
                   {visiveis.length === 0 && <li className="py-3 text-sm text-muted-foreground">{g.total === 0 ? "Nada com prazo nesta semana." : "Nenhuma tarefa neste filtro."}</li>}
                 </ul>
                 {visiveis.length > lim && <button type="button" onClick={() => setAbertos((s) => new Set(s).add(p.id))} className="mt-1 text-xs text-muted-foreground hover:text-foreground">+ {visiveis.length - lim} {visiveis.length - lim === 1 ? "tarefa" : "tarefas"}</button>}
+                <form className="mt-2 flex items-center gap-2" onSubmit={(e) => { e.preventDefault(); void adicionarTarefa(p.id); }}>
+                  <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <input value={novaTarefa[p.id] ?? ""} onChange={(e) => setNovaTarefa((n) => ({ ...n, [p.id]: e.target.value }))} placeholder="Adicionar tarefa ao projeto…" className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground" />
+                </form>
+                <div className="mt-3 rounded-xl bg-muted/40 p-2.5">
+                  {(() => {
+                    const fp = fatPorProjeto.get(p.id) ?? 0, mp = metasProj[p.id]?.valor ?? 0;
+                    const pp = mp > 0 ? Math.min(100, Math.round((fp / mp) * 100)) : 0;
+                    return (
+                      <>
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          <span className="text-muted-foreground">Faturado no mês</span>
+                          <span className="font-bold tabular-nums">{brl(fp)}{mp > 0 && <span className="font-normal text-muted-foreground"> / {" "}</span>}
+                            {editandoProj?.id === p.id ? (
+                              <input autoFocus value={editandoProj.texto} onChange={(e) => setEditandoProj({ id: p.id, texto: e.target.value })} placeholder="meta" className="w-20 rounded border bg-background px-1 text-right text-xs outline-none"
+                                onBlur={() => { const v = lerMeta(editandoProj.texto); setEditandoProj(null); if (v !== (metasProj[p.id]?.valor ?? null)) void salvarMetaProjeto(p.id, v); }}
+                                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditandoProj(null); }} />
+                            ) : (
+                              <button type="button" onClick={() => setEditandoProj({ id: p.id, texto: mp ? String(mp) : "" })} title="Meta deste projeto no mês (soma na meta do mês)" className="text-primary hover:underline">{mp > 0 ? brl(mp) : "definir meta"}</button>
+                            )}
+                          </span>
+                        </div>
+                        {mp > 0 && (
+                          <>
+                            <div className="mt-1.5 h-2.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full transition-all" style={{ width: `${pp}%`, background: cor }} /></div>
+                            <p className="mt-1 text-[11px] text-muted-foreground">{fp >= mp ? `Meta batida (+${brl(fp - mp)})` : `Faltam ${brl(mp - fp)} · ${pp}%`}</p>
+                          </>)}
+                      </>);
+                  })()}
+                </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-sm">
                   <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-sky-500" /><div><p className="text-[11px] leading-none text-muted-foreground">Meta Ads</p><p className={cn("font-bold", x.ads === "ativa" ? "text-emerald-500" : x.ads === "sem" ? "text-muted-foreground" : "text-amber-500")}>{{ ativa: "Ativa", pausada: "Pausada", conectada: "Conectada", sem: "Sem dados" }[x.ads]}</p></div></div>
                   <div className="flex items-center gap-2"><Users className="h-5 w-5 text-muted-foreground" /><div><p className="text-[11px] leading-none text-muted-foreground">Leads (7d)</p><p className="text-lg font-bold tabular-nums">{x.leads}</p></div></div>

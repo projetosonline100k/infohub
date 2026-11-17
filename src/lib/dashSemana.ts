@@ -67,3 +67,25 @@ export function lerMeta(t: string): number | null {
   const n = Number(s.replace(/k$/, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
   return Number.isFinite(n) && n >= 0 ? (mil ? n * 1000 : n) : null;
 }
+
+/** Quanto falta para a meta (0 se já bateu) e quanto passou dela. */
+export function faltaParaMeta(faturado: number, meta: number | null): { falta: number; passou: number } | null {
+  if (!meta || meta <= 0) return null;
+  return { falta: Math.max(0, Math.round((meta - faturado) * 100) / 100), passou: Math.max(0, Math.round((faturado - meta) * 100) / 100) };
+}
+/** Meta do mês = soma das metas dos projetos (se algum tiver meta); senão a meta total digitada. */
+export function metaDoMes(metasProjetos: number[], metaTotal: number | null): number | null {
+  const soma = metasProjetos.reduce((a, b) => a + b, 0);
+  return soma > 0 ? soma : metaTotal;
+}
+/** Dias do mês (1..N) com o valor de cada projeto, para o gráfico empilhado. */
+export function serieDiaria(linhas: { dia: string; cliente_id: string; valor: number }[], inicio: string, fim: string, ids: string[]): Record<string, number | string>[] {
+  const n = Number(fim.slice(8, 10));
+  const out: Record<string, number | string>[] = Array.from({ length: n }, (_, i) => ({ dia: String(i + 1), ...Object.fromEntries(ids.map((id) => [id, 0])) }));
+  for (const l of linhas) {
+    if (l.dia < inicio || l.dia > fim || !ids.includes(l.cliente_id)) continue;
+    const linha = out[Number(l.dia.slice(8, 10)) - 1];
+    linha[l.cliente_id] = Number(linha[l.cliente_id]) + l.valor;
+  }
+  return out;
+}
