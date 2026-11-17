@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Loader2, Mic, Paperclip, Plus, RotateCcw, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -8,7 +8,7 @@ import { confirmar } from "@/components/DialogosGlobais";
 import { isDesktop } from "@/lib/platform";
 import { useGravarAudio } from "@/hooks/useGravarAudio";
 import { aplicarEstilo, completudeEstilo, estiloVazio, sanitizarEstilo, type EstiloDark } from "@/lib/empresa/dashDark";
-import { midiasDoTexto } from "@/lib/empresa/midiasChat";
+import { midiasDoTexto, type MidiaChat } from "@/lib/empresa/midiasChat";
 import { MidiaLocal } from "./MidiaLocal";
 import { cn } from "@/lib/utils";
 
@@ -27,6 +27,27 @@ const CAMPOS: { chave: Exclude<keyof EstiloDark, "referencias" | "voz">; rotulo:
   { chave: "regras", rotulo: "Regras (sempre / nunca)", linhas: 3 }, { chave: "observacoes", rotulo: "Outras observações", linhas: 3 },
 ];
 const intro = (nome: string): Msg => ({ papel: "assistant", texto: `Oi! Aqui é o Lauro. Vamos montar juntos o estilo do vídeo do ${nome}. Me conta como você imagina esse vídeo: o clima, o tipo de assunto, o que você já viu por aí e gostou. Pode colar links de referência que eu abro e te digo o que dá para aproveitar. Eu vou preenchendo o estilo ao lado e te perguntando o que faltar.` });
+
+// Lista de mensagens separada e memorizada: digitar no campo (que muda o estado do chat a cada tecla) não redesenha a conversa
+// inteira, e só as últimas mensagens ficam na tela (17/11/2026, Davi: "o chat do Lauro está bem travado").
+const ListaMsgs = memo(function ListaMsgs({ msgs, midias }: { msgs: Msg[]; midias: MidiaChat[][] }) {
+  const [quantas, setQuantas] = useState(30);
+  const inicio = Math.max(0, msgs.length - quantas);
+  return (
+    <>
+      {inicio > 0 && <button type="button" onClick={() => setQuantas((q) => q + 40)} className="mx-auto block rounded-full bg-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/15">Ver {Math.min(40, inicio)} mensagens anteriores</button>}
+      {msgs.slice(inicio).map((m, k) => {
+        const i = inicio + k;
+        return (
+          <div key={i} className={cn("max-w-[88%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
+            {m.papel === "assistant" && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Lauro</span>}{m.texto}
+            {midias[i]?.map((md) => <MidiaLocal key={md.caminho} midia={md} />)}
+          </div>
+        );
+      })}
+    </>
+  );
+});
 
 export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado, flutuante = false }: { perfil: PerfilDark | null; onFechar: () => void; onMudou: () => void; onApagado: () => void; flutuante?: boolean }) {
   // flutuante (17/11, Davi: "o Lauro flutuando quando eu abrir a área dele"): só o chat, numa bolinha que abre um cartão no canto, sem a ficha do estilo.
@@ -237,12 +258,7 @@ export function EstiloPerfilDark({ perfil, onFechar, onMudou, onApagado, flutuan
                 </div>
               )}
               <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#0b141a] p-3">
-                {msgs.map((m, i) => (
-                  <div key={i} className={cn("max-w-[88%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm", m.papel === "user" ? "ml-auto bg-[#005c4b]" : "bg-[#202c33]")}>
-                    {m.papel === "assistant" && <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-wide text-cyan-300">Lauro</span>}{m.texto}
-                    {midiasPorMsg[i]?.map((md) => <MidiaLocal key={md.caminho} midia={md} />)}
-                  </div>
-                ))}
+                <ListaMsgs msgs={msgs} midias={midiasPorMsg} />
                 {esperando && <div className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />{vivo ? "Lauro está trabalhando no seu Mac…" : "Lauro está pensando…"}<span className="text-white/35">· pode escrever: ele responde sem parar o que está fazendo</span></div>}
                 <div ref={fim} />
               </div>

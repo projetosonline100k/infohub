@@ -700,4 +700,7 @@ html.jarvis-window #root {
 }
 
 /* Boneco flutuante do modo vivo (OrbeVivo): sobe e desce devagar. */
+@keyframes lauro-gira { to { transform: rotate(360deg); } }
+@keyframes lauro-onda { 0% { transform: scale(0.8); opacity: 0.55; } 100% { transform: scale(1.7); opacity: 0; } }
+@keyframes lauro-pisca { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
 @keyframes orbe-vivo-flutua { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
