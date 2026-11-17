@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { isDesktop } from "@/lib/platform";
 import { EVENTO_DESFAZER, EVENTO_REFAZER } from "@/lib/desktop/desfazer";
 import { confirmar } from "@/components/DialogosGlobais";
-import { ConversaEntrega } from "./ConversaEntrega";
+import { ConversaEntrega, type Andamento } from "./ConversaEntrega";
+import { DaniloTrabalhando } from "./DaniloTrabalhando";
 import { useAbaAtiva } from "@/lib/workspace/abaAtiva";
 import { cn } from "@/lib/utils";
 import {
@@ -321,6 +322,8 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
   useLayoutEffect(() => { definirAgulha(tFinal); }, [tFinal]);
   const relativo = (arq: string) => (arq.startsWith(pasta + "/") ? arq.slice(pasta.length + 1) : null);
   const ocupado = estado?.status === "renderizando" || estado?.status === "aprovando";
+  const [andamentoChat, setAndamentoChat] = useState<Andamento | null>(null);
+  useEffect(() => { if (!chatAberto) setAndamentoChat(null); }, [chatAberto]);   // o que o Danilo está fazendo a pedido do chat (aviso no meio da tela)
   // Formato dark (19/10): sem o Davi na tela, só a voz e o papel desenhado. Não tem linha do
   // tempo de vídeo: abre na versão gerada e os ajustes são pela conversa com o Danilo.
   const dark = (projeto as { formato?: string } | null)?.formato === "dark";
@@ -918,10 +921,11 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
           <aside className="dark w-[330px] shrink-0 border-l border-zinc-700 bg-[#1e1e1e] p-2 text-zinc-100">
             {/* Lote: várias edições na mesma tarefa; a mensagem já começa dizendo de qual vídeo é. */}
             <ConversaEntrega key={`${conversa.tarefaId}-${edicao?.id}`} clienteId={conversa.clienteId} tarefaId={conversa.tarefaId} membroId={conversa.membroId}
-              nome="Danilo" onDocumentoMudou={danilomudou} textoInicial={edicao?.titulo ? `Sobre "${edicao.titulo}": ` : undefined} />
+              nome="Danilo" onDocumentoMudou={danilomudou} onAndamento={setAndamentoChat} textoInicial={edicao?.titulo ? `Sobre "${edicao.titulo}": ` : undefined} />
           </aside>
         )}
         </div>
+        <DaniloTrabalhando ativo={ocupado || !!andamentoChat?.esperando} texto={ocupado ? estado?.mensagem ?? null : andamentoChat?.fazendo ?? "Ajustando a edição a pedido seu"} desde={ocupado ? null : andamentoChat?.desde} />
       </DialogContent>
     </Dialog>
   );
