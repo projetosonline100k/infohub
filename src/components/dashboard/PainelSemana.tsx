@@ -99,7 +99,9 @@ export function PainelSemana() {
       for (const c of (ct.data ?? []) as { cliente_id: string }[]) if (c.cliente_id) get(c.cliente_id).ads = "conectada";
       for (const c of (ca.data ?? []) as { cliente_id: string; status: string | null }[]) { const x = get(c.cliente_id); if (c.status === "ativa") x.ads = "ativa"; else if (x.ads !== "ativa") x.ads = "pausada"; }
       setProjetos(lista);
-      setTarefas(tarefasDaSemana(comConclusaoDaEquipe((ts.data ?? []) as (TarefaSemana & { situacao?: string | null })[]), semana));
+      // O que a equipe (as IAs) já entregou e fechou ("A Dalila programou o reel…", "Revisar edição…" aprovada) é assunto passado: concluída com situação da equipe não entra nos cartões nem no progresso.
+      const linhas = ((ts.data ?? []) as (TarefaSemana & { situacao?: string | null })[]).filter((t) => !(t.situacao && (t.situacao === "concluida" || t.concluida)));
+      setTarefas(tarefasDaSemana(comConclusaoDaEquipe(linhas), semana));
       const dias = (diario.data ?? []) as { data: string; receita: number | null; reembolsos: number | null }[];
       setDiarioBruto(dias.map((d) => { const pid = (d as unknown as { produto_id: string }).produto_id; return { dia: d.data, produto_id: pid, cliente_id: produtoDoCliente.get(pid) ?? "", valor: Number(d.receita ?? 0) - Number(d.reembolsos ?? 0) }; }));
       setFundos(Object.fromEntries(((fd.data ?? []) as { cliente_id: string; url: string }[]).map((r) => [r.cliente_id, r.url])));
