@@ -1093,6 +1093,7 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("estilo", atender_estilo, 2), daemon=True).start()
         # 17/11 (Davi: "meu Mac está pesado"): o agente do X1 e os fluxos do WhatsApp rodam no SERVIDOR, onde está o WAHA (sem túnel, sem depender do Mac ligado).
         threading.Thread(target=laco, args=("agente-x1", atender_agente_x1, 5), daemon=True).start()
+        threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()   # produção dos vídeos do Lauro (Chrome do servidor, ChatGPT logado)
         threading.Thread(target=laco, args=("fluxo-whatsapp", atender_fluxo_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
     if not SEM_CODIGO:

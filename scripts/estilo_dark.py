@@ -138,6 +138,24 @@ Regras: não curta, comente, siga, poste, envie mensagem nem compre nada; não d
 """
 
 
+# 17/11 (Davi: "meu Mac está pesado"): a PRODUÇÃO dos vídeos (mensagens "NOVO ROTEIRO…" e "AJUSTE no roteiro…") roda no SERVIDOR, com o Chrome de lá (ChatGPT logado) e as
+# ferramentas dele; tudo o resto do modo vivo (conversa do estilo, referências no Instagram, controle do Mac, subir banco no Drive) continua no Mac.
+import sys as _sys
+NA_VPS = _sys.platform != "darwin"
+PRODUCAO = "(p.mensagem LIKE 'NOVO ROTEIRO%%' OR p.mensagem LIKE 'AJUSTE no roteiro%%')"
+
+
+VIVO_VPS = """
+
+MODO SERVIDOR (17/11): você está rodando no SERVIDOR (Linux, na nuvem), produzindo o vídeo do roteiro sozinho. NÃO é o Mac do Davi: não existe o programa `controle`, nem o Chrome com o Instagram dele, nem /opt/homebrew, ~/Downloads do Mac ou caminhos /Users/davi/Library.
+O que existe aqui:
+- NAVEGADOR: o Chrome do servidor (ferramentas mcp__chrome-vps__browser_*: navigate, snapshot, click, type, press_key, wait_for…), com o ChatGPT JÁ LOGADO (conta Plus do Davi). Use-o para GERAR AS IMAGENS (personagem, cenários): abra um chat novo em https://chatgpt.com/, peça a imagem (mantenha o MESMO personagem do perfil; cite os arquivos de referência já descritos no estilo), espere gerar (cerca de 1 minuto), CLIQUE NA IMAGEM para abrir a pré-visualização e use o ícone de seta para baixo (download) no topo; o arquivo cai em /root/Downloads (confira com ls). Mova para ~/.infopro-hub/exemplos/<perfil>/roteiros/<id>/. Se aparecer captcha, pedido de login ou verificação, PARE e diga exatamente o que apareceu (o Davi resolve pelo noVNC em http://127.0.0.1:6080/vnc.html no Mac dele).
+- FERRAMENTAS: `ffmpeg` e `ffprobe` (já no PATH), Python 3 com PIL e numpy (/opt/infopro-venv/bin/python), VOZ pelo Kokoro com `python3 scripts/lauro/voz.py <id>` (usa ~/.infopro-hub/tts/venv), whisper para alinhar as palavras (`faster-whisper` no mesmo python), fontes Liberation/DejaVu/Noto. Os arquivos do Lauro (banco de clipes, folhas, personagens) estão em ~/.infopro-hub/exemplos/ (o mesmo caminho de sempre; /Users/davi aponta para /root).
+- NÃO existe download de TikTok aqui (bloqueado): use só os clipes que já estão no banco e imagens geradas. Fontes e caminhos de Mac nos scripts antigos (montar_v1.py) precisam ser trocados: copie o script anterior e adapte (FF='ffmpeg', fontes Linux, sem ~/Downloads).
+- Siga o resto das regras acima (estilo do perfil, status com roteiros.py, nunca publicar sem o ok). O que precisar do Mac ou do Instagram logado do Davi, diga que precisa dele e deixe o pedido em "pedidos_sistema"/na resposta em vez de improvisar.
+"""
+
+
 def _garantir_rapido(rodar_claude, log):
     """Liga (uma vez só) o laço que responde mensagens enviadas com o Lauro ocupado: roda em paralelo ao trabalho longo do modo vivo, no Mac."""
     import sys
@@ -200,7 +218,8 @@ if not getattr(threading, "_lauro_preparo_ativo", False):   # um só laço, mesm
 
 
 def atender_vivo(rodar_claude, log=print):
-    """Mac: atende UM pedido pendente de perfil em modo vivo, escrito pelo Davi (autor_id), com o Chrome dele."""
+    """Atende UM pedido pendente de perfil em modo vivo, escrito pelo Davi (autor_id). No Mac: conversa do estilo, referências e controle do Mac, com o Chrome dele.
+    No servidor: a produção dos roteiros, com o Chrome do servidor (ChatGPT logado)."""
     _garantir_rapido(rodar_claude, log)
     _preparar_publicacao(log)
     c = connect()
@@ -213,8 +232,8 @@ def atender_vivo(rodar_claude, log=print):
                       FROM public.esteira_dark_perfis f WHERE f.id = p.perfil_id AND f.modo_vivo AND p.status = 'pendente' AND NOT p.rapido AND p.autor_id IS DISTINCT FROM %s""", (davi,))
         q.execute("""UPDATE public.esteira_dark_pedidos SET status = 'processando'
                      WHERE id = (SELECT p.id FROM public.esteira_dark_pedidos p JOIN public.esteira_dark_perfis f ON f.id = p.perfil_id
-                                  WHERE p.status = 'pendente' AND NOT p.rapido AND f.modo_vivo AND p.autor_id = %s ORDER BY p.criado_em LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
-                     RETURNING id, perfil_id, mensagem, contexto, historico, estilo_atual""", (davi,))
+                                  WHERE p.status = 'pendente' AND NOT p.rapido AND f.modo_vivo AND p.autor_id = %s AND """ + PRODUCAO + """ = %s ORDER BY p.criado_em LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
+                     RETURNING id, perfil_id, mensagem, contexto, historico, estilo_atual""", (davi, NA_VPS))
         r = q.fetchone()
         c.commit()
         if not r:
@@ -223,7 +242,7 @@ def atender_vivo(rodar_claude, log=print):
         log("estilo dark vivo: pedido", str(p["id"])[:8], f"({len(p['mensagem'])} caracteres)")
         q.execute("SELECT sessao_vivo FROM public.esteira_dark_perfis WHERE id = %s", (p["perfil_id"],))
         sessao = q.fetchone()[0]
-        prompt = _prompt(p) + VIVO
+        prompt = _prompt(p) + (VIVO_VPS if NA_VPS else VIVO)
         ferr = ["Bash", "Read", "Grep", "Glob", "WebSearch", "WebFetch"]
         info = {}
         ok, texto = rodar_claude(prompt, minutos=25, chrome=True, sessao=sessao, info=info, turnos=80, ferramentas=ferr)
@@ -319,8 +338,11 @@ def atender_rapido(rodar_claude, log=print):
     try:
         q = c.cursor()
         q.execute("""UPDATE public.esteira_dark_pedidos SET status = 'processando'
-                     WHERE id = (SELECT id FROM public.esteira_dark_pedidos WHERE status = 'pendente' AND rapido ORDER BY criado_em LIMIT 1 FOR UPDATE SKIP LOCKED)
-                     RETURNING id, perfil_id, mensagem, contexto, historico, estilo_atual, autor_id, user_id""")
+                     WHERE id = (SELECT p.id FROM public.esteira_dark_pedidos p WHERE p.status = 'pendente' AND p.rapido
+                                   AND EXISTS (SELECT 1 FROM public.esteira_dark_pedidos x WHERE x.perfil_id = p.perfil_id AND x.status = 'processando' AND NOT x.rapido
+                                               AND (x.mensagem LIKE 'NOVO ROTEIRO%%' OR x.mensagem LIKE 'AJUSTE no roteiro%%')) = %s   -- quem está trabalhando responde (lê os passos do próprio registro)
+                                 ORDER BY p.criado_em LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
+                     RETURNING id, perfil_id, mensagem, contexto, historico, estilo_atual, autor_id, user_id""", (NA_VPS,))
         r = q.fetchone()
         c.commit()
         if not r:
@@ -365,7 +387,10 @@ def reenfileirar():
     c = connect()
     try:
         q = c.cursor()
-        q.execute("UPDATE public.esteira_dark_pedidos SET status='pendente' WHERE status='processando' AND criado_em > now() - interval '10 minutes'")
+        # Cada máquina só devolve à fila o que era dela (reiniciar o servidor não deve refazer o que o Mac está fazendo, e vice-versa).
+        q.execute("""UPDATE public.esteira_dark_pedidos p SET status='pendente'
+                      WHERE p.status='processando' AND p.criado_em > now() - interval '10 minutes'
+                        AND (""" + PRODUCAO + """ = %s OR (%s AND NOT EXISTS (SELECT 1 FROM public.esteira_dark_perfis f WHERE f.id = p.perfil_id AND f.modo_vivo)))""", (NA_VPS, NA_VPS))
         n = q.rowcount
         c.commit()
         return n

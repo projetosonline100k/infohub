@@ -35,8 +35,7 @@ def preparar(r):
     rid, perfil, token, arquivo, titulo, legenda = r
     origem = Path(arquivo or "")
     if not origem.is_file():
-        pr.db("UPDATE public.esteira_dark_roteiros SET mensagem = %s WHERE id = %s", ("Não achei o arquivo do vídeo aprovado neste Mac", rid))
-        return
+        return   # o vídeo está na outra máquina (Mac ou servidor): quem o produziu prepara
     pasta = TRABALHO / rid
     pasta.mkdir(parents=True, exist_ok=True)
     pr.db("UPDATE public.esteira_dark_roteiros SET mensagem = 'Preparando o vídeo para o Instagram' WHERE id = %s", (rid,))
