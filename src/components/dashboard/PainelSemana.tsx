@@ -3,13 +3,13 @@ import { useNavigate } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, SlidersHorizontal, Target, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { supabase } from "@/integrations/supabase/client";
 import { Checkbox } from "@/components/ui/checkbox";
+import { FaturamentoGeral } from "@/components/dashboard/FaturamentoGeral";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
-import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, serieDiaria, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
+import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
 // Visão da semana (17/11/2026, Davi: "no dash geral, quero criar algo parecido com esse dash, e que seja funcional"): faturamento do mês contra a meta do mês,
 // Missão da Semana (checklist), e um cartão por projeto com as tarefas da semana (dá para concluir aqui), progresso, Meta Ads, leads e vendas dos últimos 7 dias.
@@ -191,10 +191,6 @@ export function PainelSemana() {
   const somaDasMetas = metasDosSelecionados.some((v) => v > 0);
   const faltaMeta = faltaParaMeta(faturMes, meta);
   const fatPorProjeto = useMemo(() => { const m = new Map<string, number>(); diarioMes.forEach((d) => m.set(d.cliente_id, (m.get(d.cliente_id) ?? 0) + d.valor)); return m; }, [diarioMes]);
-  const idsGrafico = selecionados.filter((p) => (fatPorProjeto.get(p.id) ?? 0) !== 0).map((p) => p.id);
-  const serie = useMemo(() => serieDiaria(diarioMes, mes.inicio, mes.fim, idsGrafico), [diarioMes, mes.inicio, mes.fim, idsGrafico]);
-  const corDe = (id: string) => CORES[Math.max(0, selecionados.findIndex((p) => p.id === id)) % CORES.length];
-  const nomeDe = (id: string) => projetos.find((p) => p.id === id)?.nome ?? "";
   const pctMeta = meta && meta > 0 ? Math.min(100, Math.round((faturMes / meta) * 100)) : null;
 
   const contagem = (f: FiltroTarefas) => selecionados.reduce((n, p) => n + filtrar(tarefasPorProjeto.get(p.id) ?? [], f, hoje).length, 0);
@@ -249,40 +245,10 @@ export function PainelSemana() {
             </div>
           </div>
         </div>
-        {/* Onde entrou: dias do mês empilhados por projeto + ranking */}
-        <div className="grid gap-4 lg:grid-cols-[1.6fr_1fr]">
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Faturamento por dia · {mes.rotulo}</p>
-            {idsGrafico.length === 0 ? <p className="grid h-40 place-items-center rounded-xl border border-dashed text-sm text-muted-foreground">Nenhuma venda lançada neste mês ainda.</p> : (
-              <div className="h-44 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={serie} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-                    <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.5} />
-                    <XAxis dataKey="dia" tickLine={false} axisLine={false} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} interval={2} />
-                    <YAxis tickLine={false} axisLine={false} width={44} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickFormatter={(v: number) => (v >= 1000 ? `${Math.round(v / 100) / 10}k` : String(v))} />
-                    <Tooltip cursor={{ fill: "hsl(var(--muted))", fillOpacity: 0.5 }} contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 10, fontSize: 12 }}
-                      labelFormatter={(d) => `Dia ${d}`} formatter={(v: number, id: string) => [brl(v), nomeDe(id)]} />
-                    {idsGrafico.map((id) => <Bar key={id} dataKey={id} stackId="d" fill={corDe(id)} stroke="hsl(var(--card))" strokeWidth={1} />)}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>)}
-          </div>
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Onde mais entrou</p>
-            <ul className="space-y-1.5">
-              {[...selecionados].sort((a, b) => (fatPorProjeto.get(b.id) ?? 0) - (fatPorProjeto.get(a.id) ?? 0)).slice(0, 6).map((p) => {
-                const v = fatPorProjeto.get(p.id) ?? 0;
-                const pj = faturMes > 0 ? Math.round((v / faturMes) * 100) : 0;
-                return (
-                  <li key={p.id} className="text-sm">
-                    <div className="flex items-center gap-2"><span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: corDe(p.id) }} /><span className="min-w-0 flex-1 truncate">{p.nome}</span><span className="tabular-nums font-semibold">{brl(v)}</span><span className="w-9 text-right text-[11px] tabular-nums text-muted-foreground">{pj}%</span></div>
-                  </li>);
-              })}
-              {selecionados.length === 0 && <li className="text-sm text-muted-foreground">Escolha os projetos em “Projetos”.</li>}
-            </ul>
-          </div>
-        </div>
       </div>
+
+      {/* Faturamento por produto: o mesmo gráfico e os mesmos números do Dash detalhado (receita, lucro, crescimento, linha por produto) */}
+      <FaturamentoGeral />
 
       {/* Missão da Semana */}
       <div className="grid gap-4 overflow-hidden rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 via-card to-amber-500/10 p-4 shadow-sm sm:p-5 lg:grid-cols-[1fr_1.2fr] lg:gap-8">
