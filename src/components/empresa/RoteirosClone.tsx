@@ -15,7 +15,8 @@ const PERFIL = "BookMan-1-Dia";
 const ETAPA: Record<string, { rotulo: string; cor: string; ativo?: boolean }> = {
   fila: { rotulo: "Na fila", cor: "bg-white/10 text-white/70" },
   enviando: { rotulo: "Enviando ao Core Clone", cor: "bg-sky-500/20 text-sky-200", ativo: true },
-  gerando: { rotulo: "Gerando o vídeo", cor: "bg-amber-500/20 text-amber-200", ativo: true },
+  gerando: { rotulo: "Gerando no Core Clone", cor: "bg-amber-500/20 text-amber-200", ativo: true },
+  conferir: { rotulo: "Conferindo e baixando", cor: "bg-sky-500/20 text-sky-200", ativo: true },
   baixando: { rotulo: "Baixando", cor: "bg-sky-500/20 text-sky-200", ativo: true },
   baixado: { rotulo: "Baixado · Danilo vai editar", cor: "bg-emerald-500/20 text-emerald-200" },
   erro: { rotulo: "Deu erro", cor: "bg-rose-500/20 text-rose-200" },
@@ -60,9 +61,16 @@ export function RoteirosClone({ clienteId }: { clienteId: string }) {
   };
   const tentarDeNovo = async (id: string) => { const { error } = await db.from("clone_roteiros").update({ status: "fila", mensagem: null }).eq("id", id); if (error) toast.error("Não consegui"); else void carregar(); };
   const cancelar = async (id: string) => { const { error } = await db.from("clone_roteiros").update({ status: "cancelado" }).eq("id", id); if (error) toast.error("Só dá para cancelar o que ainda está na fila"); else void carregar(); };
+  // O robô só olha o Core Clone quando o Davi confirma (sem ficar indo e voltando no site).
+  const confirmarProntos = async () => {
+    const { error } = await db.from("clone_roteiros").update({ status: "conferir", mensagem: null }).eq("cliente_id", clienteId).eq("status", "gerando");
+    if (error) { toast.error("Não consegui pedir agora"); return; }
+    toast.success("Vou conferir no Core Clone e baixar os que estiverem prontos");
+    void carregar();
+  };
   const apagar = async (id: string) => { await db.from("clone_roteiros").delete().eq("id", id); void carregar(); };
 
-  const emAndamento = linhas.filter((l) => ["fila", "enviando", "gerando", "baixando"].includes(l.status)).length;
+  const emAndamento = linhas.filter((l) => ["fila", "enviando", "gerando", "conferir", "baixando"].includes(l.status)).length;
   return (
     <>
       <button type="button" onClick={() => setAberto(true)} className="inline-flex items-center gap-2 rounded-full border border-fuchsia-300/40 bg-fuchsia-500/15 px-5 py-2.5 text-sm font-semibold text-fuchsia-100 hover:bg-fuchsia-500/25"><Sparkles className="h-4 w-4" />Enviar roteiros{emAndamento > 0 && <span className="rounded-full bg-fuchsia-400 px-1.5 text-[11px] font-bold text-black">{emAndamento}</span>}</button>
@@ -70,7 +78,7 @@ export function RoteirosClone({ clienteId }: { clienteId: string }) {
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="dark max-h-[90vh] max-w-2xl overflow-y-auto border-white/10 bg-[#0c1320] text-white">
           <DialogTitle className="flex items-center gap-2 text-lg"><Clapperboard className="h-5 w-5 text-fuchsia-300" />Gerar vídeos a partir de roteiros</DialogTitle>
-          <DialogDescription className="text-sm text-white/60">Cole o roteiro pronto (um, ou vários: um campo por roteiro, ou separe com uma linha <b>---</b>). Eu mando para o Core Clone, espero ficar pronto, baixo e o Danilo começa a editar. O Chrome do Mac precisa estar aberto e logado em clone.corestudio.ai.</DialogDescription>
+          <DialogDescription className="text-sm text-white/60">Cole o roteiro pronto (um, ou vários: um campo por roteiro, ou separe com uma linha <b>---</b>). Eu mando para o Core Clone; quando os vídeos ficarem prontos você aperta "Já ficaram prontos" e eu baixo para o Danilo editar. O Chrome do Mac precisa estar aberto e logado em clone.corestudio.ai.</DialogDescription>
           <div className="space-y-2.5">
             {campos.map((c, i) => (
               <div key={i} className="relative">
@@ -105,6 +113,11 @@ export function RoteirosClone({ clienteId }: { clienteId: string }) {
               </div>
             );
           })}
+          {linhas.some((l) => l.status === "gerando") && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button type="button" onClick={() => void confirmarProntos()} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-semibold text-black hover:bg-emerald-400"><CheckCircle2 className="h-3.5 w-3.5" />Já ficaram prontos</button>
+              <span className="text-[11px] text-white/50">Quando os vídeos terminarem no Core Clone, aperte: eu baixo e o Danilo começa a editar.</span>
+            </div>)}
           {linhas.some((l) => l.status === "erro") && <p className="text-[11px] text-rose-200/80">{linhas.find((l) => l.status === "erro")?.mensagem}</p>}
         </div>
       )}

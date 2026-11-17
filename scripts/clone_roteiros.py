@@ -4,14 +4,14 @@ vários, e você já começar a gerar os vídeos, aguardar, baixar e aí sim com
 O app grava o roteiro em clone_roteiros (status 'fila'). Este módulo roda SÓ no Mac (ouvinte com --so-codigo: é onde está o Chrome do Davi já logado em
 https://clone.corestudio.ai). A cada passada:
   1. 'fila'     → o Claude abre Estúdio › "A partir de um roteiro pronto", cola os roteiros (um campo por roteiro) e clica em "Gerar vídeos"  → 'gerando'
-  2. 'gerando'  → de tempos em tempos olha a página Vídeos; o que ficou "pronto" devolve o link do mp4 (botão "Baixar vídeo", arquivo público)
+  2. 'conferir' → SÓ quando o Davi aperta "Já ficaram prontos" no app (nada de ficar olhando o site toda hora): olha a página Vídeos; o que ficou "pronto"
+     devolve o link do mp4 (botão "Baixar vídeo", arquivo público); o que ainda gera volta para 'gerando'
   3. pronto     → baixa o mp4 para ~/Desktop/Para o Danilo/Instalivros/ (o Danilo do Instalivros pega sozinho e edita)           → 'baixado'
 Nunca publica, agenda nem apaga nada no Core Clone. Sem login no Chrome: para e avisa (nunca digita senha).
 """
 import json
 import re
 import sys
-import time
 import unicodedata
 import urllib.request
 from pathlib import Path
@@ -22,11 +22,8 @@ from migration_db import connect  # noqa: E402
 INSTALIVROS = "e354f4be-8a8d-4c34-8f47-f85e5981b8d3"
 DESTINO = Path.home() / "Desktop" / "Para o Danilo" / "Instalivros"
 SITE = "https://clone.corestudio.ai"
-INTERVALO_CHECAGEM = 240          # segundos entre olhadas na página Vídeos
-LIMITE_ESPERA_MIN = 90            # vídeo que não aparece pronto depois disso vira erro
 MAX_POR_ENVIO = 12
 FERRAMENTAS = ["Read"]            # + Chrome (chrome=True)
-_ultima_checagem = 0.0
 
 PROMPT_ENVIO = """Você está ajudando o Davi a gerar vídeos no Core Clone ({site}), pelo Chrome dele (ferramentas mcp__claude-in-chrome; ele já está logado).
 
@@ -135,7 +132,7 @@ def enviar(rodar_claude, log):
         _marcar(ids, "erro", f"Não consegui mandar para o Core Clone: {(texto or 'sem resposta')[:200]}")
         return True
     if d.get("ok") and int(d.get("enviados") or 0) >= len(fila):
-        _marcar(ids, "gerando", "Gerando no Core Clone…", enviado_em="now")
+        _marcar(ids, "gerando", "Gerando no Core Clone. Quando ficar pronto, aperte \"Já ficaram prontos\" no app.", enviado_em="now")
         log(f"clone: {len(fila)} em geração ({d.get('passos', '')[:120]})")
     elif d.get("erro") and "logar" in str(d["erro"]).lower():
         _marcar(ids, "fila", "Abra o Chrome e entre no Core Clone (clone.corestudio.ai); eu tento de novo sozinho.")
@@ -145,19 +142,20 @@ def enviar(rodar_claude, log):
 
 
 def acompanhar(rodar_claude, log):
-    global _ultima_checagem
-    gerando = _db("SELECT id, titulo, roteiro, enviado_em, EXTRACT(EPOCH FROM now() - enviado_em) / 60 FROM public.clone_roteiros WHERE status = 'gerando' AND cliente_id = %s ORDER BY criado_em", (INSTALIVROS,))
-    if not gerando or time.time() - _ultima_checagem < INTERVALO_CHECAGEM:
+    gerando = _db("SELECT id, titulo, roteiro, enviado_em, EXTRACT(EPOCH FROM now() - enviado_em) / 60 FROM public.clone_roteiros WHERE status = 'conferir' AND cliente_id = %s ORDER BY criado_em", (INSTALIVROS,))
+    if not gerando:
         return False
-    _ultima_checagem = time.time()
     itens = "\n".join(f"{i}. começo do roteiro: \"{' '.join(g[2].split())[:90]}\" (enviado há {int(g[4] or 0)} min)" for i, g in enumerate(gerando, 1))
     ok, texto = rodar_claude(PROMPT_CHECAGEM.format(site=SITE, itens=itens), minutos=15, chrome=True, turnos=70, ferramentas=FERRAMENTAS)
     d = extrair_json(texto) if ok else None
+    ids = [g[0] for g in gerando]
     if not d:
         log("clone: checagem sem resposta:", (texto or "")[:120])
+        _marcar(ids, "gerando", "Não consegui olhar o Core Clone agora. Aperte \"Já ficaram prontos\" de novo em instantes.")
         return True
     if d.get("erro"):
         log("clone: checagem:", str(d["erro"])[:160])
+        _marcar(ids, "gerando", f"Core Clone: {str(d['erro'])[:160]}. Aperte \"Já ficaram prontos\" de novo depois.")
         return True
     por_n = {int(v.get("n", 0)): v for v in d.get("videos") or [] if str(v.get("n", "")).isdigit()}
     for i, g in enumerate(gerando, 1):
@@ -174,15 +172,17 @@ def acompanhar(rodar_claude, log):
                 _marcar([id_], "erro", f"Pronto no Core Clone, mas o download falhou: {str(e)[:160]}", video_url=v["url"])
         elif st == "falhou":
             _marcar([id_], "erro", "O Core Clone marcou este vídeo como falhou. Confira lá e mande o roteiro de novo.")
-        elif minutos > LIMITE_ESPERA_MIN:
-            _marcar([id_], "erro", f"Passou de {LIMITE_ESPERA_MIN} min e o vídeo não ficou pronto no Core Clone.")
+        elif st == "nao_achei":
+            _marcar([id_], "gerando", "Não achei este vídeo no Core Clone ainda. Aperte \"Já ficaram prontos\" de novo mais tarde.")
+        else:
+            _marcar([id_], "gerando", "Ainda gerando no Core Clone. Aperte \"Já ficaram prontos\" quando terminar.")
     return True
 
 
 def passada(rodar_claude, log=print):
     """Chamado pelo ouvinte a cada 30 s. Devolve True se fez algo."""
     # Um download interrompido deixa 'baixando' para trás: volta para olhar de novo.
-    _db("UPDATE public.clone_roteiros SET status = 'gerando', atualizado_em = now() WHERE status = 'baixando' AND atualizado_em < now() - interval '15 minutes'")
+    _db("UPDATE public.clone_roteiros SET status = 'conferir', atualizado_em = now() WHERE status = 'baixando' AND atualizado_em < now() - interval '15 minutes'")
     _db("UPDATE public.clone_roteiros SET status = 'fila', atualizado_em = now() WHERE status = 'enviando' AND atualizado_em < now() - interval '30 minutes'")
     return enviar(rodar_claude, log) or acompanhar(rodar_claude, log)
 
