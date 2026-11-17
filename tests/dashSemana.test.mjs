@@ -34,3 +34,10 @@ test('meta digitada', () => {
   assert.equal(d.lerMeta(''), null); assert.equal(d.lerMeta('abc'), null);
   assert.equal(d.saudacao(9), 'Bom dia'); assert.equal(d.saudacao(15), 'Boa tarde'); assert.equal(d.saudacao(21), 'Boa noite');
 });
+
+test('mês da semana (o da quinta-feira)', () => {
+  assert.deepEqual(d.mesDaSemana('2026-11-16'), { inicio: '2026-11-01', fim: '2026-11-30', rotulo: 'Novembro' });
+  assert.deepEqual(d.mesDaSemana('2026-10-26'), { inicio: '2026-10-01', fim: '2026-10-31', rotulo: 'Outubro' });   // 26/10 a 1/11: quinta é 29/10
+  assert.equal(d.mesDaSemana('2026-11-30').inicio, '2026-12-01');                                                  // 30/11 a 6/12: quinta é 3/12
+  assert.equal(d.mesDaSemana('2028-02-21').fim, '2028-02-29');
+});

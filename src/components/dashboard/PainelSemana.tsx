@@ -8,9 +8,9 @@ import { useAuth } from "@/auth/AuthProvider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { brl, domingoDe, filtrar, hojeIso, lerMeta, ordenar, progresso, saudacao, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
+import { brl, domingoDe, filtrar, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, saudacao, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
-// Visão da semana (17/11/2026, Davi: "no dash geral, quero criar algo parecido com esse dash, e que seja funcional"): faturamento da semana contra a meta,
+// Visão da semana (17/11/2026, Davi: "no dash geral, quero criar algo parecido com esse dash, e que seja funcional"): faturamento do mês contra a meta do mês,
 // Missão da Semana (checklist), e um cartão por projeto com as tarefas da semana (dá para concluir aqui), progresso, Meta Ads, leads e vendas dos últimos 7 dias.
 const db = supabase as unknown as SupabaseClient;
 interface Projeto { id: string; nome: string }
@@ -34,7 +34,10 @@ export function PainelSemana() {
   const [carregando, setCarregando] = useState(true);
   const [projetos, setProjetos] = useState<Projeto[]>([]);
   const [tarefas, setTarefas] = useState<TarefaSemana[]>([]);
-  const [fatur, setFatur] = useState(0);
+  const [faturMes, setFaturMes] = useState(0);
+  const [faturSemana, setFaturSemana] = useState(0);
+  const [metaMes, setMetaMes] = useState<{ id: string; valor: number | null } | null>(null);
+  const [metaAnterior, setMetaAnterior] = useState<number | null>(null);
   const [metricas, setMetricas] = useState<Record<string, Metricas>>({});
   const [linha, setLinha] = useState<Linha | null>(null);
   const [anterior, setAnterior] = useState<Linha | null>(null);
@@ -50,11 +53,12 @@ export function PainelSemana() {
     setCarregando(true);
     try {
       const fim = domingoDe(semana);
+      const mes = mesDaSemana(semana);
       const desde7 = somarDias(hoje, -6);
       const { data: cs } = await supabase.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista");
       const lista = ((cs ?? []) as { id: string; nome_especialista: string }[]).map((c) => ({ id: c.id, nome: c.nome_especialista }));
       const ids = lista.map((c) => c.id);
-      const [pl, ant, ts, prods, qr, cl, ca, ct] = await Promise.all([
+      const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma] = await Promise.all([
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").eq("semana", semana).maybeSingle(),
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").lt("semana", semana).order("semana", { ascending: false }).limit(1).maybeSingle(),
         db.from("atividades").select("id, titulo, cliente_id, concluida, data_vencimento, concluida_em").is("deleted_at", null).in("cliente_id", ids)
@@ -64,11 +68,13 @@ export function PainelSemana() {
         db.from("chatbot_leads").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${desde7}T00:00:00-03:00`).limit(5000),
         db.from("ads_campanhas").select("cliente_id, status").in("cliente_id", ids),
         db.from("ads_contas").select("cliente_id").in("cliente_id", ids),
+        db.from("painel_mensal").select("id, meta_faturamento").eq("mes", mes.inicio).maybeSingle(),
+        db.from("painel_mensal").select("meta_faturamento").lt("mes", mes.inicio).order("mes", { ascending: false }).limit(1).maybeSingle(),
       ]);
       const produtoDoCliente = new Map<string, string>(((prods.data ?? []) as { id: string; cliente_id: string }[]).map((p) => [p.id, p.cliente_id]));
       const pids = [...produtoDoCliente.keys()];
       const [diario, vendas] = pids.length ? await Promise.all([
-        db.from("produto_financeiro_diario").select("produto_id, receita, reembolsos").in("produto_id", pids).gte("data", semana).lte("data", fim),
+        db.from("produto_financeiro_diario").select("produto_id, data, receita, reembolsos").in("produto_id", pids).gte("data", mes.inicio < semana ? mes.inicio : semana).lte("data", mes.fim > fim ? mes.fim : fim),
         db.from("vendas_plataforma_eventos").select("produto_id").in("produto_id", pids).eq("tipo", "venda").gte("data", desde7),
       ]) : [{ data: [] }, { data: [] }];
       const m: Record<string, Metricas> = {};
@@ -79,7 +85,13 @@ export function PainelSemana() {
       for (const c of (ca.data ?? []) as { cliente_id: string; status: string | null }[]) { const x = get(c.cliente_id); if (c.status === "ativa") x.ads = "ativa"; else if (x.ads !== "ativa") x.ads = "pausada"; }
       setProjetos(lista);
       setTarefas(tarefasDaSemana((ts.data ?? []) as TarefaSemana[], semana));
-      setFatur(((diario.data ?? []) as { receita: number | null; reembolsos: number | null }[]).reduce((s, d) => s + Number(d.receita ?? 0) - Number(d.reembolsos ?? 0), 0));
+      const dias = (diario.data ?? []) as { data: string; receita: number | null; reembolsos: number | null }[];
+      const soma = (de: string, ate: string) => dias.filter((d) => d.data >= de && d.data <= ate).reduce((s, d) => s + Number(d.receita ?? 0) - Number(d.reembolsos ?? 0), 0);
+      setFaturMes(soma(mes.inicio, mes.fim));
+      setFaturSemana(soma(semana, fim));
+      const mmd = mm.data as { id: string; meta_faturamento: number | null } | null;
+      setMetaMes(mmd ? { id: mmd.id, valor: mmd.meta_faturamento == null ? null : Number(mmd.meta_faturamento) } : null);
+      setMetaAnterior(((ma.data as { meta_faturamento: number | null } | null)?.meta_faturamento) ?? null);
       setMetricas(m);
       setLinha((pl.data as Linha | null) ?? null);
       setAnterior((ant.data as Linha | null) ?? null);
@@ -90,7 +102,7 @@ export function PainelSemana() {
   useEffect(() => { void carregar(); }, [carregar]);
 
   // O que a semana mostra: o que está gravado nela, senão herda da anterior (meta, projetos e missão sem os "feito").
-  const efetivo: Linha = linha ?? { id: "", meta_faturamento: anterior?.meta_faturamento ?? null, missao: (anterior?.missao ?? []).map((i) => ({ ...i, feito: false })), projetos: anterior?.projetos ?? null };
+  const efetivo: Linha = linha ?? { id: "", meta_faturamento: null, missao: (anterior?.missao ?? []).map((i) => ({ ...i, feito: false })), projetos: anterior?.projetos ?? null };
   const tarefasPorProjeto = useMemo(() => { const mp = new Map<string, TarefaSemana[]>(); tarefas.forEach((t) => { if (t.cliente_id) mp.set(t.cliente_id, [...(mp.get(t.cliente_id) ?? []), t]); }); return mp; }, [tarefas]);
   const selecionados = useMemo(() => {
     if (efetivo.projetos) return projetos.filter((p) => efetivo.projetos!.includes(p.id));
@@ -112,6 +124,20 @@ export function PainelSemana() {
     }
   };
 
+  const mes = mesDaSemana(semana);
+  const salvarMeta = async (valor: number | null) => {
+    const atual = metaMes;
+    setMetaMes({ id: atual?.id ?? "", valor });
+    if (atual?.id) {
+      const { error } = await db.from("painel_mensal").update({ meta_faturamento: valor, atualizado_em: new Date().toISOString() }).eq("id", atual.id);
+      if (error) toast.error("Não consegui salvar a meta");
+    } else {
+      const { data, error } = await db.from("painel_mensal").insert({ mes: mes.inicio, meta_faturamento: valor }).select("id").maybeSingle();
+      if (error) { toast.error("Não consegui salvar a meta"); return; }
+      setMetaMes({ id: (data as { id: string } | null)?.id ?? "", valor });
+    }
+  };
+
   const concluir = async (t: TarefaSemana, concluida: boolean) => {
     const { data: cols } = await db.from("colunas_atividade").select("status_key, eh_conclusao").eq("cliente_id", t.cliente_id);
     const c = (cols ?? []) as { status_key: string; eh_conclusao: boolean }[];
@@ -121,8 +147,8 @@ export function PainelSemana() {
     if (error) { toast.error("Não consegui atualizar a tarefa"); void carregar(); }
   };
 
-  const meta = efetivo.meta_faturamento;
-  const pctMeta = meta && meta > 0 ? Math.min(100, Math.round((fatur / meta) * 100)) : null;
+  const meta = metaMes ? metaMes.valor : metaAnterior;   // mês sem meta própria herda a do mês anterior
+  const pctMeta = meta && meta > 0 ? Math.min(100, Math.round((faturMes / meta) * 100)) : null;
   const emExecucao = selecionados.filter((p) => { const g = progresso(tarefasPorProjeto.get(p.id) ?? []); return g.total > 0 && g.pct < 100; }).length;
   const contagem = (f: FiltroTarefas) => selecionados.reduce((n, p) => n + filtrar(tarefasPorProjeto.get(p.id) ?? [], f, hoje).length, 0);
   const missao = efetivo.missao;
@@ -143,30 +169,31 @@ export function PainelSemana() {
         </div>
       </div>
 
-      {/* Faturamento da semana */}
+      {/* Faturamento do mês */}
       <div className="grid items-center gap-4 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/10 via-card to-card p-4 shadow-sm sm:grid-cols-[auto_1fr_auto] sm:gap-6 sm:p-5">
         <div className="flex items-center gap-3">
           <span className="grid h-14 w-14 place-items-center rounded-full border-2 border-emerald-500/60 bg-emerald-500/10 text-emerald-500"><Wallet className="h-7 w-7" /></span>
           <div>
-            <p className="text-sm font-semibold text-foreground">Faturamento da Semana</p>
-            <p className="text-3xl font-extrabold tracking-tight text-foreground">{carregando ? "…" : brl(fatur)}</p>
+            <p className="text-sm font-semibold text-foreground">Faturamento do Mês · {mes.rotulo}</p>
+            <p className="text-3xl font-extrabold tracking-tight text-foreground">{carregando ? "…" : brl(faturMes)}</p>
+            <p className="text-[11px] text-muted-foreground">Nesta semana: {carregando ? "…" : brl(faturSemana)}</p>
           </div>
         </div>
         <div>
-          <p className="mb-1.5 text-sm text-muted-foreground">{pctMeta === null ? "Defina a meta da semana para acompanhar" : `${pctMeta}% da meta semanal`}</p>
+          <p className="mb-1.5 text-sm text-muted-foreground">{pctMeta === null ? "Defina a meta do mês para acompanhar" : `${pctMeta}% da meta do mês`}</p>
           <div className="h-3.5 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-lime-400 transition-all" style={{ width: `${pctMeta ?? 0}%` }} /></div>
         </div>
         <div className="flex items-center gap-3">
           <Target className="h-9 w-9 text-primary" />
           <div>
-            <p className="text-xs text-muted-foreground">Meta da Semana</p>
+            <p className="text-xs text-muted-foreground">Meta do Mês</p>
             {editandoMeta !== null ? (
               <input autoFocus value={editandoMeta} onChange={(e) => setEditandoMeta(e.target.value)} placeholder="ex.: 10000 ou 10k"
-                onBlur={() => { const v = lerMeta(editandoMeta); setEditandoMeta(null); if (v !== meta) void salvar({ meta_faturamento: v }); }}
+                onBlur={() => { const v = lerMeta(editandoMeta); setEditandoMeta(null); if (v !== meta) void salvarMeta(v); }}
                 onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditandoMeta(null); }}
                 className="w-32 rounded-md border bg-background px-2 py-1 text-lg font-bold outline-none focus:border-primary" />
             ) : (
-              <button type="button" onClick={() => setEditandoMeta(meta ? String(meta) : "")} title="Clique para mudar a meta" className="text-xl font-bold text-foreground hover:text-primary">{meta ? brl(meta) : "Definir meta"}</button>
+              <button type="button" onClick={() => setEditandoMeta(meta ? String(meta) : "")} title="Clique para mudar a meta do mês" className="text-xl font-bold text-foreground hover:text-primary">{meta ? brl(meta) : "Definir meta"}</button>
             )}
           </div>
         </div>
@@ -278,7 +305,7 @@ export function PainelSemana() {
             );
           })}
         </div>)}
-      <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><ArrowRight className="h-3 w-3" />Faturamento = receita menos reembolsos lançados nos produtos dos projetos, de segunda a domingo. Tarefas: as que vencem na semana, as atrasadas e as concluídas nela.</p>
+      <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><ArrowRight className="h-3 w-3" />Faturamento = receita menos reembolsos lançados nos produtos dos projetos, no mês inteiro. Tarefas: as que vencem na semana, as atrasadas e as concluídas nela.</p>
     </div>
   );
 }

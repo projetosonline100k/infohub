@@ -47,6 +47,16 @@ export function filtrar(ts: TarefaSemana[], f: FiltroTarefas, hoje: string): Tar
   return ts;
 }
 
+/** Mês da semana (o da quinta-feira dela, como no padrão ISO): primeiro e último dia. */
+export function mesDaSemana(segunda: string): { inicio: string; fim: string; rotulo: string } {
+  const q = somarDias(segunda, 3);
+  const [a, m] = q.split("-").map(Number);
+  const inicio = `${a}-${String(m).padStart(2, "0")}-01`;
+  const ult = new Date(a, m, 0).getDate();
+  const nomes = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  return { inicio, fim: `${a}-${String(m).padStart(2, "0")}-${String(ult).padStart(2, "0")}`, rotulo: nomes[m - 1] };
+}
+
 export const saudacao = (hora: number) => (hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite");
 export const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 /** Meta digitada ("10000", "10.000,50", "10k") → número; vazio ou inválido = null. */
