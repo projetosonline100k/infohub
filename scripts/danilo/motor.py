@@ -35,6 +35,7 @@ Uso: python3 motor.py <pasta-do-projeto> [--previa]
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -359,9 +360,12 @@ def video_alfa(arquivo):
             subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-y", "-i", str(arq), "-an", "-vf",
                             "scale=540:-2,chromakey=0x00FF00:0.16:0.05,despill=type=green,format=yuva444p10le",
                             "-c:v", "prores_ks", "-profile:v", "4444", "-alpha_bits", "16", str(prores)], check=True)
-            subprocess.run(["avconvert", "-s", str(prores), "-o", str(destino),
-                            "-p", "PresetHEVCHighestQualityWithAlpha", "--replace"],
-                           check=True, capture_output=True)
+            if shutil.which("avconvert"):
+                subprocess.run(["avconvert", "-s", str(prores), "-o", str(destino),
+                                "-p", "PresetHEVCHighestQualityWithAlpha", "--replace"],
+                               check=True, capture_output=True)
+            else:   # servidor Linux: sem o encoder da Apple, fica o ProRes leve (servidor.empilhado() converte para a web)
+                prores.replace(destino)
         finally:
             prores.unlink(missing_ok=True)
     return destino
