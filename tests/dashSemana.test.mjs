@@ -25,7 +25,8 @@ test('progresso, ordem e filtros', () => {
   const ts = [t({ id: '1', concluida: true, data_vencimento: '2026-11-16' }), t({ id: '2', data_vencimento: '2026-11-17' }), t({ id: '3', data_vencimento: '2026-11-19' }), t({ id: '4', data_vencimento: '2026-11-15' })];
   assert.deepEqual(d.progresso(ts), { total: 4, feitas: 1, pct: 25 });
   assert.deepEqual(d.progresso([]), { total: 0, feitas: 0, pct: 0 });
-  assert.deepEqual(d.ordenar(ts).map((x) => x.id), ['4', '2', '3', '1']);
+  assert.deepEqual(d.ordenar(ts, '2026-11-17').map((x) => x.id), ['4', '2', '3', '1']);   // atrasada, hoje, próxima, concluída
+  assert.deepEqual(d.ordenar([t({ id: 'a', data_vencimento: '2026-11-20' }), t({ id: 'b' }), t({ id: 'c', data_vencimento: '2026-11-17' }), t({ id: 'd', data_vencimento: '2026-11-10' }), t({ id: 'e', data_vencimento: '2026-11-09' }), t({ id: 'f', concluida: true, data_vencimento: '2026-11-01' })], '2026-11-17').map((x) => x.id), ['e', 'd', 'c', 'a', 'b', 'f']);
   assert.deepEqual(d.filtrar(ts, 'hoje', '2026-11-17').map((x) => x.id), ['2', '4']);   // vence hoje ou já passou
   assert.deepEqual(d.filtrar(ts, 'concluidas', '2026-11-17').map((x) => x.id), ['1']);
   assert.equal(d.filtrar(ts, 'pendentes', '2026-11-17').length, 3);

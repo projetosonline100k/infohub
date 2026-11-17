@@ -29,9 +29,15 @@ export function progresso(ts: TarefaSemana[]): { total: number; feitas: number; 
   return { total: ts.length, feitas, pct: ts.length ? Math.round((feitas / ts.length) * 100) : 0 };
 }
 
-/** Abertas primeiro (mais atrasadas e as de hoje no topo), concluídas no fim. */
-export function ordenar(ts: TarefaSemana[]): TarefaSemana[] {
-  return [...ts].sort((a, b) => Number(a.concluida) - Number(b.concluida) || (a.data_vencimento ?? "9999").localeCompare(b.data_vencimento ?? "9999") || a.titulo.localeCompare(b.titulo));
+/** Ordem dos cartões: atrasadas, depois as de hoje, depois as próximas por data (sem data no fim das abertas), e as concluídas por último. */
+export function ordenar(ts: TarefaSemana[], hoje: string): TarefaSemana[] {
+  const grupo = (t: TarefaSemana) => {
+    if (t.concluida) return 3;
+    const v = (t.data_vencimento ?? "").slice(0, 10);
+    if (!v) return 2;
+    return v < hoje ? 0 : v === hoje ? 1 : 2;
+  };
+  return [...ts].sort((a, b) => grupo(a) - grupo(b) || (a.data_vencimento ?? "9999").localeCompare(b.data_vencimento ?? "9999") || a.titulo.localeCompare(b.titulo));
 }
 
 export type FiltroTarefas = "todas" | "hoje" | "pendentes" | "concluidas";

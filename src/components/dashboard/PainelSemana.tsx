@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { comConclusaoDaEquipe } from "@/lib/atividades/concluidaEquipe";
+import { AtividadeDetailPanel } from "@/components/atividades/AtividadeDetailPanel";
+import { excluirAtividade } from "@/lib/atividades/excluirAtividade";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
@@ -34,6 +36,7 @@ export function PainelSemana() {
   const { openTab } = useWorkspaceAcoes();
   const { user } = useAuth();
   const [fundos, setFundos] = useState<Record<string, string>>({});   // imagem de fundo do cabeçalho de cada projeto
+  const [painel, setPainel] = useState<{ atividade: unknown; colunas: { status_key: string; nome: string; eh_conclusao: boolean }[] } | null>(null);   // tarefa aberta no painel lateral
   const [subindoFundo, setSubindoFundo] = useState<string | null>(null);
   const hoje = hojeIso();
   const [semana, setSemana] = useState(segundaDe(new Date()));
@@ -203,6 +206,16 @@ export function PainelSemana() {
     const velho = antigo?.split("/painel-fundos/")[1];
     if (velho) void supabase.storage.from("painel-fundos").remove([decodeURIComponent(velho)]);
   };
+  // Clicar na tarefa abre o mesmo painel lateral da tela de Atividades (responsável, data, prioridade, descrição…).
+  const abrirTarefa = async (t: TarefaSemana) => {
+    const [{ data: a }, { data: cols }] = await Promise.all([
+      db.from("atividades").select("*").eq("id", t.id).maybeSingle(),
+      db.from("colunas_atividade").select("status_key, nome, eh_conclusao").eq("cliente_id", t.cliente_id).order("ordem", { ascending: true }),
+    ]);
+    if (!a) { toast.error("Não achei essa tarefa"); return; }
+    const colunas = ((cols ?? []) as { status_key: string; nome: string; eh_conclusao: boolean }[]);
+    setPainel({ atividade: a, colunas: colunas.length ? colunas : [{ status_key: "backlog", nome: "Backlog", eh_conclusao: false }, { status_key: "em_progresso", nome: "Em execução", eh_conclusao: false }, { status_key: "revisao", nome: "Revisão", eh_conclusao: false }, { status_key: "finalizado", nome: "Finalizado", eh_conclusao: true }] });
+  };
   const salvarMetaProjeto = async (clienteId: string, valor: number | null) => {
     const atual = metasProj[clienteId];
     if (valor == null || valor <= 0) {
@@ -354,7 +367,7 @@ export function PainelSemana() {
         <div className={cn("grid gap-4", lista || selecionados.length === 1 ? "grid-cols-1" : selecionados.length === 2 ? "md:grid-cols-2" : selecionados.length === 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4")}>
           {selecionados.map((p, idx) => {
             const cor = CORES[idx % CORES.length];
-            const todas = ordenar(tarefasPorProjeto.get(p.id) ?? []);
+            const todas = ordenar(tarefasPorProjeto.get(p.id) ?? [], hoje);
             const g = progresso(todas);
             const visiveis = filtrar(todas, filtro, hoje);
             const aberto = abertos.has(p.id);
@@ -402,7 +415,7 @@ export function PainelSemana() {
                     return (
                       <li key={t.id} className="flex items-center gap-2.5 py-2">
                         <Checkbox checked={t.concluida} onCheckedChange={(v) => void concluir(t, v === true)} />
-                        <button type="button" onClick={() => navigate(`/clientes/${p.id}?atividade=${t.id}`)} className={cn("min-w-0 flex-1 truncate text-left text-sm hover:underline", t.concluida && "text-muted-foreground line-through")} title={t.titulo}>{t.titulo}</button>
+                        <button type="button" onClick={() => void abrirTarefa(t)} title={`${t.titulo} — clique para editar`} className={cn("min-w-0 flex-1 truncate text-left text-sm hover:underline", t.concluida && "text-muted-foreground line-through")}>{t.titulo}</button>
                         {marca && <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold", marca.cls)}>{marca.txt}</span>}
                       </li>);
                   })}
@@ -449,6 +462,8 @@ export function PainelSemana() {
             );
           })}
         </div>)}
+      <AtividadeDetailPanel open={!!painel} onClose={() => setPainel(null)} atividade={(painel?.atividade ?? null) as never} colunas={painel?.colunas ?? []} onUpdate={() => void carregar()}
+        onDelete={(id) => { void excluirAtividade(id, () => void carregar()).then((ok) => { if (ok) { setPainel(null); setTarefas((ts) => ts.filter((x) => x.id !== id)); } }); }} />
       <p className="flex items-center justify-end gap-1 text-[11px] text-muted-foreground"><ArrowRight className="h-3 w-3" />Faturamento = receita menos reembolsos lançados nos produtos dos projetos, no mês inteiro. Tarefas: as mesmas do filtro “Esta semana” do quadro de Atividades de cada projeto.</p>
     </div>
   );
