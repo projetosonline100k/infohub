@@ -36,3 +36,7 @@ verify_jwt = false
 [functions.vendas-webhook]
 # Webhook da Kiwify/Hotmart: chega sem JWT; a chave secreta do produto vai na URL (?chave=).
 verify_jwt = false
+
+[functions.facebook-ads]
+# O callback do Login do Facebook e o link curto chegam sem JWT; as demais rotas validam a sessão dentro da função.
+verify_jwt = false
