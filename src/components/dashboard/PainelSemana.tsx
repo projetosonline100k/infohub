@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, LayoutGrid, List, Loader2, Plus, Settings, Target, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowRight, BarChart3, CalendarCheck, CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Clock, Flag, ImagePlus, LayoutGrid, List, Loader2, Plus, Settings, Target, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FaturamentoGeral } from "@/components/dashboard/FaturamentoGeral";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/auth/AuthProvider";
+import { useWorkspaceAcoes } from "@/components/workspace/WorkspaceTabs";
 import { criarAtividade } from "@/lib/atividades/criarAtividade";
 import { brl, domingoDe, faltaParaMeta, filtrar, metaDoMes, hojeIso, lerMeta, mesDaSemana, ordenar, progresso, segundaDe, somarDias, tarefasDaSemana, type FiltroTarefas, type ItemMissao, type TarefaSemana } from "@/lib/dashSemana";
 
@@ -28,6 +30,10 @@ const novoId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? 
 
 export function PainelSemana() {
   const navigate = useNavigate();
+  const { openTab } = useWorkspaceAcoes();
+  const { user } = useAuth();
+  const [fundos, setFundos] = useState<Record<string, string>>({});   // imagem de fundo do cabeçalho de cada projeto
+  const [subindoFundo, setSubindoFundo] = useState<string | null>(null);
   const hoje = hojeIso();
   const [semana, setSemana] = useState(segundaDe(new Date()));
   const [carregando, setCarregando] = useState(true);
@@ -62,19 +68,20 @@ export function PainelSemana() {
       const { data: cs } = await supabase.from("clientes").select("id, nome_especialista").eq("arquivado", false).order("nome_especialista");
       const lista = ((cs ?? []) as { id: string; nome_especialista: string }[]).map((c) => ({ id: c.id, nome: c.nome_especialista }));
       const ids = lista.map((c) => c.id);
-      const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma, mp] = await Promise.all([
+      const [pl, ant, ts, prods, qr, cl, ca, ct, mm, ma, mp, fd] = await Promise.all([
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").eq("semana", semana).maybeSingle(),
         db.from("painel_semanal").select("id, meta_faturamento, missao, projetos").lt("semana", semana).order("semana", { ascending: false }).limit(1).maybeSingle(),
         db.from("atividades").select("id, titulo, cliente_id, concluida, data_vencimento, concluida_em").is("deleted_at", null).in("cliente_id", ids)
           .or(`and(concluida.eq.false,data_vencimento.lte.${fim}),concluida_em.gte.${semana}T00:00:00-03:00`).limit(2000),
         db.from("produtos_cliente").select("id, cliente_id").in("cliente_id", ids),
-        db.from("quiz_respostas").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${desde7}T00:00:00-03:00`).limit(5000),
-        db.from("chatbot_leads").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${desde7}T00:00:00-03:00`).limit(5000),
+        db.from("quiz_respostas").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${mes.inicio}T00:00:00-03:00`).lte("criada_em", `${mes.fim}T23:59:59-03:00`).limit(10000),
+        db.from("chatbot_leads").select("cliente_id").in("cliente_id", ids).gte("criada_em", `${mes.inicio}T00:00:00-03:00`).lte("criada_em", `${mes.fim}T23:59:59-03:00`).limit(10000),
         db.from("ads_campanhas").select("cliente_id, status").in("cliente_id", ids),
         db.from("ads_contas").select("cliente_id").in("cliente_id", ids),
         db.from("painel_mensal").select("id, meta_faturamento").eq("mes", mes.inicio).maybeSingle(),
         db.from("painel_mensal").select("meta_faturamento").lt("mes", mes.inicio).order("mes", { ascending: false }).limit(1).maybeSingle(),
         db.from("painel_mensal_projeto").select("id, cliente_id, meta_faturamento").eq("mes", mes.inicio),
+        db.from("painel_fundos").select("cliente_id, url"),
       ]);
       const produtoDoCliente = new Map<string, string>(((prods.data ?? []) as { id: string; cliente_id: string }[]).map((p) => [p.id, p.cliente_id]));
       const pids = [...produtoDoCliente.keys()];
@@ -93,6 +100,7 @@ export function PainelSemana() {
       const dias = (diario.data ?? []) as { data: string; receita: number | null; reembolsos: number | null }[];
       const soma = (de: string, ate: string) => dias.filter((d) => d.data >= de && d.data <= ate).reduce((s, d) => s + Number(d.receita ?? 0) - Number(d.reembolsos ?? 0), 0);
       setDiarioMes(dias.filter((d) => d.data >= mes.inicio && d.data <= mes.fim).map((d) => ({ dia: d.data, cliente_id: produtoDoCliente.get((d as unknown as { produto_id: string }).produto_id) ?? "", valor: Number(d.receita ?? 0) - Number(d.reembolsos ?? 0) })));
+      setFundos(Object.fromEntries(((fd.data ?? []) as { cliente_id: string; url: string }[]).map((r) => [r.cliente_id, r.url])));
       setMetasProj(Object.fromEntries(((mp.data ?? []) as { id: string; cliente_id: string; meta_faturamento: number }[]).map((r) => [r.cliente_id, { id: r.id, valor: Number(r.meta_faturamento) }])));
       setFaturMes(soma(mes.inicio, mes.fim));
       setFaturSemana(soma(semana, fim));
@@ -161,6 +169,38 @@ export function PainelSemana() {
     if (!t) return;
     setNovaMissao((n) => ({ ...n, [id]: "" }));
     void salvar({ missao: [...missao, { id: novoId(), texto: t.slice(0, 160), feito: false, cliente_id: id }] });
+  };
+  // Fundo do cabeçalho do projeto: reduz a imagem (máx. 1400 px) para ficar leve e guarda no bucket painel-fundos.
+  const trocarFundo = async (clienteId: string, arquivo: File) => {
+    if (!user || !/^image\/(jpeg|png|webp)$/.test(arquivo.type)) { toast.error("Escolha uma imagem JPG, PNG ou WebP"); return; }
+    setSubindoFundo(clienteId);
+    try {
+      const bmp = await createImageBitmap(arquivo);
+      const k = Math.min(1, 1400 / bmp.width);
+      const cv = document.createElement("canvas");
+      cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+      cv.getContext("2d")!.drawImage(bmp, 0, 0, cv.width, cv.height);
+      const blob: Blob = await new Promise((ok, no) => cv.toBlob((b) => (b ? ok(b) : no(new Error("imagem"))), "image/jpeg", 0.85));
+      const caminho = `${user.id}/${clienteId}-${Date.now()}.jpg`;
+      const { error: e1 } = await supabase.storage.from("painel-fundos").upload(caminho, blob, { contentType: "image/jpeg" });
+      if (e1) throw e1;
+      const url = supabase.storage.from("painel-fundos").getPublicUrl(caminho).data.publicUrl;
+      const antigo = fundos[clienteId];
+      const { error: e2 } = antigo
+        ? await db.from("painel_fundos").update({ url, atualizado_em: new Date().toISOString() }).eq("cliente_id", clienteId)
+        : await db.from("painel_fundos").insert({ cliente_id: clienteId, url });
+      if (e2) throw e2;
+      if (antigo) { const velho = antigo.split("/painel-fundos/")[1]; if (velho) void supabase.storage.from("painel-fundos").remove([decodeURIComponent(velho)]); }
+      setFundos((f) => ({ ...f, [clienteId]: url }));
+    } catch { toast.error("Não consegui trocar a imagem de fundo"); }
+    finally { setSubindoFundo(null); }
+  };
+  const tirarFundo = async (clienteId: string) => {
+    const antigo = fundos[clienteId];
+    setFundos((f) => { const n = { ...f }; delete n[clienteId]; return n; });
+    await db.from("painel_fundos").delete().eq("cliente_id", clienteId);
+    const velho = antigo?.split("/painel-fundos/")[1];
+    if (velho) void supabase.storage.from("painel-fundos").remove([decodeURIComponent(velho)]);
   };
   const salvarMetaProjeto = async (clienteId: string, valor: number | null) => {
     const atual = metasProj[clienteId];
@@ -310,7 +350,7 @@ export function PainelSemana() {
       {carregando && !projetos.length ? <Loader2 className="mx-auto my-10 h-6 w-6 animate-spin text-muted-foreground" />
         : selecionados.length === 0 ? <p className="rounded-2xl border border-dashed p-10 text-center text-sm text-muted-foreground">Nenhum projeto com tarefa nesta semana. Use “Projetos” para escolher quais aparecem aqui.</p>
         : (
-        <div className={cn("grid gap-4", lista ? "grid-cols-1" : "md:grid-cols-2 xl:grid-cols-3")}>
+        <div className={cn("grid gap-4", lista || selecionados.length === 1 ? "grid-cols-1" : selecionados.length === 2 ? "md:grid-cols-2" : selecionados.length === 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2 xl:grid-cols-4")}>
           {selecionados.map((p, idx) => {
             const cor = CORES[idx % CORES.length];
             const todas = ordenar(tarefasPorProjeto.get(p.id) ?? []);
@@ -321,17 +361,24 @@ export function PainelSemana() {
             const x = metricas[p.id] ?? { leads: 0, vendas: 0, ads: "sem" as const };
             const status = g.total === 0 ? "Sem tarefas" : g.pct === 100 ? "Concluído" : "Em andamento";
             return (
-              <div key={p.id} className="rounded-2xl border bg-card p-4 shadow-sm" style={{ borderColor: `${cor}55` }}>
+              <div key={p.id} className="group/card overflow-hidden rounded-2xl border bg-card shadow-sm" style={{ borderColor: `${cor}55` }}>
+                <div className={cn("relative p-4", fundos[p.id] && "dark text-foreground")} style={fundos[p.id] ? { backgroundImage: `linear-gradient(90deg, rgba(8,12,20,0.88) 0%, rgba(8,12,20,0.55) 55%, rgba(8,12,20,0.25) 100%), url(${fundos[p.id]})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}>
+                <div className="absolute right-2 top-2 z-10 flex gap-1 opacity-0 transition-opacity group-hover/card:opacity-100">
+                  <label title="Imagem de fundo deste projeto" className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg bg-black/55 text-white hover:bg-black/75">{subindoFundo === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImagePlus className="h-3.5 w-3.5" />}<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void trocarFundo(p.id, f); }} /></label>
+                  {fundos[p.id] && <button type="button" onClick={() => void tirarFundo(p.id)} title="Tirar a imagem de fundo" className="grid h-7 w-7 place-items-center rounded-lg bg-black/55 text-white hover:bg-black/75"><Trash2 className="h-3.5 w-3.5" /></button>}
+                </div>
                 <div className="flex items-center gap-3">
                   <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-bold text-white" style={{ background: cor }}>{p.nome.slice(0, 1).toUpperCase()}</span>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => navigate(`/clientes/${p.id}?secao=atividades`)} title="Abrir as atividades do projeto" className="block max-w-full truncate text-left text-lg font-bold text-foreground hover:underline">{p.nome}</button>
+                    <button type="button" onClick={() => openTab(`/clientes/${p.id}?secao=atividades`, `${p.nome} · Atividades`, { nova: true })} title="Abrir as atividades do projeto numa guia nova" className="block max-w-full truncate text-left text-lg font-bold text-foreground hover:underline">{p.nome}</button>
                     <p className="flex items-center gap-1.5 text-xs"><span className={cn("h-2 w-2 rounded-full", g.total === 0 ? "bg-muted-foreground" : g.pct === 100 ? "bg-emerald-500" : "bg-emerald-400")} /><span className={g.total === 0 ? "text-muted-foreground" : "text-emerald-500"}>{status}</span></p>
                   </div>
                   <span className="text-xl font-bold tabular-nums text-foreground">{g.pct}%</span>
                   <button type="button" onClick={() => setAbertos((s) => { const n = new Set(s); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); return n; })} aria-label="Ver mais"><ChevronDown className={cn("h-5 w-5 text-muted-foreground transition-transform", aberto && "rotate-180")} /></button>
                 </div>
                 <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full transition-all" style={{ width: `${g.pct}%`, background: cor }} /></div>
+                </div>
+                <div className="px-4 pb-4 pt-0">
                 <div className="mt-3 rounded-xl border border-amber-400/40 bg-amber-400/[0.07] p-2.5">
                   <p className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-amber-500"><Flag className="h-3.5 w-3.5" />Missão da Semana{missaoDe(p.id).length > 0 && <span className="font-normal normal-case tracking-normal text-amber-500/70">· {missaoDe(p.id).filter((i) => i.feito).length}/{missaoDe(p.id).length}</span>}</p>
                   {missaoDe(p.id).map((i) => (
@@ -393,8 +440,9 @@ export function PainelSemana() {
                 </div>
                 <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-sm">
                   <div className="flex items-center gap-2"><BarChart3 className="h-5 w-5 text-sky-500" /><div><p className="text-[11px] leading-none text-muted-foreground">Meta Ads</p><p className={cn("font-bold", x.ads === "ativa" ? "text-emerald-500" : x.ads === "sem" ? "text-muted-foreground" : "text-amber-500")}>{{ ativa: "Ativa", pausada: "Pausada", conectada: "Conectada", sem: "Sem dados" }[x.ads]}</p></div></div>
-                  <div className="flex items-center gap-2"><Users className="h-5 w-5 text-muted-foreground" /><div><p className="text-[11px] leading-none text-muted-foreground">Leads (7d)</p><p className="text-lg font-bold tabular-nums">{x.leads}</p></div></div>
+                  <div className="flex items-center gap-2"><Users className="h-5 w-5 text-muted-foreground" /><div><p className="text-[11px] leading-none text-muted-foreground">Leads (mês)</p><p className="text-lg font-bold tabular-nums">{x.leads}</p></div></div>
                   <div className="flex items-center gap-2"><CalendarCheck className="h-5 w-5 text-muted-foreground" /><div><p className="text-[11px] leading-none text-muted-foreground">Vendas (7d)</p><p className="text-lg font-bold tabular-nums">{x.vendas}</p></div></div>
+                </div>
                 </div>
               </div>
             );
