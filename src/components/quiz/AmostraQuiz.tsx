@@ -333,7 +333,7 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
         <img src={livro.capa} alt="" draggable={false} className="h-[200px] w-[140px] rounded-md object-cover shadow-[0_10px_24px_rgba(0,0,0,0.28)]" />
         <p className="mt-4 line-clamp-2 text-base font-extrabold leading-tight">{livro.titulo}</p>
         <p className="mt-0.5 line-clamp-1 text-xs">{livro.autor}</p>
-        <div className="mt-4 flex items-center justify-center gap-4">
+        <div className="mt-11 flex items-center justify-center gap-4">
           <Redondo rotulo="Baixar" apagado><Download className="h-5 w-5" /></Redondo>
           <Redondo rotulo="Ler a amostra" onClick={temTexto ? () => setTela("lendo") : undefined} apagado><BookOpenText className="h-5 w-5" /></Redondo>
           <div className="relative">
