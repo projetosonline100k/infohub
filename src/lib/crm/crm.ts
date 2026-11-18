@@ -1,6 +1,6 @@
 // CRM por projeto (18/11/2026): rótulos e limpeza de telefone usados pela tela.
 export const ROTULO_ORIGEM: Record<string, string> = {
-  manual: "Manual", quiz: "Quiz", instagram: "Instagram", venda: "Compra", whatsapp: "WhatsApp",
+  manual: "Manual", quiz: "Quiz", instagram: "Instagram", venda: "Compra", whatsapp: "WhatsApp", seguidor: "Seguidor",
 };
 export const ROTULO_EVENTO: Record<string, string> = {
   entrou: "Entrou", etapa: "Mudou de etapa", quiz: "Quiz", abordagem: "Abordagem", compra: "Compra", reembolso: "Reembolso", instagram: "Instagram", nota: "Anotação", funil: "Funil",

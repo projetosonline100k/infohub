@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, Settings2, Trash2 } from "lucide-react";
+import { ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, Settings2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/DialogosGlobais";
 import { abrirLinkExterno } from "@/lib/abrirLink";
+import { ImportarSeguidores } from "./ImportarSeguidores";
 import { ConversaInstagram } from "./ConversaInstagram";
 import { limparTelefone, ROTULO_ORIGEM, ROTULO_EVENTO } from "@/lib/crm/crm";
 
@@ -56,6 +57,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const [aberta, setAberta] = useState<string | null>(null);
   const [novaEm, setNovaEm] = useState<string | null | undefined>(undefined);   // undefined = fechado; null = sem etapa
   const [gerenciar, setGerenciar] = useState(false);
+  const [importando, setImportando] = useState(false);
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   const [mostrando, setMostrando] = useState<Record<string, number>>({});
@@ -143,6 +145,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
         <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
           <span>{pessoas.length} pessoas</span>
           <span>Vendido: <b className="text-foreground">{brl(totalVendido)}</b></span>
+          <Button variant="outline" size="sm" onClick={() => setImportando(true)}><Upload className="mr-1 h-4 w-4" />Seguidores</Button>
           <Button variant="outline" size="sm" onClick={() => setGerenciar(true)}><Settings2 className="mr-1 h-4 w-4" />Etapas</Button>
           <Button size="sm" onClick={() => setNovaEm(null)}><Plus className="mr-1 h-4 w-4" />Pessoa</Button>
         </div>
@@ -218,6 +221,8 @@ export function CrmView({ clienteId }: { clienteId: string }) {
         onMudou={(nova) => { if (nova) setPessoas((l) => l.map((x) => (x.id === nova.id ? nova : x))); else void carregar(); }} onMover={mover}
         onExcluida={(id) => { setAberta(null); setPessoas((l) => l.filter((x) => x.id !== id)); }} />
       <NovaPessoa etapaId={novaEm} etapas={etapas} clienteId={clienteId} onFechar={() => setNovaEm(undefined)} onCriada={() => { setNovaEm(undefined); void carregar(); }} />
+      <ImportarSeguidores aberto={importando} clienteId={clienteId} etapaId={etapas.find((e) => e.chave === "seguidor")?.id ?? etapas[0]?.id ?? null}
+        jaTem={new Set(pessoas.map((p) => p.instagram).filter(Boolean) as string[])} onFechar={() => setImportando(false)} onImportou={() => { setImportando(false); void carregar(); }} />
       <GerenciarEtapas aberto={gerenciar} etapas={etapas} clienteId={clienteId} onFechar={() => setGerenciar(false)} onMudou={carregar} />
     </div>
   );
