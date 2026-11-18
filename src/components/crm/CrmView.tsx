@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Ban, ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
+import { Ban, ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, ArrowRight, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -45,6 +45,13 @@ const SITUACOES: { id: Situacao; rotulo: string; dica: string; vale: (p: Pessoa)
 interface Evento { id: string; tipo: string; texto: string | null; valor: number | null; em: string }
 
 const POR_COLUNA = 40;
+/** Próxima etapa do funil: de "Novo seguidor" vai direto para a abordagem (pula "Novo", que é de quem veio por comentário). */
+function proximaEtapa(etapas: Etapa[], atual: string | null): Etapa | null {
+  const i = etapas.findIndex((e) => e.id === atual);
+  if (i < 0) return etapas[1] ?? null;
+  if (etapas[i].chave === "seguidor") return etapas.find((e) => e.chave === "abordado") ?? etapas[i + 1] ?? null;
+  return etapas[i + 1] ?? null;
+}
 const brl = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 const quando = (iso: string) => formatDistanceToNowStrict(new Date(iso), { locale: ptBR, addSuffix: true });
 const titulo = (p: Pessoa) => p.nome?.trim() || (p.instagram ? `@${p.instagram}` : p.email || p.telefone || "Sem nome");
@@ -209,6 +216,10 @@ export function CrmView({ clienteId }: { clienteId: string }) {
                     <div className="flex items-center justify-between gap-1">
                       <div className="truncate text-sm font-medium">{titulo(p)}</div>
                       <span className="flex shrink-0 items-center">
+                      {(() => { const prox = proximaEtapa(etapas, p.etapa_id ?? etapas[0]?.id ?? null); return prox && !p.desqualificada_em ? (
+                        <span role="button" tabIndex={0} title={`Avançar para ${prox.nome}`} onClick={(ev) => { ev.stopPropagation(); void mover(p.id, prox.id); }}
+                          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-primary"><ArrowRight className="h-3.5 w-3.5" /></span>
+                      ) : null; })()}
                       <span role="button" tabIndex={0} title={p.desqualificada_em ? "Voltar para o quadro" : "Desqualificar"} onClick={(ev) => { ev.stopPropagation(); void (p.desqualificada_em ? requalificar(p) : desqualificar(p)); }}
                         className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">{p.desqualificada_em ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}</span>
                       {p.instagram && (
@@ -320,6 +331,9 @@ function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteI
                 {pessoa.instagram && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://instagram.com/${pessoa.instagram}`)}>Perfil</Button>}
                 <span className="ml-auto self-center text-xs text-muted-foreground">Origem: {ROTULO_ORIGEM[pessoa.origem] ?? pessoa.origem}</span>
               </div>
+              {(() => { const prox = proximaEtapa(etapas, pessoa.etapa_id); return prox && !pessoa.desqualificada_em ? (
+                <Button className="w-full" variant="secondary" onClick={() => void onMover(pessoa.id, prox.id)}><ArrowRight className="mr-1 h-4 w-4" />Avançar para {prox.nome}</Button>
+              ) : null; })()}
               <div>
                 <label className="text-xs text-muted-foreground">Etapa</label>
                 <select value={pessoa.etapa_id ?? ""} onChange={(e) => void onMover(pessoa.id, e.target.value)} className="mt-1 h-10 w-full rounded-md border bg-background px-2 text-sm">
