@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from migration_db import connect  # noqa: E402
 
 NOME = 'Aprendizados com o Davi'
-MAXIMO = 60   # regras guardadas por funcionário/projeto (as mais antigas saem)
+MAXIMO = 150   # regras guardadas por funcionário/projeto (as mais antigas saem)
 
 
 def _item(q, cliente, agente):
