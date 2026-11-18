@@ -12,7 +12,7 @@ import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosP
 import { comDadosDoLead } from "@/lib/quiz/utm";
 import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
-import { AmostraTela } from "./AmostraQuiz";
+import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
 import { AreaDoCheck, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
@@ -724,30 +724,38 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
   const cfg = t.amostra ?? {};
   const telaPlano = (e.telas ?? []).find((x) => x.tipo === "plano_livros" && (!cfg.plano_de || x.id === cfg.plano_de)) ?? t;
   const { livros, areas, plano } = usePlanoDaTela(telaPlano, e, perfil, escolhas, marcadas);
-  const escolhido = useMemo(() => {
-    for (const d of plano?.dias ?? []) { const a = cfg.amostras?.[String(d.livro.id)]; if (a) return { livro: d.livro, a }; }
+  const prateleira = useMemo(() => {
     if (!plano || !livros) return null;
-    // Nenhum livro do plano tem amostra: vale a cadastrada com mais temas em comum com a pessoa (empate: a primeira cadastrada).
-    const pc = telaPlano.plano ?? {};
-    const temas = new Set<string>([...areas, ...Object.entries(pc.livros_temas ?? {}).filter(([qid]) => escolhas[qid] === 1).flatMap(([, x]) => x), ...(pc.perfil_temas?.[perfil?.id ?? ""] ?? [])]);
-    let melhor: { livro: LivroPlano; a: NonNullable<typeof cfg.amostras>[string]; n: number } | null = null;
-    for (const [id, a] of Object.entries(cfg.amostras ?? {})) {
-      const livro = livros.find((l) => String(l.id) === id);
-      if (!a || !livro) continue;
-      const n = livro.temas.filter((x) => temas.has(x)).length;
-      if (!melhor || n > melhor.n) melhor = { livro, a, n };
+    const montar = (livro: LivroPlano, rotulo: string): LivroAmostra => {
+      const a = cfg.amostras?.[String(livro.id)];
+      return { id: String(livro.id), titulo: (a?.titulo || tituloBonito(livro.titulo)), autor: a?.autor || livro.autor, capa: a?.capa || livro.capa, minutos: a?.minutos ?? livro.audio, rotulo,
+        amostra: a ? { audio_url: a.audio_url, texto: a.texto_amostra } : undefined };
+    };
+    const lista = plano.dias.slice(0, 8).map((d) => montar(d.livro, `Dia ${d.dia}`));
+    if (!lista.some((l) => l.amostra)) {
+      // Nenhum livro do plano tem amostra: entra na frente a cadastrada com mais temas em comum com a pessoa (empate: a primeira cadastrada).
+      const pc = telaPlano.plano ?? {};
+      const temas = new Set<string>([...areas, ...Object.entries(pc.livros_temas ?? {}).filter(([qid]) => escolhas[qid] === 1).flatMap(([, x]) => x), ...(pc.perfil_temas?.[perfil?.id ?? ""] ?? [])]);
+      let melhor: { livro: LivroPlano; n: number } | null = null;
+      for (const [id, a] of Object.entries(cfg.amostras ?? {})) {
+        const livro = livros.find((l) => String(l.id) === id);
+        if (!a || !livro) continue;
+        const n = livro.temas.filter((x) => temas.has(x)).length;
+        if (!melhor || n > melhor.n) melhor = { livro, n };
+      }
+      if (melhor) lista.unshift(montar(melhor.livro, "Para você"));
     }
-    return melhor ? { livro: melhor.livro, a: melhor.a } : null;
+    return lista;
   }, [plano, livros, areas, telaPlano, escolhas, perfil, cfg.amostras]);
-  const semAmostra = !!plano && !escolhido;
+  const semAmostra = !!prateleira && !prateleira.some((l) => l.amostra);
   useEffect(() => { if (semAmostra && pular) onSeguir(); }, [semAmostra, pular, onSeguir]);
-  if (!escolhido) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
-  const { livro, a } = escolhido;
+  if (!prateleira) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
   const titulo = t.titulo || "Seu primeiro livro chegou";
-  return <AmostraTela cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento}
-    livro={{ titulo: a.titulo || tituloBonito(livro.titulo), autor: a.autor || livro.autor, capa: a.capa || livro.capa, minutos: a.minutos ?? livro.audio, audio_url: a.audio_url, texto: a.texto_amostra }}
+  const nome = f("{nome}").trim();
+  return <AmostraTela cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento} livros={prateleira} nome={nome && !nome.includes("{") ? nome : ""}
     titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
-    aviso={cfg.aviso || "Toque no livro para abrir"} fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
+    aviso={cfg.aviso || "Deslize para ver os livros do seu plano"} dica="Toque para abrir o seu primeiro livro" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
+    textoSemAmostra="Escolha outro livro com o selo “Amostra grátis” para experimentar agora."
     botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
 }
 
