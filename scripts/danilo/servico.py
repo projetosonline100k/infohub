@@ -363,24 +363,26 @@ def avisar_quebrados(e):
               ("\n".join(([_alerta] if _alerta else []) + linhas).strip()[:900], e["atividade"]))
 
 
+def _mtime(f):
+    """Quando o arquivo chegou (mais novo primeiro). Entrada do Drive sem stat: vai por último."""
+    try:
+        return f.stat().st_mtime
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 def atender_drive():
-    """Um bruto por vez. Lote com vários: piloto primeiro."""
+    """Um bruto por vez, o mais novo primeiro. Edição em revisão não segura a fila (18/11)."""
     e = estado()
     brutos = danilo.novos()          # antes da espera do piloto: o bruto quebrado é avisado na hora
     avisar_quebrados(e)
+    # 18/11 (Davi: "não pode ter isso: se está em revisão, ele já pula para o próximo e assim vai"): o Danilo NÃO espera mais a aprovação do
+    # piloto. Edição em "revisar" fica à espera do Davi e ele segue para o vídeo seguinte, do mais novo para o mais antigo.
     if e.get("aguardando_piloto"):
-        st = danilo.db("SELECT status FROM public.edicoes_video WHERE id = %s", (e["aguardando_piloto"],))
-        if st and st[0][0] == "aprovado":
-            e["piloto"] = e.pop("aguardando_piloto")
-            salvar_estado(e)
-            log("piloto aprovado: seguindo com o resto do lote")
-            progresso(e.get("atividade"), 25, "Piloto aprovado. Agora: editando os outros vídeos do lote com os mesmos ajustes.",
-                      "andamento")
-        elif st and st[0][0] != "cancelado":
-            return False                     # o Davi ainda não aprovou o piloto
-        else:
-            e.pop("aguardando_piloto")
-            salvar_estado(e)
+        e = {}
+        salvar_estado(e)
+        log("fim da espera por aprovação de piloto: seguindo com os vídeos da pasta")
+    brutos.sort(key=lambda f: -_mtime(f))
     if not brutos and danilo._quebrados and e.get("atividade"):
         # Os outros estão prontos: o lote só espera o reenvio (o aviso já saiu em avisar_quebrados).
         if not e.get("esperando_reenvio"):
@@ -425,7 +427,7 @@ def atender_drive():
                                                          AND status NOT IN ('aprovado', 'cancelado') LIMIT 1""", (e["atividade"],)):
                 danilo.db("UPDATE public.atividades SET situacao = 'concluida', concluida = true WHERE id = %s", (e["atividade"],))
         return False
-    piloto = len(brutos) > 1 and not e.get("piloto")
+    piloto = False      # sem piloto: ver o comentário no começo de atender_drive
     try:
         id_ = editar(brutos[0], e)
     except Exception as erro:
