@@ -1240,7 +1240,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               } else if (t.tipo === "projecao" && t.projecao) {
                 const pq = perguntas.find((x) => x.id === t.projecao?.pergunta);
                 const min = numeros[t.projecao.pergunta] ?? (pq?.numero ? limitesDoNumero(pq.numero).inicial : 0);
-                corpo = <ProjecaoLivros key={t.id} livros={livrosEm12Meses(min, pq?.numero)} {...visual} />;
+                const aq = (t.projecao.antes ? perguntas.find((x) => x.id === t.projecao?.antes) : undefined) ?? perguntas.find((x) => x.id !== t.projecao?.pergunta && /livro/i.test(x.numero?.unidade ?? ""));
+                const antes = aq ? numeros[aq.id] : undefined;
+                corpo = <ProjecaoLivros key={t.id} livros={livrosEm12Meses(min, pq?.numero)} antes={antes} {...visual} />;
                 titulo = titulo.replace(/\{minutos\}/g, String(min)).replace(/\{livros\}/g, String(livrosEm12Meses(min, pq?.numero)));
               } else if (t.tipo === "compromisso") {
                 const idMin = t.compromisso?.pergunta ?? telas.find((x) => x.tipo === "projecao")?.projecao?.pergunta ?? telas.find((x) => x.plano_numeros)?.plano_numeros?.minutos;

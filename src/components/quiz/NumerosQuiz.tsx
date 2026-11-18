@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Fingerprint } from "lucide-react";
+import { BookOpen, Check, Fingerprint } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { limitesDoNumero, preencherCalculos, valoresDoNumero, type ConfigNumero } from "@/lib/quiz/numeros";
+import { limitesDoNumero, preencherCalculos, resumosPorMes, valoresDoNumero, type ConfigNumero } from "@/lib/quiz/numeros";
 import type { ConfigDepoimentoAnimado } from "@/lib/quiz/quiz";
 
 // Telas e perguntas "de número" do quiz V2 do Instalivros (15/11/2026, a partir do app Ziggur): roleta, régua, barras dos mentores, depoimento animado,
@@ -80,12 +80,13 @@ export function RoletaNumero({ config, valor, selo, aoMudar, cor, escuro, suave 
 
 // ---------------------------------------------------------------- Régua (Ziggur 09)
 
-/** Régua arrastável (min–max): o valor grande e a linha "≈ X resumos por mês" se recalculam enquanto ela arrasta. */
+/** Régua arrastável (min–max): o valor grande e o cartão "N livros em apenas 30 dias" se recalculam enquanto ela arrasta. */
 export function ReguaNumero({ config, valor, aoMudar, cor, escuro, suave }: { config: ConfigNumero; valor: number | undefined; aoMudar: (n: number) => void } & Visual) {
   const { min, max, passo, inicial } = limitesDoNumero(config);
   const atual = valor ?? inicial;
   const pct = max > min ? ((atual - min) / (max - min)) * 100 : 0;
-  const linha = preencherCalculos(config.linha ?? "≈ {resumos_mes} resumos por mês", atual, config);
+  const livros30 = resumosPorMes(atual, config);
+  const linha = config.linha ? preencherCalculos(config.linha, atual, config) : null;
   return (
     <div className={cn("space-y-5 rounded-2xl border p-5 shadow-sm", escuro ? "border-white/15 bg-white/5" : "border-gray-200 bg-white")}>
       <div className="text-center">
@@ -97,7 +98,15 @@ export function ReguaNumero({ config, valor, aoMudar, cor, escuro, suave }: { co
         className="h-9 w-full cursor-pointer touch-pan-y appearance-none rounded-full bg-transparent [&::-moz-range-thumb]:h-8 [&::-moz-range-thumb]:w-8 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-4 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:bg-[var(--cor)] [&::-webkit-slider-thumb]:h-8 [&::-webkit-slider-thumb]:w-8 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-white [&::-webkit-slider-thumb]:bg-[var(--cor)] [&::-webkit-slider-thumb]:shadow-lg"
         style={{ ["--cor" as string]: cor, background: `linear-gradient(to right, ${cor} ${pct}%, ${escuro ? "rgba(255,255,255,.18)" : "#e5e7eb"} ${pct}%) center / 100% 8px no-repeat` }} />
       <div className={cn("flex justify-between text-xs font-semibold", suave)}><span>{min} min</span><span>{max} min</span></div>
-      <p className="text-center text-base font-bold" aria-live="polite">{linha}</p>
+      <div className="space-y-2" aria-live="polite">
+        <div className={cn("rounded-2xl px-4 py-4 text-center", escuro ? "bg-white/10" : "bg-sky-50")}>
+          <BookOpen className="mx-auto h-7 w-7" style={{ color: escuro ? undefined : cor }} aria-hidden />
+          <p key={livros30} className="mt-1 text-4xl font-extrabold tabular-nums leading-tight animate-in zoom-in-90 duration-200" style={{ color: escuro ? undefined : "#1e3a8a" }}>{livros30} livros</p>
+          <p className={cn("text-sm font-medium", suave)}>em apenas 30 dias</p>
+        </div>
+        {linha && <p className="text-center text-sm font-bold">{linha}</p>}
+        <p className={cn("text-center text-sm", suave)}>✨ Pequenos minutos. Grandes mudanças.</p>
+      </div>
     </div>
   );
 }
@@ -195,30 +204,42 @@ function NumeroAntesAgora({ n, ativo, cor, escuro, suave }: { n: { rotulo: strin
 
 const CORES_LOMBADA = ["#31428B", "#e11d48", "#f59e0b", "#10b981", "#8b5cf6", "#0ea5e9"];
 
-/** Livros caindo e empilhando e o número de livros contando até o total. */
-export function ProjecaoLivros({ livros, cor, escuro, suave }: { livros: number } & Visual) {
+const MAX_LIVROS_PILHA = 15;
+
+/** Antes × depois (18/11/2026): à esquerda os livros que a pessoa lê hoje (apagados); à direita os livros entrando e empilhando enquanto o contador sobe até o total. */
+export function ProjecaoLivros({ livros, antes, cor, escuro, suave }: { livros: number; antes?: number } & Visual) {
   const n = useContagem(livros, true, 2200);
-  // pirâmide: 5 livros embaixo, 4, 3, 2, 1
-  const linhas = [5, 4, 3, 2, 1];
-  let i = 0;
+  const mais = Math.max(0, livros - (antes ?? 0));
+  const visiveis = livros > 0 ? Math.min(MAX_LIVROS_PILHA, Math.ceil((n / livros) * MAX_LIVROS_PILHA)) : 0;
+  const pilhaAntes = Math.min(MAX_LIVROS_PILHA, antes ?? 0);
+  const caixa = cn("rounded-2xl border px-2 py-3 text-center", escuro ? "border-white/15 bg-white/5" : "border-gray-200 bg-white");
+  const pilha = (qtd: number, dim: boolean, animar: boolean) => (
+    <div className="mx-auto flex h-32 w-full flex-wrap-reverse content-start items-end justify-center gap-0.5 overflow-hidden" aria-hidden>
+      {Array.from({ length: qtd }, (_, k) => (
+        <span key={k} className={cn("h-5 w-8 rounded-sm shadow", animar && "motion-safe:animate-livro-cai")} style={{ background: dim ? "#94a3b8" : CORES_LOMBADA[k % CORES_LOMBADA.length], opacity: dim ? 0.5 : 1, ["--rot" as string]: `${((k * 7) % 5) - 2}deg`, borderBottom: "3px solid rgba(0,0,0,.25)" }} />
+      ))}
+    </div>
+  );
   return (
     <div className="space-y-3">
-      <div className="mx-auto flex h-44 w-64 flex-col-reverse items-center justify-start gap-0.5 overflow-hidden" aria-hidden>
-        {linhas.map((qtd, r) => (
-          <div key={r} className="flex items-end justify-center gap-1">
-            {Array.from({ length: qtd }, () => {
-              const k = i++;
-              return (
-                <span key={k} className="h-7 w-10 rounded-sm shadow-md motion-safe:animate-livro-cai" style={{ background: CORES_LOMBADA[k % CORES_LOMBADA.length], animationDelay: `${k * 130}ms`, ["--rot" as string]: `${((k * 7) % 5) - 2}deg`, borderBottom: "3px solid rgba(0,0,0,.25)" }} />
-              );
-            })}
-          </div>
-        ))}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className={caixa}>
+          <p className={cn("text-[11px] font-bold uppercase tracking-wide", suave)}>Antes</p>
+          <div className="mt-2">{antes !== undefined && antes > 0 ? pilha(pilhaAntes, true, false) : <div className="h-32" />}</div>
+          <p className={cn("mt-1 text-2xl font-extrabold tabular-nums leading-tight", suave)}>{antes !== undefined ? <>{antes}<span className="block text-xs font-semibold">livros/ano</span></> : <span className="text-base font-bold">poucos livros</span>}</p>
+        </div>
+        <span className="text-2xl font-extrabold" style={{ color: escuro ? undefined : cor }} aria-hidden>→</span>
+        <div className={caixa} style={{ borderColor: escuro ? undefined : cor, borderWidth: 2 }}>
+          <p className="text-[11px] font-bold uppercase tracking-wide" style={{ color: escuro ? undefined : cor }}>Com o Instalivros</p>
+          <div className="mt-2">{pilha(visiveis, false, true)}</div>
+          <p className="mt-1 text-4xl font-extrabold tabular-nums leading-tight" style={{ color: escuro ? undefined : cor }}>{n}<span className={cn("block text-xs font-semibold", suave)}>livros/ano</span></p>
+        </div>
       </div>
-      <div className="text-center">
-        <span className="text-7xl font-extrabold tabular-nums leading-none" style={{ color: escuro ? undefined : cor }}>{n}</span>
-        <p className={cn("mt-1 text-sm font-semibold", suave)}>livros em 12 meses</p>
-      </div>
+      {antes !== undefined && mais > 0 && (
+        <div className="flex justify-center animate-in fade-in zoom-in-95 duration-500">
+          <span className="rounded-full px-4 py-2 text-sm font-bold text-white shadow-md" style={{ background: cor }}>+{mais} livros por ano</span>
+        </div>
+      )}
     </div>
   );
 }
