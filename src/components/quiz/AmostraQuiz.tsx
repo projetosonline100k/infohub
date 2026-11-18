@@ -296,10 +296,10 @@ function VooDaCapa({ voo }: { voo: Voo }) {
     </div>, document.body);
 }
 
-function Redondo({ children, rotulo, onClick, pulsa, apagado }: { children: ReactNode; rotulo: string; onClick?: () => void; pulsa?: boolean; apagado?: boolean }) {
+function Redondo({ children, rotulo, onClick, pulsa, apagado, grande }: { children: ReactNode; rotulo: string; onClick?: () => void; pulsa?: boolean; apagado?: boolean; grande?: boolean }) {
   return (
     <button type="button" aria-label={rotulo} onClick={onClick} disabled={!onClick}
-      className={cn("flex h-12 w-12 items-center justify-center rounded-full text-white shadow-md active:scale-95", pulsa && "motion-safe:animate-pulse", apagado && "opacity-40")} style={{ background: AZUL }}>
+      className={cn("flex items-center justify-center rounded-full text-white shadow-md active:scale-95", grande ? "h-14 w-14" : "h-12 w-12", pulsa && "ring-4 ring-white/80 shadow-xl motion-safe:animate-pulse", apagado && "opacity-40")} style={{ background: AZUL }}>
       {children}
     </button>
   );
@@ -334,10 +334,18 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
         <p className="mt-4 line-clamp-2 text-base font-extrabold leading-tight">{livro.titulo}</p>
         <p className="mt-0.5 line-clamp-1 text-xs">{livro.autor}</p>
         <div className="mt-4 flex items-center justify-center gap-4">
-          <Redondo rotulo="Baixar"><Download className="h-5 w-5" /></Redondo>
-          <Redondo rotulo="Ler a amostra" onClick={temTexto ? () => setTela("lendo") : undefined} pulsa={temTexto} apagado={!temTexto}><BookOpenText className="h-5 w-5" /></Redondo>
-          <Redondo rotulo="Ouvir a amostra" onClick={temAudio ? () => setTela("ouvindo") : undefined} pulsa={temAudio} apagado={!temAudio}><Play className="ml-0.5 h-5 w-5" fill="currentColor" /></Redondo>
-          <Redondo rotulo="Compartilhar"><Share2 className="h-5 w-5" /></Redondo>
+          <Redondo rotulo="Baixar" apagado><Download className="h-5 w-5" /></Redondo>
+          <Redondo rotulo="Ler a amostra" onClick={temTexto ? () => setTela("lendo") : undefined} apagado><BookOpenText className="h-5 w-5" /></Redondo>
+          <div className="relative">
+            {temAudio && (
+              <>
+                <p className="pointer-events-none absolute -top-9 left-1/2 w-max -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[11px] font-bold leading-tight shadow-lg motion-safe:animate-pulse" style={{ color: AZUL }}>Toque no play para ouvir</p>
+                <span className="pointer-events-none absolute -top-3 left-1/2 z-10 -translate-x-1/2 select-none text-3xl drop-shadow-lg motion-safe:animate-bounce" aria-hidden>👆</span>
+              </>
+            )}
+            <Redondo rotulo="Ouvir a amostra" onClick={temAudio ? () => setTela("ouvindo") : undefined} pulsa={temAudio} apagado={!temAudio} grande><Play className="ml-0.5 h-6 w-6" fill="currentColor" /></Redondo>
+          </div>
+          <Redondo rotulo="Compartilhar" apagado><Share2 className="h-5 w-5" /></Redondo>
         </div>
       </div>
       <div className="mt-4 min-h-0 flex-1 rounded-t-3xl bg-white px-6 pb-2 pt-3 text-center shadow-[0_-8px_20px_rgba(0,0,0,0.08)]">
@@ -345,7 +353,7 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
         <p className="text-sm font-extrabold">Sobre esse Livro</p>
         <div className="mt-2 flex justify-center gap-1">{[0, 1, 2, 3, 4].map((i) => <Star key={i} className="h-5 w-5 text-yellow-400" fill="currentColor" />)}</div>
         {am
-          ? <p className="mt-2 text-xs leading-snug">{livro.minutos ? `${livro.minutos} minutos de resumo. ` : ""}Toque em ▶ para ouvir ou em 📖 para ler um trecho agora.</p>
+          ? <p className="mt-2 text-xs leading-snug">{livro.minutos ? `${livro.minutos} minutos de resumo. ` : ""}Toque em ▶ para ouvir um trecho agora.</p>
           : (
             <div className="mt-2 space-y-1">
               <p className="flex items-center justify-center gap-1.5 text-sm font-extrabold">🔒 Disponível no seu plano completo</p>
