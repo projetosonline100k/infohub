@@ -10,7 +10,7 @@ import { destinoDe, preencherVariaveis, primeiroNo, respostasDoNo, type GrafoFlu
 
 const hora = () => new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 type Item =
-  | { k: "msg"; texto: string; imagem?: string; respostas: { id: string; titulo: string }[]; links: { titulo: string; url: string }[] }
+  | { k: "msg"; texto: string; imagem?: string; video?: string; respostas: { id: string; titulo: string }[]; links: { titulo: string; url: string }[] }
   | { k: "midia"; texto: string; tipo: string; url?: string }
   | { k: "eu"; texto: string }
   | { k: "aviso"; texto: string; icone: "tempo" | "tag" | "cond" | "fim" };
@@ -41,7 +41,7 @@ function andar(g: GrafoFluxo, inicio: NoFluxo | null): { itens: Item[]; espera: 
     if (atual.tipo === "fim") { itens.push({ k: "aviso", texto: "Fim do fluxo.", icone: "fim" }); return { itens, espera: null }; }
     if (atual.tipo === "mensagem") {
       const respostas = respostasDoNo(atual).map((b) => ({ id: b.id, titulo: b.titulo }));
-      itens.push({ k: "msg", texto: preencherVariaveis(d.texto ?? "", VARS), imagem: d.midia_tipo === "imagem" ? d.midia_url : undefined, respostas, links: (d.botoes ?? []).filter((b) => b.tipo === "link").map((b) => ({ titulo: b.titulo, url: b.url ?? "" })) });
+      itens.push({ k: "msg", texto: preencherVariaveis(d.texto ?? "", VARS), imagem: d.midia_tipo === "imagem" ? d.midia_url : undefined, video: d.midia_tipo === "video" ? d.midia_url : undefined, respostas, links: (d.botoes ?? []).filter((b) => b.tipo === "link").map((b) => ({ titulo: b.titulo, url: b.url ?? "" })) });
       if (respostas.length) return { itens, espera: { tipo: "resposta", no: atual } };
     } else if (atual.tipo === "midia") {
       itens.push({ k: "midia", texto: preencherVariaveis(d.texto ?? "", VARS), tipo: d.midia_tipo ?? "arquivo", url: d.midia_url });
@@ -120,6 +120,7 @@ export function SimuladorFluxo({ aberto, grafo, whatsapp = false, onFechar }: { 
           ) : (
             <div key={i} className="space-y-1.5">
               {it.imagem && whatsapp && <div className="flex"><div className={balao}><img src={it.imagem} alt="" className="max-h-60 w-full rounded-md object-cover" /><Hora h={it.h} /></div></div>}
+              {it.video && <div className="flex"><div className={balao}><video src={it.video} controls preload="metadata" className="max-h-60 w-full rounded-md" /><Hora h={it.h} /></div></div>}
               <div className="flex"><div className={balao}>
                 {it.imagem && !whatsapp && <img src={it.imagem} alt="" className="mb-1 max-h-60 w-full rounded-md object-cover" />}
                 <p className="whitespace-pre-wrap">{it.texto || <span className="text-white/35">(mensagem vazia)</span>}

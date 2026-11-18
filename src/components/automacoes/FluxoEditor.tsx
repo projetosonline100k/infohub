@@ -80,6 +80,7 @@ function BlocoFluxo({ data }: NodeProps<Dados>) {
       <div className="space-y-2 px-3 py-2.5">
         <p className={cn("line-clamp-4 whitespace-pre-wrap text-[13px] leading-snug", no.tipo === "mensagem" && !(no.dados.texto ?? "").trim() && "text-white/40")}>{no.tipo === "inicio" && data.gatilhoTexto ? data.gatilhoTexto : resumo(no)}</p>
         {(no.tipo === "midia" || no.tipo === "mensagem") && no.dados.midia_tipo === "imagem" && no.dados.midia_url && <img src={no.dados.midia_url} alt="" className="max-h-32 w-full rounded-lg object-cover" loading="lazy" />}
+        {no.tipo === "mensagem" && no.dados.midia_tipo === "video" && no.dados.midia_url && <video src={no.dados.midia_url} muted preload="metadata" className="max-h-32 w-full rounded-lg object-cover" />}
         {botoes.length > 0 && no.tipo === "mensagem" && (
           <div className="space-y-1">{botoes.map((b) => (
             <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs">
@@ -308,7 +309,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
     const mime = arquivo.type || "";
     const tipo: "imagem" | "audio" | "video" | "arquivo" = mime.startsWith("image/") ? "imagem" : mime.startsWith("audio/") ? "audio" : mime.startsWith("video/") ? "video" : "arquivo";
     if (arquivo.size > 50 * 1024 * 1024) { toast.error("O arquivo passa de 50 MB"); return; }
-    if (grafo.nos.find((n) => n.id === id)?.tipo === "mensagem" && tipo !== "imagem") { toast.error("Aqui só cabe uma imagem (png, jpg, webp ou gif). Para áudio, vídeo ou PDF use o bloco Mídia."); return; }
+    if (grafo.nos.find((n) => n.id === id)?.tipo === "mensagem" && tipo !== "imagem" && tipo !== "video") { toast.error("Aqui cabe uma imagem (png, jpg, webp, gif) ou um vídeo (mp4). Para áudio ou PDF use o bloco Mídia."); return; }
     setSubindoMidia(true);
     try {
       const { data: u } = await supabase.auth.getUser();
@@ -533,19 +534,19 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
                     <TextoComVariaveis rows={6} whatsapp={whatsapp} valor={no.dados.texto ?? ""} aoMudar={(v) => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, texto: v } }))} placeholder="Oi! Que bom que você quer. Quer receber o link agora?" className="border-white/15 bg-black/20 text-sm text-white" />
                     <span className="text-right text-[10px] text-white/40">{(no.dados.texto ?? "").length} caracteres</span></label>
                   <div className="space-y-1.5">
-                    <p className="text-xs text-white/60">Imagem junto (opcional)</p>
+                    <p className="text-xs text-white/60">Imagem ou vídeo junto (opcional)</p>
                     {no.dados.midia_url && (
                       <div className="relative rounded-lg border border-white/10 bg-black/20 p-2">
-                        <img src={no.dados.midia_url} alt="" className="max-h-40 w-full rounded object-contain" />
-                        <button type="button" title="Tirar a imagem" onClick={() => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, midia_url: undefined, midia_tipo: undefined, midia_nome: undefined, midia_mimetype: undefined } }))} className="absolute right-3 top-3 rounded-full bg-black/70 p-1 text-white/80 hover:bg-rose-500/80"><X className="h-3.5 w-3.5" /></button>
+                        {no.dados.midia_tipo === "video" ? <video src={no.dados.midia_url} controls preload="metadata" className="max-h-48 w-full rounded" /> : <img src={no.dados.midia_url} alt="" className="max-h-40 w-full rounded object-contain" />}
+                        <button type="button" title="Tirar o arquivo" onClick={() => mudarNo(no.id, (n) => ({ ...n, dados: { ...n.dados, midia_url: undefined, midia_tipo: undefined, midia_nome: undefined, midia_mimetype: undefined } }))} className="absolute right-3 top-3 rounded-full bg-black/70 p-1 text-white/80 hover:bg-rose-500/80"><X className="h-3.5 w-3.5" /></button>
                       </div>)}
                     <label onDragOver={(e) => { e.preventDefault(); setArrastando(true); }} onDragLeave={() => setArrastando(false)}
                       onDrop={(e) => { e.preventDefault(); setArrastando(false); const f = e.dataTransfer.files?.[0]; if (f) void enviarMidia(no.id, f); }}
                       className={cn("flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/25 px-3 text-xs hover:bg-white/5", arrastando ? "border-cyan-300 bg-cyan-300/10 py-6 text-cyan-100" : "py-2", subindoMidia && "pointer-events-none opacity-60")}>
-                      {subindoMidia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}{arrastando ? "Solte aqui" : no.dados.midia_url ? "Trocar a imagem (ou arraste)" : "Enviar ou arrastar uma imagem"}
-                      <input type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void enviarMidia(no.id, f); }} />
+                      {subindoMidia ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}{arrastando ? "Solte aqui" : no.dados.midia_url ? "Trocar o arquivo (ou arraste)" : "Enviar ou arrastar uma imagem ou um vídeo"}
+                      <input type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/quicktime" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void enviarMidia(no.id, f); }} />
                     </label>
-                    {no.dados.midia_url && <p className="text-[11px] text-white/40">{whatsapp ? "A imagem sai primeiro e o texto logo depois." : "A imagem sai primeiro e o texto logo depois (só depois que a pessoa respondeu: não vale na primeira mensagem do comentário)."}</p>}
+                    {no.dados.midia_url && <p className="text-[11px] text-white/40">{whatsapp ? `${no.dados.midia_tipo === "video" ? "O vídeo" : "A imagem"} sai primeiro e o texto logo depois.` : `${no.dados.midia_tipo === "video" ? "O vídeo" : "A imagem"} sai primeiro e o texto logo depois (só depois que a pessoa respondeu: não vale na primeira mensagem do comentário).`}</p>}
                   </div>
                   <div className="space-y-2"><p className="text-xs text-white/60">Botões</p>
                     <div className="flex gap-1.5 text-xs">{([["nenhum", "Sem botões"], ["resposta", "Respostas"], ["link", "Links"]] as const).map(([v, r]) => (

@@ -575,9 +575,9 @@ def _tratar(c, q, id_, log, enviar):
                 ex["adiado"] = True; break
             texto = texto_da_mensagem(atual, lead)
             d_img = atual.get("dados", {})
-            if d_img.get("midia_url") and d_img.get("midia_tipo") == "imagem":   # imagem junto: sai primeiro, o texto (e a enquete) logo depois
+            if d_img.get("midia_url") and d_img.get("midia_tipo") in ("imagem", "video"):   # imagem ou vídeo junto: sai primeiro, o texto (e a enquete) logo depois
                 if enviar:
-                    enviar(conta, chat_id, f"[midia:imagem] {d_img.get('midia_url')} |", comportamento)
+                    enviar(conta, chat_id, f"[midia:{d_img.get('midia_tipo')}] {d_img.get('midia_url')} |", comportamento)
                 else:
                     _enviar_midia_padrao(conta, chat_id, {"dados": {**d_img, "texto": ""}}, comportamento, log, lead)
             if enviar:
