@@ -33,9 +33,13 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
   const [aberto, setAberto] = useState<LivroAmostra | null>(null);
   const [voo, setVoo] = useState<Voo | null>(null);
   const [tocouAlgum, setTocouAlgum] = useState(false);
+  const [liberado, setLiberado] = useState(false);
   const quadro = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
+  // O botão só aparece depois de 5 s de áudio tocando; plano B: 25 s na tela.
+  const liberar = useCallback(() => setLiberado(true), []);
+  useEffect(() => { const id = window.setTimeout(liberar, 25000); return () => clearTimeout(id); }, [liberar]);
 
   const abrir = (livro: LivroAmostra, el: HTMLElement) => {
     setTocouAlgum(true);
@@ -52,12 +56,12 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
     <div className="space-y-2 py-1">
       <div ref={quadro} className="relative mx-auto flex h-[calc(100dvh-12rem)] max-h-[640px] min-h-[440px] w-full max-w-[390px] flex-col overflow-hidden rounded-[28px] border border-black/10 bg-white shadow-xl" style={{ color: MARINHO }}>
         {aberto
-          ? <LivroAberto key={aberto.id} livro={aberto} segundos={segundos} fimTexto={fimTexto} textoBloqueado={textoBloqueado} textoSemAmostra={textoSemAmostra}
+          ? <LivroAberto key={aberto.id} livro={aberto} segundos={segundos} fimTexto={fimTexto} textoBloqueado={textoBloqueado} textoSemAmostra={textoSemAmostra} aoLiberar={liberar}
               aoEvento={(d) => aoEvento(`${d};livro=${aberto.id}`)} aoVoltar={() => setAberto(null)} />
           : <HomeApp livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} dicaRolar={dicaRolar ?? "Role para baixo e veja tudo o que você vai ter no app"} tocouAlgum={tocouAlgum} abrir={abrir} />}
       </div>
       <p className={cn("text-center text-[11px]", suave)}>{aviso}</p>
-      <div className="pt-0.5">{botao}</div>
+      <div aria-hidden={!liberado} className={cn("pt-0.5 transition-[opacity,transform,visibility] duration-500 ease-out", liberado ? "visible translate-y-0 opacity-100" : "invisible translate-y-4 opacity-0")}>{botao}</div>
       {voo && <VooDaCapa voo={voo} />}
     </div>
   );
@@ -305,9 +309,9 @@ function Redondo({ children, rotulo, onClick, pulsa, apagado, grande }: { childr
   );
 }
 
-function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostra, aoEvento, aoVoltar }: {
+function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostra, aoEvento, aoVoltar, aoLiberar }: {
   livro: LivroAmostra; segundos: number; fimTexto: string; textoBloqueado: string; textoSemAmostra: string;
-  aoEvento: (detalhe: string) => void; aoVoltar: () => void;
+  aoEvento: (detalhe: string) => void; aoVoltar: () => void; aoLiberar: () => void;
 }) {
   const am = livro.amostra;
   const temAudio = !!am?.audio_url;
@@ -316,7 +320,7 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
   const [tela, setTela] = useState<"detalhe" | "ouvindo" | "lendo">("detalhe");
 
   if (tela === "ouvindo" && temAudio) {
-    return <Ouvindo livro={livro} url={am!.audio_url!} segundos={segundos} fimTexto={fimTexto} aoEvento={aoEvento}
+    return <Ouvindo livro={livro} url={am!.audio_url!} segundos={segundos} fimTexto={fimTexto} aoEvento={aoEvento} aoLiberar={aoLiberar}
       aoFechar={() => setTela("detalhe")} aoLer={temTexto ? () => setTela("lendo") : undefined} />;
   }
   if (tela === "lendo" && temTexto) {
@@ -366,8 +370,8 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
   );
 }
 
-function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer }: {
-  livro: LivroAmostra; url: string; segundos: number; fimTexto: string; aoEvento: (d: string) => void; aoFechar: () => void; aoLer?: () => void;
+function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, aoLiberar }: {
+  livro: LivroAmostra; url: string; segundos: number; fimTexto: string; aoEvento: (d: string) => void; aoFechar: () => void; aoLer?: () => void; aoLiberar: () => void;
 }) {
   const [tocando, setTocando] = useState(false);
   const [atual, setAtual] = useState(0);
@@ -377,6 +381,7 @@ function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer }: 
   const audio = useRef<HTMLAudioElement>(null);
   const maxOuvido = useRef(0);
   const jaTocou = useRef(false);
+  const tocado = useRef(0);
   const evento = useRef(aoEvento);
   evento.current = aoEvento;
   const limite = Math.max(5, duracao > 0 ? Math.min(segundos, duracao) : segundos);
@@ -392,6 +397,12 @@ function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer }: 
     const id = setInterval(() => avisar(false), 10000);
     return () => clearInterval(id);
   }, [tocando, avisar]);
+  // Tempo de reprodução de verdade (pausa não conta): 5 s libera o Continuar.
+  useEffect(() => {
+    if (!tocando) return;
+    const id = setInterval(() => { tocado.current += 0.25; if (tocado.current >= 5) { aoLiberar(); clearInterval(id); } }, 250);
+    return () => clearInterval(id);
+  }, [tocando, aoLiberar]);
   const avisarRef = useRef(avisar);
   avisarRef.current = avisar;
   useEffect(() => () => avisarRef.current(false), []);
@@ -412,7 +423,7 @@ function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer }: 
 
   return (
     <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 pt-5 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300" style={{ background: "linear-gradient(180deg,#C9DCEB 0%,#E6EEF7 45%,#F6F9FC 100%)" }}>
-      <audio ref={audio} src={url} preload="auto"
+      <audio ref={audio} src={url} preload="auto" onError={aoLiberar}
         onLoadedMetadata={(ev) => setDuracao(ev.currentTarget.duration || 0)}
         onPlay={() => { jaTocou.current = true; setTocando(true); setAcabou(false); avisar(false); }}
         onPause={() => { setTocando(false); avisar(false); }}
