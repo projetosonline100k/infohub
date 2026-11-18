@@ -13,6 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import { confirmar } from "@/components/DialogosGlobais";
 import { abrirLinkExterno } from "@/lib/abrirLink";
+import { ConversaInstagram } from "./ConversaInstagram";
 import { limparTelefone, ROTULO_ORIGEM, ROTULO_EVENTO } from "@/lib/crm/crm";
 
 const db = supabase as unknown as SupabaseClient;   // crm_* ainda não está nos tipos gerados
@@ -41,6 +42,10 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   const [mostrando, setMostrando] = useState<Record<string, number>>({});
+  // Instagram do projeto: de qual conta, qual contato é cada @ e o que cada um comentou por último (mostra "de onde veio" no cartão).
+  const [igUserId, setIgUserId] = useState<string | null>(null);
+  const [contatoPorUser, setContatoPorUser] = useState<Map<string, string>>(new Map());
+  const [comentou, setComentou] = useState<Map<string, string>>(new Map());
 
   const carregar = useCallback(async () => {
     const [e, p] = await Promise.all([
@@ -54,6 +59,27 @@ export function CrmView({ clienteId }: { clienteId: string }) {
     setCarregando(false);
   }, [clienteId]);
   useEffect(() => { setCarregando(true); void carregar(); }, [carregar]);
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const { data: contas } = await supabase.rpc("instagram_contas");
+      const ig = (contas ?? []).find((c) => c.cliente_id === clienteId)?.ig_user_id ?? null;
+      if (!vivo) return;
+      setIgUserId(ig);
+      if (!ig) { setContatoPorUser(new Map()); setComentou(new Map()); return; }
+      const [c, m] = await Promise.all([
+        db.from("instagram_contatos").select("contato_id, username").eq("ig_user_id", ig).limit(5000),
+        db.from("instagram_mensagens").select("contato_id, texto").eq("ig_user_id", ig).eq("tipo", "comentario").order("enviada_em", { ascending: false }).limit(3000),
+      ]);
+      if (!vivo) return;
+      setContatoPorUser(new Map(((c.data ?? []) as { contato_id: string; username: string | null }[]).filter((x) => x.username).map((x) => [x.username!.toLowerCase(), x.contato_id])));
+      const mapa = new Map<string, string>();
+      for (const x of (m.data ?? []) as { contato_id: string; texto: string | null }[]) if (x.texto && !mapa.has(x.contato_id)) mapa.set(x.contato_id, x.texto);
+      setComentou(mapa);
+    })();
+    return () => { vivo = false; };
+  }, [clienteId]);
+  const contatoDe = (p: Pessoa) => (p.instagram ? contatoPorUser.get(p.instagram) ?? null : null);
 
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
@@ -134,6 +160,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
                       {p.instagram && p.nome && <span className="truncate">@{p.instagram}</span>}
                       {p.telefone && <span>{p.telefone}</span>}
                     </div>
+                    {(() => { const c = contatoDe(p); const t = c ? comentou.get(c) : null; return t ? <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">💬 Comentou: “{t}”</div> : null; })()}
                     <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
                       <span className="rounded bg-muted px-1.5 py-0.5">{ROTULO_ORIGEM[p.origem] ?? p.origem}</span>
                       <span>{p.valor_vendido > 0 ? <b className="text-emerald-500">{brl(p.valor_vendido)}</b> : quando(p.ultima_interacao_em)}</span>
@@ -150,7 +177,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
         })}
       </div>
 
-      <FichaPessoa pessoa={pessoaAberta} etapas={etapas} clienteId={clienteId} onFechar={() => setAberta(null)}
+      <FichaPessoa pessoa={pessoaAberta} igUserId={igUserId} contatoId={pessoaAberta ? contatoDe(pessoaAberta) : null} comentario={pessoaAberta && contatoDe(pessoaAberta) ? comentou.get(contatoDe(pessoaAberta)!) ?? null : null} etapas={etapas} clienteId={clienteId} onFechar={() => setAberta(null)}
         onMudou={(nova) => { if (nova) setPessoas((l) => l.map((x) => (x.id === nova.id ? nova : x))); else void carregar(); }} onMover={mover}
         onExcluida={(id) => { setAberta(null); setPessoas((l) => l.filter((x) => x.id !== id)); }} />
       <NovaPessoa etapaId={novaEm} etapas={etapas} clienteId={clienteId} onFechar={() => setNovaEm(undefined)} onCriada={() => { setNovaEm(undefined); void carregar(); }} />
@@ -159,14 +186,16 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   );
 }
 
-function FichaPessoa({ pessoa, etapas, clienteId, onFechar, onMudou, onMover, onExcluida }: {
-  pessoa: Pessoa | null; etapas: Etapa[]; clienteId: string; onFechar: () => void;
+function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteId, onFechar, onMudou, onMover, onExcluida }: {
+  pessoa: Pessoa | null; igUserId: string | null; contatoId: string | null; comentario: string | null; etapas: Etapa[]; clienteId: string; onFechar: () => void;
   onMudou: (p: Pessoa | null) => void; onMover: (pessoaId: string, etapaId: string) => Promise<void>; onExcluida: (id: string) => void;
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [nota, setNota] = useState("");
   const [campos, setCampos] = useState({ nome: "", telefone: "", email: "", instagram: "", notas: "" });
   const id = pessoa?.id;
+  const [aba, setAba] = useState<"dados" | "conversa">("dados");
+  useEffect(() => { setAba("dados"); }, [id]);
   useEffect(() => {
     if (!pessoa) return;
     setCampos({ nome: pessoa.nome ?? "", telefone: pessoa.telefone ?? "", email: pessoa.email ?? "", instagram: pessoa.instagram ?? "", notas: pessoa.notas ?? "" });
@@ -206,11 +235,20 @@ function FichaPessoa({ pessoa, etapas, clienteId, onFechar, onMudou, onMover, on
 
   return (
     <Sheet open={!!pessoa} onOpenChange={(a) => { if (!a) onFechar(); }}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+      <SheetContent className="w-full overflow-y-auto sm:max-w-lg">
         {pessoa && (
           <>
             <SheetHeader><SheetTitle>{titulo(pessoa)}</SheetTitle></SheetHeader>
+            {igUserId && contatoId && (
+              <div className="mt-3 flex gap-1 rounded-lg bg-muted p-1 text-sm">
+                {(["dados", "conversa"] as const).map((a) => (
+                  <button key={a} onClick={() => setAba(a)} className={cn("flex-1 rounded-md px-3 py-1.5 font-medium", aba === a ? "bg-background shadow" : "text-muted-foreground")}>{a === "dados" ? "Ficha" : "Conversa no Instagram"}</button>
+                ))}
+              </div>
+            )}
+            {aba === "conversa" && igUserId && contatoId ? <div className="mt-3"><ConversaInstagram igUserId={igUserId} contatoId={contatoId} /></div> : (
             <div className="mt-4 space-y-4">
+              {comentario && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">💬 Veio do Instagram. Comentou: “{comentario}”</div>}
               <div className="flex flex-wrap gap-2">
                 {pessoa.telefone && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://wa.me/${pessoa.telefone}`)}><MessageCircle className="mr-1 h-4 w-4" />WhatsApp</Button>}
                 {pessoa.instagram && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://instagram.com/${pessoa.instagram}`)}><Instagram className="mr-1 h-4 w-4" />Instagram<ExternalLink className="ml-1 h-3 w-3" /></Button>}
@@ -258,6 +296,7 @@ function FichaPessoa({ pessoa, etapas, clienteId, onFechar, onMudou, onMover, on
                 </ol>
               </div>
             </div>
+            )}
           </>
         )}
       </SheetContent>
