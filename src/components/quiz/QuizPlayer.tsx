@@ -723,11 +723,22 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
 }) {
   const cfg = t.amostra ?? {};
   const telaPlano = (e.telas ?? []).find((x) => x.tipo === "plano_livros" && (!cfg.plano_de || x.id === cfg.plano_de)) ?? t;
-  const { plano } = usePlanoDaTela(telaPlano, e, perfil, escolhas, marcadas);
+  const { livros, areas, plano } = usePlanoDaTela(telaPlano, e, perfil, escolhas, marcadas);
   const escolhido = useMemo(() => {
     for (const d of plano?.dias ?? []) { const a = cfg.amostras?.[String(d.livro.id)]; if (a) return { livro: d.livro, a }; }
-    return null;
-  }, [plano, cfg.amostras]);
+    if (!plano || !livros) return null;
+    // Nenhum livro do plano tem amostra: vale a cadastrada com mais temas em comum com a pessoa (empate: a primeira cadastrada).
+    const pc = telaPlano.plano ?? {};
+    const temas = new Set<string>([...areas, ...Object.entries(pc.livros_temas ?? {}).filter(([qid]) => escolhas[qid] === 1).flatMap(([, x]) => x), ...(pc.perfil_temas?.[perfil?.id ?? ""] ?? [])]);
+    let melhor: { livro: LivroPlano; a: NonNullable<typeof cfg.amostras>[string]; n: number } | null = null;
+    for (const [id, a] of Object.entries(cfg.amostras ?? {})) {
+      const livro = livros.find((l) => String(l.id) === id);
+      if (!a || !livro) continue;
+      const n = livro.temas.filter((x) => temas.has(x)).length;
+      if (!melhor || n > melhor.n) melhor = { livro, a, n };
+    }
+    return melhor ? { livro: melhor.livro, a: melhor.a } : null;
+  }, [plano, livros, areas, telaPlano, escolhas, perfil, cfg.amostras]);
   const semAmostra = !!plano && !escolhido;
   useEffect(() => { if (semAmostra && pular) onSeguir(); }, [semAmostra, pular, onSeguir]);
   if (!escolhido) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
