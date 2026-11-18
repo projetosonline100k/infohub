@@ -30,6 +30,17 @@ ${descricao ? `<meta property="og:description" content="${esc(descricao)}">` : "
 <meta property="og:url" content="${esc(destino)}"><meta name="robots" content="noindex"></head><body></body></html>`;
 }
 
+// Identificadores de clique dos anúncios (Meta: fbclid, TikTok: ttclid, Google: gclid): precisam chegar até o quiz, senão o pixel e a API de
+// Conversões não conseguem ligar a visita/o lead/a venda ao anúncio que gerou o clique. O redirecionamento os mantém.
+const CLIQUES = ["fbclid", "ttclid", "gclid"];
+function comCliques(destino, query) {
+  try {
+    const u = new URL(destino);
+    for (const k of CLIQUES) { const v = String((query && query[k]) || ""); if (/^[\w.\-~]{6,300}$/.test(v) && !u.searchParams.has(k)) u.searchParams.set(k, v); }
+    return u.toString();
+  } catch { return destino; }
+}
+
 export default async function handler(req, res) {
   const codigo = String((req.query && req.query.c) || "").toLowerCase().trim();
   res.setHeader("Cache-Control", "no-store");
@@ -45,7 +56,7 @@ export default async function handler(req, res) {
     if (typeof destino === "string" && /^https?:\/\//i.test(destino) && ehRobo) {
       res.statusCode = 200; res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end(await paginaDePrevia(destino)); return;
     }
-    if (typeof destino === "string" && /^https?:\/\//i.test(destino)) { res.statusCode = 302; res.setHeader("Location", destino); res.end(); return; }
+    if (typeof destino === "string" && /^https?:\/\//i.test(destino)) { res.statusCode = 302; res.setHeader("Location", comCliques(destino, req.query)); res.end(); return; }
   } catch { /* cai no 404 abaixo */ }
   res.statusCode = 404;
   res.end("Link não encontrado.");
