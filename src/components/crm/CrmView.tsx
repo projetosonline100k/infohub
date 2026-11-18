@@ -135,6 +135,16 @@ export function CrmView({ clienteId }: { clienteId: string }) {
     await db.from("crm_eventos").insert({ pessoa_id: pessoaId, cliente_id: clienteId, tipo: "etapa", texto: `Foi para ${etapas.find((e) => e.id === etapaId)?.nome}` });
   };
 
+  // Avançar pela ficha já abre a próxima pessoa da mesma coluna (Davi: "avançou, já aparece outra para eu abordar").
+  const avancarEAbrirProxima = async (pessoaId: string, destino: string) => {
+    const atual = pessoas.find((x) => x.id === pessoaId);
+    const colunaId = atual?.etapa_id && etapas.some((e) => e.id === atual.etapa_id) ? atual.etapa_id : etapas[0]?.id;
+    const lista = colunaId ? porEtapa[colunaId] ?? [] : [];
+    const i = lista.findIndex((x) => x.id === pessoaId);
+    const proxima = lista[i + 1] ?? lista[i - 1] ?? null;
+    await mover(pessoaId, destino);
+    setAberta(proxima?.id ?? null);
+  };
   const desqualificar = async (p: Pessoa) => {
     const motivo = await pedirTexto(`Desqualificar ${titulo(p)}. Motivo (opcional: perfil falso, não é o público, já é cliente…)`, "");
     if (motivo === null) return;
@@ -251,7 +261,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
       </div>
 
       <FichaPessoa pessoa={pessoaAberta} igUserId={igUserId} contatoId={pessoaAberta ? contatoDe(pessoaAberta) : null} comentario={pessoaAberta && contatoDe(pessoaAberta) ? comentou.get(contatoDe(pessoaAberta)!) ?? null : null} etapas={etapas} clienteId={clienteId} onFechar={() => setAberta(null)}
-        onMudou={(nova) => { if (nova) setPessoas((l) => l.map((x) => (x.id === nova.id ? nova : x))); else void carregar(); }} onMover={mover} onDesqualificar={desqualificar} onRequalificar={requalificar}
+        onMudou={(nova) => { if (nova) setPessoas((l) => l.map((x) => (x.id === nova.id ? nova : x))); else void carregar(); }} onMover={mover} onAvancar={avancarEAbrirProxima} onDesqualificar={desqualificar} onRequalificar={requalificar}
         onExcluida={(id) => { setAberta(null); setPessoas((l) => l.filter((x) => x.id !== id)); }} />
       <NovaPessoa etapaId={novaEm} etapas={etapas} clienteId={clienteId} onFechar={() => setNovaEm(undefined)} onCriada={() => { setNovaEm(undefined); void carregar(); }} />
       <ImportarSeguidores aberto={importando} clienteId={clienteId} etapaId={etapas.find((e) => e.chave === "seguidor")?.id ?? etapas[0]?.id ?? null}
@@ -261,8 +271,8 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   );
 }
 
-function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteId, onFechar, onMudou, onMover, onDesqualificar, onRequalificar, onExcluida }: {
-  pessoa: Pessoa | null; onDesqualificar: (p: Pessoa) => Promise<void>; onRequalificar: (p: Pessoa) => Promise<void>; igUserId: string | null; contatoId: string | null; comentario: string | null; etapas: Etapa[]; clienteId: string; onFechar: () => void;
+function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteId, onFechar, onMudou, onMover, onAvancar, onDesqualificar, onRequalificar, onExcluida }: {
+  pessoa: Pessoa | null; onAvancar: (pessoaId: string, etapaId: string) => Promise<void>; onDesqualificar: (p: Pessoa) => Promise<void>; onRequalificar: (p: Pessoa) => Promise<void>; igUserId: string | null; contatoId: string | null; comentario: string | null; etapas: Etapa[]; clienteId: string; onFechar: () => void;
   onMudou: (p: Pessoa | null) => void; onMover: (pessoaId: string, etapaId: string) => Promise<void>; onExcluida: (id: string) => void;
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
@@ -332,7 +342,7 @@ function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteI
                 <span className="ml-auto self-center text-xs text-muted-foreground">Origem: {ROTULO_ORIGEM[pessoa.origem] ?? pessoa.origem}</span>
               </div>
               {(() => { const prox = proximaEtapa(etapas, pessoa.etapa_id); return prox && !pessoa.desqualificada_em ? (
-                <Button className="w-full" variant="secondary" onClick={() => void onMover(pessoa.id, prox.id)}><ArrowRight className="mr-1 h-4 w-4" />Avançar para {prox.nome}</Button>
+                <Button className="w-full" variant="secondary" onClick={() => void onAvancar(pessoa.id, prox.id)}><ArrowRight className="mr-1 h-4 w-4" />Avançar para {prox.nome} e abrir a próxima</Button>
               ) : null; })()}
               <div>
                 <label className="text-xs text-muted-foreground">Etapa</label>
