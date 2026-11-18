@@ -1975,16 +1975,26 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
   const plano = planos.find((p) => p.id === planoId) ?? anual;
   const verde = e.visual?.botao ?? "#34d399", cor = corDoQuiz(e);
   const b = escolhido != null ? bonus[escolhido] : undefined;
+  // Bônus de cada plano: "todos" = o escolhido + o outro; "escolhido" = só o escolhido; "nenhum". Sem `bonus_regra`, vale `com_bonus`.
+  const bonusDoPlano = (p?: PlanoOferta): typeof bonus => {
+    const regra = p?.bonus_regra ?? (p?.com_bonus !== false ? "escolhido" : "nenhum");
+    if (regra === "nenhum") return [];
+    if (regra === "todos") return b ? [b, ...bonus.filter((x) => x !== b)] : bonus;
+    return b ? [b] : [];
+  };
+  const nomeCurto = (t: string) => t.replace(/^\s*b[ôo]nus\s*\d*\s*[:\-–]?\s*/i, "");
   const irPara = (p?: PlanoOferta) => {
     const base = p ? p.cta_url : (o.cta_url || perfil?.cta_url);
     if (!base) return undefined;
     let u = linkDeCompra ? linkDeCompra(base) : base;
-    if (b && p?.com_bonus !== false && /^https?:\/\//i.test(u)) { try { const x = new URL(u); x.searchParams.set("bonus", slugBonus(b)); u = x.toString(); } catch { /* mantém */ } }
+    const lb = bonusDoPlano(p);
+    if (lb.length && /^https?:\/\//i.test(u)) { try { const x = new URL(u); x.searchParams.set("bonus", (p?.bonus_regra === "todos" ? bonus : lb).map(slugBonus).join(",")); u = x.toString(); } catch { /* mantém */ } }
     return u;
   };
   const abrir = (p?: PlanoOferta) => {
     const u = irPara(p);
-    aoClicarOferta?.(`${p?.nome ?? "Plano"}${b && p?.com_bonus !== false ? ` + bônus ${slugBonus(b)}` : ""}`);
+    const lb = p?.bonus_regra === "todos" ? bonus : bonusDoPlano(p);
+    aoClicarOferta?.(`${p?.nome ?? "Plano"}${lb.length ? ` + bônus ${lb.map(slugBonus).join(",")}` : ""}`);
     if (u && !editar) window.open(u, "_blank", "noopener");
   };
   const voltar = () => setEtapa((x) => Math.max(bonus.length ? 0 : 1, x - 1));
@@ -1995,13 +2005,22 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
   );
   const cartao = (p: PlanoOferta) => {
     const on = p.id === plano?.id;
+    const lb = bonusDoPlano(p);
     return (
       <button key={p.id} type="button" role="radio" aria-checked={on} onClick={() => setPlanoId(p.id)}
         className="relative flex w-full items-center gap-3 rounded-2xl p-3.5 text-left transition-colors"
         style={{ border: on ? "2px solid rgba(255,255,255,0.9)" : "1px solid rgba(255,255,255,0.2)", background: on ? "rgba(255,255,255,0.08)" : "transparent" }}>
         {(p.selo || p.destaque) && <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#f4efe6] px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#14110d]">{p.selo || "Melhor valor"}</span>}
         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? "#f4efe6" : "rgba(255,255,255,0.4)", background: on ? "#f4efe6" : "transparent" }}>{on && <Check className="h-3 w-3 text-[#14110d]" strokeWidth={4} />}</span>
-        <span className="min-w-0 flex-1 text-base font-extrabold leading-tight">{p.nome}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-base font-extrabold leading-tight">{p.nome}</span>
+          {lb.length > 0 && (
+            <span className="mt-1 block text-[11px] font-semibold leading-snug" style={{ color: verde }}>
+              {p.bonus_regra === "todos" && lb.length > 1 && <span className="mb-0.5 block font-extrabold uppercase tracking-wide">Leva os {lb.length} bônus</span>}
+              {lb.map((x, k) => <span key={k} className="block">{k > 0 ? "+ " : ""}🎁 {nomeCurto(x.titulo)}{p.bonus_regra === "todos" && k > 0 ? " (de presente)" : ""}</span>)}
+            </span>
+          )}
+        </span>
         <span className="shrink-0 text-right">
           <span className="block text-lg font-extrabold leading-tight">{p.parcelas ? `${p.parcelas.n}x ${p.parcelas.valor}` : p.preco}</span>
           <span className="block text-[11px] text-white/60">{p.parcelas ? `ou ${p.preco} à vista` : "à vista"}</span>
@@ -2016,7 +2035,7 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
     const tit = o.titulo ?? "{nome}, seu plano personalizado está pronto!";
     return (
       <div className={(editar ? "relative min-h-[640px]" : "fixed inset-0 z-40") + " flex flex-col overflow-hidden bg-[#0a1020] text-white"}>
-        {video && <video src={video} poster={o.video?.poster} autoPlay loop muted playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />}
+        {video && <video src={video} poster={o.video?.poster} autoPlay loop muted playsInline preload="auto" className="absolute inset-x-0 top-0 h-[120%] w-full -translate-y-[14%] object-cover object-top" />}
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/50 to-black/90" />
         <div className="relative flex flex-1 flex-col justify-between">
           <div className="space-y-3 p-5 pt-6">
@@ -2029,7 +2048,7 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
             <button type="button" onClick={() => abrir(sel)} className="flex min-h-14 w-full items-center justify-center rounded-full bg-[#f4efe6] px-6 text-base font-extrabold uppercase tracking-[0.2em] text-[#14110d] transition-transform active:scale-[0.98]">CONTINUAR</button>
             <p className="text-center text-xs text-white/70">
               {sel?.parcelas ? `${sel.preco} à vista (apenas ${sel.parcelas.n}x de ${sel.parcelas.valor})` : sel?.preco}
-              {b && sel?.com_bonus !== false && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 com o seu bônus: {b.titulo}</span>}
+              {bonusDoPlano(sel).length > 0 && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 {bonusDoPlano(sel).length > 1 ? "com os seus bônus" : "com o seu bônus"}: {bonusDoPlano(sel).map((x) => nomeCurto(x.titulo)).join(" + ")}</span>}
             </p>
           </div>
         </div>

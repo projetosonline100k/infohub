@@ -141,6 +141,7 @@ export interface PlanoOferta {
   destaque?: boolean;   // vem selecionado ao abrir
   selo?: string;        // ex.: "Mais escolhido"
   com_bonus?: boolean;  // só estes planos levam os bônus
+  bonus_regra?: "todos" | "escolhido" | "nenhum";   // 18/11 (V2 direta): anual leva os 2 bônus, semestral só o escolhido, trimestral nenhum. Sem isso vale `com_bonus`
   oculto?: boolean;     // some do público (fica no editor) até o link estar certo
   equivalente?: string; // ex.: "≈ R$12,25/mês"
 }
