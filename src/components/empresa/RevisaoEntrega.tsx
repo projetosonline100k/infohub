@@ -28,6 +28,9 @@ import { AndamentoEntrega } from "./AndamentoEntrega";
 import type { Andamento } from "./ConversaEntrega";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { laminasDoQuiz, linkDaPreviaDoQuiz, linkDoQuiz, ROTULO_STATUS, type EstruturaQuiz, type Lamina, type StatusQuiz } from "@/lib/quiz/quiz";
+import { enviarCodigo, estadoDoCodigo } from "@/lib/desktop/codigoGit";
+import { esperarSiteNoAr, situacaoDoCodigo, type SituacaoCodigo } from "@/lib/quiz/codigoNoAr";
+import { isDesktop } from "@/lib/platform";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const db = supabase as unknown as SupabaseClient;   // quizzes ainda não está nos tipos gerados
@@ -178,8 +181,43 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   };
   // Publicar (10/11, Davi): quiz em teste → publica (aprova); quiz no ar → leva as alterações ao mesmo link.
   const alteracoesNaoPublicadas = !!quiz && quiz.status === "publicado" && JSON.stringify(quiz.estrutura) !== JSON.stringify(quiz.estrutura_publicada ?? quiz.estrutura);
+  // Publicar também envia o código do Mac ao GitHub e espera o site novo subir (18/11, Davi): só então publica o conteúdo.
+  const [faseCodigo, setFaseCodigo] = useState<null | "enviando" | "atualizando">(null);
+  const [codigo, setCodigo] = useState<SituacaoCodigo>({ tipo: "desconhecido" });
+  const [publicadoEm, setPublicadoEm] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isDesktop() || !quiz) return;
+    let vivo = true;
+    const ver = () => { void situacaoDoCodigo().then((s) => { if (vivo) setCodigo(s); }); };
+    ver();
+    const t = setInterval(ver, 60000);
+    return () => { vivo = false; clearInterval(t); };
+  }, [quiz?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** true = o site no ar já tem o código do Mac (ou não é desktop); false = falhou, não publicar. */
+  const garantirCodigo = async (): Promise<boolean> => {
+    if (!isDesktop()) return true;
+    const est = await estadoDoCodigo(true);
+    if (!est) { toast.error("Não consegui conferir o código no Mac. Não publiquei."); return false; }
+    try {
+      let commit = est.commit_local;
+      if (est.pendentes > 0) {
+        setFaseCodigo("enviando");
+        commit = (await enviarCodigo()).commit_local;
+      }
+      setFaseCodigo("atualizando");
+      const subiu = await esperarSiteNoAr(commit);
+      if (!subiu) { toast.error("O código foi enviado, mas o site ainda não atualizou (passou de 6 min). Não publiquei o quiz: confira a Vercel e tente de novo."); return false; }
+      setCodigo({ tipo: "ok" });
+      return true;
+    } catch (e) {
+      toast.error(`Código NÃO enviado, quiz NÃO publicado: ${(e as Error).message}`, { duration: 12000 });
+      return false;
+    } finally { setFaseCodigo(null); }
+  };
   const publicar = async () => {
     if (!quiz) return;
+    if (!(await garantirCodigo())) return;
+    const marcarHorario = () => setPublicadoEm(format(new Date(), "HH:mm"));
     if (quiz.status === "revisar" && !quiz.variante_de) { await aprovar(); return; }
     if (quiz.status === "revisar" && quiz.variante_de) {   // versão (V2…): publica direto, sem passar pela aprovação da entrega
       setSalvando(true);
@@ -187,6 +225,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
         const { error } = await db.from("quizzes").update({ status: "publicado", estrutura_publicada: quiz.estrutura }).eq("id", quiz.id);
         if (error) throw error;
         setQuiz({ ...quiz, status: "publicado", estrutura_publicada: quiz.estrutura });
+        marcarHorario();
         toast.success(`V${quiz.versao} publicada: ela tem o próprio link. Para receber visitas do link principal, ligue "No teste A/B".`);
       } catch (e) { toast.error(`Não consegui publicar: ${(e as { message?: string })?.message ?? "erro"}`); } finally { setSalvando(false); }
       return;
@@ -196,7 +235,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
       const { error } = await db.from("quizzes").update({ estrutura_publicada: quiz.estrutura }).eq("id", quiz.id);
       if (error) throw error;
       setQuiz({ ...quiz, estrutura_publicada: quiz.estrutura });
-      toast.success("Publicado: as alterações já estão no link");
+      marcarHorario();
+      toast.success(isDesktop() ? "Publicado ✓ — no ar no link" : "Publicado: as alterações já estão no link");
       onMudou?.();
     } catch { toast.error("Não consegui publicar"); } finally { setSalvando(false); }
   };
@@ -360,13 +400,20 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     title="Link secreto que mostra o rascunho, sem publicar" className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"><QrCode className="h-3.5 w-3.5" />Link de prévia</button>
                 )}
                 {(quiz.status === "revisar" || (quiz.status === "publicado")) && (
-                  <Button size="sm" className="h-7 gap-1.5 rounded-full px-3 text-xs" disabled={salvando || escrevendo || (quiz.status === "publicado" && !alteracoesNaoPublicadas)}
+                  <Button size="sm" className="h-7 gap-1.5 rounded-full px-3 text-xs" disabled={salvando || !!faseCodigo || escrevendo || (quiz.status === "publicado" && !alteracoesNaoPublicadas)}
                     title={quiz.status === "publicado" ? (alteracoesNaoPublicadas ? "Levar as alterações para o link do quiz" : "O link já está igual a esta versão") : "Publicar o quiz: o link passa a valer e a contar respostas"}
                     onClick={() => void publicar()}>
-                    {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    {quiz.status === "revisar" ? "Publicar" : alteracoesNaoPublicadas ? "Publicar alterações" : "Publicado"}
+                    {salvando || faseCodigo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                    {faseCodigo === "enviando" ? "Enviando código…" : faseCodigo === "atualizando" ? "Atualizando o site… (~1–2 min)" : quiz.status === "revisar" ? "Publicar" : alteracoesNaoPublicadas ? "Publicar alterações" : "Publicado"}
                   </Button>
                 )}
+                {isDesktop() && codigo.tipo !== "desconhecido" && (
+                  <span className={cn("text-[11px] font-medium", codigo.tipo === "ok" ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300")}
+                    title="Código do app que está no link público (Vercel) comparado ao que está no Mac">
+                    {codigo.tipo === "ok" ? "Código no ar: ✓ atualizado" : codigo.tipo === "pendente" ? `⚠ ${codigo.pendentes} ${codigo.pendentes === 1 ? "mudança" : "mudanças"} de código ainda não enviadas` : "⏳ Código enviado, o site está atualizando"}
+                  </span>
+                )}
+                {publicadoEm && !alteracoesNaoPublicadas && <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-300">Publicado ✓ — no ar no link às {publicadoEm}</span>}
                 {alteracoesNaoPublicadas && <span className="flex items-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-300"><span className="h-1.5 w-1.5 rounded-full bg-amber-500" />alterações ainda não publicadas</span>}
                 <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
                   {telasProntas} de {laminas.length} telas prontas

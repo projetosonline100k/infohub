@@ -6,6 +6,7 @@ use tauri::{
 use tauri_plugin_autostart::MacosLauncher;
 
 mod janelas;
+mod codigo_git;
 #[cfg(target_os = "macos")]
 mod active_window;
 #[cfg(target_os = "macos")]
@@ -92,6 +93,8 @@ pub fn run() {
             focus_monitor::open_accessibility_settings,
             global_shortcut::atalho_encerrar_dia_registrado,
             mac_sleep::dormir_mac,
+            codigo_git::codigo_estado,
+            codigo_git::codigo_enviar,
             saude::saude_pc,
             lembretes::lembretes_criar_lote,
             lembretes::lembrete_atualizar_dados,
