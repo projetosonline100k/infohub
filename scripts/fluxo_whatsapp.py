@@ -36,6 +36,43 @@ def normalizar(t):
     return re.sub(r"[^a-z0-9]+", " ", "".join(c for c in unicodedata.normalize("NFD", (t or "").lower()) if not unicodedata.combining(c))).strip()
 
 
+_EU = {}   # conta → (quando conferiu, número do próprio WhatsApp)
+
+
+def numero_proprio(conta):
+    """O chat id do próprio número da conta (ex.: 5511…@c.us) ou None. Serve ao teste do Davi: ele dispara o fluxo para o próprio número e responde de lá."""
+    ts, v = _EU.get(conta, (0, None))
+    if time.time() - ts < 300:
+        return v
+    v = None
+    try:
+        cfg = x1.waha_config(conta)
+        req = urllib.request.Request(f"{cfg.get('waha_url', 'http://localhost:3000')}/api/sessions/{cfg.get('sessao', 'default')}", headers={"X-Api-Key": cfg["waha_api_key"]})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            v = ((json.loads(r.read() or b"{}").get("me") or {}).get("id")) or None
+    except Exception:  # noqa: BLE001
+        v = _EU.get(conta, (0, None))[1]
+    _EU[conta] = (time.time(), v)
+    return v
+
+
+def numeros_proprios():
+    """Os números das contas conectadas (para o teste no próprio número)."""
+    contas = ["principal"]
+    for cfgp in (Path.home() / ".infopro-hub").glob("whatsapp-*/config.json"):
+        try:
+            contas.append(json.loads(cfgp.read_text()).get("conta") or cfgp.parent.name.split("-", 1)[1])
+        except Exception:  # noqa: BLE001
+            pass
+    return [n for n in {numero_proprio(c) for c in contas} if n]
+
+
+def e_texto_do_robo(texto, recentes):
+    """Conversa consigo mesmo: o que sai do número é o robô OU o Davi respondendo. Só é do robô se for igual a algo que o robô mandou."""
+    n = x1.normalizar(texto)
+    return any(n == e or (len(n) >= 15 and (e.startswith(n) or n in e)) for e in recentes if e)
+
+
 def respostas_do_no(no):
     return [b for b in (no.get("dados", {}).get("botoes") or []) if b.get("tipo") == "resposta"]
 
@@ -297,9 +334,9 @@ def _passada_uma(log=print, enviar=None):
                       WHERE (estado IN ('iniciar', 'rodando', 'aguardando_tempo')
                              OR (estado = 'aguardando_resposta' AND (cursor_em IS NULL OR EXISTS (   -- só olha quem tem resposta nova (a passada roda a cada 1 s)
                                    SELECT 1 FROM public.whatsapp_mensagens m WHERE m.chat_id = whatsapp_fluxo_execucoes.chat_id AND m.conta = whatsapp_fluxo_execucoes.conta
-                                      AND NOT m.de_mim AND COALESCE(m.enviada_em, m.recebida_em) > whatsapp_fluxo_execucoes.cursor_em))))
+                                      AND (NOT m.de_mim OR m.chat_id = ANY(%s)) AND COALESCE(m.enviada_em, m.recebida_em) > whatsapp_fluxo_execucoes.cursor_em))))
                         AND (trava_ate IS NULL OR trava_ate < now()) AND (proximo_em IS NULL OR proximo_em <= now())
-                      ORDER BY (estado = 'aguardando_resposta') DESC, atualizado_em LIMIT 12""")
+                      ORDER BY (estado = 'aguardando_resposta') DESC, atualizado_em LIMIT 12""", (numeros_proprios(),))
         linhas = q.fetchall()
         c.commit()
         if enviar:   # teste: um de cada vez, na mesma conexão
@@ -434,7 +471,10 @@ def _tratar(c, q, id_, log, enviar):
         todas, novas_lead = x1._ler_chat(q, conta, chat_id, ex["cursor_em"] or ex["criado_em"])
         # O Davi escreveu por conta própria? Então ele assumiu: o fluxo para.
         proprias = [m for m in todas if m[1] and m[2] and m[3] > (ex["cursor_em"] or ex["criado_em"])]
-        if any(not x1.e_do_robo(m[2], recentes) for m in proprias):
+        eu_mesmo = chat_id == numero_proprio(conta)   # teste no próprio número: o que o Davi escreve ali é a resposta do lead, não "assumi a conversa"
+        if eu_mesmo:
+            novas_lead = [m for m in proprias if not e_texto_do_robo(m[2], recentes)]
+        elif any(not x1.e_do_robo(m[2], recentes) for m in proprias):
             _atualizar(q, id_, estado="pausado", motivo="Você escreveu na conversa: o fluxo parou (clique em Retomar)"); c.commit(); return
         modo = ex["estado"]
         if modo == "rodando":
@@ -455,6 +495,8 @@ def _tratar(c, q, id_, log, enviar):
             anotar(ex["no_atual"], "esperou")
         else:   # aguardando_resposta
             if not novas_lead:
+                if eu_mesmo and proprias:   # só o que o próprio robô mandou chegou depois do cursor: anda o cursor para não acordar a cada segundo
+                    q.execute("UPDATE public.whatsapp_fluxo_execucoes SET cursor_em = now() WHERE id = %s", (id_,))
                 if ex["estado"] == "rodando":   # retomado: volta a esperar a resposta de verdade
                     _atualizar(q, id_, estado="aguardando_resposta", cursor_em=agora())
                 else:
