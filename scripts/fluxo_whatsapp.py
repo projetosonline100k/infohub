@@ -473,7 +473,7 @@ def _tratar(c, q, id_, log, enviar):
         proprias = [m for m in todas if m[1] and m[2] and m[3] > (ex["cursor_em"] or ex["criado_em"])]
         eu_mesmo = chat_id == numero_proprio(conta)   # teste no próprio número: o que o Davi escreve ali é a resposta do lead, não "assumi a conversa"
         if eu_mesmo:
-            novas_lead = [m for m in proprias if not e_texto_do_robo(m[2], recentes)]
+            novas_lead = novas_lead + [m for m in proprias if not e_texto_do_robo(m[2], recentes)]   # (votos da enquete já vêm como mensagem do lead)
         elif any(not x1.e_do_robo(m[2], recentes) for m in proprias):
             _atualizar(q, id_, estado="pausado", motivo="Você escreveu na conversa: o fluxo parou (clique em Retomar)"); c.commit(); return
         modo = ex["estado"]

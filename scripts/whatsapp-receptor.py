@@ -146,11 +146,17 @@ def guardar_voto(p):
     """Voto numa enquete (evento poll.vote do WAHA) vira uma mensagem de texto da pessoa com o nome da opção escolhida:
     é assim que o fluxo do WhatsApp lê o "botão" que ela tocou (scripts/fluxo_whatsapp.py, saida_da_resposta)."""
     voto, enquete = p.get("vote") or {}, p.get("poll") or {}
-    if voto.get("fromMe") or not voto.get("selectedOptions"):
+    if not voto.get("selectedOptions"):
         return
     chat_id = normalizar(chat_do_id(enquete.get("id")) or voto.get("from") or voto.get("participant"))
     if not chat_id or chat_id.endswith("@g.us"):
         return
+    if voto.get("fromMe"):
+        # Voto do próprio Davi: só vale na conversa dele consigo mesmo (teste do fluxo no próprio número); na dos outros ele não vota.
+        quem = normalizar(voto.get("participant") or voto.get("from") or "")
+        if quem != chat_id:
+            log("voto próprio ignorado (conversa de outra pessoa):", chat_id[:20])
+            return
     ts = voto.get("timestamp") or time.time()
     if ts > 1e11:   # o WAHA manda o voto em milissegundos
         ts = ts / 1000
