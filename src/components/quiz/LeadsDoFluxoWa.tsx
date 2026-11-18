@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Loader2, Play, Search, Tag as TagIcon, X } from "lucide-react";
+import { Loader2, Play, RotateCcw, Search, Tag as TagIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { telefoneWa } from "@/lib/quiz/x1";
 import type { GrafoFluxo, NoFluxo } from "../../../supabase/functions/_shared/fluxo";
@@ -11,10 +11,10 @@ const ESTADO: Record<string, string> = { iniciar: "Vai começar", rodando: "Envi
 const hora = (ms: number) => new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 /** Painel à esquerda do editor do fluxo do WhatsApp: números gerais, quem vai receber (com "Disparar agora") e quem já está no fluxo. */
-export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin, quizId, ativadoEm, grafo, leads, execs, quizzes, tagsPorLead, todasTags, disparar, mudarTag }: {
+export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin, quizId, ativadoEm, grafo, leads, execs, quizzes, tagsPorLead, todasTags, disparar, reenviar, mudarTag }: {
   fluxoId: string; ativo: boolean; gatilho: string; gatilhoTag: string | null; esperaMin: number; quizId: string | null; ativadoEm: string | null; grafo: GrafoFluxo;
   leads: LeadFluxoWa[]; execs: ExecucaoWa[]; quizzes: QuizWa[]; tagsPorLead: Map<string, string[]>; todasTags: string[];
-  disparar: (leadIds: string[]) => Promise<void>; mudarTag: (leadIds: string[], tag: string, remover: boolean) => Promise<void>;
+  disparar: (leadIds: string[]) => Promise<void>; reenviar: (x: ExecucaoWa) => Promise<void>; mudarTag: (leadIds: string[], tag: string, remover: boolean) => Promise<void>;
 }) {
   const [aba, setAba] = useState<"receber" | "base" | "fluxo" | "fim">("receber");
   const [fQuiz, setFQuiz] = useState("");   // "" = todos os quizzes e versões do projeto
@@ -163,6 +163,8 @@ export function LeadsDoFluxoWa({ fluxoId, ativo, gatilho, gatilhoTag, esperaMin,
                   <button type="button" title="Tirar esta tag" onClick={() => void mudarTag([l.id], t, true)}><X className="h-2.5 w-2.5 opacity-60 hover:opacity-100" /></button></span>))}</div>}</div>
             {!x && !bloqueado(l) && <button type="button" disabled={!ativo || !!enviando} onClick={() => void rodar([l.id], l.id)} title={ativo ? "Entrar no fluxo agora" : "Ligue o fluxo primeiro"} className="flex items-center gap-1 rounded-md border border-emerald-400/40 px-2 py-1 text-emerald-200 hover:bg-emerald-400/10 disabled:opacity-40">
               {enviando === l.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}Disparar</button>}
+            {x && <button type="button" disabled={!!enviando} onClick={() => void rodar([], x.id, () => reenviar(x))} title="Começar o fluxo de novo para este lead" className="flex items-center gap-1 rounded-md border border-cyan-300/40 px-2 py-1 text-cyan-100 hover:bg-cyan-300/10 disabled:opacity-40">
+              {enviando === x.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}Reenviar</button>}
           </div>))}
         {lista.length > 200 && <p className="py-2 text-center text-[10px] text-white/35">Mostrando 200 de {lista.length}. Use os filtros.</p>}
       </div>

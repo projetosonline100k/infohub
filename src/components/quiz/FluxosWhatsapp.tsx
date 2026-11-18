@@ -102,6 +102,20 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
     toast.success(`${ids.length} lead${ids.length === 1 ? "" : "s"} entrando no fluxo`);
     await lerMovimento();
   };
+  // Reenviar: para o que está andando para esse lead (se estiver) e começa o fluxo de novo do início, com a primeira mensagem saindo outra vez.
+  const reenviarLead = async (fluxoId: string, x: ExecucaoWa) => {
+    if (!clienteId) return;
+    const nome = fluxos?.find((f) => f.id === fluxoId)?.nome ?? "fluxo";
+    if (!(await confirmar(`Reenviar “${nome}” para este lead?`, { botao: "Reenviar", destrutivo: false, descricao: "O fluxo recomeça do início e a primeira mensagem sai de novo pelo WhatsApp. Se ele estava no meio, esse andamento é encerrado." }))) return;
+    if (["iniciar", "rodando", "aguardando_resposta", "aguardando_tempo", "pausado"].includes(x.estado)) {
+      const { error: e1 } = await db.from("whatsapp_fluxo_execucoes").update({ estado: "parado", motivo: "Reenviado por você" }).eq("id", x.id);
+      if (e1) { toast.error("Não consegui parar o andamento atual: " + e1.message); return; }
+    }
+    const { error } = await db.from("whatsapp_fluxo_execucoes").insert({ fluxo_id: fluxoId, cliente_id: clienteId, resposta_id: x.resposta_id, estado: "iniciar" });
+    if (error) { toast.error("Não consegui reenviar: " + error.message); return; }
+    toast.success("Fluxo reenviado: a primeira mensagem sai em instantes");
+    await lerMovimento();
+  };
   const mudarTag = async (ids: string[], tag: string, remover: boolean) => {
     const t = tag.trim().toLowerCase().slice(0, 40);
     if (!clienteId || !t || ids.length === 0) return;
@@ -119,7 +133,7 @@ export function FluxosWhatsapp({ quizId }: { quizId: string }) {
   const editado = editando && editando !== "novo" ? (fluxos?.find((x) => x.id === editando.id) ?? editando) : null;
   const painel = useMemo(() => editado && (
     <LeadsDoFluxoWa fluxoId={editado.id} ativo={editado.ativo} gatilho={editado.gatilho} gatilhoTag={editado.gatilho_tag} quizzes={todosQuizzes} tagsPorLead={tagsPorLead} todasTags={todasTags} mudarTag={mudarTag} esperaMin={editado.gatilho_espera_min} quizId={editado.gatilho_quiz_id} ativadoEm={editado.ativado_em} grafo={editado.grafo}
-      leads={leads} execs={execs} disparar={(ids) => dispararLeads(editado.id, ids)} />
+      leads={leads} execs={execs} disparar={(ids) => dispararLeads(editado.id, ids)} reenviar={(x) => reenviarLead(editado.id, x)} />
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ), [editado, leads, execs, todosQuizzes, tagsPorLead]);
 
