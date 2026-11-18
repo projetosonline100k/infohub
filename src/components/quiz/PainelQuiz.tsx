@@ -23,6 +23,7 @@ import { FluxosWhatsapp } from "./FluxosWhatsapp";
 import { VendasUtm } from "./VendasUtm";
 import { AfiliadosQuiz } from "./AfiliadosQuiz";
 import { RenomearLink } from "./RenomearLink";
+import { PixelsQuiz } from "./PixelsQuiz";
 import { Funil } from "./FunilConversao";
 import type { VendaUtm as VendaCompleta } from "@/lib/quiz/vendasUtm";
 import { codigoCurto, enderecoCurto, linkRastreado, normalizarUtm, slugValido, type LinkQuiz } from "@/lib/quiz/utm";
@@ -674,6 +675,8 @@ export function Links({ quizId, slug, onSlug, eventos, leads }: { quizId: string
       </section>
 
       <PreviaDoLink quizId={quizId} slug={slug} />
+
+      <PixelsQuiz quizId={quizId} />
 
       <section className={cn(cartao, "space-y-3")}>
         <div><h3 className="text-lg font-bold text-white">Links com nome (UTM)</h3><p className="text-xs text-white/55">Crie um link para cada lugar onde você divulga (bio, story, anúncio…). Quem entrar por ele fica marcado, e você vê aqui de onde vêm as visitas, os leads e as vendas.</p></div>

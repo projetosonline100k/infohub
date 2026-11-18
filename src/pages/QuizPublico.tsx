@@ -6,6 +6,7 @@ import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import type { EstruturaQuiz } from "@/lib/quiz/quiz";
 import { textoDoNumero } from "@/lib/quiz/numeros";
 import { propagarUtm, utmDaUrl, type Utm } from "@/lib/quiz/utm";
+import { eventoPixel, iniciarPixels, type EventoPixel } from "@/lib/quiz/pixels";
 
 // /quiz/:slug — o quiz publicado, aberto pra qualquer pessoa (sem login).
 // Lê pelo RPC quiz_publico e grava a resposta pelo responder_quiz.
@@ -47,7 +48,7 @@ export default function QuizPublico({ previa = false }: { previa?: boolean }) {
 }
 
 function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }) {
-  const [quiz, setQuiz] = useState<{ titulo: string; estrutura: EstruturaQuiz } | null>(null);
+  const [quiz, setQuiz] = useState<{ titulo: string; estrutura: EstruturaQuiz; pixels?: unknown } | null>(null);
   const [carregando, setCarregando] = useState(true);
   const rolagem = useRef<HTMLDivElement>(null);
   const escuro = !quiz || quiz.estrutura.tema === "escuro";
@@ -58,7 +59,7 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
 
   useEffect(() => {
     void (previa ? supabase.rpc("quiz_rascunho" as never, { p_token: slug } as never) : supabase.rpc("quiz_publico" as never, { p_slug: slug } as never)).then(({ data }) => {
-      const q = data as { titulo: string; estrutura: EstruturaQuiz } | null;
+      const q = data as { titulo: string; estrutura: EstruturaQuiz; pixels?: unknown } | null;
       setQuiz(q && q.estrutura ? q : null);
       setCarregando(false);
       if (q?.titulo) document.title = q.titulo;
@@ -119,12 +120,16 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
     } catch { return null; }
   })());
   const estrutura = useMemo(() => (quiz ? propagarUtm(quiz.estrutura, utm.current) : null), [quiz]);
+  // Pixels (Meta/TikTok/Google): só no quiz publicado de verdade, nunca na prévia nem nos testes.
+  const pixels = quiz?.pixels;
   const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number, detalhe?: string) => {
+    if (!previa) eventoPixel(pixels, tipo as EventoPixel, passo);
     // O .then é o que envia: a consulta do Supabase só sai quando alguém espera a resposta. Sem ele (15–25/10)
     // nenhuma visita/tela/fim foi gravada e as métricas ficaram zeradas.
     if (previa) return;
     void supabase.rpc("registrar_evento_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_tipo: tipo, p_passo: passo ?? -1, p_utm: utm.current, p_detalhe: detalhe ?? null } as never).then(() => undefined);
-  }, [slug, previa]);
+  }, [slug, previa, pixels]);
+  useEffect(() => { if (quiz && !previa) iniciarPixels(quiz.pixels); }, [quiz, previa]);
   useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
 
   return (
@@ -142,6 +147,7 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
             // Pergunta de número (roleta/régua): vai o número que a pessoa escolheu ("20 min/dia"), não a faixa.
             const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: numeros[q.id] !== undefined ? textoDoNumero(q.numero, numeros[q.id]) : q.opcoes[escolhas[q.id]]?.texto ?? null }));
             if (previa) return;
+            if (contato.nome || contato.email || contato.whatsapp) eventoPixel(quiz.pixels, "lead");
             await supabase.rpc("responder_quiz" as never, {
               p_slug: slug, p_respostas: respostas, p_perfil: perfil?.nome ?? null,
               p_nome: contato.nome ?? null, p_email: contato.email ?? null, p_whatsapp: contato.whatsapp ?? null, p_utm: utm.current, p_sessao: sessao.current, p_instagram: instagram.current,
