@@ -1975,7 +1975,6 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
   const plano = planos.find((p) => p.id === planoId) ?? anual;
   const verde = e.visual?.botao ?? "#34d399", cor = corDoQuiz(e);
   const b = escolhido != null ? bonus[escolhido] : undefined;
-  const texto = o.cta_texto || perfil?.cta_texto || "Ativar meu plano";
   const irPara = (p?: PlanoOferta) => {
     const base = p ? p.cta_url : (o.cta_url || perfil?.cta_url);
     if (!base) return undefined;
@@ -1994,6 +1993,49 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
   const topo = etapa > (bonus.length ? 0 : 1) && (
     <button type="button" onClick={voltar} className="flex items-center gap-1 text-xs text-white/70"><ArrowLeft className="h-3 w-3" />Voltar</button>
   );
+  const cartao = (p: PlanoOferta) => {
+    const on = p.id === plano?.id;
+    return (
+      <button key={p.id} type="button" role="radio" aria-checked={on} onClick={() => setPlanoId(p.id)}
+        className="relative flex w-full items-center gap-3 rounded-2xl p-3.5 text-left transition-colors"
+        style={{ border: on ? "2px solid rgba(255,255,255,0.9)" : "1px solid rgba(255,255,255,0.2)", background: on ? "rgba(255,255,255,0.08)" : "transparent" }}>
+        {(p.selo || p.destaque) && <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#f4efe6] px-3 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-[#14110d]">{p.selo || "Melhor valor"}</span>}
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? "#f4efe6" : "rgba(255,255,255,0.4)", background: on ? "#f4efe6" : "transparent" }}>{on && <Check className="h-3 w-3 text-[#14110d]" strokeWidth={4} />}</span>
+        <span className="min-w-0 flex-1 text-base font-extrabold leading-tight">{p.nome}</span>
+        <span className="shrink-0 text-right">
+          <span className="block text-lg font-extrabold leading-tight">{p.parcelas ? `${p.parcelas.n}x ${p.parcelas.valor}` : p.preco}</span>
+          <span className="block text-[11px] text-white/60">{p.parcelas ? `ou ${p.preco} à vista` : "à vista"}</span>
+        </span>
+      </button>
+    );
+  };
+  if (etapa === 2) {
+    const video = o.video?.url;
+    const lista = folha ? planos : [anual, ...planos.filter((x) => x.id !== anual?.id).slice(0, 1)].filter(Boolean) as PlanoOferta[];
+    const sel = plano ?? anual;
+    const tit = o.titulo ?? "{nome}, seu plano personalizado está pronto!";
+    return (
+      <div className={(editar ? "relative min-h-[640px]" : "fixed inset-0 z-40") + " flex flex-col overflow-hidden bg-[#0a1020] text-white"}>
+        {video && <video src={video} poster={o.video?.poster} autoPlay loop muted playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/50 to-black/90" />
+        <div className="relative flex flex-1 flex-col justify-between">
+          <div className="space-y-3 p-5 pt-6">
+            {topo}
+            <Txt caminho="oferta.titulo" valor={tit} mostrar={f(tit)} as="h2" className="block text-center text-3xl font-extrabold leading-tight drop-shadow" />
+          </div>
+          <div className="mx-auto w-full max-w-xl space-y-3 rounded-t-3xl bg-[#14110d]/95 px-4 pb-5 pt-6 backdrop-blur" role="radiogroup" aria-label="Planos">
+            {lista.map(cartao)}
+            {planos.length > 2 && !folha && <button type="button" onClick={() => setFolha(true)} className="block w-full text-center text-xs font-bold uppercase tracking-wide text-white/70 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
+            <button type="button" onClick={() => abrir(sel)} className="flex min-h-14 w-full items-center justify-center rounded-full bg-[#f4efe6] px-6 text-base font-extrabold uppercase tracking-[0.2em] text-[#14110d] transition-transform active:scale-[0.98]">CONTINUAR</button>
+            <p className="text-center text-xs text-white/70">
+              {sel?.parcelas ? `${sel.preco} à vista (apenas ${sel.parcelas.n}x de ${sel.parcelas.valor})` : sel?.preco}
+              {b && sel?.com_bonus !== false && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 com o seu bônus: {b.titulo}</span>}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   const casca = "flex min-h-[78dvh] flex-col justify-center gap-5 p-5 text-white " + (!e.visual ? "bg-[#0a1020] [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]" : "");
   return (
     <div className={casca}>
@@ -2041,48 +2083,6 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
           )}
           <button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Avançar</button>
         </>
-      )}
-      {etapa === 2 && (
-        <>
-          {titulo("oferta.titulo", o.titulo ?? "{nome}, seu plano personalizado está pronto!", f(o.titulo ?? "{nome}, seu plano personalizado está pronto!"))}
-          <div className="space-y-1 text-center">
-            {anual?.nome && <p className="text-sm font-semibold text-white/70">{anual.nome}</p>}
-            {(anual?.preco_de ?? o.preco_de) && <p className="text-sm text-white/60"><s>{anual?.preco_de ?? o.preco_de}</s></p>}
-            {(anual?.parcelas ?? o.parcelas)
-              ? <p className="text-4xl font-extrabold"><span className="text-xl font-bold text-white/80">{(anual?.parcelas ?? o.parcelas)!.n}x de </span>{(anual?.parcelas ?? o.parcelas)!.valor}</p>
-              : <p className="text-4xl font-extrabold">{anual?.preco ?? o.preco_por ?? o.preco}</p>}
-            {(anual?.parcelas ?? o.parcelas) && (anual?.preco ?? o.preco_por ?? o.preco) && <p className="text-xs text-white/60">ou {anual?.preco ?? o.preco_por ?? o.preco} à vista</p>}
-            {b && anual?.com_bonus !== false && <p className="pt-1 text-xs font-semibold" style={{ color: verde }}>🎁 com o seu bônus</p>}
-          </div>
-          <button type="button" className={btn} style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }} onClick={() => abrir(anual)}><Txt caminho="oferta.cta_texto" valor={texto} /></button>
-          {planos.length > 1 && <button type="button" onClick={() => setFolha(true)} className="text-center text-sm font-bold uppercase tracking-wide text-white/80 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
-        </>
-      )}
-      {folha && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={() => setFolha(false)}>
-          <div className="mx-auto w-full max-w-xl space-y-3 rounded-t-3xl bg-[#0a1020] p-5 pb-8 text-white" onClick={(ev) => ev.stopPropagation()} role="dialog" aria-label="Planos">
-            {planos.map((p) => {
-              const on = p.id === plano?.id;
-              return (
-                <button key={p.id} type="button" role="radio" aria-checked={on} onClick={() => setPlanoId(p.id)}
-                  className="relative flex w-full items-center gap-3 rounded-2xl border-2 p-4 text-left"
-                  style={{ borderColor: on ? cor : "rgba(255,255,255,0.15)", background: on ? `${cor}1f` : "rgba(255,255,255,0.04)" }}>
-                  {p.selo && <span className="absolute -top-2.5 right-4 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase text-white" style={{ background: cor }}>{p.selo}</span>}
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-base font-extrabold leading-tight">{p.nome}</span>
-                    {p.com_bonus !== false && b && <span className="block text-xs font-semibold" style={{ color: verde }}>🎁 com o seu bônus</span>}
-                  </span>
-                  <span className="shrink-0 text-right">
-                    {p.parcelas ? <span className="block text-base font-extrabold">{p.parcelas.n}x de {p.parcelas.valor}</span> : null}
-                    <span className={p.parcelas ? "block text-xs text-white/60" : "block text-base font-extrabold"}>{p.parcelas ? "ou " : ""}{p.preco}{p.parcelas ? " à vista" : ""}</span>
-                  </span>
-                </button>
-              );
-            })}
-            <button type="button" className={btn} style={{ background: verde }} onClick={() => abrir(plano)}>CONTINUAR</button>
-          </div>
-        </div>
       )}
     </div>
   );
