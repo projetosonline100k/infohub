@@ -153,6 +153,8 @@ export interface CapturaQuiz {
   etapas?: boolean;
   /** Etapa final: título ("Conta criada!"), texto e botão ("Ver meu plano personalizado"). */
   conta_criada?: { titulo?: string; texto?: string; botao?: string };
+  /** Carrossel de depoimentos (App Store/Google Play) que passa sozinho no lugar do quadro de selos. `fonte` ex.: "Google Play ★★★★★". */
+  depoimentos?: { nome: string; fonte?: string; texto: string }[]; depoimentos_titulo?: string;
   selos?: SeloQuiz[]; louro?: string;   // quadro de selos embaixo do botão (só com fatos reais da oferta); `louro` = imagem do ramo de louro
 }
 // Pergunta do nome (12/11, Davi: "captar o nome no começo pra me referir à pessoa"): uma tela com um campo

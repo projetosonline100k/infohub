@@ -101,6 +101,58 @@ function Txt({ caminho, valor, mostrar, as: Tag = "span", className }: {
   return t ? <Tag className={cn("whitespace-pre-line", className)}>{comGrifo(t)}</Tag> : null;
 }
 
+// Carrossel de depoimentos da captura: passa sozinho (~3,5 s), volta ao 1º no fim e dá para arrastar com o dedo. Altura fixa.
+function CarrosselDepoimentos({ lista, titulo, escuro, suave }: { lista: { nome: string; fonte?: string; texto: string }[]; titulo?: string; escuro: boolean; suave: string }) {
+  const { editar } = useContext(QuizCtx);
+  const trilho = useRef<HTMLDivElement>(null);
+  const [atual, setAtual] = useState(0);
+  const pausa = useRef(0);
+  const irPara = (i: number) => {
+    const el = trilho.current; const cartao = el?.children[i] as HTMLElement | undefined;
+    if (el && cartao) el.scrollTo({ left: cartao.offsetLeft - (el.clientWidth - cartao.clientWidth) / 2, behavior: "smooth" });
+  };
+  useEffect(() => {
+    if (editar || lista.length < 2) return;
+    const t = setInterval(() => {
+      if (Date.now() < pausa.current) return;
+      setAtual((a) => { const p = (a + 1) % lista.length; irPara(p); return p; });
+    }, 3500);
+    return () => clearInterval(t);
+  }, [editar, lista.length]);
+  const aoRolar = () => {
+    const el = trilho.current; if (!el) return;
+    let melhor = 0, dist = Infinity;
+    Array.from(el.children).forEach((c, i) => { const h = c as HTMLElement; const d = Math.abs(h.offsetLeft + h.clientWidth / 2 - (el.scrollLeft + el.clientWidth / 2)); if (d < dist) { dist = d; melhor = i; } });
+    setAtual(melhor);
+  };
+  return (
+    <div className="space-y-2">
+      {(titulo || editar) && <Txt caminho="captura.depoimentos_titulo" valor={titulo} as="p" className={cn("block text-center text-sm font-semibold", suave)} />}
+      <div ref={trilho} onScroll={aoRolar} onTouchStart={() => { pausa.current = Date.now() + 8000; }} onPointerDown={() => { pausa.current = Date.now() + 8000; }}
+        className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-[7.5%] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {lista.map((d, i) => {
+          const loja = /app\s*store/i.test(d.fonte || "") ? "App Store" : /google/i.test(d.fonte || "") ? "Google Play" : "";
+          return (
+            <div key={i} className={cn("flex h-[132px] w-[85%] shrink-0 snap-center flex-col justify-between rounded-xl border p-3 text-left", escuro ? "border-white/15 bg-white/10" : "border-black/10 bg-white text-[#1f2937] shadow-sm")}>
+              <div className="space-y-1">
+                <div className="flex gap-0.5 text-amber-400">{[0, 1, 2, 3, 4].map((s) => <Star key={s} className="h-3.5 w-3.5 fill-amber-400" strokeWidth={0} />)}</div>
+                <Txt caminho={`captura.depoimentos.${i}.texto`} valor={d.texto} mostrar={d.texto ? `“${d.texto}”` : ""} as="p" className="line-clamp-4 text-xs leading-snug" />
+              </div>
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <Txt caminho={`captura.depoimentos.${i}.nome`} valor={d.nome} as="span" className="truncate font-semibold" />
+                {loja && <span className="shrink-0 rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-medium opacity-80">{loja}</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex justify-center gap-1.5">
+        {lista.map((_, i) => <span key={i} className={cn("h-1.5 rounded-full transition-all", i === atual ? "w-4 bg-current opacity-60" : "w-1.5 bg-current opacity-20")} />)}
+      </div>
+    </div>
+  );
+}
+
 // Grifo de marca-texto: ==trecho== vira fundo amarelo atrás das palavras (Davi, 13/11).
 function comGrifo(t: string): ReactNode {
   if (!t.includes("==")) return t;
@@ -1314,7 +1366,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           {passo.tipo === "captura" && e.captura?.etapas && (
             <CapturaEtapas e={e} contato={contato} setContato={setContato} pedir={pedir} f={f} quadros={quadrosMascote} cor={cor} escuro={escuro} suave={suave} enviando={enviando} editar={editar}
               onGravar={() => gravar(contato)} onVerPlano={avancar}
-              selos={!!e.captura.selos?.length && (
+              selos={e.captura.depoimentos?.length ? <CarrosselDepoimentos lista={e.captura.depoimentos} titulo={e.captura.depoimentos_titulo} escuro={escuro} suave={suave} />
+                : !!e.captura.selos?.length && (
                 <div className={cn("flex flex-wrap justify-center gap-2 rounded-2xl border p-3", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]")}>
                   {e.captura.selos.map((sl, k) => (
                     <div key={k} className={cn("relative", k === 0 ? "w-full" : "w-[48%]")}>
@@ -1354,7 +1407,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <Lock className="h-3 w-3 shrink-0" /><Txt caminho="captura.nota" valor={e.captura?.nota} />
                 </p>
               )}
-              {!!e.captura?.selos?.length && (
+              {!!e.captura?.depoimentos?.length && <CarrosselDepoimentos lista={e.captura.depoimentos} titulo={e.captura.depoimentos_titulo} escuro={escuro} suave={suave} />}
+              {!e.captura?.depoimentos?.length && !!e.captura?.selos?.length && (
                 // Quadro de selos embaixo do botão (como o do 12min): só fatos reais da oferta, dentro de um ramo de louro.
                 <div className={cn("flex flex-wrap justify-center gap-2 rounded-2xl border p-3", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]")}>
                   {e.captura.selos.map((sl, k) => (
