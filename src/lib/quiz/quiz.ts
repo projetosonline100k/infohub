@@ -85,8 +85,8 @@ export interface TelaQuiz {
   depoimento_animado?: ConfigDepoimentoAnimado;
   /** Tela "projecao" (15/11): "lendo X min por dia você termina N livros em 12 meses", com livros caindo e empilhando. */
   projecao?: { pergunta: string };
-  /** Tela "compromisso" (15/11): a pessoa desenha um ✓ com o dedo para liberar o botão. */
-  compromisso?: { limpar?: string };
+  /** Tela "compromisso": a pessoa segura o botão até a barra encher (18/11; antes desenhava um ✓). `limpar` não é mais usado; `segurar` = texto do botão; `pergunta` = régua de minutos (padrão: a da projeção). */
+  compromisso?: { limpar?: string; segurar?: string; pergunta?: string };
   /** Tela "perfil" (15/11): resumo do plano em números (minutos/dia, momento, resumos/semana, livros em 12 meses, objetivo). */
   plano_numeros?: ConfigPlanoNumeros;
   /** Tela "plano_livros" (13/11): como escolher os livros do plano (ver src/lib/quiz/plano.ts). */

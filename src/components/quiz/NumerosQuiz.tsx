@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Eraser } from "lucide-react";
+import { Check, Fingerprint } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { limitesDoNumero, preencherCalculos, valoresDoNumero, type ConfigNumero } from "@/lib/quiz/numeros";
 import type { ConfigDepoimentoAnimado } from "@/lib/quiz/quiz";
 
 // Telas e perguntas "de número" do quiz V2 do Instalivros (15/11/2026, a partir do app Ziggur): roleta, régua, barras dos mentores, depoimento animado,
-// projeção em livros, compromisso com ✓ desenhado e o plano em números. Só visual: os cálculos ficam em src/lib/quiz/numeros.ts.
+// projeção em livros, compromisso (segurar o botão) e o plano em números. Só visual: os cálculos ficam em src/lib/quiz/numeros.ts.
 
 interface Visual { cor: string; escuro: boolean; suave: string }
 
@@ -223,44 +223,105 @@ export function ProjecaoLivros({ livros, cor, escuro, suave }: { livros: number 
   );
 }
 
-// ---------------------------------------------------------------- Compromisso com ✓ desenhado (Ziggur 22)
+// ---------------------------------------------------------------- Compromisso: segurar o botão (18/11/2026, pedido do Davi)
 
-/** Área onde a pessoa desenha um ✓ com o dedo. `aoMudar(true)` quando já traçou o suficiente; "Limpar" apaga. */
-export function AreaDoCheck({ aoMudar, rotuloLimpar = "Limpar", cor, escuro, suave }: { aoMudar: (desenhou: boolean) => void; rotuloLimpar?: string } & Visual) {
-  const tela = useRef<HTMLCanvasElement>(null);
-  const traco = useRef<{ x: number; y: number } | null>(null);
-  const comprimento = useRef(0);
-  const [desenhou, setDesenhou] = useState(false);
-  useLayoutEffect(() => {
-    const c = tela.current; if (!c) return;
-    const dpr = window.devicePixelRatio || 1;
-    c.width = c.clientWidth * dpr; c.height = c.clientHeight * dpr;
-    const g = c.getContext("2d"); if (!g) return;
-    g.scale(dpr, dpr); g.lineWidth = 7; g.lineCap = "round"; g.lineJoin = "round"; g.strokeStyle = cor;
-  }, [cor]);
-  const ponto = (ev: React.PointerEvent) => { const r = tela.current!.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; };
-  const comecar = (ev: React.PointerEvent<HTMLCanvasElement>) => { ev.currentTarget.setPointerCapture(ev.pointerId); traco.current = ponto(ev); };
-  const mover = (ev: React.PointerEvent<HTMLCanvasElement>) => {
-    const ant = traco.current, g = tela.current?.getContext("2d"); if (!ant || !g) return;
-    const p = ponto(ev);
-    g.beginPath(); g.moveTo(ant.x, ant.y); g.lineTo(p.x, p.y); g.stroke();
-    comprimento.current += Math.hypot(p.x - ant.x, p.y - ant.y);
-    traco.current = p;
-    if (!desenhou && comprimento.current > 70) { setDesenhou(true); aoMudar(true); }
+const TEMPO_SEGURAR = 2000;   // ms segurando até completar
+const TEMPO_VOLTAR = 450;     // ms para a barra voltar a zero se soltar antes
+const CONFETES = ["#22c55e", "#facc15", "#38bdf8", "#f472b6", "#fb923c", "#a78bfa"];
+
+/** Botão "Segure para se comprometer": a barra enche em ~2 s; soltar antes volta. Ao completar mostra o cartão com a assinatura sendo escrita.
+ *  `aoMudar(true)` chega ~1,5 s depois da animação (libera o Continuar). `jaFez`: voltou à tela depois de ter se comprometido (mostra o cartão pronto). */
+export function SegureCompromisso({ aoMudar, jaFez, nome, minutos, rotulo = "Segure para se comprometer", cor, escuro, suave }: { aoMudar: (fez: boolean) => void; jaFez?: boolean; nome?: string; minutos?: number; rotulo?: string } & Visual) {
+  const reduzido = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const [progresso, setProgresso] = useState(jaFez ? 1 : 0);
+  const [feito, setFeito] = useState(!!jaFez);
+  const prog = useRef(jaFez ? 1 : 0);
+  const segurando = useRef(false);
+  const raf = useRef(0);
+  const ultimo = useRef(0);
+  const completou = useRef(!!jaFez);
+  const aoMudarRef = useRef(aoMudar);
+  aoMudarRef.current = aoMudar;
+
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  useEffect(() => {
+    if (!feito || jaFez) return;
+    const t = setTimeout(() => aoMudarRef.current(true), 1500);
+    return () => clearTimeout(t);
+  }, [feito, jaFez]);
+
+  const passo = (agora: number) => {
+    const dt = Math.min(64, agora - ultimo.current); ultimo.current = agora;
+    prog.current = segurando.current ? Math.min(1, prog.current + dt / TEMPO_SEGURAR) : Math.max(0, prog.current - dt / TEMPO_VOLTAR);
+    setProgresso(prog.current);
+    if (segurando.current && prog.current >= 1) {
+      completou.current = true; setFeito(true);
+      try { navigator.vibrate?.([60, 40, 120]); } catch { /* sem vibração */ }
+      return;
+    }
+    if (segurando.current || prog.current > 0) raf.current = requestAnimationFrame(passo);
   };
-  const limpar = () => {
-    const c = tela.current, g = c?.getContext("2d");
-    if (c && g) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height); g.restore(); }
-    comprimento.current = 0; traco.current = null; setDesenhou(false); aoMudar(false);
+  const comecar = () => {
+    if (completou.current || segurando.current) return;
+    segurando.current = true; ultimo.current = performance.now();
+    cancelAnimationFrame(raf.current); raf.current = requestAnimationFrame(passo);
+    try { navigator.vibrate?.(15); } catch { /* sem vibração */ }
   };
+  const soltar = () => { segurando.current = false; };
+
+  const hoje = new Date().toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
+  const primeiroNome = (nome ?? "").trim().split(/\s+/)[0];
+  const anim = (css: string) => (reduzido || jaFez ? undefined : css);
+
   return (
-    <div className="space-y-2">
-      <div className={cn("relative rounded-2xl border-2 border-dashed", escuro ? "border-white/30 bg-white/5" : "border-gray-300 bg-white")}>
-        <canvas ref={tela} className="block h-48 w-full touch-none rounded-2xl" aria-label="Desenhe um ✓ com o dedo"
-          onPointerDown={comecar} onPointerMove={mover} onPointerUp={() => { traco.current = null; }} onPointerCancel={() => { traco.current = null; }} />
-        {!desenhou && <span className={cn("pointer-events-none absolute inset-0 flex items-center justify-center text-5xl opacity-20", suave)} aria-hidden>✓</span>}
+    <div className="space-y-3">
+      <style>{`
+        @keyframes cmp-escrever { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+        @keyframes cmp-entrar { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: none; } }
+        @keyframes cmp-confete { 0% { opacity: 1; transform: translate(0,0) rotate(0); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); } }
+      `}</style>
+      <div className="relative">
+        <button type="button" disabled={feito} aria-label={feito ? "Compromisso feito" : rotulo}
+          onPointerDown={(ev) => { ev.currentTarget.setPointerCapture?.(ev.pointerId); comecar(); }}
+          onPointerUp={soltar} onPointerCancel={soltar} onLostPointerCapture={soltar} onContextMenu={(ev) => ev.preventDefault()}
+          onKeyDown={(ev) => { if ((ev.key === " " || ev.key === "Enter") && !ev.repeat) { ev.preventDefault(); comecar(); } }} onKeyUp={soltar} onBlur={soltar}
+          className={cn("relative flex h-16 w-full touch-none select-none items-center justify-center gap-2 overflow-hidden rounded-2xl text-base font-bold transition-colors",
+            feito ? "bg-green-500 text-white" : escuro ? "bg-white/10 text-white" : "bg-gray-100 text-gray-800")}
+          style={{ WebkitTouchCallout: "none", WebkitUserSelect: "none" }}>
+          {!feito && <span className="absolute inset-y-0 left-0" style={{ width: `${progresso * 100}%`, backgroundColor: cor, opacity: 0.9 }} aria-hidden />}
+          <span className={cn("relative z-10 flex items-center gap-2", !feito && progresso > 0.45 && "text-white")}>
+            {feito ? <><Check className="h-6 w-6" strokeWidth={3} />Compromisso feito</> : <><Fingerprint className="h-6 w-6" />{rotulo}</>}
+          </span>
+        </button>
+        {feito && !reduzido && !jaFez && (
+          <div className="pointer-events-none absolute inset-x-0 top-1/2" aria-hidden>
+            {Array.from({ length: 18 }, (_, i) => {
+              const ang = (i / 18) * Math.PI * 2, d = 70 + (i % 3) * 30;
+              return <span key={i} className="absolute left-1/2 h-2 w-1.5 rounded-sm" style={{ backgroundColor: CONFETES[i % CONFETES.length], animation: `cmp-confete 1.1s ease-out ${(i % 4) * 40}ms forwards`,
+                ["--dx" as string]: `${Math.cos(ang) * d * 1.6}px`, ["--dy" as string]: `${Math.sin(ang) * d - 20}px`, ["--rot" as string]: `${i * 53}deg` }} />;
+            })}
+          </div>
+        )}
       </div>
-      <button type="button" onClick={limpar} className={cn("mx-auto flex items-center gap-1.5 text-sm font-semibold hover:opacity-100", suave)}><Eraser className="h-4 w-4" />{rotuloLimpar}</button>
+      {feito && (
+        <div className="space-y-2" role="status">
+          <p className="text-center text-lg font-extrabold" style={{ animation: anim("cmp-entrar .5s ease-out both") }}>Você se comprometeu! 🎉</p>
+          <div className={cn("rounded-2xl border-2 px-4 py-3 text-center", escuro ? "border-white/20 bg-white/5" : "border-gray-200 bg-white")}
+            style={{ animation: anim("cmp-entrar .6s ease-out .15s both") }}>
+            <p className={cn("text-[11px] font-bold uppercase tracking-widest", suave)}>Compromisso de leitura</p>
+            <p className="mt-1 text-sm leading-snug">
+              Eu{primeiroNome ? `, ${primeiroNome},` : ""} me comprometo a ler{typeof minutos === "number" && minutos > 0 ? ` ${minutos} minutos por dia e` : ""} seguir o meu plano
+            </p>
+            <p className={cn("mt-1 text-xs", suave)}>{hoje}</p>
+            <div className="mt-2 border-b border-current/30 pb-1" style={{ opacity: 1 }}>
+              <span className="inline-block text-3xl leading-tight" style={{ fontFamily: "'Segoe Script','Snell Roundhand','Brush Script MT','Apple Chancery',cursive", color: escuro ? undefined : cor, animation: anim("cmp-escrever 1.4s steps(28, end) .5s both") }}>
+                {primeiroNome || "Assinado ✓"}
+              </span>
+            </div>
+            <p className={cn("mt-0.5 text-[10px]", suave)}>Assinatura</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

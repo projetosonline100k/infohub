@@ -14,7 +14,7 @@ import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, ty
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
 import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
-import { AreaDoCheck, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
+import { SegureCompromisso, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
@@ -823,7 +823,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   useEffect(() => { if (respostas) setEscolhas((x) => ({ ...x, ...respostas })); }, [respostasChave]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [marcadas, setMarcadas] = useState<Record<string, number[]>>({});   // perguntas de "escolha quantas quiser"
   const [numeros, setNumeros] = useState<Record<string, number>>({});   // perguntas de número (roleta/régua); escolhas guarda a faixa do número, para o perfil
-  const [desenhou, setDesenhou] = useState(false);   // tela "compromisso": já desenhou o ✓
+  const [desenhou, setDesenhou] = useState(false);   // tela "compromisso": já segurou o botão até o fim (e a animação terminou)
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);
   const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
@@ -1243,8 +1243,11 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 corpo = <ProjecaoLivros key={t.id} livros={livrosEm12Meses(min, pq?.numero)} {...visual} />;
                 titulo = titulo.replace(/\{minutos\}/g, String(min)).replace(/\{livros\}/g, String(livrosEm12Meses(min, pq?.numero)));
               } else if (t.tipo === "compromisso") {
-                corpo = <AreaDoCheck key={t.id} aoMudar={setDesenhou} rotuloLimpar={t.compromisso?.limpar} {...visual} />;
-                rodape = <ContinuarTravavel liberado={desenhou} falta="Desenhe um ✓ para confirmar" rotulo={t.botao || "Confirmar"} onClick={avancar} />;
+                const idMin = t.compromisso?.pergunta ?? telas.find((x) => x.tipo === "projecao")?.projecao?.pergunta ?? telas.find((x) => x.plano_numeros)?.plano_numeros?.minutos;
+                const pm = idMin ? perguntas.find((x) => x.id === idMin) : undefined;
+                const minutos = idMin ? numeros[idMin] ?? (pm?.numero ? limitesDoNumero(pm.numero).inicial : undefined) : undefined;
+                corpo = <SegureCompromisso key={t.id} aoMudar={setDesenhou} jaFez={desenhou} nome={contato.nome} minutos={minutos} rotulo={t.compromisso?.segurar} {...visual} />;
+                rodape = <ContinuarTravavel liberado={desenhou} falta="Segure o botão para se comprometer" rotulo={t.botao || "Continuar"} onClick={avancar} />;
               }
               return (
                 <div key={t.id} className="space-y-5 py-2">
