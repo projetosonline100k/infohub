@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher, primeiroNome,
-  type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type TelaQuiz, type VisualQuiz,
+  type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type PlanoOferta, type TelaQuiz, type VisualQuiz,
 } from "@/lib/quiz/quiz";
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
 import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
@@ -1449,7 +1449,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               {!temTelaResultado && !e.sem_resultado && (
                 <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
-              {e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
+              {e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} />
+                : e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
                 : perfil?.cta_texto && (
                   perfil.cta_url ? <Botao href={perfil.cta_url}>{perfil.cta_texto}</Botao>
                     : <Button size="lg" className="w-full" disabled>{perfil.cta_texto} (link ainda não definido)</Button>
@@ -1953,6 +1954,136 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
       )}
       {o.repetir !== false && compra(1)}
       <Txt caminho="oferta.fechamento" valor={o.fechamento} mostrar={f(o.fechamento)} as="p" className="block text-center text-sm italic text-white/60" />
+    </div>
+  );
+}
+
+// Fim "direto" da V2 (Davi, 18/11): em vez da página completa, 3 lâminas — escolher 1 bônus, conferir o que vai receber e o plano
+// anual na cara do gol, com "Ver outros planos" abrindo uma folha de baixo com os planos.
+const slugBonus = (b: { id?: string; titulo: string }) => b.id ?? b.titulo.replace(/^\s*b[ôo]nus\s*\d*\s*[:\-–]?\s*/i, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; f: (s?: string) => string }) {
+  const { aoClicarOferta, editar, linkDeCompra } = useContext(QuizCtx);
+  const o = e.oferta!;
+  const bonus = o.bonus ?? [];
+  const planos = (o.planos ?? []).filter((p) => editar || !p.oculto);
+  const [etapa, setEtapa] = useState(bonus.length ? 0 : 1);
+  const [escolhido, setEscolhido] = useState<number | null>(null);
+  const [folha, setFolha] = useState(false);
+  const [planoId, setPlanoId] = useState<string | null>(null);
+  const anual = planos.find((p) => p.destaque) ?? planos[0];
+  const plano = planos.find((p) => p.id === planoId) ?? anual;
+  const verde = e.visual?.botao ?? "#34d399", cor = corDoQuiz(e);
+  const b = escolhido != null ? bonus[escolhido] : undefined;
+  const texto = o.cta_texto || perfil?.cta_texto || "Ativar meu plano";
+  const irPara = (p?: PlanoOferta) => {
+    const base = p ? p.cta_url : (o.cta_url || perfil?.cta_url);
+    if (!base) return undefined;
+    let u = linkDeCompra ? linkDeCompra(base) : base;
+    if (b && p?.com_bonus !== false && /^https?:\/\//i.test(u)) { try { const x = new URL(u); x.searchParams.set("bonus", slugBonus(b)); u = x.toString(); } catch { /* mantém */ } }
+    return u;
+  };
+  const abrir = (p?: PlanoOferta) => {
+    const u = irPara(p);
+    aoClicarOferta?.(`${p?.nome ?? "Plano"}${b && p?.com_bonus !== false ? ` + bônus ${slugBonus(b)}` : ""}`);
+    if (u && !editar) window.open(u, "_blank", "noopener");
+  };
+  const voltar = () => setEtapa((x) => Math.max(bonus.length ? 0 : 1, x - 1));
+  const titulo = (c: string, v: string, m?: string) => <Txt caminho={c} valor={v} mostrar={m} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />;
+  const btn = "flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform active:scale-[0.98] disabled:opacity-40";
+  const topo = etapa > (bonus.length ? 0 : 1) && (
+    <button type="button" onClick={voltar} className="flex items-center gap-1 text-xs text-white/70"><ArrowLeft className="h-3 w-3" />Voltar</button>
+  );
+  const casca = "flex min-h-[78dvh] flex-col justify-center gap-5 p-5 text-white " + (!e.visual ? "bg-[#0a1020] [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]" : "");
+  return (
+    <div className={casca}>
+      {topo}
+      {etapa === 0 && (
+        <>
+          {titulo("oferta.bonus_escolha_titulo", o.bonus_escolha_titulo ?? "{nome}, escolha 1 bônus para levar de presente", f(o.bonus_escolha_titulo ?? "{nome}, escolha 1 bônus para levar de presente"))}
+          <div className="space-y-3" role="radiogroup">
+            {bonus.map((x, k) => {
+              const on = escolhido === k;
+              return (
+                <button key={k} type="button" role="radio" aria-checked={on} onClick={() => setEscolhido(k)}
+                  className="flex w-full items-start gap-3 rounded-2xl border-2 p-4 text-left transition-colors"
+                  style={{ borderColor: on ? cor : "rgba(255,255,255,0.15)", background: on ? `${cor}1f` : "rgba(255,255,255,0.04)" }}>
+                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
+                  <span className="min-w-0 space-y-1">
+                    <span className="block text-sm font-extrabold leading-snug"><span aria-hidden>🎁 </span><Txt caminho={`oferta.bonus.${k}.titulo`} valor={x.titulo} /></span>
+                    <Txt caminho={`oferta.bonus.${k}.texto`} valor={x.texto} as="span" className="line-clamp-3 block text-sm leading-snug text-white/80" />
+                    {(x.preco_de || x.preco_por) && <span className="block text-sm font-semibold text-white/70">De <s>{x.preco_de}</s> por <span className="font-extrabold" style={{ color: verde }}>{x.preco_por}</span></span>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <button type="button" className={btn} style={{ background: verde }} disabled={!editar && escolhido == null} onClick={() => setEtapa(1)}>Avançar</button>
+        </>
+      )}
+      {etapa === 1 && (
+        <>
+          {titulo("oferta.recebe_titulo", o.recebe_titulo ?? "Confira o que você vai receber")}
+          <ul className="space-y-2.5">
+            {(o.itens ?? []).map((it, k) => (
+              <li key={k} className="flex items-start gap-2.5 text-sm leading-snug">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full" style={{ background: verde }}><Check className="h-3.5 w-3.5 text-[#0a1020]" strokeWidth={3.5} /></span>
+                <Txt caminho={`oferta.itens.${k}`} valor={it} />
+              </li>
+            ))}
+          </ul>
+          {b && (
+            <div className="space-y-1 rounded-2xl border-2 p-4" style={{ borderColor: verde, background: `${verde}14` }}>
+              <p className="text-xs font-extrabold uppercase" style={{ color: verde }}>🎁 Seu bônus</p>
+              <p className="text-sm font-extrabold leading-snug">{b.titulo}</p>
+              <p className="line-clamp-3 text-sm leading-snug text-white/80">{b.texto}</p>
+            </div>
+          )}
+          <button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Avançar</button>
+        </>
+      )}
+      {etapa === 2 && (
+        <>
+          {titulo("oferta.titulo", o.titulo ?? "{nome}, seu plano personalizado está pronto!", f(o.titulo ?? "{nome}, seu plano personalizado está pronto!"))}
+          <div className="space-y-1 text-center">
+            {anual?.nome && <p className="text-sm font-semibold text-white/70">{anual.nome}</p>}
+            {(anual?.preco_de ?? o.preco_de) && <p className="text-sm text-white/60"><s>{anual?.preco_de ?? o.preco_de}</s></p>}
+            {(anual?.parcelas ?? o.parcelas)
+              ? <p className="text-4xl font-extrabold"><span className="text-xl font-bold text-white/80">{(anual?.parcelas ?? o.parcelas)!.n}x de </span>{(anual?.parcelas ?? o.parcelas)!.valor}</p>
+              : <p className="text-4xl font-extrabold">{anual?.preco ?? o.preco_por ?? o.preco}</p>}
+            {(anual?.parcelas ?? o.parcelas) && (anual?.preco ?? o.preco_por ?? o.preco) && <p className="text-xs text-white/60">ou {anual?.preco ?? o.preco_por ?? o.preco} à vista</p>}
+            {b && anual?.com_bonus !== false && <p className="pt-1 text-xs font-semibold" style={{ color: verde }}>🎁 com o seu bônus</p>}
+          </div>
+          <button type="button" className={btn} style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }} onClick={() => abrir(anual)}><Txt caminho="oferta.cta_texto" valor={texto} /></button>
+          {planos.length > 1 && <button type="button" onClick={() => setFolha(true)} className="text-center text-sm font-bold uppercase tracking-wide text-white/80 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
+        </>
+      )}
+      {folha && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60" onClick={() => setFolha(false)}>
+          <div className="mx-auto w-full max-w-xl space-y-3 rounded-t-3xl bg-[#0a1020] p-5 pb-8 text-white" onClick={(ev) => ev.stopPropagation()} role="dialog" aria-label="Planos">
+            {planos.map((p) => {
+              const on = p.id === plano?.id;
+              return (
+                <button key={p.id} type="button" role="radio" aria-checked={on} onClick={() => setPlanoId(p.id)}
+                  className="relative flex w-full items-center gap-3 rounded-2xl border-2 p-4 text-left"
+                  style={{ borderColor: on ? cor : "rgba(255,255,255,0.15)", background: on ? `${cor}1f` : "rgba(255,255,255,0.04)" }}>
+                  {p.selo && <span className="absolute -top-2.5 right-4 rounded-full px-2.5 py-0.5 text-[11px] font-extrabold uppercase text-white" style={{ background: cor }}>{p.selo}</span>}
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2" style={{ borderColor: on ? cor : "rgba(255,255,255,0.4)", background: on ? cor : "transparent" }}>{on && <Check className="h-3 w-3 text-[#0a1020]" strokeWidth={4} />}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-base font-extrabold leading-tight">{p.nome}</span>
+                    {p.com_bonus !== false && b && <span className="block text-xs font-semibold" style={{ color: verde }}>🎁 com o seu bônus</span>}
+                  </span>
+                  <span className="shrink-0 text-right">
+                    {p.parcelas ? <span className="block text-base font-extrabold">{p.parcelas.n}x de {p.parcelas.valor}</span> : null}
+                    <span className={p.parcelas ? "block text-xs text-white/60" : "block text-base font-extrabold"}>{p.parcelas ? "ou " : ""}{p.preco}{p.parcelas ? " à vista" : ""}</span>
+                  </span>
+                </button>
+              );
+            })}
+            <button type="button" className={btn} style={{ background: verde }} onClick={() => abrir(plano)}>CONTINUAR</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

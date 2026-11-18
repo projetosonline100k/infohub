@@ -126,11 +126,14 @@ export interface OfertaQuiz {
   // Oferta no visual do 12min (Davi, 10/11): lista do que recebe, cupom, preço De/Por, botão, garantia, depoimentos, perguntas e o bloco de compra repetido no fim.
   parcelas?: { n: number; valor: string };   // "12x de R$ …" no lugar do preço cheio (Davi, 11/11: o preço cheio a pessoa descobre no checkout)
   video?: { url: string; poster?: string; titulo?: string };   // vídeo no fim da oferta (arquivo leve, só carrega quando a pessoa aperta o play)
-  depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { titulo: string; texto: string; preco_de?: string; preco_por?: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
+  depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { id?: string; titulo: string; texto: string; preco_de?: string; preco_por?: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
   headline?: string;   // headline no topo da oferta; ==trecho== vira grifo
   faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
   /** Planos para escolher (15/11, Davi: anual em destaque com bônus, semestral e trimestral sem bônus). Sem `planos`, vale o plano único acima. */
   planos?: PlanoOferta[];
+  /** "direto" (18/11, V2): o fim vira 3 lâminas (escolher 1 bônus → o que vai receber → plano anual na cara do gol com "Ver outros planos"). Sem isso, a página completa. */
+  modo?: "direto";
+  bonus_escolha_titulo?: string; outros_planos_texto?: string;
   planos_acesso?: string;   // linha "✓ …" embaixo do nome em todos os cartões de plano (ex.: "Acesso completo ao Instalivros")
 }
 export interface PlanoOferta {
