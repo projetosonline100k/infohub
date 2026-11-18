@@ -1,12 +1,14 @@
--- Regressão: o evento "amostra" grava o detalhe (o último vale) e a V2 do Instalivros tem a tela "amostra_livro" logo depois de "livros_plano"; a V1 não.
+-- Regressão: o evento "amostra" grava o detalhe (o último vale) e a V2 do Instalivros tem a tela "amostra_livro" com o plano dentro (sem a tela "livros_plano"); a V1 não.
 BEGIN;
 DO $$
 DECLARE qid uuid; sess uuid := gen_random_uuid(); d text; qtd int;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.quizzes WHERE id = 'ad802bd4-7a2e-4cc7-9a70-d36d02bebfc7') THEN RETURN; END IF;
-  IF (SELECT t->>'id' FROM public.quizzes q, jsonb_array_elements(q.estrutura->'telas') WITH ORDINALITY a(t, i)
-       WHERE q.id = 'ad802bd4-7a2e-4cc7-9a70-d36d02bebfc7' AND i = (SELECT b.i + 1 FROM public.quizzes q2, jsonb_array_elements(q2.estrutura->'telas') WITH ORDINALITY b(t, i) WHERE q2.id = q.id AND t->>'id' = 'livros_plano')) IS DISTINCT FROM 'amostra_livro' THEN
-    RAISE EXCEPTION 'a tela amostra_livro deveria vir logo depois de livros_plano na V2';
+  IF EXISTS (SELECT 1 FROM public.quizzes q, jsonb_array_elements(q.estrutura->'telas') t WHERE q.id = 'ad802bd4-7a2e-4cc7-9a70-d36d02bebfc7' AND t->>'id' = 'livros_plano') THEN
+    RAISE EXCEPTION 'a V2 não tem mais a tela livros_plano (o plano vive na amostra_livro)';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM public.quizzes q, jsonb_array_elements(q.estrutura->'telas') t WHERE q.id = 'ad802bd4-7a2e-4cc7-9a70-d36d02bebfc7' AND t->>'id' = 'amostra_livro' AND t->'plano' ? 'total_dias' AND t->'plano' ? 'livros_temas') THEN
+    RAISE EXCEPTION 'a tela amostra_livro da V2 precisa carregar a configuração do plano';
   END IF;
   IF EXISTS (SELECT 1 FROM public.quizzes q, jsonb_array_elements(q.estrutura->'telas') t WHERE q.id::text LIKE 'dccceb2d%' AND t->>'tipo' = 'amostra') THEN
     RAISE EXCEPTION 'a V1 não tem tela de amostra';

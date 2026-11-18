@@ -726,12 +726,12 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
   const { livros, areas, plano } = usePlanoDaTela(telaPlano, e, perfil, escolhas, marcadas);
   const prateleira = useMemo(() => {
     if (!plano || !livros) return null;
-    const montar = (livro: LivroPlano, rotulo: string): LivroAmostra => {
+    const montar = (livro: LivroPlano, rotulo: string, tema?: string): LivroAmostra => {
       const a = cfg.amostras?.[String(livro.id)];
-      return { id: String(livro.id), titulo: (a?.titulo || tituloBonito(livro.titulo)), autor: a?.autor || livro.autor, capa: a?.capa || livro.capa, minutos: a?.minutos ?? livro.audio, rotulo,
+      return { id: String(livro.id), titulo: (a?.titulo || tituloBonito(livro.titulo)), autor: a?.autor || livro.autor, capa: a?.capa || livro.capa, minutos: a?.minutos ?? livro.audio, rotulo, tema: tema ? ROTULO_TEMA[tema as Tema] ?? tema : undefined,
         amostra: a ? { audio_url: a.audio_url, texto: a.texto_amostra } : undefined };
     };
-    const lista = plano.dias.slice(0, 8).map((d) => montar(d.livro, `Dia ${d.dia}`));
+    const lista = plano.dias.slice(0, 8).map((d) => montar(d.livro, `Dia ${d.dia}`, d.tema));
     if (!lista.some((l) => l.amostra)) {
       // Nenhum livro do plano tem amostra: entra na frente a cadastrada com mais temas em comum com a pessoa (empate: a primeira cadastrada).
       const pc = telaPlano.plano ?? {};
@@ -743,18 +743,19 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
         const n = livro.temas.filter((x) => temas.has(x)).length;
         if (!melhor || n > melhor.n) melhor = { livro, n };
       }
-      if (melhor) lista.unshift(montar(melhor.livro, "Para você"));
+      if (melhor) lista.unshift(montar(melhor.livro, "Para você", melhor.livro.temas[0]));
     }
     return lista;
   }, [plano, livros, areas, telaPlano, escolhas, perfil, cfg.amostras]);
   const semAmostra = !!prateleira && !prateleira.some((l) => l.amostra);
   useEffect(() => { if (semAmostra && pular) onSeguir(); }, [semAmostra, pular, onSeguir]);
   if (!prateleira) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
-  const titulo = t.titulo || "Seu primeiro livro chegou";
+  const titulo = t.titulo || "{nome}, esses são os livros que mais combinam com você";
   const nome = f("{nome}").trim();
   return <AmostraTela cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento} livros={prateleira} nome={nome && !nome.includes("{") ? nome : ""}
     titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
-    aviso={cfg.aviso || "Deslize para ver os livros do seu plano"} dica="Toque para abrir o seu primeiro livro" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
+    porque={areas.length ? `Escolhidos a dedo para quem quer evoluir em ${areas.map((a) => ROTULO_TEMA[a]).join(", ")}` : undefined}
+    aviso={cfg.aviso || "Toque no livro do dia 1 para começar"} dica="Comece pelo livro do dia 1 — toque para abrir" dicaDeslize="Deslize para ver o seu plano dia a dia" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
     textoSemAmostra="Escolha outro livro com o selo “Amostra grátis” para experimentar agora."
     botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
 }
