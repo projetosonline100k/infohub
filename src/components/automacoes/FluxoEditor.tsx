@@ -3,7 +3,7 @@ import ReactFlow, {
   Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MarkerType, Position, applyNodeChanges, getSmoothStepPath, type EdgeProps, type Connection, type Edge, type Node, type NodeChange, type NodeProps, type ReactFlowInstance,
 } from "reactflow";
 import "reactflow/dist/style.css";
-import { AlertTriangle, BookOpen, Check, Clock, FileText, GitBranch, ImageIcon, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Tag, Trash2, Upload, X, Zap, type LucideIcon } from "lucide-react";
+import { AlertTriangle, BookOpen, Check, Clock, FileText, FlaskConical, GitBranch, ImageIcon, Link2, Loader2, MessageCircle, MessageSquareText, Plus, Power, Send, Tag, Trash2, Upload, X, Zap, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   type Botao, type CondicaoTipo, type GrafoFluxo, type NoFluxo, type TipoNo,
 } from "../../../supabase/functions/_shared/fluxo";
 import type { FluxoInstagram, NumerosDoNo } from "@/hooks/useInstagramFluxos";
+import { SimuladorFluxo } from "./SimuladorFluxo";
 import { buscarPostsInstagram, type InstagramPost } from "@/hooks/useInstagramAutomacoes";
 
 // Editor de fluxo de mensagens do Instagram (13/11/2026, Davi: "automações igual ao dash do ManyChat").
@@ -190,6 +191,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
 }) {
   const [nome, setNome] = useState("");
   const [ativo, setAtivo] = useState(false);
+  const [testando, setTestando] = useState(false);
   const [gatilhos, setGatilhos] = useState<string[]>(["comentario"]);
   const [palavras, setPalavras] = useState("");
   const [modoPalavra, setModoPalavra] = useState<"contem" | "trecho" | "exata">("contem");
@@ -389,6 +391,8 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
           <Input value={nome} onChange={(e) => setNome(e.target.value)} className="h-9 w-64 border-white/15 bg-black/20 font-semibold" aria-label="Nome do fluxo" />
           <span className="text-xs text-white/50">{contaNome}</span>
           <label className="ml-2 flex items-center gap-2 text-xs text-white/70"><Switch checked={ativo} onCheckedChange={(v) => { if (v && (problemas.length || (!whatsapp && !palavrasLista.length))) { toast.error(problemas[0]?.texto ?? "Escreva ao menos uma palavra-chave"); return; } setAtivo(v); }} />{ativo ? "Ativo" : "Desativado"}</label>
+          <Button type="button" variant="outline" size="sm" onClick={() => setTestando(true)} title="Andar pelo fluxo como se fosse o lead, sem enviar nada" className="h-8 gap-1.5 border-amber-300/50 bg-transparent text-amber-200 hover:bg-amber-300/10 hover:text-amber-100"><FlaskConical className="h-3.5 w-3.5" />Testar</Button>
+          <SimuladorFluxo aberto={testando} grafo={grafo} onFechar={() => setTestando(false)} />
           {numerosDoPeriodo && fluxo && (
             <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5 text-[11px]" title="Os números de cada mensagem mostram só este período">
               <span className="px-1.5 text-white/45">Números</span>
