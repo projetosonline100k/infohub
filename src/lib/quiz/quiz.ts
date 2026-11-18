@@ -133,7 +133,7 @@ export interface OfertaQuiz {
   planos?: PlanoOferta[];
   /** "direto" (18/11, V2): o fim vira 3 lâminas (escolher 1 bônus → o que vai receber → plano anual na cara do gol com "Ver outros planos"). Sem isso, a página completa. */
   modo?: "direto";
-  bonus_escolha_titulo?: string; outros_planos_texto?: string;
+  bonus_escolha_titulo?: string; bonus_escolhido_rotulo?: string; outros_planos_texto?: string;
   planos_acesso?: string;   // linha "✓ …" embaixo do nome em todos os cartões de plano (ex.: "Acesso completo ao Instalivros")
 }
 export interface PlanoOferta {

@@ -1983,6 +1983,9 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
     return b ? [b] : [];
   };
   const nomeCurto = (t: string) => t.replace(/^\s*b[ôo]nus\s*\d*\s*[:\-–]?\s*/i, "");
+  // O bônus que a pessoa escolheu aparece só como "Bônus escolhido" (editável em `oferta.bonus_escolhido_rotulo`); o outro mostra o nome.
+  const rotuloEscolhido = o.bonus_escolhido_rotulo || "Bônus escolhido";
+  const nomeNoPlano = (x: (typeof bonus)[number]) => (b && x === b ? rotuloEscolhido : nomeCurto(x.titulo));
   const irPara = (p?: PlanoOferta) => {
     const base = p ? p.cta_url : (o.cta_url || perfil?.cta_url);
     if (!base) return undefined;
@@ -2017,7 +2020,7 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
           {lb.length > 0 && (
             <span className="mt-1 block text-[11px] font-semibold leading-snug" style={{ color: verde }}>
               {p.bonus_regra === "todos" && lb.length > 1 && <span className="mb-0.5 block font-extrabold uppercase tracking-wide">Leva os {lb.length} bônus</span>}
-              {lb.map((x, k) => <span key={k} className="block">{k > 0 ? "+ " : ""}🎁 {nomeCurto(x.titulo)}{p.bonus_regra === "todos" && k > 0 ? " (de presente)" : ""}</span>)}
+              {lb.map((x, k) => <span key={k} className="block">{k > 0 ? "+ " : ""}🎁 {nomeNoPlano(x)}{p.bonus_regra === "todos" && k > 0 ? " (de presente)" : ""}</span>)}
             </span>
           )}
         </span>
@@ -2048,7 +2051,7 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
             <button type="button" onClick={() => abrir(sel)} className="flex min-h-14 w-full items-center justify-center rounded-full bg-[#f4efe6] px-6 text-base font-extrabold uppercase tracking-[0.2em] text-[#14110d] transition-transform active:scale-[0.98]">CONTINUAR</button>
             <p className="text-center text-xs text-white/70">
               {sel?.parcelas ? `${sel.preco} à vista (apenas ${sel.parcelas.n}x de ${sel.parcelas.valor})` : sel?.preco}
-              {bonusDoPlano(sel).length > 0 && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 {bonusDoPlano(sel).length > 1 ? "com os seus bônus" : "com o seu bônus"}: {bonusDoPlano(sel).map((x) => nomeCurto(x.titulo)).join(" + ")}</span>}
+              {bonusDoPlano(sel).length > 0 && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 {bonusDoPlano(sel).length > 1 ? "com os seus bônus" : "com o seu bônus"}: {bonusDoPlano(sel).map(nomeNoPlano).join(" + ")}</span>}
             </p>
           </div>
         </div>
