@@ -392,7 +392,7 @@ export function FluxoEditor({ aberto, fluxo, inicial, contaNome, numeros: numero
           <span className="text-xs text-white/50">{contaNome}</span>
           <label className="ml-2 flex items-center gap-2 text-xs text-white/70"><Switch checked={ativo} onCheckedChange={(v) => { if (v && (problemas.length || (!whatsapp && !palavrasLista.length))) { toast.error(problemas[0]?.texto ?? "Escreva ao menos uma palavra-chave"); return; } setAtivo(v); }} />{ativo ? "Ativo" : "Desativado"}</label>
           <Button type="button" variant="outline" size="sm" onClick={() => setTestando(true)} title="Andar pelo fluxo como se fosse o lead, sem enviar nada" className="h-8 gap-1.5 border-amber-300/50 bg-transparent text-amber-200 hover:bg-amber-300/10 hover:text-amber-100"><FlaskConical className="h-3.5 w-3.5" />Testar</Button>
-          <SimuladorFluxo aberto={testando} grafo={grafo} onFechar={() => setTestando(false)} />
+          <SimuladorFluxo aberto={testando} grafo={grafo} whatsapp={whatsapp} onFechar={() => setTestando(false)} />
           {numerosDoPeriodo && fluxo && (
             <div className="flex flex-wrap items-center gap-1 rounded-lg border border-white/10 bg-black/20 p-0.5 text-[11px]" title="Os números de cada mensagem mostram só este período">
               <span className="px-1.5 text-white/45">Números</span>
