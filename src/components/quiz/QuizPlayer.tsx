@@ -10,8 +10,9 @@ import {
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
 import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
 import { comDadosDoLead } from "@/lib/quiz/utm";
-import { montarPlano, razoesDoPerfil, temaDaOpcao, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
+import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
+import { AmostraTela } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
 import { AreaDoCheck, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
@@ -690,10 +691,8 @@ function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, 
   );
 }
 
-// "Seus livros e o seu plano": junta as respostas (áreas marcadas, livros que curtiu, perfil) com a lista de livros do Instalivros e monta os dias.
-function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir }: {
-  t: TelaQuiz; base: string; e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; marcadas: Record<string, number[]>; f: (s?: string) => string; cor: string; escuro: boolean; suave: string; onSeguir: () => void;
-}) {
+// Junta as respostas (áreas marcadas, livros que curtiu, perfil) com a lista de livros do Instalivros e monta os dias do plano.
+function usePlanoDaTela(t: TelaQuiz, e: EstruturaQuiz, perfil: PerfilQuiz | null, escolhas: Record<string, number>, marcadas: Record<string, number[]>) {
   const [livros, setLivros] = useState<LivroPlano[] | null>(null);
   useEffect(() => { let vivo = true; void import("@/data/livros-instalivros.json").then((m) => { if (vivo) setLivros(m.default as LivroPlano[]); }); return () => { vivo = false; }; }, []);
   const cfg = useMemo(() => t.plano ?? {}, [t.plano]);
@@ -704,9 +703,40 @@ function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, s
     const montado: PlanoMontado | null = livros ? montarPlano(livros, { areas, curtidos, perfil: cfg.perfil_temas?.[perfil?.id ?? ""] ?? [] }, cfg) : null;
     return { areas, plano: montado };
   }, [livros, e.perguntas, marcadas, escolhas, perfil, cfg]);
+  return { livros, areas, plano };
+}
+
+// "Seus livros e o seu plano".
+function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir }: {
+  t: TelaQuiz; base: string; e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; marcadas: Record<string, number[]>; f: (s?: string) => string; cor: string; escuro: boolean; suave: string; onSeguir: () => void;
+}) {
+  const { livros, areas, plano } = usePlanoDaTela(t, e, perfil, escolhas, marcadas);
   const titulo = t.titulo || "{nome}, seus livros e o seu plano";
   return <PlanoLivrosTela plano={plano} carregando={!livros} areas={areas.map((a) => ROTULO_TEMA[a])} cor={cor} escuro={escuro} suave={suave}
     titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
+    botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
+}
+
+// "Seu primeiro livro chegou" (18/11): o livro nº 1 do plano que tem amostra cadastrada em `amostra.amostras`; sem nenhum, a tela segue sozinha.
+function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir, onEvento, pular }: {
+  t: TelaQuiz; base: string; e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; marcadas: Record<string, number[]>; f: (s?: string) => string; cor: string; escuro: boolean; suave: string; onSeguir: () => void; onEvento: (detalhe: string) => void; pular: boolean;
+}) {
+  const cfg = t.amostra ?? {};
+  const telaPlano = (e.telas ?? []).find((x) => x.tipo === "plano_livros" && (!cfg.plano_de || x.id === cfg.plano_de)) ?? t;
+  const { plano } = usePlanoDaTela(telaPlano, e, perfil, escolhas, marcadas);
+  const escolhido = useMemo(() => {
+    for (const d of plano?.dias ?? []) { const a = cfg.amostras?.[String(d.livro.id)]; if (a) return { livro: d.livro, a }; }
+    return null;
+  }, [plano, cfg.amostras]);
+  const semAmostra = !!plano && !escolhido;
+  useEffect(() => { if (semAmostra && pular) onSeguir(); }, [semAmostra, pular, onSeguir]);
+  if (!escolhido) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
+  const { livro, a } = escolhido;
+  const titulo = t.titulo || "Seu primeiro livro chegou";
+  return <AmostraTela cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento}
+    livro={{ titulo: a.titulo || tituloBonito(livro.titulo), autor: a.autor || livro.autor, capa: a.capa || livro.capa, minutos: a.minutos ?? livro.audio, audio_url: a.audio_url, texto: a.texto_amostra }}
+    titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
+    aviso={cfg.aviso || "Toque no livro para abrir"} fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
     botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
 }
 
@@ -745,7 +775,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   // topo e o conteúdo centralizado; a cada tela nova o pai volta a rolagem pro início.
   telaCheia?: boolean; onTrocarTela?: () => void;
   // Métricas do link público (15/10): cada tela alcançada e o clique na oferta.
-  onEvento?: (tipo: "passo" | "cta", passo?: number, detalhe?: string) => void;
+  onEvento?: (tipo: "passo" | "cta" | "amostra", passo?: number, detalhe?: string) => void;
   /** Modo teste (15/11): avisa em que tela o quiz está (e o perfil do resultado) para o mapa mental destacar o bloco. */
   onPasso?: (passo: number, perfilId: string | null) => void;
   /** Modo teste (15/11): o mapa mental manda o teste para uma tela (`n` muda a cada clique, para repetir o mesmo destino). `respostas`: o caminho escolhido (ex.: gênero Mulher). */
@@ -1214,6 +1244,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 botao={<Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || "Ver meu plano"} /></Botao>} />;
             }
             if (t.tipo === "plano_livros") return <PlanoLivros key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} />;
+            if (t.tipo === "amostra") return <AmostraLivro key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} onEvento={(d) => evento.current?.("amostra", undefined, d)} pular={!editar && !travado} />;
             if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} onSeguir={avancar} suave={suave} />;
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}

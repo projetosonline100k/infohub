@@ -55,6 +55,17 @@ export interface ConfigDepoimentoAnimado {
   riscado?: string; grifado?: string;
   numeros?: { rotulo: string; antes: number; agora: number }[];
 }
+/** Trecho grátis de um livro (tela "amostra"). Tudo opcional: título, autor, capa e minutos caem para os do livro do plano. */
+export interface AmostraLivro { titulo?: string; autor?: string; capa?: string; audio_url?: string; texto_amostra?: string; minutos?: number }
+export interface ConfigAmostra {
+  /** id da tela plano_livros de onde vem o livro nº 1 (padrão: a primeira tela plano_livros). */
+  plano_de?: string;
+  /** Trechos por id do livro do plano (LivroPlano.id). Vazio = a tela é pulada. */
+  amostras?: Record<string, AmostraLivro>;
+  /** Tamanho máximo do trecho ouvido, em segundos (padrão 75). */
+  segundos?: number;
+  aviso?: string; fim_texto?: string; texto_bloqueado?: string;
+}
 export interface ConfigPlanoNumeros {
   titulo?: string;
   /** Ids das perguntas: régua de minutos, momento do dia, objetivo e (opcional) a roleta de livros. */
@@ -65,7 +76,9 @@ export interface BarraFixa { rotulo: string; valor: number; legenda?: string; de
 export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
-  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso";
+  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra";
+  /** Tela "amostra" (18/11): "Seu primeiro livro chegou" — toca no livro, abre com Ouvir/Ler e um trecho grátis. */
+  amostra?: ConfigAmostra;
   /** Tela "barras_mentores" (15/11): barras de livros por ano dos mentores que a pessoa escolheu. */
   mentores?: ConfigMentores;
   /** Tela "depoimento_animado" (15/11): o depoimento se escreve sozinho, com trecho riscado e grifado, e os números "antes → agora" contam. */
@@ -279,6 +292,7 @@ export function montarPassos(e: EstruturaQuiz, temCaptura: boolean): Passo[] {
   const nome = (id: string) => { if (!pediuNome && id === e.nome?.depois_de) { passos.push({ tipo: "nome" }); pediuNome = true; } };
   const depois = (id: string) => telas.forEach((t, i) => {
     if (t.depois_de !== id) return;
+    if (t.tipo === "amostra" && !Object.keys(t.amostra?.amostras ?? {}).length) return;   // sem trecho cadastrado, a tela não existe
     passos.push({ tipo: "tela", indice: i });
     nome(t.id);
     captura(t.id);

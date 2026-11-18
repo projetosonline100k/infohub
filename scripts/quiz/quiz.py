@@ -20,7 +20,7 @@ sys.path.insert(0, str(RAIZ / 'scripts'))
 from migration_db import connect  # noqa: E402
 
 
-TIPOS_DE_TELA = ('respiro', 'especialista', 'carregando', 'resultado', 'perfil', 'plano_livros', 'barras_mentores', 'depoimento_animado', 'projecao', 'compromisso')
+TIPOS_DE_TELA = ('respiro', 'especialista', 'carregando', 'resultado', 'perfil', 'plano_livros', 'barras_mentores', 'depoimento_animado', 'projecao', 'compromisso', 'amostra')
 
 def validar(e):
     erros = []

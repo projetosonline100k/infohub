@@ -123,8 +123,8 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
   // Pixels (Meta/TikTok/Google): só no quiz publicado de verdade, nunca na prévia nem nos testes.
   const pixels = quiz?.pixels;
   const contatoRef = useRef<{ nome?: string | null; email?: string | null; whatsapp?: string | null } | undefined>(undefined);
-  const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta", passo?: number, detalhe?: string) => {
-    if (!previa) eventoPixel(pixels, tipo as EventoPixel, passo, tipo === "fim" || tipo === "cta" ? contatoRef.current : undefined);   // contato: o servidor manda à Meta em hash
+  const registrar = useCallback((tipo: "visita" | "passo" | "fim" | "cta" | "amostra", passo?: number, detalhe?: string) => {
+    if (!previa && tipo !== "amostra") eventoPixel(pixels, tipo as EventoPixel, passo, tipo === "fim" || tipo === "cta" ? contatoRef.current : undefined);   // contato: o servidor manda à Meta em hash
     // O .then é o que envia: a consulta do Supabase só sai quando alguém espera a resposta. Sem ele (15–25/10)
     // nenhuma visita/tela/fim foi gravada e as métricas ficaram zeradas.
     if (previa) return;
