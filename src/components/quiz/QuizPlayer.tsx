@@ -107,18 +107,25 @@ function CarrosselDepoimentos({ lista, titulo, escuro, suave }: { lista: { nome:
   const trilho = useRef<HTMLDivElement>(null);
   const [atual, setAtual] = useState(0);
   const pausa = useRef(0);
+  const parado = useRef(false); // editor: mouse em cima ou foco num texto do trilho
   const irPara = (i: number) => {
     const el = trilho.current; const cartao = el?.children[i] as HTMLElement | undefined;
     if (el && cartao) el.scrollTo({ left: cartao.offsetLeft - (el.clientWidth - cartao.clientWidth) / 2, behavior: "smooth" });
   };
   useEffect(() => {
-    if (editar || lista.length < 2) return;
+    if (lista.length < 2) return;
     const t = setInterval(() => {
-      if (Date.now() < pausa.current) return;
+      if (Date.now() < pausa.current || (editar && parado.current)) return;
       setAtual((a) => { const p = (a + 1) % lista.length; irPara(p); return p; });
     }, 3500);
     return () => clearInterval(t);
   }, [editar, lista.length]);
+  const pararEditando = editar ? {
+    onMouseEnter: () => { parado.current = true; },
+    onMouseLeave: () => { parado.current = !!trilho.current?.contains(document.activeElement); },
+    onFocus: () => { parado.current = true; },
+    onBlur: (e: React.FocusEvent<HTMLDivElement>) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) parado.current = false; },
+  } : {};
   const aoRolar = () => {
     const el = trilho.current; if (!el) return;
     let melhor = 0, dist = Infinity;
@@ -128,7 +135,7 @@ function CarrosselDepoimentos({ lista, titulo, escuro, suave }: { lista: { nome:
   return (
     <div className="space-y-2">
       {(titulo || editar) && <Txt caminho="captura.depoimentos_titulo" valor={titulo} as="p" className={cn("block text-center text-sm font-semibold", suave)} />}
-      <div ref={trilho} onScroll={aoRolar} onTouchStart={() => { pausa.current = Date.now() + 8000; }} onPointerDown={() => { pausa.current = Date.now() + 8000; }}
+      <div ref={trilho} onScroll={aoRolar} {...pararEditando} onTouchStart={() => { pausa.current = Date.now() + 8000; }} onPointerDown={() => { pausa.current = Date.now() + 8000; }}
         className="-mx-1 flex snap-x snap-mandatory gap-3 overflow-x-auto px-[7.5%] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {lista.map((d, i) => {
           const loja = /app\s*store/i.test(d.fonte || "") ? "App Store" : /google/i.test(d.fonte || "") ? "Google Play" : "";
