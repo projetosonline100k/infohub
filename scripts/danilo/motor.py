@@ -241,7 +241,7 @@ def blocos_zoom(projeto):
     """Zoom como camada de ajuste: [{id, inicio, fim, z, tipo: suave|seco|lento}] no tempo do bruto.
     Projeto antigo (só `zoom` em pontos {t, z, d}) vira blocos (igual ao mini editor)."""
     if projeto.get("zooms") is not None:
-        return projeto["zooms"]
+        return _sem_zoom_nas_capas(projeto, projeto["zooms"])
     out, aberto = [], None
     for k in sorted(projeto.get("zoom", []), key=lambda k: k["t"]):
         if k["z"] > 1.001:
@@ -258,7 +258,23 @@ def blocos_zoom(projeto):
     out.sort(key=lambda z: z["inicio"])
     for i in range(len(out) - 1):
         out[i]["fim"] = min(out[i]["fim"], out[i + 1]["inicio"])
-    return [z for z in out if z["fim"] - z["inicio"] > 0.1]
+    return _sem_zoom_nas_capas(projeto, [z for z in out if z["fim"] - z["inicio"] > 0.1])
+
+
+def _sem_zoom_nas_capas(projeto, zooms):
+    """Instalivros (18/11, pedido do Davi): enquanto uma capa de livro (imagem) está na tela, o zoom do vídeo
+    fica em 1,0. Vale no render e na prévia, mesmo em projeto regenerado ou de versão antiga (não depende de ajuste manual)."""
+    if projeto.get("estilo") != "instalivros":
+        return zooms
+    capas = [m for m in projeto.get("midias", []) if m.get("tipo") == "imagem"]
+    if not capas:
+        return zooms
+    out = []
+    for k in zooms:
+        if any(k["inicio"] < m["fim"] and k["fim"] > m["inicio"] for m in capas):
+            k = {**k, "z": 1.0, "de": 1.0}
+        out.append(k)
+    return out
 
 
 def expressao_zoom(projeto, mapa):
@@ -490,7 +506,8 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
             fim = f"{min(dur, b + 0.5):.2f}"   # a imagem só existe até sair da tela
             args += ["-loop", "1", "-framerate", str(FPS), "-t", fim, "-i", png,
                      "-loop", "1", "-framerate", str(FPS), "-t", fim, "-i", msk]
-            zexp = f"(1+0.10*min(max((t-{a:.2f})/{b - a:.2f},0),1))"   # zoom lento dentro da moldura
+            # zoom lento dentro da moldura; capa do Instalivros fica parada (só fade, sem zoom)
+            zexp = "1" if projeto.get("estilo") == "instalivros" else f"(1+0.10*min(max((t-{a:.2f})/{b - a:.2f},0),1))"
             fc.append(f"[{entrada}:v]format=rgb24,scale=w='{iw}*{zexp}':h='{ih}*{zexp}':eval=frame,"
                       f"crop={w}:{h}:(iw-{w})/2:(ih-{h})/2,format=rgba[img{n}]")
         elif m.get("chroma"):   # vídeo com fundo verde: tira o verde, sem moldura, centrado na caixa
