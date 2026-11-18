@@ -172,7 +172,7 @@ function HomeApp({ livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAl
   const livroAtual = livros[atual];
   return (
     <>
-      <style>{`@keyframes amostra-arrasta{0%{transform:translateX(70px);opacity:0}15%{opacity:1}75%{transform:translateX(-90px);opacity:1}100%{transform:translateX(-90px);opacity:0}}@keyframes amostra-sobe{0%{transform:translateY(40px);opacity:0}15%{opacity:1}75%{transform:translateY(-70px);opacity:1}100%{transform:translateY(-70px);opacity:0}}`}</style>
+      <style>{`@keyframes amostra-arrasta{0%{transform:translateX(70px);opacity:0}15%{opacity:1}75%{transform:translateX(-90px);opacity:1}100%{transform:translateX(-90px);opacity:0}}@keyframes amostra-toque{0%,100%{transform:translateY(8px)}45%{transform:translateY(-4px)}}@keyframes amostra-afunda{0%,100%{transform:scale(1)}45%{transform:scale(1)}60%{transform:scale(.9)}80%{transform:scale(1)}}@keyframes amostra-sobe{0%{transform:translateY(40px);opacity:0}15%{opacity:1}75%{transform:translateY(-70px);opacity:1}100%{transform:translateY(-70px);opacity:0}}`}</style>
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={rolagem} onScroll={(ev) => { if (fase === "categorias" && ev.currentTarget.scrollTop > 80) setRolou(true); }}
           className={cn("min-h-0 flex-1 px-5 pb-2 pt-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", emFoco ? "overflow-y-hidden" : "overflow-y-auto")}>
@@ -198,7 +198,7 @@ function HomeApp({ livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAl
                 </button>
                 {emFoco && (
                   <>
-                    <span className="pointer-events-none absolute bottom-3 right-6 select-none text-4xl drop-shadow-lg motion-safe:animate-bounce" aria-hidden>👆</span>
+                    <span className="pointer-events-none absolute bottom-3 right-6 select-none text-4xl drop-shadow-lg motion-safe:[animation:amostra-toque_1.2s_ease-in-out_infinite]" aria-hidden>👆</span>
                     <p className="pointer-events-none absolute bottom-0 left-1/2 w-max max-w-[92%] -translate-x-1/2 rounded-full bg-white px-3 py-1 text-center text-[11px] font-bold leading-tight shadow-lg" style={{ color: MARINHO }}>{dica}</p>
                   </>
                 )}
@@ -340,10 +340,10 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
             {temAudio && (
               <>
                 <p className="pointer-events-none absolute -top-9 left-1/2 w-max -translate-x-1/2 rounded-full bg-white px-3 py-1 text-[11px] font-bold leading-tight shadow-lg motion-safe:animate-pulse" style={{ color: AZUL }}>Toque no play para ouvir</p>
-                <span className="pointer-events-none absolute -top-3 left-1/2 z-10 -translate-x-1/2 select-none text-3xl drop-shadow-lg motion-safe:animate-bounce" aria-hidden>👆</span>
+                <span className="pointer-events-none absolute left-1/2 top-[calc(100%-22px)] z-10 -translate-x-1/2 select-none text-3xl leading-none drop-shadow-lg" aria-hidden><span className="block motion-safe:[animation:amostra-toque_1.2s_ease-in-out_infinite]">👆</span></span>
               </>
             )}
-            <Redondo rotulo="Ouvir a amostra" onClick={temAudio ? () => setTela("ouvindo") : undefined} pulsa={temAudio} apagado={!temAudio} grande><Play className="ml-0.5 h-6 w-6" fill="currentColor" /></Redondo>
+            <div className={temAudio ? "motion-safe:[animation:amostra-afunda_1.2s_ease-in-out_infinite]" : undefined}><Redondo rotulo="Ouvir a amostra" onClick={temAudio ? () => setTela("ouvindo") : undefined} pulsa={temAudio} apagado={!temAudio} grande><Play className="ml-0.5 h-6 w-6" fill="currentColor" /></Redondo></div>
           </div>
           <Redondo rotulo="Compartilhar" apagado><Share2 className="h-5 w-5" /></Redondo>
         </div>
