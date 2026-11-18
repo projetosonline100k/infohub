@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, Settings2, Trash2, Upload } from "lucide-react";
+import { Ban, ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { confirmar } from "@/components/DialogosGlobais";
+import { confirmar, pedirTexto } from "@/components/DialogosGlobais";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { ImportarSeguidores } from "./ImportarSeguidores";
 import { ConversaInstagram } from "./ConversaInstagram";
@@ -23,10 +23,11 @@ export interface Etapa { id: string; nome: string; chave: string | null; ordem: 
 export interface Pessoa {
   id: string; nome: string | null; telefone: string | null; email: string | null; instagram: string | null; origem: string;
   etapa_id: string | null; valor_vendido: number; notas: string | null; ultima_interacao_em: string; criado_em: string;
+  desqualificada_em: string | null; motivo_desqualificacao: string | null;
   recebeu_dm_em: string | null; respondeu_em: string | null; clicou_botao_em: string | null; clicou_link_em: string | null; fluxo_concluido_em: string | null;
 }
 // Situação no funil (18/11, Davi: "quem respondeu, quem clicou, quem avançou e não comprou"): cada chip filtra o quadro.
-type Situacao = "todas" | "abordadas" | "responderam" | "botao" | "link" | "concluiu" | "avancou" | "sem_resposta" | "compraram";
+type Situacao = "desqualificadas" | "todas" | "abordadas" | "responderam" | "botao" | "link" | "concluiu" | "avancou" | "sem_resposta" | "compraram";
 const comprou = (p: Pessoa) => p.valor_vendido > 0;
 const avancou = (p: Pessoa) => !!(p.respondeu_em || p.clicou_botao_em || p.clicou_link_em || p.fluxo_concluido_em);
 const SITUACOES: { id: Situacao; rotulo: string; dica: string; vale: (p: Pessoa) => boolean }[] = [
@@ -39,6 +40,7 @@ const SITUACOES: { id: Situacao; rotulo: string; dica: string; vale: (p: Pessoa)
   { id: "avancou", rotulo: "Avançaram e não compraram", dica: "Responderam, clicaram ou concluíram, mas ainda não compraram: a hora de abordar", vale: (p) => avancou(p) && !comprou(p) },
   { id: "sem_resposta", rotulo: "Receberam e não responderam", dica: "Receberam DM e nunca responderam", vale: (p) => !!p.recebeu_dm_em && !p.respondeu_em && !comprou(p) },
   { id: "compraram", rotulo: "Compraram", dica: "Já compraram", vale: comprou },
+  { id: "desqualificadas", rotulo: "Desqualificadas", dica: "Fora do quadro: não servem para abordar", vale: (p) => !!p.desqualificada_em },
 ];
 interface Evento { id: string; tipo: string; texto: string | null; valor: number | null; em: string }
 
@@ -69,7 +71,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const carregar = useCallback(async () => {
     const [e, p] = await Promise.all([
       db.from("crm_etapas").select("id, nome, chave, ordem").eq("cliente_id", clienteId).order("ordem"),
-      db.from("crm_pessoas").select("id, nome, telefone, email, instagram, origem, etapa_id, valor_vendido, notas, ultima_interacao_em, criado_em, recebeu_dm_em, respondeu_em, clicou_botao_em, clicou_link_em, fluxo_concluido_em")
+      db.from("crm_pessoas").select("id, nome, telefone, email, instagram, origem, etapa_id, valor_vendido, notas, ultima_interacao_em, criado_em, desqualificada_em, motivo_desqualificacao, recebeu_dm_em, respondeu_em, clicou_botao_em, clicou_link_em, fluxo_concluido_em")
         .eq("cliente_id", clienteId).order("ultima_interacao_em", { ascending: false }).limit(3000),
     ]);
     if (e.error || p.error) toast.error("Não consegui carregar o CRM");
@@ -104,7 +106,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
     const q = busca.trim().toLowerCase();
     const qDig = q.replace(/\D/g, "");
     const vale = SITUACOES.find((x) => x.id === situacao)!.vale;
-    return pessoas.filter((p) => (origem === "todas" || p.origem === origem) && vale(p) && (!q
+    return pessoas.filter((p) => (origem === "todas" || p.origem === origem) && vale(p) && (situacao === "desqualificadas" || !p.desqualificada_em) && (!q
       || (p.nome ?? "").toLowerCase().includes(q) || (p.email ?? "").toLowerCase().includes(q) || (p.instagram ?? "").includes(q.replace(/^@/, ""))
       || (qDig.length >= 4 && (p.telefone ?? "").includes(qDig))));
   }, [pessoas, busca, origem, situacao]);
@@ -126,6 +128,22 @@ export function CrmView({ clienteId }: { clienteId: string }) {
     await db.from("crm_eventos").insert({ pessoa_id: pessoaId, cliente_id: clienteId, tipo: "etapa", texto: `Foi para ${etapas.find((e) => e.id === etapaId)?.nome}` });
   };
 
+  const desqualificar = async (p: Pessoa) => {
+    const motivo = await pedirTexto(`Desqualificar ${titulo(p)}. Motivo (opcional: perfil falso, não é o público, já é cliente…)`, "");
+    if (motivo === null) return;
+    const agora = new Date().toISOString();
+    const { error } = await db.from("crm_pessoas").update({ desqualificada_em: agora, motivo_desqualificacao: motivo.trim() || null, atualizado_em: agora }).eq("id", p.id);
+    if (error) { toast.error("Não consegui desqualificar"); return; }
+    setPessoas((l) => l.map((x) => (x.id === p.id ? { ...x, desqualificada_em: agora, motivo_desqualificacao: motivo.trim() || null } : x)));
+    await db.from("crm_eventos").insert({ pessoa_id: p.id, cliente_id: clienteId, tipo: "nota", texto: `Desqualificada${motivo.trim() ? `: ${motivo.trim()}` : ""}` });
+    toast.success("Desqualificada. Ela sai do quadro e não volta pela importação.");
+  };
+  const requalificar = async (p: Pessoa) => {
+    const { error } = await db.from("crm_pessoas").update({ desqualificada_em: null, motivo_desqualificacao: null, atualizado_em: new Date().toISOString() }).eq("id", p.id);
+    if (error) { toast.error("Não consegui requalificar"); return; }
+    setPessoas((l) => l.map((x) => (x.id === p.id ? { ...x, desqualificada_em: null, motivo_desqualificacao: null } : x)));
+    await db.from("crm_eventos").insert({ pessoa_id: p.id, cliente_id: clienteId, tipo: "nota", texto: "Voltou a ser qualificada" });
+  };
   const totalVendido = pessoas.reduce((s, p) => s + p.valor_vendido, 0);
   const pessoaAberta = pessoas.find((p) => p.id === aberta) ?? null;
 
@@ -143,7 +161,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
           {Object.entries(ROTULO_ORIGEM).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
         <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
-          <span>{pessoas.length} pessoas</span>
+          <span>{pessoas.filter((p) => !p.desqualificada_em).length} pessoas</span>
           <span>Vendido: <b className="text-foreground">{brl(totalVendido)}</b></span>
           <Button variant="outline" size="sm" onClick={() => setImportando(true)}><Upload className="mr-1 h-4 w-4" />Seguidores</Button>
           <Button variant="outline" size="sm" onClick={() => setGerenciar(true)}><Settings2 className="mr-1 h-4 w-4" />Etapas</Button>
@@ -153,7 +171,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
 
       <div className="flex flex-wrap gap-1.5">
         {SITUACOES.map((x) => {
-          const n = pessoas.filter((p) => (origem === "todas" || p.origem === origem) && x.vale(p)).length;
+          const n = pessoas.filter((p) => (origem === "todas" || p.origem === origem) && x.vale(p) && (x.id === "desqualificadas" || !p.desqualificada_em)).length;
           return (
             <button key={x.id} title={x.dica} onClick={() => setSituacao(x.id)}
               className={cn("rounded-full border px-3 py-1 text-xs transition", situacao === x.id ? "border-primary bg-primary/15 font-semibold text-primary" : "text-muted-foreground hover:bg-muted")}>
@@ -190,10 +208,14 @@ export function CrmView({ clienteId }: { clienteId: string }) {
                     className={cn("w-full rounded-lg border bg-card p-2.5 text-left shadow-sm transition hover:border-primary/50", arrastando === p.id && "opacity-40")}>
                     <div className="flex items-center justify-between gap-1">
                       <div className="truncate text-sm font-medium">{titulo(p)}</div>
+                      <span className="flex shrink-0 items-center">
+                      <span role="button" tabIndex={0} title={p.desqualificada_em ? "Voltar para o quadro" : "Desqualificar"} onClick={(ev) => { ev.stopPropagation(); void (p.desqualificada_em ? requalificar(p) : desqualificar(p)); }}
+                        className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">{p.desqualificada_em ? <RotateCcw className="h-3.5 w-3.5" /> : <Ban className="h-3.5 w-3.5" />}</span>
                       {p.instagram && (
                         <span role="button" tabIndex={0} title="Abrir a conversa no Instagram" onClick={(ev) => { ev.stopPropagation(); void abrirLinkExterno(`https://ig.me/m/${p.instagram}`); }}
                           className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Instagram className="h-3.5 w-3.5" /></span>
                       )}
+                      </span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                       {p.instagram && p.nome && <span className="truncate">@{p.instagram}</span>}
@@ -218,7 +240,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
       </div>
 
       <FichaPessoa pessoa={pessoaAberta} igUserId={igUserId} contatoId={pessoaAberta ? contatoDe(pessoaAberta) : null} comentario={pessoaAberta && contatoDe(pessoaAberta) ? comentou.get(contatoDe(pessoaAberta)!) ?? null : null} etapas={etapas} clienteId={clienteId} onFechar={() => setAberta(null)}
-        onMudou={(nova) => { if (nova) setPessoas((l) => l.map((x) => (x.id === nova.id ? nova : x))); else void carregar(); }} onMover={mover}
+        onMudou={(nova) => { if (nova) setPessoas((l) => l.map((x) => (x.id === nova.id ? nova : x))); else void carregar(); }} onMover={mover} onDesqualificar={desqualificar} onRequalificar={requalificar}
         onExcluida={(id) => { setAberta(null); setPessoas((l) => l.filter((x) => x.id !== id)); }} />
       <NovaPessoa etapaId={novaEm} etapas={etapas} clienteId={clienteId} onFechar={() => setNovaEm(undefined)} onCriada={() => { setNovaEm(undefined); void carregar(); }} />
       <ImportarSeguidores aberto={importando} clienteId={clienteId} etapaId={etapas.find((e) => e.chave === "seguidor")?.id ?? etapas[0]?.id ?? null}
@@ -228,8 +250,8 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   );
 }
 
-function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteId, onFechar, onMudou, onMover, onExcluida }: {
-  pessoa: Pessoa | null; igUserId: string | null; contatoId: string | null; comentario: string | null; etapas: Etapa[]; clienteId: string; onFechar: () => void;
+function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteId, onFechar, onMudou, onMover, onDesqualificar, onRequalificar, onExcluida }: {
+  pessoa: Pessoa | null; onDesqualificar: (p: Pessoa) => Promise<void>; onRequalificar: (p: Pessoa) => Promise<void>; igUserId: string | null; contatoId: string | null; comentario: string | null; etapas: Etapa[]; clienteId: string; onFechar: () => void;
   onMudou: (p: Pessoa | null) => void; onMover: (pessoaId: string, etapaId: string) => Promise<void>; onExcluida: (id: string) => void;
 }) {
   const [eventos, setEventos] = useState<Evento[]>([]);
@@ -290,6 +312,7 @@ function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteI
             )}
             {aba === "conversa" && igUserId && contatoId ? <div className="mt-3"><ConversaInstagram igUserId={igUserId} contatoId={contatoId} /></div> : (
             <div className="mt-4 space-y-4">
+              {pessoa.desqualificada_em && <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">Desqualificada{pessoa.motivo_desqualificacao ? `: ${pessoa.motivo_desqualificacao}` : ""}. <button className="underline" onClick={() => void onRequalificar(pessoa)}>Voltar para o quadro</button></div>}
               {comentario && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">💬 Veio do Instagram. Comentou: “{comentario}”</div>}
               <div className="flex flex-wrap gap-2">
                 {pessoa.telefone && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://wa.me/${pessoa.telefone}`)}><MessageCircle className="mr-1 h-4 w-4" />WhatsApp</Button>}
@@ -316,7 +339,10 @@ function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteI
                 <Textarea value={campos.notas} onChange={(e) => setCampos((c) => ({ ...c, notas: e.target.value }))} rows={3} className="mt-1" />
               </div>
               <div className="flex justify-between">
-                <Button variant="ghost" size="sm" className="text-destructive" onClick={excluir}><Trash2 className="mr-1 h-4 w-4" />Excluir</Button>
+                <div className="flex gap-1">
+                  {!pessoa.desqualificada_em && <Button variant="ghost" size="sm" onClick={() => void onDesqualificar(pessoa)}><Ban className="mr-1 h-4 w-4" />Desqualificar</Button>}
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={excluir}><Trash2 className="mr-1 h-4 w-4" />Excluir</Button>
+                </div>
                 <Button size="sm" onClick={salvar}>Salvar</Button>
               </div>
 
