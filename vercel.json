@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/quiz/:slug",
+      "destination": "/api/quiz?slug=:slug"
+    },
+    {
       "source": "/r/:codigo",
       "destination": "/api/r?c=:codigo"
     },

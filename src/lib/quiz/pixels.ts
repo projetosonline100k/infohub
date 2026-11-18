@@ -48,7 +48,9 @@ export function iniciarPixels(bruto: unknown) {
   carregado = chave;
   const w = window as unknown as W;
 
-  if (p.meta) {
+  // O servidor já pôs o código base da Meta no <head> (api/quiz.js): init e PageView já saíram, não repete.
+  const meta_no_servidor = !!p.meta && w.__metaSsr === p.meta;
+  if (p.meta && !meta_no_servidor) {
     if (!w.fbq) {
       // Mesmo formato do código oficial da Meta: o fbevents.js troca a fila (queue) pelo pixel de verdade quando carrega.
       const fbq = function (...a: unknown[]) {
