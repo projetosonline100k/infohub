@@ -35,6 +35,7 @@ Uso: python3 motor.py <pasta-do-projeto> [--previa]
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -460,15 +461,17 @@ def renderizar(pasta, previa=False, progresso=None, projeto=None, saida=None, le
     fc.append("".join(f"[v{i}][a{i}]" for i in range(len(segs))) + f"concat=n={len(segs)}:v=1:a=1[vc][ac]")
     z = expressao_zoom(projeto, mapa)
     cor = filtro_cor(projeto)
-    # O crop limita x e y ao tamanho do PRIMEIRO quadro que recebe, e o scale com eval=frame muda de tamanho a cada quadro: com o zoom de abertura em 1,12
-    # o foco nunca passava de 12% de deslocamento (16/11: o rosto não subia mesmo com foco_y 0,7). Solução: o vídeo ampliado é colado (overlay, que lê o
-    # tamanho de cada quadro) numa tela preta fixa do tamanho do maior zoom, e o crop corta dessa tela.
-    zmax = max([1.0] + [max(float(k.get("z", 1)), float(k.get("de", 1))) for k in blocos_zoom(projeto)])
-    PW, PH = int(LW * zmax + 1) // 2 * 2, int(LH * zmax + 1) // 2 * 2
-    fc.append(f"[vc]fps={FPS},scale=w='{LW}*({z})':h='{LH}*({z})':eval=frame:flags={'bilinear' if previa else 'lanczos'}[vzoom]")
-    fc.append(f"color=c=black:s={PW}x{PH}:r={FPS}[vtela]")
-    fc.append(f"[vtela][vzoom]overlay=0:0:shortest=1,"
-              f"crop={LW}:{LH}:'{expressao_foco_x(projeto, mapa, LW, z)}':'{expressao_foco_y(projeto, mapa, LH, z)}',setsar=1,{cor}[vbase]")
+    # Zoom em subpixel (18/11): antes era scale(eval=frame)+crop, que arredonda tamanho e posição para pixel inteiro a cada quadro; num zoom lento
+    # a mudança por quadro é uma fração de pixel e o enquadramento tremia. O `perspective` lê a janela de origem (largura LW/z, posição do foco)
+    # com coordenadas fracionárias e interpolação, então o movimento é liso. Mesma semântica: z, foco_x e foco_y (W/H = tamanho do quadro de entrada).
+    tq = f"(in/{FPS})"   # o perspective não tem `time`: tempo = nº do quadro / fps (o fps= acima deixa constante)
+    zt = re.sub(r"\bt\b", tq, z)
+    fx, fy = (re.sub(r"\bt\b", tq, expressao_foco(projeto, mapa, 1, z, c, b).replace(f"1*(({z})-1)*", "")) for c, b in (("foco_x", 0.5), ("foco_y", 0.32)))
+    ox, oy = f"(W*({zt}-1)/({zt})*({fx}))", f"(H*({zt}-1)/({zt})*({fy}))"
+    wz, hz = f"(W/({zt}))", f"(H/({zt}))"
+    fc.append(f"[vc]fps={FPS},perspective=x0='{ox}':y0='{oy}':x1='{ox}+{wz}':y1='{oy}':x2='{ox}':y2='{oy}+{hz}':x3='{ox}+{wz}':y3='{oy}+{hz}'"
+              f":eval=frame:interpolation={'linear' if previa else 'cubic'},"
+              f"scale={LW}:{LH}:flags={'bilinear' if previa else 'lanczos'},setsar=1,{cor}[vbase]")
     ultimo, entrada = "vbase", 1
     # Instalivros: nesses trechos o apresentador desce pra metade de baixo (a abertura e,
     # desde 21/10, as animações em papel rasgado do meio do vídeo). Um trecho só ou uma lista.
