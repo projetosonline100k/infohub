@@ -750,12 +750,12 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
   const semAmostra = !!prateleira && !prateleira.some((l) => l.amostra);
   useEffect(() => { if (semAmostra && pular) onSeguir(); }, [semAmostra, pular, onSeguir]);
   if (!prateleira) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
-  const titulo = t.titulo || "{nome}, esses são os livros que mais combinam com você";
+  const titulo = t.titulo || "{nome}, esses são os livros selecionados para você";
   const nome = f("{nome}").trim();
   return <AmostraTela cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento} livros={prateleira} nome={nome && !nome.includes("{") ? nome : ""}
     titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
     porque={areas.length ? `Escolhidos a dedo para quem quer evoluir em ${areas.map((a) => ROTULO_TEMA[a]).join(", ")}` : undefined}
-    aviso={cfg.aviso || "Toque no livro do dia 1 para começar"} dica="Comece pelo livro do dia 1 — toque para abrir" dicaDeslize="Deslize para ver o seu plano dia a dia" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
+    aviso={cfg.aviso || "Toque no livro do dia 1 para começar"} dica="Este é o seu livro de hoje — toque para começar" dicaDeslize="Role para o lado para ver os livros que foram selecionados para você" dicaRolar="Role para baixo e veja tudo o que você vai ter no app" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
     textoSemAmostra="Escolha outro livro com o selo “Amostra grátis” para experimentar agora."
     botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
 }

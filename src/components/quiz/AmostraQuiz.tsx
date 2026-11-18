@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Bookmark, ChevronDown, ChevronLeft, Download, Home, Lock, MoreHorizontal, Pause, Play, Search, Share2, Star, User, X, BookOpenText } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -25,8 +25,8 @@ const reduzido = () => typeof window !== "undefined" && !!window.matchMedia?.("(
 
 type Voo = { livro: LivroAmostra; de: DOMRect; alvo: { left: number; top: number; width: number; height: number } };
 
-export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, aoEvento, suave }: {
-  livros: LivroAmostra[]; nome: string; titulo: ReactNode; porque?: string; aviso: string; dica: string; dicaDeslize: string; fimTexto: string; textoBloqueado: string; textoSemAmostra: string; segundos: number; botao: ReactNode;
+export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, aoEvento, suave }: {
+  livros: LivroAmostra[]; nome: string; titulo: ReactNode; porque?: string; aviso: string; dica: string; dicaDeslize: string; dicaRolar?: string; fimTexto: string; textoBloqueado: string; textoSemAmostra: string; segundos: number; botao: ReactNode;
   /** `detalhe` curto para o registro da sessão: "abriu;livro=56" ou "ouviu=42s;total=75s;fim=nao;livro=56". */
   aoEvento: (detalhe: string) => void; cor?: string; escuro?: boolean; suave: string;
 }) {
@@ -54,7 +54,7 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
         {aberto
           ? <LivroAberto key={aberto.id} livro={aberto} segundos={segundos} fimTexto={fimTexto} textoBloqueado={textoBloqueado} textoSemAmostra={textoSemAmostra}
               aoEvento={(d) => aoEvento(`${d};livro=${aberto.id}`)} aoVoltar={() => setAberto(null)} />
-          : <HomeApp livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} tocouAlgum={tocouAlgum} abrir={abrir} />}
+          : <HomeApp livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} dicaRolar={dicaRolar ?? "Role para baixo e veja tudo o que você vai ter no app"} tocouAlgum={tocouAlgum} abrir={abrir} />}
       </div>
       <p className={cn("text-center text-[11px]", suave)}>{aviso}</p>
       <div className="pt-0.5">{botao}</div>
@@ -78,111 +78,206 @@ function BarraAbas({ ativa }: { ativa: "home" | "biblioteca" }) {
 
 const CAPA_W = 138, VAO = 12;
 
-// Home do app: título "esses são os livros que combinam com você", o card do dia 1 e o plano dia a dia deslizando.
-// 1ª fase: a mãozinha ensina a deslizar (e o carrossel dá um empurrãozinho); ao chegar no Dia 4 (ou parada ~4 s), ela sobe para o card do dia 1.
-function HomeApp({ livros, titulo, porque, dica, dicaDeslize, tocouAlgum, abrir }: {
-  livros: LivroAmostra[]; titulo: ReactNode; porque?: string; dica: string; dicaDeslize: string; tocouAlgum: boolean; abrir: (l: LivroAmostra, el: HTMLElement) => void;
+type LivroCatalogo = { id: number; titulo: string; capa: string; nota: number; audio: number; temas: string[] };
+const CATEGORIAS: { nome: string; icone: string; tema?: string }[] = [
+  { nome: "Best Sellers", icone: "🏆" },
+  { nome: "Mentalidade", icone: "🧠", tema: "mentalidade" },
+  { nome: "Comunicação & Networking", icone: "🗣️", tema: "comunicacao" },
+  { nome: "Dinheiro & Investimentos", icone: "💰", tema: "financas" },
+  { nome: "Carreira & Empreendedorismo", icone: "🚀", tema: "carreira" },
+  { nome: "Foco & Aprendizagem", icone: "🎯", tema: "foco" },
+  { nome: "Liderança", icone: "👑", tema: "lideranca" },
+  { nome: "Hábitos", icone: "🔁", tema: "habitos" },
+  { nome: "Autoconfiança", icone: "💪", tema: "autoconfianca" },
+];
+const tituloCurto = (t: string) => t.toLowerCase().replace(/(^|[\s:—-])(\p{L})/gu, (_m, a: string, b: string) => a + b.toUpperCase());
+
+// Faixas por categoria como na home do app (capas reais do catálogo; Best Sellers = os mais bem avaliados).
+function useCategorias() {
+  const [catalogo, setCatalogo] = useState<LivroCatalogo[]>([]);
+  useEffect(() => { let vivo = true; void import("@/data/livros-instalivros.json").then((m) => { if (vivo) setCatalogo(m.default as LivroCatalogo[]); }); return () => { vivo = false; }; }, []);
+  const faixas = useMemo(() => {
+    const ordenado = [...catalogo].sort((x, y) => y.nota - x.nota || y.audio - x.audio);
+    return CATEGORIAS.map((c) => ({ ...c, livros: (c.tema ? ordenado.filter((l) => l.temas.includes(c.tema!)) : ordenado).slice(0, 8) })).filter((c) => c.livros.length > 0);
+  }, [catalogo]);
+  return { faixas, total: catalogo.length };
+}
+
+// Home do app em 3 partes (18/11/2026, Davi):
+// 1) só os livros selecionados, a mãozinha manda deslizar para o lado; 2) o plano desce e entram as categorias do app, a mãozinha manda rolar para baixo;
+// 3) a lista volta ao topo e o livro do dia 1 fica em foco (resto escurece) para a pessoa tocar. Tocar em qualquer livro antes pula as etapas.
+function HomeApp({ livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAlgum, abrir }: {
+  livros: LivroAmostra[]; titulo: ReactNode; porque?: string; dica: string; dicaDeslize: string; dicaRolar: string; tocouAlgum: boolean; abrir: (l: LivroAmostra, el: HTMLElement) => void;
 }) {
   const primeiro = livros.find((l) => l.amostra);
+  const { faixas, total } = useCategorias();
   const faixa = useRef<HTMLDivElement>(null);
+  const rolagem = useRef<HTMLDivElement>(null);
   const empurrando = useRef(false);
   const [atual, setAtual] = useState(0);
-  const [fase, setFase] = useState<"deslizar" | "abrir">("deslizar");
+  const [fase, setFase] = useState<"selecionados" | "categorias" | "foco" | "livre">(tocouAlgum ? "livre" : "selecionados");
   const [toque, setToque] = useState(0);
+  const [rolou, setRolou] = useState(false);
   const passo = CAPA_W + VAO;
   const alvoDeslize = Math.min(3, livros.length - 1);
+  const compacto = fase !== "selecionados";
+  const capaW = compacto ? 96 : CAPA_W;
 
   // empurrãozinho: mostra a próxima capa e volta
   useEffect(() => {
-    if (reduzido() || livros.length < 2) return;
+    if (reduzido() || livros.length < 2 || fase !== "selecionados") return;
     const el = faixa.current;
     if (!el) return;
     const ids: number[] = [];
     const ir = (x: number) => { empurrando.current = true; el.scrollTo({ left: x, behavior: "smooth" }); ids.push(window.setTimeout(() => { empurrando.current = false; }, 700)); };
     ids.push(window.setTimeout(() => ir(passo * 0.8), 900), window.setTimeout(() => ir(0), 1900));
     return () => ids.forEach(clearTimeout);
-  }, [livros.length, passo]);
+  }, [livros.length, passo, fase]);
 
-  // Dia 4 alcançado ou ~4 s sem mexer: a mãozinha sobe para o livro do dia 1
+  // Parte 1 → 2: Dia 4 alcançado ou ~4 s sem mexer
   useEffect(() => {
-    if (fase !== "deslizar" || tocouAlgum) return;
-    const id = window.setTimeout(() => setFase("abrir"), toque === 0 ? 6000 : 4000);
+    if (fase !== "selecionados") return;
+    const id = window.setTimeout(() => setFase("categorias"), toque === 0 ? 6000 : 4000);
     return () => clearTimeout(id);
-  }, [fase, toque, tocouAlgum]);
+  }, [fase, toque]);
 
-  const aoRolar = () => {
+  // Parte 2 → 3: rolou um pouco (~1,8 s depois) ou ~6,5 s
+  useEffect(() => {
+    if (fase !== "categorias") return;
+    const id = window.setTimeout(() => setFase("foco"), rolou ? 1800 : 6500);
+    return () => clearTimeout(id);
+  }, [fase, rolou]);
+
+  // Parte 3: volta ao topo
+  useEffect(() => {
+    if (fase !== "foco") return;
+    rolagem.current?.scrollTo({ top: 0, behavior: reduzido() ? "auto" : "smooth" });
+  }, [fase]);
+
+  // pulou as etapas (tocou num livro): a home volta já completa, sem foco
+  useEffect(() => { if (tocouAlgum) setFase("livre"); }, [tocouAlgum]);
+
+  const aoRolarFaixa = () => {
     const el = faixa.current;
     if (!el) return;
-    setAtual(Math.max(0, Math.min(livros.length - 1, Math.round(el.scrollLeft / passo))));
-    if (!empurrando.current) {
+    setAtual(Math.max(0, Math.min(livros.length - 1, Math.round(el.scrollLeft / (CAPA_W + VAO)))));
+    if (fase === "selecionados" && !empurrando.current) {
       setToque((n) => n + 1);
-      if (el.scrollLeft >= passo * (alvoDeslize - 0.3)) setFase("abrir");
+      if (el.scrollLeft >= passo * (alvoDeslize - 0.3)) setFase("categorias");
     }
   };
 
-  const deslizando = fase === "deslizar" && !tocouAlgum;
-  const subindo = fase === "abrir" && !tocouAlgum;
+  const deslizando = fase === "selecionados";
+  const emFoco = fase === "foco";
   const livroAtual = livros[atual];
   return (
     <>
-      <style>{`@keyframes amostra-arrasta{0%{transform:translateX(70px);opacity:0}15%{opacity:1}75%{transform:translateX(-90px);opacity:1}100%{transform:translateX(-90px);opacity:0}}`}</style>
-      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-5 pb-2 pt-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="text-center">
-          <div className="text-[17px] font-extrabold leading-snug">{titulo}</div>
-          {porque && <p className="mt-0.5 text-[11px] leading-snug text-black/55">{porque}</p>}
-        </div>
+      <style>{`@keyframes amostra-arrasta{0%{transform:translateX(70px);opacity:0}15%{opacity:1}75%{transform:translateX(-90px);opacity:1}100%{transform:translateX(-90px);opacity:0}}@keyframes amostra-sobe{0%{transform:translateY(40px);opacity:0}15%{opacity:1}75%{transform:translateY(-70px);opacity:1}100%{transform:translateY(-70px);opacity:0}}`}</style>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={rolagem} onScroll={(ev) => { if (fase === "categorias" && ev.currentTarget.scrollTop > 80) setRolou(true); }}
+          className={cn("min-h-0 flex-1 px-5 pb-2 pt-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", emFoco ? "overflow-y-hidden" : "overflow-y-auto")}>
+          <div className="relative space-y-2.5">
+            {emFoco && <div className="absolute -inset-x-5 -top-5 bottom-[-400px] z-20 bg-black/65 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500" aria-hidden />}
 
-        {primeiro && (
-          <div className="relative">
-            <button type="button" onClick={(ev) => abrir(primeiro, ev.currentTarget.querySelector("img") ?? ev.currentTarget)}
-              className={cn("relative flex w-full items-center gap-3 rounded-lg p-2.5 text-left text-white active:scale-[0.98]", subindo && "ring-4 ring-[#3E72E8]/30 motion-safe:animate-pulse")} style={{ background: AZUL }}>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-medium tracking-[0.15em] text-white/80">SEU LIVRO DO DIA 1</p>
-                <p className="mt-0.5 line-clamp-2 text-[15px] font-bold leading-tight">{primeiro.titulo}</p>
+            {deslizando && (
+              <div className="text-center">
+                <div className="text-[17px] font-extrabold leading-snug">{titulo}</div>
+                {porque && <p className="mt-0.5 text-[11px] leading-snug text-black/55">{porque}</p>}
               </div>
-              <img src={primeiro.capa} alt="" draggable={false} className="h-[66px] w-[47px] shrink-0 rounded object-cover shadow-lg" />
-            </button>
-            {subindo && (
-              <>
-                <span className="pointer-events-none absolute -bottom-3 right-4 z-10 select-none text-4xl drop-shadow-lg motion-safe:animate-bounce" aria-hidden>👆</span>
-                <p className="pointer-events-none absolute -bottom-2.5 left-1/2 z-10 w-max max-w-[78%] -translate-x-1/2 rounded-full px-3 py-1 text-center text-[11px] font-bold leading-tight text-white shadow-lg ring-2 ring-white" style={{ background: MARINHO }}>{dica}</p>
-              </>
             )}
+
+            {primeiro && (fase === "foco" || fase === "livre") && (
+              <div className={cn("relative pb-12", emFoco && "z-30")}>
+                <button type="button" onClick={(ev) => abrir(primeiro, ev.currentTarget.querySelector("img") ?? ev.currentTarget)}
+                  className={cn("relative flex w-full items-center gap-3 rounded-lg p-2.5 text-left text-white active:scale-[0.98]", emFoco && "scale-[1.03] shadow-2xl ring-4 ring-white/80 motion-safe:animate-pulse")} style={{ background: AZUL }}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-medium tracking-[0.15em] text-white/80">SEU LIVRO DO DIA 1</p>
+                    <p className="mt-0.5 line-clamp-2 text-[15px] font-bold leading-tight">{primeiro.titulo}</p>
+                  </div>
+                  <img src={primeiro.capa} alt="" draggable={false} className="h-[66px] w-[47px] shrink-0 rounded object-cover shadow-lg" />
+                </button>
+                {emFoco && (
+                  <>
+                    <span className="pointer-events-none absolute bottom-3 right-6 select-none text-4xl drop-shadow-lg motion-safe:animate-bounce" aria-hidden>👆</span>
+                    <p className="pointer-events-none absolute bottom-0 left-1/2 w-max max-w-[92%] -translate-x-1/2 rounded-full bg-white px-3 py-1 text-center text-[11px] font-bold leading-tight shadow-lg" style={{ color: MARINHO }}>{dica}</p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {compacto && faixas.length > 0 && (
+              <div className="space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-10 motion-safe:duration-700">
+                <div>
+                  <div className="flex items-center justify-between"><p className="text-[15px] font-extrabold">Categorias</p><span className="text-[11px] font-bold" style={{ color: AZUL }}>+{Math.max(450, Math.floor((total - 1) / 50) * 50)} resumos</span></div>
+                  <div className="-mx-5 mt-2 flex gap-3 overflow-hidden px-5">
+                    {faixas.slice(0, 5).map((c) => (
+                      <div key={c.nome} className="flex w-[64px] shrink-0 flex-col items-center gap-1 text-center">
+                        <span className="flex h-14 w-14 items-center justify-center rounded-full text-2xl text-white" style={{ background: AZUL }}>{c.icone}</span>
+                        <span className="line-clamp-2 text-[9px] font-semibold leading-tight">{c.nome}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {faixas.map((c) => (
+                  <div key={c.nome}>
+                    <div className="flex items-center justify-between"><p className="text-[14px] font-extrabold">{c.nome}</p><span className="text-[10px] font-bold" style={{ color: AZUL }}>Ver Todos</span></div>
+                    <div className="-mx-5 mt-1.5 flex gap-3 overflow-hidden px-5">
+                      {c.livros.map((l) => (
+                        <div key={l.id} className="w-[104px] shrink-0">
+                          <img src={l.capa} alt="" draggable={false} loading="lazy" className="h-[146px] w-full rounded-lg object-cover shadow-md" />
+                          <p className="mt-1 line-clamp-2 text-[10px] font-extrabold uppercase leading-tight">{tituloCurto(l.titulo)}</p>
+                          <p className="text-[10px] font-semibold" style={{ color: VERDE }}>🔊 {l.audio} minutos</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="pt-1.5">
+              {compacto && <p className="mb-1 text-[15px] font-extrabold">Seu plano</p>}
+              <div className="relative">
+                <div ref={faixa} onScroll={aoRolarFaixa} className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ scrollPaddingLeft: 20 }}>
+                  {livros.map((l, i) => (
+                    <button key={l.id} type="button" aria-label={`Abrir ${l.titulo}`} onClick={(ev) => abrir(l, ev.currentTarget.querySelector("img") ?? ev.currentTarget)}
+                      className="relative shrink-0 snap-start text-left transition-all duration-700 active:scale-95" style={{ width: capaW }}>
+                      <span className="mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white" style={{ background: i === atual ? AZUL : MARINHO }}>{l.rotulo ?? `Dia ${i + 1}`}</span>
+                      <span className="relative block">
+                        <img src={l.capa} alt="" draggable={false} loading="lazy" className={cn("w-full rounded-lg object-cover shadow-md transition-all duration-700", !l.amostra && "opacity-70")} style={{ height: capaW * 1.4 }} />
+                        {!l.amostra && <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"><Lock className="h-3 w-3" /></span>}
+                      </span>
+                      <span className="mt-1 line-clamp-1 block text-[11px] font-extrabold uppercase leading-tight">{l.titulo}</span>
+                      <span className="flex items-center gap-1.5 text-[10px] font-semibold">
+                        {l.minutos ? <span style={{ color: VERDE }}>🔊 {l.minutos} minutos</span> : null}
+                        {!compacto && l.tema && <span className="truncate rounded-full bg-black/5 px-1.5 py-px">{l.tema}</span>}
+                      </span>
+                    </button>
+                  ))}
+                  <span className="w-2 shrink-0" aria-hidden />
+                </div>
+                {deslizando && livros.length > 1 && (
+                  <span className="pointer-events-none absolute left-1/2 top-24 z-10 select-none text-5xl drop-shadow-lg motion-safe:[animation:amostra-arrasta_1.6s_ease-in-out_infinite]" aria-hidden>👆</span>
+                )}
+              </div>
+              {deslizando && (
+                <div className="mt-1 flex items-center justify-center gap-2" aria-hidden>
+                  <div className="flex gap-1">{livros.map((l, i) => <span key={l.id} className="h-1.5 rounded-full transition-all" style={{ width: i === atual ? 16 : 6, background: i === atual ? AZUL : "#D5D9E6" }} />)}</div>
+                  <span className="text-[11px] font-bold" style={{ color: AZUL }}>{livroAtual?.rotulo ?? ""}</span>
+                </div>
+              )}
+              {deslizando && livros.length > 1 && (
+                <p className="mx-auto mt-1.5 w-fit max-w-full rounded-full px-3 py-1 text-center text-[11px] font-bold leading-tight text-white shadow-lg motion-safe:animate-pulse" style={{ background: AZUL }}>{dicaDeslize}</p>
+              )}
+            </div>
+          </div>
+        </div>
+        {fase === "categorias" && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-2 z-10 flex flex-col items-center">
+            <span className="select-none text-5xl drop-shadow-lg motion-safe:[animation:amostra-sobe_1.6s_ease-in-out_infinite]" aria-hidden>👆</span>
+            <p className="mt-1 max-w-[88%] rounded-full px-3 py-1 text-center text-[11px] font-bold leading-tight text-white shadow-lg ring-2 ring-white" style={{ background: MARINHO }}>{dicaRolar}</p>
           </div>
         )}
-
-        <div className="pt-1.5">
-          <div className="relative">
-            <div ref={faixa} onScroll={aoRolar} className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ scrollPaddingLeft: 20 }}>
-              {livros.map((l, i) => (
-                <button key={l.id} type="button" aria-label={`Abrir ${l.titulo}`} onClick={(ev) => abrir(l, ev.currentTarget.querySelector("img") ?? ev.currentTarget)}
-                  className="relative shrink-0 snap-start text-left transition-transform active:scale-95" style={{ width: CAPA_W }}>
-                  <span className="mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white" style={{ background: i === atual ? AZUL : MARINHO }}>{l.rotulo ?? `Dia ${i + 1}`}</span>
-                  <span className="relative block">
-                    <img src={l.capa} alt="" draggable={false} loading="lazy" className={cn("w-full rounded-lg object-cover shadow-md", !l.amostra && "opacity-70")} style={{ height: CAPA_W * 1.4 }} />
-                    {!l.amostra && <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white"><Lock className="h-3 w-3" /></span>}
-                  </span>
-                  <span className="mt-1 line-clamp-1 block text-[11px] font-extrabold uppercase leading-tight">{l.titulo}</span>
-                  <span className="flex items-center gap-1.5 text-[10px] font-semibold">
-                    {l.minutos ? <span style={{ color: VERDE }}>🔊 {l.minutos} minutos</span> : null}
-                    {l.tema && <span className="truncate rounded-full bg-black/5 px-1.5 py-px">{l.tema}</span>}
-                  </span>
-                </button>
-              ))}
-              <span className="w-2 shrink-0" aria-hidden />
-            </div>
-            {deslizando && livros.length > 1 && (
-              <span className="pointer-events-none absolute left-1/2 top-24 z-10 select-none text-5xl drop-shadow-lg motion-safe:[animation:amostra-arrasta_1.6s_ease-in-out_infinite]" aria-hidden>👆</span>
-            )}
-          </div>
-          <div className="mt-1 flex items-center justify-center gap-2" aria-hidden>
-            <div className="flex gap-1">{livros.map((l, i) => <span key={l.id} className="h-1.5 rounded-full transition-all" style={{ width: i === atual ? 16 : 6, background: i === atual ? AZUL : "#D5D9E6" }} />)}</div>
-            <span className="text-[11px] font-bold" style={{ color: AZUL }}>{livroAtual?.rotulo ?? ""}</span>
-          </div>
-          {deslizando && livros.length > 1 && (
-            <p className="mx-auto mt-1.5 w-fit rounded-full px-3 py-1 text-center text-[11px] font-bold text-white shadow-lg motion-safe:animate-pulse" style={{ background: AZUL }}>{dicaDeslize}</p>
-          )}
-        </div>
       </div>
       <BarraAbas ativa="home" />
     </>
