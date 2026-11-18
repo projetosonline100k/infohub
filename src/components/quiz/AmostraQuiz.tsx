@@ -23,26 +23,52 @@ const VERDE = "#2FA36B";
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const reduzido = () => typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
+// Estado da amostra guardado enquanto a pessoa está no quiz (18/11/2026, Davi: "se eu der o play e voltar sem querer, preciso que esteja
+// ainda naquela parte"). Em memória (sobrevive a desmontar a tela) e em sessionStorage por quiz (sobrevive a recarregar).
+type SubTela = "detalhe" | "ouvindo" | "lendo";
+type FaseHome = "selecionados" | "categorias" | "foco" | "livre";
+interface EstadoAmostra { livroId?: string; sub?: SubTela; tempo?: number; liberado?: boolean; fase?: FaseHome; tocouAlgum?: boolean }
+const memoriaAmostra = new Map<string, EstadoAmostra>();
+const lerEstado = (chave: string): EstadoAmostra => {
+  const m = memoriaAmostra.get(chave);
+  if (m) return m;
+  try { const raw = window.sessionStorage.getItem(`amostra:${chave}`); if (raw) { const e = JSON.parse(raw) as EstadoAmostra; memoriaAmostra.set(chave, e); return e; } } catch { /* sem sessionStorage */ }
+  return {};
+};
+const gravarEstado = (chave: string, parte: EstadoAmostra) => {
+  const novo = { ...lerEstado(chave), ...parte };
+  memoriaAmostra.set(chave, novo);
+  try { window.sessionStorage.setItem(`amostra:${chave}`, JSON.stringify(novo)); } catch { /* sem sessionStorage */ }
+};
+
 type Voo = { livro: LivroAmostra; de: DOMRect; alvo: { left: number; top: number; width: number; height: number } };
 
-export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, aoEvento, suave }: {
+export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, aoEvento, suave, chave = "amostra" }: {
   livros: LivroAmostra[]; nome: string; titulo: ReactNode; porque?: string; aviso: string; dica: string; dicaDeslize: string; dicaRolar?: string; fimTexto: string; textoBloqueado: string; textoSemAmostra: string; segundos: number; botao: ReactNode;
   /** `detalhe` curto para o registro da sessão: "abriu;livro=56" ou "ouviu=42s;total=75s;fim=nao;livro=56". */
   aoEvento: (detalhe: string) => void; cor?: string; escuro?: boolean; suave: string;
+  /** Identifica esta amostra para lembrar onde a pessoa parou (quiz + tela). */
+  chave?: string;
 }) {
-  const [aberto, setAberto] = useState<LivroAmostra | null>(null);
+  const salvo = useMemo(() => lerEstado(chave), [chave]);
+  const [aberto, setAberto] = useState<LivroAmostra | null>(() => livros.find((l) => l.id === salvo.livroId) ?? null);
+  const [sub, setSubTela] = useState<SubTela>(() => (livros.some((l) => l.id === salvo.livroId) ? salvo.sub ?? "detalhe" : "detalhe"));
+  const setSub = (v: SubTela) => { setSubTela(v); gravarEstado(chave, { sub: v }); };
   const [voo, setVoo] = useState<Voo | null>(null);
-  const [tocouAlgum, setTocouAlgum] = useState(false);
-  const [liberado, setLiberado] = useState(false);
+  const [tocouAlgum, setTocouAlgum] = useState(!!salvo.tocouAlgum);
+  const [liberado, setLiberado] = useState(!!salvo.liberado);
   const quadro = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
   // O botão só aparece depois de 5 s de áudio tocando; plano B: 25 s na tela.
-  const liberar = useCallback(() => setLiberado(true), []);
+  const liberar = useCallback(() => { setLiberado(true); gravarEstado(chave, { liberado: true }); }, [chave]);
   useEffect(() => { const id = window.setTimeout(liberar, 25000); return () => clearTimeout(id); }, [liberar]);
 
   const abrir = (livro: LivroAmostra, el: HTMLElement) => {
     setTocouAlgum(true);
+    // outro livro: recomeça do detalhe; o mesmo livro: volta de onde parou (tela e segundo do áudio)
+    if (lerEstado(chave).livroId !== livro.id) { gravarEstado(chave, { livroId: livro.id, sub: "detalhe", tempo: 0 }); setSubTela("detalhe"); }
+    gravarEstado(chave, { tocouAlgum: true });
     aoEvento(`abriu;livro=${livro.id}`);
     const q = quadro.current?.getBoundingClientRect();
     if (reduzido() || !q) { setAberto(livro); return; }
@@ -57,10 +83,11 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
       <div ref={quadro} className="relative mx-auto flex h-[calc(100dvh-12rem)] max-h-[640px] min-h-[440px] w-full max-w-[390px] flex-col overflow-hidden rounded-[28px] border border-black/10 bg-white shadow-xl" style={{ color: MARINHO }}>
         {aberto
           ? <LivroAberto key={aberto.id} livro={aberto} segundos={segundos} fimTexto={fimTexto} textoBloqueado={textoBloqueado} textoSemAmostra={textoSemAmostra} aoLiberar={liberar}
-              aoEvento={(d) => aoEvento(`${d};livro=${aberto.id}`)} aoVoltar={() => setAberto(null)} />
-          : <HomeApp livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} dicaRolar={dicaRolar ?? "Role para baixo e veja tudo o que você vai ter no app"} tocouAlgum={tocouAlgum} abrir={abrir} />}
+              sub={sub} aoSub={setSub} tempoInicial={lerEstado(chave).livroId === aberto.id ? lerEstado(chave).tempo ?? 0 : 0} aoTempo={(t) => gravarEstado(chave, { tempo: t })}
+              aoEvento={(d) => aoEvento(`${d};livro=${aberto.id}`)} aoVoltar={() => { gravarEstado(chave, { livroId: undefined, sub: "detalhe", tempo: 0 }); setAberto(null); }} />
+          : <HomeApp livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} dicaRolar={dicaRolar ?? "Role para baixo e veja tudo o que você vai ter no app"} tocouAlgum={tocouAlgum} abrir={abrir} faseInicial={salvo.fase} aoFase={(f) => gravarEstado(chave, { fase: f })} />}
       </div>
-      <p className={cn("text-center text-[11px]", suave)}>{aviso}</p>
+      <p className={cn("text-center text-[11px]", suave)}>{aberto && sub === "ouvindo" ? "Ouvindo um trecho do livro do dia" : aviso}</p>
       <div aria-hidden={!liberado} className={cn("pt-0.5 transition-[opacity,transform,visibility] duration-500 ease-out", liberado ? "visible translate-y-0 opacity-100" : "invisible translate-y-4 opacity-0")}>{botao}</div>
       {voo && <VooDaCapa voo={voo} />}
     </div>
@@ -110,8 +137,8 @@ function useCategorias() {
 // Home do app em 3 partes (18/11/2026, Davi):
 // 1) só os livros selecionados, a mãozinha manda deslizar para o lado; 2) o plano desce e entram as categorias do app, a mãozinha manda rolar para baixo;
 // 3) a lista volta ao topo e o livro do dia 1 fica em foco (resto escurece) para a pessoa tocar. Tocar em qualquer livro antes pula as etapas.
-function HomeApp({ livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAlgum, abrir }: {
-  livros: LivroAmostra[]; titulo: ReactNode; porque?: string; dica: string; dicaDeslize: string; dicaRolar: string; tocouAlgum: boolean; abrir: (l: LivroAmostra, el: HTMLElement) => void;
+function HomeApp({ livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAlgum, abrir, faseInicial, aoFase }: {
+  livros: LivroAmostra[]; titulo: ReactNode; porque?: string; dica: string; dicaDeslize: string; dicaRolar: string; tocouAlgum: boolean; abrir: (l: LivroAmostra, el: HTMLElement) => void; faseInicial?: FaseHome; aoFase: (f: FaseHome) => void;
 }) {
   const primeiro = livros.find((l) => l.amostra);
   const { faixas, total } = useCategorias();
@@ -119,7 +146,8 @@ function HomeApp({ livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAl
   const rolagem = useRef<HTMLDivElement>(null);
   const empurrando = useRef(false);
   const [atual, setAtual] = useState(0);
-  const [fase, setFase] = useState<"selecionados" | "categorias" | "foco" | "livre">(tocouAlgum ? "livre" : "selecionados");
+  const [fase, setFase] = useState<FaseHome>(tocouAlgum ? "livre" : faseInicial ?? "selecionados");
+  useEffect(() => { aoFase(fase); }, [fase]); // eslint-disable-line react-hooks/exhaustive-deps
   const [toque, setToque] = useState(0);
   const [rolou, setRolou] = useState(false);
   const passo = CAPA_W + VAO;
@@ -309,18 +337,19 @@ function Redondo({ children, rotulo, onClick, pulsa, apagado, grande }: { childr
   );
 }
 
-function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostra, aoEvento, aoVoltar, aoLiberar }: {
+function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostra, aoEvento, aoVoltar, aoLiberar, sub, aoSub, tempoInicial, aoTempo }: {
   livro: LivroAmostra; segundos: number; fimTexto: string; textoBloqueado: string; textoSemAmostra: string;
   aoEvento: (detalhe: string) => void; aoVoltar: () => void; aoLiberar: () => void;
+  sub: SubTela; aoSub: (t: SubTela) => void; tempoInicial: number; aoTempo: (t: number) => void;
 }) {
   const am = livro.amostra;
   const temAudio = !!am?.audio_url;
   const paragrafos = (am?.texto ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const temTexto = paragrafos.length > 0;
-  const [tela, setTela] = useState<"detalhe" | "ouvindo" | "lendo">("detalhe");
+  const tela = sub, setTela = aoSub;
 
   if (tela === "ouvindo" && temAudio) {
-    return <Ouvindo livro={livro} url={am!.audio_url!} segundos={segundos} fimTexto={fimTexto} aoEvento={aoEvento} aoLiberar={aoLiberar}
+    return <Ouvindo livro={livro} url={am!.audio_url!} segundos={segundos} fimTexto={fimTexto} aoEvento={aoEvento} aoLiberar={aoLiberar} tempoInicial={tempoInicial} aoTempo={aoTempo}
       aoFechar={() => setTela("detalhe")} aoLer={temTexto ? () => setTela("lendo") : undefined} />;
   }
   if (tela === "lendo" && temTexto) {
@@ -370,11 +399,12 @@ function LivroAberto({ livro, segundos, fimTexto, textoBloqueado, textoSemAmostr
   );
 }
 
-function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, aoLiberar }: {
-  livro: LivroAmostra; url: string; segundos: number; fimTexto: string; aoEvento: (d: string) => void; aoFechar: () => void; aoLer?: () => void; aoLiberar: () => void;
+function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, aoLiberar, tempoInicial, aoTempo }: {
+  livro: LivroAmostra; url: string; segundos: number; fimTexto: string; aoEvento: (d: string) => void; aoFechar: () => void; aoLer?: () => void; aoLiberar: () => void; tempoInicial: number; aoTempo: (t: number) => void;
 }) {
+  const retomada = tempoInicial > 0.5;
   const [tocando, setTocando] = useState(false);
-  const [atual, setAtual] = useState(0);
+  const [atual, setAtual] = useState(tempoInicial);
   const [duracao, setDuracao] = useState(0);
   const [acabou, setAcabou] = useState(false);
   const [vel, setVel] = useState(1);
@@ -406,8 +436,10 @@ function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, ao
   const avisarRef = useRef(avisar);
   avisarRef.current = avisar;
   useEffect(() => () => avisarRef.current(false), []);
-  // Abriu o player = já começa a tocar (o toque no ▶ liberou o som).
-  useEffect(() => { void audio.current?.play().catch(() => setTocando(false)); }, []);
+  // Abriu o player = já começa a tocar (o toque no ▶ liberou o som). Voltando de onde parou: fica pausado no mesmo segundo, com o ▶ pronto.
+  useEffect(() => { if (!retomada) void audio.current?.play().catch(() => setTocando(false)); }, [retomada]);
+  // Ao sair da tela (ou do player) o áudio para.
+  useEffect(() => { const a = audio.current; return () => { a?.pause(); }; }, []);
 
   const alternar = () => {
     const a = audio.current;
@@ -424,12 +456,12 @@ function Ouvindo({ livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, ao
   return (
     <div className="flex min-h-0 flex-1 flex-col px-5 pb-4 pt-5 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300" style={{ background: "linear-gradient(180deg,#C9DCEB 0%,#E6EEF7 45%,#F6F9FC 100%)" }}>
       <audio ref={audio} src={url} preload="auto" onError={aoLiberar}
-        onLoadedMetadata={(ev) => setDuracao(ev.currentTarget.duration || 0)}
+        onLoadedMetadata={(ev) => { setDuracao(ev.currentTarget.duration || 0); if (retomada && ev.currentTarget.currentTime < 0.5) ev.currentTarget.currentTime = tempoInicial; }}
         onPlay={() => { jaTocou.current = true; setTocando(true); setAcabou(false); avisar(false); }}
         onPause={() => { setTocando(false); avisar(false); }}
         onTimeUpdate={(ev) => {
           const t = ev.currentTarget.currentTime;
-          setAtual(t); if (t > maxOuvido.current) maxOuvido.current = t;
+          setAtual(t); aoTempo(t); if (t > maxOuvido.current) maxOuvido.current = t;
           if (t >= limite) { ev.currentTarget.pause(); setAcabou(true); evento.current(`ouviu=${Math.round(maxOuvido.current)}s;total=${Math.round(limite)}s;fim=sim`); }
         }}
         onEnded={() => { setAcabou(true); evento.current(`ouviu=${Math.round(maxOuvido.current)}s;total=${Math.round(limite)}s;fim=sim`); }} />
