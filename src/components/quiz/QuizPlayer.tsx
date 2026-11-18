@@ -777,8 +777,10 @@ function PlanoLivros({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, s
 }
 
 // "Seu primeiro livro chegou" (18/11): o livro nº 1 do plano que tem amostra cadastrada em `amostra.amostras`; sem nenhum, a tela segue sozinha.
-function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir, onEvento, pular, chaveQuiz }: {
+function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, suave, onSeguir, onEvento, pular, chaveQuiz, cheia, onVoltar }: {
   t: TelaQuiz; base: string; e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; marcadas: Record<string, number[]>; f: (s?: string) => string; cor: string; escuro: boolean; suave: string; onSeguir: () => void; onEvento: (detalhe: string) => void; pular: boolean; chaveQuiz: string;
+  /** Tela cheia no celular (sem o cabeçalho do quiz) e a setinha que volta uma tela do quiz. */
+  cheia?: boolean; onVoltar?: () => void;
 }) {
   const cfg = t.amostra ?? {};
   const telaPlano = (e.telas ?? []).find((x) => x.tipo === "plano_livros" && (!cfg.plano_de || x.id === cfg.plano_de)) ?? t;
@@ -811,7 +813,7 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
   if (!prateleira) return <div className="space-y-2 py-2" aria-busy="true"><div className={cn("h-72 animate-pulse rounded-2xl", escuro ? "bg-white/10" : "bg-gray-200")} /></div>;
   const titulo = t.titulo || "{nome}, esses são os livros selecionados para você";
   const nome = f("{nome}").trim();
-  return <AmostraTela chave={`${chaveQuiz}:${t.id}`} cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento} livros={prateleira} nome={nome && !nome.includes("{") ? nome : ""}
+  return <AmostraTela cheia={cheia} aoVoltarQuiz={onVoltar} chave={`${chaveQuiz}:${t.id}`} cor={cor} escuro={escuro} suave={suave} segundos={cfg.segundos ?? 75} aoEvento={onEvento} livros={prateleira} nome={nome && !nome.includes("{") ? nome : ""}
     titulo={<Txt caminho={`${base}.titulo`} valor={titulo} mostrar={f(titulo)} as="h2" className="block" />}
     porque={areas.length ? `Escolhidos a dedo para quem quer evoluir em ${areas.map((a) => ROTULO_TEMA[a]).join(", ")}` : undefined}
     aviso={cfg.aviso || "Toque no livro do dia 1 para começar"} dica="Este é o seu livro de hoje — toque para começar" dicaDeslize="Role para o lado para ver os livros que foram selecionados para você" dicaRolar="Role para baixo e veja tudo o que você vai ter no app" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
@@ -1035,6 +1037,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     return v.length >= 2;
   });
   const suave = escuro ? "text-neutral-400" : "text-muted-foreground";
+  // Amostra do app no quiz de verdade (não no editor/teste): ocupa a tela toda, sem barra de progresso nem "Instalivros" em cima.
+  const amostraCheia = telaCheia && !teste && !editar && passo.tipo === "tela" && telas[passo.indice]?.tipo === "amostra";
 
   return (
     <QuizCtx.Provider value={ctx}>
@@ -1051,7 +1055,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             <button type="button" onClick={() => setPos((p) => Math.min(passos.length - 1, p + 1))} disabled={pos >= passos.length - 1} className="flex items-center gap-1 disabled:opacity-40">Próxima<ArrowRight className="h-3 w-3" /></button>
           </div>
         )}
-        {passo.tipo !== "intro" && passo.tipo !== "fim" && fasesInfo ? (
+        {amostraCheia ? null : passo.tipo !== "intro" && passo.tipo !== "fim" && fasesInfo ? (
           <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} comemorar={e.fases_comemorar !== false} vturb={e.progresso === "vturb"} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
         ) : passo.tipo !== "intro" && passo.tipo !== "fim" ? (
           <div className={cn("h-2 shrink-0 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
@@ -1336,7 +1340,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 botao={<Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || "Ver meu plano"} /></Botao>} />;
             }
             if (t.tipo === "plano_livros") return <PlanoLivros key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} />;
-            if (t.tipo === "amostra") return <AmostraLivro key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} onEvento={(d) => evento.current?.("amostra", undefined, d)} pular={!editar && !travado} chaveQuiz={titulo} />;
+            if (t.tipo === "amostra") return <AmostraLivro key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} onEvento={(d) => evento.current?.("amostra", undefined, d)} pular={!editar && !travado} chaveQuiz={titulo} cheia={amostraCheia} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />;
             if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} onSeguir={avancar} suave={suave} />;
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}
