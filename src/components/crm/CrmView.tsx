@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Ban, ExternalLink, Instagram, Loader2, MessageCircle, Plus, Search, ArrowRight, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
+import { Ban, ExternalLink, UserSearch, Instagram, Loader2, MessageCircle, Plus, Search, ArrowRight, RotateCcw, Settings2, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -67,6 +67,11 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const [novaEm, setNovaEm] = useState<string | null | undefined>(undefined);   // undefined = fechado; null = sem etapa
   const [gerenciar, setGerenciar] = useState(false);
   const [importando, setImportando] = useState(false);
+  // "Buscar seguidores novos": o Mac lê o topo da lista no Instagram (Chrome do Davi) e põe os novos em "Novo seguidor".
+  interface PedidoSeg { id: string; status: "pendente" | "lendo" | "ok" | "erro"; mensagem: string | null; novos: number | null }
+  const [pedido, setPedido] = useState<PedidoSeg | null>(null);
+  const [qtd, setQtd] = useState(() => { try { return Number(localStorage.getItem("crm-qtd-seguidores")) || 100; } catch { return 100; } });
+  const buscando = pedido?.status === "pendente" || pedido?.status === "lendo";
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [sobre, setSobre] = useState<string | null>(null);
   const [mostrando, setMostrando] = useState<Record<string, number>>({});
@@ -107,6 +112,28 @@ export function CrmView({ clienteId }: { clienteId: string }) {
     })();
     return () => { vivo = false; };
   }, [clienteId]);
+  useEffect(() => {
+    let vivo = true;
+    const ler = async () => {
+      const { data } = await db.from("crm_pedidos_seguidores").select("id, status, mensagem, novos, atualizado_em").eq("cliente_id", clienteId).order("criado_em", { ascending: false }).limit(1);
+      if (!vivo) return;
+      const novo = ((data ?? [])[0] ?? null) as (PedidoSeg & { atualizado_em: string }) | null;
+      setPedido((antes) => {
+        if (antes && novo && antes.id === novo.id && (antes.status === "pendente" || antes.status === "lendo") && novo.status === "ok") { toast.success(novo.mensagem ?? "Seguidores atualizados"); void carregar(); }
+        if (antes && novo && antes.id === novo.id && (antes.status === "pendente" || antes.status === "lendo") && novo.status === "erro") toast.error(novo.mensagem ?? "Não consegui ler os seguidores");
+        return novo;
+      });
+    };
+    void ler();
+    const t = window.setInterval(() => { if (!document.hidden) void ler(); }, 4000);
+    return () => { vivo = false; window.clearInterval(t); };
+  }, [clienteId, carregar]);
+  const buscarSeguidores = async () => {
+    const { data, error } = await db.from("crm_pedidos_seguidores").insert({ cliente_id: clienteId, quantidade: qtd }).select("id, status, mensagem, novos").single();
+    if (error) { toast.error("Não consegui pedir a leitura"); return; }
+    setPedido(data as PedidoSeg);
+    toast.message("Pedido enviado. O Mac abre o Instagram e lê a lista (uns 2 minutos).");
+  };
   const contatoDe = (p: Pessoa) => (p.instagram ? contatoPorUser.get(p.instagram) ?? null : null);
 
   const filtradas = useMemo(() => {
@@ -180,6 +207,17 @@ export function CrmView({ clienteId }: { clienteId: string }) {
         <div className="ml-auto flex items-center gap-3 text-sm text-muted-foreground">
           <span>{pessoas.filter((p) => !p.desqualificada_em).length} pessoas</span>
           <span>Vendido: <b className="text-foreground">{brl(totalVendido)}</b></span>
+          {igUserId && (
+            <span className="flex items-center gap-1">
+              <select value={qtd} onChange={(e) => { const v = Number(e.target.value); setQtd(v); try { localStorage.setItem("crm-qtd-seguidores", String(v)); } catch { /* sem storage */ } }}
+                disabled={buscando} title="Quantos seguidores recentes ler" className="h-9 rounded-md border bg-background px-1.5 text-sm">
+                {[50, 100, 200, 300].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <Button size="sm" variant="secondary" onClick={buscarSeguidores} disabled={buscando} title="Abre o Instagram no Mac, lê os seguidores mais recentes e põe os novos em Novo seguidor">
+                {buscando ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <UserSearch className="mr-1 h-4 w-4" />}{buscando ? "Lendo o Instagram…" : "Buscar seguidores novos"}
+              </Button>
+            </span>
+          )}
           <Button variant="outline" size="sm" onClick={() => setImportando(true)}><Upload className="mr-1 h-4 w-4" />Seguidores</Button>
           <Button variant="outline" size="sm" onClick={() => setGerenciar(true)}><Settings2 className="mr-1 h-4 w-4" />Etapas</Button>
           <Button size="sm" onClick={() => setNovaEm(null)}><Plus className="mr-1 h-4 w-4" />Pessoa</Button>
