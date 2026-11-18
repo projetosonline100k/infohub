@@ -32,7 +32,7 @@ PASTA = Path.home() / ".infopro-hub" / "ponte"
 PASTA.mkdir(parents=True, exist_ok=True)
 LOG = PASTA / "ponte.log"
 OBRAS = PASTA / "obras"
-INTERVALO = 60
+INTERVALO = 5   # 18/11: era 60 s; os agentes esperam o resultado do pedido (fila.py fazer)
 
 
 def log(*partes):
