@@ -32,6 +32,31 @@ export function erroDoId(k: keyof PixelsQuiz, v: string): string | null {
 
 type W = Window & Record<string, unknown>;
 
+// API de Conversões (18/11): os eventos importantes também vão pelo servidor (supabase/functions/quiz-capi), com o MESMO event_id do pixel
+// do navegador, para a Meta contar uma vez só e para valer mesmo com bloqueador de anúncios.
+let servidor: { slug: string; sessao: string } | null = null;
+export function configurarServidor(c: { slug: string; sessao: string } | null) { servidor = c; }
+const novoId = () => (typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`);
+const biscoito = (n: string) => { try { return document.cookie.split("; ").find((x) => x.startsWith(n + "="))?.split("=").slice(1).join("=") ?? null; } catch { return null; } };
+/** _fbc: o cookie, ou montado a partir do ?fbclid= do anúncio (formato da Meta). */
+const fbcAtual = () => {
+  const c = biscoito("_fbc"); if (c) return c;
+  try { const id = new URLSearchParams(window.location.search).get("fbclid"); return id ? `fb.1.${Date.now()}.${id}` : null; } catch { return null; }
+};
+const NO_SERVIDOR: EventoPixel[] = ["visita", "lead", "fim", "cta"];   // as telas (QuizPasso) ficam só no navegador: seriam ~35 chamadas por pessoa
+export interface ContatoPixel { nome?: string | null; email?: string | null; whatsapp?: string | null }
+function mandarAoServidor(tipo: EventoPixel, id: string, contato?: ContatoPixel) {
+  if (!servidor || !NO_SERVIDOR.includes(tipo)) return;
+  const evento = { visita: "PageView", lead: "Lead", fim: "CompleteRegistration", cta: "InitiateCheckout", passo: "QuizPasso" }[tipo];
+  try {
+    const base = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "https://ucjyobemrxqfcoopkcgb.supabase.co";
+    void fetch(`${base}/functions/v1/quiz-capi`, {
+      method: "POST", keepalive: true, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug: servidor.slug, sessao: servidor.sessao, evento, event_id: id, url: window.location.href.split("#")[0], fbp: biscoito("_fbp"), fbc: fbcAtual(), contato }),
+    }).catch(() => undefined);
+  } catch { /* o pixel do navegador já cuidou do evento */ }
+}
+
 function script(src: string) {
   const s = document.createElement("script");
   s.async = true; s.src = src;
@@ -62,7 +87,8 @@ export function iniciarPixels(bruto: unknown) {
       script("https://connect.facebook.net/en_US/fbevents.js");
     }
     (w.fbq as (...a: unknown[]) => void)("init", p.meta);
-    (w.fbq as (...a: unknown[]) => void)("track", "PageView");
+    const pv = novoId(); w.__pvId = pv;
+    (w.fbq as (...a: unknown[]) => void)("track", "PageView", {}, { eventID: pv });
   }
 
   if (p.tiktok) {
@@ -111,17 +137,20 @@ const DE_PARA: Record<EventoPixel, { meta: [string, boolean]; tiktok: string | n
   cta: { meta: ["InitiateCheckout", false], tiktok: "InitiateCheckout", ga: "begin_checkout", gtm: "quiz_cta" },
 };
 
-/** Dispara um evento do funil em todos os pixels ligados. `passo` = número da tela (0 = primeira). */
-export function eventoPixel(bruto: unknown, tipo: EventoPixel, passo?: number) {
+/** Dispara um evento do funil em todos os pixels ligados. `passo` = número da tela (0 = primeira). `contato` só vai no lead/fim/compra (hash no servidor). */
+export function eventoPixel(bruto: unknown, tipo: EventoPixel, passo?: number, contato?: ContatoPixel) {
   if (typeof window === "undefined") return;
   const p = limparPixels(bruto);
   const w = window as unknown as W;
   const m = DE_PARA[tipo];
   const dados = passo !== undefined && passo >= 0 ? { passo: passo + 1 } : undefined;
+  // O PageView já saiu com um id (no HTML ou em iniciarPixels): o servidor usa o mesmo, senão a Meta contaria duas visitas.
+  const id = tipo === "visita" ? (typeof w.__pvId === "string" ? w.__pvId : novoId()) : novoId();
   try {
-    if (p.meta && typeof w.fbq === "function" && !(tipo === "visita")) (w.fbq as (...a: unknown[]) => void)(m.meta[1] ? "trackCustom" : "track", m.meta[0], dados);
+    if (p.meta && typeof w.fbq === "function" && tipo !== "visita") (w.fbq as (...a: unknown[]) => void)(m.meta[1] ? "trackCustom" : "track", m.meta[0], dados ?? {}, { eventID: id });
     if (p.tiktok && w.ttq && m.tiktok) (w.ttq as { track: (n: string, d: unknown) => void }).track(m.tiktok, dados ?? {});
     if ((p.ga4 || p.google_ads) && typeof w.gtag === "function" && m.ga) (w.gtag as (...a: unknown[]) => void)("event", m.ga, dados ?? {});
     if (p.gtm && Array.isArray(w.dataLayer)) (w.dataLayer as unknown[]).push({ event: m.gtm, ...(dados ?? {}) });
   } catch { /* pixel bloqueado (adblock): o quiz segue */ }
+  if (p.meta) mandarAoServidor(tipo, id, contato);
 }

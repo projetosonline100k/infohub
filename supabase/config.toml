@@ -40,3 +40,7 @@ verify_jwt = false
 [functions.facebook-ads]
 # O callback do Login do Facebook e o link curto chegam sem JWT; as demais rotas validam a sessão dentro da função.
 verify_jwt = false
+
+[functions.quiz-capi]
+# Chamada pelo navegador de quem abre o quiz (sem login); a função valida o quiz e só aceita os eventos do funil.
+verify_jwt = false

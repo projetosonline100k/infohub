@@ -7,6 +7,31 @@
 // não interessam, para a plataforma não ficar tentando de novo.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { interpretarWebhook } from "./interpretar.ts";
+import { enviarParaMeta, montarEvento, tokenDoPixel } from "../_shared/capi.ts";
+
+// Compra na Meta pela API de Conversões (18/11/2026): se quem comprou deixou o mesmo e-mail num quiz que tem pixel da Meta, a venda vira
+// `Purchase` nesse pixel (com e-mail/telefone/nome em hash), e as campanhas passam a otimizar por venda. Nunca derruba o webhook.
+// deno-lint-ignore no-explicit-any
+async function comprarNaMeta(admin: any, e: { transacao_id: string; valor: number; comprador_email?: string; comprador_nome?: string; utm_content?: string }) {
+  const email = (e.comprador_email ?? "").trim().toLowerCase();
+  if (!email) return;
+  const { data: lead } = await admin.from("quiz_respostas").select("quiz_id, nome, whatsapp, email")
+    .ilike("email", email.replace(/[\\%_]/g, (c) => `\\${c}`)).order("criada_em", { ascending: false }).limit(1).maybeSingle();
+  if (!lead) return;
+  const { data: q } = await admin.from("quizzes").select("pixels, variante_de, slug").eq("id", lead.quiz_id).maybeSingle();
+  let pixels = q?.pixels;
+  if (!pixels && q?.variante_de) pixels = (await admin.from("quizzes").select("pixels").eq("id", q.variante_de).maybeSingle()).data?.pixels;
+  const pixel = pixels?.meta;
+  const token = pixel ? tokenDoPixel(Deno.env.get("META_CAPI_TOKENS"), pixel) : null;
+  if (!pixel || !token) return;
+  const ev = await montarEvento({
+    nome: "Purchase", id: `eduzz-${e.transacao_id}`, origem: "system_generated",
+    usuario: { email: lead.email ?? email, nome: lead.nome ?? e.comprador_nome, whatsapp: lead.whatsapp },
+    dados: { value: e.valor, currency: "BRL", content_name: "Instalivros" },
+  });
+  const r = await enviarParaMeta(pixel, token, [ev], Deno.env.get("META_CAPI_TEST_CODE"));
+  if (!r.ok) console.error("vendas-webhook (Meta):", r.status, r.erro);
+}
 
 const json = (corpo: unknown, status = 200) =>
   new Response(JSON.stringify(corpo), { status, headers: { "Content-Type": "application/json" } });
@@ -38,13 +63,15 @@ Deno.serve(async (req) => {
   const evento = interpretarWebhook(corpo);
   if (!evento) return json({ ok: true, ignorado: true });
 
-  const { error } = await admin.from("vendas_plataforma_eventos").upsert(
+  const { data: gravadas, error } = await admin.from("vendas_plataforma_eventos").upsert(
     { ...evento, produto_id: webhook.produto_id, payload: corpo },
     { onConflict: "plataforma,transacao_id,tipo", ignoreDuplicates: true },
-  );
+  ).select("id");
   if (error) {
     console.error("vendas-webhook:", error.message);
     return json({ erro: "falha ao gravar" }, 500);
   }
+  // Só a venda nova (reenvio da mesma transação não conta de novo na Meta).
+  if (evento.tipo === "venda" && gravadas?.length) { try { await comprarNaMeta(admin, evento); } catch (e) { console.error("vendas-webhook (Meta):", e); } }
   return json({ ok: true, tipo: evento.tipo, valor: evento.valor, data: evento.data });
 });
