@@ -26,10 +26,10 @@ echo
 ATUAL=$("${CLI[@]}" secrets list --project-ref "$PROJETO" 2>/dev/null | grep -c META_CAPI_TOKENS || true)
 [[ "$ATUAL" != "0" ]] && echo "ℹ️  Já existe META_CAPI_TOKENS: ele será substituído (o Supabase não mostra o valor antigo). Se você usa outros pixels, rode de novo para cada um."
 JSON=$(PIXEL="$PIXEL" TOKEN="$TOKEN" python3 -c 'import json,os;print(json.dumps({os.environ["PIXEL"]:os.environ["TOKEN"]}))')
-"${CLI[@]}" secrets set --project-ref "$PROJETO" META_CAPI_TOKENS="$JSON" >/dev/null
+"${CLI[@]}" secrets set --project-ref "$PROJETO" --yes META_CAPI_TOKENS="$JSON" >/dev/null
 unset TOKEN JSON
 echo "✓ Token gravado no Supabase."
 
-"${CLI[@]}" functions deploy quiz-capi --no-verify-jwt --project-ref "$PROJETO"
-"${CLI[@]}" functions deploy vendas-webhook --no-verify-jwt --project-ref "$PROJETO"
+"${CLI[@]}" functions deploy quiz-capi --no-verify-jwt --project-ref "$PROJETO" --yes
+"${CLI[@]}" functions deploy vendas-webhook --no-verify-jwt --project-ref "$PROJETO" --yes
 echo "✓ Funções publicadas."
