@@ -14,7 +14,7 @@ import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, ty
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
 import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
-import { SegureCompromisso, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
+import { BotaoSegurar, CartaoCompromisso, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
@@ -882,7 +882,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   useEffect(() => { if (respostas) setEscolhas((x) => ({ ...x, ...respostas })); }, [respostasChave]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [marcadas, setMarcadas] = useState<Record<string, number[]>>({});   // perguntas de "escolha quantas quiser"
   const [numeros, setNumeros] = useState<Record<string, number>>({});   // perguntas de número (roleta/régua); escolhas guarda a faixa do número, para o perfil
-  const [desenhou, setDesenhou] = useState(false);   // tela "compromisso": já segurou o botão até o fim (e a animação terminou)
+  const [desenhou, setDesenhou] = useState(false);   // tela "compromisso": segurou o botão até o fim e já passou ~1,5 s (o botão vira Continuar)
+  const [comprometeu, setComprometeu] = useState(false);   // tela "compromisso": acabou de completar (botão ✓ verde + cartão)
+  useEffect(() => {
+    if (!comprometeu || desenhou) return;
+    const t = setTimeout(() => setDesenhou(true), 1500);
+    return () => clearTimeout(t);
+  }, [comprometeu, desenhou]);
   const [contato, setContato] = useState<Partial<Record<CampoCaptura, string>>>({});
   const [enviando, setEnviando] = useState(false);
   const enviado = useRef(false);   // captura no meio do quiz: a resposta já foi gravada ali
@@ -984,7 +990,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     const k = faixaDoNumero(q, n);
     setEscolhas((x) => { const y = { ...x }; if (k >= 0) y[q.id] = k; else delete y[q.id]; return y; });
   };
-  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setNumeros({}); setDesenhou(false); setContato({}); enviado.current = false; };
+  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
 
   // Resumo do plano em números (tela "perfil" com plano_numeros): só entram as linhas que a pessoa já respondeu.
   const linhasDoPlano = (c: NonNullable<TelaQuiz["plano_numeros"]>): LinhaDoPlano[] => {
@@ -1307,8 +1313,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 const idMin = t.compromisso?.pergunta ?? telas.find((x) => x.tipo === "projecao")?.projecao?.pergunta ?? telas.find((x) => x.plano_numeros)?.plano_numeros?.minutos;
                 const pm = idMin ? perguntas.find((x) => x.id === idMin) : undefined;
                 const minutos = idMin ? numeros[idMin] ?? (pm?.numero ? limitesDoNumero(pm.numero).inicial : undefined) : undefined;
-                corpo = <SegureCompromisso key={t.id} aoMudar={setDesenhou} jaFez={desenhou} nome={contato.nome} minutos={minutos} rotulo={t.compromisso?.segurar} {...visual} />;
-                rodape = <ContinuarTravavel liberado={desenhou} falta="Segure o botão para se comprometer" rotulo={t.botao || "Continuar"} onClick={avancar} />;
+                corpo = comprometeu ? <CartaoCompromisso key={t.id} jaFez={desenhou} nome={contato.nome} minutos={minutos} {...visual} /> : null;
+                rodape = desenhou
+                  ? <div className="animate-pulse"><Botao onClick={avancar}>Continuar</Botao></div>
+                  : <BotaoSegurar key={t.id} aoCompletar={() => setComprometeu(true)} rotulo={t.botao || t.compromisso?.segurar} cor={visual.cor} />;
               }
               return (
                 <div key={t.id} className="space-y-5 py-2">
