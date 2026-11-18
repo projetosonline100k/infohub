@@ -185,7 +185,13 @@ export function CrmView({ clienteId }: { clienteId: string }) {
                     onDragEnd={() => { setArrastando(null); setSobre(null); }}
                     onClick={() => setAberta(p.id)}
                     className={cn("w-full rounded-lg border bg-card p-2.5 text-left shadow-sm transition hover:border-primary/50", arrastando === p.id && "opacity-40")}>
-                    <div className="truncate text-sm font-medium">{titulo(p)}</div>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="truncate text-sm font-medium">{titulo(p)}</div>
+                      {p.instagram && (
+                        <span role="button" tabIndex={0} title="Abrir a conversa no Instagram" onClick={(ev) => { ev.stopPropagation(); void abrirLinkExterno(`https://ig.me/m/${p.instagram}`); }}
+                          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"><Instagram className="h-3.5 w-3.5" /></span>
+                      )}
+                    </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
                       {p.instagram && p.nome && <span className="truncate">@{p.instagram}</span>}
                       {p.telefone && <span>{p.telefone}</span>}
@@ -282,7 +288,8 @@ function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteI
               {comentario && <div className="rounded-lg border bg-muted/40 px-3 py-2 text-sm">💬 Veio do Instagram. Comentou: “{comentario}”</div>}
               <div className="flex flex-wrap gap-2">
                 {pessoa.telefone && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://wa.me/${pessoa.telefone}`)}><MessageCircle className="mr-1 h-4 w-4" />WhatsApp</Button>}
-                {pessoa.instagram && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://instagram.com/${pessoa.instagram}`)}><Instagram className="mr-1 h-4 w-4" />Instagram<ExternalLink className="ml-1 h-3 w-3" /></Button>}
+                {pessoa.instagram && <Button size="sm" onClick={() => abrirLinkExterno(`https://ig.me/m/${pessoa.instagram}`)}><Instagram className="mr-1 h-4 w-4" />Abrir conversa<ExternalLink className="ml-1 h-3 w-3" /></Button>}
+                {pessoa.instagram && <Button size="sm" variant="outline" onClick={() => abrirLinkExterno(`https://instagram.com/${pessoa.instagram}`)}>Perfil</Button>}
                 <span className="ml-auto self-center text-xs text-muted-foreground">Origem: {ROTULO_ORIGEM[pessoa.origem] ?? pessoa.origem}</span>
               </div>
               <div>
