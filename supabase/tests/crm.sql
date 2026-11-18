@@ -12,7 +12,7 @@ INSERT INTO public.produtos_cliente(id, cliente_id, nome_produto, user_id) VALUE
 DO $$
 DECLARE pid uuid; r uuid;
 BEGIN
-  IF (SELECT count(*) FROM public.crm_etapas WHERE cliente_id = '10000000-0000-0000-0000-000000000c11') <> 6 THEN RAISE EXCEPTION 'projeto novo sem as 6 etapas padrão'; END IF;
+  IF (SELECT count(*) FROM public.crm_etapas WHERE cliente_id = '10000000-0000-0000-0000-000000000c11') <> 7 THEN RAISE EXCEPTION 'projeto novo sem as 7 etapas padrão'; END IF;
   PERFORM public.responder_quiz('crm-q', '[]', 'p', 'Ana', 'ana@x.co', '(11) 98888-7777');
   IF (SELECT count(*) FROM public.crm_pessoas WHERE cliente_id = '10000000-0000-0000-0000-000000000c11') <> 1 THEN RAISE EXCEPTION 'lead do quiz não virou pessoa'; END IF;
   SELECT p.id INTO pid FROM public.crm_pessoas p WHERE cliente_id = '10000000-0000-0000-0000-000000000c11';

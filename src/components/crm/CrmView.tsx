@@ -22,7 +22,23 @@ export interface Etapa { id: string; nome: string; chave: string | null; ordem: 
 export interface Pessoa {
   id: string; nome: string | null; telefone: string | null; email: string | null; instagram: string | null; origem: string;
   etapa_id: string | null; valor_vendido: number; notas: string | null; ultima_interacao_em: string; criado_em: string;
+  recebeu_dm_em: string | null; respondeu_em: string | null; clicou_botao_em: string | null; clicou_link_em: string | null; fluxo_concluido_em: string | null;
 }
+// Situação no funil (18/11, Davi: "quem respondeu, quem clicou, quem avançou e não comprou"): cada chip filtra o quadro.
+type Situacao = "todas" | "abordadas" | "responderam" | "botao" | "link" | "concluiu" | "avancou" | "sem_resposta" | "compraram";
+const comprou = (p: Pessoa) => p.valor_vendido > 0;
+const avancou = (p: Pessoa) => !!(p.respondeu_em || p.clicou_botao_em || p.clicou_link_em || p.fluxo_concluido_em);
+const SITUACOES: { id: Situacao; rotulo: string; dica: string; vale: (p: Pessoa) => boolean }[] = [
+  { id: "todas", rotulo: "Todas", dica: "Todo mundo", vale: () => true },
+  { id: "abordadas", rotulo: "Receberam DM", dica: "Receberam mensagem do fluxo ou da automação", vale: (p) => !!p.recebeu_dm_em },
+  { id: "responderam", rotulo: "Responderam", dica: "Escreveram ou tocaram num botão", vale: (p) => !!p.respondeu_em },
+  { id: "botao", rotulo: "Clicaram no botão", dica: "Tocaram num botão do fluxo", vale: (p) => !!p.clicou_botao_em },
+  { id: "link", rotulo: "Clicaram no link", dica: "Abriram o link da mensagem", vale: (p) => !!p.clicou_link_em },
+  { id: "concluiu", rotulo: "Concluíram o fluxo", dica: "Chegaram ao fim do fluxo", vale: (p) => !!p.fluxo_concluido_em },
+  { id: "avancou", rotulo: "Avançaram e não compraram", dica: "Responderam, clicaram ou concluíram, mas ainda não compraram: a hora de abordar", vale: (p) => avancou(p) && !comprou(p) },
+  { id: "sem_resposta", rotulo: "Receberam e não responderam", dica: "Receberam DM e nunca responderam", vale: (p) => !!p.recebeu_dm_em && !p.respondeu_em && !comprou(p) },
+  { id: "compraram", rotulo: "Compraram", dica: "Já compraram", vale: comprou },
+];
 interface Evento { id: string; tipo: string; texto: string | null; valor: number | null; em: string }
 
 const POR_COLUNA = 40;
@@ -36,6 +52,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [origem, setOrigem] = useState<string>("todas");
+  const [situacao, setSituacao] = useState<Situacao>("todas");
   const [aberta, setAberta] = useState<string | null>(null);
   const [novaEm, setNovaEm] = useState<string | null | undefined>(undefined);   // undefined = fechado; null = sem etapa
   const [gerenciar, setGerenciar] = useState(false);
@@ -50,7 +67,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const carregar = useCallback(async () => {
     const [e, p] = await Promise.all([
       db.from("crm_etapas").select("id, nome, chave, ordem").eq("cliente_id", clienteId).order("ordem"),
-      db.from("crm_pessoas").select("id, nome, telefone, email, instagram, origem, etapa_id, valor_vendido, notas, ultima_interacao_em, criado_em")
+      db.from("crm_pessoas").select("id, nome, telefone, email, instagram, origem, etapa_id, valor_vendido, notas, ultima_interacao_em, criado_em, recebeu_dm_em, respondeu_em, clicou_botao_em, clicou_link_em, fluxo_concluido_em")
         .eq("cliente_id", clienteId).order("ultima_interacao_em", { ascending: false }).limit(3000),
     ]);
     if (e.error || p.error) toast.error("Não consegui carregar o CRM");
@@ -84,10 +101,11 @@ export function CrmView({ clienteId }: { clienteId: string }) {
   const filtradas = useMemo(() => {
     const q = busca.trim().toLowerCase();
     const qDig = q.replace(/\D/g, "");
-    return pessoas.filter((p) => (origem === "todas" || p.origem === origem) && (!q
+    const vale = SITUACOES.find((x) => x.id === situacao)!.vale;
+    return pessoas.filter((p) => (origem === "todas" || p.origem === origem) && vale(p) && (!q
       || (p.nome ?? "").toLowerCase().includes(q) || (p.email ?? "").toLowerCase().includes(q) || (p.instagram ?? "").includes(q.replace(/^@/, ""))
       || (qDig.length >= 4 && (p.telefone ?? "").includes(qDig))));
-  }, [pessoas, busca, origem]);
+  }, [pessoas, busca, origem, situacao]);
 
   const porEtapa = useMemo(() => {
     const m: Record<string, Pessoa[]> = {};
@@ -130,6 +148,18 @@ export function CrmView({ clienteId }: { clienteId: string }) {
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-1.5">
+        {SITUACOES.map((x) => {
+          const n = pessoas.filter((p) => (origem === "todas" || p.origem === origem) && x.vale(p)).length;
+          return (
+            <button key={x.id} title={x.dica} onClick={() => setSituacao(x.id)}
+              className={cn("rounded-full border px-3 py-1 text-xs transition", situacao === x.id ? "border-primary bg-primary/15 font-semibold text-primary" : "text-muted-foreground hover:bg-muted")}>
+              {x.rotulo} <b className="ml-0.5">{n}</b>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
         {etapas.map((e) => {
           const lista = porEtapa[e.id] ?? [];
@@ -161,6 +191,7 @@ export function CrmView({ clienteId }: { clienteId: string }) {
                       {p.telefone && <span>{p.telefone}</span>}
                     </div>
                     {(() => { const c = contatoDe(p); const t = c ? comentou.get(c) : null; return t ? <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">💬 Comentou: “{t}”</div> : null; })()}
+                    <Selos p={p} />
                     <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted-foreground">
                       <span className="rounded bg-muted px-1.5 py-0.5">{ROTULO_ORIGEM[p.origem] ?? p.origem}</span>
                       <span>{p.valor_vendido > 0 ? <b className="text-emerald-500">{brl(p.valor_vendido)}</b> : quando(p.ultima_interacao_em)}</span>
@@ -302,6 +333,18 @@ function FichaPessoa({ pessoa, igUserId, contatoId, comentario, etapas, clienteI
       </SheetContent>
     </Sheet>
   );
+}
+
+function Selos({ p }: { p: Pessoa }) {
+  const lista = [
+    p.fluxo_concluido_em && ["Concluiu o fluxo", "bg-emerald-500/15 text-emerald-400"],
+    p.clicou_botao_em && ["Clicou no botão", "bg-fuchsia-500/15 text-fuchsia-300"],
+    p.clicou_link_em && ["Clicou no link", "bg-sky-500/15 text-sky-300"],
+    p.respondeu_em && !p.clicou_botao_em && ["Respondeu", "bg-emerald-500/15 text-emerald-300"],
+    p.recebeu_dm_em && !p.respondeu_em && ["Sem resposta", "bg-amber-500/15 text-amber-300"],
+  ].filter(Boolean) as [string, string][];
+  if (!lista.length) return null;
+  return <div className="mt-1.5 flex flex-wrap gap-1">{lista.map(([t, c]) => <span key={t} className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", c)}>{t}</span>)}</div>;
 }
 
 function Campo({ rotulo, valor, aoMudar }: { rotulo: string; valor: string; aoMudar: (v: string) => void }) {

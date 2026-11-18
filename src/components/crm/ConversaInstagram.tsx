@@ -5,7 +5,7 @@ import { Bot, Loader2, Send, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-import { podeResponder } from "@/lib/automacoes/manyhub";
+import { comoResponder } from "@/lib/automacoes/manyhub";
 import { useConversaMH } from "@/hooks/useManyHubDados";
 
 const ORIGEM: Record<string, string> = { contato: "Pessoa", fluxo: "Fluxo", automacao: "Automação", davi: "Você", instagram: "Você (app)" };
@@ -16,7 +16,7 @@ export function ConversaInstagram({ igUserId, contatoId }: { igUserId: string; c
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const fim = useRef<HTMLDivElement>(null);
-  const janela = podeResponder(msgs);
+  const janela = comoResponder(msgs);
   useEffect(() => { fim.current?.scrollIntoView({ block: "end" }); }, [msgs.length, contatoId]);
   useEffect(() => setTexto(""), [contatoId]);
 
@@ -56,7 +56,8 @@ export function ConversaInstagram({ igUserId, contatoId }: { igUserId: string; c
         </div>
       </div>
       <div className="space-y-1.5 bg-[#202c33] p-2.5">
-        {!janela.pode && <p className="rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">{janela.ate ? "A janela de 24 h da Meta fechou: só dá para responder até 24 h depois da última mensagem da pessoa." : "A pessoa só comentou ou ainda não escreveu. A Meta só deixa responder depois que ela mandar uma mensagem."}</p>}
+        {!janela.pode && <p className="rounded-lg bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">Sem como responder agora: a Meta só deixa uma resposta privada por comentário (até 7 dias) e uma conversa de 24 h depois que a pessoa escreve ou toca num botão. Quando ela responder, a caixa abre.</p>}
+        {janela.via === "comentario" && <p className="rounded-lg bg-sky-500/10 px-3 py-1.5 text-xs text-sky-200">Ela só comentou: sua mensagem vai como resposta privada ao comentário. A Meta deixa mandar só uma; depois, a pessoa precisa responder para a conversa continuar.</p>}
         <div className="flex items-end gap-2">
           <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={2} disabled={!janela.pode} placeholder={janela.pode ? "Escreva a resposta (Enter envia)" : "Resposta indisponível"}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }}
@@ -64,7 +65,7 @@ export function ConversaInstagram({ igUserId, contatoId }: { igUserId: string; c
           <button type="button" disabled={!texto.trim() || enviando || !janela.pode} onClick={() => void enviar()} className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-[#00a884] px-3 text-sm font-semibold text-white hover:bg-[#019c7a] disabled:opacity-40">
             {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Enviar</button>
         </div>
-        {janela.pode && janela.ate && <p className="text-[11px] text-white/40">Dá para responder até {format(new Date(janela.ate), "dd/MM 'às' HH:mm")}.</p>}
+        {janela.via === "janela" && janela.ate && <p className="text-[11px] text-white/40">Dá para responder até {format(new Date(janela.ate), "dd/MM 'às' HH:mm")}.</p>}
       </div>
     </div>
   );

@@ -87,4 +87,13 @@ export function podeResponder(msgs: { de_mim: boolean; tipo: string; enviada_em:
   const ate = ultima + 24 * 3600_000;
   return { pode: agora <= ate, ate };
 }
+/** Como dá para responder: pela janela de 24 h, ou (sem ela) pela resposta privada a um comentário dos últimos 7 dias que ainda não recebeu nada nosso. */
+export function comoResponder(msgs: { de_mim: boolean; tipo: string; enviada_em: string }[], agora = Date.now()): { pode: boolean; via: "janela" | "comentario" | null; ate: number | null } {
+  const j = podeResponder(msgs, agora);
+  if (j.pode) return { pode: true, via: "janela", ate: j.ate };
+  const c = msgs.filter((m) => !m.de_mim && m.tipo === "comentario" && agora - Date.parse(m.enviada_em) <= 7 * 24 * 3600_000)
+    .filter((m) => !msgs.some((x) => x.de_mim && Date.parse(x.enviada_em) >= Date.parse(m.enviada_em)))
+    .sort((a, b) => Date.parse(b.enviada_em) - Date.parse(a.enviada_em))[0];
+  return c ? { pode: true, via: "comentario", ate: Date.parse(c.enviada_em) + 7 * 24 * 3600_000 } : { pode: false, via: null, ate: j.ate };
+}
 void destinoDe;

@@ -58,6 +58,8 @@ Quase toda tabela tem `user_id` (dono) e muitas têm `cliente_id`. Soft delete v
 - `nucleo_influencia` + `categorias_nucleo` — posicionamento do especialista.
 - `agentes_ia` + `conhecimentos_agente` — agente de IA por cliente (edge `chat`, PDFs via `process-pdf`).
 
+**CRM por projeto** (18/11/2026): `crm_etapas` (Novo seguidor → Novo → Abordado → Respondeu → Proposta → Vendido → Pós-venda; chaves padrão usadas pelos gatilhos), `crm_pessoas` (pessoa única por projeto, achada por telefone/e-mail/@; marcas `recebeu_dm_em`, `respondeu_em`, `clicou_botao_em`, `clicou_link_em`, `fluxo_concluido_em`) e `crm_eventos` (linha do tempo). Entram sozinhos por triggers (`crm_registrar`/`crm_marcar_ig`) do quiz, das compras, do Instagram (contatos, mensagens, disparos, fluxos); só avançam de etapa, nunca voltam. Tela: Escritório → CRM (`src/components/crm/`), com a conversa do Instagram na ficha (resposta privada ao comentário quando não há janela de 24 h, na edge `instagram-automacoes/enviar`). A Meta não entrega lista de seguidores: "Novo seguidor" é manual.
+
 **Pesquisas**: `pesquisas` (formulário público com banner/mensagens), `perguntas_pesquisa`, `respostas_pesquisa` (agrupadas por `respondente_id`).
 
 **Documentos**: `documentos` (conteúdo TipTap, `fixado`), `documento_pastas`, `compartilhamentos` (token) + `compartilhamento_acessos` (e-mails liberados). Ver `docs/COMPARTILHAMENTO.md`.

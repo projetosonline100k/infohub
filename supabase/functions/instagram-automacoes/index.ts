@@ -526,12 +526,24 @@ async function enviarPeloChat(req: Request, admin: any, supabaseUrl: string) {
   // Regra da Meta: só dá para responder em até 24 h depois da última mensagem DA PESSOA (comentário não conta).
   const { data: ultima } = await admin.from("instagram_mensagens").select("enviada_em").eq("ig_user_id", igUserId).eq("contato_id", contatoId).eq("de_mim", false)
     .in("tipo", ["texto", "midia", "botao"]).order("enviada_em", { ascending: false }).limit(1).maybeSingle();
-  if (!ultima || Date.now() - Date.parse(ultima.enviada_em) > JANELA_RESPOSTA_MS) {
-    return json({ error: "A janela de 24 h da Meta fechou: só dá para responder até 24 h depois da última mensagem da pessoa." }, 409);
+  // Sem janela aberta: a Meta ainda deixa UMA resposta privada a um comentário dela dos últimos 7 dias (a mesma saída que o fluxo usa na 1ª DM).
+  let comentarioId: string | null = null;
+  const janelaAberta = !!ultima && Date.now() - Date.parse(ultima.enviada_em) <= JANELA_RESPOSTA_MS;
+  if (!janelaAberta) {
+    const { data: coments } = await admin.from("instagram_mensagens").select("mid, enviada_em").eq("ig_user_id", igUserId).eq("contato_id", contatoId)
+      .eq("de_mim", false).eq("tipo", "comentario").not("mid", "is", null).gte("enviada_em", new Date(Date.now() - 7 * 24 * 3600_000 + 60_000).toISOString())
+      .order("enviada_em", { ascending: false }).limit(5);
+    for (const c of coments ?? []) {
+      const { data: jaRespondido } = await admin.from("instagram_mensagens").select("id").eq("ig_user_id", igUserId).eq("contato_id", contatoId).eq("de_mim", true).gte("enviada_em", c.enviada_em).limit(1).maybeSingle();
+      if (!jaRespondido) { comentarioId = c.mid; break; }
+    }
+    if (!comentarioId) {
+      return json({ error: "Sem janela para responder: a Meta só deixa uma resposta privada por comentário (até 7 dias) e esse já recebeu uma. Quando a pessoa escrever ou tocar num botão, a conversa abre por 24 h." }, 409);
+    }
   }
   try {
     const token = await tokenAtual(admin, conexao as Conexao);
-    const resp = await graph(`${igUserId}/messages`, token, { recipient: { id: contatoId }, message: { text: msg } }) as { message_id?: string } | null;
+    const resp = await graph(`${igUserId}/messages`, token, { recipient: comentarioId ? { comment_id: comentarioId } : { id: contatoId }, message: { text: msg } }) as { message_id?: string } | null;
     await registrarMensagem(admin, { ig_user_id: igUserId, contato_id: contatoId, mid: resp?.message_id ?? null, de_mim: true, origem: "davi", texto: msg });
     // Você assumiu: o fluxo para de falar com essa pessoa.
     await admin.from("instagram_fluxo_execucoes").update({ estado: "fim", erro: "Você assumiu a conversa", trava_ate: null, atualizado_em: new Date().toISOString() })

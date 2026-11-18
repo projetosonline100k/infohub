@@ -3,7 +3,7 @@ export const ROTULO_ORIGEM: Record<string, string> = {
   manual: "Manual", quiz: "Quiz", instagram: "Instagram", venda: "Compra", whatsapp: "WhatsApp",
 };
 export const ROTULO_EVENTO: Record<string, string> = {
-  entrou: "Entrou", etapa: "Mudou de etapa", quiz: "Quiz", abordagem: "Abordagem", compra: "Compra", reembolso: "Reembolso", instagram: "Instagram", nota: "Anotação",
+  entrou: "Entrou", etapa: "Mudou de etapa", quiz: "Quiz", abordagem: "Abordagem", compra: "Compra", reembolso: "Reembolso", instagram: "Instagram", nota: "Anotação", funil: "Funil",
 };
 /** Só dígitos (com DDI se vier); menos de 10 dígitos não é telefone. */
 export function limparTelefone(v: string): string | null {
