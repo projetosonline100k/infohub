@@ -124,7 +124,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
 
   const enviar = async (falado?: string) => {
     const digitado = falado ?? texto.trim();
-    if ((!digitado && !fotos.imagens.length) || enviando || fotos.subindo) return;
+    if ((!digitado && !(fotos.imagens.length + fotos.audios.length)) || enviando || fotos.subindo) return;
     const valor = fotos.comImagens(falado ? digitado : mencao.comAnexos(digitado));
     setEnviando(true);
     try {
@@ -309,7 +309,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
             if (mencao.tecla(e)) return;
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey || (messenger && !e.shiftKey))) { e.preventDefault(); void enviar(); }
           }} />
-        {isDesktop() && !texto.trim() && !fotos.imagens.length ? (
+        {isDesktop() && !texto.trim() && !(fotos.imagens.length + fotos.audios.length) ? (
           <Button type="button" size="icon" variant={gravando != null ? "destructive" : "outline"} className="h-9 shrink-0 gap-1 px-2"
             style={{ width: gravando != null ? "auto" : undefined }}
             disabled={transcrevendo || enviando} onClick={() => void gravarOuParar()}
@@ -319,7 +319,7 @@ export function BriefingTarefa({ clienteId, membro, onCriarTarefa, messenger }: 
               : <Mic className="h-4 w-4" />}
           </Button>
         ) : (
-          <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !fotos.imagens.length) || enviando || fotos.subindo > 0} title="Enviar (⌘ Enter)">
+          <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !(fotos.imagens.length + fotos.audios.length)) || enviando || fotos.subindo > 0} title="Enviar (⌘ Enter)">
             {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           </Button>
         )}

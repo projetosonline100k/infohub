@@ -331,7 +331,7 @@ export function AssistantConversaTab({ foco, rascunho }: { foco: number; rascunh
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-border text-muted-foreground hover:bg-accent hover:text-foreground"><ImagePlus className="h-4 w-4" /></button>
         <button
           type="submit"
-          disabled={(!texto.trim() && fotos.imagens.length === 0) || enviando || fotos.subindo > 0}
+          disabled={(!texto.trim() && (fotos.imagens.length + fotos.audios.length) === 0) || enviando || fotos.subindo > 0}
           aria-label="Enviar"
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground disabled:opacity-40"
         >

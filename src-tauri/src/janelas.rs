@@ -167,13 +167,15 @@ pub async fn abrir_agenda(app: AppHandle, focar: Option<bool>) -> Result<(), Str
 #[tauri::command]
 pub fn ler_imagem_solta(caminho: String) -> Result<tauri::ipc::Response, String> {
     let minusculo = caminho.to_lowercase();
-    let ok = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff", ".heic", ".bmp"].iter().any(|e| minusculo.ends_with(e));
-    if !ok {
-        return Err("Só dá para soltar imagem no chat.".into());
+    let imagem = [".png", ".jpg", ".jpeg", ".webp", ".gif", ".tif", ".tiff", ".heic", ".bmp"].iter().any(|e| minusculo.ends_with(e));
+    // 19/11 (Davi: arrastar o áudio da Gravação de Voz para o chat do Roy): áudio também vale.
+    let audio = [".m4a", ".qta", ".mp3", ".wav", ".aac", ".caf", ".ogg", ".opus", ".webm", ".aiff", ".aif"].iter().any(|e| minusculo.ends_with(e));
+    if !imagem && !audio {
+        return Err("Só dá para soltar imagem ou áudio no chat.".into());
     }
     let tamanho = std::fs::metadata(&caminho).map_err(|e| format!("Não achei o arquivo: {e}"))?.len();
-    if tamanho > 30 * 1024 * 1024 {
-        return Err("A imagem passa de 30 MB.".into());
+    if tamanho > if audio { 150 } else { 30 } * 1024 * 1024 {
+        return Err("O arquivo é grande demais.".into());
     }
     std::fs::read(&caminho).map(tauri::ipc::Response::new).map_err(|e| format!("Não consegui ler a imagem: {e}"))
 }

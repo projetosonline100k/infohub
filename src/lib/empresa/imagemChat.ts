@@ -50,3 +50,10 @@ export async function subirImagemChat(original: File): Promise<string> {
   if (error) throw error;
   return supabase.storage.from("entregas").getPublicUrl(caminho).data.publicUrl;
 }
+
+// Áudio solto no chat (19/11): vira texto (Whisper no Mac) e vai na mensagem como "🎙️ [áudio "nome"] texto".
+export const EXT_AUDIO = /\.(m4a|qta|mp3|wav|aac|caf|ogg|opus|webm|aiff?)$/i;
+export const ehAudio = (f: File) => f.type.startsWith("audio/") || (!f.type.startsWith("image/") && EXT_AUDIO.test(f.name));
+export function audiosDoEvento(dados: DataTransfer | null): File[] {
+  return dados ? [...dados.files].filter(ehAudio) : [];
+}

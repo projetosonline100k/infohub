@@ -8,10 +8,10 @@ interface Recebedor { el: HTMLElement; sobre: (s: boolean) => void; soltar: (arq
 const recebedores = new Set<Recebedor>();
 let ligado = false;
 
-const IMAGEM = /\.(png|jpe?g|webp|gif|tiff?|heic|bmp)$/i;
+const IMAGEM = /\.(png|jpe?g|webp|gif|tiff?|heic|bmp|m4a|qta|mp3|wav|aac|caf|ogg|opus|webm|aiff?)$/i;
 const tipoDe = (nome: string) => {
   const ext = nome.split(".").pop()?.toLowerCase() ?? "";
-  return ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", tif: "image/tiff", tiff: "image/tiff", heic: "image/heic", bmp: "image/bmp" } as Record<string, string>)[ext] ?? "";
+  return ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", gif: "image/gif", tif: "image/tiff", tiff: "image/tiff", heic: "image/heic", bmp: "image/bmp", m4a: "audio/mp4", qta: "audio/x-m4a", mp3: "audio/mpeg", wav: "audio/wav", aac: "audio/aac", caf: "audio/x-caf", ogg: "audio/ogg", opus: "audio/ogg", webm: "audio/webm", aif: "audio/aiff", aiff: "audio/aiff" } as Record<string, string>)[ext] ?? "";
 };
 
 async function ligar() {

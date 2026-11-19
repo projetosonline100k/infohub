@@ -312,7 +312,7 @@ export function ConversaEntrega({ clienteId, tarefaId, melhoriaId, membroId, nom
             if (mencao.tecla(e)) return;
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); }
           }} />
-        <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !fotos.imagens.length) || enviando || fotos.subindo > 0}>
+        <Button type="submit" size="icon" className="h-9 w-9 shrink-0" disabled={(!texto.trim() && !(fotos.imagens.length + fotos.audios.length)) || enviando || fotos.subindo > 0}>
           {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </form>
