@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Bookmark, ChevronDown, ChevronLeft, Download, Home, Lock, MoreHorizontal, Pause, Play, Search, Share2, Star, User, X, BookOpenText } from "lucide-react";
+import { ChevronDown, ChevronLeft, Download, Lock, MoreHorizontal, Pause, Play, Share2, Star, X, BookOpenText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Tela "amostra" do quiz: a pessoa se vê DENTRO do app do Instalivros (18/11/2026, Davi: "copiar o visual dos prints do app").
@@ -122,19 +122,6 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
         );
       })()}
       {voo && <VooDaCapa voo={voo} />}
-    </div>
-  );
-}
-
-function BarraAbas({ ativa, cheia }: { ativa: "home" | "biblioteca"; cheia?: boolean }) {
-  const abas = [["home", "Home", Home], ["biblioteca", "Biblioteca", Bookmark], ["buscar", "Buscar", Search], ["perfil", "Perfil", User]] as const;
-  return (
-    <div className="grid shrink-0 grid-cols-4 border-t border-black/5 bg-white pb-2 pt-1.5" aria-hidden>
-      {abas.map(([k, rotulo, Icone]) => (
-        <span key={k} className={cn("flex flex-col items-center gap-0.5 font-semibold", cheia ? "text-[11px]" : "text-[10px]")} style={{ color: k === ativa ? MARINHO : "#B8BCCB" }}>
-          <Icone className={cheia ? "h-6 w-6" : "h-5 w-5"} fill={k === ativa ? "currentColor" : "none"} />{rotulo}
-        </span>
-      ))}
     </div>
   );
 }
@@ -316,7 +303,6 @@ function HomeApp({ cheia, livros, titulo, porque, dica, dicaDeslize, dicaRolar, 
           </div>
         )}
       </div>
-      <BarraAbas ativa="home" cheia={cheia} />
     </>
   );
 }
@@ -399,7 +385,6 @@ function LivroAberto({ cheia, livro, segundos, fimTexto, textoBloqueado, textoSe
             </div>
           )}
       </div>
-      <BarraAbas ativa="biblioteca" cheia={cheia} />
     </div>
   );
 }
