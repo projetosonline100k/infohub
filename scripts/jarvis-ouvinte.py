@@ -55,7 +55,7 @@ import fila  # noqa: E402  (fila de desenvolvimento: ninguém programa, todos di
 import estilo_dark  # noqa: E402  (conversa do estilo de vídeo dos perfis da esteira dark — 12/11)
 import agente_whatsapp  # noqa: E402  (inteligência do agente do WhatsApp: pedido do X1 → Claude, 12/11)
 import crm_seguidores  # CRM: ler seguidores novos do Instagram pelo Chrome do Davi (18/11), só no Mac
-import clone_roteiros  # roteiros do Instalivros → vídeos no Core Clone (17/11): Chrome do Davi, só no Mac
+import clone_roteiros  # roteiros do Instalivros → vídeos no Core Clone (17/11); desde 19/11 roda no servidor (Chrome da VPS)
 import kdu  # Kdu (gestor de tráfego IA, 17/11): lê o Gerenciador de Anúncios pelo Chrome do Davi; só no Mac
 import treino  # modo treino do Atlas (16/11): grava o que o Davi faz no Mac e repete depois; só no Mac
 import fluxo_whatsapp  # noqa: E402  (fluxos de mensagem no WhatsApp, 15/11; só no Mac, onde está o WAHA)
@@ -1089,7 +1089,6 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("chatbot-vivo", atender_chatbot_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()
         threading.Thread(target=laco, args=("crm-seguidores", atender_crm_seguidores, 20), daemon=True).start()   # CRM: ler seguidores no Instagram (Chrome do Davi)
-        threading.Thread(target=laco, args=("clone-roteiros", atender_clone, 30), daemon=True).start()   # Core Clone pelo Chrome do Davi
         threading.Thread(target=laco, args=("kdu-ads", atender_kdu, 30), daemon=True).start()   # Facebook Ads pelo Chrome do Davi
         # 14/11: a Conversa "ao vivo" (🖥️) é só deste Mac. O resto da Conversa fica com o servidor (pegar_mensagens separa).
         threading.Thread(target=laco, args=("conversa", atender_conversa, 3), daemon=True).start()
@@ -1105,6 +1104,8 @@ if __name__ == "__main__":
         threading.Thread(target=laco, args=("estilo", atender_estilo, 2), daemon=True).start()
         # 17/11 (Davi: "meu Mac está pesado"): o agente do X1 e os fluxos do WhatsApp rodam no SERVIDOR, onde está o WAHA (sem túnel, sem depender do Mac ligado).
         threading.Thread(target=laco, args=("agente-x1", atender_agente_x1, 5), daemon=True).start()
+        # 19/11 (Davi: "gere os vídeos já na VPS, baixe pela VPS, não quero mais que acesse o meu PC"): Core Clone pelo Chrome do SERVIDOR.
+        threading.Thread(target=laco, args=("clone-roteiros", atender_clone, 30), daemon=True).start()
         threading.Thread(target=laco, args=("estilo-vivo", atender_estilo_vivo, 2), daemon=True).start()   # produção dos vídeos do Lauro (Chrome do servidor, ChatGPT logado)
         threading.Thread(target=laco, args=("fluxo-whatsapp", atender_fluxo_whatsapp, 5), daemon=True).start()
     threading.Thread(target=laco, args=("execucao", atender_execucao, 10), daemon=True).start()
