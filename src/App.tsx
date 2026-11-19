@@ -24,6 +24,8 @@ const FocoLateral = lazy(() => import("./pages/FocoLateral"));
 const NotasWindow = lazy(() => import("./pages/NotasWindow"));
 const AgendaWindow = lazy(() => import("./pages/AgendaWindow"));
 const DocumentoCompartilhado = lazy(() => import("./pages/DocumentoCompartilhado"));
+const Embaixador = lazy(() => import("./pages/Embaixador"));
+const EmbaixadorConvite = lazy(() => import("./pages/Embaixador").then((m) => ({ default: m.EmbaixadorConvite })));
 const Carregando = () => <div className="min-h-screen bg-background" />;
 
 const queryClient = new QueryClient();
@@ -55,6 +57,8 @@ const App = () => (
           <Route path="/quiz-previa/:token" element={<QuizPublico previa />} />
           <Route path="/chatbot/:slug" element={<ChatbotPublico />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
+          <Route path="/embaixador" element={<Embaixador />} />
+          <Route path="/embaixador/convite/:token" element={<EmbaixadorConvite />} />
           <Route path="/privacidade" element={<Privacidade />} />
           <Route path="/instagram/conectado" element={<InstagramConectado />} />
 

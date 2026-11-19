@@ -1,0 +1,260 @@
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Copy, Link2, Loader2, LogOut, ShoppingCart, Users, UserCheck, Eye, Coins, Check } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/auth/AuthProvider";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { brl, linkDoEmbaixador } from "@/lib/embaixador";
+
+const db = supabase as unknown as SupabaseClient;
+
+interface Eu { nome: string; codigo: string; comissao_pct: number; projeto: string }
+interface Painel { visitas: number; leads: number; vendas: number; bruto: number; reembolsado: number; comissao_pct: number; trouxe_total: number; dias: { dia: string; visitas: number; leads: number; vendas: number; receita: number }[] }
+interface Lead { nome: string; etapa: string; em: string }
+interface Venda { data: string; tipo: string; produto: string; comprador: string; valor: number; comissao: number }
+interface Esteira { nome: string; produto: string; data: string; etapa: string }
+interface LinkE { id: string; titulo: string; destino: string; codigo: string }
+
+const dia = (d: string) => new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+const dataHora = (d: string) => new Date(d).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+function Moldura({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
+      <div className="pointer-events-none absolute -left-32 -top-32 h-80 w-80 rounded-full bg-primary/15 blur-3xl" />
+      <section className="relative w-full max-w-md rounded-2xl border border-border bg-card p-8 shadow-xl">{children}</section>
+    </div>
+  );
+}
+
+/** Entrar com e-mail e senha (ou criar a conta, quando vem de um convite). */
+function FormAcesso({ emailFixo, titulo, texto, permiteCriar, onEntrou }: { emailFixo?: string; titulo: string; texto: string; permiteCriar?: boolean; onEntrou: () => void | Promise<void> }) {
+  const [modo, setModo] = useState<"entrar" | "criar">(permiteCriar ? "criar" : "entrar");
+  const [email, setEmail] = useState(emailFixo ?? "");
+  const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [enviando, setEnviando] = useState(false);
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault(); setErro(""); setAviso("");
+    if (modo === "criar" && senha.length < 6) { setErro("A senha precisa ter ao menos 6 caracteres."); return; }
+    setEnviando(true);
+    if (modo === "entrar") {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
+      if (error) { setEnviando(false); setErro("E-mail ou senha incorretos."); return; }
+    } else {
+      const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: senha });
+      if (error) { setEnviando(false); setErro(error.message.includes("already registered") ? "Este e-mail já tem conta: use \"Entrar\"." : "Não foi possível criar a conta."); return; }
+      if (!data.session) { setEnviando(false); setAviso("Confirme o e-mail que enviamos e depois volte a este link para entrar."); return; }
+    }
+    try { await onEntrou(); } finally { setEnviando(false); }
+  }
+
+  return (
+    <Moldura>
+      <h1 className="text-2xl font-bold tracking-tight">{titulo}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">{texto}</p>
+      {permiteCriar && (
+        <div className="mt-5 grid grid-cols-2 rounded-lg bg-muted p-1 text-sm">
+          {(["criar", "entrar"] as const).map((m) => (
+            <button key={m} type="button" onClick={() => { setModo(m); setErro(""); setAviso(""); }} className={cn("rounded-md py-1.5 font-medium", modo === m ? "bg-background shadow-sm" : "text-muted-foreground")}>
+              {m === "criar" ? "Criar minha conta" : "Já tenho conta"}
+            </button>
+          ))}
+        </div>
+      )}
+      <form onSubmit={enviar} className="mt-5 space-y-4">
+        <div className="space-y-1.5"><Label htmlFor="emb-email">E-mail</Label><Input id="emb-email" type="email" required value={email} readOnly={!!emailFixo} onChange={(e) => setEmail(e.target.value)} /></div>
+        <div className="space-y-1.5"><Label htmlFor="emb-senha">{modo === "criar" ? "Crie uma senha" : "Senha"}</Label><Input id="emb-senha" type="password" required value={senha} onChange={(e) => setSenha(e.target.value)} autoComplete={modo === "criar" ? "new-password" : "current-password"} /></div>
+        {erro && <p className="text-sm text-destructive">{erro}</p>}
+        {aviso && <p className="text-sm text-muted-foreground">{aviso}</p>}
+        <Button type="submit" className="w-full" disabled={enviando}>{enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : modo === "criar" ? "Criar conta e entrar" : "Entrar"}</Button>
+      </form>
+    </Moldura>
+  );
+}
+
+/** /embaixador/convite/:token — a pessoa cria a conta com o e-mail do convite e cai direto na área dela. */
+export function EmbaixadorConvite() {
+  const { token } = useParams();
+  const navigate = useNavigate();
+  const { session } = useAuth();
+  const [info, setInfo] = useState<{ nome: string; email: string; projeto: string } | null | undefined>(undefined);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let vivo = true;
+    void db.rpc("embaixador_convite_info", { p_token: token }).then(({ data }) => { if (vivo) setInfo((data as typeof info) ?? null); });
+    return () => { vivo = false; };
+  }, [token]);
+
+  const aceitar = useCallback(async () => {
+    const { error } = await db.rpc("embaixador_aceitar_convite", { p_token: token });
+    if (error) { setErro(error.message); return; }
+    navigate("/embaixador", { replace: true });
+  }, [token, navigate]);
+
+  if (info === undefined) return <Moldura><Loader2 className="mx-auto h-5 w-5 animate-spin" /></Moldura>;
+  if (!info) return <Moldura><h1 className="text-xl font-bold">Convite não encontrado</h1><p className="mt-2 text-sm text-muted-foreground">Ele já foi usado ou foi cancelado. Se já criou sua conta, <Link className="underline" to="/embaixador">entre aqui</Link>.</p></Moldura>;
+  if (session) {
+    return (
+      <Moldura>
+        <h1 className="text-xl font-bold">Olá, {info.nome.split(" ")[0]}!</h1>
+        <p className="mt-2 text-sm text-muted-foreground">Você já está com uma conta aberta. Vincule o convite a ela para entrar na área de embaixadores de {info.projeto}.</p>
+        {erro && <p className="mt-3 text-sm text-destructive">{erro}</p>}
+        <Button className="mt-5 w-full" onClick={() => void aceitar()}>Ativar meu acesso</Button>
+        <button className="mt-3 w-full text-xs text-muted-foreground underline" onClick={() => void supabase.auth.signOut()}>Usar outro e-mail</button>
+      </Moldura>
+    );
+  }
+  return <FormAcesso emailFixo={info.email} permiteCriar titulo={`Olá, ${info.nome.split(" ")[0]}!`} texto={`Você foi convidado(a) para ser embaixador(a) de ${info.projeto}. Crie sua senha para entrar na sua área.`} onEntrou={aceitar} />;
+}
+
+const ABAS = [["resumo", "Resumo"], ["leads", "Leads"], ["vendas", "Vendas"], ["esteira", "Esteira"], ["links", "Links"]] as const;
+
+/** /embaixador — login e a área do embaixador. */
+export default function Embaixador() {
+  const { session, loading } = useAuth();
+  const [eu, setEu] = useState<Eu | null | undefined>(undefined);
+
+  const carregar = useCallback(async () => {
+    const { data } = await db.rpc("embaixador_eu");
+    setEu((data as Eu | null) ?? null);
+  }, []);
+  useEffect(() => { if (session) void carregar(); else setEu(undefined); }, [session, carregar]);
+
+  if (loading) return <div className="min-h-screen bg-background" />;
+  if (!session) return <FormAcesso titulo="Área do embaixador" texto="Entre com o e-mail e a senha que você criou pelo convite." onEntrou={carregar} />;
+  if (eu === undefined) return <Moldura><Loader2 className="mx-auto h-5 w-5 animate-spin" /></Moldura>;
+  if (!eu) return <Moldura><h1 className="text-xl font-bold">Esta conta não é de embaixador</h1><p className="mt-2 text-sm text-muted-foreground">Use o link de convite que você recebeu para ativar seu acesso.</p><Button variant="outline" className="mt-5 w-full" onClick={() => void supabase.auth.signOut()}>Sair</Button></Moldura>;
+  return <AreaEmbaixador eu={eu} />;
+}
+
+function Cartao({ icone: I, titulo, valor, nota }: { icone: typeof Users; titulo: string; valor: string; nota?: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card p-4">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground"><I className="h-3.5 w-3.5" />{titulo}</div>
+      <div className="mt-1.5 text-2xl font-semibold tabular-nums">{valor}</div>
+      {nota && <div className="mt-0.5 text-xs text-muted-foreground">{nota}</div>}
+    </div>
+  );
+}
+
+function Vazio({ texto }: { texto: string }) { return <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{texto}</p>; }
+
+function AreaEmbaixador({ eu }: { eu: Eu }) {
+  const [aba, setAba] = useState<(typeof ABAS)[number][0]>("resumo");
+  const [dias, setDias] = useState(30);
+  const [painel, setPainel] = useState<Painel | null>(null);
+  const [leads, setLeads] = useState<Lead[] | null>(null);
+  const [vendas, setVendas] = useState<Venda[] | null>(null);
+  const [esteira, setEsteira] = useState<Esteira[] | null>(null);
+  const [links, setLinks] = useState<LinkE[] | null>(null);
+  const [copiado, setCopiado] = useState("");
+
+  useEffect(() => { setPainel(null); void db.rpc("embaixador_painel", { p_dias: dias }).then(({ data }) => setPainel(data as Painel)); }, [dias]);
+  useEffect(() => {
+    if (aba === "leads" && !leads) void db.rpc("embaixador_leads").then(({ data }) => setLeads((data ?? []) as Lead[]));
+    if (aba === "vendas" && !vendas) void db.rpc("embaixador_vendas").then(({ data }) => setVendas((data ?? []) as Venda[]));
+    if (aba === "esteira" && !esteira) void db.rpc("embaixador_esteira").then(({ data }) => setEsteira((data ?? []) as Esteira[]));
+    if (aba === "links" && !links) void db.rpc("embaixador_links_meus").then(({ data }) => setLinks((data ?? []) as LinkE[]));
+  }, [aba, leads, vendas, esteira, links]);
+
+  const liquido = painel ? painel.bruto - painel.reembolsado : 0;
+  const serie = useMemo(() => (painel?.dias ?? []).map((d) => ({ ...d, rotulo: dia(d.dia) })), [painel]);
+  const copiar = async (id: string, url: string) => { await navigator.clipboard.writeText(url); setCopiado(id); toast.success("Link copiado"); setTimeout(() => setCopiado(""), 1500); };
+
+  return (
+    <div className="min-h-screen bg-background">
+      <header className="border-b border-border">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
+          <div><div className="text-xs text-muted-foreground">Embaixador · {eu.projeto}</div><div className="text-lg font-semibold">{eu.nome}</div></div>
+          <Button variant="ghost" size="sm" onClick={() => void supabase.auth.signOut()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>
+        </div>
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4">
+          {ABAS.map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm", aba === id ? "border-primary font-medium" : "border-transparent text-muted-foreground")}>{nome}</button>)}
+        </nav>
+      </header>
+
+      <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
+        {aba === "resumo" && (
+          <>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-medium text-muted-foreground">Seus números</h2>
+              <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{[7, 30, 90].map((d) => <button key={d} onClick={() => setDias(d)} className={cn("rounded-md px-2.5 py-1", dias === d ? "bg-background shadow-sm" : "text-muted-foreground")}>{d} dias</button>)}</div>
+            </div>
+            {!painel ? <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div> : (
+              <>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+                  <Cartao icone={Users} titulo="Pessoas que trouxe" valor={String(painel.trouxe_total)} nota="desde o começo" />
+                  <Cartao icone={Eye} titulo="Visitas" valor={String(painel.visitas)} nota={`últimos ${dias} dias`} />
+                  <Cartao icone={UserCheck} titulo="Leads" valor={String(painel.leads)} nota={`últimos ${dias} dias`} />
+                  <Cartao icone={ShoppingCart} titulo="Vendas" valor={String(painel.vendas)} nota={brl(liquido) + " líquido"} />
+                  <Cartao icone={Coins} titulo="Sua comissão" valor={brl((liquido * painel.comissao_pct) / 100)} nota={`${painel.comissao_pct}% do líquido`} />
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <div className="mb-2 text-sm font-medium">Vendas por dia</div>
+                  <div className="h-56">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={serie} margin={{ left: -20, right: 8, top: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                        <XAxis dataKey="rotulo" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                        <Tooltip formatter={(v: number, n: string) => [n === "receita" ? brl(v) : v, n === "vendas" ? "Vendas" : n === "leads" ? "Leads" : "Receita"]} />
+                        <Area type="monotone" dataKey="leads" stroke="hsl(var(--muted-foreground))" fill="hsl(var(--muted-foreground) / .15)" />
+                        <Area type="monotone" dataKey="vendas" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / .25)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="mt-1 flex gap-4 text-xs text-muted-foreground"><span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-primary" />Vendas</span><span className="flex items-center gap-1"><i className="h-2 w-2 rounded-full bg-muted-foreground" />Leads</span></div>
+                </div>
+              </>
+            )}
+          </>
+        )}
+
+        {aba === "leads" && (!leads ? <Carregar /> : !leads.length ? <Vazio texto="Quando alguém entrar pelo seu link e se cadastrar, aparece aqui." /> : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Nome</th><th className="px-4 py-2 font-medium">Etapa</th><th className="px-4 py-2 font-medium">Chegou em</th></tr></thead>
+              <tbody>{leads.map((l, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{l.nome}</td><td className="px-4 py-2"><span className={cn("rounded-full px-2 py-0.5 text-xs", l.etapa === "Comprou" ? "bg-emerald-500/15 text-emerald-600" : "bg-muted")}>{l.etapa}</span></td><td className="px-4 py-2 text-muted-foreground">{dataHora(l.em)}</td></tr>)}</tbody></table>
+          </div>
+        ))}
+
+        {aba === "vendas" && (!vendas ? <Carregar /> : !vendas.length ? <Vazio texto="Suas vendas aparecem aqui assim que a primeira acontecer." /> : (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Data</th><th className="px-4 py-2 font-medium">Cliente</th><th className="px-4 py-2 font-medium">Produto</th><th className="px-4 py-2 text-right font-medium">Valor</th><th className="px-4 py-2 text-right font-medium">Sua comissão</th></tr></thead>
+              <tbody>{vendas.map((v, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2 text-muted-foreground">{dia(v.data)}</td><td className="px-4 py-2">{v.comprador}{v.tipo === "reembolso" && <span className="ml-2 rounded-full bg-destructive/15 px-2 py-0.5 text-xs text-destructive">reembolso</span>}</td><td className="px-4 py-2">{v.produto}</td><td className="px-4 py-2 text-right tabular-nums">{brl(v.valor)}</td><td className="px-4 py-2 text-right tabular-nums">{brl(v.comissao)}</td></tr>)}</tbody></table>
+          </div>
+        ))}
+
+        {aba === "esteira" && (!esteira ? <Carregar /> : !esteira.length ? <Vazio texto="Quem fechar pelo seu link entra na esteira e você acompanha por aqui." /> : (
+          <div className="overflow-hidden rounded-xl border border-border bg-card">
+            <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Cliente</th><th className="px-4 py-2 font-medium">Produto</th><th className="px-4 py-2 font-medium">Fechou em</th><th className="px-4 py-2 font-medium">Etapa</th></tr></thead>
+              <tbody>{esteira.map((x, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{x.nome}</td><td className="px-4 py-2">{x.produto}</td><td className="px-4 py-2 text-muted-foreground">{dia(x.data)}</td><td className="px-4 py-2"><span className="rounded-full bg-muted px-2 py-0.5 text-xs">{x.etapa}</span></td></tr>)}</tbody></table>
+          </div>
+        ))}
+
+        {aba === "links" && (!links ? <Carregar /> : !links.length ? <Vazio texto="Seus links ainda não foram liberados." /> : (
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Divulgue só estes links: cada um já leva a sua marca, e é assim que as visitas, os leads e as vendas ficam no seu nome.</p>
+            {links.map((l) => { const url = linkDoEmbaixador(l.destino, l.codigo); return (
+              <div key={l.id} className="flex items-center gap-3 rounded-xl border border-border bg-card p-4">
+                <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1"><div className="text-sm font-medium">{l.titulo}</div><div className="truncate text-xs text-muted-foreground">{url}</div></div>
+                <Button size="sm" variant="outline" onClick={() => void copiar(l.id, url)}>{copiado === l.id ? <Check className="mr-1.5 h-4 w-4" /> : <Copy className="mr-1.5 h-4 w-4" />}Copiar</Button>
+              </div>
+            ); })}
+          </div>
+        ))}
+      </main>
+    </div>
+  );
+}
+const Carregar = () => <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>;

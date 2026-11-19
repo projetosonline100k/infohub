@@ -5,6 +5,7 @@ import { QuizzesView } from "./QuizzesView";
 import { ChatbotView } from "./ChatbotView";
 import { CronogramaView } from "./CronogramaView";
 import { CrmView } from "@/components/crm/CrmView";
+import { EmbaixadoresProjeto } from "@/components/embaixador/EmbaixadoresProjeto";
 import { VerticalView } from "./VerticalView";
 import { YoutubeView } from "./YoutubeView";
 import { VisaoGeralEmpresa } from "@/components/empresa/VisaoGeralEmpresa";
@@ -32,6 +33,7 @@ export function ConteudoSection({ clienteId, subAba, onIrPara, onAbrirAtividades
       {subAba === "quiz" && <QuizzesView clienteId={clienteId} />}
       {subAba === "whatsapp" && <WhatsappDoProjeto clienteId={clienteId} />}
       {subAba === "crm" && <CrmView clienteId={clienteId} />}
+      {subAba === "embaixadores" && <EmbaixadoresProjeto clienteId={clienteId} />}
       {subAba === "chatbot" && <ChatbotView clienteId={clienteId} />}
     </div>
   );
