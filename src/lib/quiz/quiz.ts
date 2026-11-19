@@ -25,6 +25,8 @@ export interface PerguntaQuiz {
   imagem?: string; imagem_nota?: string;
   /** Foto da pergunta que depende de uma resposta anterior (16/11): chave "<id da pergunta>=<nº da opção>" (ex.: "genero=1" → foto de mulher). Sem resposta, vale `imagem`. */
   imagens?: Record<string, string>;
+  /** Sim ou não como conversa (19/11): o "Instalivros" pergunta num chat, tipo typebot; perguntas seguidas com `chat` formam uma conversa só. */
+  chat?: boolean;
   estilo?: "lista" | "cartoes" | "livro" | "fotos" | "avatares" | "icones" | "lado" | "orbita" | "escala" | "roleta" | "regua";
   /** estilo "roleta" (roleta vertical) e "regua" (régua arrastável) — 15/11: a resposta é um número, guardado para os textos ({numero:id}). */
   numero?: ConfigNumero;

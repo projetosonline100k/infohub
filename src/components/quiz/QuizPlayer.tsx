@@ -14,6 +14,7 @@ import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, ty
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
 import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
+import { ChatPergunta, type HistoricoChat } from "./ChatPergunta";
 import { BotaoSegurar, CartaoCompromisso, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
 
@@ -1104,6 +1105,24 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             };
             const livro = q.estilo === "livro";
             const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
+            // Sim ou não como conversa (19/11, Davi: "tipo um typebot, o Insta vai perguntando"): perguntas seguidas marcadas com `chat` viram um chat só.
+            // No modo de edição continua o formato normal (é nele que se clica para editar).
+            const ehChat = (x?: (typeof perguntas)[number]) => !!x?.chat && !x.multipla && x.opcoes.length === 2;
+            if (ehChat(q) && !editar) {
+              const historico: HistoricoChat[] = [];
+              for (let j = pos - 1; j >= 0; j--) {
+                const ps = passos[j];
+                const pq = ps?.tipo === "pergunta" ? perguntas[ps.indice] : undefined;
+                if (!pq || !ehChat(pq) || escolhas[pq.id] === undefined) break;
+                historico.unshift({ texto: pq.texto ? f(pq.texto) : "", subtitulo: pq.texto ? pq.subtitulo : pq.subtitulo, miniatura: !pq.texto ? pq.imagem : undefined, resposta: pq.opcoes[escolhas[pq.id]]?.texto ?? "" });
+              }
+              return (
+                <ChatPergunta key={passo.indice} avatar={quadrosM?.[Q.PARADO]} cor={cor} escuro={escuro} historico={historico}
+                  texto={q.texto ? f(q.texto) : ""} subtitulo={q.subtitulo} imagem={fotoPergunta} imagemNota={teste ? q.imagem_nota : undefined} aparencia={livro ? "livro" : "normal"}
+                  opcoes={[q.opcoes[0].texto, q.opcoes[1].texto]} marcada={escolhas[q.id]}
+                  aoEscolher={(k) => { setEscolhas((x) => ({ ...x, [q.id]: k })); if (!travado) window.setTimeout(avancar, 900); }} />
+              );
+            }
             if ((q.estilo === "roleta" || q.estilo === "regua") && q.numero) {
               // Pergunta de número (15/11, V2): roleta vertical ou régua; sem mexer, vale o valor inicial.
               const cfg = q.numero;
