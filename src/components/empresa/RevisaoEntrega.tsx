@@ -168,12 +168,22 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     quizVisto.current = null;
     if (!aberto || !quizAberto) return;
     const conferir = async () => {
-      if (document.hidden || versaoSelRef.current) return;
+      if (document.hidden) return;
       const { data } = await db.from("quizzes").select("atualizado_em").eq("id", quizAberto).maybeSingle();
       const em = (data as { atualizado_em?: string } | null)?.atualizado_em ?? null;
       if (!em) return;
-      if (quizVisto.current && quizVisto.current !== em) setVersao((v) => v + 1);
+      const mudou = !!quizVisto.current && quizVisto.current !== em;
       quizVisto.current = em;
+      if (!mudou) return;
+      if (!versaoSelRef.current) { setVersao((v) => v + 1); return; }
+      // Versão (V2…) aberta: recarrega só essa versão, sem trocar a tela escolhida no mapa.
+      const { data: nova } = await db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo").eq("id", quizAberto).maybeSingle();
+      if (!nova || versaoSelRef.current !== quizAberto) return;
+      const json = JSON.stringify((nova as { estrutura?: unknown }).estrutura ?? null);
+      if (json === estruturaConhecida.current) return;
+      estruturaConhecida.current = json;
+      setChaveQuiz((k) => k + 1);
+      setQuiz(nova as NonNullable<typeof quiz>);
     };
     void conferir();
     const t = window.setInterval(() => void conferir(), 4000);
