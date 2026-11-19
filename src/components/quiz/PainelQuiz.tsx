@@ -43,14 +43,24 @@ const STATUS: Record<StatusLead, { rotulo: string; cor: string }> = {
   em_contato: { rotulo: "Em contato", cor: "border-violet-400/50 bg-violet-500/15 text-violet-200" },
   convertido: { rotulo: "Convertido", cor: "border-emerald-400/50 bg-emerald-500/15 text-emerald-200" },
 };
-const PERIODOS = [["hoje", "Hoje"], [7, "7 dias"], [14, "14 dias"], [30, "30 dias"], [0, "Tudo"]] as const;
+const PERIODOS = [["hoje", "Hoje"], ["ontem", "Ontem"], [7, "7 dias"], [14, "14 dias"], [30, "30 dias"], [0, "Tudo"]] as const;
+type Periodo = number | "hoje" | "ontem" | { de: string; ate: string };
+const DIA_MS = 86_400_000;
+const diaLocal = (t: number) => new Date(t).toLocaleDateString("sv-SE");
 /** "Hoje" como fração de dia: da meia-noite (de agora, no fuso do Mac) até este momento. */
 const fracaoDeHoje = () => { const i = new Date(); i.setHours(0, 0, 0, 0); return Math.max(0.01, (Date.now() - i.getTime()) / 86_400_000); };
 const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
 
 export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> & { variante_de?: string | null }; preencher?: boolean }) {
   const [aba, setAba] = useState<Aba>("metricas");
-  const [periodo, setPeriodo] = useState<number | "hoje">(14);
+  const [periodo, setPeriodo] = useState<Periodo>(14);
+  const [escolhendoDatas, setEscolhendoDatas] = useState(false);
+  const [alteracoes, setAlteracoes] = useState<{ em: string; resumo: string }[]>([]);
+  useEffect(() => {
+    let vivo = true;
+    void db.from("quiz_alteracoes").select("em, resumo").eq("quiz_id", quiz.id).order("em", { ascending: true }).limit(2000).then(({ data }) => { if (vivo) setAlteracoes((data ?? []) as { em: string; resumo: string }[]); });
+    return () => { vivo = false; };
+  }, [quiz.id]);
   const [eventos, setEventos] = useState<EventoQuiz[] | null>(null);
   const [leads, setLeads] = useState<LeadQuiz[] | null>(null);
   const [vendas, setVendas] = useState<VendaCompleta[]>([]);
@@ -136,10 +146,20 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
     return montarPassos(estrutura, (estrutura.captura?.ativa !== false) && !!estrutura.captura?.pedir?.length).map((p) => ({ rotulo: rotuloDoPasso(estrutura, p), tipo: p.tipo }));
   }, [estrutura]);
   const perguntas = useMemo(() => (estrutura?.perguntas ?? []).map((q) => q.texto), [estrutura]);
-  const dias = useMemo(() => (periodo === "hoje" ? fracaoDeHoje() : periodo), [periodo, eventos]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const painel = useMemo(() => (eventos && leads ? calcularPainel({ passos, eventos, leads, dias }) : null), [passos, eventos, leads, dias]);
+  // Período escolhido (19/11, Davi: "preciso filtrar: o dia que estava ruim, dias melhores, se teve alteração"): "Ontem" e datas viram uma janela fixa [de, ate).
+  const janela = useMemo<{ de: number; ate: number } | null>(() => {
+    if (periodo === "ontem") { const h = new Date(); h.setHours(0, 0, 0, 0); return { de: h.getTime() - DIA_MS, ate: h.getTime() }; }
+    if (typeof periodo === "object") {
+      const a = new Date(`${periodo.de}T00:00:00`).getTime(), b = new Date(`${periodo.ate}T00:00:00`).getTime();
+      if (Number.isNaN(a) || Number.isNaN(b)) return null;
+      return { de: Math.min(a, b), ate: Math.max(a, b) + DIA_MS };
+    }
+    return null;
+  }, [periodo]);
+  const dias = useMemo(() => (janela ? (janela.ate - janela.de) / DIA_MS : periodo === "hoje" ? fracaoDeHoje() : (periodo as number)), [periodo, janela, eventos]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const painel = useMemo(() => (eventos && leads ? calcularPainel({ passos, eventos, leads, dias: janela ? 0 : dias, de: janela?.de, ate: janela?.ate }) : null), [passos, eventos, leads, dias, janela]);
   const estados = useMemo(() => (eventos && leads ? estadoDosLeads(leads, eventos, vendas) : new Map<string, EstadoCompra>()), [eventos, leads, vendas]);
-  const conversao = useMemo(() => (leads ? resumoConversao(leads, estados, dias) : null), [leads, estados, dias]);
+  const conversao = useMemo(() => (leads ? resumoConversao(leads, estados, janela ? 0 : dias, undefined, janela ?? undefined) : null), [leads, estados, dias, janela]);
 
   const mudarStatus = async (l: LeadQuiz, status: StatusLead) => {
     const antes = leads;
@@ -175,14 +195,24 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
         <div className="ml-auto flex items-center gap-1.5">
           <div className="flex rounded-full border border-white/10 bg-[#0a1520] p-0.5 text-xs">
             {PERIODOS.map(([d, r]) => <button key={d} type="button" onClick={() => setPeriodo(d)} className={cn("rounded-full px-3 py-1", periodo === d ? "bg-cyan-400/15 font-semibold text-cyan-200" : "text-white/55 hover:text-white")}>{r}</button>)}
+            <button type="button" onClick={() => setEscolhendoDatas((v) => !v)} className={cn("rounded-full px-3 py-1", typeof periodo === "object" || escolhendoDatas ? "bg-cyan-400/15 font-semibold text-cyan-200" : "text-white/55 hover:text-white")}>Datas</button>
           </div>
+          {escolhendoDatas && (
+            <div className="flex items-center gap-1 rounded-full border border-cyan-400/30 bg-[#0a1520] px-2 py-0.5 text-xs text-white/70">
+              <input type="date" aria-label="De" value={typeof periodo === "object" ? periodo.de : ""} max={diaLocal(Date.now())} className="rounded bg-transparent px-1 py-0.5 [color-scheme:dark]"
+                onChange={(ev) => { const v = ev.target.value; if (v) setPeriodo({ de: v, ate: typeof periodo === "object" ? periodo.ate : v }); }} />
+              <span>até</span>
+              <input type="date" aria-label="Até" value={typeof periodo === "object" ? periodo.ate : ""} max={diaLocal(Date.now())} className="rounded bg-transparent px-1 py-0.5 [color-scheme:dark]"
+                onChange={(ev) => { const v = ev.target.value; if (v) setPeriodo({ de: typeof periodo === "object" ? periodo.de : v, ate: v }); }} />
+            </div>
+          )}
           <button type="button" onClick={() => void carregar()} title="Atualizar agora" className="rounded-full border border-white/10 p-2 text-white/60 hover:text-white"><RefreshCw className={cn("h-3.5 w-3.5", carregando && "animate-spin")} /></button>
         </div>
       </div>
 
       {quiz.status !== "publicado" && <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-xs text-amber-200">O quiz ainda não está publicado: os números começam a contar quando as pessoas abrirem o link. Seus testes aqui não entram.</p>}
 
-      {aba === "metricas" && <Metricas painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
+      {aba === "metricas" && <Metricas janela={janela} alteracoes={alteracoes} onDia={(d) => { setPeriodo({ de: d, ate: d }); setEscolhendoDatas(true); }} painel={painel} leads={leads} dias={dias} perguntas={perguntas} conversao={conversao} onFunil={() => setAba("funil")} onLeads={() => setAba("leads")} onQuentes={() => setAba("x1")} onStatus={mudarStatus} />}
       {aba === "leads" && <Leads nomesAfiliados={nomesAfiliados} leads={leads} estados={estados} perguntas={perguntas} eventos={eventos ?? []} passos={passos} perfis={estrutura.perfis.map((p) => ({ id: p.id, nome: p.nome }))} onStatus={mudarStatus} onApagar={apagarLeads} />}
       {aba === "x1" && (
         <div className={cn("space-y-3", preencher && "flex min-h-0 flex-1 flex-col")}>
@@ -228,21 +258,24 @@ function Tendencia({ atual, anterior }: { atual: number; anterior: number | null
   return <span className={cn("flex items-center gap-0.5 text-xs font-semibold", v.sobe ? "text-emerald-400" : "text-rose-400")}>{v.sobe ? "▲" : "▼"} {v.texto}</span>;
 }
 
-export function Metricas({ painel, leads, dias, perguntas, conversao, onFunil, onLeads, onQuentes, onStatus }: {
+export function Metricas({ janela, alteracoes, onDia, painel, leads, dias, perguntas, conversao, onFunil, onLeads, onQuentes, onStatus }: {
+  janela?: { de: number; ate: number } | null; alteracoes: { em: string; resumo: string }[]; onDia: (dia: string) => void;
   painel: ReturnType<typeof calcularPainel>; leads: LeadQuiz[]; dias: number; perguntas: string[]; conversao: ResumoConversao; onFunil: () => void; onLeads: () => void; onQuentes: () => void;
   onStatus: (l: LeadQuiz, s: StatusLead) => void;
 }) {
   const a = painel.atual, b = painel.anterior;
   const [modo, setModo] = useState<"etapas" | "funil">("etapas");
   const [todas, setTodas] = useState(false);
-  const inicio = dias ? Date.now() - dias * 86_400_000 : 0;
-  const leadsPeriodo = leads.filter((l) => Date.parse(l.criada_em) >= inicio);
+  const inicio = janela ? janela.de : (dias ? Date.now() - dias * 86_400_000 : 0);
+  const leadsPeriodo = leads.filter((l) => Date.parse(l.criada_em) >= inicio && (!janela || Date.parse(l.criada_em) < janela.ate));
+  const porDiaAlteracao = new Map<string, string[]>();
+  for (const al of alteracoes) { const d = diaLocal(Date.parse(al.em)); porDiaAlteracao.set(d, [...(porDiaAlteracao.get(d) ?? []), al.resumo]); }
   const comEmail = leadsPeriodo.filter((l) => l.email).length, comZap = leadsPeriodo.filter((l) => l.whatsapp).length;
   const pior = painel.pior > 0 ? painel.funil[painel.pior] : null;
   const perdeu = pior ? painel.funil[painel.pior - 1].n - pior.n : 0;
   const insight = insightDoPior(painel);
   const lista = todas ? painel.funil : painel.funil.slice(0, 9);
-  const vs = dias > 0 && dias < 1 ? "vs. ontem até esta hora" : dias ? `vs. ${dias} dias anteriores` : "desde o início";
+  const vs = janela ? `vs. ${Math.round(dias)} ${Math.round(dias) === 1 ? "dia" : "dias"} antes` : dias > 0 && dias < 1 ? "vs. ontem até esta hora" : dias ? `vs. ${dias} dias anteriores` : "desde o início";
   const max = Math.max(1, a.visitas);
 
   const kpis = [
@@ -322,6 +355,8 @@ export function Metricas({ painel, leads, dias, perguntas, conversao, onFunil, o
         </div>
       </div>
 
+      <DiaADia linhas={painel.diario} alteracoes={porDiaAlteracao} onDia={onDia} />
+
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
         <section className={cartao}>
           <h3 className="flex items-center gap-2 text-lg font-bold text-white"><TrendingUp className="h-5 w-5 text-cyan-300" />{painel.porHora ? "Visitas por hora (hoje)" : `Visitas por dia (${painel.porDia.length} dias)`}</h3>
@@ -329,12 +364,13 @@ export function Metricas({ painel, leads, dias, perguntas, conversao, onFunil, o
             {(() => {
               const barras = painel.porHora
                 ? painel.porHora.map((h) => ({ chave: String(h.hora), n: h.n, dica: `${String(h.hora).padStart(2, "0")}h: ${h.n} ${h.n === 1 ? "visita" : "visitas"}` }))
-                : painel.porDia.map((d) => ({ chave: d.dia, n: d.n, dica: `${format(new Date(`${d.dia}T12:00:00`), "EEE, d MMM", { locale: ptBR })}: ${d.n} ${d.n === 1 ? "visita" : "visitas"}` }));
+                : painel.porDia.map((d) => ({ chave: d.dia, n: d.n, alt: porDiaAlteracao.has(d.dia), dica: `${format(new Date(`${d.dia}T12:00:00`), "EEE, d MMM", { locale: ptBR })}: ${d.n} ${d.n === 1 ? "visita" : "visitas"}${porDiaAlteracao.has(d.dia) ? ` · ✏️ ${porDiaAlteracao.get(d.dia)!.join(" | ")}` : ""}` }));
               const m = Math.max(1, ...barras.map((d) => d.n));
               return barras.map((d) => (
                 <div key={d.chave} className="group flex h-full flex-1 flex-col justify-end" title={d.dica}>
                   <span className="mb-0.5 text-center text-[10px] tabular-nums text-white/60 opacity-0 group-hover:opacity-100">{d.n}</span>
                   <span className="block rounded-t bg-cyan-300 shadow-[0_0_10px_rgba(103,232,249,0.5)] group-hover:opacity-80" style={{ height: `${(d.n / m) * 100}%`, minHeight: d.n ? 3 : 1, opacity: d.n ? 1 : 0.25 }} />
+                  {"alt" in d && d.alt && <span className="mx-auto mt-0.5 h-1.5 w-1.5 rounded-full bg-amber-400" aria-label="Teve alteração no quiz" />}
                 </div>
               ));
             })()}
@@ -894,6 +930,51 @@ function ConversaCard({ conversao: c, visitas, onQuentes }: { conversao: ResumoC
         </div>
       </div>
       <p className="text-[11px] text-white/40">A compra é ligada ao lead pelo <b>e-mail</b> que ele deixou no quiz (vendas da Eduzz, Kiwify ou Hotmart do projeto; reembolso não conta). “Foi ao checkout” = clicou no botão de comprar do quiz.</p>
+    </section>
+  );
+}
+
+
+/** Dia a dia (19/11, Davi: "o dia que estava ruim, dias melhores, se teve alteração"): uma linha por dia com a conversão e o que foi alterado no quiz naquele dia. */
+function DiaADia({ linhas, alteracoes, onDia }: { linhas: ReturnType<typeof calcularPainel>["diario"]; alteracoes: Map<string, string[]>; onDia: (dia: string) => void }) {
+  const [ver, setVer] = useState(false);
+  const comDados = linhas.filter((l) => l.visitas > 0 || l.leads > 0 || alteracoes.has(l.dia));
+  if (linhas.length < 2 && comDados.length === 0) return null;
+  const conv = (l: { leads: number; visitas: number }) => (l.visitas ? (l.leads / l.visitas) * 100 : 0);
+  const base = linhas.filter((l) => l.visitas >= 5);   // poucos acessos não valem para dizer "melhor" ou "pior"
+  const melhor = base.length > 1 ? base.reduce((a, b) => (conv(b) > conv(a) ? b : a)) : null;
+  const pior = base.length > 1 ? base.reduce((a, b) => (conv(b) < conv(a) ? b : a)) : null;
+  const ordem = [...linhas].reverse();
+  const lista = ver ? ordem : ordem.slice(0, 10);
+  return (
+    <section className={cartao}>
+      <h3 className="flex items-center gap-2 text-lg font-bold text-white"><BarChart3 className="h-5 w-5 text-cyan-300" />Dia a dia</h3>
+      <p className="text-xs text-white/50">Clique em um dia para ver só ele. ✏️ marca os dias em que o quiz foi alterado. Melhor e pior só entre dias com 5 visitas ou mais.</p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[560px] text-sm">
+          <thead><tr className="text-left text-[11px] uppercase tracking-wider text-white/45">
+            <th className="py-1 font-medium">Dia</th><th className="py-1 text-right font-medium">Visitas</th><th className="py-1 text-right font-medium">Começaram</th><th className="py-1 text-right font-medium">Leads</th><th className="py-1 text-right font-medium">Conversão</th><th className="py-1 pl-4 font-medium">Alterações</th>
+          </tr></thead>
+          <tbody>
+            {lista.map((l) => {
+              const alts = alteracoes.get(l.dia);
+              const eh = melhor?.dia === l.dia ? "melhor" : pior?.dia === l.dia ? "pior" : null;
+              return (
+                <tr key={l.dia} onClick={() => onDia(l.dia)} className={cn("cursor-pointer border-t border-white/5 hover:bg-white/5", eh === "melhor" && "bg-emerald-500/10", eh === "pior" && "bg-rose-500/10")}>
+                  <td className="whitespace-nowrap py-1.5 font-medium text-white">{format(new Date(`${l.dia}T12:00:00`), "EEE, d MMM", { locale: ptBR })}
+                    {eh && <span className={cn("ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-bold", eh === "melhor" ? "bg-emerald-400/20 text-emerald-300" : "bg-rose-400/20 text-rose-300")}>{eh === "melhor" ? "melhor dia" : "pior dia"}</span>}</td>
+                  <td className="py-1.5 text-right tabular-nums text-white/85">{l.visitas}</td>
+                  <td className="py-1.5 text-right tabular-nums text-white/85">{l.comecaram}</td>
+                  <td className="py-1.5 text-right tabular-nums text-white/85">{l.leads}</td>
+                  <td className="py-1.5 text-right tabular-nums font-semibold text-white">{l.visitas ? `${Math.round(conv(l))}%` : "—"}</td>
+                  <td className="max-w-[320px] py-1.5 pl-4 text-xs text-amber-300">{alts ? <span title={alts.join("\n")}>✏️ {alts[alts.length - 1]}{alts.length > 1 ? ` (+${alts.length - 1})` : ""}</span> : <span className="text-white/25">—</span>}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {ordem.length > 10 && <button type="button" onClick={() => setVer((v) => !v)} className="mx-auto mt-2 block rounded-full border border-white/10 px-4 py-1 text-xs text-white/70 hover:bg-white/5">{ver ? "Ver menos" : `Ver todos os dias (${ordem.length})`}</button>}
     </section>
   );
 }

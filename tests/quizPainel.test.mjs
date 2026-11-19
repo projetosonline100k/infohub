@@ -119,3 +119,29 @@ test('"hoje" (dias fracionado): só a janela de hoje, comparação com ontem e v
   assert.equal(p.porHora.reduce((s, h) => s + h.n, 0), 2);
   assert.equal(m.calcularPainel({ passos, eventos, leads: [], dias: 14, agora: AGORA }).porHora, null);
 });
+
+test('período escolhido (de/ate): só os dias dentro, dia a dia e comparação com o trecho anterior', () => {
+  const meio = (offsetDias) => new Date(2026, 10, 10 + offsetDias, 12, 0, 0).getTime();   // meio-dia local
+  const iso = (t) => new Date(t).toISOString();
+  const e = (s, tipo, passo, t) => ({ sessao: s, tipo, passo, criado_em: iso(t) });
+  const eventos = [
+    e('a', 'visita', -1, meio(0)), e('a', 'passo', 1, meio(0)), e('a', 'fim', 3, meio(0)),
+    e('b', 'visita', -1, meio(0)), e('c', 'visita', -1, meio(1)),
+    e('d', 'visita', -1, meio(-2)),   // no trecho anterior
+    e('z', 'visita', -1, meio(5)),    // depois do período
+  ];
+  const leads = [{ id: 'l1', perfil: null, nome: null, email: null, whatsapp: null, criada_em: iso(meio(0)), respostas: [], status: 'novo' }];
+  const de = new Date(2026, 10, 10).getTime(), ate = new Date(2026, 10, 12).getTime();   // 10 e 11/11, local
+  const p = m.calcularPainel({ passos, eventos, leads, dias: 0, de, ate });
+  assert.equal(p.atual.visitas, 3);
+  assert.equal(p.anterior.visitas, 1);
+  assert.equal(p.diario.length, 2);
+  assert.equal(p.diario[0].visitas, 2);
+  assert.equal(p.diario[0].comecaram, 1);
+  assert.equal(p.diario[0].leads, 1);
+  assert.equal(p.diario[1].visitas, 1);
+  assert.equal(p.porHora, null);
+  const um = m.calcularPainel({ passos, eventos, leads, dias: 0, de, ate: de + 86_400_000 });
+  assert.equal(um.diario.length, 1);
+  assert.equal(um.porHora.length, 24);
+});

@@ -17,16 +17,22 @@ export interface Painel {
   porDia: { dia: string; n: number }[];
   /** Só quando o período é "hoje" (dias < 1): visitas de cada hora do dia, da meia-noite até agora. */
   porHora: { hora: number; n: number }[] | null;
+  /** Dia a dia dentro do período (19/11): para achar os dias bons e ruins e cruzar com as alterações. */
+  diario: LinhaDia[];
 }
+export interface LinhaDia { dia: string; visitas: number; comecaram: number; terminaram: number; cta: number; leads: number }
 
 const DIA = 86_400_000;
-const dia = (t: number) => new Date(t).toISOString().slice(0, 10);
+// Dia no fuso do Mac (19/11): o dia que o Davi enxerga, não o dia em UTC (a noite de 23h cairia no dia seguinte).
+const dia = (t: number) => new Date(t).toLocaleDateString("sv-SE");
 
 /** `dias` = 0 → desde sempre (sem período anterior). `dias` fracionado (< 1) = "hoje": da meia-noite até agora, comparando com o mesmo trecho de ontem. */
-export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; leads: LeadQuiz[]; dias: number; agora?: number }): Painel {
-  const agora = p.agora ?? Date.now();
-  const inicio = p.dias ? agora - p.dias * DIA : 0;
-  const inicioAnterior = p.dias ? agora - 2 * p.dias * DIA : 0;
+export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; leads: LeadQuiz[]; dias: number; agora?: number; /** Período escolhido (ms): de (inclusive) até (exclusivo). Vale no lugar de `dias`. */ de?: number; ate?: number }): Painel {
+  const agora = p.ate !== undefined ? p.ate : (p.agora ?? Date.now());
+  const custom = p.de !== undefined && p.ate !== undefined;
+  const dur = custom ? Math.max(1, p.ate! - p.de!) : p.dias * DIA;
+  const inicio = custom ? p.de! : (p.dias ? agora - p.dias * DIA : 0);
+  const inicioAnterior = custom ? p.de! - dur : (p.dias ? agora - 2 * p.dias * DIA : 0);
   // Cada sessão vale no dia do primeiro evento dela.
   const sessoes = new Map<string, { t: number; visita: boolean; max: number; fim: boolean; cta: boolean }>();
   for (const e of p.eventos) {
@@ -51,22 +57,27 @@ export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; 
     };
   };
   const cur = janela(inicio, agora + 1);
-  const ant = p.dias ? janela(inicioAnterior, inicio).j : null;
+  const ant = custom || p.dias ? janela(inicioAnterior, inicio).j : null;
   const funil = p.passos.map((s, i) => ({ rotulo: s.rotulo, tipo: s.tipo, n: cur.lista.filter((x) => x.max >= i).length }));
   let pior = -1, perda = 0;
   for (let i = 1; i < funil.length; i++) {
     const d = funil[i - 1].n - funil[i].n;
     if (d > perda) { perda = d; pior = i; }
   }
-  const n = Math.max(1, Math.ceil(p.dias || 14));
-  const porDia = Array.from({ length: n }, (_, k) => {
-    const d = dia(agora - (n - 1 - k) * DIA);
-    return { dia: d, n: [...sessoes.values()].filter((s) => s.visita && dia(s.t) === d).length };
+  const n = custom ? Math.max(1, Math.ceil(dur / DIA)) : Math.max(1, Math.ceil(p.dias || 14));
+  const fimDias = custom ? p.ate! - 1 : agora;   // `ate` é exclusivo: o último dia do período é o do instante anterior
+  const dias = Array.from({ length: n }, (_, k) => dia(fimDias - (n - 1 - k) * DIA));
+  const visitaveis = [...sessoes.values()].filter((s) => s.visita);
+  const porDia = dias.map((d) => ({ dia: d, n: visitaveis.filter((s) => dia(s.t) === d).length }));
+  const diario: LinhaDia[] = dias.map((d) => {
+    const ss = visitaveis.filter((s) => dia(s.t) === d);
+    return { dia: d, visitas: ss.length, comecaram: ss.filter((s) => s.max >= 1).length, terminaram: ss.filter((s) => s.fim).length, cta: ss.filter((s) => s.cta).length,
+      leads: p.leads.filter((l) => dia(Date.parse(l.criada_em)) === d).length };
   });
-  const porHora = p.dias > 0 && p.dias < 1
-    ? Array.from({ length: new Date(agora).getHours() + 1 }, (_, h) => ({ hora: h, n: cur.lista.filter((x) => new Date(x.t).getHours() === h).length }))
-    : null;
-  return { atual: cur.j, anterior: ant, funil, pior, porDia, porHora };
+  const umDia = (p.dias > 0 && p.dias < 1) || (custom && dur <= DIA + 1);
+  const horas = custom ? (p.ate! > Date.now() ? new Date().getHours() + 1 : 24) : new Date(agora).getHours() + 1;
+  const porHora = umDia ? Array.from({ length: horas }, (_, h) => ({ hora: h, n: cur.lista.filter((x) => new Date(x.t).getHours() === h).length })) : null;
+  return { atual: cur.j, anterior: ant, funil, pior, porDia, porHora, diario };
 }
 
 /** "+120%", "-30%", "novo" (antes era zero) ou null (sem como comparar). */
@@ -196,11 +207,11 @@ export function estadoDosLeads(leads: Pick<LeadQuiz, "id" | "email" | "sessao" |
 
 export interface ResumoConversao { leads: number; clicaram: number; compraram: number; receita: number; quentes: number }
 /** Os números do período: leads, quantos chegaram ao checkout, quantos compraram, a receita e os "quentes" (clicaram e não compraram). */
-export function resumoConversao(leads: Pick<LeadQuiz, "id" | "criada_em">[], estados: Map<string, EstadoCompra>, dias: number, agora = Date.now()): ResumoConversao {
-  const inicio = dias ? agora - dias * 86_400_000 : 0;
+export function resumoConversao(leads: Pick<LeadQuiz, "id" | "criada_em">[], estados: Map<string, EstadoCompra>, dias: number, agora = Date.now(), janela?: { de: number; ate: number }): ResumoConversao {
+  const inicio = janela ? janela.de : (dias ? agora - dias * 86_400_000 : 0);
   const r: ResumoConversao = { leads: 0, clicaram: 0, compraram: 0, receita: 0, quentes: 0 };
   for (const l of leads) {
-    if (Date.parse(l.criada_em) < inicio) continue;
+    if (Date.parse(l.criada_em) < inicio || (janela && Date.parse(l.criada_em) >= janela.ate)) continue;
     r.leads++;
     const e = estados.get(l.id);
     if (!e) continue;
