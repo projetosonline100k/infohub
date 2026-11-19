@@ -4,10 +4,21 @@ import { codigoAfiliado, marcaDoAfiliado } from "@/lib/quiz/afiliados";
 
 export const codigoEmbaixador = codigoAfiliado;
 
+/** Endereço do site publicado: é o que vai para os embaixadores (o app em desenvolvimento roda em localhost, que ninguém mais abre). */
+export const ORIGEM_PUBLICA = "https://infopro-hub.vercel.app";
+/** Troca o endereço local (localhost / 127.0.0.1) pelo do site publicado; qualquer outro endereço fica como está. */
+export function urlPublica(url: string): string {
+  try {
+    const u = new URL(url);
+    if (["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) || u.hostname.endsWith(".localhost")) return ORIGEM_PUBLICA + u.pathname + u.search + u.hash;
+  } catch { /* devolve como veio */ }
+  return url;
+}
+
 /** Endereço com a marca do embaixador; mantém o que já existir na URL (outras UTM, parâmetros da oferta). */
 export function linkDoEmbaixador(destino: string, codigo: string): string {
   try {
-    const u = new URL(destino);
+    const u = new URL(urlPublica(destino));
     u.searchParams.set("utm_source", "embaixador");
     u.searchParams.set("utm_medium", "link");
     if (!u.searchParams.has("utm_campaign")) u.searchParams.set("utm_campaign", "embaixador");

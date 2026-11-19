@@ -72,5 +72,21 @@ DO $$ BEGIN
   BEGIN PERFORM public.embaixador_leads(); RAISE EXCEPTION 'estranho viu leads';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
+-- visão do administrador: o dono vê o resumo e as vendas; outra pessoa não
+RESET ROLE;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000401',true);
+SET LOCAL ROLE authenticated;
+DO $$ BEGIN
+  IF (SELECT bruto FROM public.embaixadores_resumo('10000000-0000-0000-0000-000000000404', 30) WHERE embaixador_id = '10000000-0000-0000-0000-000000000407') <> 1000 THEN RAISE EXCEPTION 'resumo do admin'; END IF;
+  IF (SELECT leads FROM public.embaixadores_resumo('10000000-0000-0000-0000-000000000404', 30) WHERE embaixador_id = '10000000-0000-0000-0000-000000000407') <> 1 THEN RAISE EXCEPTION 'leads do admin'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_vendas_admin('10000000-0000-0000-0000-000000000407')) <> 1 THEN RAISE EXCEPTION 'vendas do admin'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000403',true);
+DO $$ BEGIN
+  BEGIN PERFORM * FROM public.embaixadores_resumo('10000000-0000-0000-0000-000000000404', 30); RAISE EXCEPTION 'estranho viu o resumo';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN PERFORM * FROM public.embaixador_vendas_admin('10000000-0000-0000-0000-000000000407'); RAISE EXCEPTION 'estranho viu as vendas';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
 RESET ROLE;
 ROLLBACK;
