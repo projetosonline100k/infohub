@@ -1108,18 +1108,20 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             // Sim ou não como conversa (19/11, Davi: "tipo um typebot, o Insta vai perguntando"): perguntas seguidas marcadas com `chat` viram um chat só.
             // No modo de edição continua o formato normal (é nele que se clica para editar).
             const ehChat = (x?: (typeof perguntas)[number]) => !!x?.chat && !x.multipla && x.opcoes.length === 2;
+            const semAcento = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+            const simNao = q.opcoes.length === 2 && semAcento(q.opcoes[0].texto) === "nao" && semAcento(q.opcoes[1].texto) === "sim";
             if (ehChat(q) && !editar) {
               const historico: HistoricoChat[] = [];
               for (let j = pos - 1; j >= 0; j--) {
                 const ps = passos[j];
                 const pq = ps?.tipo === "pergunta" ? perguntas[ps.indice] : undefined;
                 if (!pq || !ehChat(pq) || escolhas[pq.id] === undefined) break;
-                historico.unshift({ texto: pq.texto ? f(pq.texto) : "", subtitulo: pq.subtitulo, imagem: pq.imagem, aparencia: pq.estilo === "livro" ? "livro" : "normal", resposta: pq.opcoes[escolhas[pq.id]]?.texto ?? "" });
+                historico.unshift({ texto: pq.texto ? f(pq.texto) : "", subtitulo: pq.subtitulo, imagem: pq.imagem, aparencia: pq.estilo === "livro" ? "livro" : "normal", resposta: pq.opcoes[escolhas[pq.id]]?.texto ?? "", respostaImagem: pq.opcoes[escolhas[pq.id]]?.imagem });
               }
               return (
                 <ChatPergunta key={passo.indice} avatar={quadrosM?.[Q.PARADO]} cor={cor} escuro={escuro} historico={historico}
                   texto={q.texto ? f(q.texto) : ""} subtitulo={q.subtitulo} imagem={fotoPergunta} imagemNota={teste ? q.imagem_nota : undefined} aparencia={livro ? "livro" : "normal"}
-                  opcoes={[q.opcoes[0].texto, q.opcoes[1].texto]} marcada={escolhas[q.id]}
+                  opcoes={q.opcoes.map((o) => ({ texto: o.texto, imagem: o.imagem }))} simNao={simNao} marcada={escolhas[q.id]}
                   aoEscolher={(k) => { setEscolhas((x) => ({ ...x, [q.id]: k })); if (!travado) window.setTimeout(avancar, 900); }} />
               );
             }
@@ -1682,7 +1684,7 @@ function Carregando({ t, base, f, onPronto, suave }: { t: TelaQuiz; base: string
   pronto.current = onPronto;
   useEffect(() => {
     if (!jogando || pausa !== null) return;
-    const dur = 9500;   // devagar: dá para ler cada etapa (Davi, 10/11: "as perguntas estão aparecendo rápido demais")
+    const dur = (t.duracao ?? 9.5) * 1000;   // devagar: dá para ler cada etapa (Davi, 10/11: "as perguntas estão aparecendo rápido demais")
     let espera: number | undefined;
     const id = window.setInterval(() => {
       decorrido.current += 60;

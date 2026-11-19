@@ -94,6 +94,8 @@ export interface TelaQuiz {
   /** Tela "plano_livros" (13/11): como escolher os livros do plano (ver src/lib/quiz/plano.ts). */
   plano?: ConfigPlano;
   titulo?: string; texto?: string; botao?: string;
+  /** Tela "carregando": quanto dura, em segundos (padrão 9,5; a de "salvando" é curta). */
+  duracao?: number;
   imagem?: string; imagem_nota?: string;
   animada?: boolean; fala?: string; quadros?: string[];
   pose?: number;   // mostra só este quadro (ex.: 12 = comemorando), sem o ciclo de aceno e fala

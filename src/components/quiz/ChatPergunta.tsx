@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 // quero que apareça que o Insta está perguntando"). O "Instalivros" digita (três pontinhos), manda a pergunta (com a imagem) e depois o
 // "isso tem a ver com você?"; aí aparecem Não/Sim, a resposta vira balão da pessoa e a próxima pergunta chega logo abaixo.
 // As perguntas anteriores do mesmo bloco ficam em cima como histórico (sem animar de novo).
-export interface ItemChat { texto: string; imagem?: string; opcoes: [string, string] }
-export interface HistoricoChat { texto: string; subtitulo?: string; imagem?: string; aparencia?: "livro" | "normal"; resposta: string }
+export interface OpcaoChat { texto: string; imagem?: string }
+export interface HistoricoChat { texto: string; subtitulo?: string; imagem?: string; aparencia?: "livro" | "normal"; resposta: string; respostaImagem?: string }
 
 const reduzido = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -19,17 +19,17 @@ function Digitando({ escuro }: { escuro: boolean }) {
   );
 }
 
-export function ChatPergunta({ avatar, nome = "Instalivros", cor, escuro, historico, texto, subtitulo, imagem, imagemNota, aparencia, opcoes, marcada, aoEscolher, atraso = 650 }: {
+export function ChatPergunta({ avatar, nome = "Instalivros", cor, escuro, historico, texto, subtitulo, imagem, imagemNota, aparencia, opcoes, simNao = false, marcada, aoEscolher, atraso = 650 }: {
   avatar?: string; nome?: string; cor: string; escuro: boolean; historico: HistoricoChat[];
   texto: string; subtitulo?: string; imagem?: string; imagemNota?: string; aparencia?: "livro" | "normal";
-  opcoes: [string, string]; marcada?: number; aoEscolher: (k: 0 | 1) => void; atraso?: number;
+  opcoes: OpcaoChat[]; simNao?: boolean; marcada?: number; aoEscolher: (k: number) => void; atraso?: number;
 }) {
   // mensagens que o Insta manda para esta pergunta, uma de cada vez
   const mensagens: { texto?: string; imagem?: string; nota?: string; forte?: boolean }[] = [];
   if (texto || imagem || imagemNota) mensagens.push({ texto, imagem, nota: imagem ? undefined : imagemNota, forte: true });
   if (subtitulo) mensagens.push({ texto: subtitulo });
   const [vistas, setVistas] = useState(() => (reduzido() ? mensagens.length : 0));
-  const [escolhida, setEscolhida] = useState<0 | 1 | null>(null);
+  const [escolhida, setEscolhida] = useState<number | null>(null);
   const fim = useRef<HTMLDivElement>(null);
   const digitando = vistas < mensagens.length;
   const respondeu = escolhida !== null;
@@ -47,7 +47,12 @@ export function ChatPergunta({ avatar, nome = "Instalivros", cor, escuro, histor
       {avatar ? <img src={avatar} alt="" draggable={false} className="h-full w-full object-cover object-top" /> : nome[0]}
     </span>
   );
-  const marcadaFinal = escolhida ?? (marcada === 0 || marcada === 1 ? marcada : null);
+  const marcadaFinal = escolhida ?? (marcada !== undefined && marcada >= 0 && marcada < opcoes.length ? marcada : null);
+  const Resposta = ({ texto, imagem }: OpcaoChat) => (
+    <span className="flex flex-col items-end gap-1.5 rounded-2xl rounded-br-md px-3.5 py-2 text-[15px] font-bold text-white" style={{ background: cor }}>
+      {imagem && <img src={imagem} alt="" draggable={false} className="h-20 w-28 rounded-lg object-cover" />}{texto}
+    </span>
+  );
 
   return (
     <div className="space-y-3">
@@ -68,7 +73,7 @@ export function ChatPergunta({ avatar, nome = "Instalivros", cor, escuro, histor
                 {h.texto && <p className="text-[17px] font-bold leading-snug">{h.texto}</p>}{h.subtitulo && <p className="text-[15px] font-semibold">{h.subtitulo}</p>}
               </div>
             </div>
-            <div className="flex justify-end"><span className="rounded-2xl rounded-br-md px-3.5 py-2 text-[15px] font-bold text-white" style={{ background: cor }}>{h.resposta}</span></div>
+            <div className="flex justify-end"><Resposta texto={h.resposta} imagem={h.respostaImagem} /></div>
           </div>
         ))}
 
@@ -86,22 +91,27 @@ export function ChatPergunta({ avatar, nome = "Instalivros", cor, escuro, histor
 
         {respondeu && (
           <div className="flex justify-end motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300">
-            <span className="rounded-2xl rounded-br-md px-3.5 py-2 text-[15px] font-bold text-white" style={{ background: cor }}>{opcoes[escolhida]}</span>
+            <Resposta texto={opcoes[escolhida].texto} imagem={opcoes[escolhida].imagem} />
           </div>
         )}
       </div>
 
       {!digitando && !respondeu && (
-        <div className="grid grid-cols-2 gap-2.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-300">
-          {([0, 1] as const).map((k) => (
-            <button key={k} type="button" onClick={() => { setEscolhida(k); aoEscolher(k); }}
-              className={cn("flex items-center justify-center gap-2 rounded-full border-2 px-4 py-3 text-base font-bold transition active:scale-95",
-                marcadaFinal === k ? "text-white" : escuro ? "border-white/20 bg-white/5" : "border-black/10 bg-white hover:border-black/30")}
-              style={marcadaFinal === k ? { background: cor, borderColor: cor } : undefined}>
-              {k === 0 ? <X className={cn("h-5 w-5", marcadaFinal === k ? "text-white" : "text-orange-500")} /> : <Check className={cn("h-5 w-5", marcadaFinal === k ? "text-white" : "text-green-600")} />}
-              {opcoes[k]}
-            </button>
-          ))}
+        <div className={cn("grid gap-2.5 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-300", opcoes.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
+          {opcoes.map((o, k) => {
+            const marcadaEsta = marcadaFinal === k;
+            return (
+              <button key={k} type="button" onClick={() => { setEscolhida(k); aoEscolher(k); }}
+                className={cn("flex items-center justify-center gap-2 border-2 font-bold transition active:scale-95",
+                  o.imagem ? "flex-col rounded-2xl p-2 text-sm" : "rounded-full px-4 py-3 text-base",
+                  marcadaEsta ? "text-white" : escuro ? "border-white/20 bg-white/5" : "border-black/10 bg-white hover:border-black/30")}
+                style={marcadaEsta ? { background: cor, borderColor: cor } : undefined}>
+                {o.imagem && <img src={o.imagem} alt="" draggable={false} className="h-28 w-full rounded-xl object-cover" />}
+                {simNao && (k === 0 ? <X className={cn("h-5 w-5", marcadaEsta ? "text-white" : "text-orange-500")} /> : <Check className={cn("h-5 w-5", marcadaEsta ? "text-white" : "text-green-600")} />)}
+                <span className="leading-tight">{o.texto}</span>
+              </button>
+            );
+          })}
         </div>
       )}
       <div ref={fim} className="h-1" />
