@@ -47,8 +47,10 @@ type Voo = { livro: LivroAmostra; de: DOMRect; alvo: { left: number; top: number
 // (classes escritas por extenso para o Tailwind enxergar; sem a dica embaixo sobram 24 px a mais)
 const ALTURA_CHEIA = "h-[calc(100dvh_-_max(env(safe-area-inset-top),1.25rem)_-_max(env(safe-area-inset-bottom),1.5rem)_-_66px)] [@media(min-height:760px)]:h-[calc(100dvh_-_max(env(safe-area-inset-top),1.25rem)_-_max(env(safe-area-inset-bottom),1.5rem)_-_90px)]";
 
-export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, aoEvento, suave, chave = "amostra", cheia = false, aoVoltarQuiz }: {
+export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, botaoPasso, aoEvento, suave, chave = "amostra", cheia = false, aoVoltarQuiz }: {
   livros: LivroAmostra[]; nome: string; titulo: ReactNode; porque?: string; aviso: string; dica: string; dicaDeslize: string; dicaRolar?: string; fimTexto: string; textoBloqueado: string; textoSemAmostra: string; segundos: number; botao: ReactNode;
+  /** Botão das partes 1 e 2 (mesmo estilo do Continuar); a pessoa avança tocando nele. */
+  botaoPasso?: (rotulo: string, aoTocar: () => void) => ReactNode;
   /** `detalhe` curto para o registro da sessão: "abriu;livro=56" ou "ouviu=42s;total=75s;fim=nao;livro=56". */
   aoEvento: (detalhe: string) => void; cor?: string; escuro?: boolean; suave: string;
   /** Identifica esta amostra para lembrar onde a pessoa parou (quiz + tela). */
@@ -65,6 +67,11 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
   const [voo, setVoo] = useState<Voo | null>(null);
   const [tocouAlgum, setTocouAlgum] = useState(!!salvo.tocouAlgum);
   const [liberado, setLiberado] = useState(!!salvo.liberado);
+  // Partes da home (sobem para cá para o botão de avançar ocupar o lugar do Continuar)
+  const [fase, setFase] = useState<FaseHome>(salvo.tocouAlgum ? "livre" : salvo.fase ?? "selecionados");
+  const [passoPronto, setPassoPronto] = useState(false);
+  useEffect(() => { gravarEstado(chave, { fase }); }, [fase, chave]);
+  const emPasso = !aberto && !!botaoPasso && (fase === "selecionados" || fase === "categorias");
   const quadro = useRef<HTMLDivElement>(null);
   const timers = useRef<number[]>([]);
   useEffect(() => () => { timers.current.forEach(clearTimeout); }, []);
@@ -74,6 +81,7 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
 
   const abrir = (livro: LivroAmostra, el: HTMLElement) => {
     setTocouAlgum(true);
+    setFase("livre");
     // outro livro: recomeça do detalhe; o mesmo livro: volta de onde parou (tela e segundo do áudio)
     if (lerEstado(chave).livroId !== livro.id) { gravarEstado(chave, { livroId: livro.id, sub: "detalhe", tempo: 0 }); setSubTela("detalhe"); }
     gravarEstado(chave, { tocouAlgum: true });
@@ -98,10 +106,17 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
           ? <LivroAberto key={aberto.id} cheia={cheia} livro={aberto} segundos={segundos} fimTexto={fimTexto} textoBloqueado={textoBloqueado} textoSemAmostra={textoSemAmostra} aoLiberar={liberar}
               sub={sub} aoSub={setSub} tempoInicial={lerEstado(chave).livroId === aberto.id ? lerEstado(chave).tempo ?? 0 : 0} aoTempo={(t) => gravarEstado(chave, { tempo: t })}
               aoEvento={(d) => aoEvento(`${d};livro=${aberto.id}`)} aoVoltar={() => { gravarEstado(chave, { livroId: undefined, sub: "detalhe", tempo: 0 }); setAberto(null); }} />
-          : <HomeApp cheia={cheia} livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} dicaRolar={dicaRolar ?? "Role para baixo e veja tudo o que você vai ter no app"} tocouAlgum={tocouAlgum} abrir={abrir} faseInicial={salvo.fase} aoFase={(f) => gravarEstado(chave, { fase: f })} />}
+          : <HomeApp cheia={cheia} livros={livros} titulo={titulo} porque={porque} dica={dica} dicaDeslize={dicaDeslize} dicaRolar={dicaRolar ?? "Role para baixo e veja tudo o que você vai ter no app"} tocouAlgum={tocouAlgum} abrir={abrir} fase={fase} aoPronto={setPassoPronto} />}
       </div>
       <p className={cn("text-center text-[11px]", suave, cheia && "hidden [@media(min-height:760px)]:block")}>{aberto && sub === "ouvindo" ? "Ouvindo um trecho do livro do dia" : aviso}</p>
-      <div aria-hidden={!liberado} className={cn("pt-0.5 transition-[opacity,transform,visibility] duration-500 ease-out", liberado ? "visible translate-y-0 opacity-100" : "invisible translate-y-4 opacity-0")}>{botao}</div>
+      {(() => {
+        const visivel = emPasso ? passoPronto : liberado;
+        return (
+          <div aria-hidden={!visivel} className={cn("pt-0.5 transition-[opacity,transform,visibility] duration-500 ease-out", visivel ? "visible translate-y-0 opacity-100" : "invisible translate-y-4 opacity-0")}>
+            {emPasso ? botaoPasso!(fase === "selecionados" ? "Ver mais livros" : "Ver meu livro do dia", () => { setPassoPronto(false); setFase(fase === "selecionados" ? "categorias" : "foco"); }) : botao}
+          </div>
+        );
+      })()}
       {voo && <VooDaCapa voo={voo} />}
     </div>
   );
@@ -150,50 +165,27 @@ function useCategorias() {
 // Home do app em 3 partes (18/11/2026, Davi):
 // 1) só os livros selecionados, a mãozinha manda deslizar para o lado; 2) o plano desce e entram as categorias do app, a mãozinha manda rolar para baixo;
 // 3) a lista volta ao topo e o livro do dia 1 fica em foco (resto escurece) para a pessoa tocar. Tocar em qualquer livro antes pula as etapas.
-function HomeApp({ cheia, livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAlgum, abrir, faseInicial, aoFase }: {
+function HomeApp({ cheia, livros, titulo, porque, dica, dicaDeslize, dicaRolar, tocouAlgum, abrir, fase, aoPronto }: {
   cheia?: boolean;
-  livros: LivroAmostra[]; titulo: ReactNode; porque?: string; dica: string; dicaDeslize: string; dicaRolar: string; tocouAlgum: boolean; abrir: (l: LivroAmostra, el: HTMLElement) => void; faseInicial?: FaseHome; aoFase: (f: FaseHome) => void;
+  livros: LivroAmostra[]; titulo: ReactNode; porque?: string; dica: string; dicaDeslize: string; dicaRolar: string; tocouAlgum: boolean; abrir: (l: LivroAmostra, el: HTMLElement) => void; fase: FaseHome; aoPronto: (v: boolean) => void;
 }) {
   const primeiro = livros.find((l) => l.amostra);
   const { faixas, total } = useCategorias();
   const faixa = useRef<HTMLDivElement>(null);
   const rolagem = useRef<HTMLDivElement>(null);
-  const empurrando = useRef(false);
   const [atual, setAtual] = useState(0);
-  const [fase, setFase] = useState<FaseHome>(tocouAlgum ? "livre" : faseInicial ?? "selecionados");
-  useEffect(() => { aoFase(fase); }, [fase]); // eslint-disable-line react-hooks/exhaustive-deps
-  const [toque, setToque] = useState(0);
-  const [rolou, setRolou] = useState(false);
   const capaBase = cheia ? 190 : CAPA_W;
-  const passo = capaBase + VAO;
-  const alvoDeslize = Math.min(3, livros.length - 1);
   const compacto = fase !== "selecionados";
   const capaW = compacto ? (cheia ? 150 : 96) : capaBase;
 
-  // empurrãozinho: mostra a próxima capa e volta
+  // Nada avança sozinho (19/11/2026, Davi: "era muito rápido, ia me empurrando"): o botão embaixo aparece depois que a pessoa
+  // desliza/rola um pouco ou após ~4 s na parte, e é ela que toca para ir à próxima.
   useEffect(() => {
-    if (reduzido() || livros.length < 2 || fase !== "selecionados") return;
-    const el = faixa.current;
-    if (!el) return;
-    const ids: number[] = [];
-    const ir = (x: number) => { empurrando.current = true; el.scrollTo({ left: x, behavior: "smooth" }); ids.push(window.setTimeout(() => { empurrando.current = false; }, 700)); };
-    ids.push(window.setTimeout(() => ir(passo * 0.8), 900), window.setTimeout(() => ir(0), 1900));
-    return () => ids.forEach(clearTimeout);
-  }, [livros.length, passo, fase]);
-
-  // Parte 1 → 2: Dia 4 alcançado ou ~4 s sem mexer
-  useEffect(() => {
-    if (fase !== "selecionados") return;
-    const id = window.setTimeout(() => setFase("categorias"), toque === 0 ? 6000 : 4000);
+    aoPronto(false);
+    if (fase !== "selecionados" && fase !== "categorias") return;
+    const id = window.setTimeout(() => aoPronto(true), 4000);
     return () => clearTimeout(id);
-  }, [fase, toque]);
-
-  // Parte 2 → 3: rolou um pouco (~1,8 s depois) ou ~6,5 s
-  useEffect(() => {
-    if (fase !== "categorias") return;
-    const id = window.setTimeout(() => setFase("foco"), rolou ? 1800 : 6500);
-    return () => clearTimeout(id);
-  }, [fase, rolou]);
+  }, [fase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Parte 3: volta ao topo
   useEffect(() => {
@@ -201,17 +193,11 @@ function HomeApp({ cheia, livros, titulo, porque, dica, dicaDeslize, dicaRolar, 
     rolagem.current?.scrollTo({ top: 0, behavior: reduzido() ? "auto" : "smooth" });
   }, [fase]);
 
-  // pulou as etapas (tocou num livro): a home volta já completa, sem foco
-  useEffect(() => { if (tocouAlgum) setFase("livre"); }, [tocouAlgum]);
-
   const aoRolarFaixa = () => {
     const el = faixa.current;
     if (!el) return;
     setAtual(Math.max(0, Math.min(livros.length - 1, Math.round(el.scrollLeft / (capaBase + VAO)))));
-    if (fase === "selecionados" && !empurrando.current) {
-      setToque((n) => n + 1);
-      if (el.scrollLeft >= passo * (alvoDeslize - 0.3)) setFase("categorias");
-    }
+    if (fase === "selecionados" && el.scrollLeft > 8) aoPronto(true);
   };
 
   const deslizando = fase === "selecionados";
@@ -221,7 +207,7 @@ function HomeApp({ cheia, livros, titulo, porque, dica, dicaDeslize, dicaRolar, 
     <>
       <style>{`@keyframes amostra-arrasta{0%{transform:translateX(70px);opacity:0}15%{opacity:1}75%{transform:translateX(-90px);opacity:1}100%{transform:translateX(-90px);opacity:0}}@keyframes amostra-toque{0%,100%{transform:translateY(8px)}45%{transform:translateY(-4px)}}@keyframes amostra-afunda{0%,100%{transform:scale(1)}45%{transform:scale(1)}60%{transform:scale(.9)}80%{transform:scale(1)}}@keyframes amostra-sobe{0%{transform:translateY(40px);opacity:0}15%{opacity:1}75%{transform:translateY(-70px);opacity:1}100%{transform:translateY(-70px);opacity:0}}`}</style>
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={rolagem} onScroll={(ev) => { if (fase === "categorias" && ev.currentTarget.scrollTop > 80) setRolou(true); }}
+        <div ref={rolagem} onScroll={(ev) => { if (fase === "categorias" && ev.currentTarget.scrollTop > 40) aoPronto(true); }}
           className={cn("min-h-0 flex-1 px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", cheia ? "pt-11" : "pt-5", emFoco ? "overflow-y-hidden" : "overflow-y-auto")}>
           <div className="relative space-y-2.5">
             {emFoco && <div className="absolute -inset-x-5 -top-5 bottom-[-400px] z-20 bg-black/65 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500" aria-hidden />}

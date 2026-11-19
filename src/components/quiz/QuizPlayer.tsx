@@ -818,6 +818,7 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
     porque={areas.length ? `Escolhidos a dedo para quem quer evoluir em ${areas.map((a) => ROTULO_TEMA[a]).join(", ")}` : undefined}
     aviso={cfg.aviso || "Toque no livro do dia 1 para começar"} dica="Este é o seu livro de hoje — toque para começar" dicaDeslize="Role para o lado para ver os livros que foram selecionados para você" dicaRolar="Role para baixo e veja tudo o que você vai ter no app" fimTexto={cfg.fim_texto || "Gostou? O resumo completo está no seu plano"} textoBloqueado={cfg.texto_bloqueado || "Continue lendo no app"}
     textoSemAmostra="Escolha outro livro com o selo “Amostra grátis” para experimentar agora."
+    botaoPasso={(rotulo, aoTocar) => <Botao onClick={aoTocar}>{rotulo}</Botao>}
     botao={<Botao onClick={onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
 }
 
