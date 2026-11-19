@@ -339,11 +339,20 @@ function LivroAberto({ cheia, livro, segundos, fimTexto, textoBloqueado, textoSe
   const temTexto = paragrafos.length > 0;
   const tela = sub, setTela = aoSub;
 
-  if (tela === "ouvindo" && temAudio) {
-    return <Ouvindo cheia={cheia} livro={livro} url={am!.audio_url!} segundos={segundos} fimTexto={fimTexto} aoEvento={aoEvento} aoLiberar={aoLiberar} tempoInicial={tempoInicial} aoTempo={aoTempo}
-      aoFechar={() => setTela("detalhe")} aoLer={temTexto ? () => setTela("lendo") : undefined} />;
+  // 19/11 (Davi: "mesmo que a pessoa ative o modo texto, o áudio precisa continuar tocando"): o player fica montado enquanto o livro está aberto;
+  // "Ouvindo" mostra o player inteiro, "Lendo" mostra o texto com uma barrinha do áudio em cima, e no detalhe ele só pausa.
+  const emLeitura = tela === "lendo" && temTexto;
+  const emPlayer = tela === "ouvindo" && temAudio;
+  if (emPlayer || (emLeitura && temAudio)) {
+    return (
+      <>
+        <Ouvindo modo={emPlayer ? "cheio" : "mini"} cheia={cheia} livro={livro} url={am!.audio_url!} segundos={segundos} fimTexto={fimTexto} aoEvento={aoEvento} aoLiberar={aoLiberar} tempoInicial={tempoInicial} aoTempo={aoTempo}
+          aoFechar={() => setTela("detalhe")} aoLer={temTexto ? () => setTela("lendo") : undefined} />
+        {emLeitura && <Lendo cheia={cheia} livro={livro} paragrafos={paragrafos} textoBloqueado={textoBloqueado} aoVoltar={() => setTela("detalhe")} />}
+      </>
+    );
   }
-  if (tela === "lendo" && temTexto) {
+  if (emLeitura) {
     return <Lendo cheia={cheia} livro={livro} paragrafos={paragrafos} textoBloqueado={textoBloqueado} aoVoltar={() => setTela("detalhe")} />;
   }
 
@@ -389,10 +398,10 @@ function LivroAberto({ cheia, livro, segundos, fimTexto, textoBloqueado, textoSe
   );
 }
 
-function Ouvindo({ cheia, livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, aoLiberar, tempoInicial, aoTempo }: {
-  cheia?: boolean; livro: LivroAmostra; url: string; segundos: number; fimTexto: string; aoEvento: (d: string) => void; aoFechar: () => void; aoLer?: () => void; aoLiberar: () => void; tempoInicial: number; aoTempo: (t: number) => void;
+function Ouvindo({ modo = "cheio", cheia, livro, url, segundos, fimTexto, aoEvento, aoFechar, aoLer, aoLiberar, tempoInicial, aoTempo }: {
+  modo?: "cheio" | "mini"; cheia?: boolean; livro: LivroAmostra; url: string; segundos: number; fimTexto: string; aoEvento: (d: string) => void; aoFechar: () => void; aoLer?: () => void; aoLiberar: () => void; tempoInicial: number; aoTempo: (t: number) => void;
 }) {
-  const retomada = tempoInicial > 0.5;
+  const retomada = useRef(tempoInicial > 0.5).current;
   const [tocando, setTocando] = useState(false);
   const [atual, setAtual] = useState(tempoInicial);
   const [duracao, setDuracao] = useState(0);
@@ -427,7 +436,7 @@ function Ouvindo({ cheia, livro, url, segundos, fimTexto, aoEvento, aoFechar, ao
   avisarRef.current = avisar;
   useEffect(() => () => avisarRef.current(false), []);
   // Abriu o player = já começa a tocar (o toque no ▶ liberou o som). Voltando de onde parou: fica pausado no mesmo segundo, com o ▶ pronto.
-  useEffect(() => { if (!retomada) void audio.current?.play().catch(() => setTocando(false)); }, [retomada]);
+  useEffect(() => { if (!retomada && modo === "cheio") void audio.current?.play().catch(() => setTocando(false)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // Ao sair da tela (ou do player) o áudio para.
   useEffect(() => { const a = audio.current; return () => { a?.pause(); }; }, []);
 
@@ -443,8 +452,7 @@ function Ouvindo({ cheia, livro, url, segundos, fimTexto, aoEvento, aoFechar, ao
   const mudarVel = () => { const v = vel === 1 ? 1.25 : vel === 1.25 ? 1.5 : 1; setVel(v); if (audio.current) audio.current.playbackRate = v; };
   const sair = (fn: () => void) => () => { audio.current?.pause(); fn(); };
 
-  return (
-    <div className={cn("flex min-h-0 flex-1 flex-col px-5 pb-4 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300", cheia ? "pt-3" : "pt-5")} style={{ background: "linear-gradient(180deg,#C9DCEB 0%,#E6EEF7 45%,#F6F9FC 100%)" }}>
+  const elementoAudio = (
       <audio ref={audio} src={url} preload="auto" onError={aoLiberar}
         onLoadedMetadata={(ev) => { setDuracao(ev.currentTarget.duration || 0); if (retomada && ev.currentTarget.currentTime < 0.5) ev.currentTarget.currentTime = tempoInicial; }}
         onPlay={() => { jaTocou.current = true; setTocando(true); setAcabou(false); avisar(false); }}
@@ -455,6 +463,29 @@ function Ouvindo({ cheia, livro, url, segundos, fimTexto, aoEvento, aoFechar, ao
           if (t >= limite) { ev.currentTarget.pause(); setAcabou(true); evento.current(`ouviu=${Math.round(maxOuvido.current)}s;total=${Math.round(limite)}s;fim=sim`); }
         }}
         onEnded={() => { setAcabou(true); evento.current(`ouviu=${Math.round(maxOuvido.current)}s;total=${Math.round(limite)}s;fim=sim`); }} />
+  );
+  if (modo === "mini") {
+    // Lendo: barrinha do áudio em cima do texto (continua tocando; dá para pausar).
+    return (
+      <>
+        {elementoAudio}
+        <div className="flex shrink-0 items-center gap-2.5 px-4 py-1.5 text-white" style={{ background: AZUL }}>
+          <button type="button" onClick={alternar} aria-label={tocando ? "Pausar" : "Ouvir a amostra"} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20 active:scale-90">
+            {tocando ? <Pause className="h-3.5 w-3.5" fill="currentColor" /> : <Play className="ml-0.5 h-3.5 w-3.5" fill="currentColor" />}
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className={cn("truncate font-bold", cheia ? "text-xs" : "text-[11px]")}>{acabou ? fimTexto : `🔊 Ouvindo: ${livro.titulo}`}</p>
+            <div className="mt-1 h-1 rounded-full bg-white/25"><div className="h-full rounded-full bg-white transition-[width] duration-300" style={{ width: `${Math.min(100, (atual / limite) * 100)}%` }} /></div>
+          </div>
+          <span className="shrink-0 text-[11px] tabular-nums">{mmss(atual)}</span>
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      {elementoAudio}
+    <div className={cn("flex min-h-0 flex-1 flex-col px-5 pb-4 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300", cheia ? "pt-3" : "pt-5")} style={{ background: "linear-gradient(180deg,#C9DCEB 0%,#E6EEF7 45%,#F6F9FC 100%)" }}>
       <div className="relative flex shrink-0 items-center justify-between">
         <button type="button" onClick={sair(aoFechar)} aria-label="Voltar" className="flex h-9 w-9 items-center justify-center"><ChevronDown className="h-6 w-6" /></button>
         <p className={cn("absolute inset-x-0 text-center font-bold", cheia ? "text-base" : "text-sm")}>Ouvindo</p>
@@ -485,12 +516,13 @@ function Ouvindo({ cheia, livro, url, segundos, fimTexto, aoEvento, aoFechar, ao
           : (
             <div className="flex items-center justify-between px-1">
               <button type="button" onClick={mudarVel} className={cn("font-extrabold", cheia ? "text-sm" : "text-xs")}>{vel}x</button>
-              {aoLer ? <button type="button" onClick={sair(aoLer)} aria-label="Ler"><BookOpenText className="h-5 w-5" /></button> : <span />}
+              {aoLer ? <button type="button" onClick={aoLer} aria-label="Ler"><BookOpenText className="h-5 w-5" /></button> : <span />}
               <Share2 className="h-5 w-5" aria-hidden />
             </div>
           )}
       </div>
     </div>
+    </>
   );
 }
 
