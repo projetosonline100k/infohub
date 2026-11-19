@@ -787,25 +787,26 @@ function AmostraLivro({ t, base, e, perfil, escolhas, marcadas, f, cor, escuro, 
   const { livros, areas, plano } = usePlanoDaTela(telaPlano, e, perfil, escolhas, marcadas);
   const prateleira = useMemo(() => {
     if (!plano || !livros) return null;
+    // 19/11 (Davi): o livro do dia é UM dos livros com amostra cadastrada (os 5 do Instalivros), o que mais combina com a pessoa; só ele
+    // toca áudio, os outros da prateleira aparecem sem amostra. Mais temas em comum com as respostas vence (empate: o primeiro cadastrado).
+    const pc = telaPlano.plano ?? {};
+    const temas = new Set<string>([...areas, ...Object.entries(pc.livros_temas ?? {}).filter(([qid]) => escolhas[qid] === 1).flatMap(([, x]) => x), ...(pc.perfil_temas?.[perfil?.id ?? ""] ?? [])]);
+    let melhor: { livro: LivroPlano; n: number } | null = null;
+    for (const [id, a] of Object.entries(cfg.amostras ?? {})) {
+      const livro = livros.find((l) => String(l.id) === id);
+      if (!a || !livro) continue;
+      const n = livro.temas.filter((x) => temas.has(x)).length;
+      if (!melhor || n > melhor.n) melhor = { livro, n };
+    }
+    const doDia = melhor ? String(melhor.livro.id) : null;
     const montar = (livro: LivroPlano, rotulo: string, tema?: string): LivroAmostra => {
-      const a = cfg.amostras?.[String(livro.id)];
+      const a = String(livro.id) === doDia ? cfg.amostras?.[String(livro.id)] : undefined;
       return { id: String(livro.id), titulo: (a?.titulo || tituloBonito(livro.titulo)), autor: a?.autor || livro.autor, capa: a?.capa || livro.capa, minutos: a?.minutos ?? livro.audio, rotulo, tema: tema ? ROTULO_TEMA[tema as Tema] ?? tema : undefined,
         amostra: a ? { audio_url: a.audio_url, texto: a.texto_amostra } : undefined };
     };
-    const lista = plano.dias.slice(0, 8).map((d) => montar(d.livro, `Dia ${d.dia}`, d.tema));
-    if (!lista.some((l) => l.amostra)) {
-      // Nenhum livro do plano tem amostra: entra na frente a cadastrada com mais temas em comum com a pessoa (empate: a primeira cadastrada).
-      const pc = telaPlano.plano ?? {};
-      const temas = new Set<string>([...areas, ...Object.entries(pc.livros_temas ?? {}).filter(([qid]) => escolhas[qid] === 1).flatMap(([, x]) => x), ...(pc.perfil_temas?.[perfil?.id ?? ""] ?? [])]);
-      let melhor: { livro: LivroPlano; n: number } | null = null;
-      for (const [id, a] of Object.entries(cfg.amostras ?? {})) {
-        const livro = livros.find((l) => String(l.id) === id);
-        if (!a || !livro) continue;
-        const n = livro.temas.filter((x) => temas.has(x)).length;
-        if (!melhor || n > melhor.n) melhor = { livro, n };
-      }
-      if (melhor) lista.unshift(montar(melhor.livro, "Para você", melhor.livro.temas[0]));
-    }
+    const lista = plano.dias.slice(0, 8).filter((d) => String(d.livro.id) !== doDia).map((d) => montar(d.livro, `Dia ${d.dia}`, d.tema));
+    if (melhor) lista.unshift(montar(melhor.livro, "Dia 1", melhor.livro.temas[0]));
+    lista.forEach((l, i) => { l.rotulo = `Dia ${i + 1}`; });
     return lista;
   }, [plano, livros, areas, telaPlano, escolhas, perfil, cfg.amostras]);
   const semAmostra = !!prateleira && !prateleira.some((l) => l.amostra);

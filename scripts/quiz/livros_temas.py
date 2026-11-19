@@ -51,6 +51,10 @@ FORA_AUTORES = ["luiz herminio", "joyce meyer", "heward mills", "yonggi", "mike 
                 "bernardo stamateas", "andre steil", "dugand", "noam chomsky", "paulo sergio de ca", "lair ribeiro", "joel fuhrman", "pierre dukan", "david ludwig", "elizabeth gilbert", "elizabet gilbert"]
 
 
+# Livros que a regra de "fora" derruba por engano (o título tem "pai ") e o Davi quer no plano (19/11: Pai Rico, Pai Pobre).
+FORCAR = {43: ["financas", "mentalidade"]}
+
+
 def pontuar(texto, autor):
     t, a = " " + norm(texto) + " ", " " + norm(autor) + " "
     pts = {}
@@ -69,6 +73,8 @@ def fora(titulo, autor):
 
 def classificar(r):
     titulo = re.sub(r"\s+", " ", r["title"]).strip()
+    if int(r["id"]) in FORCAR:
+        return FORCAR[int(r["id"])]
     if fora(titulo, r["author"]):
         return []
     pts = pontuar(titulo, r["author"])
