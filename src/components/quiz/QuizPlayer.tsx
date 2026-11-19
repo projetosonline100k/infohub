@@ -1114,7 +1114,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 const ps = passos[j];
                 const pq = ps?.tipo === "pergunta" ? perguntas[ps.indice] : undefined;
                 if (!pq || !ehChat(pq) || escolhas[pq.id] === undefined) break;
-                historico.unshift({ texto: pq.texto ? f(pq.texto) : "", subtitulo: pq.texto ? pq.subtitulo : pq.subtitulo, miniatura: !pq.texto ? pq.imagem : undefined, resposta: pq.opcoes[escolhas[pq.id]]?.texto ?? "" });
+                historico.unshift({ texto: pq.texto ? f(pq.texto) : "", subtitulo: pq.subtitulo, imagem: pq.imagem, aparencia: pq.estilo === "livro" ? "livro" : "normal", resposta: pq.opcoes[escolhas[pq.id]]?.texto ?? "" });
               }
               return (
                 <ChatPergunta key={passo.indice} avatar={quadrosM?.[Q.PARADO]} cor={cor} escuro={escuro} historico={historico}

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 // "isso tem a ver com você?"; aí aparecem Não/Sim, a resposta vira balão da pessoa e a próxima pergunta chega logo abaixo.
 // As perguntas anteriores do mesmo bloco ficam em cima como histórico (sem animar de novo).
 export interface ItemChat { texto: string; imagem?: string; opcoes: [string, string] }
-export interface HistoricoChat { texto: string; subtitulo?: string; miniatura?: string; resposta: string }
+export interface HistoricoChat { texto: string; subtitulo?: string; imagem?: string; aparencia?: "livro" | "normal"; resposta: string }
 
 const reduzido = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -63,9 +63,9 @@ export function ChatPergunta({ avatar, nome = "Instalivros", cor, escuro, histor
         {historico.map((h, i) => (
           <div key={i} className="space-y-1.5">
             <div className="flex items-end gap-2"><Avatar pequeno />
-              <div className={cn("max-w-[82%] space-y-1 rounded-2xl rounded-tl-md px-3.5 py-2 text-[15px] font-semibold leading-snug", balaoInsta)}>
-                {h.miniatura && <img src={h.miniatura} alt="" draggable={false} className="h-14 w-10 rounded object-cover" />}
-                {h.texto && <p>{h.texto}</p>}{h.subtitulo && <p className="text-[13px] font-normal opacity-70">{h.subtitulo}</p>}
+              <div className={cn("max-w-[82%] space-y-2 rounded-2xl rounded-tl-md px-3.5 py-2.5", balaoInsta)}>
+                {h.imagem && <img src={h.imagem} alt="" draggable={false} className={cn("mx-auto rounded-xl object-cover", h.aparencia === "livro" ? "aspect-[2/3] h-[22dvh] max-h-[190px] shadow-md" : "max-h-[22dvh] w-full")} />}
+                {h.texto && <p className="text-[17px] font-bold leading-snug">{h.texto}</p>}{h.subtitulo && <p className="text-[15px] font-semibold">{h.subtitulo}</p>}
               </div>
             </div>
             <div className="flex justify-end"><span className="rounded-2xl rounded-br-md px-3.5 py-2 text-[15px] font-bold text-white" style={{ background: cor }}>{h.resposta}</span></div>
