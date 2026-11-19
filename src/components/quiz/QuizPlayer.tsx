@@ -2025,8 +2025,8 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
           )}
         </span>
         <span className="shrink-0 text-right">
-          <span className="block text-lg font-extrabold leading-tight">{p.parcelas ? `${p.parcelas.n}x ${p.parcelas.valor}` : p.preco}</span>
-          <span className="block text-[11px] text-white/60">{p.parcelas ? `ou ${p.preco} à vista` : "à vista"}</span>
+          <span className="block text-lg font-extrabold leading-tight">{p.parcelas ? p.parcelas.valor.replace(/^R\$\s*/, "R$ ") : p.preco}</span>
+          <span className="block text-[11px] text-white/60">{p.parcelas ? (o.preco_descricao || "por mês") : "à vista"}</span>
         </span>
       </button>
     );
@@ -2050,7 +2050,7 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
             {planos.length > 2 && !folha && <button type="button" onClick={() => setFolha(true)} className="block w-full text-center text-xs font-bold uppercase tracking-wide text-white/70 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
             <button type="button" onClick={() => abrir(sel)} className="flex min-h-14 w-full items-center justify-center rounded-full bg-[#f4efe6] px-6 text-base font-extrabold uppercase tracking-[0.2em] text-[#14110d] transition-transform active:scale-[0.98]">CONTINUAR</button>
             <p className="text-center text-xs text-white/70">
-              {sel?.parcelas ? `${sel.preco} à vista (apenas ${sel.parcelas.n}x de ${sel.parcelas.valor})` : sel?.preco}
+              {sel?.parcelas ? `${sel.preco} à vista ou ${sel.parcelas.n}x de ${sel.parcelas.valor}` : sel?.preco}
               {bonusDoPlano(sel).length > 0 && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 {bonusDoPlano(sel).length > 1 ? "com os seus bônus" : "com o seu bônus"}: {bonusDoPlano(sel).map(nomeNoPlano).join(" + ")}</span>}
             </p>
           </div>
