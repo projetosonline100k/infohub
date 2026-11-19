@@ -1232,10 +1232,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 {quadrosM && !livro
                   ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
                   : quadrosM && livro
-                    ? <>
-                        <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.subtitulo`} valor={q.subtitulo || "Este livro é interessante para você?"} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
-                        <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-center text-2xl font-bold leading-snug" />
-                      </>
+                    // 19/11 (Davi: "o título poderia ser a pergunta do Insta, só que maior"): a pergunta vai no balão do mascote, em letra de título, sem título repetido embaixo.
+                    ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto || q.subtitulo || ""} mostrar={f(q.texto || q.subtitulo)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
                     : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
                 {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />}
                 {(fotoPergunta || q.imagem_nota) && (livro
