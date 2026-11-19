@@ -78,7 +78,7 @@ export interface BarraFixa { rotulo: string; valor: number; legenda?: string; de
 export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
-  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra";
+  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil";
   /** Tela "amostra" (18/11): "Seu primeiro livro chegou" — toca no livro, abre com Ouvir/Ler e um trecho grátis. */
   amostra?: ConfigAmostra;
   /** Tela "barras_mentores" (15/11): barras de livros por ano dos mentores que a pessoa escolheu. */
@@ -94,6 +94,8 @@ export interface TelaQuiz {
   /** Tela "plano_livros" (13/11): como escolher os livros do plano (ver src/lib/quiz/plano.ts). */
   plano?: ConfigPlano;
   titulo?: string; texto?: string; botao?: string;
+  /** Tela "previa_perfil" (19/11): o Instalivros comenta no chat o que já deu para notar da pessoa; `perfis` tem as mensagens de cada perfil (id → lista), `padrao` vale quando não há perfil. {nome} e {perfil} funcionam. */
+  previa?: { perfis?: Record<string, string[]>; padrao?: string[] };
   /** Tela "carregando": quanto dura, em segundos (padrão 9,5; a de "salvando" é curta). */
   duracao?: number;
   imagem?: string; imagem_nota?: string;
@@ -319,6 +321,8 @@ export function montarPassos(e: EstruturaQuiz, temCaptura: boolean): Passo[] {
 // {resposta:q2} → a resposta da pergunta q2 (o "resumo" da opção, se tiver,
 // senão o texto com a 1ª letra minúscula).
 // Sem nome, o {nome} some com a vírgula: "{nome}, seu plano" → "Seu plano"; "Anotado, {nome}!" → "Anotado!".
+/** Nome e sobrenome (19/11, Davi): pelo menos duas palavras com 2+ letras. */
+export const nomeCompleto = (nome?: string) => (nome ?? "").trim().split(/\s+/).filter((w) => w.replace(/[^\p{L}]/gu, "").length >= 2).length >= 2;
 export const primeiroNome = (nome?: string) => (nome ?? "").trim().split(/\s+/)[0] ?? "";
 const capitalizar = (s: string) => s.charAt(0).toLocaleUpperCase("pt-BR") + s.slice(1).toLocaleLowerCase("pt-BR");
 function comNome(texto: string, nome?: string): string {

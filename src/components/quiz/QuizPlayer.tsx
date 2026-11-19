@@ -4,7 +4,7 @@ import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, preencher, primeiroNome,
+  barrasDoResultado, calcularPerfil, comValor, corDoQuiz, montarPassos, nomeCompleto, preencher, primeiroNome,
   type BarraFixa, type CampoCaptura, type Depoimento, type EstruturaQuiz, type PerfilQuiz, type PlanoOferta, type TelaQuiz, type VisualQuiz,
 } from "@/lib/quiz/quiz";
 import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
@@ -14,7 +14,7 @@ import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, ty
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
 import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
-import { ChatPergunta, type HistoricoChat } from "./ChatPergunta";
+import { ChatMensagens, ChatPergunta, type HistoricoChat } from "./ChatPergunta";
 import { BotaoSegurar, CartaoCompromisso, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
 import { cn } from "@/lib/utils";
 
@@ -685,13 +685,14 @@ function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, 
   const cap = e.captura;
   const ir = (prox: number) => { setSaindo(true); window.setTimeout(() => { setFase(prox); setSaindo(false); }, 220); };
   useEffect(() => { if (fase === 2 && !editar) { confeteFase(); somFaseConcluida(); const t = window.setTimeout(confeteFase, 350); return () => window.clearTimeout(t); } }, [fase, editar]);
-  const nomeOk = (contato.nome ?? "").trim().length >= 2;
+  const nomeOk = nomeCompleto(contato.nome ?? "");
   const contatoOk = pedir.filter((c) => c !== "nome").every((c) => { const v = (contato[c] ?? "").trim(); return c === "whatsapp" ? v.replace(/\D/g, "").length >= 10 : c === "email" ? /^\S+@\S+\.\S+$/.test(v) : v.length >= 2; });
   const campo = (c: CampoCaptura, rotulo: string, placeholder: string, auto: string) => (
     <label key={c} className="block space-y-1 text-sm">
       <Txt caminho={`captura.rotulos.${c}`} valor={cap?.rotulos?.[c] || rotulo} className={suave} />
       <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={placeholder} inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={auto} autoFocus={!editar}
         className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")} onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
+      {c === "nome" && (contato.nome ?? "").trim().length >= 2 && !nomeCompleto(contato.nome ?? "") && <span className="block text-xs text-amber-600">Coloque o nome e o sobrenome.</span>}
     </label>
   );
   const ok = (rotulo: ReactNode, habilitado: boolean, carregando = false) => (
@@ -1037,10 +1038,14 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     const v = (contato[c] ?? "").trim();
     if (c === "whatsapp") return v.replace(/\D/g, "").length >= 10;   // com DDD
     if (c === "email") return /^\S+@\S+\.\S+$/.test(v);
+    if (c === "nome") return nomeCompleto(v);
     return v.length >= 2;
   });
   const suave = escuro ? "text-neutral-400" : "text-muted-foreground";
   // Amostra do app no quiz de verdade e no Testar → Celular (19/11, Davi: "quero ver como o usuário vê"; só o editor fica de fora): ocupa a tela toda, sem barra de progresso nem "Instalivros" em cima.
+  // Perguntas em chat: o contêiner da tela não muda entre uma pergunta e a outra (a conversa só cresce, sem recarregar nem animar de novo).
+  const perguntaAtual = passo.tipo === "pergunta" ? perguntas[passo.indice] : undefined;
+  const emConversa = !editar && !!perguntaAtual?.chat && !perguntaAtual.multipla && perguntaAtual.opcoes.length === 2;
   const amostraCheia = telaCheia && !editar && passo.tipo === "tela" && telas[passo.indice]?.tipo === "amostra";
 
   return (
@@ -1068,7 +1073,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
         {/* Tela cheia: a pergunta começa sempre na mesma altura (título fixo, imagem abaixo dele);
             abertura, respiro e "analisando" ficam no centro da tela. */}
-        <div key={pos} className={cn(ENTRA, telaCheia && (passo.tipo === "pergunta" ? "mt-[2dvh] w-full" : "my-auto w-full"))}>
+        <div key={emConversa ? "conversa" : pos} className={cn(ENTRA, telaCheia && (passo.tipo === "pergunta" ? "mt-[2dvh] w-full" : "my-auto w-full"))}>
           {passo.tipo === "intro" && (
             <div className="space-y-5 py-4 text-center">
               <Img caminho="intro.imagem" url={e.intro?.imagem} nota={e.intro?.imagem_nota} redonda className="mx-auto h-24 w-24" />
@@ -1119,7 +1124,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 historico.unshift({ texto: pq.texto ? f(pq.texto) : "", subtitulo: pq.subtitulo, imagem: pq.imagem, aparencia: pq.estilo === "livro" ? "livro" : "normal", resposta: pq.opcoes[escolhas[pq.id]]?.texto ?? "", respostaImagem: pq.opcoes[escolhas[pq.id]]?.imagem });
               }
               return (
-                <ChatPergunta key={passo.indice} avatar={quadrosM?.[Q.PARADO]} cor={cor} escuro={escuro} historico={historico}
+                <ChatPergunta key="chat-conversa" chave={q.id} avatar={quadrosM?.[Q.PARADO]} cor={cor} escuro={escuro} historico={historico}
                   texto={q.texto ? f(q.texto) : ""} subtitulo={q.subtitulo} imagem={fotoPergunta} imagemNota={teste ? q.imagem_nota : undefined} aparencia={livro ? "livro" : "normal"}
                   opcoes={q.opcoes.map((o) => ({ texto: o.texto, imagem: o.imagem }))} simNao={simNao} marcada={escolhas[q.id]}
                   aoEscolher={(k) => { setEscolhas((x) => ({ ...x, [q.id]: k })); if (!travado) window.setTimeout(avancar, 900); }} />
@@ -1351,6 +1356,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <div className="sticky bottom-3 z-10 pt-1">{rodape}</div>
                 </div>
               );
+            }
+            if (t.tipo === "previa_perfil") {
+              const msgs = ((perfil && t.previa?.perfis?.[perfil.id]) || t.previa?.padrao || []).map((m) => f(m).replace(/\{perfil\}/g, perfil?.nome ?? ""));
+              return <ChatMensagens key={`${t.id}-${perfil?.id ?? ""}`} avatar={quadrosMascote?.[Q.PARADO]} cor={cor} escuro={escuro} mensagens={msgs} botao={t.botao || "Continuar"} aoContinuar={avancar} atraso={editar ? 0 : 1100} />;
             }
             if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar || travado ? undefined : avancar} suave={suave} />;
             if (t.tipo === "perfil") {
