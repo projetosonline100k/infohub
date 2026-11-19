@@ -691,8 +691,9 @@ function CapturaEtapas({ e, contato, setContato, pedir, f, quadros, selos, cor, 
     <label key={c} className="block space-y-1 text-sm">
       <Txt caminho={`captura.rotulos.${c}`} valor={cap?.rotulos?.[c] || rotulo} className={suave} />
       <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={placeholder} inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={auto} autoFocus={!editar}
-        className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")} onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
-      {c === "nome" && (contato.nome ?? "").trim().length >= 2 && !nomeCompleto(contato.nome ?? "") && <span className="block text-xs text-amber-600">Coloque o nome e o sobrenome.</span>}
+        aria-invalid={c === "nome" && (contato.nome ?? "").trim().length >= 1 && !nomeCompleto(contato.nome ?? "")}
+        className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5", c === "nome" && (contato.nome ?? "").trim().length >= 1 && !nomeCompleto(contato.nome ?? "") && "border-red-500 focus-visible:ring-red-500")} onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
+      {c === "nome" && (contato.nome ?? "").trim().length >= 1 && !nomeCompleto(contato.nome ?? "") && <span className="block text-xs font-semibold text-red-500">Coloque o nome e o sobrenome.</span>}
     </label>
   );
   const ok = (rotulo: ReactNode, habilitado: boolean, carregando = false) => (

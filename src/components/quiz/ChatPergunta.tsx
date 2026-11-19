@@ -42,7 +42,7 @@ function Cabecalho({ avatar, nome, cor, escuro, digitando }: { avatar?: string; 
 function Balao({ m, i, aparencia, escuro, avatar, nome, cor, animar }: { m: Msg; i: number; aparencia?: "livro" | "normal"; escuro: boolean; avatar?: string; nome: string; cor: string; animar: boolean }) {
   const balaoInsta = escuro ? "bg-white/10 text-white" : "bg-gray-100 text-neutral-900";
   return (
-    <div className={cn("flex items-end gap-2", animar && "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300")}>
+    <div className={cn("flex items-end gap-2", animar && "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300")}>
       {i === 0 ? <Avatar avatar={avatar} nome={nome} cor={cor} pequeno /> : <span className="w-7 shrink-0" />}
       <div className={cn("max-w-[82%] space-y-2 rounded-2xl rounded-tl-md px-3.5 py-2.5", balaoInsta)}>
         {m.imagem && <img src={m.imagem} alt="" draggable={false} className={cn("mx-auto rounded-xl object-cover", aparencia === "livro" ? "aspect-[2/3] h-[22dvh] max-h-[190px] shadow-md" : "max-h-[22dvh] w-full")} />}
@@ -55,7 +55,7 @@ function Balao({ m, i, aparencia, escuro, avatar, nome, cor, animar }: { m: Msg;
 
 function Resposta({ texto, imagem, cor, animar }: OpcaoChat & { cor: string; animar: boolean }) {
   return (
-    <div className={cn("flex justify-end", animar && "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-300")}>
+    <div className={cn("flex justify-end", animar && "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300")}>
       <span className="flex flex-col items-end gap-1.5 rounded-2xl rounded-br-md px-3.5 py-2 text-[15px] font-bold text-white" style={{ background: cor }}>
         {imagem && <img src={imagem} alt="" draggable={false} className="h-20 w-28 rounded-lg object-cover" />}{texto}
       </span>
@@ -112,8 +112,10 @@ export function ChatPergunta({ chave, avatar, nome = "Instalivros", cor, escuro,
         {respondeu && <Resposta texto={opcoes[escolhida].texto} imagem={opcoes[escolhida].imagem} cor={cor} animar />}
       </div>
 
-      {!digitando && !respondeu && (
-        <div className={cn("grid gap-2.5 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300", opcoes.length === 2 ? "grid-cols-2" : "grid-cols-1")}>
+      {/* O espaço das respostas fica reservado o tempo todo (invisível enquanto ele digita e depois de responder): a tela não encolhe e cresce de novo,
+          então a conversa só desce (19/11, Davi: "eu vou para cima e depois para baixo"). */}
+      {(
+        <div aria-hidden={digitando || respondeu} className={cn("grid gap-2.5", opcoes.length === 2 ? "grid-cols-2" : "grid-cols-1", (digitando || respondeu) ? "pointer-events-none invisible" : "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300")}>
           {opcoes.map((o, k) => {
             const marcadaEsta = marcadaFinal === k;
             return (
@@ -155,8 +157,8 @@ export function ChatMensagens({ avatar, nome = "Instalivros", cor, escuro, mensa
         {mensagens.slice(0, vistas).map((t, i) => <Balao key={i} m={{ texto: t, forte: i === 1 }} i={i} escuro={escuro} avatar={avatar} nome={nome} cor={cor} animar />)}
         {digitando && <div className="flex items-end gap-2"><Avatar avatar={avatar} nome={nome} cor={cor} pequeno /><Digitando escuro={escuro} /></div>}
       </div>
-      {!digitando && (
-        <button type="button" onClick={aoContinuar} className="flex w-full items-center justify-center rounded-2xl px-6 py-4 text-base font-bold text-white shadow-lg transition active:scale-95 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+      {(
+        <button type="button" onClick={aoContinuar} aria-hidden={digitando} tabIndex={digitando ? -1 : 0} className={cn("flex w-full items-center justify-center rounded-2xl px-6 py-4 text-base font-bold text-white shadow-lg transition active:scale-95", digitando ? "pointer-events-none invisible" : "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300")}
           style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }}>{botao}</button>
       )}
       <div ref={fim} className="h-1" />
