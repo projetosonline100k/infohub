@@ -47,7 +47,7 @@ type Voo = { livro: LivroAmostra; de: DOMRect; alvo: { left: number; top: number
 // (classes escritas por extenso para o Tailwind enxergar; sem a dica embaixo sobram 24 px a mais)
 const ALTURA_CHEIA = "h-[calc(100dvh_-_max(env(safe-area-inset-top),1.25rem)_-_max(env(safe-area-inset-bottom),1.5rem)_-_66px)] [@media(min-height:760px)]:h-[calc(100dvh_-_max(env(safe-area-inset-top),1.25rem)_-_max(env(safe-area-inset-bottom),1.5rem)_-_90px)]";
 
-export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, botaoPasso, aoEvento, suave, chave = "amostra", cheia = false, aoVoltarQuiz }: {
+export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDeslize, dicaRolar, fimTexto, textoBloqueado, textoSemAmostra, segundos, botao, botaoPasso, aoEvento, suave, chave: chaveBase = "amostra", cheia = false, aoVoltarQuiz, semMemoria = false }: {
   livros: LivroAmostra[]; nome: string; titulo: ReactNode; porque?: string; aviso: string; dica: string; dicaDeslize: string; dicaRolar?: string; fimTexto: string; textoBloqueado: string; textoSemAmostra: string; segundos: number; botao: ReactNode;
   /** Botão das partes 1 e 2 (mesmo estilo do Continuar); a pessoa avança tocando nele. */
   botaoPasso?: (rotulo: string, aoTocar: () => void) => ReactNode;
@@ -59,7 +59,11 @@ export function AmostraTela({ livros, nome, titulo, porque, aviso, dica, dicaDes
   cheia?: boolean;
   /** Setinha discreta por cima da home do app que volta uma tela do quiz (sem o cabeçalho do quiz). */
   aoVoltarQuiz?: () => void;
+  /** Testar (19/11, Davi: "no celular eu vejo por etapas"): não lembra onde a pessoa parou, e a tela sempre recomeça na etapa 1. */
+  semMemoria?: boolean;
 }) {
+  const aleatoria = useRef(Math.random().toString(36).slice(2));
+  const chave = semMemoria ? `${chaveBase}#${aleatoria.current}` : chaveBase;
   const salvo = useMemo(() => lerEstado(chave), [chave]);
   const [aberto, setAberto] = useState<LivroAmostra | null>(() => livros.find((l) => l.id === salvo.livroId) ?? null);
   const [sub, setSubTela] = useState<SubTela>(() => (livros.some((l) => l.id === salvo.livroId) ? salvo.sub ?? "detalhe" : "detalhe"));
