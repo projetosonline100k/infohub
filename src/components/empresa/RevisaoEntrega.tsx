@@ -160,6 +160,25 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     return () => { vivo = false; };
   }, [aberto, tarefaId, versao]);
   useEffect(() => { setVersao(0); setMudancas({}); conhecidos.current = {}; setQuiz(null); setVersaoSel(null); setVersoes([]); setRaizId(null); setAbaQuiz("editar"); setTelaSel(null); setLateralQuiz("conversa"); setAndamento(null); estruturaConhecida.current = ""; }, [tarefaId]);
+  // 19/11 (Davi: "em vez de eu apertar ⌘R"): com o quiz aberto, confere a cada 4 s se ele mudou no banco (o Roy ou o Claude Code
+  // editaram) e recarrega sozinho. Só olha a data de atualização; se a estrutura for igual à que já está na tela, nada pisca.
+  const quizVisto = useRef<string | null>(null);
+  const quizAberto = quiz?.id ?? null;
+  useEffect(() => {
+    quizVisto.current = null;
+    if (!aberto || !quizAberto) return;
+    const conferir = async () => {
+      if (document.hidden || versaoSelRef.current) return;
+      const { data } = await db.from("quizzes").select("atualizado_em").eq("id", quizAberto).maybeSingle();
+      const em = (data as { atualizado_em?: string } | null)?.atualizado_em ?? null;
+      if (!em) return;
+      if (quizVisto.current && quizVisto.current !== em) setVersao((v) => v + 1);
+      quizVisto.current = em;
+    };
+    void conferir();
+    const t = window.setInterval(() => void conferir(), 4000);
+    return () => window.clearInterval(t);
+  }, [aberto, quizAberto]);
   // Enquanto ele trabalha na resposta, confere o documento a cada 3 s (ele pode entregar por partes).
   useEffect(() => {
     if (!escrevendo) return;
