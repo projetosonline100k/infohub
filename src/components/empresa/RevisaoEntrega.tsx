@@ -183,6 +183,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const alteracoesNaoPublicadas = !!quiz && quiz.status === "publicado" && JSON.stringify(quiz.estrutura) !== JSON.stringify(quiz.estrutura_publicada ?? quiz.estrutura);
   // Publicar também envia o código do Mac ao GitHub e espera o site novo subir (18/11, Davi): só então publica o conteúdo.
   const [faseCodigo, setFaseCodigo] = useState<null | "enviando" | "atualizando">(null);
+  const [segEspera, setSegEspera] = useState(0);
+  const cancelouEspera = useRef(false);
   const [codigo, setCodigo] = useState<SituacaoCodigo>({ tipo: "desconhecido" });
   const [publicadoEm, setPublicadoEm] = useState<string | null>(null);
   useEffect(() => {
@@ -196,6 +198,8 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   /** true = o site no ar já tem o código do Mac (ou não é desktop); false = falhou, não publicar. */
   const garantirCodigo = async (): Promise<boolean> => {
     if (!isDesktop()) return true;
+    cancelouEspera.current = false;
+    setSegEspera(0);
     const est = await estadoDoCodigo(true);
     if (!est) { toast.error("Não consegui conferir o código no Mac. Não publiquei."); return false; }
     try {
@@ -205,8 +209,19 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
         commit = (await enviarCodigo()).commit_local;
       }
       setFaseCodigo("atualizando");
-      const subiu = await esperarSiteNoAr(commit);
-      if (!subiu) { toast.error("O código foi enviado, mas o site ainda não atualizou (passou de 6 min). Não publiquei o quiz: confira a Vercel e tente de novo."); return false; }
+      const inicio = Date.now();
+      const relogio = setInterval(() => setSegEspera(Math.floor((Date.now() - inicio) / 1000)), 1000);
+      let res: Awaited<ReturnType<typeof esperarSiteNoAr>>;
+      try { res = await esperarSiteNoAr(commit, { cancelado: () => cancelouEspera.current }); } finally { clearInterval(relogio); }
+      if (res === "cancelado") { toast.message("Espera cancelada. Quiz não publicado."); return false; }
+      if (res === "sem_checagem") {
+        toast.error("Não consegui conferir o site (a checagem falhou 3 vezes). O código foi enviado.", {
+          duration: 20000,
+          action: { label: "Publicar mesmo assim", onClick: () => { void publicar(true); } },
+        });
+        return false;
+      }
+      if (res === "tempo") { toast.error("O código foi enviado, mas o site ainda não atualizou (passou de 6 min). Não publiquei o quiz: confira a Vercel e tente de novo."); return false; }
       setCodigo({ tipo: "ok" });
       return true;
     } catch (e) {
@@ -214,9 +229,9 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
       return false;
     } finally { setFaseCodigo(null); }
   };
-  const publicar = async () => {
+  const publicar = async (semConferirSite = false) => {
     if (!quiz) return;
-    if (!(await garantirCodigo())) return;
+    if (!semConferirSite && !(await garantirCodigo())) return;
     const marcarHorario = () => setPublicadoEm(format(new Date(), "HH:mm"));
     if (quiz.status === "revisar" && !quiz.variante_de) { await aprovar(); return; }
     if (quiz.status === "revisar" && quiz.variante_de) {   // versão (V2…): publica direto, sem passar pela aprovação da entrega
@@ -404,8 +419,11 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     title={quiz.status === "publicado" ? (alteracoesNaoPublicadas ? "Levar as alterações para o link do quiz" : "O link já está igual a esta versão") : "Publicar o quiz: o link passa a valer e a contar respostas"}
                     onClick={() => void publicar()}>
                     {salvando || faseCodigo ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
-                    {faseCodigo === "enviando" ? "Enviando código…" : faseCodigo === "atualizando" ? "Atualizando o site… (~1–2 min)" : quiz.status === "revisar" ? "Publicar" : alteracoesNaoPublicadas ? "Publicar alterações" : "Publicado"}
+                    {faseCodigo === "enviando" ? "Enviando código…" : faseCodigo === "atualizando" ? `Atualizando o site… ${Math.floor(segEspera / 60)}:${String(segEspera % 60).padStart(2, "0")}` : quiz.status === "revisar" ? "Publicar" : alteracoesNaoPublicadas ? "Publicar alterações" : "Publicado"}
                   </Button>
+                )}
+                {faseCodigo === "atualizando" && (
+                  <button type="button" onClick={() => { cancelouEspera.current = true; }} className="rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted">Cancelar</button>
                 )}
                 {isDesktop() && codigo.tipo !== "desconhecido" && (
                   <span className={cn("text-[11px] font-medium", codigo.tipo === "ok" ? "text-emerald-600 dark:text-emerald-300" : "text-amber-600 dark:text-amber-300")}

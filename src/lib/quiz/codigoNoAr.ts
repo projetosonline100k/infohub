@@ -11,14 +11,20 @@ export async function commitNoAr(): Promise<string | null> {
   } catch { return null; }
 }
 
-/** Espera o site subir com o commit enviado (até ~6 min). */
-export async function esperarSiteNoAr(commit: string, aoTentar?: () => void): Promise<boolean> {
+export type ResultadoEspera = "ok" | "tempo" | "cancelado" | "sem_checagem";
+
+/** Espera o site subir com o commit enviado (até ~6 min). Se a checagem falhar 3 vezes seguidas, desiste ("sem_checagem"). */
+export async function esperarSiteNoAr(commit: string, opcoes: { cancelado?: () => boolean } = {}): Promise<ResultadoEspera> {
+  let falhas = 0;
   for (let i = 0; i < 72; i++) {
-    aoTentar?.();
-    if ((await commitNoAr()) === commit) return true;
+    if (opcoes.cancelado?.()) return "cancelado";
+    const noAr = await commitNoAr();
+    if (noAr === commit) return "ok";
+    falhas = noAr === null ? falhas + 1 : 0;
+    if (falhas >= 3) return "sem_checagem";
     await new Promise((ok) => setTimeout(ok, 5000));
   }
-  return false;
+  return opcoes.cancelado?.() ? "cancelado" : "tempo";
 }
 
 export type SituacaoCodigo =
