@@ -1,18 +1,27 @@
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ChevronDown, Coins, Copy, ExternalLink, Handshake, Link2, Loader2, Pause, Play, ShoppingCart, Trash2, UserPlus, Users } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { ChevronDown, Coins, Copy, ExternalLink, Handshake, KeyRound, Link2, Loader2, Megaphone, Pause, Play, ShoppingCart, Trash2, UserPlus, Users, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { agrupar, diasAtras, hojeLocal, type Modo } from "@/lib/embaixadorSerie";
 import { brl, codigoEmbaixador, conviteDoEmbaixador, linkDoEmbaixador, ORIGEM_PUBLICA, urlPublica } from "@/lib/embaixador";
 
 const db = supabase as unknown as SupabaseClient;
 
 interface Embaixador { id: string; nome: string; email: string; codigo: string; comissao_pct: number; ativo: boolean; convite: string | null; auth_user_id: string | null }
 interface Resumo { embaixador_id: string; visitas: number; leads: number; vendas: number; bruto: number; reembolsado: number }
+interface SerieLinha { dia: string; embaixador_id: string; leads: number; vendas: number; receita: number; postagens: number }
+interface PostagemAdm { titulo: string; plataforma: string; link: string | null; status: string; postada_em: string }
+type Metrica = "vendas" | "leads" | "receita" | "postagens";
+const METRICAS: [Metrica, string][] = [["vendas", "Vendas"], ["leads", "Leads"], ["receita", "Receita"], ["postagens", "Postagens"]];
+const MODOS: [Modo, string][] = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]];
+const CORES = ["#38bdf8", "#f59e0b", "#10b981", "#a78bfa", "#f43f5e", "#22d3ee", "#ec4899", "#84cc16"];
+const gerarSenha = () => { const a = "abcdefghjkmnpqrstuvwxyz23456789"; return Array.from(crypto.getRandomValues(new Uint32Array(10)), (n) => a[n % a.length]).join(""); };
 interface LinkLiberado { id: string; titulo: string; destino: string; ativo: boolean; embaixador_id: string | null }
 interface LeadAdm { nome: string | null; email: string | null; whatsapp: string | null; criada_em: string; status: string }
 interface VendaAdm { data: string; tipo: string; produto: string; comprador: string; valor: number; comissao: number }
@@ -40,11 +49,17 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
   const [quizzes, setQuizzes] = useState<{ slug: string; titulo: string }[]>([]);
   const [dias, setDias] = useState(30);
   const [novoAberto, setNovoAberto] = useState(false);
-  const [f, setF] = useState({ nome: "", email: "", comissao: "30" });
+  const [f, setF] = useState({ nome: "", email: "", senha: "", comissao: "30" });
+  const [serie, setSerie] = useState<SerieLinha[]>([]);
+  const [metrica, setMetrica] = useState<Metrica>("vendas");
+  const [modo, setModo] = useState<Modo>("dia");
+  const [filtroEmb, setFiltroEmb] = useState("");
+  const [credenciais, setCredenciais] = useState<{ nome: string; email: string; senha: string } | null>(null);
+  const [novaSenha, setNovaSenha] = useState("");
   const [l, setL] = useState({ titulo: "", destino: "", para: "" });
   const [salvando, setSalvando] = useState(false);
   const [aberto, setAberto] = useState<string | null>(null);
-  const [ficha, setFicha] = useState<{ leads: LeadAdm[]; vendas: VendaAdm[] } | null>(null);
+  const [ficha, setFicha] = useState<{ leads: LeadAdm[]; vendas: VendaAdm[]; posts: PostagemAdm[] } | null>(null);
 
   const carregar = useCallback(async () => {
     const [{ data: e }, { data: ls }, { data: qz }] = await Promise.all([
@@ -66,6 +81,14 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
     return () => { vivo = false; };
   }, [clienteId, dias, lista]);
 
+  useEffect(() => {
+    let vivo = true;
+    void db.rpc("embaixadores_serie", { p_cliente: clienteId, p_dias: dias || 3650 }).then(({ data }) => {
+      if (vivo) setSerie(((data ?? []) as SerieLinha[]).map((x) => ({ ...x, dia: String(x.dia).slice(0, 10), leads: Number(x.leads), vendas: Number(x.vendas), receita: Number(x.receita), postagens: Number(x.postagens) })));
+    });
+    return () => { vivo = false; };
+  }, [clienteId, dias, lista]);
+
   // ficha do embaixador aberto: leads (com contato, só o administrador vê) e vendas
   useEffect(() => {
     setFicha(null);
@@ -75,7 +98,8 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
     void Promise.all([
       db.from("quiz_respostas").select("nome, email, whatsapp, criada_em, status").eq("cliente_id", clienteId).filter("utm->>utm_content", "eq", `aff_${emb.codigo}`).order("criada_em", { ascending: false }).limit(100),
       db.rpc("embaixador_vendas_admin", { p_embaixador: emb.id }),
-    ]).then(([a, b]) => { if (vivo) setFicha({ leads: (a.data ?? []) as LeadAdm[], vendas: ((b.data ?? []) as VendaAdm[]).map((v) => ({ ...v, valor: Number(v.valor), comissao: Number(v.comissao) })) }); });
+      db.from("embaixador_postagens").select("titulo, plataforma, link, status, postada_em").eq("embaixador_id", emb.id).order("postada_em", { ascending: false }).limit(100),
+    ]).then(([a, b, c]) => { if (vivo) setFicha({ leads: (a.data ?? []) as LeadAdm[], vendas: ((b.data ?? []) as VendaAdm[]).map((v) => ({ ...v, valor: Number(v.valor), comissao: Number(v.comissao) })), posts: (c.data ?? []) as PostagemAdm[] }); });
     return () => { vivo = false; };
   }, [aberto, clienteId, lista]);
 
@@ -89,22 +113,45 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
     return { leads, vendas, liquido, comissao, ativos: (lista ?? []).filter((x) => x.ativo).length };
   }, [lista, resumo]);
 
+  const postsPor = useMemo(() => { const m = new Map<string, number>(); for (const x of serie) m.set(x.embaixador_id, (m.get(x.embaixador_id) ?? 0) + x.postagens); return m; }, [serie]);
+  const grafico = useMemo(() => {
+    const ids = filtroEmb ? [filtroEmb] : (lista ?? []).map((x) => x.id);
+    const linhas = serie.filter((x) => ids.includes(x.embaixador_id)).map((x) => ({ dia: x.dia, [x.embaixador_id]: x[metrica] })) as ({ dia: string } & Record<string, number | string>)[];
+    const hoje = hojeLocal();
+    const de = dias > 0 ? diasAtras(dias - 1) : serie.reduce((m, x) => (x.dia < m ? x.dia : m), hoje);
+    return { ids, pontos: agrupar(linhas, modo, ids, de, hoje) };
+  }, [serie, lista, filtroEmb, metrica, modo, dias]);
+
   async function cadastrar(ev: FormEvent) {
     ev.preventDefault();
     if (!codigoEmbaixador(f.nome)) { toast.error("Nome muito curto para gerar o código."); return; }
+    if (f.senha && f.senha.length < 6) { toast.error("A senha precisa ter ao menos 6 caracteres."); return; }
     setSalvando(true);
     let erro: { code?: string; message: string } | null = null;
+    let id: string | null = null;
     for (const sufixo of ["", "2", "3", String(Math.floor(Math.random() * 900 + 100))]) {
-      const { error } = await db.from("embaixadores").insert({ cliente_id: clienteId, nome: f.nome.trim(), email: f.email.trim().toLowerCase(), codigo: codigoEmbaixador(f.nome, sufixo)!, comissao_pct: Number(f.comissao) || 0 });
-      erro = error;
+      const { data, error } = await db.from("embaixadores").insert({ cliente_id: clienteId, nome: f.nome.trim(), email: f.email.trim().toLowerCase(), codigo: codigoEmbaixador(f.nome, sufixo)!, comissao_pct: Number(f.comissao) || 0 }).select("id").single();
+      erro = error; id = (data as { id: string } | null)?.id ?? null;
       if (!error || error.code !== "23505") break;   // 23505 = código já existe: tenta outro
     }
+    if (erro || !id) { setSalvando(false); toast.error(erro?.message ?? "Não consegui cadastrar"); return; }
+    // Com senha: a conta já nasce pronta. Sem senha: fica o convite por link.
+    if (f.senha) {
+      const { data, error } = await supabase.functions.invoke("embaixador-conta", { body: { action: "criar", embaixador_id: id, senha: f.senha } });
+      if (error || (data as { error?: string } | null)?.error) toast.error(`Cadastrei, mas não consegui criar a conta: ${(data as { error?: string } | null)?.error ?? error?.message}. Use o convite da ficha.`);
+      else setCredenciais({ nome: f.nome.trim(), email: f.email.trim().toLowerCase(), senha: (data as { existente?: boolean }).existente ? "(a conta já existia: ele usa a senha que já tem)" : f.senha });
+    } else toast.success("Embaixador cadastrado. Abra a ficha e copie o convite.");
     setSalvando(false);
-    if (erro) { toast.error(erro.message); return; }
-    setF({ nome: "", email: "", comissao: f.comissao }); setNovoAberto(false);
-    toast.success("Embaixador cadastrado. Abra a ficha dele e copie o convite.");
+    setF({ nome: "", email: "", senha: "", comissao: f.comissao }); setNovoAberto(false);
     void carregar();
   }
+  async function trocarSenha(x: Embaixador) {
+    if (novaSenha.length < 6) { toast.error("A senha precisa ter ao menos 6 caracteres."); return; }
+    const { data, error } = await supabase.functions.invoke("embaixador-conta", { body: { action: "senha", embaixador_id: x.id, senha: novaSenha } });
+    if (error || (data as { error?: string } | null)?.error) { toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Não consegui trocar"); return; }
+    setCredenciais({ nome: x.nome, email: x.email, senha: novaSenha }); setNovaSenha("");
+  }
+  const mensagemAcesso = (c: { nome: string; email: string; senha: string }) => `Oi ${c.nome.split(" ")[0]}! Seu acesso de embaixador:\n${ORIGEM_PUBLICA}/embaixador\nE-mail: ${c.email}\nSenha: ${c.senha}`;
   const copiar = async (texto: string, aviso: string) => { await navigator.clipboard.writeText(texto); toast.success(aviso); };
   const alternar = async (x: Embaixador) => { await db.from("embaixadores").update({ ativo: !x.ativo }).eq("id", x.id); void carregar(); };
   async function remover(x: Embaixador) {
@@ -139,8 +186,13 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
         <form onSubmit={cadastrar} className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
           <label className="space-y-1 text-xs text-muted-foreground">Nome<Input className="h-9 w-48" required autoFocus value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} /></label>
           <label className="space-y-1 text-xs text-muted-foreground">E-mail (o do login dele)<Input className="h-9 w-60" type="email" required value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
+          <label className="space-y-1 text-xs text-muted-foreground">Senha de acesso
+            <div className="flex gap-1"><Input className="h-9 w-40" type="text" autoComplete="off" placeholder="mín. 6 caracteres" value={f.senha} onChange={(e) => setF({ ...f, senha: e.target.value })} />
+              <Button type="button" variant="outline" size="icon" className="h-9 w-9" title="Gerar senha" onClick={() => setF({ ...f, senha: gerarSenha() })}><Wand2 className="h-4 w-4" /></Button></div>
+          </label>
           <label className="space-y-1 text-xs text-muted-foreground">Comissão (%)<Input className="h-9 w-24" type="number" min={0} max={100} step="0.5" value={f.comissao} onChange={(e) => setF({ ...f, comissao: e.target.value })} /></label>
           <Button type="submit" disabled={salvando}>{salvando ? <Loader2 className="h-4 w-4 animate-spin" /> : "Cadastrar"}</Button>
+          <p className="w-full text-xs text-muted-foreground">Com senha, a conta já fica pronta e você manda o acesso. Sem senha, fica um convite por link na ficha dele.</p>
         </form>
       )}
 
@@ -150,6 +202,37 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
         <Cartao icone={ShoppingCart} titulo="Vendas" valor={String(totais.vendas)} />
         <Cartao icone={Coins} titulo="Receita líquida" valor={brl(totais.liquido)} />
         <Cartao icone={Coins} titulo="Comissão a pagar" valor={brl(totais.comissao)} nota="sobre o líquido" />
+      </div>
+
+      {credenciais && (
+        <div className="space-y-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+          <div className="text-sm font-medium">Acesso pronto: {credenciais.nome}</div>
+          <pre className="whitespace-pre-wrap rounded-lg bg-background/60 p-3 text-xs">{mensagemAcesso(credenciais)}</pre>
+          <div className="flex gap-2"><Button size="sm" onClick={() => void copiar(mensagemAcesso(credenciais), "Mensagem copiada: é só colar no WhatsApp")}><Copy className="mr-1.5 h-4 w-4" />Copiar mensagem</Button><Button size="sm" variant="ghost" onClick={() => setCredenciais(null)}>Fechar</Button></div>
+        </div>
+      )}
+
+      <div className="rounded-xl border border-border bg-card p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="text-sm font-medium">Desempenho</div>
+          <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{METRICAS.map(([m, n]) => <button key={m} onClick={() => setMetrica(m)} className={cn("rounded-md px-2.5 py-1", metrica === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
+          <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{MODOS.map(([m, n]) => <button key={m} onClick={() => setModo(m)} className={cn("rounded-md px-2.5 py-1", modo === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
+          <select className={cn(campo, "ml-auto h-8 text-xs")} value={filtroEmb} onChange={(e) => setFiltroEmb(e.target.value)}><option value="">Todos os embaixadores</option>{lista.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select>
+        </div>
+        {!lista.length ? <p className="py-10 text-center text-sm text-muted-foreground">O gráfico aparece quando houver embaixadores.</p> : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={grafico.pontos} margin={{ left: -15, right: 8, top: 8 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                <XAxis dataKey="rotulo" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} tickFormatter={(v: number) => (metrica === "receita" ? `R$${v}` : String(v))} />
+                <Tooltip formatter={(v: number, n: string) => [metrica === "receita" ? brl(v) : v, lista.find((x) => x.id === n)?.nome ?? n]} labelFormatter={(r) => `${modo === "semana" ? "Semana de " : ""}${r}`} />
+                {grafico.ids.length > 1 && <Legend formatter={(n: string) => lista.find((x) => x.id === n)?.nome ?? n} wrapperStyle={{ fontSize: 11 }} />}
+                {grafico.ids.map((id) => <Bar key={id} dataKey={id} stackId="a" fill={CORES[lista.findIndex((x) => x.id === id) % CORES.length]} radius={grafico.ids.length === 1 ? [4, 4, 0, 0] : 0} />)}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
@@ -163,7 +246,7 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
           <table className="w-full text-sm">
             <thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr>
               <th className="px-4 py-2 font-medium">Embaixador</th><th className="px-3 py-2 text-right font-medium">Visitas</th><th className="px-3 py-2 text-right font-medium">Leads</th><th className="px-3 py-2 text-right font-medium">Vendas</th>
-              <th className="px-3 py-2 text-right font-medium">Líquido</th><th className="px-3 py-2 text-right font-medium">Comissão</th><th className="px-3 py-2 font-medium">Acesso</th><th className="w-8" /></tr></thead>
+              <th className="px-3 py-2 text-right font-medium">Posts</th><th className="px-3 py-2 text-right font-medium">Líquido</th><th className="px-3 py-2 text-right font-medium">Comissão</th><th className="px-3 py-2 font-medium">Acesso</th><th className="w-8" /></tr></thead>
             <tbody>{lista.map((x) => {
               const r = resumo.get(x.id); const liq = r ? r.bruto - r.reembolsado : 0; const aberta = aberto === x.id;
               return (
@@ -173,6 +256,7 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
                     <td className="px-3 py-2.5 text-right tabular-nums">{r?.visitas ?? "–"}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r?.leads ?? "–"}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r?.vendas ?? "–"}</td>
+                    <td className="px-3 py-2.5 text-right tabular-nums">{postsPor.get(x.id) ?? 0}</td>
                     <td className="px-3 py-2.5 text-right tabular-nums">{r ? brl(liq) : "–"}</td>
                     <td className="px-3 py-2.5 text-right font-medium tabular-nums">{r ? brl((liq * x.comissao_pct) / 100) : "–"}</td>
                     <td className="px-3 py-2.5">
@@ -183,19 +267,34 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
                     <td className="pr-3"><ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", aberta && "rotate-180")} /></td>
                   </tr>
                   {aberta && (
-                    <tr className="border-t border-border bg-muted/20"><td colSpan={8} className="space-y-5 p-4">
+                    <tr className="border-t border-border bg-muted/20"><td colSpan={9} className="space-y-5 p-4">
                       <div className="flex flex-wrap items-center gap-2">
                         {!x.auth_user_id && x.convite && <Button size="sm" onClick={() => void copiar(conviteDoEmbaixador(ORIGEM_PUBLICA, x.convite!), "Convite copiado: mande para ele")}><Copy className="mr-1.5 h-4 w-4" />Copiar convite</Button>}
                         <Button size="sm" variant="outline" onClick={() => void alternar(x)}>{x.ativo ? <><Pause className="mr-1.5 h-4 w-4" />Pausar</> : <><Play className="mr-1.5 h-4 w-4" />Reativar</>}</Button>
                         <Button size="sm" variant="outline" onClick={() => void remover(x)}><Trash2 className="mr-1.5 h-4 w-4" />Remover</Button>
                         <span className="ml-auto font-mono text-xs text-muted-foreground">marca: aff_{x.codigo}</span>
                       </div>
+                      {x.auth_user_id && (
+                        <div className="flex flex-wrap items-center gap-2 text-sm">
+                          <KeyRound className="h-4 w-4 text-muted-foreground" />
+                          <Input className="h-8 w-48" type="text" autoComplete="off" placeholder="nova senha (mín. 6)" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
+                          <Button size="sm" variant="outline" onClick={() => setNovaSenha(gerarSenha())}><Wand2 className="mr-1.5 h-4 w-4" />Gerar</Button>
+                          <Button size="sm" onClick={() => void trocarSenha(x)}>Trocar senha</Button>
+                        </div>
+                      )}
 
                       <div>
                         <div className="mb-1.5 text-xs font-medium text-muted-foreground">Links dele (já com a marca)</div>
                         {!linksDele(x).length ? <p className="text-sm text-muted-foreground">Nenhum link liberado para ele ainda.</p> : <div className="space-y-1.5">{linksDele(x).map((k) => { const url = linkDoEmbaixador(k.destino, x.codigo); return (
                           <div key={k.id} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm"><Link2 className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="shrink-0 font-medium">{k.titulo}</span><span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{url}</span><Button size="sm" variant="ghost" onClick={() => void copiar(url, "Link copiado")}><Copy className="h-4 w-4" /></Button></div>
                         ); })}</div>}
+                      </div>
+
+                      <div>
+                        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground"><Megaphone className="h-3.5 w-3.5" />Postagens {ficha ? `(${ficha.posts.length})` : ""}</div>
+                        {!ficha ? <Loader2 className="h-4 w-4 animate-spin" /> : !ficha.posts.length ? <p className="text-sm text-muted-foreground">Ele ainda não registrou postagens.</p> : (
+                          <div className="max-h-48 overflow-y-auto rounded-lg border border-border bg-card"><table className="w-full text-xs"><tbody>{ficha.posts.map((pp, i) => <tr key={i} className="border-t border-border first:border-0"><td className="px-3 py-1.5"><div className="font-medium">{pp.titulo}</div><div className="text-muted-foreground">{pp.plataforma}{pp.link && <> · <a className="underline" href={pp.link} target="_blank" rel="noreferrer">abrir</a></>}</div></td><td className="px-3 py-1.5 text-right text-muted-foreground">{dia(pp.postada_em)}<div>{pp.status === "programada" ? "programada" : "postada"}</div></td></tr>)}</tbody></table></div>
+                        )}
                       </div>
 
                       <div className="grid gap-4 md:grid-cols-2">

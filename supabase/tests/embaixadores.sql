@@ -88,5 +88,28 @@ DO $$ BEGIN
   BEGIN PERFORM * FROM public.embaixador_vendas_admin('10000000-0000-0000-0000-000000000407'); RAISE EXCEPTION 'estranho viu as vendas';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
+-- postagens: o embaixador registra, vê só as dele; o admin enxerga na série
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000402',true);
+DO $$ BEGIN
+  PERFORM public.embaixador_postagem_registrar('Reel teste', 'instagram', 'https://instagram.com/p/abc', now());
+  PERFORM public.embaixador_postagem_registrar('Futuro', 'tiktok', NULL, now() + interval '2 days');
+  IF (SELECT count(*) FROM public.embaixador_postagens_minhas()) <> 2 THEN RAISE EXCEPTION 'postagens do embaixador'; END IF;
+  IF (public.embaixador_painel(30)->>'postagens')::int <> 1 THEN RAISE EXCEPTION 'só a postada conta'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_postagens) <> 0 THEN RAISE EXCEPTION 'embaixador leu a tabela de postagens'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000401',true);
+DO $$ BEGIN
+  IF (SELECT coalesce(sum(postagens), 0) FROM public.embaixadores_serie('10000000-0000-0000-0000-000000000404', 30)) <> 1 THEN RAISE EXCEPTION 'série: postagens'; END IF;
+  IF (SELECT coalesce(sum(vendas), 0) FROM public.embaixadores_serie('10000000-0000-0000-0000-000000000404', 30) WHERE embaixador_id = '10000000-0000-0000-0000-000000000407') <> 1 THEN RAISE EXCEPTION 'série: vendas da Ana'; END IF;
+  IF (SELECT coalesce(sum(vendas), 0) FROM public.embaixadores_serie('10000000-0000-0000-0000-000000000404', 30)) <> 2 THEN RAISE EXCEPTION 'série: vendas (Ana + Bia)'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_postagens) <> 2 THEN RAISE EXCEPTION 'admin não vê as postagens'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000403',true);
+DO $$ BEGIN
+  BEGIN PERFORM * FROM public.embaixadores_serie('10000000-0000-0000-0000-000000000404', 30); RAISE EXCEPTION 'estranho viu a série';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+  BEGIN PERFORM public.embaixador_postagem_registrar('x', 'instagram', NULL, now()); RAISE EXCEPTION 'estranho registrou postagem';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
 RESET ROLE;
 ROLLBACK;
