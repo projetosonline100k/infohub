@@ -135,12 +135,32 @@ export function EstruturaDoQuiz({ laminas, estrutura, faltas, selecionada, onEsc
 }
 
 /** A tela selecionada, grande: texto e imagem editáveis no lugar. */
-export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnterior, onProxima, onMudar, onImagem, onDuplicar, onExcluir, respostas, caminho }: {
+export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnterior, onProxima, onMudar, onImagem, onDuplicar, onExcluir, respostas, caminho, laminas, onEscolher }: {
   titulo: string; estrutura: EstruturaQuiz; lamina: Lamina; numero: number; total: number; onAnterior: () => void; onProxima: () => void;
   onMudar: (e: EstruturaQuiz) => void; onImagem: (arquivo: File) => Promise<string>; onDuplicar?: () => void; onExcluir?: () => void;
   respostas?: Record<string, number>; caminho?: string;   // caminho escolhido no mapa (ex.: gênero Mulher): mostra as imagens daquele caminho
+  /** Para o modo Testar dentro da mesma tela (19/11): as lâminas e como escolher uma (o mapa acompanha o teste). */
+  laminas?: Lamina[]; onEscolher?: (chave: string) => void;
 }) {
   const [modo, setModo] = useState<"celular" | "computador">("celular");
+  // Editar e Testar numa tela só (19/11, Davi: "é praticamente a mesma coisa"): Testar roda o quiz de verdade a partir da tela escolhida e o mapa acompanha.
+  const [rodar, setRodar] = useState(false);
+  const [salto, setSalto] = useState<{ n: number; passo: number; perfil?: string | null }>({ n: 0, passo: lamina.passo, perfil: lamina.perfil });
+  const noPasso = useRef<{ pos: number; perfil: string | null } | null>(null);
+  useEffect(() => {
+    if (!rodar) return;
+    const p = noPasso.current;
+    if (p && p.pos === lamina.passo) return;   // a escolha veio do próprio teste: não salta de volta
+    setSalto((x) => ({ n: x.n + 1, passo: lamina.passo, perfil: lamina.perfil }));
+  }, [lamina.chave, rodar]); // eslint-disable-line react-hooks/exhaustive-deps
+  const passoRodando = (pos: number, perfil: string | null) => {
+    noPasso.current = { pos, perfil };
+    const l = laminas?.find((x) => x.passo === pos && (!x.perfil || x.perfil === perfil)) ?? laminas?.find((x) => x.passo === pos);
+    if (l && l.chave !== lamina.chave) onEscolher?.(l.chave);
+  };
+  const jogador = (extra: { telaCheia?: boolean }) => rodar
+    ? <QuizPlayer key="rodando" titulo={titulo} estrutura={estrutura} teste {...extra} irPara={salto} onPasso={passoRodando} />
+    : <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste {...extra} passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} respostas={respostas} />;
   const caixa = useRef<HTMLDivElement>(null);
   const [escala, setEscala] = useState(0.8);
   useEffect(() => {
@@ -156,6 +176,11 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_50%_40%,#0f1c33,#0a1019_70%)] p-3">
       <div className="flex items-center justify-between gap-2">
+        <span className="flex gap-0.5 rounded-lg bg-white/5 p-0.5 text-xs">
+          {([[false, "Editar"], [true, "Testar"]] as const).map(([v, rotulo]) => (
+            <button key={rotulo} type="button" onClick={() => setRodar(v)} className={cn("rounded-md px-2.5 py-1", rodar === v ? "bg-cyan-400/20 font-medium text-cyan-100" : "text-white/60 hover:text-white")}>{rotulo}</button>
+          ))}
+        </span>
         {caminho && <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-[11px] font-semibold text-fuchsia-300">Caminho: {caminho}</span>}
         <button type="button" className={botao} onClick={onAnterior} disabled={numero <= 1}><ChevronLeft className="h-3.5 w-3.5" />Anterior</button>
         <span className="text-sm font-medium tabular-nums">Tela {numero} de {total}</span>
@@ -171,13 +196,13 @@ export function PreviaDaTela({ titulo, estrutura, lamina, numero, total, onAnter
           <div className="shrink-0" style={{ width: 395 * escala, height: 820 * escala, filter: "drop-shadow(0 0 2px rgba(34,211,238,.9)) drop-shadow(0 0 28px rgba(34,211,238,.35))" }}>
             <div className="flex h-[820px] w-[395px] origin-top-left flex-col" style={{ transform: `scale(${escala})` }}>
               <MolduraCelular escuro={estrutura.tema === "escuro"} visual={estrutura.visual}>
-                <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste telaCheia passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} respostas={respostas} />
+                {jogador({ telaCheia: true })}
               </MolduraCelular>
             </div>
           </div>
         ) : (
           <div className="min-h-0 w-full overflow-y-auto rounded-lg border">
-            <QuizPlayer key={lamina.chave} titulo={titulo} estrutura={estrutura} teste passoFixo={lamina.passo} perfilFixo={lamina.perfil} editar onMudar={onMudar} onImagem={onImagem} respostas={respostas} />
+            {jogador({})}
           </div>
         )}
       </div>

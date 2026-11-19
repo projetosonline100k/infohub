@@ -392,7 +392,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
             {quiz?.estrutura && (
               <div className="flex shrink-0 flex-wrap items-center gap-2">
                 <div className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
-                  {([["editar", Pencil, "Editar quiz"], ["testar", Play, "Testar"], ["metricas", BarChart3, "Métricas"]] as const).map(([a, Icone, rotulo]) => (
+                  {([["editar", Pencil, "Editar e testar"], ["metricas", BarChart3, "Métricas"]] as const).map(([a, Icone, rotulo]) => (
                     <button key={a} type="button" onClick={() => setAbaQuiz(a)}
                       className={cn("flex items-center gap-1.5 rounded-md px-3 py-1", abaQuiz === a ? "bg-background font-medium shadow-sm" : "text-muted-foreground hover:text-foreground")}><Icone className="h-3.5 w-3.5" />{rotulo}</button>
                   ))}
@@ -502,7 +502,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     <PreviaDaTela titulo={quiz!.titulo} estrutura={quiz!.estrutura!} lamina={tela!} numero={iTela + 1} total={laminas.length}
                       onAnterior={() => escolherTela(laminas[iTela - 1]?.chave ?? tela!.chave)} onProxima={() => escolherTela(laminas[iTela + 1]?.chave ?? tela!.chave)}
                       onMudar={(e) => void salvarQuiz(e)} onImagem={enviarImagemQuiz}
-                      respostas={variante ? { [variante.pid]: variante.idx } : undefined} caminho={variante?.nome}
+                      respostas={variante ? { [variante.pid]: variante.idx } : undefined} caminho={variante?.nome} laminas={laminas} onEscolher={escolherTela}
                       onDuplicar={tela!.tipo === "pergunta" ? () => { const n = duplicarPergunta(quiz!.estrutura!, tela!.indice!); void salvarQuiz(n.estrutura); if (n.chave) setTelaSel(n.chave); } : undefined}
                       onExcluir={(tela!.tipo === "pergunta" && quiz!.estrutura!.perguntas.length > 1) || tela!.tipo === "tela" ? () => excluirLamina(tela!) : undefined} />
                   </div>
