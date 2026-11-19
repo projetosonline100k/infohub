@@ -158,13 +158,17 @@ def aprovar(id_):
             status(id_, "aprovando", "Enviando pro Drive…")
             aviso_drive = None
             try:
+                if not danilo.USAR_DRIVE:      # 19/11: sem Drive; o final fica no disco da VPS (a Dalila lê daqui)
+                    raise FileNotFoundError("sem Drive")
                 danilo.rclone("copyto", str(final), f"{remoto}/{entrega.get('nome_final') or id_}.mp4", timeout=3600)
+            except FileNotFoundError:
+                pass
             except OSError as e:          # Drive cheio/fora: o final fica no Mac (é dele que a Dalila lê)
                 log("entrega no Drive falhou", id_, str(e)[:200])
                 aviso_drive = ("O vídeo foi aprovado, mas a cópia não subiu para Eu.davi/Editado no Drive"
                                + (" (o Drive está cheio)." if "quota" in str(e).lower() else ".") + " O Reel segue normal.")
             destino_txt = str(final)      # a Dalila lê daqui (a cópia de entrega fica em Eu.davi/Editado no Drive)
-            if entrega.get("bruto_remoto"):
+            if entrega.get("bruto_remoto") and danilo.USAR_DRIVE:
                 br = entrega["bruto_remoto"]
                 nome = br.rsplit("/", 1)[-1]
                 if not nome.startswith("[EDITADO]"):

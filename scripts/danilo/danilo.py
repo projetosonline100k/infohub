@@ -126,7 +126,14 @@ def rclone(*args, timeout=3600):
     return r.stdout
 
 
+# 19/11/2026 (Davi: "não vamos usar mais o Drive, somente o armazenamento da VPS"): o Drive estava com a cota cheia e a entrega
+# falhava. Agora o bruto entra só pela pasta local (Para o Danilo → servidor) e o final fica no disco da VPS. DANILO_USAR_DRIVE=1 volta ao antigo.
+USAR_DRIVE = os.environ.get("DANILO_USAR_DRIVE") == "1"
+
+
 def listar_remoto():
+    if not USAR_DRIVE:
+        return []
     return [Remoto(x["Name"], x["Size"]) for x in json.loads(rclone("lsjson", "--files-only", REMOTO_ENTRADA, timeout=120) or "[]")]
 BASE = Path.home() / ".infopro-hub" / "danilo"
 EDICOES = BASE / "edicoes"
