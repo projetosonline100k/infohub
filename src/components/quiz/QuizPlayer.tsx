@@ -1039,8 +1039,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     return v.length >= 2;
   });
   const suave = escuro ? "text-neutral-400" : "text-muted-foreground";
-  // Amostra do app no quiz de verdade (não no editor/teste): ocupa a tela toda, sem barra de progresso nem "Instalivros" em cima.
-  const amostraCheia = telaCheia && !teste && !editar && passo.tipo === "tela" && telas[passo.indice]?.tipo === "amostra";
+  // Amostra do app no quiz de verdade e no Testar → Celular (19/11, Davi: "quero ver como o usuário vê"; só o editor fica de fora): ocupa a tela toda, sem barra de progresso nem "Instalivros" em cima.
+  const amostraCheia = telaCheia && !editar && passo.tipo === "tela" && telas[passo.indice]?.tipo === "amostra";
 
   return (
     <QuizCtx.Provider value={ctx}>
@@ -1049,7 +1049,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
       <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro", v && "quiz-visual",
         telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}
         style={v ? { ...varsDoVisual(v), ...(telaCheia ? {} : { background: v.fundo_css }) } : passo.tipo === "tela" && telas[passo.indice]?.fundo ? { background: telas[passo.indice].fundo } : undefined}>
-        {teste && !editar && !travado && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
+        {teste && !editar && !travado && !amostraCheia && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
         {editar && !travado && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
             <button type="button" onClick={voltar} disabled={pos === 0} className="flex items-center gap-1 disabled:opacity-40"><ArrowLeft className="h-3 w-3" />Anterior</button>
