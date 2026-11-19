@@ -264,8 +264,8 @@ function HomeApp({ cheia, livros, titulo, porque, dica, dicaDeslize, dicaRolar, 
               <div className="relative">
                 <div ref={faixa} onScroll={aoRolarFaixa} className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ scrollPaddingLeft: 20 }}>
                   {livros.map((l, i) => (
-                    <button key={l.id} type="button" aria-label={l.amostra ? `Abrir ${l.titulo}` : l.titulo} disabled={!l.amostra} onClick={l.amostra ? (ev) => abrir(l, ev.currentTarget.querySelector("img") ?? ev.currentTarget) : undefined}
-                      className={cn("relative shrink-0 snap-start text-left transition-all duration-700", l.amostra ? "active:scale-95" : "cursor-default")} style={{ width: capaW }}>
+                    <button key={l.id} type="button" aria-label={l.amostra && !deslizando ? `Abrir ${l.titulo}` : l.titulo} disabled={!l.amostra || deslizando} onClick={l.amostra && !deslizando ? (ev) => abrir(l, ev.currentTarget.querySelector("img") ?? ev.currentTarget) : undefined}
+                      className={cn("relative shrink-0 snap-start text-left transition-all duration-700", l.amostra && !deslizando ? "active:scale-95" : "cursor-default")} style={{ width: capaW }}>
                       <span className={cn("mb-1 inline-block rounded-full px-2 py-0.5 font-extrabold uppercase tracking-wider text-white", cheia ? "text-[12px]" : "text-[10px]")} style={{ background: i === atual ? AZUL : MARINHO }}>{l.rotulo ?? `Dia ${i + 1}`}</span>
                       <span className="relative block">
                         <img src={l.capa} alt="" draggable={false} loading="lazy" className={cn("w-full rounded-lg object-cover shadow-md transition-all duration-700", !l.amostra && "opacity-70")} style={{ height: capaW * 1.4 }} />
