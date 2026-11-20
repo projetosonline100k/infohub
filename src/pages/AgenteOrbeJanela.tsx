@@ -3,41 +3,34 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { startWindowDrag, openMainWindow } from "@/lib/desktop/window";
 import { cn } from "@/lib/utils";
+import { ORBES, trabalhoAtual, type AgenteOrbe, type TrabalhoAgente } from "@/components/empresa/orbeAgentes";
 
-// Janela nativa do Lauro (17/11/2026, Davi: "quando ele estiver fazendo algo, preciso que ele fique flutuando no meu pc, e
-// algo em volta dele sinalizando"): transparente, sempre por cima de tudo. Criada por LauroOrbeNativa enquanto há pedido do
-// Lauro em andamento; se fecha sozinha quando ele termina. Mostra o anel girando em volta da bolinha e o que ele está fazendo.
+// Janela nativa de um agente (17/11/2026 Lauro, Davi: "quando ele estiver fazendo algo, preciso que ele fique flutuando no meu pc, e
+// algo em volta dele sinalizando"; 20/11 também o Danilo): transparente, sempre por cima de tudo. Criada por AgenteOrbeNativa enquanto o
+// agente tem trabalho em andamento; se fecha sozinha quando ele termina. Mostra o anel girando em volta da bolinha e o que ele está fazendo.
 document.documentElement.classList.add("jarvis-window");
 const db = supabase as unknown as SupabaseClient;
-interface Pedido { id: string; mensagem: string; status: string; criado_em: string }
 
-function resumoDoPedido(mensagem: string): string {
-  if (/^(NOVO ROTEIRO|AJUSTE no roteiro)/.test(mensagem)) return "Produzindo um roteiro";
-  const t = mensagem.replace(/\s+/g, " ").trim();
-  return t.length > 70 ? `${t.slice(0, 70)}…` : t;
-}
-
-export default function LauroOrbeJanela() {
-  const [pedido, setPedido] = useState<Pedido | null>(null);
+export default function AgenteOrbeJanela({ agente }: { agente: AgenteOrbe }) {
+  const orbe = ORBES[agente];
+  const [trabalho, setTrabalho] = useState<TrabalhoAgente | null>(null);
   const [parado, setParado] = useState(false);
   const vazios = useRef(0);
 
   useEffect(() => {
     document.documentElement.classList.add("jarvis-window");
-    void import("@tauri-apps/api/core").then(({ invoke }) => invoke<boolean>("lauro_controle_estado")).then(setParado).catch(() => undefined);
-  }, []);
+    if (orbe.controle) void import("@tauri-apps/api/core").then(({ invoke }) => invoke<boolean>("lauro_controle_estado")).then(setParado).catch(() => undefined);
+  }, [orbe.controle]);
 
   const checar = useCallback(async () => {
-    const desde = new Date(Date.now() - 30 * 60_000).toISOString();
-    const { data, error } = await db.from("esteira_dark_pedidos").select("id, mensagem, status, criado_em").in("status", ["pendente", "processando"]).gte("criado_em", desde).order("criado_em", { ascending: false }).limit(1);
-    if (error) return;   // sem sessão/sem rede: não fecha por causa disso
-    const p = ((data ?? []) as Pedido[])[0] ?? null;
-    setPedido(p);
-    vazios.current = p ? 0 : vazios.current + 1;
+    const t = await trabalhoAtual(agente, db).catch(() => undefined);
+    if (t === undefined) return;   // sem sessão/sem rede: não fecha por causa disso
+    setTrabalho(t);
+    vazios.current = t ? 0 : vazios.current + 1;
     if (vazios.current >= 3) {   // ~9 s sem nada: terminou, a janela some
       try { const { getCurrentWindow } = await import("@tauri-apps/api/window"); await getCurrentWindow().destroy(); } catch { /* fora do app */ }
     }
-  }, []);
+  }, [agente]);
   useEffect(() => {
     void checar();
     const t = window.setInterval(() => void checar(), 3000);
@@ -62,11 +55,11 @@ export default function LauroOrbeJanela() {
         </span>
       </div>
       <div className="flex max-w-[210px] flex-col items-center gap-1 rounded-2xl border border-cyan-300/30 bg-[#0c1b27]/95 px-3 py-1.5 text-center shadow-xl">
-        <p className="text-[11px] font-semibold text-cyan-200">Lauro trabalhando…</p>
-        {pedido && <p className="line-clamp-2 text-[10px] leading-tight text-white/60">{resumoDoPedido(pedido.mensagem)}</p>}
+        <p className="text-[11px] font-semibold text-cyan-200">{orbe.nome} trabalhando…</p>
+        {trabalho && <p className="line-clamp-2 text-[10px] leading-tight text-white/60">{trabalho.resumo}</p>}
         <div className="mt-0.5 flex gap-1">
           <button type="button" onClick={() => void openMainWindow()} className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] text-white/80 hover:bg-white/20">Abrir</button>
-          <button type="button" onClick={() => void alternarControle()} className={cn("rounded-md border px-2 py-0.5 text-[10px] font-semibold", parado ? "border-amber-400/60 bg-amber-500/20 text-amber-200" : "border-rose-400/50 text-rose-300 hover:bg-rose-500/10")}>{parado ? "Liberar controle" : "Parar controle"}</button>
+          {orbe.controle && <button type="button" onClick={() => void alternarControle()} className={cn("rounded-md border px-2 py-0.5 text-[10px] font-semibold", parado ? "border-amber-400/60 bg-amber-500/20 text-amber-200" : "border-rose-400/50 text-rose-300 hover:bg-rose-500/10")}>{parado ? "Liberar controle" : "Parar controle"}</button>}
         </div>
       </div>
     </div>

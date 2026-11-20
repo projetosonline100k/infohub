@@ -16,7 +16,7 @@ import { useAlarmesAgenda } from "@/hooks/useAlarmesAgenda";
 import { useFocoTotal } from "@/hooks/useFocoTimer";
 import { EquipeGlobal } from "@/components/empresa/EquipeGlobal";
 import { OrbeVivo } from "@/components/empresa/OrbeVivo";
-import { LauroOrbeNativa } from "@/components/empresa/LauroOrbeNativa";
+import { AgenteOrbeNativa } from "@/components/empresa/AgenteOrbeNativa";
 import { SinoImplementacoes } from "@/components/layout/SinoImplementacoes";
 
 // Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
@@ -169,7 +169,7 @@ export const DashboardLayout = () => {
       <GlobalSearchCommand open={buscaAberta} onOpenChange={setBuscaAberta} />
       <EquipeGlobal clienteDaTela={clienteRotaId} />
       <OrbeVivo />
-      <LauroOrbeNativa />
+      <AgenteOrbeNativa />
       <SinoImplementacoes />
 
       {/* Assistente virtual flutuante — única instância, visível em toda

@@ -10,7 +10,7 @@ import ChatbotPublico from "./pages/ChatbotPublico";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import JarvisWindow from "./pages/JarvisWindow";
-import LauroOrbeJanela from "./pages/LauroOrbeJanela";
+import AgenteOrbeJanela from "./pages/AgenteOrbeJanela";
 import Privacidade from "./pages/Privacidade";
 import InstagramConectado from "./pages/InstagramConectado";
 import { AuthProvider, useAuth } from "./auth/AuthProvider";
@@ -66,7 +66,8 @@ const App = () => (
               sem DashboardLayout e sem ProtectedRoute (essa nunca redireciona
               pra /login: ver JarvisWindow.tsx). */}
           <Route path="/jarvis" element={<JarvisWindow />} />
-          <Route path="/lauro-orbe" element={<LauroOrbeJanela />} />
+          <Route path="/lauro-orbe" element={<AgenteOrbeJanela agente="lauro" />} />
+          <Route path="/danilo-orbe" element={<AgenteOrbeJanela agente="danilo" />} />
           <Route path="/foco-lateral" element={<FocoLateral />} />
           <Route path="/notas-janela" element={<NotasWindow />} />
           <Route path="/agenda-janela" element={<AgendaWindow />} />

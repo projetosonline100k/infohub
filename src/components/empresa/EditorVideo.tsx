@@ -247,13 +247,14 @@ export function EditorVideo({ edicao, onFechar }: { edicao: EdicaoResumo | null;
     if (v != null && versaoVista.current != null && v > versaoVista.current) danilomudou();
     versaoVista.current = v;
   }, [estado?.versao, danilomudou]);
-  // Na web o projeto da versão nova chega na nuvem uns segundos depois da versão: recarrega quando chegar.
+  // O projeto da versão nova chega na nuvem uns segundos depois da versão: recarrega quando chegar. Vale também no app (20/11): o Danilo
+  // às vezes refaz a MESMA versão (ex.: reiniciou o servidor e gerou a v5 de novo), a versão não sobe e o editor ficava com o projeto antigo.
   const projetoVisto = useRef<string | null>(null);
   useEffect(() => {
     const t = estado?.projeto_em ?? null;
-    if (web && t && projetoVisto.current && t !== projetoVisto.current) danilomudou();
+    if (t && projetoVisto.current && t !== projetoVisto.current) danilomudou();
     if (t) projetoVisto.current = t;
-  }, [web, estado?.projeto_em, danilomudou]);
+  }, [estado?.projeto_em, danilomudou]);
 
   useEffect(() => {
     if (!edicao || (!web && !cfg)) return;
