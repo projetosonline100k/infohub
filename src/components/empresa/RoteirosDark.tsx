@@ -9,7 +9,7 @@ import { MidiaLocal } from "./MidiaLocal";
 import { ConectarInstagramDark, ProgramarPublicacao, useInstagramDoPerfil } from "./PublicacaoDark";
 import { DesempenhoDark, NumerosDoVideo } from "./DesempenhoDark";
 import { useDesempenhoDark } from "@/hooks/useDesempenhoDark";
-import { agruparPorDia, contarPorStatus, mensagemAjuste, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, versoesDoRoteiro, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
+import { agruparPorDia, andamentoRoteiro, contarPorStatus, mensagemAjuste, mensagemParaLauro, proximoDiaLivre, ROTULO_STATUS, semanasDoMes, versoesDoRoteiro, type RoteiroDark, type StatusRoteiro } from "@/lib/empresa/roteirosDark";
 import { midiasDoTexto } from "@/lib/empresa/midiasChat";
 import { cn } from "@/lib/utils";
 
@@ -40,7 +40,7 @@ export function RoteirosDark({ perfis, onConversar, onPerfil }: { perfis: Perfil
   useEffect(() => { if (!perfis.some((p) => p.id === perfilId)) setPerfilId(perfis[0]?.id ?? ""); }, [perfis, perfilId]);
   const carregar = useCallback(async () => {
     if (!perfilId) { setRoteiros([]); return; }
-    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em, legenda, video_url, programado_para, permalink, mensagem, ig_media_id").eq("perfil_id", perfilId).order("numero");
+    const { data } = await db.from("esteira_dark_roteiros").select("id, perfil_id, numero, titulo, texto, data_postagem, status, arquivo, obs, versoes, criado_em, atualizado_em, legenda, video_url, programado_para, permalink, mensagem, ig_media_id, progresso, etapa, progresso_em").eq("perfil_id", perfilId).order("numero");
     setRoteiros((data ?? []) as RoteiroDark[]);
   }, [perfilId]);
   useEffect(() => {
@@ -82,6 +82,7 @@ export function RoteirosDark({ perfis, onConversar, onPerfil }: { perfis: Perfil
                 <li key={r.id}><button type="button" onClick={() => setAberto(r.id)} className="w-full rounded-xl border border-white/10 bg-black/20 p-2.5 text-left hover:bg-white/5">
                   <span className="flex items-center gap-2"><span className="rounded bg-white/10 px-1.5 py-0.5 text-xs font-bold">V{r.numero}</span><span className="min-w-0 flex-1 truncate text-sm font-medium">{r.titulo}</span></span>
                   <span className="mt-1.5 flex items-center gap-2 text-[11px]"><span className={cn("rounded-full px-2 py-0.5 font-semibold", CHIP[r.status])}>{ROTULO_STATUS[r.status]}</span><span className="text-white/45">{r.data_postagem ? r.data_postagem.split("-").reverse().slice(0, 2).join("/") : "sem dia"}</span></span>
+                  <BarraAndamento roteiro={r} />
                   {r.ig_media_id && <span className="mt-1.5 block"><NumerosDoVideo pequeno post={desempenho.posts[r.ig_media_id]} leads={desempenho.leads[r.ig_media_id]} /></span>}
                 </button></li>
               ))}
@@ -112,6 +113,7 @@ export function RoteirosDark({ perfis, onConversar, onPerfil }: { perfis: Perfil
                             <button key={r.id} type="button" onClick={(e) => { e.stopPropagation(); setAberto(r.id); }} className="block w-full rounded-lg border border-white/10 bg-[#0d1a26] p-1.5 text-left hover:border-white/30">
                               <span className="flex items-center gap-1 text-xs font-bold"><span>v{r.numero}</span><span className="min-w-0 flex-1 truncate font-medium text-white/80">{r.titulo}</span></span>
                               <span className={cn("mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px] font-semibold", CHIP[r.status])}>{ROTULO_STATUS[r.status]}</span>
+                              <BarraAndamento roteiro={r} pequeno />
                             </button>
                           ))}
                           {lista.length > 2 && <p className="text-[10px] text-white/50">+{lista.length - 2} no dia</p>}
@@ -130,6 +132,26 @@ export function RoteirosDark({ perfis, onConversar, onPerfil }: { perfis: Perfil
       <NovoRoteiro aberto={!!novo} dia={novo?.dia ?? hoje} perfil={perfil} onFechar={() => setNovo(null)} onCriado={() => { setNovo(null); void carregar(); }} />
       <EstudioRoteiro roteiro={atual} perfil={perfil} numeros={atual?.ig_media_id ? { post: desempenho.posts[atual.ig_media_id], leads: desempenho.leads[atual.ig_media_id] } : undefined} onFechar={() => setAberto(null)} onMudou={() => void carregar()} />
     </div>
+  );
+}
+
+/** Barra de andamento do Lauro (20/11): etapa, porcentagem e há quanto tempo está produzindo. Some quando o roteiro sai de "editando". */
+function BarraAndamento({ roteiro, pequeno }: { roteiro: RoteiroDark; pequeno?: boolean }) {
+  const [agora, setAgora] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setAgora(Date.now()), 30_000); return () => window.clearInterval(t); }, []);
+  const a = andamentoRoteiro(roteiro, agora);
+  if (!a) return null;
+  const tempo = a.minutos < 1 ? "agora" : `${a.minutos} min`;
+  return (
+    <span className={cn("block", pequeno ? "mt-1" : "mt-2")} title={`${a.etapa} · ${a.pct}% · ${tempo}`}>
+      <span className={cn("block overflow-hidden rounded-full bg-white/10", pequeno ? "h-1" : "h-1.5")}>
+        <span className={cn("block h-full rounded-full transition-all duration-700", a.parado ? "bg-rose-400" : "bg-amber-300")} style={{ width: `${a.pct}%` }} />
+      </span>
+      <span className={cn("mt-1 flex items-center gap-1.5 text-white/55", pequeno ? "text-[9px]" : "text-[11px]")}>
+        <span className="min-w-0 flex-1 truncate">{a.parado ? `Sem novidade há um tempo: ${a.etapa}` : a.etapa}</span>
+        <span className="shrink-0 tabular-nums">{a.pct}%{pequeno ? "" : ` · ${tempo}`}</span>
+      </span>
+    </span>
   );
 }
 
@@ -290,7 +312,7 @@ function EstudioRoteiro({ roteiro, perfil, numeros, onFechar, onMudou }: { rotei
               <section className="min-h-0 space-y-3 overflow-y-auto p-4">
                 {versao ? <MidiaLocal key={versao.arquivo} grande midia={{ caminho: versao.arquivo, nome: versao.arquivo.split("/").pop() ?? "video.mp4", tipo: "video" }} />
                   : <div className="flex h-[46vh] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-white/15 bg-black/30 text-center text-sm text-white/50">
-                    {r.status === "erro" ? <p className="px-6 text-rose-200">O Lauro travou: {r.obs || "veja a conversa ao lado"}</p> : <><Loader2 className="h-6 w-6 animate-spin text-white/30" /><p>O Lauro ainda está produzindo o vídeo.</p><p className="text-xs text-white/35">Quando ficar pronto ele aparece aqui, com o botão Aprovar.</p></>}</div>}
+                    {r.status === "erro" ? <p className="px-6 text-rose-200">O Lauro travou: {r.obs || "veja a conversa ao lado"}</p> : <><Loader2 className="h-6 w-6 animate-spin text-white/30" /><p>O Lauro ainda está produzindo o vídeo.</p><div className="w-full max-w-sm px-6"><BarraAndamento roteiro={r} /></div><p className="text-xs text-white/35">Quando ficar pronto ele aparece aqui, com o botão Aprovar.</p></>}</div>}
                 {versoes.length > 1 && (
                   <div className="flex flex-wrap items-center gap-1.5 text-xs"><span className="text-white/45">Versões:</span>
                     {versoes.map((v, i) => <button key={v.arquivo} type="button" onClick={() => setVersaoSel(i)} title={v.nota || v.arquivo} className={cn("rounded-lg px-2.5 py-1 font-semibold", i === indice ? "bg-[#f3c98b] text-black" : "bg-white/10 text-white/70 hover:bg-white/15")}>v{i + 1}</button>)}

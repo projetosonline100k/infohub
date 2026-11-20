@@ -3,7 +3,7 @@
 
 export type StatusRoteiro = "na_fila" | "editando" | "revisar" | "programando" | "programado" | "publicando" | "publicado" | "erro";
 export interface VersaoRoteiro { arquivo: string; em?: string; nota?: string }
-export interface RoteiroDark { id: string; perfil_id: string; numero: number; titulo: string; texto: string; data_postagem: string | null; status: StatusRoteiro; arquivo: string | null; obs: string | null; versoes?: VersaoRoteiro[] | null; legenda?: string | null; video_url?: string | null; programado_para?: string | null; permalink?: string | null; mensagem?: string | null; ig_media_id?: string | null; criado_em: string }
+export interface RoteiroDark { id: string; perfil_id: string; numero: number; titulo: string; texto: string; data_postagem: string | null; status: StatusRoteiro; arquivo: string | null; obs: string | null; versoes?: VersaoRoteiro[] | null; legenda?: string | null; video_url?: string | null; programado_para?: string | null; permalink?: string | null; mensagem?: string | null; ig_media_id?: string | null; criado_em: string; atualizado_em?: string | null; progresso?: number | null; etapa?: string | null; progresso_em?: string | null }
 
 export const ROTULO_STATUS: Record<StatusRoteiro, string> = { na_fila: "Na fila", editando: "Editando", revisar: "Aprovar", programando: "Programando", programado: "Programado", publicando: "Publicando", publicado: "Publicado", erro: "Travou" };
 
@@ -80,3 +80,18 @@ export function mensagemAjuste(r: Pick<RoteiroDark, "id" | "numero" | "titulo">,
     `Se a mudança altera o vídeo: marque python3 scripts/lauro/roteiros.py status ${id} editando, gere uma NOVA versão (nunca sobrescreva a anterior: video_v2.mp4, v3…), cite o caminho completo aqui e marque status ${id} revisar --arquivo <caminho> --obs "o que mudou" para eu aprovar. Se for só dúvida, responda sem mexer no status.`;
 }
 
+
+export interface Andamento { pct: number; etapa: string; minutos: number; parado: boolean }
+/** Barra de andamento do roteiro que o Lauro está produzindo (20/11/2026, Davi: "uma barra para eu saber como está o andamento").
+ * `parado`: mais de 20 min sem o Lauro marcar etapa nova. Fora de "editando", não há barra. */
+export function andamentoRoteiro(r: Pick<RoteiroDark, "status" | "progresso" | "etapa" | "progresso_em" | "atualizado_em" | "criado_em">, agora: number): Andamento | null {
+  if (r.status !== "editando") return null;
+  const inicio = new Date(r.atualizado_em || r.criado_em).getTime();
+  const ultimo = r.progresso_em ? Math.max(new Date(r.progresso_em).getTime(), inicio) : inicio;
+  return {
+    pct: Math.max(3, Math.min(99, r.progresso ?? 3)),   // 100 só quando o vídeo fica pronto (aí o status já é "revisar")
+    etapa: r.etapa?.trim() || "Começando",
+    minutos: Math.max(0, Math.floor((agora - inicio) / 60_000)),
+    parado: agora - ultimo > 20 * 60_000,
+  };
+}

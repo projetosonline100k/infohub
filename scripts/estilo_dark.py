@@ -3,6 +3,7 @@ O app grava o pedido em public.esteira_dark_pedidos; o ouvinte do Atlas chama `a
 com o estilo atualizado. O Claude só devolve texto: não mexe em arquivo nem no banco (pedido que exige código vai para a fila, como todo agente: scripts/fila.py).
 """
 import json
+import os
 import threading
 import time
 from pathlib import Path
@@ -152,6 +153,7 @@ O que existe aqui:
 - NAVEGADOR: o Chrome do servidor (ferramentas mcp__chrome-vps__browser_*: navigate, snapshot, click, type, press_key, wait_for…), com o ChatGPT JÁ LOGADO (conta Plus do Davi). Use-o para GERAR AS IMAGENS (personagem, cenários): abra um chat novo em https://chatgpt.com/, peça a imagem (mantenha o MESMO personagem do perfil; cite os arquivos de referência já descritos no estilo), espere gerar (cerca de 1 minuto), CLIQUE NA IMAGEM para abrir a pré-visualização e use o ícone de seta para baixo (download) no topo; o arquivo cai em /root/Downloads (confira com ls). Mova para ~/.infopro-hub/exemplos/<perfil>/roteiros/<id>/. Se aparecer captcha, pedido de login ou verificação, PARE e diga exatamente o que apareceu (o Davi resolve pelo noVNC em http://127.0.0.1:6080/vnc.html no Mac dele).
 - FERRAMENTAS: `ffmpeg` e `ffprobe` (já no PATH), Python 3 com PIL e numpy (/opt/infopro-venv/bin/python), VOZ pelo Kokoro com `python3 scripts/lauro/voz.py <id>` (usa ~/.infopro-hub/tts/venv), whisper para alinhar as palavras (`faster-whisper` no mesmo python), fontes Liberation/DejaVu/Noto. Os arquivos do Lauro (banco de clipes, folhas, personagens) estão em ~/.infopro-hub/exemplos/ (o mesmo caminho de sempre; /Users/davi aponta para /root).
 - NÃO existe download de TikTok aqui (bloqueado): use só os clipes que já estão no banco e imagens geradas. Fontes e caminhos de Mac nos scripts antigos (montar_v1.py) precisam ser trocados: copie o script anterior e adapte (FF='ffmpeg', fontes Linux, sem ~/Downloads).
+- BARRA DE ANDAMENTO: o Davi acompanha pelo calendário. Logo depois de cada etapa, marque `python3 scripts/lauro/roteiros.py progresso <id> <%> "<etapa>"`, mais ou menos assim: 15 "Voz pronta"; de 20 a 60 durante as imagens, uma vez por imagem ("Gerando imagens (2 de 5)"); 70 "Montando o vídeo"; 85 "Legendas e música"; 95 "Conferindo o vídeo". O status revisar já marca 100.
 - Siga o resto das regras acima (estilo do perfil, status com roteiros.py, nunca publicar sem o ok). O que precisar do Mac ou do Instagram logado do Davi, diga que precisa dele e deixe o pedido em "pedidos_sistema"/na resposta em vez de improvisar.
 """
 
@@ -217,9 +219,87 @@ if not getattr(threading, "_lauro_preparo_ativo", False):   # um só laço, mesm
     threading.Thread(target=_laco_preparo, daemon=True, name="lauro-preparo").start()
 
 
+# 20/11 (Davi: "preciso que coisas assim sejam rodadas simultaneamente"): no servidor, cada roteiro é produzido na sua própria thread, até
+# MAX_PRODUCOES ao mesmo tempo (o mesmo roteiro nunca roda duas vezes em paralelo). Antes era um por vez, com 25 min: o V10 estourou o tempo, foi
+# interrompido e o card ficou "editando" para sempre. Agora a produção tem 60 min e, se falhar, o card do roteiro vai para "erro" com o motivo.
+MAX_PRODUCOES = int(os.environ.get("LAURO_PRODUCOES_SIMULTANEAS", "3"))
+MINUTOS_PRODUCAO = 60
+
+PARALELO_VPS = """
+VÍDEOS EM PARALELO: outros roteiros podem estar sendo produzidos AO MESMO TEMPO, no mesmo servidor e no mesmo Chrome. Por isso:
+- No Chrome, abra SEMPRE uma aba nova só sua (browser_tab_new) logo no começo e trabalhe só nela; não feche nem mexa nas outras abas.
+- Downloads: logo depois de baixar, pegue em /root/Downloads o arquivo mais novo que apareceu depois do SEU clique (ls -t) e mova na hora para a pasta do seu roteiro.
+- Use só a pasta do seu roteiro (~/.infopro-hub/exemplos/<perfil>/roteiros/<id>/) para arquivos temporários; nunca apague nada de outro roteiro.
+"""
+
+# Guardado no módulo threading: o ouvinte recarrega este módulo a cada passada e o estado das produções em andamento não pode se perder.
+if not hasattr(threading, "_lauro_producoes"):
+    threading._lauro_producoes = {}        # type: ignore[attr-defined]  pedido -> roteiro, das produções rodando agora
+    threading._lauro_sessoes = {}          # type: ignore[attr-defined]  roteiro -> sessão do Claude (o AJUSTE continua de onde a produção parou)
+    threading._lauro_trava = threading.Lock()  # type: ignore[attr-defined]
+
+SQL_PEGAR = """UPDATE public.esteira_dark_pedidos SET status = 'processando'
+                 WHERE id = (SELECT p.id FROM public.esteira_dark_pedidos p JOIN public.esteira_dark_perfis f ON f.id = p.perfil_id
+                              WHERE p.status = 'pendente' AND NOT p.rapido AND f.modo_vivo AND p.autor_id = %s AND """ + PRODUCAO + """ = %s
+                                AND NOT (coalesce(p.contexto->>'roteiro_id', '') = ANY(%s::text[]))
+                              ORDER BY p.criado_em LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
+                 RETURNING id, perfil_id, mensagem, contexto, historico, estilo_atual"""
+
+
+def _como_pedido(r):
+    return {"id": r[0], "perfil_id": r[1], "mensagem": r[2], "contexto": r[3], "historico": r[4], "estilo_atual": r[5]}
+
+
+def _responder(q, p, ok, texto, log):
+    """Grava no pedido a resposta do Lauro (ou o erro)."""
+    if not ok or not texto.strip():
+        q.execute("UPDATE public.esteira_dark_pedidos SET status='erro', erro=%s, respondido_em=now() WHERE id=%s", ((texto or "sem resposta")[:300], p["id"]))
+        log("estilo dark vivo: erro —", (texto or "")[:120])
+        return False
+    resposta, estilo, pedidos = extrair(texto)
+    abertos = agente_whatsapp.abrir_pedidos(q, pedidos, log, origem="lauro")
+    if abertos:
+        resposta += "\n\n🛠 Na fila de desenvolvimento: " + "; ".join(abertos)
+    q.execute("UPDATE public.esteira_dark_pedidos SET status='respondido', resposta=%s, estilo=%s::jsonb, respondido_em=now() WHERE id=%s",
+              (resposta, json.dumps(estilo, ensure_ascii=False) if estilo else None, p["id"]))
+    log("estilo dark vivo: respondido" + ("" if estilo else " (só conversa)"))
+    return True
+
+
+def _produzir(p, rodar_claude, log):
+    """Servidor: produz UM roteiro na própria thread. Se o Claude falhar ou estourar o tempo, o card do roteiro sai de "editando" e vai para "erro"."""
+    roteiro = (p["contexto"] or {}).get("roteiro_id")
+    sessoes = threading._lauro_sessoes
+    try:
+        prompt = _prompt(p) + VIVO_VPS + PARALELO_VPS
+        ferr = ["Bash", "Read", "Grep", "Glob", "WebSearch", "WebFetch"]
+        sessao = sessoes.get(roteiro) if roteiro else None
+        info = {}
+        ok, texto = rodar_claude(prompt, minutos=MINUTOS_PRODUCAO, chrome=True, sessao=sessao, info=info, turnos=120, ferramentas=ferr)
+        if not ok and sessao and "passou de" not in (texto or ""):   # sessão guardada expirou: recomeça limpa
+            info = {}
+            ok, texto = rodar_claude(prompt, minutos=MINUTOS_PRODUCAO, chrome=True, info=info, turnos=120, ferramentas=ferr)
+        if ok and info.get("session_id") and roteiro:
+            sessoes[roteiro] = info["session_id"]
+        c = connect()
+        try:
+            q = c.cursor()
+            if not _responder(q, p, ok, texto, log) and roteiro:
+                q.execute("""UPDATE public.esteira_dark_roteiros SET status = 'erro', obs = %s, atualizado_em = now()
+                              WHERE id = %s AND status = 'editando'""", (("Lauro: " + (texto or "parou sem resposta"))[:500], roteiro))
+            c.commit()
+        finally:
+            c.close()
+    except Exception as e:  # noqa: BLE001  rede caiu etc.: o pedido volta para a fila no próximo início do ouvinte
+        log("estilo dark produção: erro —", repr(e)[:200])
+    finally:
+        with threading._lauro_trava:
+            threading._lauro_producoes.pop(p["id"], None)
+
+
 def atender_vivo(rodar_claude, log=print):
-    """Atende UM pedido pendente de perfil em modo vivo, escrito pelo Davi (autor_id). No Mac: conversa do estilo, referências e controle do Mac, com o Chrome dele.
-    No servidor: a produção dos roteiros, com o Chrome do servidor (ChatGPT logado)."""
+    """Atende pedidos pendentes de perfil em modo vivo, escritos pelo Davi (autor_id). No Mac: conversa do estilo, referências e controle do Mac, com o
+    Chrome dele (um por vez). No servidor: a produção dos roteiros, com o Chrome do servidor (ChatGPT logado), vários roteiros ao mesmo tempo."""
     _garantir_rapido(rodar_claude, log)
     _preparar_publicacao(log)
     c = connect()
@@ -230,19 +310,34 @@ def atender_vivo(rodar_claude, log=print):
         # pedido de outra pessoa num perfil em modo vivo: não obedece
         q.execute("""UPDATE public.esteira_dark_pedidos p SET status = 'erro', erro = 'Modo vivo: só obedeço pedido do Davi.', respondido_em = now()
                       FROM public.esteira_dark_perfis f WHERE f.id = p.perfil_id AND f.modo_vivo AND p.status = 'pendente' AND NOT p.rapido AND p.autor_id IS DISTINCT FROM %s""", (davi,))
-        q.execute("""UPDATE public.esteira_dark_pedidos SET status = 'processando'
-                     WHERE id = (SELECT p.id FROM public.esteira_dark_pedidos p JOIN public.esteira_dark_perfis f ON f.id = p.perfil_id
-                                  WHERE p.status = 'pendente' AND NOT p.rapido AND f.modo_vivo AND p.autor_id = %s AND """ + PRODUCAO + """ = %s ORDER BY p.criado_em LIMIT 1 FOR UPDATE OF p SKIP LOCKED)
-                     RETURNING id, perfil_id, mensagem, contexto, historico, estilo_atual""", (davi, NA_VPS))
+        c.commit()
+        if NA_VPS:
+            while True:
+                with threading._lauro_trava:
+                    if len(threading._lauro_producoes) >= MAX_PRODUCOES:
+                        return
+                    ocupados = [r for r in threading._lauro_producoes.values() if r]
+                q.execute(SQL_PEGAR, (davi, True, ocupados))
+                r = q.fetchone()
+                c.commit()
+                if not r:
+                    return
+                p = _como_pedido(r)
+                roteiro = (p["contexto"] or {}).get("roteiro_id")
+                with threading._lauro_trava:
+                    threading._lauro_producoes[p["id"]] = roteiro
+                log("estilo dark produção: pedido", str(p["id"])[:8], f"(roteiro {str(roteiro)[:8]}; {len(threading._lauro_producoes)} rodando)")
+                threading.Thread(target=_produzir, args=(p, rodar_claude, log), daemon=True, name=f"lauro-{str(p['id'])[:8]}").start()
+        q.execute(SQL_PEGAR, (davi, False, []))
         r = q.fetchone()
         c.commit()
         if not r:
             return
-        p = {"id": r[0], "perfil_id": r[1], "mensagem": r[2], "contexto": r[3], "historico": r[4], "estilo_atual": r[5]}
+        p = _como_pedido(r)
         log("estilo dark vivo: pedido", str(p["id"])[:8], f"({len(p['mensagem'])} caracteres)")
         q.execute("SELECT sessao_vivo FROM public.esteira_dark_perfis WHERE id = %s", (p["perfil_id"],))
         sessao = q.fetchone()[0]
-        prompt = _prompt(p) + (VIVO_VPS if NA_VPS else VIVO)
+        prompt = _prompt(p) + VIVO
         ferr = ["Bash", "Read", "Grep", "Glob", "WebSearch", "WebFetch"]
         info = {}
         ok, texto = rodar_claude(prompt, minutos=25, chrome=True, sessao=sessao, info=info, turnos=80, ferramentas=ferr)
@@ -251,17 +346,7 @@ def atender_vivo(rodar_claude, log=print):
             ok, texto = rodar_claude(prompt, minutos=25, chrome=True, info=info, turnos=80, ferramentas=ferr)
         if ok and info.get("session_id"):
             q.execute("UPDATE public.esteira_dark_perfis SET sessao_vivo = %s WHERE id = %s", (info["session_id"], p["perfil_id"]))
-        if not ok or not texto.strip():
-            q.execute("UPDATE public.esteira_dark_pedidos SET status='erro', erro=%s, respondido_em=now() WHERE id=%s", ((texto or "sem resposta")[:300], p["id"]))
-            log("estilo dark vivo: erro —", (texto or "")[:120])
-        else:
-            resposta, estilo, pedidos = extrair(texto)
-            abertos = agente_whatsapp.abrir_pedidos(q, pedidos, log, origem="lauro")
-            if abertos:
-                resposta += "\n\n🛠 Na fila de desenvolvimento: " + "; ".join(abertos)
-            q.execute("UPDATE public.esteira_dark_pedidos SET status='respondido', resposta=%s, estilo=%s::jsonb, respondido_em=now() WHERE id=%s",
-                      (resposta, json.dumps(estilo, ensure_ascii=False) if estilo else None, p["id"]))
-            log("estilo dark vivo: respondido" + ("" if estilo else " (só conversa)"))
+        _responder(q, p, ok, texto, log)
         c.commit()
     finally:
         c.close()
@@ -350,7 +435,7 @@ def atender_rapido(rodar_claude, log=print):
         pid, perfil_id, mensagem, contexto, historico, estilo_atual, autor, dono = r
         log("estilo dark rápido: pedido", str(pid)[:8])
         q.execute("""SELECT mensagem, criado_em FROM public.esteira_dark_pedidos WHERE perfil_id = %s AND status = 'processando' AND NOT rapido AND id <> %s
-                      ORDER BY criado_em DESC LIMIT 1""", (perfil_id, pid))
+                      ORDER BY (contexto->>'roteiro_id' IS NOT DISTINCT FROM %s) DESC, criado_em DESC LIMIT 1""", (perfil_id, pid, (contexto or {}).get("roteiro_id")))
         em_curso = q.fetchone()
         tarefa = (em_curso[0][:1500] if em_curso else "(nada em andamento agora: ele acabou de terminar ou está na fila)")
         passos = passos_em_andamento(em_curso[0]) if em_curso else ""

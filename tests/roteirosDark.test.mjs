@@ -63,3 +63,15 @@ test('versoesDoRoteiro: histórico quando há; senão o arquivo atual; senão na
   assert.deepEqual(m.versoesDoRoteiro({ arquivo: null, versoes: null }), []);
   assert.equal(m.ROTULO_STATUS.revisar, 'Aprovar');
 });
+
+test('andamentoRoteiro: barra só em "editando", com etapa, tempo e aviso de parado', () => {
+  const agora = new Date('2026-11-20T18:30:00Z').getTime();
+  const base = { ...r(10, '2026-11-22', 'editando'), atualizado_em: '2026-11-20T18:00:00Z' };
+  assert.equal(m.andamentoRoteiro({ ...base, status: 'revisar' }, agora), null);
+  assert.deepEqual(m.andamentoRoteiro(base, agora), { pct: 3, etapa: 'Começando', minutos: 30, parado: true });
+  const a = m.andamentoRoteiro({ ...base, progresso: 40, etapa: 'Gerando imagens (2 de 5)', progresso_em: '2026-11-20T18:25:00Z' }, agora);
+  assert.deepEqual(a, { pct: 40, etapa: 'Gerando imagens (2 de 5)', minutos: 30, parado: false });
+  assert.equal(m.andamentoRoteiro({ ...base, progresso: 100 }, agora).pct, 99);
+  // progresso de uma produção anterior não conta como novidade desta
+  assert.equal(m.andamentoRoteiro({ ...base, progresso: 100, progresso_em: '2026-11-19T10:00:00Z' }, agora).parado, true);
+});
