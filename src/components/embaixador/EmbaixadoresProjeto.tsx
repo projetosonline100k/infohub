@@ -1,13 +1,14 @@
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronDown, Coins, Copy, ExternalLink, Handshake, KeyRound, Link2, Loader2, Megaphone, Pause, Play, ShoppingCart, Trash2, UserPlus, Users, Wand2 } from "lucide-react";
+import { ChevronDown, Coins, Copy, ExternalLink, Eye, Handshake, KeyRound, Link2, Loader2, Megaphone, Pause, Play, ShoppingCart, Trash2, UserPlus, Users, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { PreviaEmbaixador } from "@/pages/Embaixador";
 import { agrupar, diasAtras, hojeLocal, type Modo } from "@/lib/embaixadorSerie";
 import { brl, codigoEmbaixador, conviteDoEmbaixador, linkDoEmbaixador, ORIGEM_PUBLICA, urlPublica } from "@/lib/embaixador";
 
@@ -49,6 +50,7 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
   const [quizzes, setQuizzes] = useState<{ slug: string; titulo: string }[]>([]);
   const [dias, setDias] = useState(30);
   const [novoAberto, setNovoAberto] = useState(false);
+  const [previa, setPrevia] = useState<Embaixador | null>(null);
   const [f, setF] = useState({ nome: "", email: "", senha: "", comissao: "30" });
   const [serie, setSerie] = useState<SerieLinha[]>([]);
   const [metrica, setMetrica] = useState<Metrica>("vendas");
@@ -147,7 +149,7 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
   }
   async function trocarSenha(x: Embaixador) {
     if (novaSenha.length < 6) { toast.error("A senha precisa ter ao menos 6 caracteres."); return; }
-    const { data, error } = await supabase.functions.invoke("embaixador-conta", { body: { action: "senha", embaixador_id: x.id, senha: novaSenha } });
+    const { data, error } = await supabase.functions.invoke("embaixador-conta", { body: { action: x.auth_user_id ? "senha" : "criar", embaixador_id: x.id, senha: novaSenha } });
     if (error || (data as { error?: string } | null)?.error) { toast.error((data as { error?: string } | null)?.error ?? error?.message ?? "Não consegui trocar"); return; }
     setCredenciais({ nome: x.nome, email: x.email, senha: novaSenha }); setNovaSenha("");
   }
@@ -170,10 +172,11 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 p-6">
+      {previa && <PreviaEmbaixador id={previa.id} onFechar={() => setPrevia(null)} />}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="flex items-center gap-2 text-xl font-semibold"><Handshake className="h-5 w-5" />Embaixadores</h2>
-          <p className="mt-1 max-w-xl text-sm text-muted-foreground">Cada embaixador entra pelo convite e vê só a área dele: vendas, leads (sem contato), quantas pessoas trouxe, esteira e os links que você liberar.</p>
+          <p className="mt-1 max-w-xl text-sm text-muted-foreground">Você cadastra o embaixador com e-mail e senha e manda o acesso. Cada um vê só a área dele: vendas, leads (sem contato), quantas pessoas trouxe, esteira, postagens e os links que você liberar. Use "Ver como embaixador" na ficha para ver a tela dele.</p>
           <button className="mt-2 inline-flex items-center gap-1 text-xs text-primary underline" onClick={() => void copiar(`${ORIGEM_PUBLICA}/embaixador`, "Endereço de acesso copiado")}><ExternalLink className="h-3 w-3" />Copiar o endereço de acesso ({ORIGEM_PUBLICA.replace("https://", "")}/embaixador)</button>
         </div>
         <div className="flex items-center gap-2">
@@ -269,17 +272,18 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
                   {aberta && (
                     <tr className="border-t border-border bg-muted/20"><td colSpan={9} className="space-y-5 p-4">
                       <div className="flex flex-wrap items-center gap-2">
-                        {!x.auth_user_id && x.convite && <Button size="sm" onClick={() => void copiar(conviteDoEmbaixador(ORIGEM_PUBLICA, x.convite!), "Convite copiado: mande para ele")}><Copy className="mr-1.5 h-4 w-4" />Copiar convite</Button>}
+                        <Button size="sm" onClick={() => setPrevia(x)}><Eye className="mr-1.5 h-4 w-4" />Ver como embaixador</Button>
+                        {!x.auth_user_id && x.convite && <Button size="sm" variant="outline" onClick={() => void copiar(conviteDoEmbaixador(ORIGEM_PUBLICA, x.convite!), "Convite copiado: mande para ele")}><Copy className="mr-1.5 h-4 w-4" />Copiar convite</Button>}
                         <Button size="sm" variant="outline" onClick={() => void alternar(x)}>{x.ativo ? <><Pause className="mr-1.5 h-4 w-4" />Pausar</> : <><Play className="mr-1.5 h-4 w-4" />Reativar</>}</Button>
                         <Button size="sm" variant="outline" onClick={() => void remover(x)}><Trash2 className="mr-1.5 h-4 w-4" />Remover</Button>
                         <span className="ml-auto font-mono text-xs text-muted-foreground">marca: aff_{x.codigo}</span>
                       </div>
-                      {x.auth_user_id && (
+                      {(
                         <div className="flex flex-wrap items-center gap-2 text-sm">
                           <KeyRound className="h-4 w-4 text-muted-foreground" />
-                          <Input className="h-8 w-48" type="text" autoComplete="off" placeholder="nova senha (mín. 6)" value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
+                          <Input className="h-8 w-48" type="text" autoComplete="off" placeholder={x.auth_user_id ? "nova senha (mín. 6)" : "senha de acesso (mín. 6)"} value={novaSenha} onChange={(e) => setNovaSenha(e.target.value)} />
                           <Button size="sm" variant="outline" onClick={() => setNovaSenha(gerarSenha())}><Wand2 className="mr-1.5 h-4 w-4" />Gerar</Button>
-                          <Button size="sm" onClick={() => void trocarSenha(x)}>Trocar senha</Button>
+                          <Button size="sm" onClick={() => void trocarSenha(x)}>{x.auth_user_id ? "Trocar senha" : "Criar acesso com senha"}</Button>
                         </div>
                       )}
 

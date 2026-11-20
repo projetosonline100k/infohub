@@ -142,6 +142,15 @@ export default function Embaixador() {
   return <AreaEmbaixador eu={eu} />;
 }
 
+/** Visão do administrador: carrega e mostra a área de um embaixador (só leitura). */
+export function PreviaEmbaixador({ id, onFechar }: { id: string; onFechar: () => void }) {
+  const [eu, setEu] = useState<Eu | null | undefined>(undefined);
+  useEffect(() => { void db.rpc("embaixador_eu", { p_embaixador: id }).then(({ data }) => setEu((data as Eu | null) ?? null)); }, [id]);
+  if (eu === undefined) return <div className="fixed inset-0 z-50 grid place-items-center bg-background"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+  if (!eu) return <div className="fixed inset-0 z-50 grid place-items-center bg-background text-sm"><div className="text-center">Não consegui abrir (embaixador pausado?).<div className="mt-3"><Button variant="outline" onClick={onFechar}>Fechar</Button></div></div></div>;
+  return <div className="fixed inset-0 z-50 overflow-y-auto bg-background"><AreaEmbaixador eu={eu} previaId={id} onFechar={onFechar} /></div>;
+}
+
 function Cartao({ icone: I, titulo, valor, nota }: { icone: typeof Users; titulo: string; valor: string; nota?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -154,7 +163,9 @@ function Cartao({ icone: I, titulo, valor, nota }: { icone: typeof Users; titulo
 
 function Vazio({ texto }: { texto: string }) { return <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{texto}</p>; }
 
-function AreaEmbaixador({ eu }: { eu: Eu }) {
+/** previaId: o administrador vendo a área de um embaixador (só leitura, sem registrar nada). */
+export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: string; onFechar?: () => void }) {
+  const alvo = useMemo(() => (previaId ? { p_embaixador: previaId } : {}), [previaId]);
   const [aba, setAba] = useState<(typeof ABAS)[number][0]>("resumo");
   const [dias, setDias] = useState(30);
   const [painel, setPainel] = useState<Painel | null>(null);
@@ -169,14 +180,14 @@ function AreaEmbaixador({ eu }: { eu: Eu }) {
   const [salvandoPost, setSalvandoPost] = useState(false);
   const [copiado, setCopiado] = useState("");
 
-  useEffect(() => { setPainel(null); void db.rpc("embaixador_painel", { p_dias: dias }).then(({ data }) => setPainel(data as Painel)); }, [dias]);
+  useEffect(() => { setPainel(null); void db.rpc("embaixador_painel", { p_dias: dias, ...alvo }).then(({ data }) => setPainel(data as Painel)); }, [dias, alvo]);
   useEffect(() => {
-    if (aba === "postagens" && !posts) void db.rpc("embaixador_postagens_minhas").then(({ data }) => setPosts((data ?? []) as Postagem[]));
-    if (aba === "leads" && !leads) void db.rpc("embaixador_leads").then(({ data }) => setLeads((data ?? []) as Lead[]));
-    if (aba === "vendas" && !vendas) void db.rpc("embaixador_vendas").then(({ data }) => setVendas((data ?? []) as Venda[]));
-    if (aba === "esteira" && !esteira) void db.rpc("embaixador_esteira").then(({ data }) => setEsteira((data ?? []) as Esteira[]));
-    if (aba === "links" && !links) void db.rpc("embaixador_links_meus").then(({ data }) => setLinks((data ?? []) as LinkE[]));
-  }, [aba, leads, vendas, esteira, links, posts]);
+    if (aba === "postagens" && !posts) void db.rpc("embaixador_postagens_minhas", alvo).then(({ data }) => setPosts((data ?? []) as Postagem[]));
+    if (aba === "leads" && !leads) void db.rpc("embaixador_leads", alvo).then(({ data }) => setLeads((data ?? []) as Lead[]));
+    if (aba === "vendas" && !vendas) void db.rpc("embaixador_vendas", alvo).then(({ data }) => setVendas((data ?? []) as Venda[]));
+    if (aba === "esteira" && !esteira) void db.rpc("embaixador_esteira", alvo).then(({ data }) => setEsteira((data ?? []) as Esteira[]));
+    if (aba === "links" && !links) void db.rpc("embaixador_links_meus", alvo).then(({ data }) => setLinks((data ?? []) as LinkE[]));
+  }, [aba, leads, vendas, esteira, links, posts, alvo]);
 
   const liquido = painel ? painel.bruto - painel.reembolsado : 0;
   const serie = useMemo(() => agrupar((painel?.dias ?? []).map((d) => ({ ...d, dia: d.dia.slice(0, 10) })) as never, modo, [metrica], diasAtras(dias - 1), hojeLocal()), [painel, modo, metrica, dias]);
@@ -187,17 +198,18 @@ function AreaEmbaixador({ eu }: { eu: Eu }) {
     const { error } = await db.rpc("embaixador_postagem_registrar", { p_titulo: np.titulo, p_plataforma: np.plataforma, p_link: np.link || null, p_quando: np.quando ? new Date(np.quando).toISOString() : new Date().toISOString() });
     setSalvandoPost(false);
     if (error) { toast.error(error.message.includes("check") ? "Confira o link (https://…) e o título." : error.message); return; }
-    setNp({ titulo: "", plataforma: np.plataforma, link: "", quando: "" }); setPosts(null); void db.rpc("embaixador_painel", { p_dias: dias }).then(({ data }) => setPainel(data as Painel)); toast.success("Postagem registrada");
+    setNp({ titulo: "", plataforma: np.plataforma, link: "", quando: "" }); setPosts(null); void db.rpc("embaixador_painel", { p_dias: dias, ...alvo }).then(({ data }) => setPainel(data as Painel)); toast.success("Postagem registrada");
   }
-  const apagarPost = async (id: string) => { await db.rpc("embaixador_postagem_apagar", { p_id: id }); setPosts(null); void db.rpc("embaixador_painel", { p_dias: dias }).then(({ data }) => setPainel(data as Painel)); };
+  const apagarPost = async (id: string) => { await db.rpc("embaixador_postagem_apagar", { p_id: id }); setPosts(null); void db.rpc("embaixador_painel", { p_dias: dias, ...alvo }).then(({ data }) => setPainel(data as Painel)); };
   const copiar = async (id: string, url: string) => { await navigator.clipboard.writeText(url); setCopiado(id); toast.success("Link copiado"); setTimeout(() => setCopiado(""), 1500); };
 
   return (
     <div className="min-h-screen bg-background">
+      {previaId && <div className="bg-amber-500/15 px-4 py-2 text-center text-xs text-amber-700 dark:text-amber-400">Visão do administrador: é exatamente o que {eu.nome} vê (somente leitura).</div>}
       <header className="border-b border-border">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
           <div><div className="text-xs text-muted-foreground">Embaixador · {eu.projeto}</div><div className="text-lg font-semibold">{eu.nome}</div></div>
-          <Button variant="ghost" size="sm" onClick={() => void supabase.auth.signOut()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>
+          {previaId ? <Button variant="outline" size="sm" onClick={onFechar}>Fechar visão</Button> : <Button variant="ghost" size="sm" onClick={() => void supabase.auth.signOut()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>}
         </div>
         <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4">
           {ABAS.map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm", aba === id ? "border-primary font-medium" : "border-transparent text-muted-foreground")}>{nome}</button>)}
@@ -251,7 +263,7 @@ function AreaEmbaixador({ eu }: { eu: Eu }) {
               <Cartao icone={Megaphone} titulo="Postagens no mês" valor={String(postsMes)} />
               <Cartao icone={Megaphone} titulo="Total registrado" valor={String((posts ?? []).filter((x) => x.status === "postada").length)} />
             </div>
-            <form onSubmit={registrarPost} className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
+            {!previaId && <form onSubmit={registrarPost} className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
               <label className="space-y-1 text-xs text-muted-foreground">O que você postou<Input className="h-9 w-56" required placeholder="Ex.: Reel dos 3 livros" value={np.titulo} onChange={(e) => setNp({ ...np, titulo: e.target.value })} /></label>
               <label className="space-y-1 text-xs text-muted-foreground">Onde
                 <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={np.plataforma} onChange={(e) => setNp({ ...np, plataforma: e.target.value })}><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="youtube">YouTube</option><option value="outra">Outra</option></select>
@@ -259,14 +271,14 @@ function AreaEmbaixador({ eu }: { eu: Eu }) {
               <label className="space-y-1 text-xs text-muted-foreground">Link (opcional)<Input className="h-9 w-56" placeholder="https://…" value={np.link} onChange={(e) => setNp({ ...np, link: e.target.value })} /></label>
               <label className="space-y-1 text-xs text-muted-foreground">Quando (vazio = agora)<Input className="h-9 w-48" type="datetime-local" value={np.quando} onChange={(e) => setNp({ ...np, quando: e.target.value })} /></label>
               <Button type="submit" disabled={salvandoPost}>{salvandoPost ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}</Button>
-            </form>
+            </form>}
             {!posts ? <Carregar /> : !posts.length ? <Vazio texto="Registre aqui cada conteúdo que você postar: a contagem da semana e do mês fica por conta do sistema." /> : (
               <div className="overflow-hidden rounded-xl border border-border bg-card">
                 <table className="w-full text-sm"><tbody>{posts.map((x) => (
                   <tr key={x.id} className="border-t border-border first:border-0">
                     <td className="px-4 py-2.5"><div className="font-medium">{x.titulo}</div><div className="text-xs text-muted-foreground">{x.plataforma}{x.link && <> · <a className="underline" href={x.link} target="_blank" rel="noreferrer">abrir</a></>}</div></td>
                     <td className="px-4 py-2.5 text-right text-xs text-muted-foreground">{dataHora(x.postada_em)}<div>{x.status === "programada" ? "programada" : "postada"}</div></td>
-                    <td className="w-10 pr-3 text-right"><button title="Apagar" className="text-muted-foreground hover:text-destructive" onClick={() => void apagarPost(x.id)}><Trash2 className="h-4 w-4" /></button></td>
+                    <td className="w-10 pr-3 text-right">{!previaId && <button title="Apagar" className="text-muted-foreground hover:text-destructive" onClick={() => void apagarPost(x.id)}><Trash2 className="h-4 w-4" /></button>}</td>
                   </tr>))}</tbody></table>
               </div>
             )}
