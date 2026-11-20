@@ -33,6 +33,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from migration_db import connect  # noqa: E402
 import motor  # noqa: E402
 
+# 20/11: a prévia leve fica em cache pelo hash do projeto; entra também o código do motor CARREGADO neste processo. Antes, uma prévia feita com o
+# motor antigo (zerava o zoom nas capas) continuou sendo tocada depois da correção, porque o projeto era o mesmo.
+import hashlib as _hashlib  # noqa: E402
+MOTOR_VERSAO = _hashlib.sha1(Path(motor.__file__).read_bytes()).hexdigest()[:8]
+
 BASE = Path.home() / ".infopro-hub" / "danilo"
 EDICOES = BASE / "edicoes"
 EDICOES.mkdir(parents=True, exist_ok=True)
@@ -292,7 +297,7 @@ def previa_leve(pasta, projeto):
     atual = json.loads((pasta / "projeto.json").read_text())
     for campo in ("fonte", "duracao_fonte", "palavras"):   # o app não troca o bruto
         projeto[campo] = atual.get(campo)
-    chave = hashlib.sha1(json.dumps({k: v for k, v in projeto.items() if k != "palavras"}, sort_keys=True).encode()).hexdigest()[:12]
+    chave = hashlib.sha1(json.dumps({**{k: v for k, v in projeto.items() if k != "palavras"}, "_motor": MOTOR_VERSAO}, sort_keys=True).encode()).hexdigest()[:12]
     destino = pasta / f"previa-leve-{chave}.mp4"
     if destino.exists():
         return {"pronto": True, "arquivo": destino.name}
