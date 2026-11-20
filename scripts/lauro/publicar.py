@@ -33,7 +33,7 @@ def log(*a):
 
 def preparar(r):
     rid, perfil, token, arquivo, titulo, legenda = r
-    origem = Path(arquivo or "")
+    origem = Path(arquivo or "").expanduser()   # 20/11: o caminho vem como ~/… (vale no servidor e no Mac)
     if not origem.is_file():
         return   # o vídeo está na outra máquina (Mac ou servidor): quem o produziu prepara
     pasta = TRABALHO / rid

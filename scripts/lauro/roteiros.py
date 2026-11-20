@@ -77,6 +77,9 @@ def main():
             print("\nROTEIRO:\n" + r[4])
         elif arg.cmd == "status":
             r = _achar(q, arg.id)
+            if arg.arquivo:   # 20/11: grava como ~/… para o mesmo caminho servir no servidor (/root) e no Mac (/Users/davi), que puxa os vídeos de lá
+                casa, cheio = str(Path.home()), str(Path(arg.arquivo).expanduser())
+                arg.arquivo = "~" + cheio[len(casa):] if cheio.startswith(casa + "/") else arg.arquivo
             q.execute("UPDATE public.esteira_dark_roteiros SET status = %s, obs = coalesce(%s, obs), arquivo = coalesce(%s, arquivo), atualizado_em = now() WHERE id = %s", (arg.novo, arg.obs, arg.arquivo, r[0]))
             if arg.arquivo:   # histórico de versões (v1, v2…): a mesma versão não entra duas vezes
                 q.execute("""UPDATE public.esteira_dark_roteiros SET versoes = versoes || jsonb_build_array(jsonb_build_object('arquivo', %s::text, 'em', now()::text, 'nota', %s::text))
