@@ -111,5 +111,24 @@ DO $$ BEGIN
   BEGIN PERFORM public.embaixador_postagem_registrar('x', 'instagram', NULL, now()); RAISE EXCEPTION 'estranho registrou postagem';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
+-- aulas e visão do administrador (20/11): admin libera, embaixador só lê; estranho não vê nem abre a visão
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000401',true);
+INSERT INTO public.embaixador_aulas(cliente_id, titulo, url) VALUES ('10000000-0000-0000-0000-000000000404', 'Aula 1', 'https://drive.google.com/file/d/abc/view');
+DO $$ BEGIN
+  BEGIN INSERT INTO public.embaixador_aulas(cliente_id, titulo, url) VALUES ('10000000-0000-0000-0000-000000000404', 'Ruim', 'https://evil.com/x'); RAISE EXCEPTION 'aceitou link fora do Drive';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+  IF public.embaixador_eu('10000000-0000-0000-0000-000000000407')->>'codigo' <> 'ana1' THEN RAISE EXCEPTION 'visão do admin'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_aulas_minhas('10000000-0000-0000-0000-000000000407')) <> 1 THEN RAISE EXCEPTION 'aulas na visão do admin'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000402',true);
+DO $$ BEGIN
+  IF (SELECT count(*) FROM public.embaixador_aulas_minhas()) <> 1 THEN RAISE EXCEPTION 'embaixador não vê a aula'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_aulas) <> 0 THEN RAISE EXCEPTION 'embaixador leu a tabela de aulas'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000403',true);
+DO $$ BEGIN
+  BEGIN PERFORM public.embaixador_eu('10000000-0000-0000-0000-000000000407'); RAISE EXCEPTION 'estranho abriu a visão';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
 RESET ROLE;
 ROLLBACK;

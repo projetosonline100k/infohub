@@ -30,3 +30,19 @@ export function linkDoEmbaixador(destino: string, codigo: string): string {
 export const conviteDoEmbaixador = (origem: string, token: string) => `${origem}/embaixador/convite/${token}`;
 
 export const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+
+/** Endereço para mostrar uma aula do Google Drive/Docs dentro da página (null = só dá para abrir no Drive). */
+export function driveEmbed(url: string): string | null {
+  try {
+    const u = new URL(url);
+    const arquivo = u.pathname.match(/\/(?:file|document|presentation|spreadsheets)\/d\/([\w-]+)/)?.[1];
+    const pasta = u.pathname.match(/\/folders\/([\w-]+)/)?.[1];
+    if (pasta) return `https://drive.google.com/embeddedfolderview?id=${pasta}#list`;
+    const id = arquivo ?? u.searchParams.get("id");
+    if (!id) return null;
+    if (u.pathname.includes("/document/")) return `https://docs.google.com/document/d/${id}/preview`;
+    if (u.pathname.includes("/presentation/")) return `https://docs.google.com/presentation/d/${id}/embed`;
+    if (u.pathname.includes("/spreadsheets/")) return `https://docs.google.com/spreadsheets/d/${id}/preview`;
+    return `https://drive.google.com/file/d/${id}/preview`;
+  } catch { return null; }
+}

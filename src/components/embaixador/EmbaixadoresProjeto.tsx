@@ -1,7 +1,7 @@
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronDown, Coins, Copy, ExternalLink, Eye, Handshake, KeyRound, Link2, Loader2, Megaphone, Pause, Play, ShoppingCart, Trash2, UserPlus, Users, Wand2 } from "lucide-react";
+import { BookOpen, ChevronDown, Coins, Copy, ExternalLink, Eye, Handshake, KeyRound, Link2, Loader2, Megaphone, Pause, Play, ShoppingCart, Trash2, UserPlus, Users, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { confirmar } from "@/components/DialogosGlobais";
@@ -23,6 +23,7 @@ const METRICAS: [Metrica, string][] = [["vendas", "Vendas"], ["leads", "Leads"],
 const MODOS: [Modo, string][] = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]];
 const CORES = ["#38bdf8", "#f59e0b", "#10b981", "#a78bfa", "#f43f5e", "#22d3ee", "#ec4899", "#84cc16"];
 const gerarSenha = () => { const a = "abcdefghjkmnpqrstuvwxyz23456789"; return Array.from(crypto.getRandomValues(new Uint32Array(10)), (n) => a[n % a.length]).join(""); };
+interface AulaAdm { id: string; modulo: string; titulo: string; descricao: string | null; url: string; ativo: boolean; embaixador_id: string | null }
 interface LinkLiberado { id: string; titulo: string; destino: string; ativo: boolean; embaixador_id: string | null }
 interface LeadAdm { nome: string | null; email: string | null; whatsapp: string | null; criada_em: string; status: string }
 interface VendaAdm { data: string; tipo: string; produto: string; comprador: string; valor: number; comissao: number }
@@ -47,6 +48,8 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
   const [lista, setLista] = useState<Embaixador[] | null>(null);
   const [resumo, setResumo] = useState<Map<string, Resumo>>(new Map());
   const [links, setLinks] = useState<LinkLiberado[]>([]);
+  const [aulas, setAulas] = useState<AulaAdm[]>([]);
+  const [au, setAu] = useState({ modulo: "Aulas", titulo: "", url: "", descricao: "", para: "" });
   const [quizzes, setQuizzes] = useState<{ slug: string; titulo: string }[]>([]);
   const [dias, setDias] = useState(30);
   const [novoAberto, setNovoAberto] = useState(false);
@@ -64,13 +67,15 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
   const [ficha, setFicha] = useState<{ leads: LeadAdm[]; vendas: VendaAdm[]; posts: PostagemAdm[] } | null>(null);
 
   const carregar = useCallback(async () => {
-    const [{ data: e }, { data: ls }, { data: qz }] = await Promise.all([
+    const [{ data: e }, { data: ls }, { data: qz }, { data: al }] = await Promise.all([
       db.from("embaixadores").select("id, nome, email, codigo, comissao_pct, ativo, convite, auth_user_id").eq("cliente_id", clienteId).order("criado_em"),
       db.from("embaixador_links").select("id, titulo, destino, ativo, embaixador_id").eq("cliente_id", clienteId).order("ordem").order("criado_em"),
       db.from("quizzes").select("slug, titulo").eq("cliente_id", clienteId).is("variante_de", null),
+      db.from("embaixador_aulas").select("id, modulo, titulo, descricao, url, ativo, embaixador_id").eq("cliente_id", clienteId).order("modulo").order("ordem").order("criado_em"),
     ]);
     setLista(((e ?? []) as Embaixador[]).map((x) => ({ ...x, comissao_pct: Number(x.comissao_pct) })));
     setLinks((ls ?? []) as LinkLiberado[]);
+    setAulas((al ?? []) as AulaAdm[]);
     setQuizzes((qz ?? []) as { slug: string; titulo: string }[]);
   }, [clienteId]);
   useEffect(() => { void carregar(); }, [carregar]);
@@ -165,6 +170,13 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
     const { error } = await db.from("embaixador_links").insert({ cliente_id: clienteId, titulo: l.titulo.trim(), destino: urlPublica(l.destino.trim()), embaixador_id: l.para || null, ordem: links.length });
     if (error) { toast.error(error.message.includes("check") ? "Use um endereço completo (https://…)." : error.message); return; }
     setL({ titulo: "", destino: "", para: "" }); void carregar();
+  }
+
+  async function novaAula(ev: FormEvent) {
+    ev.preventDefault();
+    const { error } = await db.from("embaixador_aulas").insert({ cliente_id: clienteId, modulo: au.modulo.trim() || "Aulas", titulo: au.titulo.trim(), url: au.url.trim(), descricao: au.descricao.trim() || null, embaixador_id: au.para || null, ordem: aulas.length });
+    if (error) { toast.error(error.message.includes("check") ? "Cole o link do Google Drive (https://drive.google.com/…)." : error.message); return; }
+    setAu({ ...au, titulo: "", url: "", descricao: "" }); toast.success("Aula liberada"); void carregar();
   }
 
   if (!lista) return <div className="p-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>;
@@ -324,6 +336,28 @@ export function EmbaixadoresProjeto({ clienteId }: { clienteId: string }) {
         )}
       </div>
 
+      <div className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-semibold"><BookOpen className="h-4 w-4" />Aulas</h3>
+        <p className="text-xs text-muted-foreground">Cole o link do Google Drive (vídeo, pasta, documento ou apresentação) e a aula aparece na área do embaixador, com o player dentro da página. Deixe o arquivo do Drive compartilhado como "qualquer pessoa com o link".</p>
+        <form onSubmit={novaAula} className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
+          <label className="space-y-1 text-xs text-muted-foreground">Módulo<Input className="h-9 w-36" required placeholder="Ex.: Começando" value={au.modulo} onChange={(e) => setAu({ ...au, modulo: e.target.value })} /></label>
+          <label className="space-y-1 text-xs text-muted-foreground">Título da aula<Input className="h-9 w-52" required placeholder="Ex.: Como postar" value={au.titulo} onChange={(e) => setAu({ ...au, titulo: e.target.value })} /></label>
+          <label className="space-y-1 text-xs text-muted-foreground">Link do Drive<Input className="h-9 w-72" required placeholder="https://drive.google.com/…" value={au.url} onChange={(e) => setAu({ ...au, url: e.target.value })} /></label>
+          <label className="space-y-1 text-xs text-muted-foreground">Descrição (opcional)<Input className="h-9 w-64" value={au.descricao} onChange={(e) => setAu({ ...au, descricao: e.target.value })} /></label>
+          <label className="space-y-1 text-xs text-muted-foreground">Para
+            <select className={campo} value={au.para} onChange={(e) => setAu({ ...au, para: e.target.value })}><option value="">Todos os embaixadores</option>{lista.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select>
+          </label>
+          <Button type="submit">Liberar aula</Button>
+        </form>
+        {aulas.map((a) => (
+          <div key={a.id} className={cn("flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-2.5 text-sm", !a.ativo && "opacity-60")}>
+            <div className="min-w-0 flex-1"><div className="font-medium">{a.titulo} <span className="text-xs font-normal text-muted-foreground">· {a.modulo}</span></div><div className="truncate text-xs text-muted-foreground">{a.url}</div></div>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{a.embaixador_id ? lista.find((x) => x.id === a.embaixador_id)?.nome ?? "—" : "Todos"}</span>
+            <Button variant="ghost" size="icon" title={a.ativo ? "Esconder" : "Mostrar"} onClick={() => void db.from("embaixador_aulas").update({ ativo: !a.ativo }).eq("id", a.id).then(carregar)}>{a.ativo ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</Button>
+            <Button variant="ghost" size="icon" title="Remover" onClick={() => void db.from("embaixador_aulas").delete().eq("id", a.id).then(carregar)}><Trash2 className="h-4 w-4" /></Button>
+          </div>
+        ))}
+      </div>
       <div className="space-y-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold"><Link2 className="h-4 w-4" />Links liberados</h3>
         <p className="text-xs text-muted-foreground">O embaixador recebe cada link já com a marca dele. Vale para o quiz, ofertas únicas ou qualquer página. Os endereços usam sempre o site publicado.</p>

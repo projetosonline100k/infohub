@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Copy, Link2, Loader2, LogOut, ShoppingCart, Users, UserCheck, Eye, Coins, Check, Megaphone, Trash2 } from "lucide-react";
+import { BookOpen, ExternalLink, Play, X, Copy, Link2, Loader2, LogOut, ShoppingCart, Users, UserCheck, Eye, Coins, Check, Megaphone, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { brl, linkDoEmbaixador } from "@/lib/embaixador";
+import { brl, driveEmbed, linkDoEmbaixador } from "@/lib/embaixador";
 import { agrupar, diasAtras, hojeLocal, type Modo } from "@/lib/embaixadorSerie";
 
 const db = supabase as unknown as SupabaseClient;
@@ -24,6 +24,7 @@ interface Postagem { id: string; titulo: string; plataforma: string; link: strin
 type Metrica = "vendas" | "leads" | "receita" | "postagens";
 const METRICAS: [Metrica, string][] = [["vendas", "Vendas"], ["leads", "Leads"], ["receita", "Receita"], ["postagens", "Postagens"]];
 const MODOS: [Modo, string][] = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]];
+interface Aula { id: string; modulo: string; titulo: string; descricao: string | null; url: string; criado_em: string }
 interface LinkE { id: string; titulo: string; destino: string; codigo: string }
 
 const dia = (d: string) => new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -122,7 +123,7 @@ export function EmbaixadorConvite() {
   return <FormAcesso emailFixo={info.email} permiteCriar titulo={`Olá, ${info.nome.split(" ")[0]}!`} texto={`Você foi convidado(a) para ser embaixador(a) de ${info.projeto}. Crie sua senha para entrar na sua área.`} onEntrou={aceitar} />;
 }
 
-const ABAS = [["resumo", "Resumo"], ["postagens", "Postagens"], ["leads", "Leads"], ["vendas", "Vendas"], ["esteira", "Esteira"], ["links", "Links"]] as const;
+const ABAS = [["resumo", "Resumo"], ["postagens", "Postagens"], ["leads", "Leads"], ["vendas", "Vendas"], ["esteira", "Esteira"], ["aulas", "Aulas"], ["links", "Links"]] as const;
 
 /** /embaixador — login e a área do embaixador. */
 export default function Embaixador() {
@@ -151,17 +152,18 @@ export function PreviaEmbaixador({ id, onFechar }: { id: string; onFechar: () =>
   return <div className="fixed inset-0 z-50 overflow-y-auto bg-background"><AreaEmbaixador eu={eu} previaId={id} onFechar={onFechar} /></div>;
 }
 
-function Cartao({ icone: I, titulo, valor, nota }: { icone: typeof Users; titulo: string; valor: string; nota?: string }) {
+const TONS = { azul: "bg-blue-500/12 text-blue-600", verde: "bg-emerald-500/12 text-emerald-600", roxo: "bg-violet-500/12 text-violet-600", ambar: "bg-amber-500/15 text-amber-600", rosa: "bg-pink-500/12 text-pink-600", cinza: "bg-muted text-muted-foreground" } as const;
+function Cartao({ icone: I, titulo, valor, nota, tom = "cinza" }: { icone: typeof Users; titulo: string; valor: string; nota?: string; tom?: keyof typeof TONS }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground"><I className="h-3.5 w-3.5" />{titulo}</div>
-      <div className="mt-1.5 text-2xl font-semibold tabular-nums">{valor}</div>
+    <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+      <div className="flex items-center gap-2.5 text-xs font-medium text-muted-foreground"><span className={cn("grid h-8 w-8 place-items-center rounded-xl", TONS[tom])}><I className="h-4 w-4" /></span>{titulo}</div>
+      <div className="mt-3 text-2xl font-semibold tabular-nums tracking-tight">{valor}</div>
       {nota && <div className="mt-0.5 text-xs text-muted-foreground">{nota}</div>}
     </div>
   );
 }
 
-function Vazio({ texto }: { texto: string }) { return <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{texto}</p>; }
+function Vazio({ texto }: { texto: string }) { return <p className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center text-sm text-muted-foreground">{texto}</p>; }
 
 /** previaId: o administrador vendo a área de um embaixador (só leitura, sem registrar nada). */
 export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: string; onFechar?: () => void }) {
@@ -174,6 +176,9 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
   const [esteira, setEsteira] = useState<Esteira[] | null>(null);
   const [links, setLinks] = useState<LinkE[] | null>(null);
   const [posts, setPosts] = useState<Postagem[] | null>(null);
+  const [aulas, setAulas] = useState<Aula[] | null>(null);
+  const [aulaAberta, setAulaAberta] = useState<Aula | null>(null);
+  const [mes, setMes] = useState<Painel | null>(null);
   const [metrica, setMetrica] = useState<Metrica>("vendas");
   const [modo, setModo] = useState<Modo>("dia");
   const [np, setNp] = useState({ titulo: "", plataforma: "instagram", link: "", quando: "" });
@@ -186,9 +191,13 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
     if (aba === "leads" && !leads) void db.rpc("embaixador_leads", alvo).then(({ data }) => setLeads((data ?? []) as Lead[]));
     if (aba === "vendas" && !vendas) void db.rpc("embaixador_vendas", alvo).then(({ data }) => setVendas((data ?? []) as Venda[]));
     if (aba === "esteira" && !esteira) void db.rpc("embaixador_esteira", alvo).then(({ data }) => setEsteira((data ?? []) as Esteira[]));
+    if (aba === "aulas" && !aulas) void db.rpc("embaixador_aulas_minhas", alvo).then(({ data }) => setAulas((data ?? []) as Aula[]));
     if (aba === "links" && !links) void db.rpc("embaixador_links_meus", alvo).then(({ data }) => setLinks((data ?? []) as LinkE[]));
-  }, [aba, leads, vendas, esteira, links, posts, alvo]);
+  }, [aba, leads, vendas, esteira, links, posts, aulas, alvo]);
 
+  useEffect(() => { void db.rpc("embaixador_painel", { p_dias: 62, ...alvo }).then(({ data }) => setMes(data as Painel)); }, [alvo]);
+  const doMes = useMemo(() => { const m = hojeLocal().slice(0, 7); const ds = (mes?.dias ?? []).filter((d) => d.dia.slice(0, 7) === m); return { leads: ds.reduce((a, d) => a + d.leads, 0), vendas: ds.reduce((a, d) => a + d.vendas, 0), receita: ds.reduce((a, d) => a + d.receita, 0), posts: ds.reduce((a, d) => a + d.postagens, 0) }; }, [mes]);
+  const modulos = useMemo(() => { const m = new Map<string, Aula[]>(); (aulas ?? []).forEach((a) => m.set(a.modulo, [...(m.get(a.modulo) ?? []), a])); return [...m.entries()]; }, [aulas]);
   const liquido = painel ? painel.bruto - painel.reembolsado : 0;
   const serie = useMemo(() => agrupar((painel?.dias ?? []).map((d) => ({ ...d, dia: d.dia.slice(0, 10) })) as never, modo, [metrica], diasAtras(dias - 1), hojeLocal()), [painel, modo, metrica, dias]);
   const postsSemana = useMemo(() => { const lim = new Date(); lim.setDate(lim.getDate() - ((lim.getDay() + 6) % 7)); lim.setHours(0, 0, 0, 0); return (posts ?? []).filter((x) => x.status === "postada" && new Date(x.postada_em) >= lim).length; }, [posts]);
@@ -204,36 +213,48 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
   const copiar = async (id: string, url: string) => { await navigator.clipboard.writeText(url); setCopiado(id); toast.success("Link copiado"); setTimeout(() => setCopiado(""), 1500); };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-muted/30">
       {previaId && <div className="bg-amber-500/15 px-4 py-2 text-center text-xs text-amber-700 dark:text-amber-400">Visão do administrador: é exatamente o que {eu.nome} vê (somente leitura).</div>}
-      <header className="border-b border-border">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-4">
-          <div><div className="text-xs text-muted-foreground">Embaixador · {eu.projeto}</div><div className="text-lg font-semibold">{eu.nome}</div></div>
-          {previaId ? <Button variant="outline" size="sm" onClick={onFechar}>Fechar visão</Button> : <Button variant="ghost" size="sm" onClick={() => void supabase.auth.signOut()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>}
+      <header className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pb-5 pt-6">
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/15 text-lg font-semibold">{eu.nome.slice(0, 1).toUpperCase()}</div>
+            <div><div className="text-xs uppercase tracking-wider text-white/60">Embaixador · {eu.projeto}</div><div className="text-xl font-semibold">Olá, {eu.nome.split(" ")[0]}</div></div>
+          </div>
+          {previaId ? <Button variant="secondary" size="sm" onClick={onFechar}>Fechar visão</Button> : <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white" onClick={() => void supabase.auth.signOut()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>}
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4">
-          {ABAS.map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm", aba === id ? "border-primary font-medium" : "border-transparent text-muted-foreground")}>{nome}</button>)}
+        <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-3">
+          {ABAS.map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={cn("whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors", aba === id ? "bg-white text-slate-900 font-medium" : "text-white/70 hover:bg-white/10")}>{nome}</button>)}
         </nav>
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
         {aba === "resumo" && (
           <>
+            <div>
+              <h2 className="mb-2 text-sm font-medium text-muted-foreground">Este mês · {new Date().toLocaleDateString("pt-BR", { month: "long" })}</h2>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <Cartao tom="verde" icone={Coins} titulo="Faturamento do mês" valor={brl(doMes.receita)} nota="vendas pelo seu link" />
+                <Cartao tom="azul" icone={UserCheck} titulo="Leads do mês" valor={String(doMes.leads)} nota="pessoas que você trouxe" />
+                <Cartao tom="roxo" icone={ShoppingCart} titulo="Vendas do mês" valor={String(doMes.vendas)} nota={`comissão ${brl((doMes.receita * (mes?.comissao_pct ?? 0)) / 100)}`} />
+                <Cartao tom="rosa" icone={Megaphone} titulo="Postagens do mês" valor={String(doMes.posts)} />
+              </div>
+            </div>
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-muted-foreground">Seus números</h2>
+              <h2 className="text-sm font-medium text-muted-foreground">Período</h2>
               <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"], [365, "1 ano"]].map(([d, n]) => <button key={d} onClick={() => setDias(d as number)} className={cn("rounded-md px-2.5 py-1", dias === d ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
             </div>
             {!painel ? <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div> : (
               <>
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-                  <Cartao icone={Users} titulo="Pessoas que trouxe" valor={String(painel.trouxe_total)} nota="desde o começo" />
-                  <Cartao icone={Eye} titulo="Visitas" valor={String(painel.visitas)} nota={`últimos ${dias} dias`} />
-                  <Cartao icone={UserCheck} titulo="Leads" valor={String(painel.leads)} nota={`últimos ${dias} dias`} />
-                  <Cartao icone={Megaphone} titulo="Postagens" valor={String(painel.postagens)} nota={`últimos ${dias} dias`} />
-                  <Cartao icone={ShoppingCart} titulo="Vendas" valor={String(painel.vendas)} nota={brl(liquido) + " líquido"} />
-                  <Cartao icone={Coins} titulo="Sua comissão" valor={brl((liquido * painel.comissao_pct) / 100)} nota={`${painel.comissao_pct}% do líquido`} />
+                  <Cartao tom="azul" icone={Users} titulo="Pessoas que trouxe" valor={String(painel.trouxe_total)} nota="desde o começo" />
+                  <Cartao tom="cinza" icone={Eye} titulo="Visitas" valor={String(painel.visitas)} nota={`últimos ${dias} dias`} />
+                  <Cartao tom="azul" icone={UserCheck} titulo="Leads" valor={String(painel.leads)} nota={`últimos ${dias} dias`} />
+                  <Cartao tom="rosa" icone={Megaphone} titulo="Postagens" valor={String(painel.postagens)} nota={`últimos ${dias} dias`} />
+                  <Cartao tom="roxo" icone={ShoppingCart} titulo="Vendas" valor={String(painel.vendas)} nota={brl(liquido) + " líquido"} />
+                  <Cartao tom="verde" icone={Coins} titulo="Sua comissão" valor={brl((liquido * painel.comissao_pct) / 100)} nota={`${painel.comissao_pct}% do líquido`} />
                 </div>
-                <div className="rounded-xl border border-border bg-card p-4">
+                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
                   <div className="mb-3 flex flex-wrap items-center gap-2">
                     <div className="text-sm font-medium">Evolução</div>
                     <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{METRICAS.map(([m, n]) => <button key={m} onClick={() => setMetrica(m)} className={cn("rounded-md px-2.5 py-1", metrica === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
@@ -273,7 +294,7 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
               <Button type="submit" disabled={salvandoPost}>{salvandoPost ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}</Button>
             </form>}
             {!posts ? <Carregar /> : !posts.length ? <Vazio texto="Registre aqui cada conteúdo que você postar: a contagem da semana e do mês fica por conta do sistema." /> : (
-              <div className="overflow-hidden rounded-xl border border-border bg-card">
+              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
                 <table className="w-full text-sm"><tbody>{posts.map((x) => (
                   <tr key={x.id} className="border-t border-border first:border-0">
                     <td className="px-4 py-2.5"><div className="font-medium">{x.titulo}</div><div className="text-xs text-muted-foreground">{x.plataforma}{x.link && <> · <a className="underline" href={x.link} target="_blank" rel="noreferrer">abrir</a></>}</div></td>
@@ -286,7 +307,7 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
         )}
 
         {aba === "leads" && (!leads ? <Carregar /> : !leads.length ? <Vazio texto="Quando alguém entrar pelo seu link e se cadastrar, aparece aqui." /> : (
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Nome</th><th className="px-4 py-2 font-medium">Etapa</th><th className="px-4 py-2 font-medium">Chegou em</th></tr></thead>
               <tbody>{leads.map((l, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{l.nome}</td><td className="px-4 py-2"><span className={cn("rounded-full px-2 py-0.5 text-xs", l.etapa === "Comprou" ? "bg-emerald-500/15 text-emerald-600" : "bg-muted")}>{l.etapa}</span></td><td className="px-4 py-2 text-muted-foreground">{dataHora(l.em)}</td></tr>)}</tbody></table>
           </div>
@@ -300,9 +321,36 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
         ))}
 
         {aba === "esteira" && (!esteira ? <Carregar /> : !esteira.length ? <Vazio texto="Quem fechar pelo seu link entra na esteira e você acompanha por aqui." /> : (
-          <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
             <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Cliente</th><th className="px-4 py-2 font-medium">Produto</th><th className="px-4 py-2 font-medium">Fechou em</th><th className="px-4 py-2 font-medium">Etapa</th></tr></thead>
               <tbody>{esteira.map((x, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{x.nome}</td><td className="px-4 py-2">{x.produto}</td><td className="px-4 py-2 text-muted-foreground">{dia(x.data)}</td><td className="px-4 py-2"><span className="rounded-full bg-muted px-2 py-0.5 text-xs">{x.etapa}</span></td></tr>)}</tbody></table>
+          </div>
+        ))}
+
+        {aba === "aulas" && (!aulas ? <Carregar /> : !aulas.length ? <Vazio texto="As aulas ainda não foram liberadas. Quando chegarem, aparecem aqui." /> : (
+          <div className="space-y-6">
+            {aulaAberta && (
+              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3"><div className="min-w-0"><div className="truncate font-medium">{aulaAberta.titulo}</div>{aulaAberta.descricao && <div className="text-xs text-muted-foreground">{aulaAberta.descricao}</div>}</div>
+                  <div className="flex shrink-0 gap-2"><Button size="sm" variant="outline" asChild><a href={aulaAberta.url} target="_blank" rel="noreferrer"><ExternalLink className="mr-1.5 h-4 w-4" />Abrir no Drive</a></Button><Button size="sm" variant="ghost" onClick={() => setAulaAberta(null)}><X className="h-4 w-4" /></Button></div></div>
+                {driveEmbed(aulaAberta.url) ? <iframe title={aulaAberta.titulo} src={driveEmbed(aulaAberta.url)!} className="aspect-video w-full bg-black" allow="autoplay; fullscreen" allowFullScreen /> : <p className="p-6 text-sm text-muted-foreground">Esta aula abre direto no Drive (botão acima).</p>}
+              </div>
+            )}
+            {modulos.map(([nome, lista]) => (
+              <section key={nome}>
+                <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><BookOpen className="h-4 w-4 text-muted-foreground" />{nome}<span className="text-xs font-normal text-muted-foreground">{lista.length} {lista.length === 1 ? "aula" : "aulas"}</span></h3>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {lista.map((a, i) => (
+                    <button key={a.id} onClick={() => { setAulaAberta(a); window.scrollTo({ top: 0, behavior: "smooth" }); }} className={cn("group flex flex-col rounded-2xl border bg-card p-4 text-left shadow-sm transition hover:border-primary/50 hover:shadow-md", aulaAberta?.id === a.id ? "border-primary" : "border-border")}>
+                      <div className="mb-3 grid h-24 place-items-center rounded-xl bg-gradient-to-br from-indigo-500/15 to-violet-500/15 text-primary"><Play className="h-8 w-8 transition-transform group-hover:scale-110" /></div>
+                      <div className="text-xs text-muted-foreground">Aula {i + 1}</div>
+                      <div className="font-medium leading-snug">{a.titulo}</div>
+                      {a.descricao && <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.descricao}</div>}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
           </div>
         ))}
 
