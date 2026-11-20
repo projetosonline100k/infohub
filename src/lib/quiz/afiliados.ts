@@ -26,19 +26,20 @@ export const utmDoAfiliado = (codigo: string, slugQuiz: string) => ({
 });
 
 export interface AfiliadoBase { id: string; codigo: string; nome: string; comissao_pct: number; ativo: boolean }
-export interface LeadAfi { id: string; email: string | null; criada_em: string; utm?: Record<string, string> | null }
+export interface LeadAfi { id: string; email: string | null; whatsapp?: string | null; criada_em: string; utm?: Record<string, string> | null }
 export interface EventoAfi { sessao: string; criado_em: string; utm?: Record<string, string> | null }
-export interface VendaAfi { transacao_id: string; tipo: string; comprador_email: string | null; valor: number | null; data: string | null; utm_content: string | null }
+export interface VendaAfi { transacao_id: string; tipo: string; comprador_email: string | null; comprador_telefone?: string | null; valor: number | null; data: string | null; utm_content: string | null }
 export type Via = "checkout" | "lead" | "conflito" | "codigo_desconhecido" | "nenhuma";
 export interface Atribuicao { venda: VendaAfi; codigo: string | null; via: Via; alternativo: string | null }
 
 const email = (v: string | null | undefined) => (v ?? "").trim().toLowerCase();
+const foneChave = (t: string | null | undefined) => { const d = (t ?? "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(-8) : ""; };   // igual a public.fone_chave
 const fimDoDia = (d: string | null) => (d ? Date.parse(`${d.slice(0, 10)}T23:59:59-03:00`) : Number.POSITIVE_INFINITY);
 
-/** Marca de afiliado do último lead desse e-mail criado até o dia da venda. */
-function marcaDoLead(leads: LeadAfi[], mail: string, ate: number): string | null {
-  if (!mail) return null;
-  const candidatos = leads.filter((l) => email(l.email) === mail && Date.parse(l.criada_em) <= ate).sort((a, b) => Date.parse(b.criada_em) - Date.parse(a.criada_em));
+/** Marca de afiliado do último lead desse e-mail (ou, 20/11, desse telefone) criado até o dia da venda. */
+function marcaDoLead(leads: LeadAfi[], mail: string, fone: string, ate: number): string | null {
+  if (!mail && !fone) return null;
+  const candidatos = leads.filter((l) => ((mail && email(l.email) === mail) || (fone && foneChave(l.whatsapp) === fone)) && Date.parse(l.criada_em) <= ate).sort((a, b) => Date.parse(b.criada_em) - Date.parse(a.criada_em));
   return candidatos.length ? codigoDaMarca(candidatos[0].utm?.utm_content) : null;
 }
 
@@ -46,7 +47,7 @@ export function atribuirVendas(afiliados: Pick<AfiliadoBase, "codigo">[], leads:
   const conhecidos = new Set(afiliados.map((a) => a.codigo.toLowerCase()));
   const aplicar = (v: VendaAfi): Atribuicao => {
     const doCheckout = codigoDaMarca(v.utm_content);
-    const doLead = marcaDoLead(leads, email(v.comprador_email), fimDoDia(v.data));
+    const doLead = marcaDoLead(leads, email(v.comprador_email), foneChave(v.comprador_telefone), fimDoDia(v.data));
     const lead = doLead && conhecidos.has(doLead) ? doLead : null;
     if (doCheckout) {
       if (!conhecidos.has(doCheckout)) return { venda: v, codigo: lead, via: lead ? "lead" : "codigo_desconhecido", alternativo: doCheckout };
@@ -91,6 +92,7 @@ export function resumirAfiliados(afiliados: AfiliadoBase[], eventosTodos: Evento
   }
   for (const l of leads) { const r = por.get(codigoDaMarca(l.utm?.utm_content) ?? ""); if (r) r.leads++; }
   const emailsLeads = new Set(leadsTodos.map((l) => email(l.email)).filter(Boolean));
+  const fonesLeads = new Set(leadsTodos.map((l) => foneChave(l.whatsapp)).filter(Boolean));
   const saude = { vendasDoQuiz: 0, viaCheckout: 0, viaLead: 0, conflitos: 0, codigoDesconhecido: 0, semAfiliado: 0, foraDoQuiz: 0, comMarcaNoCheckout: 0, totalVendas: 0 };
   for (const a of atribuicoes) {
     const valor = a.venda.valor ?? 0;
@@ -99,7 +101,7 @@ export function resumirAfiliados(afiliados: AfiliadoBase[], eventosTodos: Evento
       saude.totalVendas++;
       if (codigoDaMarca(a.venda.utm_content)) saude.comMarcaNoCheckout++;
       if (a.via === "codigo_desconhecido") saude.codigoDesconhecido++;
-      if (a.via === "nenhuma") { if (emailsLeads.has(email(a.venda.comprador_email))) saude.semAfiliado++; else saude.foraDoQuiz++; }
+      if (a.via === "nenhuma") { if (emailsLeads.has(email(a.venda.comprador_email)) || fonesLeads.has(foneChave(a.venda.comprador_telefone))) saude.semAfiliado++; else saude.foraDoQuiz++; }
       if (a.codigo) { saude.vendasDoQuiz++; if (a.via === "checkout") saude.viaCheckout++; else if (a.via === "lead") saude.viaLead++; else if (a.via === "conflito") { saude.conflitos++; saude.viaCheckout++; } }
     }
     const r = a.codigo ? por.get(a.codigo.toLowerCase()) : undefined;

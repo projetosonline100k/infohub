@@ -77,3 +77,10 @@ test('janela de datas: conta só o período, mas o lead de antes do período ain
   assert.equal(r.leads, 0);   // o lead é de outubro: fora do período
   assert.equal(m.vendaNaJanela({ data: '2026-11-13' }, j), false);   // o limite superior não entra
 });
+
+test('atribuirVendas: sem marca no checkout, acha o lead do afiliado pelo telefone quando não há e-mail (20/11)', () => {
+  const leads = [{ id: 'L1', email: null, whatsapp: '11 98765-4321', criada_em: '2026-11-20T18:56:00Z', utm: { utm_content: 'aff_ana' } }];
+  const vendas = [{ transacao_id: 'T1', tipo: 'venda', comprador_email: 'x@x.com', comprador_telefone: '+5511987654321', valor: 39.9, data: '2026-11-20', utm_content: 'ad-2' }];
+  const [a] = m.atribuirVendas([{ codigo: 'ana' }], leads, vendas);
+  assert.deepEqual([a.codigo, a.via], ['ana', 'lead']);
+});

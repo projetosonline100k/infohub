@@ -12,11 +12,18 @@ import { enviarParaMeta, montarEvento, tokenDoPixel } from "../_shared/capi.ts";
 // Compra na Meta pela API de Conversões (18/11/2026): se quem comprou deixou o mesmo e-mail num quiz que tem pixel da Meta, a venda vira
 // `Purchase` nesse pixel (com e-mail/telefone/nome em hash), e as campanhas passam a otimizar por venda. Nunca derruba o webhook.
 // deno-lint-ignore no-explicit-any
-async function comprarNaMeta(admin: any, e: { transacao_id: string; valor: number; comprador_email?: string; comprador_nome?: string; utm_content?: string }) {
+async function comprarNaMeta(admin: any, e: { transacao_id: string; valor: number; comprador_email?: string; comprador_nome?: string; comprador_telefone?: string; utm_content?: string }) {
   const email = (e.comprador_email ?? "").trim().toLowerCase();
   if (!email) return;
-  const { data: lead } = await admin.from("quiz_respostas").select("quiz_id, nome, whatsapp, email")
+  let { data: lead } = await admin.from("quiz_respostas").select("quiz_id, nome, whatsapp, email")
     .ilike("email", email.replace(/[\\%_]/g, (c) => `\\${c}`)).order("criada_em", { ascending: false }).limit(1).maybeSingle();
+  // 20/11: lead que deixou só o WhatsApp no quiz: acha pelo telefone (últimos 8 dígitos, como public.fone_chave).
+  const fone = (e.comprador_telefone ?? "").replace(/\D/g, "");
+  if (!lead && fone.length >= 8) {
+    const { data: candidatos } = await admin.from("quiz_respostas").select("quiz_id, nome, whatsapp, email")
+      .ilike("whatsapp", `%${fone.slice(-4)}%`).order("criada_em", { ascending: false }).limit(50);
+    lead = (candidatos ?? []).find((l: { whatsapp: string | null }) => (l.whatsapp ?? "").replace(/\D/g, "").slice(-8) === fone.slice(-8)) ?? null;
+  }
   if (!lead) return;
   const { data: q } = await admin.from("quizzes").select("pixels, variante_de, slug").eq("id", lead.quiz_id).maybeSingle();
   let pixels = q?.pixels;

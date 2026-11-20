@@ -137,3 +137,12 @@ test('Eduzz com utm nulo não inventa origem', () => {
   assert.ok(e);
   assert.equal(e.utm_content, undefined);
 });
+
+test('Telefone do comprador (20/11): Eduzz manda buyer.cellphone; Kiwify manda Customer.mobile; sem e-mail não guarda', () => {
+  const eduzz = interpretarWebhook({ event: 'myeduzz.invoice_paid', data: { id: '9', status: 'paid', buyer: { name: 'Ana', email: 'ana@x.com', cellphone: '+55 (11) 98765-4321', phone: '1133334444' }, price: { paid: { value: 39.9 } }, items: [{ name: 'Instalivros' }] } }, agora);
+  assert.equal(eduzz.comprador_telefone, '+55 (11) 98765-4321');
+  const kiwify = interpretarWebhook({ order_id: 'k1', webhook_event_type: 'order_approved', order_status: 'paid', Customer: { email: 'b@x.com', full_name: 'Bia', mobile: '+5511912345678' }, Commissions: { charge_amount: 1000 } }, agora);
+  assert.equal(kiwify.comprador_telefone, '+5511912345678');
+  const semEmail = interpretarWebhook({ order_id: 'k2', webhook_event_type: 'order_approved', order_status: 'paid', Customer: { mobile: '+5511912345678' }, Commissions: { charge_amount: 1000 } }, agora);
+  assert.equal(semEmail.comprador_telefone, undefined);
+});

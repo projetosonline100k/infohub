@@ -43,3 +43,27 @@ export function playConclusaoSound(): void {
   tocarNota(ctx, 880, agora, 0.18, 0.08);
   tocarNota(ctx, 1318.5, agora + 0.09, 0.22, 0.07);
 }
+
+// Venda (20/11, Davi: "como fez essa venda, preciso que saia um som no sistema" e "quero a venda da Kiwify que uma vez eu subi"):
+// toca a gravação dele (public/sons/venda.wav, o "vendaaa.WAV" dos Downloads). Se não carregar, cai na "caixa registradora" sintetizada.
+export function playVendaSound(): void {
+  try {
+    const audio = new Audio("/sons/venda.wav");
+    audio.volume = 0.9;
+    void audio.play().catch(() => vendaSintetizada());
+  } catch {
+    vendaSintetizada();
+  }
+}
+
+// Reserva: um toque de sino curto e um arpejo subindo (C6 → E6 → G6 → C7).
+function vendaSintetizada(): void {
+  const ctx = obterAudioContext();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  tocarNota(ctx, 2093, t, 0.12, 0.12);
+  tocarNota(ctx, 1046.5, t + 0.1, 0.35, 0.16);
+  tocarNota(ctx, 1318.5, t + 0.2, 0.35, 0.16);
+  tocarNota(ctx, 1568, t + 0.3, 0.35, 0.16);
+  tocarNota(ctx, 2093, t + 0.42, 0.7, 0.18);
+}

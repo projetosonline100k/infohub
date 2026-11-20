@@ -20,6 +20,7 @@ export type EventoVenda = {
   utm_term?: string;
   comprador_nome?: string;
   comprador_email?: string;
+  comprador_telefone?: string;
   metodo_pagamento?: string;
 };
 
@@ -83,6 +84,8 @@ function extras(corpo: Json): Partial<EventoVenda> {
     utm_term: achar(corpo, /^utm_?term$/i),
     comprador_email: achar(corpo, /^(cus_|customer_|buyer_)?email$/i),
     comprador_nome: achar(corpo, /^(cus_|customer_|buyer_)?(full_?)?name$|^nome$/i),
+    // 20/11: o telefone liga a venda ao lead que só deixou o WhatsApp no quiz (Kiwify: mobile; Hotmart: checkout_phone; Eduzz antiga: cus_cel).
+    comprador_telefone: achar(corpo, /^(cus_cel|cus_tel|checkout_phone|mobile|cellphone)$/i),
     metodo_pagamento: achar(corpo, /^payment_?(method|type)$|^paymentMethod$|^trans_paymentmethod$|^forma_?pagamento$/i),
   };
   const obj = utmEmObjeto(corpo);
@@ -90,7 +93,7 @@ function extras(corpo: Json): Partial<EventoVenda> {
     e.utm_source ??= obj.source; e.utm_medium ??= obj.medium; e.utm_campaign ??= obj.campaign; e.utm_content ??= obj.content; e.utm_term ??= obj.term;
   }
   // O nome do comprador pode bater com o nome do produto: só vale se estiver junto de um e-mail de comprador.
-  if (!e.comprador_email) delete e.comprador_nome;
+  if (!e.comprador_email) { delete e.comprador_nome; delete e.comprador_telefone; }
   for (const k of Object.keys(e) as (keyof EventoVenda)[]) if (e[k] === undefined) delete e[k];
   return e;
 }
@@ -198,6 +201,8 @@ function eduzz(corpo: Json, agora: Date): EventoVenda | null {
     ...(d.buyer?.email || d.customer?.email ? {
       comprador_email: String(d.buyer?.email ?? d.customer?.email),
       ...(d.buyer?.name || d.customer?.name ? { comprador_nome: String(d.buyer?.name ?? d.customer?.name) } : {}),
+      ...(d.buyer?.cellphone || d.buyer?.phone || d.customer?.cellphone || d.customer?.phone
+        ? { comprador_telefone: String(d.buyer?.cellphone || d.buyer?.phone || d.customer?.cellphone || d.customer?.phone) } : {}),
     } : {}),
   };
 }

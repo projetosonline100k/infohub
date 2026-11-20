@@ -90,6 +90,19 @@ export function ProgramacaoDalila({ clienteId, onAbrirEdicao }: { clienteId: str
     const t = window.setInterval(() => { if (!document.hidden) void ler(); }, 20000);
     return () => window.clearInterval(t);
   }, [ler]);
+  // Na hora (20/11, Davi: "preciso que ao programar, já apareça"): a Dalila programa sozinha uns minutos depois do Aprovar e o calendário só via
+  // na próxima volta de 20 s. Agora qualquer mudança em reel, carrossel ou edição deste projeto recarrega já (agrupada em 0,5 s).
+  useEffect(() => {
+    let espera = 0;
+    const recarregar = () => { window.clearTimeout(espera); espera = window.setTimeout(() => void ler(), 500); };
+    const filtro = `cliente_id=eq.${clienteId}`;
+    const canal = supabase.channel(`programacao-dalila-${clienteId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "reels", filter: filtro }, recarregar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "carrosseis", filter: filtro }, recarregar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "edicoes_video", filter: filtro }, recarregar)
+      .subscribe();
+    return () => { window.clearTimeout(espera); void supabase.removeChannel(canal); };
+  }, [clienteId, ler]);
 
   const agora = Date.now();
   const futuros = useMemo(() => (posts ?? []).filter((p) => p.status !== "publicado" && (filtro === "todos" || p.tipo === filtro)).sort((a, b) => (a.quando ?? "").localeCompare(b.quando ?? "")), [posts, filtro]);

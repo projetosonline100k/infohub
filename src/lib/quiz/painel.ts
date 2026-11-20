@@ -176,29 +176,34 @@ export function vendasDoLink(l: LinkUtm, vendas: { utm_source: string | null; ut
 
 // ---------------------------------------------------------------- Conversão (checkout e compra)
 
-export interface VendaPlataforma { transacao_id?: string | null; tipo: string; comprador_email?: string | null; valor: number | null; data: string }
+export interface VendaPlataforma { transacao_id?: string | null; tipo: string; comprador_email?: string | null; comprador_telefone?: string | null; valor: number | null; data: string }
 export interface EstadoCompra { clicouCheckout: boolean; compra: { valor: number; data: string } | null }
 const normEmail = (e: string | null | undefined) => (e ?? "").trim().toLowerCase();
+/** Chave do telefone (igual a public.fone_chave): os últimos 8 dígitos, ignorando +55, DDD, nono dígito e formatação. "" se tiver menos de 8. */
+export const foneChave = (t: string | null | undefined) => { const d = (t ?? "").replace(/\D/g, ""); return d.length >= 8 ? d.slice(-8) : ""; };
 
 /**
  * Para cada lead: clicou na oferta (evento "cta" da mesma sessão da visita) e comprou (venda com o e-mail dele, sem reembolso).
- * A venda vem da Eduzz/Kiwify/Hotmart; o elo é o e-mail que a pessoa deixou no quiz.
+ * A venda vem da Eduzz/Kiwify/Hotmart; o elo é o e-mail que a pessoa deixou no quiz ou, sem e-mail igual, o telefone (20/11: lead que só deixou o WhatsApp).
  */
-export function estadoDosLeads(leads: Pick<LeadQuiz, "id" | "email" | "sessao" | "criada_em">[], eventos: Pick<EventoQuiz, "sessao" | "tipo">[], vendas: VendaPlataforma[]): Map<string, EstadoCompra> {
+export function estadoDosLeads(leads: (Pick<LeadQuiz, "id" | "email" | "sessao" | "criada_em"> & { whatsapp?: string | null })[], eventos: Pick<EventoQuiz, "sessao" | "tipo">[], vendas: VendaPlataforma[]): Map<string, EstadoCompra> {
   const cta = new Set(eventos.filter((e) => e.tipo === "cta").map((e) => e.sessao));
   const reembolsadas = new Set(vendas.filter((v) => v.tipo === "reembolso" && v.transacao_id).map((v) => v.transacao_id as string));
   const porEmail = new Map<string, VendaPlataforma[]>();
+  const porFone = new Map<string, VendaPlataforma[]>();
   for (const v of vendas) {
-    if (v.tipo !== "venda" || !v.comprador_email || (v.transacao_id && reembolsadas.has(v.transacao_id))) continue;
-    const k = normEmail(v.comprador_email);
-    porEmail.set(k, [...(porEmail.get(k) ?? []), v]);
+    if (v.tipo !== "venda" || (v.transacao_id && reembolsadas.has(v.transacao_id))) continue;
+    const k = normEmail(v.comprador_email), f = foneChave(v.comprador_telefone);
+    if (k) porEmail.set(k, [...(porEmail.get(k) ?? []), v]);
+    if (f) porFone.set(f, [...(porFone.get(f) ?? []), v]);
   }
   const r = new Map<string, EstadoCompra>();
   for (const l of leads) {
     // Só conta a compra feita DEPOIS de a pessoa virar lead (15/11, Davi: "diz que compraram, mas não achei na Eduzz"): quem já era cliente antes do quiz
     // (ex.: plano mensal de setembro) deixava o e-mail e a venda antiga entrava como se o quiz tivesse vendido. O dia vale no horário de Brasília.
     const dia = l.criada_em ? new Date(new Date(l.criada_em).getTime() - 3 * 3600_000).toISOString().slice(0, 10) : null;
-    const dela = (l.email ? porEmail.get(normEmail(l.email)) ?? [] : []).filter((v) => !dia || v.data >= dia);
+    const fone = foneChave(l.whatsapp);
+    const dela = [...new Set([...(l.email ? porEmail.get(normEmail(l.email)) ?? [] : []), ...(fone ? porFone.get(fone) ?? [] : [])])].filter((v) => !dia || v.data >= dia);
     const compra = dela.length ? { valor: dela.reduce((t, v) => t + Number(v.valor ?? 0), 0), data: dela.reduce((m, v) => (v.data > m ? v.data : m), "") } : null;
     r.set(l.id, { clicouCheckout: !!l.sessao && cta.has(l.sessao) || !!compra, compra });   // quem comprou, no mínimo passou pelo checkout
   }

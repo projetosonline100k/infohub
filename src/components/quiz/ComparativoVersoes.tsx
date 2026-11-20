@@ -21,7 +21,7 @@ export function ComparativoVersoes({ aberto, onFechar, clienteId, versoes }: { a
       const ids = versoes.map((v) => v.id);
       const [e, l] = await Promise.all([
         db.from("quiz_eventos").select("quiz_id, sessao, tipo, passo, criado_em").in("quiz_id", ids).limit(100000),
-        db.from("quiz_respostas").select("quiz_id, id, email, criada_em, sessao").in("quiz_id", ids).limit(10000),
+        db.from("quiz_respostas").select("quiz_id, id, email, whatsapp, criada_em, sessao").in("quiz_id", ids).limit(10000),
       ]);
       const por: Record<string, { eventos: EventoQuiz[]; leads: LeadQuiz[] }> = Object.fromEntries(ids.map((i) => [i, { eventos: [], leads: [] }]));
       for (const x of (e.data ?? []) as (EventoQuiz & { quiz_id: string })[]) por[x.quiz_id]?.eventos.push(x);
@@ -29,7 +29,7 @@ export function ComparativoVersoes({ aberto, onFechar, clienteId, versoes }: { a
       const { data: ps } = await db.from("produtos_cliente").select("id").eq("cliente_id", clienteId);
       const pids = ((ps ?? []) as { id: string }[]).map((x) => x.id);
       if (pids.length) {
-        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, valor, data").in("produto_id", pids).in("tipo", ["venda", "reembolso"]).limit(20000);
+        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, comprador_telefone, valor, data").in("produto_id", pids).in("tipo", ["venda", "reembolso"]).limit(20000);
         if (vivo) setVendas((v ?? []) as VendaPlataforma[]);
       }
       if (vivo) setDados(por);

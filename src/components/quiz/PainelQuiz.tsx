@@ -109,7 +109,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
       const { data: ps } = await db.from("produtos_cliente").select("id").eq("cliente_id", cid);
       const ids = ((ps ?? []) as { id: string }[]).map((x) => x.id);
       if (ids.length) {
-        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, valor, data, metodo_pagamento, utm_source, utm_medium, utm_campaign, utm_content").in("produto_id", ids).in("tipo", ["venda", "reembolso"]).limit(10000);
+        const { data: v } = await db.from("vendas_plataforma_eventos").select("transacao_id, tipo, comprador_email, comprador_telefone, valor, data, metodo_pagamento, utm_source, utm_medium, utm_campaign, utm_content").in("produto_id", ids).in("tipo", ["venda", "reembolso"]).limit(10000);
         setVendas((v ?? []) as VendaCompleta[]);
       }
     }

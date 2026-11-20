@@ -145,3 +145,12 @@ test('período escolhido (de/ate): só os dias dentro, dia a dia e comparação 
   assert.equal(um.diario.length, 1);
   assert.equal(um.porHora.length, 24);
 });
+
+test('estadoDosLeads: lead só com WhatsApp é ligado à venda pelo telefone (20/11, venda da Eduzz que não aparecia)', () => {
+  const leads = [{ id: 'L1', email: null, whatsapp: '(11) 98765-4321', sessao: 's1', criada_em: '2026-11-20T18:56:00Z' },
+                 { id: 'L2', email: null, whatsapp: '(11) 91111-2222', sessao: 's2', criada_em: '2026-11-20T18:00:00Z' }];
+  const vendas = [{ transacao_id: 'T1', tipo: 'venda', comprador_email: 'outro@x.com', comprador_telefone: '+55 11 98765-4321', valor: 39.9, data: '2026-11-20' }];
+  const e = m.estadoDosLeads(leads, [], vendas);
+  assert.deepEqual(e.get('L1'), { clicouCheckout: true, compra: { valor: 39.9, data: '2026-11-20' } });
+  assert.equal(e.get('L2').compra, null);
+});

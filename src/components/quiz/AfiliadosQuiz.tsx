@@ -67,8 +67,8 @@ export function AfiliadosQuiz({ quizId, slug, estrutura, eventos, leads, vendas 
   useEffect(() => { void carregar(); }, [carregar]);
 
   const eventosAfi = useMemo(() => eventos.map((e) => ({ sessao: e.sessao, criado_em: e.criado_em, utm: e.utm as Record<string, string> | null })), [eventos]);
-  const leadsAfi = useMemo(() => leads.map((l) => ({ id: l.id, email: l.email, criada_em: l.criada_em, utm: l.utm as Record<string, string> | null })), [leads]);
-  const vendasAfi = useMemo(() => vendas.map((v) => ({ transacao_id: v.transacao_id ?? "", tipo: v.tipo, comprador_email: v.comprador_email ?? null, valor: v.valor, data: v.data, utm_content: v.utm_content ?? null })), [vendas]);
+  const leadsAfi = useMemo(() => leads.map((l) => ({ id: l.id, email: l.email, whatsapp: l.whatsapp, criada_em: l.criada_em, utm: l.utm as Record<string, string> | null })), [leads]);
+  const vendasAfi = useMemo(() => vendas.map((v) => ({ transacao_id: v.transacao_id ?? "", tipo: v.tipo, comprador_email: v.comprador_email ?? null, comprador_telefone: v.comprador_telefone ?? null, valor: v.valor, data: v.data, utm_content: v.utm_content ?? null })), [vendas]);
 
   // Período atual e o anterior (do mesmo tamanho), para as setinhas de variação.
   const { janela, anterior } = useMemo(() => {

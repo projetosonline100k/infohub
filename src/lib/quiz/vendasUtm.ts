@@ -2,7 +2,7 @@
 // investimento digitado por origem (lucro e ROAS). Sem React nem importações: testável.
 
 export interface VendaUtm {
-  transacao_id?: string | null; tipo: string; comprador_email?: string | null; valor: number | null; data: string; metodo_pagamento?: string | null;
+  transacao_id?: string | null; tipo: string; comprador_email?: string | null; comprador_telefone?: string | null; valor: number | null; data: string; metodo_pagamento?: string | null;
   utm_source?: string | null; utm_medium?: string | null; utm_campaign?: string | null; utm_content?: string | null;
 }
 
