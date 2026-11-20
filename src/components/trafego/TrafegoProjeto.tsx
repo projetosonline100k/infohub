@@ -9,25 +9,29 @@ import { abrirLinkExterno } from "@/lib/abrirLink";
 import { linkDoQuiz } from "@/lib/quiz/quiz";
 import { cn } from "@/lib/utils";
 import {
-  hojeBrasilia, intervalo, montarTabela, ordenar, somarDias,
+  funilZero, hojeBrasilia, intervalo, montarTabela, ordenar, somarDias,
   type CampoOrdem, type EventoSimples, type InsightDia, type LeadSimples, type LinhaTrafego, type Nivel, type PeriodoId, type Tabela, type VendaTrafego,
 } from "@/lib/trafego/atribuicao";
+import { custosValidos, custosZero, periodoAnterior, type Custos, type EventoVenda } from "@/lib/trafego/painel";
 import { FunilAnuncios } from "./FunilAnuncios";
 import { GeradorUtm } from "./GeradorUtm";
+import { PainelResultados } from "./PainelResultados";
+import { RankingCriativos } from "./RankingCriativos";
 import { brl, campo, nf, painel, pct } from "./formato";
 
 const db = supabase as unknown as SupabaseClient;
 interface Status { conectado: boolean; nome: string | null; expira_em: string | null; configurado: boolean }
-type Visao = "painel" | "funil" | "utm";
+type Visao = "resultados" | "painel" | "criativos" | "funil" | "utm";
+const COLUNAS_VENDA = "transacao_id, plataforma, tipo, valor, data, recebido_em, produto_plataforma, metodo_pagamento, comprador_nome, utm_source, utm_medium, utm_campaign, utm_content, utm_term";   // sem e-mail nem telefone do comprador
 const PERIODOS: { id: PeriodoId; r: string }[] = [{ id: "hoje", r: "Hoje" }, { id: "ontem", r: "Ontem" }, { id: "7d", r: "7 dias" }, { id: "30d", r: "30 dias" }, { id: "custom", r: "Personalizado" }];
 const HISTORICO_DIAS = 90;   // busca 90 dias de uma vez: o filtro de período troca na tela sem nova consulta
 
 interface Base {
   campanhas: { ref: string; nome: string; status: string | null; orcamento: number | null }[];
   conjuntos: { ref: string; nome: string; campanha_ref: string; status: string | null; orcamento: number | null }[];
-  anuncios: { ref: string; nome: string; conjunto_ref: string; campanha_ref: string; status: string | null }[];
+  anuncios: { ref: string; nome: string; conjunto_ref: string; campanha_ref: string; status: string | null; miniatura: string | null }[];
   insights: Record<Nivel, InsightDia[]>;
-  vendas: VendaTrafego[]; eventos: EventoSimples[]; leads: LeadSimples[];
+  vendas: EventoVenda[]; eventos: EventoSimples[]; leads: LeadSimples[];
   slugQuiz: string | null;
 }
 
@@ -38,7 +42,11 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
   const [contas, setContas] = useState<ContaAds[]>([]);
   const [todasContas, setTodasContas] = useState<ContaAds[]>([]);
   const [base, setBase] = useState<Base | null>(null);
-  const [visao, setVisao] = useState<Visao>("painel");
+  const [visao, setVisao] = useState<Visao>("resultados");
+  const [custos, setCustos] = useState<Custos>(custosZero());
+  const [custosDisponivel, setCustosDisponivel] = useState(true);
+  const [atualizadoEm, setAtualizadoEm] = useState(Date.now());
+  const prodIds = useRef<string[]>([]);
   const [periodo, setPeriodo] = useState<PeriodoId>("7d");
   const [custom, setCustom] = useState<{ de: string; ate: string }>({ de: somarDias(hojeBrasilia(), -6), ate: hojeBrasilia() });
   const [ordem, setOrdem] = useState<{ campo: CampoOrdem; desc: boolean }>({ campo: "gasto", desc: true });
@@ -64,37 +72,63 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
   }, [clienteId]);
   useEffect(() => { setStatus(null); setBase(null); void lerContas(); }, [lerContas]);
 
-  const lerDados = useCallback(async () => {
-    if (!contaRef) { setBase(null); return; }
+  const lerVendas = useCallback(async () => {   // só as vendas: chamada pelo tempo real e a cada 30 s
+    const ids = prodIds.current; if (!ids.length) return;
     const de = somarDias(hojeBrasilia(), -HISTORICO_DIAS);
-    const [camp, conj, anu, ins, prods, quizzes] = await Promise.all([
+    const { data } = await db.from("vendas_plataforma_eventos").select(COLUNAS_VENDA).in("produto_id", ids).gte("data", de).order("recebido_em", { ascending: false }).limit(20000);
+    if (data) { setBase((b) => (b ? { ...b, vendas: data as EventoVenda[] } : b)); setAtualizadoEm(Date.now()); }
+  }, []);
+
+  const lerDados = useCallback(async () => {
+    const de = somarDias(hojeBrasilia(), -HISTORICO_DIAS);
+    // Meta (só com conta ligada) — vendas, quiz e custos funcionam sem ela
+    const metaP = contaRef ? Promise.all([
       db.from("ads_campanhas").select("campanha_ref, nome, status, status_efetivo, orcamento_diario").eq("conta", contaRef),
       db.from("ads_conjuntos").select("conjunto_ref, campanha_ref, nome, status, status_efetivo, orcamento_diario").eq("conta_ref", contaRef),
-      db.from("ads_anuncios").select("anuncio_ref, conjunto_ref, campanha_ref, nome, status, status_efetivo").eq("conta_ref", contaRef),
+      db.from("ads_anuncios").select("anuncio_ref, conjunto_ref, campanha_ref, nome, status, status_efetivo, miniatura").eq("conta_ref", contaRef),
       db.from("ads_insights_diarios").select("nivel, ref, dia, gasto, impressoes, cliques, resultados").eq("conta_ref", contaRef).gte("dia", de).limit(50000),
+    ]) : Promise.resolve(null);
+    const [meta, prods, quizzes, custosRes] = await Promise.all([
+      metaP,
       db.from("produtos_cliente").select("id").eq("cliente_id", clienteId),
       db.from("quizzes").select("id, slug, status, variante_de").eq("cliente_id", clienteId).neq("status", "cancelado"),
+      db.from("trafego_custos").select("taxa_plataforma_pct, imposto_pct, outros_custos_dia").eq("cliente_id", clienteId).maybeSingle(),
     ]);
+    if (custosRes.error) setCustosDisponivel(false);
+    else { setCustosDisponivel(true); const c = custosRes.data as { taxa_plataforma_pct: number | string; imposto_pct: number | string; outros_custos_dia: number | string } | null; if (c) setCustos(custosValidos({ taxaPct: +c.taxa_plataforma_pct, impostoPct: +c.imposto_pct, outrosDia: +c.outros_custos_dia })); }
+    const [camp, conj, anu, ins] = meta ?? [null, null, null, null];
     const insights: Base["insights"] = { campanha: [], conjunto: [], anuncio: [] };
-    for (const x of (ins.data ?? []) as (InsightDia & { nivel: Nivel })[]) insights[x.nivel]?.push({ ref: x.ref, dia: x.dia, gasto: +x.gasto, impressoes: +x.impressoes, cliques: +x.cliques, resultados: +x.resultados });
-    const prodIds = ((prods.data ?? []) as { id: string }[]).map((p) => p.id);
+    for (const x of (ins?.data ?? []) as (InsightDia & { nivel: Nivel })[]) insights[x.nivel]?.push({ ref: x.ref, dia: x.dia, gasto: +x.gasto, impressoes: +x.impressoes, cliques: +x.cliques, resultados: +x.resultados });
+    prodIds.current = ((prods.data ?? []) as { id: string }[]).map((p) => p.id);
     const quizList = (quizzes.data ?? []) as { id: string; slug: string; status: string; variante_de: string | null }[];
     const quizIds = quizList.map((q) => q.id);
     const [vs, ev, ld] = await Promise.all([
-      prodIds.length ? db.from("vendas_plataforma_eventos").select("transacao_id, tipo, valor, data, utm_source, utm_medium, utm_campaign, utm_content, utm_term").in("produto_id", prodIds).in("tipo", ["venda", "reembolso"]).gte("data", de).limit(20000) : Promise.resolve({ data: [] }),
+      prodIds.current.length ? db.from("vendas_plataforma_eventos").select(COLUNAS_VENDA).in("produto_id", prodIds.current).gte("data", de).order("recebido_em", { ascending: false }).limit(20000) : Promise.resolve({ data: [] }),
       quizIds.length ? db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").in("quiz_id", quizIds).gte("criado_em", `${de}T00:00:00Z`).order("criado_em", { ascending: false }).limit(100000) : Promise.resolve({ data: [] }),
       quizIds.length ? db.from("quiz_respostas").select("criada_em, utm").in("quiz_id", quizIds).gte("criada_em", `${de}T00:00:00Z`).limit(20000) : Promise.resolve({ data: [] }),
     ]);
     const publicado = quizList.find((q) => !q.variante_de && q.status === "publicado") ?? quizList.find((q) => !q.variante_de) ?? null;
     setBase({
-      campanhas: ((camp.data ?? []) as { campanha_ref: string; nome: string; status: string | null; status_efetivo: string | null; orcamento_diario: number | string | null }[]).map((x) => ({ ref: x.campanha_ref, nome: x.nome, status: x.status_efetivo ?? x.status, orcamento: x.orcamento_diario != null ? +x.orcamento_diario : null })),
-      conjuntos: ((conj.data ?? []) as { conjunto_ref: string; campanha_ref: string; nome: string; status: string | null; status_efetivo: string | null; orcamento_diario: number | string | null }[]).map((x) => ({ ref: x.conjunto_ref, nome: x.nome, campanha_ref: x.campanha_ref, status: x.status, orcamento: x.orcamento_diario != null ? +x.orcamento_diario : null })),
-      anuncios: ((anu.data ?? []) as { anuncio_ref: string; conjunto_ref: string; campanha_ref: string; nome: string; status: string | null }[]).map((x) => ({ ref: x.anuncio_ref, nome: x.nome, conjunto_ref: x.conjunto_ref, campanha_ref: x.campanha_ref, status: x.status })),
-      insights, vendas: (vs.data ?? []) as VendaTrafego[], eventos: (ev.data ?? []) as EventoSimples[], leads: (ld.data ?? []) as LeadSimples[],
+      campanhas: ((camp?.data ?? []) as { campanha_ref: string; nome: string; status: string | null; status_efetivo: string | null; orcamento_diario: number | string | null }[]).map((x) => ({ ref: x.campanha_ref, nome: x.nome, status: x.status_efetivo ?? x.status, orcamento: x.orcamento_diario != null ? +x.orcamento_diario : null })),
+      conjuntos: ((conj?.data ?? []) as { conjunto_ref: string; campanha_ref: string; nome: string; status: string | null; status_efetivo: string | null; orcamento_diario: number | string | null }[]).map((x) => ({ ref: x.conjunto_ref, nome: x.nome, campanha_ref: x.campanha_ref, status: x.status, orcamento: x.orcamento_diario != null ? +x.orcamento_diario : null })),
+      anuncios: ((anu?.data ?? []) as { anuncio_ref: string; conjunto_ref: string; campanha_ref: string; nome: string; status: string | null; miniatura: string | null }[]).map((x) => ({ ref: x.anuncio_ref, nome: x.nome, conjunto_ref: x.conjunto_ref, campanha_ref: x.campanha_ref, status: x.status, miniatura: x.miniatura })),
+      insights, vendas: (vs.data ?? []) as EventoVenda[], eventos: (ev.data ?? []) as EventoSimples[], leads: (ld.data ?? []) as LeadSimples[],
       slugQuiz: publicado?.slug ?? null,
     });
+    setAtualizadoEm(Date.now());
   }, [contaRef, clienteId]);
   useEffect(() => { void lerDados(); }, [lerDados]);
+  useEffect(() => {   // "vendas ao vivo": o banco avisa quando entra venda; a cada 30 s confere também (plano B se o aviso cair)
+    const canal = supabase.channel(`trafego-vendas-${clienteId}`).on("postgres_changes", { event: "*", schema: "public", table: "vendas_plataforma_eventos" }, () => { void lerVendas(); }).subscribe();
+    const t = window.setInterval(() => { if (!document.hidden) void lerVendas(); }, 30_000);
+    return () => { void supabase.removeChannel(canal); window.clearInterval(t); };
+  }, [clienteId, lerVendas]);
+  const salvarCustos = async (c: Custos) => {
+    const v = custosValidos(c); setCustos(v);
+    if (!custosDisponivel) { toast.message("Custos aplicados só nesta tela (a tabela ainda não existe no banco)"); return; }
+    const { error } = await db.from("trafego_custos").upsert({ cliente_id: clienteId, taxa_plataforma_pct: v.taxaPct, imposto_pct: v.impostoPct, outros_custos_dia: v.outrosDia, atualizado_em: new Date().toISOString() }, { onConflict: "cliente_id" });
+    if (error) toast.error("Não consegui salvar os custos"); else toast.success("Custos salvos");
+  };
 
   const sincronizar = useCallback(async () => {
     if (!contaRef || sincronizando) return;
@@ -131,6 +165,13 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
     for (const a of base.anuncios) statusDe[`anuncio:${a.ref}`] = { status: a.status, orcamento: null };
     return montarTabela({ est: { campanhas: base.campanhas, conjuntos: base.conjuntos, anuncios: base.anuncios, statusDe }, insights: base.insights, vendas: base.vendas, eventos: base.eventos, leads: base.leads, de, ate });
   }, [base, de, ate]);
+  const tabelaAnt: Tabela | null = useMemo(() => {   // só para comparar o funil com o período anterior
+    if (!base) return null;
+    const ant = periodoAnterior(de, ate);
+    return montarTabela({ est: { campanhas: [], conjuntos: [], anuncios: [] }, insights: { campanha: [], conjunto: [], anuncio: [] }, vendas: base.vendas, eventos: base.eventos, leads: base.leads, de: ant.de, ate: ant.ate });
+  }, [base, de, ate]);
+  const estrutura = useMemo(() => ({ campanhas: base?.campanhas ?? [], conjuntos: base?.conjuntos ?? [], anuncios: base?.anuncios ?? [] }), [base]);
+  const miniaturas = useMemo(() => Object.fromEntries((base?.anuncios ?? []).map((a) => [a.ref, a.miniatura])), [base]);
 
   // ---------- controles (mesmas regras do dash do Kdu: teto diário da conta, confirmação, registro em ads_acoes feito pela função)
   const statusDe = (l: LinhaTrafego) => otimista[l.chave] ?? l.status;
@@ -165,44 +206,44 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
   );
   const aviso = (cor: "rose" | "amber", t: React.ReactNode) => <p className={cn("rounded-xl border p-3 text-sm", cor === "rose" ? "border-rose-400/40 bg-rose-500/10 text-rose-100" : "border-amber-400/40 bg-amber-500/10 text-amber-100")}><AlertTriangle className="mr-1.5 inline h-4 w-4" />{t}</p>;
 
-  if (status === null && !erroStatus) return casca(<Loader2 className="mx-auto my-16 h-6 w-6 animate-spin text-white/50" />);
-  if (erroStatus || !status) return casca(<>{cabeca}{aviso("rose", <>Não consegui falar com o servidor do Facebook Ads: {erroStatus ?? "sem resposta"}. Confira se a função <b>facebook-ads</b> está no ar e se você entrou com a conta do dono do projeto (só ele vê os anúncios).</>)}<button type="button" onClick={() => void lerContas()} className="rounded-xl border border-white/20 px-4 py-2 text-sm">Tentar de novo</button></>);
-  if (!status.conectado) {
-    return casca(<>{cabeca}
-      <section className="space-y-3 rounded-3xl border border-sky-400/25 bg-gradient-to-br from-[#0d1a35] to-[#101c3f] p-6">
-        <h3 className="text-lg font-bold">Conecte o Facebook Ads para ver o gasto e as vendas por anúncio</h3>
-        <p className="text-sm text-white/65">Você autoriza uma vez (o login do Facebook que administra a conta de anúncios). O token fica só no servidor. Nada gasta dinheiro sem a sua confirmação e fora do teto diário da conta. Enquanto isso, o gerador de UTM já funciona abaixo.</p>
-        {!status.configurado && aviso("rose", <>Falta configurar o app da Meta no servidor: crie os segredos <b>FB_APP_ID</b> e <b>FB_APP_SECRET</b> (Supabase › Edge Functions › Secrets) com o ID e a chave secreta do app (Configurações › Básico no painel da Meta).</>)}
-        {linkConexao ? (
-          <div className="space-y-2">
-            <input readOnly value={linkConexao} onFocus={(e) => e.currentTarget.select()} className={campo} />
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { void navigator.clipboard.writeText(linkConexao); toast.success("Link copiado"); }} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold"><Copy className="h-4 w-4" />Copiar link</button>
-              <button type="button" onClick={() => void abrirLinkExterno(linkConexao)} className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm"><ExternalLink className="h-4 w-4" />Abrir neste computador</button>
+  // Bloco que substitui as telas que dependem da Meta (tabela, criativos, funil) enquanto ela não está pronta.
+  const conectado = !!status?.conectado;
+  const metaPronta = conectado && !!conta;
+  const blocoMeta = (() => {
+    if (status === null && !erroStatus) return <Loader2 className="mx-auto my-12 h-6 w-6 animate-spin text-white/50" />;
+    if (erroStatus || !status) return <>{aviso("rose", <>Não consegui falar com o servidor do Facebook Ads: {erroStatus ?? "sem resposta"}. Confira se a função <b>facebook-ads</b> está no ar e se você entrou com a conta do dono do projeto (só ele vê os anúncios). As vendas continuam na aba Resultados.</>)}<button type="button" onClick={() => void lerContas()} className="rounded-xl border border-white/20 px-4 py-2 text-sm">Tentar de novo</button></>;
+    if (!status.conectado) {
+      return (
+        <section className="space-y-3 rounded-3xl border border-sky-400/25 bg-gradient-to-br from-[#0d1a35] to-[#101c3f] p-6">
+          <h3 className="text-lg font-bold">Conecte o Facebook Ads para ver o gasto e as vendas por anúncio</h3>
+          <p className="text-sm text-white/65">Você autoriza uma vez (o login do Facebook que administra a conta de anúncios). O token fica só no servidor. Nada gasta dinheiro sem a sua confirmação e fora do teto diário da conta. Enquanto isso, a aba Resultados e o gerador de UTM já funcionam.</p>
+          {!status.configurado && aviso("rose", <>Falta configurar o app da Meta no servidor: crie os segredos <b>FB_APP_ID</b> e <b>FB_APP_SECRET</b> (Supabase › Edge Functions › Secrets) com o ID e a chave secreta do app (Configurações › Básico no painel da Meta).</>)}
+          {linkConexao ? (
+            <div className="space-y-2">
+              <input readOnly value={linkConexao} onFocus={(e) => e.currentTarget.select()} className={campo} />
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => { void navigator.clipboard.writeText(linkConexao); toast.success("Link copiado"); }} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-sm font-semibold"><Copy className="h-4 w-4" />Copiar link</button>
+                <button type="button" onClick={() => void abrirLinkExterno(linkConexao)} className="inline-flex items-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm"><ExternalLink className="h-4 w-4" />Abrir neste computador</button>
+              </div>
+              <p className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Esperando você aceitar no Facebook… esta tela atualiza sozinha.</p>
             </div>
-            <p className="flex items-center gap-2 text-xs text-white/50"><Loader2 className="h-3.5 w-3.5 animate-spin" />Esperando você aceitar no Facebook… esta tela atualiza sozinha.</p>
-          </div>
-        ) : <button type="button" onClick={() => void conectar()} disabled={!status.configurado} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-50"><Megaphone className="h-4 w-4" />Conectar Facebook Ads</button>}
-      </section>
-      <GeradorUtm urlQuiz={null} nomeCampanha="" /></>);
-  }
-  if (!conta) {
-    const livres = todasContas;
-    return casca(<>{cabeca}
+          ) : <button type="button" onClick={() => void conectar()} disabled={!status.configurado} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-50"><Megaphone className="h-4 w-4" />Conectar Facebook Ads</button>}
+        </section>);
+    }
+    return (
       <section className={`${painel} space-y-3 p-5`}>
         <h3 className="text-base font-bold">Nenhuma conta de anúncios ligada a este projeto</h3>
-        {livres.length === 0
+        {todasContas.length === 0
           ? <p className="text-sm text-white/65">O Facebook está conectado, mas nenhuma conta de anúncios foi trazida. Se você não é o dono da conexão, peça para ele abrir esta aba.</p>
           : <>
             <p className="text-sm text-white/65">Escolha qual conta de anúncios pertence a este projeto:</p>
-            <div className="flex flex-wrap gap-2">{livres.map((c) => <button key={c.id} type="button" onClick={() => void ligarContaAoProjeto(c.id)} className="rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10">{c.nome ?? c.conta_ref}{c.empresa ? ` · ${c.empresa}` : ""}</button>)}</div>
+            <div className="flex flex-wrap gap-2">{todasContas.map((c) => <button key={c.id} type="button" onClick={() => void ligarContaAoProjeto(c.id)} className="rounded-xl border border-white/20 px-4 py-2 text-sm hover:bg-white/10">{c.nome ?? c.conta_ref}{c.empresa ? ` · ${c.empresa}` : ""}</button>)}</div>
           </>}
-      </section>
-      <GeradorUtm urlQuiz={null} nomeCampanha="" /></>);
-  }
+      </section>);
+  })();
 
-  const expiraEm = status.expira_em ? Date.parse(status.expira_em) : null;
-  const semDados = !!base && base.campanhas.length === 0 && base.anuncios.length === 0;
+  const expiraEm = status?.expira_em ? Date.parse(status.expira_em) : null;
+  const semDados = metaPronta && !!base && base.campanhas.length === 0 && base.anuncios.length === 0;
   const urlQuiz = base?.slugQuiz ? linkDoQuiz(base.slugQuiz) : null;
   const nomeCampanha = base?.campanhas[0]?.nome ?? "";
 
@@ -273,7 +314,7 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
     {cabeca}
     {expiraEm && expiraEm - Date.now() < 7 * 86_400_000 && aviso("amber", <>A conexão com o Facebook vence em breve. Reconecte no dash do Kdu (aba Contas).</>)}
     <div className="flex flex-wrap items-center gap-2">
-      {([["painel", "Painel"], ["funil", "Funil por anúncio"], ["utm", "Gerador de UTM"]] as [Visao, string][]).map(([id, r]) => (
+      {([["resultados", "Resultados"], ["painel", "Campanhas"], ["criativos", "Criativos"], ["funil", "Funil por anúncio"], ["utm", "Gerador de UTM"]] as [Visao, string][]).map(([id, r]) => (
         <button key={id} type="button" onClick={() => setVisao(id)} className={cn("rounded-xl px-4 py-2 text-sm font-semibold", visao === id ? "bg-sky-500 text-white" : "border border-white/15 text-white/70 hover:bg-white/10")}>{r}</button>))}
       {visao !== "utm" && (
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
@@ -288,12 +329,17 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
 
     {visao === "utm" ? <GeradorUtm urlQuiz={urlQuiz} nomeCampanha={nomeCampanha} />
       : !base ? <Loader2 className="mx-auto my-12 h-6 w-6 animate-spin text-white/50" />
+      : visao === "resultados" ? (
+        <PainelResultados vendas={base.vendas} est={estrutura} insights={base.insights} temMeta={metaPronta && base.insights.campanha.length > 0} funil={tabela?.total.funil ?? funilZero()} funilAnterior={tabelaAnt?.total.funil ?? funilZero()}
+          de={de} ate={ate} moeda={moeda} custos={custos} custosDisponivel={custosDisponivel} salvarCustos={salvarCustos} atualizadoEm={atualizadoEm} />)
+      : !metaPronta ? blocoMeta
       : semDados ? (
         <section className={`${painel} space-y-3 p-6 text-center`}>
           <h3 className="text-base font-bold">Conta conectada, mas ainda sem campanhas aqui</h3>
           <p className="text-sm text-white/60">Clique em <b>Atualizar</b> para trazer campanhas, conjuntos, anúncios e o gasto dos últimos 30 dias da Meta.</p>
           <button type="button" onClick={() => void sincronizar()} disabled={sincronizando} className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-5 py-2.5 text-sm font-semibold hover:bg-sky-400 disabled:opacity-60">{sincronizando ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}Sincronizar agora</button>
         </section>)
+      : visao === "criativos" ? <RankingCriativos linhas={tabela?.linhas ?? []} custos={custos} ticketMedio={tabela && tabela.total.vendas > 0 ? tabela.total.faturamento / tabela.total.vendas : null} miniaturas={miniaturas} moeda={moeda} />
       : visao === "funil" ? <FunilAnuncios linhas={tabela?.linhas ?? []} extras={tabela?.extras ?? []} moeda={moeda} />
       : (<>
         {t && <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
@@ -320,7 +366,7 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
                 </tr>)}
             </tbody>
           </table>
-          <p className="mt-3 text-xs text-white/40">Gasto e verba vêm da Meta (atualizado {conta.sincronizada_em ? new Date(conta.sincronizada_em).toLocaleString("pt-BR") : "nunca"}). Vendas, leads e cliques na oferta vêm do quiz e das plataformas de venda, casados por UTM (por ID ou por nome). Taxa de clique na oferta: {pct(tabela && tabela.total.funil.visitas ? tabela.total.funil.cliquesOferta / tabela.total.funil.visitas : null)} das visitas.</p>
+          <p className="mt-3 text-xs text-white/40">Gasto e verba vêm da Meta (atualizado {conta?.sincronizada_em ? new Date(conta.sincronizada_em).toLocaleString("pt-BR") : "nunca"}). Vendas, leads e cliques na oferta vêm do quiz e das plataformas de venda, casados por UTM (por ID ou por nome). Taxa de clique na oferta: {pct(tabela && tabela.total.funil.visitas ? tabela.total.funil.cliquesOferta / tabela.total.funil.visitas : null)} das visitas.</p>
         </section>
       </>)}
   </>);
