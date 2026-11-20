@@ -272,7 +272,8 @@ def _sem_zoom_nas_capas(projeto, zooms):
         return zooms
     out = []
     for k in zooms:
-        if any(k["inicio"] < m["fim"] and k["fim"] > m["inicio"] for m in capas):
+        # "forcar": true (pedido do Davi, 20/11) = avatar perto mesmo com capa na tela (tela cheia com a capa)
+        if not k.get("forcar") and any(k["inicio"] < m["fim"] and k["fim"] > m["inicio"] for m in capas):
             k = {**k, "z": 1.0, "de": 1.0}
         out.append(k)
     return out
