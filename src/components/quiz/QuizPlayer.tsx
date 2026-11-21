@@ -1259,7 +1259,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <div className="space-y-3 pb-3 text-center">
                     {q.cabecalho.imagem && <img src={q.cabecalho.imagem} alt="" fetchPriority="high" decoding="async" className="mx-auto max-h-[27dvh] w-auto max-w-full rounded-2xl" />}
                     {q.cabecalho.selo && <span className="inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider" style={{ background: `${cor}1a`, color: cor }}>{q.cabecalho.selo}</span>}
-                    {q.cabecalho.titulo && <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={f(q.cabecalho.titulo)} as="h1" className="block text-2xl font-extrabold leading-tight" />}
+                    {q.cabecalho.titulo && (editar
+                      ? <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={f(q.cabecalho.titulo)} as="h1" className="block text-2xl font-extrabold leading-tight" />
+                      // **trecho** = grifado em amarelo (como na imagem antiga da abertura)
+                      : <h1 className="text-2xl font-extrabold leading-tight">{f(q.cabecalho.titulo).split("**").map((t, k) => (k % 2 ? <mark key={k} className="rounded-md bg-yellow-300 px-1.5 text-neutral-900 [box-decoration-break:clone]">{t}</mark> : t))}</h1>)}
                     {q.cabecalho.subtitulo && <Txt caminho={`${base}.cabecalho.subtitulo`} valor={q.cabecalho.subtitulo} mostrar={f(q.cabecalho.subtitulo)} as="p" className={cn("block text-base leading-relaxed", suave)} />}
                   </div>
                 )}
