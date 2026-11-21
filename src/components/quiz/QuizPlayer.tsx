@@ -1609,12 +1609,12 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
       <Depoimentos caminho={`${base}.depoimentos`} lista={t.depoimentos} nota={t.depoimentos_nota} />
       <Txt caminho={`${base}.fonte`} valor={t.fonte} as="p" className={cn("block text-left text-[11px]", suave)} />
       {!!t.selos?.length && (
-        <div className="relative flex flex-wrap justify-center gap-2">
+        <div className="relative flex flex-nowrap justify-center gap-1.5 sm:gap-2">
           {t.selos.map((sl, k) => {
             const Ic = sl.icone ? ICONES_SELO[sl.icone] : null;
             return (
-              <span key={k} className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-bold shadow-sm" style={{ background: sl.fundo, color: sl.cor }}>
-                {Ic && <Ic className="h-4 w-4" />}{sl.texto}
+              <span key={k} className="flex min-w-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-[13px] font-bold shadow-sm sm:gap-1.5 sm:px-3.5 sm:py-1.5 sm:text-sm" style={{ background: sl.fundo, color: sl.cor }}>
+                {Ic && <Ic className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />}<span className="min-w-0 truncate">{sl.texto}</span>
               </span>
             );
           })}
