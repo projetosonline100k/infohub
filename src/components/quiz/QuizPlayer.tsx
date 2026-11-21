@@ -1130,7 +1130,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               return undefined;
             };
             const livro = q.estilo === "livro";
-            const quadrosM = telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
+            const quadrosM = q.sem_mascote ? undefined : telas.find((x) => x.animada && (x.quadros?.length ?? 0) >= N_QUADROS)?.quadros;   // o mascote fala o título (não nas telas de livro)   // capa inteira em pé + Não ✗ / Sim ✓ lado a lado (como o 12min)
             // Sim ou não como conversa (19/11, Davi: "tipo um typebot, o Insta vai perguntando"): perguntas seguidas marcadas com `chat` viram um chat só.
             // No modo de edição continua o formato normal (é nele que se clica para editar).
             const ehChat = (x?: (typeof perguntas)[number]) => !!x?.chat && !x.multipla && x.opcoes.length === 2;
@@ -1255,10 +1255,12 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             }
             return (
               <div className="space-y-3">
-                {q.cabecalho && (q.cabecalho.imagem || q.cabecalho.titulo) && (
-                  <div className="space-y-3 pb-2 text-center">
+                {q.cabecalho && (
+                  <div className="space-y-3 pb-3 text-center">
                     {q.cabecalho.imagem && <img src={q.cabecalho.imagem} alt="" fetchPriority="high" decoding="async" className="mx-auto max-h-[27dvh] w-auto max-w-full rounded-2xl" />}
-                    <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={q.cabecalho.titulo ? f(q.cabecalho.titulo) : undefined} as="h1" className="block text-lg font-extrabold leading-snug" />
+                    {q.cabecalho.selo && <span className="inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider" style={{ background: `${cor}1a`, color: cor }}>{q.cabecalho.selo}</span>}
+                    {q.cabecalho.titulo && <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={f(q.cabecalho.titulo)} as="h1" className="block text-2xl font-extrabold leading-tight" />}
+                    {q.cabecalho.subtitulo && <Txt caminho={`${base}.cabecalho.subtitulo`} valor={q.cabecalho.subtitulo} mostrar={f(q.cabecalho.subtitulo)} as="p" className={cn("block text-base leading-relaxed", suave)} />}
                   </div>
                 )}
                 {quadrosM && !livro
@@ -1266,7 +1268,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   : quadrosM && livro
                     // 19/11 (Davi: "o título poderia ser a pergunta do Insta, só que maior"): a pergunta vai no balão do mascote, em letra de título, sem título repetido embaixo.
                     ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto || q.subtitulo || ""} mostrar={f(q.texto || q.subtitulo)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
-                    : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-2xl font-bold leading-snug" />}
+                    : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className={cn("block font-bold leading-snug", q.cabecalho ? "pt-1 text-center text-lg" : "text-2xl")} />}
                 {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />}
                 {(fotoPergunta || q.imagem_nota) && (livro
                   ? <Img caminho={`${base}.imagem`} url={fotoPergunta} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />

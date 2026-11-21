@@ -10,9 +10,14 @@ pasta = Path.home() / ".infopro-hub" / "backups"
 c = connect(); q = c.cursor()
 
 def trocar(e):
-    if any(p.get("id") == "genero" for p in e["perguntas"]): return False
+    g = next((p for p in e["perguntas"] if p.get("id") == "genero"), None)
+    if g:   # já existe (versão com mascote): troca para o visual do 12min
+        oi_titulo = g["cabecalho"].get("subtitulo") or g["cabecalho"].get("titulo")
+        g.update({"estilo": "cartoes", "sem_mascote": True, "cabecalho": {"selo": "Quiz de 2 minutos", "titulo": "Descubra como pessoas ocupadas e sem tempo estão terminando 7 livros por semana com apenas 20 minutos por dia", "subtitulo": "Não se assuste se você se tornar a pessoa mais interessante da mesa."}})
+        return True
     oi = next(t for t in e["telas"] if t["id"] == "oi")
-    e["perguntas"].insert(0, {"id": "genero", "texto": "Pra começar, você é:", "cabecalho": {"imagem": oi["imagem"], "titulo": oi["titulo"]},
+    e["perguntas"].insert(0, {"id": "genero", "texto": "Pra começar, você é:", "estilo": "cartoes", "sem_mascote": True,
+                              "cabecalho": {"selo": "Quiz de 2 minutos", "titulo": "Descubra como pessoas ocupadas e sem tempo estão terminando 7 livros por semana com apenas 20 minutos por dia", "subtitulo": oi["titulo"]},
                               "opcoes": [{"emoji": "👨", "texto": "Homem"}, {"emoji": "👩", "texto": "Mulher"}]})
     e["telas"] = [t for t in e["telas"] if t["id"] != "oi"]
     return True
