@@ -1257,8 +1257,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               <div className="space-y-3">
                 {q.cabecalho && (q.cabecalho.imagem || q.cabecalho.titulo) && (
                   <div className="space-y-3 pb-2 text-center">
-                    {q.cabecalho.imagem && <img src={q.cabecalho.imagem} alt="" fetchPriority="high" decoding="async" className="mx-auto w-full rounded-2xl" />}
-                    <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={q.cabecalho.titulo ? f(q.cabecalho.titulo) : undefined} as="h1" className="block text-xl font-extrabold leading-snug" />
+                    {q.cabecalho.imagem && <img src={q.cabecalho.imagem} alt="" fetchPriority="high" decoding="async" className="mx-auto max-h-[27dvh] w-auto max-w-full rounded-2xl" />}
+                    <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={q.cabecalho.titulo ? f(q.cabecalho.titulo) : undefined} as="h1" className="block text-lg font-extrabold leading-snug" />
                   </div>
                 )}
                 {quadrosM && !livro
