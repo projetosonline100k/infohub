@@ -1560,9 +1560,9 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const [aberto, setAberto] = useState(!t.abertura);   // com abertura, o botão só aparece quando a cena termina
   const ultimaFala = !t.falas?.length || iFala >= t.falas.length - 1;
   return (
-    <div ref={raiz} className={cn("space-y-5 py-2", especialista && "text-center", !!t.enfeites?.length && "relative")}>
+    <div ref={raiz} className={cn("space-y-5 py-2", (especialista || (t.imagem_cheia && !!t.imagem)) && "text-center", !!t.enfeites?.length && "relative")}>
       {t.enfeites?.map((en, k) => <Enfeite key={k} en={en} k={k} />)}
-      {t.imagem_cheia && t.imagem ? <img src={t.imagem} alt="" draggable={false} className="mx-auto max-h-[55dvh] w-full rounded-2xl object-contain" />
+      {t.imagem_cheia && t.imagem ? <img src={t.imagem} alt="" draggable={false} className={cn("mx-auto w-full rounded-2xl object-contain", t.titulo ? "max-h-[50dvh]" : "max-h-[55dvh]")} />
       : t.animada && (t.imagem || t.imagem_nota) ? <Mascote caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} fala={f(t.fala) || undefined} falas={t.falas?.map((x) => f(x))} onFala={setIFala} quadros={t.quadros} abertura={t.abertura} onAberto={() => setAberto(true)} pose={t.pose} balaoGrande={t.balao_grande} />
       : t.loop?.length ? <MascoteLoop frames={t.loop} />
       : t.mapa && t.imagem ? <MapaConectado url={t.imagem} pontos={t.mapa.pontos} cor={cor} />
@@ -1571,7 +1571,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
         <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
           className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] max-h-[30dvh] w-full"} />
       )}
-      <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className="block text-2xl font-bold leading-snug" />
+      <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className={cn("block leading-snug", t.imagem_cheia && t.imagem ? "-mt-2 text-xl font-semibold" : "text-2xl font-bold")} />
       {!!t.credenciais?.length && (
         <div className="flex flex-wrap justify-center gap-1.5">
           {t.credenciais.map((c, k) => <Txt key={k} caminho={`${base}.credenciais.${k}`} valor={c} className="rounded-full border px-2.5 py-0.5 text-xs" />)}
