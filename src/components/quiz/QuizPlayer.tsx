@@ -917,7 +917,17 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   trocou.current = onTrocarTela;
   const evento = useRef(onEvento);
   evento.current = onEvento;
-  useEffect(() => { trocou.current?.(); if (pos > 0) evento.current?.("passo", pos); }, [pos]);
+  // Sim/Não em conversa: de uma pergunta de chat para outra não volta ao topo (a conversa só desce; quem rola é o próprio chat).
+  const posAnterior = useRef(pos);
+  const passosRef = useRef(passos);
+  passosRef.current = passos;
+  useEffect(() => {
+    const ehChat = (i: number) => { const ps = passosRef.current[i]; const q = ps?.tipo === "pergunta" ? e.perguntas[ps.indice] : undefined; return !!q?.chat && !q.multipla && q.opcoes.length === 2; };
+    const dentroDoChat = !editar && posAnterior.current !== pos && ehChat(posAnterior.current) && ehChat(pos);
+    posAnterior.current = pos;
+    if (!dentroDoChat) trocou.current?.();
+    if (pos > 0) evento.current?.("passo", pos);
+  }, [pos]); // eslint-disable-line react-hooks/exhaustive-deps
   const ultimoSalto = useRef(irPara?.n ?? 0);
   useEffect(() => {
     if (!irPara || irPara.n === ultimoSalto.current) return;
