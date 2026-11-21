@@ -22,6 +22,8 @@ export interface OpcaoQuiz {
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
+  /** Cabeçalho em cima da pergunta (21/11): imagem e título da abertura na mesma tela da 1ª pergunta, sem tela de "Começar" no meio. */
+  cabecalho?: { imagem?: string; titulo?: string };
   imagem?: string; imagem_nota?: string;
   /** Foto da pergunta que depende de uma resposta anterior (16/11): chave "<id da pergunta>=<nº da opção>" (ex.: "genero=1" → foto de mulher). Sem resposta, vale `imagem`. */
   imagens?: Record<string, string>;

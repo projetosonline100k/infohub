@@ -19,11 +19,27 @@ const FUNDO_CLARO = "#ffffff";
 // previa (13/11): /quiz-previa/:token mostra o rascunho do quiz, mesmo publicado, sem gravar visita, passo nem lead.
 // Teste A/B (15/11): o link do quiz original sorteia entre ele e as versões publicadas marcadas no teste (quiz_ab_slugs). O sorteio fica fixo para o
 // visitante (localStorage) e tudo (visita, telas, lead) é gravado na versão sorteada, então cada versão tem as próprias métricas.
+// (21/11, quiz lento) O sorteio A/B e a busca do quiz iam um depois do outro (2 idas ao servidor). Agora a busca do link já começa junto
+// com o sorteio e é reaproveitada quando o sorteado é o próprio link (o caso comum).
+type DadosQuiz = { titulo: string; estrutura: EstruturaQuiz; pixels?: unknown } | null;
+const buscas = new Map<string, Promise<DadosQuiz>>();
+function buscarQuiz(slug: string, previa: boolean): Promise<DadosQuiz> {
+  const k = `${previa ? "p" : "q"}:${slug}`;
+  let p = buscas.get(k);
+  if (!p) {
+    p = Promise.resolve(previa ? supabase.rpc("quiz_rascunho" as never, { p_token: slug } as never) : supabase.rpc("quiz_publico" as never, { p_slug: slug } as never))
+      .then(({ data }) => data as DadosQuiz).catch(() => { buscas.delete(k); return null; });
+    buscas.set(k, p);
+  }
+  return p;
+}
+
 export default function QuizPublico({ previa = false }: { previa?: boolean }) {
   const { slug: slugDaUrl = "", token = "" } = useParams();
   const [sorteado, setSorteado] = useState<string | null>(previa ? token : null);
   useEffect(() => {
     if (previa) { setSorteado(token); return; }
+    void buscarQuiz(slugDaUrl, false);   // adianta a busca do link enquanto o sorteio responde
     if (new URLSearchParams(window.location.search).get("ab") === "0") { setSorteado(slugDaUrl); return; }   // link só do original (V1): pula o sorteio
     let vivo = true;
     void (async () => {
@@ -58,8 +74,7 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
   const imagemDeFundo = visual?.fundo_css;
 
   useEffect(() => {
-    void (previa ? supabase.rpc("quiz_rascunho" as never, { p_token: slug } as never) : supabase.rpc("quiz_publico" as never, { p_slug: slug } as never)).then(({ data }) => {
-      const q = data as { titulo: string; estrutura: EstruturaQuiz; pixels?: unknown } | null;
+    void buscarQuiz(slug, previa).then((q) => {
       setQuiz(q && q.estrutura ? q : null);
       setCarregando(false);
       if (q?.titulo) document.title = q.titulo;

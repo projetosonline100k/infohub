@@ -909,8 +909,18 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   // Depois da abertura, baixa as imagens das próximas telas: a troca de tela não fica esperando a imagem.
   useEffect(() => {
     const urls = JSON.stringify(e).match(/https?:\/\/[^"]+\.(?:webp|jpe?g|png|gif)/gi) ?? [];
-    const t = setTimeout(() => { for (const u of new Set(urls)) new Image().src = u; }, 1200);
-    return () => clearTimeout(t);
+    // (21/11, quiz lento) Antes: ~70 imagens de uma vez, brigando com a tela atual no celular. Agora: fila de 3 por vez, começando depois da abertura.
+    const fila = [...new Set(urls)];
+    let vivo = true;
+    const proxima = () => {
+      const u = fila.shift();
+      if (!vivo || !u) return;
+      const img = new Image();
+      img.onload = img.onerror = proxima;
+      img.src = u;
+    };
+    const t = setTimeout(() => { for (let i = 0; i < 3; i++) proxima(); }, 2500);
+    return () => { vivo = false; clearTimeout(t); };
   }, [e]);
 
   const trocou = useRef(onTrocarTela);
@@ -1245,6 +1255,12 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
             }
             return (
               <div className="space-y-3">
+                {q.cabecalho && (q.cabecalho.imagem || q.cabecalho.titulo) && (
+                  <div className="space-y-3 pb-2 text-center">
+                    {q.cabecalho.imagem && <img src={q.cabecalho.imagem} alt="" fetchPriority="high" decoding="async" className="mx-auto w-full rounded-2xl" />}
+                    <Txt caminho={`${base}.cabecalho.titulo`} valor={q.cabecalho.titulo} mostrar={q.cabecalho.titulo ? f(q.cabecalho.titulo) : undefined} as="h1" className="block text-xl font-extrabold leading-snug" />
+                  </div>
+                )}
                 {quadrosM && !livro
                   ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
                   : quadrosM && livro

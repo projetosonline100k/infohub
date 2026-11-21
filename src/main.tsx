@@ -1,5 +1,4 @@
 import { createRoot } from "react-dom/client";
-import "./lib/realtimeCanais";
 import "./index.css";
 import { ErroNaTela, registrarErroTela } from "./components/ErroNaTela";
 import { CHAVES_APARENCIA, aplicarAparencia, lerAparencia } from "./lib/aparencia/aparencia";
@@ -14,9 +13,13 @@ window.addEventListener("storage", (e) => { if (e.key && CHAVES_APARENCIA.includ
 // Aviso do Atlas (janelinha que abre e fecha a cada aviso): só a página dele, sem o app, o login
 // nem o cliente do Supabase — várias abrindo juntas disputavam a renovação do login com as outras
 // janelas e o Escritório ficava carregando para sempre (20/10).
-if (window.location.pathname === "/aviso") {
+if (/^\/quiz(-previa)?\//.test(window.location.pathname)) {
+  // Quiz público: entrada enxuta, sem o app (nem canais ao vivo, login ou janelas do desktop).
+  void import("./QuizApp").then(({ default: QuizApp }) => raiz.render(<QuizApp />));
+} else if (window.location.pathname === "/aviso") {
   void import("./pages/AvisoWindow").then(({ default: AvisoWindow }) => raiz.render(<AvisoWindow />));
 } else {
+  void import("./lib/realtimeCanais");
   void Promise.all([import("./App.tsx"), import("./lib/desktop/desfazer"), import("./lib/workspace/sessao")])
     .then(([{ default: App }, { ligarDesfazerDoMenu }, { restaurarRotaInicial }]) => {
       void ligarDesfazerDoMenu();
