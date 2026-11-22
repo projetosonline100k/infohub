@@ -1,6 +1,7 @@
 import { PUBLIC_SITE_URL } from "@/lib/shareUrl";
 import type { ConfigPlano } from "./plano";
 import { preencherNumeros, type ConfigNumero } from "./numeros";
+import { calcularNotaIndice, perfilDoIndice, type ConfigIndice } from "./indice";
 
 // Quiz do Infopro (docs/QUIZ.md). O Roy monta a estrutura; a página pública
 // /quiz/<slug> roda o quiz e o resultado é o perfil com mais pontos.
@@ -19,6 +20,10 @@ export interface OpcaoQuiz {
   ate?: number;
   /** Tela "perfil" com `plano_numeros`: o nome do momento no resumo ("Ritual da manhã"). Sem ele, vale o texto da opção. */
   ritual?: string;
+  /** Quiz com `indice` (V3): pontos desta resposta na nota do Índice de Leitor. */
+  nota?: number;
+  /** Quiz com `indice` (V3): cartão que aparece no resultado quando esta resposta é escolhida. */
+  beneficio?: { titulo?: string; texto?: string };
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
@@ -144,6 +149,8 @@ export interface OfertaQuiz {
   /** "direto" (18/11, V2): o fim vira 3 lâminas (escolher 1 bônus → o que vai receber → plano anual na cara do gol com "Ver outros planos"). Sem isso, a página completa. */
   modo?: "direto";
   bonus_escolha_titulo?: string; bonus_escolhido_rotulo?: string; preco_descricao?: string; outros_planos_texto?: string;
+  /** Oferta mensal única (V3, 22/11): sem `planos` e sem `modo`, com estes textos. `aviso` e `fechamento_titulo` aceitam **negrito**; `selos` = 4 textos (cadeado, escudo, livro, fone). */
+  aviso?: string; preco_rotulo?: string; preco_sub?: string; fechamento_titulo?: string; selos?: string[];
   planos_acesso?: string;   // linha "✓ …" embaixo do nome em todos os cartões de plano (ex.: "Acesso completo ao Instalivros")
 }
 export interface PlanoOferta {
@@ -161,6 +168,10 @@ export type CampoCaptura = "nome" | "email" | "whatsapp";
 // "analisando", e a resposta já é gravada ali, sem esperar o fim.
 export interface CapturaQuiz {
   ativa?: boolean; titulo?: string; texto?: string; nota?: string; botao?: string;
+  /** Link sublinhado embaixo do botão que segue para o resultado sem enviar nada (V3). */
+  pular?: string;
+  /** Selo pequeno em cima do título (padrão "QUIZ COMPLETO" quando o quiz tem `indice`). */
+  selo?: string;
   pedir?: CampoCaptura[]; rotulos?: Partial<Record<CampoCaptura, string>>; depois_de?: string;
   fala?: string;            // o Instalivros fala no topo do formulário (balão)
   /** Criar a conta em etapas (13/11): 1) nome → 2) e-mail e WhatsApp → 3) "Conta criada!" com confete e o botão do plano; cada etapa sai para o lado com animação. */
@@ -199,6 +210,8 @@ export interface EstruturaQuiz {
   intro?: { titulo?: string; subtitulo?: string; botao?: string; rodape?: string; imagem?: string; imagem_nota?: string; credenciais?: string[]; pular?: boolean };
   perguntas: PerguntaQuiz[];
   perfis: PerfilQuiz[];
+  /** Resultado "Índice de Leitor" (V3, 22/11): nota de 0 a 10 no anel + perfil pela faixa da nota + cartões de benefício. Quando existe, manda no perfil (ignora os pontos). Textos aceitam {resposta:id}, {falta} e **negrito**. */
+  indice?: ConfigIndice;
   telas?: TelaQuiz[];
   // chamada: linha acima do nome do perfil quando a pessoa deu o nome ("{nome}, você é").
   resultado?: { chamada?: string; grafico?: { titulo?: string; subtitulo?: string; barras: { rotulo: string; perfis: string[] }[] } };
@@ -244,6 +257,10 @@ export function pontosPorPerfil(e: EstruturaQuiz, escolhas: Record<string, numbe
 // Escolhas: índice da opção por pergunta. Resultado: o perfil com mais pontos
 // (empate: o que aparece primeiro na lista de perfis).
 export function calcularPerfil(e: EstruturaQuiz, escolhas: Record<string, number>): PerfilQuiz | null {
+  if (e.indice?.faixas?.length) {
+    const id = perfilDoIndice(e.indice, calcularNotaIndice(e.indice, e.perguntas, escolhas));
+    return e.perfis.find((p) => p.id === id) ?? null;
+  }
   const pontos = pontosPorPerfil(e, escolhas);
   let melhor: PerfilQuiz | null = null, max = -1;
   for (const p of e.perfis) {
@@ -252,6 +269,11 @@ export function calcularPerfil(e: EstruturaQuiz, escolhas: Record<string, number
   }
   return melhor;
 }
+
+/** Nota do Índice de Leitor (null se o quiz não tem `indice`). */
+export const notaDoIndice = (e: EstruturaQuiz, escolhas: Record<string, number>): number | null => (e.indice ? calcularNotaIndice(e.indice, e.perguntas, escolhas) : null);
+/** Oferta mensal única da V3 (sem planos, sem modo, com os textos novos). */
+export const ofertaMensalUnica = (e: EstruturaQuiz): boolean => !!e.oferta && !e.oferta.planos?.length && !e.oferta.modo && !!(e.oferta.aviso || e.oferta.preco_rotulo);
 
 // Gráfico do resultado: cada barra soma os pontos dos perfis dela, em % do total.
 export function barrasDoResultado(e: EstruturaQuiz, escolhas: Record<string, number>): { rotulo: string; pct: number }[] {
@@ -340,6 +362,7 @@ export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas:
   if (!texto) return "";
   return preencherNumeros(comNome(texto, nome), e.perguntas, numeros)
     .replace(/\{perfil\}/g, perfil?.nome ?? "")
+    .replace(/\{falta\}/g, () => { const n = notaDoIndice(e, escolhas); return n == null ? "" : String(Math.max(0, (e.indice?.max ?? 10) - n)); })
     .replace(/\{resposta:([\w-]+)\}/g, (_, id: string) => {
       const q = e.perguntas.find((p) => p.id === id);
       const o = q?.opcoes[escolhas[id]];

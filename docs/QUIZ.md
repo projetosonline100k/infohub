@@ -99,3 +99,8 @@ Inspirado no app Ziggur (prints em `~/Desktop/Quiz do instalivros/ziggur/`). Tud
 
 ## Criar a conta em etapas (13/11)
 `captura.etapas: true` troca o formulário único por três etapas, cada uma saindo para o lado com animação: 1) **Nome** (a fala do mascote em `captura.fala`, ex.: "Falta pouco! Crie sua conta para liberar o seu acesso."; o campo já vem com o nome dado antes e pode ganhar o sobrenome), 2) **E-mail e WhatsApp** (`captura.titulo` e `captura.texto` no topo; o lead é gravado aqui, quando as duas respostas são confirmadas), 3) **Conta criada!** com confete e o botão "Ver meu plano personalizado" (`captura.conta_criada`: `titulo`, `texto`, `botao`). No editor aparecem três abas para ver e editar cada etapa.
+
+## Quiz V3: Índice de Leitor, captura que pula e oferta mensal única (22/11)
+- `indice` na estrutura (`src/lib/quiz/indice.ts`, teste `tests/quizIndice.test.mjs`): nota = `base` + soma das `nota` das opções escolhidas, arredondada e limitada a `teto` (9, nunca 10); o perfil é a 1ª faixa de `faixas` com nota <= `ate` (ignora os pontos por perfil). Resultado: anel com a nota, `titulo`, perfil, `recap` (`{resposta:id}`, **negrito**), `falta` (`{falta}` = 10 − nota) e cartões `beneficio` das perguntas de `beneficios_de`.
+- `captura.pular`: link sublinhado que vai ao resultado sem enviar lead. `captura.selo` (padrão "QUIZ COMPLETO" com `indice`).
+- Oferta sem `planos` e sem `modo`, com `aviso`/`preco_rotulo`: layout mensal único (`OfertaMensal`): aviso, preço, botão, `selos` (cadeado, escudo, livro, fone), itens, FAQ e fechamento. Com `indice`, a abertura mostra credenciais em cartões e as perguntas ganham "Pergunta N de 6" + Voltar no topo, emoji grande nos cartões e → nas listas.
