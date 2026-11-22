@@ -31,6 +31,53 @@ const ROTULO_CAMPO: Record<CampoCaptura, { rotulo: string; tipo: string; exemplo
   email: { rotulo: "Seu e-mail", tipo: "email", exemplo: "voce@email.com" },
   whatsapp: { rotulo: "Seu WhatsApp", tipo: "tel", exemplo: "(11) 99999-9999" },
 };
+/** Países do WhatsApp (visual cartão): bandeira + DDI; Brasil vem escolhido e o "+55" já aparece. */
+const PAISES_FONE: { bandeira: string; nome: string; ddi: string }[] = [
+  { bandeira: "🇧🇷", nome: "Brasil", ddi: "55" }, { bandeira: "🇵🇹", nome: "Portugal", ddi: "351" }, { bandeira: "🇺🇸", nome: "Estados Unidos / Canadá", ddi: "1" },
+  { bandeira: "🇦🇴", nome: "Angola", ddi: "244" }, { bandeira: "🇲🇿", nome: "Moçambique", ddi: "258" }, { bandeira: "🇨🇻", nome: "Cabo Verde", ddi: "238" },
+  { bandeira: "🇪🇸", nome: "Espanha", ddi: "34" }, { bandeira: "🇬🇧", nome: "Reino Unido", ddi: "44" }, { bandeira: "🇫🇷", nome: "França", ddi: "33" },
+  { bandeira: "🇩🇪", nome: "Alemanha", ddi: "49" }, { bandeira: "🇮🇹", nome: "Itália", ddi: "39" }, { bandeira: "🇨🇭", nome: "Suíça", ddi: "41" },
+  { bandeira: "🇮🇪", nome: "Irlanda", ddi: "353" }, { bandeira: "🇦🇷", nome: "Argentina", ddi: "54" }, { bandeira: "🇵🇾", nome: "Paraguai", ddi: "595" },
+  { bandeira: "🇺🇾", nome: "Uruguai", ddi: "598" }, { bandeira: "🇨🇱", nome: "Chile", ddi: "56" }, { bandeira: "🇨🇴", nome: "Colômbia", ddi: "57" },
+  { bandeira: "🇲🇽", nome: "México", ddi: "52" }, { bandeira: "🇯🇵", nome: "Japão", ddi: "81" }, { bandeira: "🇦🇺", nome: "Austrália", ddi: "61" },
+  { bandeira: "🇦🇪", nome: "Emirados Árabes", ddi: "971" },
+];
+/** (11) 99999-8888 enquanto digita (Brasil); tira o 55 colado na frente. */
+function mascaraBR(digitos: string): string {
+  let d = digitos.replace(/\D/g, "");
+  if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+  d = d.slice(0, 11);
+  if (d.length <= 2) return d.length ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+/** O que vale como telefone certo: Brasil = DDD + número (10 ou 11 dígitos); outro país (“+351 …”) = 6 a 13 dígitos depois do código. */
+function foneValido(v: string): boolean {
+  const t = v.trim();
+  const d = t.replace(/\D/g, "");
+  if (t.startsWith("+")) { const p = PAISES_FONE.find((x) => d.startsWith(x.ddi) && x.ddi !== "55"); const resto = p ? d.length - p.ddi.length : d.length; return resto >= 6 && resto <= 13; }
+  return d.length === 10 || d.length === 11;
+}
+function CampoWhatsapp({ valor, onChange, id, invalido, placeholder }: { valor: string; onChange: (v: string) => void; id?: string; invalido?: boolean; placeholder?: string }) {
+  const [ddi, setDdi] = useState(() => (valor.startsWith("+") ? PAISES_FONE.find((p) => valor.replace(/\D/g, "").startsWith(p.ddi) && p.ddi !== "55")?.ddi ?? "55" : "55"));
+  const pais = PAISES_FONE.find((p) => p.ddi === ddi) ?? PAISES_FONE[0];
+  const br = ddi === "55";
+  const numero = br ? valor : valor.replace(/^\+\d+\s?/, "");
+  const compor = (n: string, d = ddi) => (d === "55" ? mascaraBR(n) : n.replace(/[^\d\s-]/g, "").trim() ? `+${d} ${n.replace(/[^\d\s-]/g, "")}` : "");
+  return (
+    <div className="qs-fone">
+      <label className="qs-ddi">
+        <span aria-hidden>{pais.bandeira} +{pais.ddi} <i>▾</i></span>
+        <select aria-label="País do WhatsApp" value={ddi} onChange={(ev) => { setDdi(ev.target.value); onChange(compor(valor.startsWith("+") ? valor.replace(/^\+\d+\s?/, "") : valor.replace(/\D/g, ""), ev.target.value)); }}>
+          {PAISES_FONE.map((p) => <option key={p.ddi + p.nome} value={p.ddi}>{p.bandeira} {p.nome} (+{p.ddi})</option>)}
+        </select>
+      </label>
+      <Input id={id} type="tel" inputMode="tel" autoComplete="tel-national" value={numero} placeholder={br ? placeholder : "Seu número"} aria-invalid={invalido || undefined}
+        className={cn("h-12 text-base", "qs-input", invalido && "qs-invalido")} onChange={(ev) => onChange(compor(ev.target.value))} />
+    </div>
+  );
+}
 const LETRAS = "ABCDEFGH";
 const ENTRA = "animate-in fade-in slide-in-from-bottom-3 duration-500";
 
@@ -1097,6 +1144,19 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     if (c === "nome") return nomeCompleto(v);
     return v.length >= 2;
   });
+  // Visual cartão: contato opcional. Campo vazio passa; o que foi preenchido precisa estar certo, e a mensagem diz qual (nunca fica mudo).
+  const [erroContato, setErroContato] = useState("");
+  const [campoErro, setCampoErro] = useState<CampoCaptura | null>(null);
+  const conferirContato = (): { campo: CampoCaptura; msg: string } | null => {
+    for (const c of pedir) {
+      const v = (contato[c] ?? "").trim();
+      if (!v) continue;
+      if (c === "nome" && !nomeCompleto(v)) return { campo: c, msg: v.includes(" ") ? "Confira o nome completo." : "Falta o sobrenome: precisamos do nome e sobrenome." };
+      if (c === "email" && !/^\S+@\S+\.\S+$/.test(v)) return { campo: c, msg: "Confira o e-mail: parece que falta alguma parte." };
+      if (c === "whatsapp" && !foneValido(v)) return { campo: c, msg: "Confira o WhatsApp: digite o DDD e o número." };
+    }
+    return null;
+  };
   const suave = escuro ? "text-neutral-400" : "text-muted-foreground";
   // Amostra do app no quiz de verdade e no Testar → Celular (19/11, Davi: "quero ver como o usuário vê"; só o editor fica de fora): ocupa a tela toda, sem barra de progresso nem "Instalivros" em cima.
   // Perguntas em chat: o contêiner da tela não muda entre uma pergunta e a outra (a conversa só cresce, sem recarregar nem animar de novo).
@@ -1549,7 +1609,16 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               )} />
           )}
           {passo.tipo === "captura" && !e.captura?.etapas && (
-            <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); else if (skin && !Object.values(contato).some(Boolean)) setPos((p) => Math.min(p + 1, passos.length - 1)); }}>
+            <form className="space-y-4 py-2" noValidate={skin} onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) { setPos((p) => p + 1); return; }
+              if (skin) {
+                const erro = conferirContato();
+                setErroContato(erro?.msg ?? "");
+                setCampoErro(erro?.campo ?? null);
+                if (erro) { window.setTimeout(() => (document.getElementById(`qs-campo-${erro.campo}`) as HTMLInputElement | null)?.focus(), 30); return; }
+                if (pedir.some((c) => (contato[c] ?? "").trim())) void enviarContato(); else setPos((p) => Math.min(p + 1, passos.length - 1));
+                return;
+              }
+              if (contatoOk) void enviarContato(); }}>
               {quadrosMascote && (e.captura?.fala || editar) && (
                 <MascoteCanto key="captura" quadros={quadrosMascote}><Txt caminho="captura.fala" valor={e.captura?.fala} mostrar={f(e.captura?.fala)} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
               )}
@@ -1561,12 +1630,16 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               {pedir.map((c) => (
                 <label key={c} className="block space-y-1 text-sm">
                   <Txt caminho={`captura.rotulos.${c}`} valor={e.captura?.rotulos?.[c] || ROTULO_CAMPO[c].rotulo} className={cn(suave, skin && "qs-label")} />
-                  <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={e.captura?.exemplos?.[c] ?? ROTULO_CAMPO[c].exemplo}
-                    inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={c === "nome" ? "given-name" : c === "whatsapp" ? "tel" : "email"}
-                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5", skin && "qs-input")}
-                    onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
+                  {skin && c === "whatsapp"
+                    ? <CampoWhatsapp id="qs-campo-whatsapp" valor={contato.whatsapp ?? ""} invalido={campoErro === "whatsapp"} placeholder={e.captura?.exemplos?.whatsapp ?? ROTULO_CAMPO.whatsapp.exemplo}
+                        onChange={(val) => { setCampoErro(null); setErroContato(""); setContato((x) => ({ ...x, whatsapp: val })); }} />
+                    : <Input id={`qs-campo-${c}`} type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={e.captura?.exemplos?.[c] ?? ROTULO_CAMPO[c].exemplo}
+                        inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={c === "nome" ? "given-name" : c === "whatsapp" ? "tel" : "email"} aria-invalid={campoErro === c || undefined}
+                        className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5", skin && "qs-input", skin && campoErro === c && "qs-invalido")}
+                        onChange={(ev) => { if (skin) { setCampoErro(null); setErroContato(""); } setContato({ ...contato, [c]: ev.target.value }); }} />}
                 </label>
               ))}
+              {skin && erroContato && <p role="alert" className="qs-erro">{erroContato}</p>}
               <Button type={editar ? "button" : "submit"} size="lg" className={cn("h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white", skin && "qs-cta")} style={{ background: skin && v?.botao ? v.botao : cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(skin && v?.botao_texto ? { color: v.botao_texto } : {}) }} disabled={!editar && ((!contatoOk && !skin) || enviando)}>
                 {enviando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}<Txt caminho="captura.botao" valor={e.captura?.botao || "Ver meu resultado"} />
               </Button>

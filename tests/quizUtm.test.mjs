@@ -119,3 +119,13 @@ test('link curto do embaixador (?ref=) vira a marca aff_<código>', () => {
   assert.deepEqual(u.utmDaUrl('?ref=x'), {});
   assert.equal(u.utmDaUrl('?utm_content=outro&ref=marcello').utm_content, 'outro');
 });
+
+test('telefone de outro país (+351…) não vai para o checkout; +55 e número sem país continuam indo', () => {
+  assert.equal(u.telefoneNacional('+351 912345678'), '');
+  assert.equal(u.telefoneNacional('+1 5551234567'), '');
+  assert.equal(u.telefoneNacional('+55 (11) 98765-4321'), '11987654321');
+  assert.equal(u.telefoneNacional('(11) 98765-4321'), '11987654321');
+  const url = u.comDadosDoLead('https://chk.eduzz.com/X', { nome: 'Ana Souza', email: 'a@b.co', whatsapp: '+351 912345678' });
+  assert.doesNotMatch(url, /phone=/);
+  assert.match(url, /name=Ana\+Souza/);
+});

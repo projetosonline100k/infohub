@@ -817,3 +817,13 @@ html.jarvis-window #root {
 .quiz-skin .qs-sel { border-color: var(--qv-destaque) !important; box-shadow: 0 0 0 2px var(--qv-destaque) !important; transform: none !important; }
 /* Campos do quiz: 16 px no celular, o limite em que o iPhone não dá zoom ao focar. */
 @media (max-width: 767px) { :is(.quiz-claro, .quiz-escuro) :is(input, textarea, select) { font-size: 16px !important; } }
+.quiz-skin .qs-erro { color: #ff9a90; font-size: 14px; text-align: left; margin: -4px 0 0; }
+
+/* WhatsApp com bandeira: caixa do país (a bandeira + "+55" aparecem; o seletor nativo fica por cima, invisível) e o campo do número. */
+.quiz-skin .qs-fone { display: flex; gap: 8px; }
+.quiz-skin .qs-fone .qs-input { flex: 1; min-width: 0; }
+.quiz-skin .qs-ddi { position: relative; flex: none; display: flex; align-items: center; justify-content: center; height: 52px; min-width: 104px; padding: 0 12px; border-radius: 12px; background: var(--qv-base); border: 1px solid var(--qv-borda); font-size: 16px; white-space: nowrap; cursor: pointer; }
+.quiz-skin .qs-ddi i { font-style: normal; color: var(--qv-texto-2); margin-left: 4px; }
+.quiz-skin .qs-ddi select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+/* Campo com erro: borda vermelha e fundo levemente avermelhado. */
+.quiz-skin .qs-invalido { border-color: #ff6b5e !important; box-shadow: 0 0 0 2px rgba(255,107,94,.35); }

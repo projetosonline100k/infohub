@@ -62,6 +62,7 @@ export const enderecoCurto = (baseDoSite: string, codigo: string) => `${baseDoSi
 
 /** Telefone só com números e sem o 55 do Brasil (o checkout da Eduzz já traz o DDI): "+55 (11) 98765-4321" → "11987654321". Vazio se não parecer um telefone. */
 export function telefoneNacional(v: string | null | undefined): string {
+  if (/^\s*\+/.test(v ?? "") && !/^\s*\+\s*55/.test(v ?? "")) return "";   // número de outro país: o DDI do checkout é +55, então não preenche
   let d = (v ?? "").replace(/\D/g, "");
   if (d.startsWith("55") && d.length >= 12) d = d.slice(2);
   return d.length >= 10 && d.length <= 11 ? d : "";
