@@ -12,6 +12,13 @@ BEGIN
   UPDATE public.quizzes SET ab_ativo = true WHERE id = '10000000-0000-0000-0000-000000000484';
   IF public.quiz_ab_slugs('quiz-ab-v1') <> ARRAY['quiz-ab-v1','quiz-ab-v2'] THEN RAISE EXCEPTION 'sorteio deveria juntar V1 e V2'; END IF;
   IF coalesce(array_length(public.quiz_ab_slugs('quiz-ab-v2'), 1), 0) <> 0 THEN RAISE EXCEPTION 'só o link do original sorteia'; END IF;
+  -- Original fora do sorteio: com 1 versão marcada não há teste (volta o original); com 2, sorteia só entre as versões.
+  UPDATE public.quizzes SET ab_raiz_fora = true WHERE id = '10000000-0000-0000-0000-000000000483';
+  IF coalesce(array_length(public.quiz_ab_slugs('quiz-ab-v1'), 1), 0) <> 0 THEN RAISE EXCEPTION 'original fora + 1 versão: sem sorteio'; END IF;
+  INSERT INTO public.quizzes(id, cliente_id, user_id, titulo, slug, status, estrutura, variante_de, versao, ab_ativo) VALUES ('10000000-0000-0000-0000-000000000485', '10000000-0000-0000-0000-000000000482', '10000000-0000-0000-0000-000000000481', 'V3', 'quiz-ab-v3x', 'publicado', '{"perguntas":[{"id":"q1"}]}', '10000000-0000-0000-0000-000000000483', 3, true);
+  IF public.quiz_ab_slugs('quiz-ab-v1') <> ARRAY['quiz-ab-v2','quiz-ab-v3x'] THEN RAISE EXCEPTION 'original fora: deveria sortear só V2 e V3'; END IF;
+  UPDATE public.quizzes SET ab_raiz_fora = false WHERE id = '10000000-0000-0000-0000-000000000483';
+  DELETE FROM public.quizzes WHERE id = '10000000-0000-0000-0000-000000000485';
   BEGIN INSERT INTO public.quizzes(cliente_id, user_id, titulo, slug, status, estrutura, variante_de, versao) VALUES ('10000000-0000-0000-0000-000000000482', '10000000-0000-0000-0000-000000000481', 'V3 de V2', 'quiz-ab-v3', 'rascunho', '{}', '10000000-0000-0000-0000-000000000484', 3);
   EXCEPTION WHEN raise_exception OR check_violation THEN NULL; END;
   UPDATE public.quizzes SET status = 'pausado' WHERE id = '10000000-0000-0000-0000-000000000484';

@@ -65,7 +65,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
   const [indice, setIndice] = useState(0);
   const [docs, setDocs] = useState<Doc[]>([]);
   // Quiz criado (etapa 2): o Davi testa aqui mesmo; o esboço fica na outra aba.
-  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; previa_token?: string; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null; variante_de?: string | null; versao?: number; ab_ativo?: boolean } | null>(null);
+  const [quiz, setQuiz] = useState<{ id: string; titulo: string; slug: string; status: StatusQuiz; previa_token?: string; estrutura: EstruturaQuiz | null; estrutura_publicada?: EstruturaQuiz | null; variante_de?: string | null; versao?: number; ab_ativo?: boolean; ab_raiz_fora?: boolean } | null>(null);
   const faltasQuiz = useMemo(() => faltasDoQuiz(quiz?.estrutura), [quiz?.estrutura]);
   // Abas do quiz: Testar / Em andamento (25/10, no lugar de "Esboço aprovado", que fica a um clique de dentro dela).
   // 02/11 (Davi: "mais fácil de usar, ver em qual etapa é cada coisa"): Editar (estrutura, tela grande e ajustes) é o
@@ -130,7 +130,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     void (async () => {
       const [{ data: d }, , { data: a }] = await Promise.all([
         supabase.from("documentos").select("id, titulo, conteudo, updated_at").eq("atividade_id", tarefaId).is("deleted_at", null).order("updated_at", { ascending: false }),
-        db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo").eq("atividade_id", tarefaId).is("variante_de", null).order("criado_em", { ascending: false }).limit(1).maybeSingle()
+        db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo, ab_raiz_fora").eq("atividade_id", tarefaId).is("variante_de", null).order("criado_em", { ascending: false }).limit(1).maybeSingle()
           .then((r) => {
             if (!vivo) return;
             const novo = (r.data as typeof quiz) ?? null;
@@ -177,7 +177,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
       if (!mudou) return;
       if (!versaoSelRef.current) { setVersao((v) => v + 1); return; }
       // Versão (V2…) aberta: recarrega só essa versão, sem trocar a tela escolhida no mapa.
-      const { data: nova } = await db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo").eq("id", quizAberto).maybeSingle();
+      const { data: nova } = await db.from("quizzes").select("id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo, ab_raiz_fora").eq("id", quizAberto).maybeSingle();
       if (!nova || versaoSelRef.current !== quizAberto) return;
       const json = JSON.stringify((nova as { estrutura?: unknown }).estrutura ?? null);
       if (json === estruturaConhecida.current) return;
@@ -284,7 +284,7 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
       onMudou?.();
     } catch { toast.error("Não consegui publicar"); } finally { setSalvando(false); }
   };
-  const COLUNAS_QUIZ = "id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo";
+  const COLUNAS_QUIZ = "id, titulo, slug, status, previa_token, estrutura, estrutura_publicada, variante_de, versao, ab_ativo, ab_raiz_fora";
   const carregarVersoes = useCallback(async () => {
     if (!raizId) { setVersoes([]); return; }
     const { data } = await db.from("quizzes").select("id, versao, slug, status, ab_ativo").or(`id.eq.${raizId},variante_de.eq.${raizId}`).order("versao");
@@ -325,6 +325,15 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
     if (error) { toast.error("Não consegui mudar o teste A/B"); return; }
     setQuiz({ ...quiz, ab_ativo: novo });
     toast.success(novo ? `V${quiz.versao} entra no teste A/B: o link do quiz passa a sortear entre as versões publicadas` : `V${quiz.versao} saiu do teste A/B`);
+  };
+  // Original (V1) fora do sorteio: o link do quiz sorteia só entre as versões marcadas (teste "com × sem abertura", sem o V1 no meio).
+  const alternarRaizFora = async () => {
+    if (!quiz || quiz.variante_de) return;
+    const novo = !quiz.ab_raiz_fora;
+    const { error } = await db.from("quizzes").update({ ab_raiz_fora: novo }).eq("id", quiz.id);
+    if (error) { toast.error("Não consegui mudar o sorteio do original"); return; }
+    setQuiz({ ...quiz, ab_raiz_fora: novo });
+    toast.success(novo ? "O original saiu do sorteio: o link passa a sortear só entre as versões marcadas no teste A/B" : "O original voltou ao sorteio");
   };
   const passarParaRoy = async () => {
     setSalvando(true);
@@ -424,6 +433,12 @@ export function RevisaoEntrega({ clienteId, tarefas, aberto, onFechar, onMudou }
                     title={quiz.status !== "publicado" ? "Publique esta versão primeiro" : "Ligado: o link do quiz principal sorteia entre o original e as versões marcadas"}
                     className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium disabled:opacity-50", quiz.ab_ativo ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "hover:bg-muted")}>
                     <span className={cn("h-1.5 w-1.5 rounded-full", quiz.ab_ativo ? "bg-emerald-500" : "bg-muted-foreground/50")} />No teste A/B</button>
+                )}
+                {!quiz.variante_de && versoes.length > 1 && (
+                  <button type="button" onClick={() => void alternarRaizFora()} aria-pressed={!!quiz.ab_raiz_fora}
+                    title="Ligado: o link deste quiz não mostra o original, só sorteia entre as versões marcadas no teste A/B (precisa de 2 ou mais)"
+                    className={cn("flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium", quiz.ab_raiz_fora ? "border-amber-500/60 bg-amber-500/15 text-amber-700 dark:text-amber-300" : "hover:bg-muted")}>
+                    <span className={cn("h-1.5 w-1.5 rounded-full", quiz.ab_raiz_fora ? "bg-amber-500" : "bg-muted-foreground/50")} />V1 fora do sorteio</button>
                 )}
                 {versoes.length > 1 && <button type="button" onClick={() => setComparando(true)} className="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium hover:bg-muted"><Scale className="h-3.5 w-3.5" />Comparar</button>}
                 <button type="button" onClick={() => setAbaQuiz("andamento")} title="O que ainda falta e o que o agente está fazendo"
