@@ -20,6 +20,9 @@ export function utmDaUrl(busca: string): Utm {
   const p = new URLSearchParams(busca);
   const r: Utm = {};
   for (const k of UTM_CHAVES) { const v = p.get(k); if (v?.trim()) r[k] = v.trim().slice(0, 120); }
+  // Link curto do embaixador (?ref=marcello): vira a marca completa (aff_<código>) que liga visita, lead e venda a ele.
+  const ref = (p.get("ref") ?? "").trim().toLowerCase();
+  if (/^[a-z0-9]{3,24}$/.test(ref) && !r.utm_content) { r.utm_source ??= "embaixador"; r.utm_medium ??= "link"; r.utm_content = `aff_${ref}`; }
   return r;
 }
 

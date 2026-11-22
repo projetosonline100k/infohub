@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
-import { Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Lightbulb, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, Headphones, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import { Ban, Calendar, CheckCircle2, Compass, MessageCircle, Moon, RefreshCw, Smartphone, Target, User, Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Lightbulb, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, Headphones, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
 import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,6 +81,8 @@ interface Ctx {
   linkDeCompra?: (url: string) => string;
   /** Identidade visual do quiz (estrutura.visual): cor e texto dos botões principais. */
   botao?: { fundo: string; texto: string };
+  /** Visual com `cartao` (Instalivros do Claude): telas de resultado/oferta no estilo do cartão. */
+  skin?: boolean;
 }
 const QuizCtx = createContext<Ctx>({ editar: false, mostrarFaltas: false, cor: "#0ea5e9", escuro: false, mudarTexto: () => {}, mudarImagem: () => {}, podeEnviar: false });
 
@@ -852,16 +855,31 @@ function ContinuarTravavel({ liberado, falta, onClick, rotulo = "Continuar" }: {
   );
 }
 
+/** Ícones de linha das opções (opcao.icone). */
+const ICONES_OPCAO: Record<string, LucideIcon> = {
+  Lightbulb, Target, MessageCircle, RefreshCw, BookOpen, Calendar, Clock, Ban, Smartphone, Moon, CheckCircle2, User, Compass, Star, Zap, Headphones, ShieldCheck, Lock,
+};
+
 // Variáveis CSS da identidade visual (usadas por .quiz-visual em index.css).
 const varsDoVisual = (v: VisualQuiz) => ({
   "--qv-texto": v.texto ?? "#FFFFFF", "--qv-texto-2": v.texto_2 ?? "#AAB6D0",
   "--qv-card": v.card ?? "rgba(8,31,79,.5)", "--qv-borda": v.borda_card ?? "rgba(129,160,255,.25)",
+  "--qv-fonte-texto": v.fonte_texto ?? "inherit", "--qv-fonte-titulo": v.fonte_titulo ?? v.fonte_texto ?? "inherit",
+  "--qv-destaque": v.destaque ?? v.botao ?? "#34d399", "--qv-ok": v.ok ?? "#5dd6a2", "--qv-base": v.base,
 } as React.CSSProperties);
+
+/** Carrega as fontes do Google do visual do quiz (uma vez por link). */
+function useFontesDoVisual(url?: string) {
+  useEffect(() => {
+    if (!url || !/^https:\/\/fonts\.googleapis\.com\//.test(url) || document.head.querySelector(`link[href="${url}"]`)) return;
+    const l = document.createElement("link"); l.rel = "stylesheet"; l.href = url; document.head.appendChild(l);
+  }, [url]);
+}
 
 function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
   const { cor: corQuiz, editar, aoClicarOferta, linkDeCompra, botao } = useContext(QuizCtx);
   const cor = botao?.fundo ?? corQuiz;
-  const cls = cn("h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]", !botao && "text-white");
+  const cls = cn("qs-cta h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]", !botao && "text-white");
   const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(botao && { color: botao.texto }) };
   if (editar) return <div className={cn(cls, "flex items-center justify-center px-4 py-3")} style={estilo}>{children}</div>;
   if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()}>{children}</a></Button>;
@@ -887,6 +905,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 }) {
   const e = estrutura;
   const v = e.visual;
+  useFontesDoVisual(v?.fontes_url);
+  const skin = !!v?.cartao;
   const cor = corDoQuiz(e);
   const escuro = e.tema === "escuro" || !!v;
   const perguntas = e.perguntas ?? [];
@@ -982,7 +1002,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     onMudar(n);
   };
   const ctx: Ctx = {
-    editar, mostrarFaltas: !!teste, cor, escuro, botao: v?.botao ? { fundo: v.botao, texto: v.botao_texto ?? "#010F24" } : undefined, podeEnviar: !!onImagem && !!onMudar,
+    editar, mostrarFaltas: !!teste, cor, escuro, botao: v?.botao ? { fundo: v.botao, texto: v.botao_texto ?? "#010F24" } : undefined, skin: !!v?.cartao, podeEnviar: !!onImagem && !!onMudar,
     aoClicarOferta: (plano) => evento.current?.("cta", undefined, plano),
     linkDeCompra: editar ? undefined : (u) => comDadosDoLead(u, { nome: contato.nome, email: contato.email, whatsapp: contato.whatsapp }),
     mudarTexto: (c, v) => onMudar?.(comValor(e, c, v)),
@@ -1086,11 +1106,19 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
   return (
     <QuizCtx.Provider value={ctx}>
+      {skin && v?.marca && (
+        <div className="mx-auto mb-4 mt-2 w-full max-w-[480px] text-center" style={{ fontFamily: v.fonte_texto }}>
+          {v.marca.imagem
+            ? <img src={v.marca.imagem} alt={`${v.marca.antes}${v.marca.destaque ?? ""}`} className="mx-auto h-[46px] w-auto" draggable={false} />
+            : <div className="text-[26px] font-bold tracking-tight" style={{ fontFamily: v.fonte_titulo, color: v.texto }}>{v.marca.antes}<span style={{ color: v.destaque ?? cor }}>{v.marca.destaque}</span></div>}
+          {v.marca.subtitulo && passo.tipo === "intro" && <p className={cn("text-[15px] leading-snug", v.marca.imagem ? "mt-3" : "mt-1.5")} style={{ color: v.texto_2 }}>{v.marca.subtitulo}</p>}
+        </div>
+      )}
       {/* O quiz usa sempre a própria paleta (quiz-claro / quiz-escuro em index.css), não o tema do Infopro
           (25/10, Davi: "o fundo do quiz está da mesma cor do Infopro; preciso que mostre a cor original"). */}
-      <div className={cn("mx-auto flex w-full max-w-xl flex-col gap-5", escuro ? "quiz-escuro" : "quiz-claro", v && "quiz-visual",
-        telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}
-        style={v ? { ...varsDoVisual(v), ...(telaCheia ? {} : { background: v.fundo_css }) } : passo.tipo === "tela" && telas[passo.indice]?.fundo ? { background: telas[passo.indice].fundo } : undefined}>
+      <div className={cn("mx-auto flex w-full flex-col gap-5", skin ? "quiz-skin max-w-[480px]" : "max-w-xl", escuro ? "quiz-escuro" : "quiz-claro", v && "quiz-visual",
+        skin ? "" : telaCheia ? "flex-1" : escuro ? "rounded-2xl bg-neutral-950 p-5 text-neutral-100 sm:p-7" : "rounded-2xl bg-white p-5 text-neutral-900 shadow-sm sm:p-7")}
+        style={v ? { ...varsDoVisual(v), ...(skin && v.cartao ? { background: v.cartao.fundo, border: v.cartao.borda ? `1px solid ${v.cartao.borda}` : undefined, borderRadius: v.cartao.raio ?? 20, boxShadow: v.cartao.sombra, padding: "24px 20px" } : telaCheia ? {} : { background: v.fundo_css }) } : passo.tipo === "tela" && telas[passo.indice]?.fundo ? { background: telas[passo.indice].fundo } : undefined}>
         {teste && !editar && !travado && !amostraCheia && <p className="rounded-md bg-amber-500/15 px-3 py-1.5 text-center text-xs text-amber-600 dark:text-amber-300">Modo teste: suas respostas não são gravadas. O pontilhado mostra o que ainda falta{onImagem && onMudar ? " — clique nele para enviar" : ""}.</p>}
         {editar && !travado && (
           <div className="sticky top-0 z-10 flex items-center justify-between gap-2 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs text-amber-600 backdrop-blur dark:text-amber-300">
@@ -1101,6 +1129,14 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
         )}
         {amostraCheia ? null : passo.tipo !== "intro" && passo.tipo !== "fim" && fasesInfo ? (
           <BarraFases fases={fasesInfo.nomes} atual={faseAtual} frac={fracFase} cor={cor} escuro={escuro} comemorar={e.fases_comemorar !== false} vturb={e.progresso === "vturb"} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />
+        ) : skin && v3 && passo.tipo === "pergunta" ? (
+          <div className="qs-prog">
+            {!editar && !travado && nPergunta > 1 && <button type="button" onClick={voltar} className="qs-back"><span aria-hidden>‹</span> Voltar</button>}
+            <div className="qs-prog-in">
+              <small>Pergunta {nPergunta} de {perguntas.length}</small>
+              <div className="qs-bar"><i style={{ width: `${Math.round((nPergunta / Math.max(1, perguntas.length)) * 100)}%` }} /></div>
+            </div>
+          </div>
         ) : v3 && passo.tipo === "pergunta" ? (
           <div className="shrink-0 space-y-2">
             <div className="flex items-center justify-between text-sm font-semibold">
@@ -1113,30 +1149,30 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.round((nPergunta / Math.max(1, perguntas.length)) * 100)}%`, background: cor }} />
             </div>
           </div>
-        ) : passo.tipo !== "intro" && passo.tipo !== "fim" ? (
+        ) : skin ? null : passo.tipo !== "intro" && passo.tipo !== "fim" ? (
           <div className={cn("h-2 shrink-0 overflow-hidden rounded-full", escuro ? "bg-white/10" : "bg-black/10")}>
             <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progresso}%`, background: cor, boxShadow: `0 0 12px ${cor}` }} />
           </div>
-        ) : telaCheia && <div className="h-2 shrink-0" />}
+        ) : telaCheia && !skin && <div className="h-2 shrink-0" />}
 
         {/* Tela cheia: a pergunta começa sempre na mesma altura (título fixo, imagem abaixo dele);
             abertura, respiro e "analisando" ficam no centro da tela. */}
         <div key={emConversa ? "conversa" : pos} className={cn(ENTRA, telaCheia && (passo.tipo === "pergunta" ? "mt-[2dvh] w-full" : "my-auto w-full"))}>
           {passo.tipo === "intro" && (
-            <div className="space-y-5 py-4 text-center">
+            <div className={cn("space-y-5 py-4 text-center", skin && "qs-intro")}>
               <Img caminho="intro.imagem" url={e.intro?.imagem} nota={e.intro?.imagem_nota} redonda className="mx-auto h-24 w-24" />
-              <Txt caminho="intro.titulo" valor={e.intro?.titulo || titulo} as="h1" className="block text-3xl font-extrabold leading-tight sm:text-4xl" />
-              <Txt caminho="intro.subtitulo" valor={e.intro?.subtitulo} as="p" className={cn("block text-base leading-relaxed", suave)} />
+              <Txt caminho="intro.titulo" valor={e.intro?.titulo || titulo} as="h1" className={cn("block text-3xl font-extrabold leading-tight sm:text-4xl", skin && "qs-h1")} />
+              <Txt caminho="intro.subtitulo" valor={e.intro?.subtitulo} as="p" className={cn("block text-base leading-relaxed", suave, skin && "qs-sub")} />
               {!!e.intro?.credenciais?.length && v3 && (
-                <div className="grid grid-cols-3 gap-2">
+                <div className={cn("grid grid-cols-3 gap-2", skin && "qs-stats")}>
                   {e.intro.credenciais.map((c, k) => {
-                    // "900+ livros resumidos" → número grande + texto; sem número no começo, o texto inteiro.
-                    const [a, ...resto] = c.split(" ");
-                    const grande = /\d/.test(a) && resto.length > 0 && !editar;
+                    // "900+|livros resumidos" → destaque grande + texto embaixo (a barra separa os dois); sem barra, "900+ livros resumidos" divide no 1º espaço.
+                    const [a, ...resto] = c.includes("|") ? c.split("|") : c.split(" ");
+                    const grande = (c.includes("|") || /\d/.test(a)) && resto.length > 0 && !editar;
                     return (
-                      <div key={k} className="flex flex-col items-center justify-center gap-0.5 rounded-xl border px-1.5 py-3 text-center" style={{ borderColor: `${cor}33`, background: `${cor}0d` }}>
+                      <div key={k} className={cn("flex flex-col items-center justify-center gap-0.5 rounded-xl border px-1.5 py-3 text-center", skin && "qs-stat")} style={v ? { borderColor: "var(--qv-borda)", background: "var(--qv-card)" } : { borderColor: `${cor}33`, background: `${cor}0d` }}>
                         {grande
-                          ? <><span className="text-xl font-extrabold leading-none" style={{ color: cor }}>{a}</span><span className="text-[11px] font-medium leading-tight">{resto.join(" ")}</span></>
+                          ? <><span className="qs-stat-n text-lg font-extrabold leading-tight" style={{ color: v?.destaque ?? cor, fontFamily: v ? "var(--qv-fonte-titulo)" : undefined }}>{a}</span><span className="qs-stat-l text-[11px] font-medium leading-tight">{resto.join(c.includes("|") ? "|" : " ")}</span></>
                           : <Txt caminho={`intro.credenciais.${k}`} valor={c} className="text-[11px] font-semibold leading-tight" />}
                       </div>
                     );
@@ -1314,8 +1350,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   : quadrosM && livro
                     // 19/11 (Davi: "o título poderia ser a pergunta do Insta, só que maior"): a pergunta vai no balão do mascote, em letra de título, sem título repetido embaixo.
                     ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto || q.subtitulo || ""} mostrar={f(q.texto || q.subtitulo)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
-                    : <Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className={cn("block font-bold leading-snug", q.cabecalho ? "pt-1 text-center text-lg" : "text-2xl")} />}
-                {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave)} />}
+                    : <>{skin && !q.cabecalho && <div className="qs-kicker">Pergunta {nPergunta}</div>}<Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className={cn("block font-bold leading-snug", q.cabecalho ? "pt-1 text-center text-lg" : "text-2xl", skin && "qs-q")} /></>}
+                {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave, skin && "qs-hint")} />}
                 {(fotoPergunta || q.imagem_nota) && (livro
                   ? <Img caminho={`${base}.imagem`} url={fotoPergunta} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
                   : <Img caminho={`${base}.imagem`} url={fotoPergunta} nota={q.imagem_nota} className="aspect-[16/9] max-h-[30dvh] w-full" />)}
@@ -1323,16 +1359,22 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   ? (e.escala_visual === "velocimetro"
                     ? <Velocimetro q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />
                     : <Escala q={q} base={base} escolhida={escolhas[q.id]} aoEscolher={(k) => setEscolhas((x) => ({ ...x, [q.id]: k }))} f={f} />)
-                  : <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2")}>
+                  : <div className={cn(fotos ? "grid grid-cols-3 gap-x-2 gap-y-2" : cartoes ? "grid grid-cols-2 gap-2" : livro ? "grid grid-cols-2 gap-3" : "space-y-2", skin && (cartoes ? "qs-opts-grid" : "qs-opts-list"))}>
                   {q.opcoes.map((o, k) => {
                     const marcada = q.multipla ? (marcadas[q.id] ?? []).includes(k) : escolhas[q.id] === k;
                     const Opcao = editar ? "div" : "button";
                     return (
                       <Opcao key={k} type={editar ? undefined : "button"} onClick={() => (q.multipla ? alternar(q.id, k) : q.botao ? setEscolhas((x) => ({ ...x, [q.id]: k })) : escolher(q.id, k))}
-                        className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md",
+                        className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md", skin && "qs-opt",
                           escuro ? "border-white/15 bg-white/5 hover:border-white/40" : "hover:border-foreground/30",
                           (cartoes || livro) && "flex-col justify-center text-center", v3 && "py-4 font-semibold", livro && "py-3 text-base font-semibold", fotos && "gap-1 border-0 px-0 py-1 hover:translate-y-0 hover:shadow-none", marcada && !fotos && "scale-[1.02] text-white")}
                         style={marcada ? (fotos ? { color: cor, fontWeight: 700 } : { background: cor, borderColor: cor }) : undefined}>
+                        {v3 && !editar && o.icone && ICONES_OPCAO[o.icone] && (() => {
+                          const Ic = ICONES_OPCAO[o.icone!], cDest = marcada ? "currentColor" : v?.destaque ?? cor;
+                          return cartoes
+                            ? <span className="qs-ic grid h-14 w-full place-items-center rounded-lg bg-white/5"><Ic className="h-7 w-7" style={{ color: cDest }} strokeWidth={1.7} /></span>
+                            : <span className="qs-ic-r grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10"><Ic className="h-[18px] w-[18px]" style={{ color: cDest }} strokeWidth={1.8} /></span>;
+                        })()}
                         {cartoes && emojiDe(o) && <span className="flex h-24 w-24 items-center justify-center text-6xl leading-none">{emojiDe(o)}</span>}
                         {cartoes && !emojiDe(o) && (o.imagem !== undefined || !!o.imagens) && (
                           <span className={cn("rounded-full", fotos && "p-[3px]")} style={fotos && marcada ? { boxShadow: `0 0 0 3px ${cor}` } : undefined}>
@@ -1340,7 +1382,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                           </span>
                         )}
                         {livro ? (k === 0 ? <X className={cn("h-7 w-7", marcada ? "text-white" : "text-orange-500")} /> : <Check className={cn("h-7 w-7", marcada ? "text-white" : "text-green-600")} />)
-                          : editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji ? <span className={v3 ? "text-4xl leading-none" : "text-xl"}>{o.emoji}</span> : !cartoes && !v3 && (
+                          : editar ? <Txt caminho={`${base}.opcoes.${k}.emoji`} valor={o.emoji} className="text-xl" /> : o.emoji && !(v3 && o.icone && ICONES_OPCAO[o.icone]) ? <span className={v3 ? "text-4xl leading-none" : "text-xl"}>{o.emoji}</span> : (v3 && o.icone && ICONES_OPCAO[o.icone]) ? null : !cartoes && !v3 && (
                           <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold", marcada ? "bg-white/25" : escuro ? "bg-white/10" : "bg-black/5")}>
                             {marcada ? <Check className="h-4 w-4" /> : LETRAS[k]}
                           </span>
@@ -1467,7 +1509,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <NomeLetras valor={contato.nome ?? ""} cor={cor} escuro={escuro} suave={suave} aoMudar={(v) => setContato({ ...contato, nome: v })} />
                 ) : (
                   <Input value={contato.nome ?? ""} placeholder={pn.exemplo || "Seu primeiro nome"} autoComplete="given-name" autoCapitalize="words" enterKeyHint="next"
-                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
+                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5", skin && "qs-input")}
                     onChange={(ev) => setContato({ ...contato, nome: ev.target.value })} />
                 )}
                 <Button type={editar ? "button" : "submit"} size="lg" className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }} disabled={!editar && !ok}>
@@ -1507,25 +1549,25 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               )} />
           )}
           {passo.tipo === "captura" && !e.captura?.etapas && (
-            <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); }}>
+            <form className="space-y-4 py-2" onSubmit={(ev) => { ev.preventDefault(); if (travado) return; if (editar) setPos((p) => p + 1); else if (contatoOk) void enviarContato(); else if (skin && !Object.values(contato).some(Boolean)) setPos((p) => Math.min(p + 1, passos.length - 1)); }}>
               {quadrosMascote && (e.captura?.fala || editar) && (
                 <MascoteCanto key="captura" quadros={quadrosMascote}><Txt caminho="captura.fala" valor={e.captura?.fala} mostrar={f(e.captura?.fala)} as="p" className="block text-base font-semibold leading-snug" /></MascoteCanto>
               )}
               <div className="space-y-2 text-center">
-                {(e.captura?.selo || v3) && <span className="inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider" style={{ background: `${cor}1a`, color: cor }}><Txt caminho="captura.selo" valor={e.captura?.selo || "QUIZ COMPLETO"} /></span>}
-                <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} mostrar={f(e.captura?.titulo || "Para onde enviamos o seu resultado?")} as="h2" className="block text-2xl font-bold leading-snug" />
+                {(e.captura?.selo || v3) && <span className={cn("inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider", skin && "qs-badge")} style={skin ? undefined : { background: `${cor}1a`, color: cor }}>{skin && <Check className="mr-1 inline h-3.5 w-3.5" strokeWidth={2.5} />}<Txt caminho="captura.selo" valor={e.captura?.selo || "QUIZ COMPLETO"} /></span>}
+                <Txt caminho="captura.titulo" valor={e.captura?.titulo || "Para onde enviamos o seu resultado?"} mostrar={f(e.captura?.titulo || "Para onde enviamos o seu resultado?")} as="h2" className={cn("block text-2xl font-bold leading-snug", skin && "qs-lead-h")} />
                 <Txt caminho="captura.texto" valor={e.captura?.texto} mostrar={f(e.captura?.texto)} as="p" className={cn("block text-base", suave)} />
               </div>
               {pedir.map((c) => (
                 <label key={c} className="block space-y-1 text-sm">
-                  <Txt caminho={`captura.rotulos.${c}`} valor={e.captura?.rotulos?.[c] || ROTULO_CAMPO[c].rotulo} className={suave} />
-                  <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={ROTULO_CAMPO[c].exemplo}
+                  <Txt caminho={`captura.rotulos.${c}`} valor={e.captura?.rotulos?.[c] || ROTULO_CAMPO[c].rotulo} className={cn(suave, skin && "qs-label")} />
+                  <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={e.captura?.exemplos?.[c] ?? ROTULO_CAMPO[c].exemplo}
                     inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={c === "nome" ? "given-name" : c === "whatsapp" ? "tel" : "email"}
                     className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
                     onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
                 </label>
               ))}
-              <Button type={editar ? "button" : "submit"} size="lg" className="h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white" style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}` }} disabled={!editar && (!contatoOk || enviando)}>
+              <Button type={editar ? "button" : "submit"} size="lg" className={cn("h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white", skin && "qs-cta")} style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(skin && v?.botao_texto ? { color: v.botao_texto } : {}) }} disabled={!editar && ((!contatoOk && !skin) || enviando)}>
                 {enviando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}<Txt caminho="captura.botao" valor={e.captura?.botao || "Ver meu resultado"} />
               </Button>
               {(e.captura?.pular || (editar && v3)) && (
@@ -1534,7 +1576,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               )}
               {(e.captura?.nota || editar) && (
                 <p className={cn("flex items-center justify-center gap-1.5 text-center text-xs", suave)}>
-                  <Lock className="h-3 w-3 shrink-0" /><Txt caminho="captura.nota" valor={e.captura?.nota} />
+                  {!skin && <Lock className="h-3 w-3 shrink-0" />}<Txt caminho="captura.nota" valor={e.captura?.nota} />
                 </p>
               )}
               {!!e.captura?.depoimentos?.length && <CarrosselDepoimentos lista={e.captura.depoimentos} titulo={e.captura.depoimentos_titulo} escuro={escuro} suave={suave} />}
@@ -1573,6 +1615,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
           )}
         </div>
       </div>
+      {skin && v?.marca?.rodape && <p className="mx-auto mt-6 w-full max-w-[480px] text-center text-[13px]" style={{ color: v.texto_2, fontFamily: v.fonte_texto }}>{v.marca.rodape}</p>}
     </QuizCtx.Provider>
   );
 }
@@ -2075,47 +2118,54 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
 // Resultado "Índice de Leitor" (V3, 22/11): selo, anel com a nota que enche até nota/10, nome do perfil, recap com as respostas,
 // "faltam X pontos" e os cartões de benefício das respostas. A oferta vem logo depois, na mesma página.
 function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; f: (s?: string) => string; suave: string }) {
-  const { cor, escuro, editar } = useContext(QuizCtx);
+  const { cor, escuro, editar, skin } = useContext(QuizCtx);
   const ind = e.indice!;
   const nota = notaDoIndice(e, escolhas) ?? 0, max = ind.max ?? 10;
   const [cheio, setCheio] = useState(false);
   useEffect(() => { const t = setTimeout(() => setCheio(true), 150); return () => clearTimeout(t); }, []);
   const R = 52, C = 2 * Math.PI * R;
-  const cartoes = beneficiosDoIndice(ind, e.perguntas, escolhas);
+  // No editor ninguém respondeu: mostra o cartão da opção escolhida (ou da 1ª) de cada pergunta de `beneficios_de`, com o texto editável.
+  const cartoesEditor = editar ? (ind.beneficios_de ?? []).flatMap((id) => {
+    const qi = e.perguntas.findIndex((q) => q.id === id);
+    const k = escolhas[id] ?? 0;
+    const b = e.perguntas[qi]?.opcoes[k]?.beneficio;
+    return b ? [{ titulo: b.titulo ?? "", texto: b.texto ?? "", caminho: `perguntas.${qi}.opcoes.${k}.beneficio` }] : [];
+  }) : [];
+  const cartoes: { titulo: string; texto: string; caminho?: string }[] = editar ? cartoesEditor : beneficiosDoIndice(ind, e.perguntas, escolhas);
   const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
   return (
-    <div className="space-y-5">
+    <div className={cn("space-y-5", skin && "qs-res")}>
       <div className="text-center">
-        <span className="inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider" style={{ background: `${cor}1a`, color: cor }}>Resultado pronto</span>
+        <span className={cn("inline-block rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider", skin && "qs-badge")} style={skin ? undefined : { background: `${cor}1a`, color: cor }}>{skin && <Check className="mr-1 inline h-3.5 w-3.5" strokeWidth={2.5} />}Resultado pronto</span>
       </div>
-      <div className="flex items-center gap-4 animate-in zoom-in-95 duration-700">
-        <div className="relative h-32 w-32 shrink-0">
+      <div className={cn("flex items-center animate-in zoom-in-95 duration-700", skin ? "qs-score gap-[18px]" : "gap-4")}>
+        <div className={cn("relative shrink-0", skin ? "h-[92px] w-[92px]" : "h-32 w-32")}>
           <svg viewBox="0 0 120 120" className="h-full w-full -rotate-90" aria-hidden>
-            <circle cx="60" cy="60" r={R} fill="none" strokeWidth="11" stroke={escuro ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"} />
-            <circle cx="60" cy="60" r={R} fill="none" strokeWidth="11" strokeLinecap="round" stroke={cor}
+            <circle cx="60" cy="60" r={R} fill="none" strokeWidth={skin ? 10.5 : 11} stroke={escuro ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.08)"} />
+            <circle cx="60" cy="60" r={R} fill="none" strokeWidth={skin ? 10.5 : 11} strokeLinecap={skin ? "butt" : "round"} stroke={cor}
               strokeDasharray={C} strokeDashoffset={cheio ? C * (1 - nota / max) : C} style={{ transition: "stroke-dashoffset 1.4s cubic-bezier(0.22,1,0.36,1)" }} />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-            <span className="text-5xl font-extrabold" style={{ color: cor }}>{nota}</span>
-            <span className={cn("mt-1 text-xs font-semibold", suave)}>de {max}</span>
+            <span className={cn("text-5xl font-extrabold", skin && "qs-ring-n")} style={{ color: cor }}>{nota}</span>
+            <span className={cn("mt-1 text-xs font-semibold", suave, skin && "qs-ring-s")}>de {max}</span>
           </div>
         </div>
         <div className="min-w-0 flex-1 space-y-1.5 text-left">
-          <Txt caminho="indice.titulo" valor={ind.titulo} as="p" className={cn("block text-[11px] font-bold uppercase tracking-wider", suave)} />
-          <h2 className="text-2xl font-extrabold leading-tight" style={{ color: cor }}>{perfil ? <Txt caminho={`perfis.${iPerfil}.nome`} valor={perfil.nome} /> : "Obrigado!"}</h2>
-          <TxtNegrito caminho="indice.recap" valor={ind.recap} mostrar={f(ind.recap)} as="p" className="block text-sm leading-snug" />
+          <Txt caminho="indice.titulo" valor={ind.titulo} as="p" className={cn("block text-[11px] font-bold uppercase tracking-wider", suave, skin && "qs-kick")} />
+          <h2 className={cn("text-2xl font-extrabold leading-tight", skin && "qs-res-h")} style={skin ? undefined : { color: cor }}>{perfil ? <Txt caminho={`perfis.${iPerfil}.nome`} valor={perfil.nome} /> : "Obrigado!"}</h2>
+          <TxtNegrito caminho="indice.recap" valor={ind.recap} mostrar={f(ind.recap)} as="p" className={cn("block text-sm leading-snug", skin && "qs-res-p")} />
         </div>
       </div>
       {(ind.falta || editar) && (
-        <TxtNegrito caminho="indice.falta" valor={ind.falta} mostrar={f(ind.falta)} as="p" className="block rounded-xl px-4 py-3 text-center text-sm font-semibold" />
+        <TxtNegrito caminho="indice.falta" valor={ind.falta} mostrar={f(ind.falta)} as="p" className={cn("block rounded-xl px-4 py-3 text-center text-sm font-semibold", skin && "qs-gap")} />
       )}
       {!!cartoes.length && (
         <section className="space-y-3">
-          <Txt caminho="indice.beneficios_titulo" valor={ind.beneficios_titulo} as="h3" className="block text-center text-lg font-extrabold" />
+          <Txt caminho="indice.beneficios_titulo" valor={ind.beneficios_titulo} as="h3" className={cn("block text-center text-lg font-extrabold", skin && "qs-sec-t")} />
           {cartoes.map((c, k) => (
-            <div key={k} className={cn("rounded-2xl border p-4 text-left", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]")}>
-              <p className="flex items-center gap-2 text-base font-extrabold"><Check className="h-5 w-5 shrink-0" style={{ color: cor }} strokeWidth={3} />{c.titulo}</p>
-              <p className={cn("mt-1 text-sm leading-relaxed", suave)}>{c.texto}</p>
+            <div key={k} className={cn("rounded-2xl border p-4 text-left", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]", skin && "qs-do")}>
+              <p className="flex items-center gap-2 text-base font-extrabold">{!skin && <Check className="h-5 w-5 shrink-0" style={{ color: cor }} strokeWidth={3} />}{c.caminho ? <Txt caminho={`${c.caminho}.titulo`} valor={c.titulo} /> : c.titulo}</p>
+              <p className={cn("mt-1 text-sm leading-relaxed", suave)}>{c.caminho ? <Txt caminho={`${c.caminho}.texto`} valor={c.texto} /> : c.texto}</p>
             </div>
           ))}
         </section>
@@ -2124,20 +2174,100 @@ function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; 
   );
 }
 
-const INSTA_DAVI = /(@eu\.daviqueiroz)/g;
-// "@eu.daviqueiroz" vira link para o Instagram dele.
+// "@perfil" no texto vira link para o Instagram (não pega e-mail: "suporte@instalivros.com" fica como está).
+const INSTA_PERFIL = /((?<![\w.])@[\w.]*\w)/g;
 function comLinkInsta(t: string): ReactNode {
-  return t.split(INSTA_DAVI).map((p, i) => (i % 2 ? <a key={i} href="https://instagram.com/eu.daviqueiroz" target="_blank" rel="noreferrer" className="font-semibold underline">{p}</a> : p));
+  return t.split(INSTA_PERFIL).map((p, i) => (i % 2 ? <a key={i} href={`https://instagram.com/${p.slice(1).toLowerCase()}`} target="_blank" rel="noreferrer" className="font-semibold underline">{p}</a> : p));
+}
+
+/** Depoimento compacto da oferta (visual cartão): 4 linhas e "ler mais" para abrir o resto. */
+function CartaoDepoimento({ d, k }: { d: Depoimento; k: number }) {
+  const { editar } = useContext(QuizCtx);
+  const [aberto, setAberto] = useState(false);
+  const longo = (d.texto ?? "").length > 150;
+  return (
+    <div className="qs-tcard">
+      <q className={cn(!aberto && !editar && "qs-clamp")}><Txt caminho={`oferta.depoimentos.${k}.texto`} valor={d.texto} /></q>
+      {longo && !editar && <button type="button" className="qs-mais" onClick={() => setAberto((x) => !x)}>{aberto ? "ler menos" : "ler mais"}</button>}
+      <small><Txt caminho={`oferta.depoimentos.${k}.nome`} valor={d.nome} /></small>
+    </div>
+  );
 }
 
 // Oferta mensal única da V3 (22/11): título, aviso honesto, cartão do preço, botão, selos, o que recebe, perguntas e fechamento com o botão de novo.
 function OfertaMensal({ e, f, suave }: { e: EstruturaQuiz; f: (s?: string) => string; suave: string }) {
-  const { cor, escuro, editar } = useContext(QuizCtx);
+  const { cor, escuro, editar, skin } = useContext(QuizCtx);
   const o = e.oferta!;
   const icones = [Lock, ShieldCheck, BookOpen, Headphones];
   const cta = (
     <Botao href={o.cta_url}><Txt caminho="oferta.cta_texto" valor={o.cta_texto || "Quero o Instalivros"} /></Botao>
   );
+  if (skin) {
+    return (
+      <div className="qs-oferta">
+        <section className="qs-offer" id="oferta" style={e.visual?.oferta_fundo ? { background: e.visual.oferta_fundo } : undefined}>
+          <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="qs-offer-h block" />
+          {(o.prova_social || editar) && <Txt caminho="oferta.prova_social" valor={o.prova_social} as="p" className="qs-soc block" />}
+          {(o.aviso || editar) && (
+            <div className="qs-honest"><Headphones className="qs-dot" strokeWidth={1.8} aria-hidden /><TxtNegrito caminho="oferta.aviso" valor={o.aviso} mostrar={f(o.aviso)} as="div" className="block" /></div>
+          )}
+          <div className="qs-price">
+            <Txt caminho="oferta.preco_rotulo" valor={o.preco_rotulo} as="small" className="block" />
+            <div className="qs-price-v"><Txt caminho="oferta.preco" valor={o.preco} as="span" />{" "}<Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe} as="span" className="qs-price-d" /></div>
+            <Txt caminho="oferta.preco_sub" valor={o.preco_sub} as="p" className="block" />
+          </div>
+          {cta}
+          <Txt caminho="oferta.garantia" valor={o.garantia} as="p" className="qs-note block" />
+          {!!o.selos?.length && (
+            <div className="qs-badges">
+              {o.selos.slice(0, 4).map((t, k) => {
+                const Icone = icones[k] ?? Check;
+                return <div key={k}><Icone className="qs-badge-ic" strokeWidth={1.8} /><Txt caminho={`oferta.selos.${k}`} valor={t} /></div>;
+              })}
+            </div>
+          )}
+        </section>
+        {o.video?.url && (
+          <div className="qs-video">
+            <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
+            <VideoVsl url={o.video.url} poster={o.video.poster} />
+          </div>
+        )}
+        {!!o.itens?.length && (
+          <>
+            <Txt caminho="oferta.recebe_titulo" valor={o.recebe_titulo ?? "O que você recebe"} as="div" className="qs-sec-t block" />
+            <ul className="qs-give">{o.itens.map((it, k) => <li key={k}><span className="qs-ok" aria-hidden>✓</span><Txt caminho={`oferta.itens.${k}`} valor={it} /></li>)}</ul>
+          </>
+        )}
+        {!!o.depoimentos?.length && (
+          <>
+            <Txt caminho="oferta.depoimentos_titulo" valor={o.depoimentos_titulo ?? "Os usuários adoram o Instalivros!"} as="div" className="qs-sec-t block" />
+            <div className="qs-tests">
+              {o.depoimentos.map((d, k) => (
+                <CartaoDepoimento key={k} d={d} k={k} />
+              ))}
+            </div>
+          </>
+        )}
+        {!!o.faq?.length && (
+          <>
+            <div className="qs-sec-t">Perguntas frequentes</div>
+            {o.faq.map((q, k) => (
+              <details key={k} open={editar || undefined} className="qs-details">
+                <summary><Txt caminho={`oferta.faq.${k}.pergunta`} valor={q.pergunta} /></summary>
+                {editar ? <Txt caminho={`oferta.faq.${k}.resposta`} valor={q.resposta} as="p" className="block" /> : <p>{comLinkInsta(q.resposta)}</p>}
+              </details>
+            ))}
+          </>
+        )}
+        <div className="qs-final">
+          <Txt caminho="oferta.fechamento_titulo" valor={o.fechamento_titulo} as="h2" className="block" />
+          <Txt caminho="oferta.fechamento" valor={o.fechamento} mostrar={f(o.fechamento)} as="p" className="block" />
+          {cta}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />
@@ -2145,6 +2275,12 @@ function OfertaMensal({ e, f, suave }: { e: EstruturaQuiz; f: (s?: string) => st
         <div className={cn("flex items-start gap-3 rounded-2xl border p-4 text-left text-sm leading-relaxed", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]")}>
           <span className="mt-1.5 h-3 w-3 shrink-0 rounded-full bg-yellow-400" aria-hidden />
           <TxtNegrito caminho="oferta.aviso" valor={o.aviso} mostrar={f(o.aviso)} as="p" className="block" />
+        </div>
+      )}
+      {o.video?.url && (
+        <div className="space-y-3">
+          <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
+          <VideoVsl url={o.video.url} poster={o.video.poster} />
         </div>
       )}
       <div className="space-y-3 rounded-2xl border-2 p-5 text-center" style={{ borderColor: cor, background: `${cor}0d` }}>

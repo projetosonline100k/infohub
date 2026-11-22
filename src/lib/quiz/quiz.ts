@@ -12,6 +12,8 @@ import { calcularNotaIndice, perfilDoIndice, type ConfigIndice } from "./indice"
 export type StatusQuiz = "esboco" | "criando" | "revisar" | "publicado" | "pausado" | "cancelado";
 export interface OpcaoQuiz {
   texto: string; perfil?: string | null; pontos?: number; imagem?: string; emoji?: string; resumo?: string;
+  /** Ícone de linha (nome do lucide, ex.: "Lightbulb"; lista em ICONES_OPCAO no QuizPlayer) no lugar do emoji, na cor de destaque do visual. */
+  icone?: string;
   /** Imagem que depende de uma resposta anterior: chave "<id da pergunta>=<nº da opção>" (ex.: "genero=1" → foto de mulher). Sem resposta, vale `imagem`. */
   imagens?: Record<string, string>;
   /** Igual a `imagens`, mas com emoji (ex.: "genero=2" → "🧑‍🎓"): aparece no lugar do desenho. */
@@ -150,6 +152,8 @@ export interface OfertaQuiz {
   modo?: "direto";
   bonus_escolha_titulo?: string; bonus_escolhido_rotulo?: string; preco_descricao?: string; outros_planos_texto?: string;
   /** Oferta mensal única (V3, 22/11): sem `planos` e sem `modo`, com estes textos. `aviso` e `fechamento_titulo` aceitam **negrito**; `selos` = 4 textos (cadeado, escudo, livro, fone). */
+  /** Linha de prova social abaixo do título da oferta (ex.: "Mais de 36 mil leitores já baixaram o Instalivros."). */
+  prova_social?: string;
   aviso?: string; preco_rotulo?: string; preco_sub?: string; fechamento_titulo?: string; selos?: string[];
   planos_acesso?: string;   // linha "✓ …" embaixo do nome em todos os cartões de plano (ex.: "Acesso completo ao Instalivros")
 }
@@ -173,6 +177,8 @@ export interface CapturaQuiz {
   /** Selo pequeno em cima do título (padrão "QUIZ COMPLETO" quando o quiz tem `indice`). */
   selo?: string;
   pedir?: CampoCaptura[]; rotulos?: Partial<Record<CampoCaptura, string>>; depois_de?: string;
+  /** Texto de exemplo dentro de cada campo (padrão: "Como você se chama?", "voce@email.com"…). */
+  exemplos?: Partial<Record<CampoCaptura, string>>;
   fala?: string;            // o Instalivros fala no topo do formulário (balão)
   /** Criar a conta em etapas (13/11): 1) nome → 2) e-mail e WhatsApp → 3) "Conta criada!" com confete e o botão do plano; cada etapa sai para o lado com animação. */
   etapas?: boolean;
@@ -202,6 +208,16 @@ export interface VisualQuiz {
   card?: string; borda_card?: string;
   /** Botões principais e o texto escuro em cima deles. */
   botao?: string; botao_texto?: string;
+  /** Fontes (Google Fonts): `fontes_url` é o link do css2 (ex.: https://fonts.googleapis.com/css2?family=Inter&display=swap); `fonte_titulo`/`fonte_texto` são o `font-family` CSS de títulos e do resto. */
+  fontes_url?: string; fonte_titulo?: string; fonte_texto?: string;
+  /** Cor de destaque (anel, ícones, números, selos); sem ela vale a cor do botão. */
+  destaque?: string;
+  /** Quiz dentro de um cartão central (fundo `card_solido`, raio e sombra), com o fundo da página aparecendo em volta. */
+  cartao?: { fundo: string; borda?: string; raio?: number; sombra?: string };
+  /** Cor de "ok" (selo "Resultado pronto", ✓ da lista, selos de compra) e fundo (CSS) do bloco da oferta. */
+  ok?: string; oferta_fundo?: string;
+  /** Marca em cima do cartão ("Insta" + "livros" em destaque), frase embaixo dela (só na abertura) e rodapé da página. */
+  marca?: { antes: string; destaque?: string; subtitulo?: string; rodape?: string; /** Logo (imagem) no lugar do nome em texto. */ imagem?: string };
 }
 export interface EstruturaQuiz {
   visual?: VisualQuiz;
@@ -363,6 +379,7 @@ export function preencher(texto: string | undefined, e: EstruturaQuiz, escolhas:
   return preencherNumeros(comNome(texto, nome), e.perguntas, numeros)
     .replace(/\{perfil\}/g, perfil?.nome ?? "")
     .replace(/\{falta\}/g, () => { const n = notaDoIndice(e, escolhas); return n == null ? "" : String(Math.max(0, (e.indice?.max ?? 10) - n)); })
+    .replace(/\b1 pontos\b/g, "1 ponto")   // "Faltam só 1 ponto" (singular, como no HTML)
     .replace(/\{resposta:([\w-]+)\}/g, (_, id: string) => {
       const q = e.perguntas.find((p) => p.id === id);
       const o = q?.opcoes[escolhas[id]];

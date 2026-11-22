@@ -155,10 +155,10 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
 
   return (
     <div ref={rolagem}
-      className={visual ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none text-neutral-100" : escuro ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "quiz-claro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
+      className={visual ? "quiz-escuro quiz-fundo-proprio fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none text-neutral-100" : escuro ? "quiz-escuro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-neutral-950 text-neutral-100" : "quiz-claro fixed inset-0 overflow-y-auto overflow-x-hidden overscroll-none bg-white text-neutral-900"}
       style={{ touchAction: "pan-y", ...(imagemDeFundo ? { background: imagemDeFundo } : {}) }}>
       {previa && <div className="sticky top-0 z-50 -mb-px bg-amber-400 px-3 py-1 text-center text-[11px] font-semibold text-amber-950">Prévia — não publicado</div>}
-      <div className="flex min-h-full flex-col px-5 pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-[max(env(safe-area-inset-top),1.25rem)] sm:py-12">
+      <div className={`flex min-h-full flex-col ${visual?.cartao ? "px-4" : "px-5"} pb-[max(env(safe-area-inset-bottom),1.5rem)] pt-[max(env(safe-area-inset-top),1.25rem)] sm:py-12`}>
         {carregando ? (
           <div className="my-auto flex justify-center"><Loader2 className="h-6 w-6 animate-spin opacity-60" /></div>
         ) : !quiz ? (
@@ -181,3 +181,4 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
     </div>
   );
 }
+

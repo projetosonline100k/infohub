@@ -19,6 +19,8 @@ export function urlPublica(url: string): string {
 export function linkDoEmbaixador(destino: string, codigo: string): string {
   try {
     const u = new URL(urlPublica(destino));
+    // Quiz: link curto, só com o nome do embaixador (o quiz expande para a marca completa, ver utmDaUrl).
+    if (/^\/quiz\/[a-z0-9-]+\/?$/i.test(u.pathname)) { u.search = ""; u.searchParams.set("ref", codigo); return u.toString(); }
     u.searchParams.set("utm_source", "embaixador");
     u.searchParams.set("utm_medium", "link");
     if (!u.searchParams.has("utm_campaign")) u.searchParams.set("utm_campaign", "embaixador");

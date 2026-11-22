@@ -113,3 +113,9 @@ test('propagarUtm leva a UTM também para os links dos planos', () => {
   assert.match(n.oferta.planos[0].cta_url, /utm_source=ig/);
   assert.equal(n.oferta.planos[1].cta_url, undefined);
 });
+
+test('link curto do embaixador (?ref=) vira a marca aff_<código>', () => {
+  assert.deepEqual(u.utmDaUrl('?ref=Marcello'), { utm_source: 'embaixador', utm_medium: 'link', utm_content: 'aff_marcello' });
+  assert.deepEqual(u.utmDaUrl('?ref=x'), {});
+  assert.equal(u.utmDaUrl('?utm_content=outro&ref=marcello').utm_content, 'outro');
+});

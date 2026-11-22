@@ -130,5 +130,33 @@ DO $$ BEGIN
   BEGIN PERFORM public.embaixador_eu('10000000-0000-0000-0000-000000000407'); RAISE EXCEPTION 'estranho abriu a visão';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
+-- blocos Creator/Materiais (20/11): admin cria, embaixador só lê o que é dele ou de todos
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000401',true);
+INSERT INTO public.embaixador_blocos(cliente_id, secao, titulo, conteudo) VALUES ('10000000-0000-0000-0000-000000000404', 'creator', 'Bloco 1', '<h2>Headline 1</h2>');
+DO $$ BEGIN
+  BEGIN INSERT INTO public.embaixador_blocos(cliente_id, secao, titulo) VALUES ('10000000-0000-0000-0000-000000000404', 'outra', 'x'); RAISE EXCEPTION 'aceitou seção inválida';
+  EXCEPTION WHEN check_violation THEN NULL; END;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000402',true);
+DO $$ BEGIN
+  IF (SELECT count(*) FROM public.embaixador_blocos_minhas('creator')) <> 1 THEN RAISE EXCEPTION 'embaixador não vê o bloco'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_blocos_minhas('materiais')) <> 0 THEN RAISE EXCEPTION 'seção errada'; END IF;
+  IF (SELECT count(*) FROM public.embaixador_blocos) <> 0 THEN RAISE EXCEPTION 'embaixador leu a tabela de blocos'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000403',true);
+DO $$ BEGIN
+  BEGIN PERFORM * FROM public.embaixador_blocos_minhas('creator', '10000000-0000-0000-0000-000000000407'); RAISE EXCEPTION 'estranho leu blocos';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
+-- Many Hub do embaixador visto pelo administrador (20/11): só o admin do projeto; o embaixador e o estranho não
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000401',true);
+DO $$ BEGIN
+  IF (public.embaixador_manyhub_admin('10000000-0000-0000-0000-000000000407')->'contas') IS NULL THEN RAISE EXCEPTION 'admin não leu o many hub'; END IF;
+END $$;
+SELECT set_config('request.jwt.claim.sub','10000000-0000-0000-0000-000000000403',true);
+DO $$ BEGIN
+  BEGIN PERFORM public.embaixador_manyhub_admin('10000000-0000-0000-0000-000000000407'); RAISE EXCEPTION 'estranho leu o many hub';
+  EXCEPTION WHEN insufficient_privilege THEN NULL; END;
+END $$;
 RESET ROLE;
 ROLLBACK;

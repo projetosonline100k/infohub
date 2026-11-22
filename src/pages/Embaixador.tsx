@@ -1,8 +1,8 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BookOpen, ExternalLink, Play, X, Copy, Link2, Loader2, LogOut, ShoppingCart, Users, UserCheck, Eye, Coins, Check, Megaphone, Trash2 } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { BookOpen, ExternalLink, Play, X, Copy, Link2, Loader2, LogOut, ShoppingCart, Users, UserCheck, Eye, Coins, Check, Megaphone, Trash2, Rocket, Trophy, Target, Star } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/auth/AuthProvider";
@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { brl, driveEmbed, linkDoEmbaixador } from "@/lib/embaixador";
+import { LeitorBloco, SECOES, type Secao } from "@/components/embaixador/BlocosEmbaixador";
 import { agrupar, diasAtras, hojeLocal, type Modo } from "@/lib/embaixadorSerie";
 
+const ManyHub = lazy(() => import("@/pages/Automacoes"));
 const db = supabase as unknown as SupabaseClient;
 
 interface Eu { nome: string; codigo: string; comissao_pct: number; projeto: string }
@@ -22,9 +24,10 @@ interface Venda { data: string; tipo: string; produto: string; comprador: string
 interface Esteira { nome: string; produto: string; data: string; etapa: string }
 interface Postagem { id: string; titulo: string; plataforma: string; link: string | null; status: string; postada_em: string }
 type Metrica = "vendas" | "leads" | "receita" | "postagens";
-const METRICAS: [Metrica, string][] = [["vendas", "Vendas"], ["leads", "Leads"], ["receita", "Receita"], ["postagens", "Postagens"]];
+const METRICAS: [Metrica, string][] = [["vendas", "Vendas"]];
 const MODOS: [Modo, string][] = [["dia", "Dia"], ["semana", "Semana"], ["mes", "Mês"]];
 interface Aula { id: string; modulo: string; titulo: string; descricao: string | null; url: string; criado_em: string }
+interface BlocoE { id: string; titulo: string; conteudo: string; ordem: number }
 interface LinkE { id: string; titulo: string; destino: string; codigo: string }
 
 const dia = (d: string) => new Date(`${d.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -123,7 +126,7 @@ export function EmbaixadorConvite() {
   return <FormAcesso emailFixo={info.email} permiteCriar titulo={`Olá, ${info.nome.split(" ")[0]}!`} texto={`Você foi convidado(a) para ser embaixador(a) de ${info.projeto}. Crie sua senha para entrar na sua área.`} onEntrou={aceitar} />;
 }
 
-const ABAS = [["resumo", "Resumo"], ["postagens", "Postagens"], ["leads", "Leads"], ["vendas", "Vendas"], ["esteira", "Esteira"], ["aulas", "Aulas"], ["links", "Links"]] as const;
+const ABAS = [["resumo", "Resumo"], ["vendas", "Vendas"], ["esteira", "Esteira"], ["aulas", "Aulas"], ["links", "Links"], ["creator", "Creator"], ["manyhub", "Many Hub"]] as const;
 
 /** /embaixador — login e a área do embaixador. */
 export default function Embaixador() {
@@ -163,13 +166,31 @@ function Cartao({ icone: I, titulo, valor, nota, tom = "cinza" }: { icone: typeo
   );
 }
 
+const FUNDOS = {
+  verde: "border-emerald-200/70 bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:border-emerald-500/20 dark:from-emerald-500/10 dark:to-emerald-500/5",
+  azul: "border-sky-200/70 bg-gradient-to-br from-sky-50 to-blue-100/50 dark:border-sky-500/20 dark:from-sky-500/10 dark:to-blue-500/5",
+  roxo: "border-violet-200/70 bg-gradient-to-br from-violet-50 to-purple-100/50 dark:border-violet-500/20 dark:from-violet-500/10 dark:to-purple-500/5",
+} as const;
+function Destaque({ icone: I, titulo, valor, nota, tom }: { icone: typeof Users; titulo: string; valor: string; nota?: string; tom: keyof typeof FUNDOS }) {
+  const t = tom === "verde" ? TONS.verde : tom === "azul" ? TONS.azul : TONS.roxo;
+  return (
+    <div className={cn("relative overflow-hidden rounded-2xl border p-5 shadow-sm", FUNDOS[tom])}>
+      <div className="pointer-events-none absolute -bottom-16 -right-10 h-40 w-40 rounded-full bg-current opacity-[0.06]" />
+      <div className="relative flex items-start gap-4">
+        <span className={cn("grid h-14 w-14 shrink-0 place-items-center rounded-2xl", t)}><I className="h-7 w-7" /></span>
+        <div className="min-w-0"><div className="text-base font-semibold leading-tight">{titulo}</div>{nota && <div className="text-sm text-muted-foreground">{nota}</div>}<div className="mt-1 text-4xl font-bold tabular-nums tracking-tight">{valor}</div></div>
+      </div>
+    </div>
+  );
+}
+
 function Vazio({ texto }: { texto: string }) { return <p className="rounded-2xl border border-dashed border-border bg-card/50 p-10 text-center text-sm text-muted-foreground">{texto}</p>; }
 
 /** previaId: o administrador vendo a área de um embaixador (só leitura, sem registrar nada). */
 export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: string; onFechar?: () => void }) {
   const alvo = useMemo(() => (previaId ? { p_embaixador: previaId } : {}), [previaId]);
   const [aba, setAba] = useState<(typeof ABAS)[number][0]>("resumo");
-  const [dias, setDias] = useState(30);
+  const dias = 30;
   const [painel, setPainel] = useState<Painel | null>(null);
   const [leads, setLeads] = useState<Lead[] | null>(null);
   const [vendas, setVendas] = useState<Venda[] | null>(null);
@@ -178,6 +199,8 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
   const [posts, setPosts] = useState<Postagem[] | null>(null);
   const [aulas, setAulas] = useState<Aula[] | null>(null);
   const [aulaAberta, setAulaAberta] = useState<Aula | null>(null);
+  const [blocos, setBlocos] = useState<Record<string, BlocoE[]>>({});
+  const [blocoAberto, setBlocoAberto] = useState<BlocoE | null>(null);
   const [mes, setMes] = useState<Painel | null>(null);
   const [metrica, setMetrica] = useState<Metrica>("vendas");
   const [modo, setModo] = useState<Modo>("dia");
@@ -187,19 +210,29 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
 
   useEffect(() => { setPainel(null); void db.rpc("embaixador_painel", { p_dias: dias, ...alvo }).then(({ data }) => setPainel(data as Painel)); }, [dias, alvo]);
   useEffect(() => {
-    if (aba === "postagens" && !posts) void db.rpc("embaixador_postagens_minhas", alvo).then(({ data }) => setPosts((data ?? []) as Postagem[]));
-    if (aba === "leads" && !leads) void db.rpc("embaixador_leads", alvo).then(({ data }) => setLeads((data ?? []) as Lead[]));
+    if (aba === "esteira" && !leads) void db.rpc("embaixador_leads", alvo).then(({ data }) => setLeads((data ?? []) as Lead[]));
     if (aba === "vendas" && !vendas) void db.rpc("embaixador_vendas", alvo).then(({ data }) => setVendas((data ?? []) as Venda[]));
     if (aba === "esteira" && !esteira) void db.rpc("embaixador_esteira", alvo).then(({ data }) => setEsteira((data ?? []) as Esteira[]));
+    if ((aba === "creator") && !blocos[aba]) void db.rpc("embaixador_blocos_minhas", { p_secao: aba, ...alvo }).then(({ data }) => setBlocos((b) => ({ ...b, [aba]: (data ?? []) as BlocoE[] })));
     if (aba === "aulas" && !aulas) void db.rpc("embaixador_aulas_minhas", alvo).then(({ data }) => setAulas((data ?? []) as Aula[]));
-    if (aba === "links" && !links) void db.rpc("embaixador_links_meus", alvo).then(({ data }) => setLinks((data ?? []) as LinkE[]));
-  }, [aba, leads, vendas, esteira, links, posts, aulas, alvo]);
+  }, [aba, leads, vendas, esteira, posts, aulas, blocos, alvo]);
 
-  useEffect(() => { void db.rpc("embaixador_painel", { p_dias: 62, ...alvo }).then(({ data }) => setMes(data as Painel)); }, [alvo]);
+  useEffect(() => { void db.rpc("embaixador_links_meus", alvo).then(({ data }) => setLinks((data ?? []) as LinkE[])); }, [alvo]);
+  useEffect(() => { void db.rpc("embaixador_painel", { p_dias: 365, ...alvo }).then(({ data }) => setMes(data as Painel)); }, [alvo]);
   const doMes = useMemo(() => { const m = hojeLocal().slice(0, 7); const ds = (mes?.dias ?? []).filter((d) => d.dia.slice(0, 7) === m); return { leads: ds.reduce((a, d) => a + d.leads, 0), vendas: ds.reduce((a, d) => a + d.vendas, 0), receita: ds.reduce((a, d) => a + d.receita, 0), posts: ds.reduce((a, d) => a + d.postagens, 0) }; }, [mes]);
   const modulos = useMemo(() => { const m = new Map<string, Aula[]>(); (aulas ?? []).forEach((a) => m.set(a.modulo, [...(m.get(a.modulo) ?? []), a])); return [...m.entries()]; }, [aulas]);
   const liquido = painel ? painel.bruto - painel.reembolsado : 0;
-  const serie = useMemo(() => agrupar((painel?.dias ?? []).map((d) => ({ ...d, dia: d.dia.slice(0, 10) })) as never, modo, [metrica], diasAtras(dias - 1), hojeLocal()), [painel, modo, metrica, dias]);
+  const serie = useMemo(() => agrupar((mes?.dias ?? []).map((d) => ({ ...d, dia: d.dia.slice(0, 10) })) as never, modo, [metrica], diasAtras(modo === "dia" ? 29 : modo === "semana" ? 83 : 364), hojeLocal()), [mes, modo, metrica]);
+  const totalVendas = useMemo(() => (mes?.dias ?? []).reduce((a, d) => a + d.vendas, 0), [mes]);
+  const totalLeads = Math.max(mes?.trouxe_total ?? 0, painel?.trouxe_total ?? 0);
+  const comissaoMes = (doMes.receita * (mes?.comissao_pct ?? eu.comissao_pct)) / 100;
+  const meuLink = links?.[0] ? linkDoEmbaixador(links[0].destino, links[0].codigo) : null;
+  const etapas = [
+    { ok: totalVendas >= 1, rotulo: "1ª venda", icone: ShoppingCart },
+    { ok: totalVendas >= 5, rotulo: "5 vendas", icone: Star },
+  ];
+  const feitos = etapas.filter((e) => e.ok).length;
+  const preenchido = feitos >= etapas.length ? 100 : feitos === 0 ? 0 : Math.min(totalVendas / 5, 0.95) * 100;
   const postsSemana = useMemo(() => { const lim = new Date(); lim.setDate(lim.getDate() - ((lim.getDay() + 6) % 7)); lim.setHours(0, 0, 0, 0); return (posts ?? []).filter((x) => x.status === "postada" && new Date(x.postada_em) >= lim).length; }, [posts]);
   const postsMes = useMemo(() => { const m = hojeLocal().slice(0, 7); return (posts ?? []).filter((x) => x.status === "postada" && new Date(x.postada_em).toLocaleDateString("sv-SE").startsWith(m)).length; }, [posts]);
   async function registrarPost(e: FormEvent) {
@@ -215,7 +248,7 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
   return (
     <div className="min-h-screen bg-muted/30">
       {previaId && <div className="bg-amber-500/15 px-4 py-2 text-center text-xs text-amber-700 dark:text-amber-400">Visão do administrador: é exatamente o que {eu.nome} vê (somente leitura).</div>}
-      <header className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 text-white">
+      <header className="bg-gradient-to-br from-[#12103a] via-[#1d1459] to-[#4c1d95] text-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 pb-5 pt-6">
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl bg-white/15 text-lg font-semibold">{eu.nome.slice(0, 1).toUpperCase()}</div>
@@ -224,94 +257,69 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
           {previaId ? <Button variant="secondary" size="sm" onClick={onFechar}>Fechar visão</Button> : <Button variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white" onClick={() => void supabase.auth.signOut()}><LogOut className="mr-1.5 h-4 w-4" />Sair</Button>}
         </div>
         <nav className="mx-auto flex max-w-5xl gap-1 overflow-x-auto px-4 pb-3">
-          {ABAS.map(([id, nome]) => <button key={id} onClick={() => setAba(id)} className={cn("whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors", aba === id ? "bg-white text-slate-900 font-medium" : "text-white/70 hover:bg-white/10")}>{nome}</button>)}
+          {ABAS.map(([id, nome]) => <button key={id} onClick={() => { setAba(id); setBlocoAberto(null); }} className={cn("whitespace-nowrap rounded-full px-4 py-1.5 text-sm transition-colors", aba === id ? "bg-white font-medium text-slate-900" : "text-white/70 hover:bg-white/10")}>{nome}</button>)}
         </nav>
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6">
         {aba === "resumo" && (
           <>
-            <div>
-              <h2 className="mb-2 text-sm font-medium text-muted-foreground">Este mês · {new Date().toLocaleDateString("pt-BR", { month: "long" })}</h2>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <Cartao tom="verde" icone={Coins} titulo="Faturamento do mês" valor={brl(doMes.receita)} nota="vendas pelo seu link" />
-                <Cartao tom="azul" icone={UserCheck} titulo="Leads do mês" valor={String(doMes.leads)} nota="pessoas que você trouxe" />
-                <Cartao tom="roxo" icone={ShoppingCart} titulo="Vendas do mês" valor={String(doMes.vendas)} nota={`comissão ${brl((doMes.receita * (mes?.comissao_pct ?? 0)) / 100)}`} />
-                <Cartao tom="rosa" icone={Megaphone} titulo="Postagens do mês" valor={String(doMes.posts)} />
+            <div className="grid gap-4 md:grid-cols-2">
+              <Destaque tom="verde" icone={Coins} titulo="Sua comissão" valor={brl(comissaoMes)} />
+              <Destaque tom="roxo" icone={ShoppingCart} titulo="Vendas do mês" valor={String(doMes.vendas)} />
+            </div>
+
+            <div className="grid gap-4">
+              <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-11 w-11 place-items-center rounded-xl bg-amber-500/15 text-amber-500"><Trophy className="h-6 w-6" /></span>
+                    <div><div className="text-lg font-semibold leading-tight">Sua jornada</div><div className="text-sm text-muted-foreground">Evolua nas indicações e conquiste suas primeiras vendas.</div></div>
+                  </div>
+                  {feitos < etapas.length && <span className="hidden shrink-0 items-center gap-1.5 rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-medium text-amber-600 sm:flex"><Target className="h-3.5 w-3.5" />Próxima meta</span>}
+                </div>
+                <div className="relative mt-6 grid grid-cols-2">
+                  <div className="absolute left-[25%] right-[25%] top-5 h-1 rounded-full bg-muted"><div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${preenchido}%` }} /></div>
+                  {etapas.map((e, i) => { const atual = !e.ok && i === feitos; const I = e.icone; return (
+                    <div key={i} className="relative flex flex-col items-center gap-2 text-center">
+                      <span className={cn("grid h-10 w-10 place-items-center rounded-full border-2 bg-card", e.ok ? "border-emerald-500 bg-emerald-500 text-white" : atual ? "border-violet-500 text-violet-600" : "border-border text-muted-foreground")}>{e.ok ? <Check className="h-5 w-5" /> : <I className="h-4 w-4" />}</span>
+                      <span className={cn("rounded-full px-3 py-1 text-xs font-medium", e.ok ? "bg-emerald-500/15 text-emerald-600" : atual ? "bg-violet-500/15 text-violet-600" : "bg-muted text-muted-foreground")}>{e.rotulo}</span>
+                    </div>
+                  ); })}
+                </div>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-medium text-muted-foreground">Período</h2>
-              <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{[[7, "7 dias"], [30, "30 dias"], [90, "90 dias"], [365, "1 ano"]].map(([d, n]) => <button key={d} onClick={() => setDias(d as number)} className={cn("rounded-md px-2.5 py-1", dias === d ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
-            </div>
+
             {!painel ? <div className="py-10 text-center"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div> : (
               <>
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
-                  <Cartao tom="azul" icone={Users} titulo="Pessoas que trouxe" valor={String(painel.trouxe_total)} nota="desde o começo" />
-                  <Cartao tom="cinza" icone={Eye} titulo="Visitas" valor={String(painel.visitas)} nota={`últimos ${dias} dias`} />
-                  <Cartao tom="azul" icone={UserCheck} titulo="Leads" valor={String(painel.leads)} nota={`últimos ${dias} dias`} />
-                  <Cartao tom="rosa" icone={Megaphone} titulo="Postagens" valor={String(painel.postagens)} nota={`últimos ${dias} dias`} />
-                  <Cartao tom="roxo" icone={ShoppingCart} titulo="Vendas" valor={String(painel.vendas)} nota={brl(liquido) + " líquido"} />
-                  <Cartao tom="verde" icone={Coins} titulo="Sua comissão" valor={brl((liquido * painel.comissao_pct) / 100)} nota={`${painel.comissao_pct}% do líquido`} />
-                </div>
-                <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
-                    <div className="text-sm font-medium">Evolução</div>
-                    <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{METRICAS.map(([m, n]) => <button key={m} onClick={() => setMetrica(m)} className={cn("rounded-md px-2.5 py-1", metrica === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
-                    <div className="flex gap-1 rounded-lg bg-muted p-1 text-xs">{MODOS.map(([m, n]) => <button key={m} onClick={() => setModo(m)} className={cn("rounded-md px-2.5 py-1", modo === m ? "bg-background shadow-sm" : "text-muted-foreground")}>{n}</button>)}</div>
-                  </div>
-                  <div className="h-56">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={serie} margin={{ left: -20, right: 8, top: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                        <XAxis dataKey="rotulo" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                        <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                        <Tooltip formatter={(v: number) => [metrica === "receita" ? brl(v) : v, METRICAS.find(([m]) => m === metrica)?.[1] ?? ""]} labelFormatter={(r) => `${modo === "semana" ? "Semana de " : ""}${r}`} />
-                        <Bar dataKey={metrica} fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+                  <Cartao tom="cinza" icone={Eye} titulo="Visitas" valor={String(painel.visitas)} nota="Últimos 30 dias" />
+                  <Cartao tom="roxo" icone={ShoppingCart} titulo="Vendas" valor={String(painel.vendas)} nota={`${brl(liquido)} líquido`} />
+                  <Cartao tom="verde" icone={Coins} titulo="Faturamento do mês" valor={brl(doMes.receita)} nota="Vendas pelo seu link" />
                 </div>
               </>
             )}
+
+            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+              <div className="mb-4 flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 text-lg font-semibold"><span className="grid h-8 w-8 place-items-center rounded-lg text-violet-600"><Rocket className="h-5 w-5" /></span>Evolução dos resultados</div>
+                                <div className="ml-auto flex gap-1 rounded-full bg-muted p-1 text-xs">{MODOS.map(([m, n]) => <button key={m} onClick={() => setModo(m)} className={cn("rounded-full px-3.5 py-1.5 font-medium", modo === m ? "bg-violet-600 text-white" : "text-muted-foreground")}>{n}</button>)}</div>
+              </div>
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={serie} margin={{ left: -20, right: 8, top: 8 }}>
+                    <defs><linearGradient id="emb-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.45} /><stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.03} /></linearGradient></defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="rotulo" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: number) => [metrica === "receita" ? brl(v) : v, METRICAS.find(([m]) => m === metrica)?.[1] ?? ""]} labelFormatter={(r) => `${modo === "semana" ? "Semana de " : ""}${r}`} />
+                    <Area type="monotone" dataKey={metrica} stroke="#7c3aed" strokeWidth={2} fill="url(#emb-area)" dot={{ r: 2.5, fill: "#7c3aed", strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </>
         )}
-
-        {aba === "postagens" && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-              <Cartao icone={Megaphone} titulo="Postagens na semana" valor={String(postsSemana)} nota="desde segunda-feira" />
-              <Cartao icone={Megaphone} titulo="Postagens no mês" valor={String(postsMes)} />
-              <Cartao icone={Megaphone} titulo="Total registrado" valor={String((posts ?? []).filter((x) => x.status === "postada").length)} />
-            </div>
-            {!previaId && <form onSubmit={registrarPost} className="flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-4">
-              <label className="space-y-1 text-xs text-muted-foreground">O que você postou<Input className="h-9 w-56" required placeholder="Ex.: Reel dos 3 livros" value={np.titulo} onChange={(e) => setNp({ ...np, titulo: e.target.value })} /></label>
-              <label className="space-y-1 text-xs text-muted-foreground">Onde
-                <select className="h-9 rounded-md border border-border bg-background px-3 text-sm" value={np.plataforma} onChange={(e) => setNp({ ...np, plataforma: e.target.value })}><option value="instagram">Instagram</option><option value="tiktok">TikTok</option><option value="youtube">YouTube</option><option value="outra">Outra</option></select>
-              </label>
-              <label className="space-y-1 text-xs text-muted-foreground">Link (opcional)<Input className="h-9 w-56" placeholder="https://…" value={np.link} onChange={(e) => setNp({ ...np, link: e.target.value })} /></label>
-              <label className="space-y-1 text-xs text-muted-foreground">Quando (vazio = agora)<Input className="h-9 w-48" type="datetime-local" value={np.quando} onChange={(e) => setNp({ ...np, quando: e.target.value })} /></label>
-              <Button type="submit" disabled={salvandoPost}>{salvandoPost ? <Loader2 className="h-4 w-4 animate-spin" /> : "Registrar"}</Button>
-            </form>}
-            {!posts ? <Carregar /> : !posts.length ? <Vazio texto="Registre aqui cada conteúdo que você postar: a contagem da semana e do mês fica por conta do sistema." /> : (
-              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                <table className="w-full text-sm"><tbody>{posts.map((x) => (
-                  <tr key={x.id} className="border-t border-border first:border-0">
-                    <td className="px-4 py-2.5"><div className="font-medium">{x.titulo}</div><div className="text-xs text-muted-foreground">{x.plataforma}{x.link && <> · <a className="underline" href={x.link} target="_blank" rel="noreferrer">abrir</a></>}</div></td>
-                    <td className="px-4 py-2.5 text-right text-xs text-muted-foreground">{dataHora(x.postada_em)}<div>{x.status === "programada" ? "programada" : "postada"}</div></td>
-                    <td className="w-10 pr-3 text-right">{!previaId && <button title="Apagar" className="text-muted-foreground hover:text-destructive" onClick={() => void apagarPost(x.id)}><Trash2 className="h-4 w-4" /></button>}</td>
-                  </tr>))}</tbody></table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {aba === "leads" && (!leads ? <Carregar /> : !leads.length ? <Vazio texto="Quando alguém entrar pelo seu link e se cadastrar, aparece aqui." /> : (
-          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-            <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Nome</th><th className="px-4 py-2 font-medium">Etapa</th><th className="px-4 py-2 font-medium">Chegou em</th></tr></thead>
-              <tbody>{leads.map((l, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{l.nome}</td><td className="px-4 py-2"><span className={cn("rounded-full px-2 py-0.5 text-xs", l.etapa === "Comprou" ? "bg-emerald-500/15 text-emerald-600" : "bg-muted")}>{l.etapa}</span></td><td className="px-4 py-2 text-muted-foreground">{dataHora(l.em)}</td></tr>)}</tbody></table>
-          </div>
-        ))}
 
         {aba === "vendas" && (!vendas ? <Carregar /> : !vendas.length ? <Vazio texto="Suas vendas aparecem aqui assim que a primeira acontecer." /> : (
           <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -320,10 +328,26 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
           </div>
         ))}
 
-        {aba === "esteira" && (!esteira ? <Carregar /> : !esteira.length ? <Vazio texto="Quem fechar pelo seu link entra na esteira e você acompanha por aqui." /> : (
-          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-            <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Cliente</th><th className="px-4 py-2 font-medium">Produto</th><th className="px-4 py-2 font-medium">Fechou em</th><th className="px-4 py-2 font-medium">Etapa</th></tr></thead>
-              <tbody>{esteira.map((x, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{x.nome}</td><td className="px-4 py-2">{x.produto}</td><td className="px-4 py-2 text-muted-foreground">{dia(x.data)}</td><td className="px-4 py-2"><span className="rounded-full bg-muted px-2 py-0.5 text-xs">{x.etapa}</span></td></tr>)}</tbody></table>
+        {aba === "esteira" && (!esteira || !leads ? <Carregar /> : (
+          <div className="space-y-6">
+            <section>
+              <h3 className="mb-2 text-sm font-semibold">Leads <span className="font-normal text-muted-foreground">· {leads.length}</span></h3>
+              {!leads.length ? <Vazio texto="Quando alguém entrar pelo seu link e se cadastrar, aparece aqui." /> : (
+                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Nome</th><th className="px-4 py-2 font-medium">Etapa</th><th className="px-4 py-2 font-medium">Chegou em</th></tr></thead>
+                    <tbody>{leads.map((l, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{l.nome}</td><td className="px-4 py-2"><span className={cn("rounded-full px-2 py-0.5 text-xs", l.etapa === "Comprou" ? "bg-emerald-500/15 text-emerald-600" : "bg-muted")}>{l.etapa}</span></td><td className="px-4 py-2 text-muted-foreground">{dataHora(l.em)}</td></tr>)}</tbody></table>
+                </div>
+              )}
+            </section>
+            <section>
+              <h3 className="mb-2 text-sm font-semibold">Clientes que fecharam <span className="font-normal text-muted-foreground">· {esteira.length}</span></h3>
+              {!esteira.length ? <Vazio texto="Quem fechar pelo seu link entra na esteira e você acompanha por aqui." /> : (
+                <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                  <table className="w-full text-sm"><thead className="bg-muted/50 text-left text-xs text-muted-foreground"><tr><th className="px-4 py-2 font-medium">Cliente</th><th className="px-4 py-2 font-medium">Produto</th><th className="px-4 py-2 font-medium">Fechou em</th><th className="px-4 py-2 font-medium">Etapa</th></tr></thead>
+                    <tbody>{esteira.map((x, i) => <tr key={i} className="border-t border-border"><td className="px-4 py-2">{x.nome}</td><td className="px-4 py-2">{x.produto}</td><td className="px-4 py-2 text-muted-foreground">{dia(x.data)}</td><td className="px-4 py-2"><span className="rounded-full bg-muted px-2 py-0.5 text-xs">{x.etapa}</span></td></tr>)}</tbody></table>
+                </div>
+              )}
+            </section>
           </div>
         ))}
 
@@ -353,6 +377,36 @@ export function AreaEmbaixador({ eu, previaId, onFechar }: { eu: Eu; previaId?: 
             ))}
           </div>
         ))}
+
+        {(aba === "creator") && (() => {
+          const lista = blocos[aba]; const cfg = SECOES[aba as Secao];
+          if (!lista) return <Carregar />;
+          if (blocoAberto && lista.some((b) => b.id === blocoAberto.id)) return (
+            <div className="space-y-4">
+              <Button variant="ghost" size="sm" onClick={() => setBlocoAberto(null)}>← Voltar</Button>
+              <article className="rounded-2xl border border-border bg-card p-6 shadow-sm md:p-10"><h2 className="mb-4 text-2xl font-bold tracking-tight">{blocoAberto.titulo}</h2><LeitorBloco html={blocoAberto.conteudo} /></article>
+            </div>
+          );
+          if (!lista.length) return <Vazio texto={`Ainda não há ${cfg.nome === "Creator" ? "blocos" : "materiais"} liberados. Quando chegarem, aparecem aqui.`} />;
+          return (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {lista.map((b) => (
+                <button key={b.id} onClick={() => { setBlocoAberto(b); window.scrollTo({ top: 0, behavior: "smooth" }); }} className="group flex flex-col rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition hover:border-violet-500/50 hover:shadow-md">
+                  <span className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-violet-500/12 text-violet-600"><BookOpen className="h-5 w-5" /></span>
+                  <div className="font-semibold">{b.titulo}</div>
+                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{b.conteudo.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || "—"}</div>
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+
+        {aba === "manyhub" && (previaId
+          ? <Vazio texto="O Many Hub é pessoal: cada embaixador conecta o próprio Instagram e cria as próprias automações. Por isso ele não aparece nesta visão." />
+          : <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">Conecte o seu Instagram para criar automações (palavra no comentário → DM com o seu link), fluxos de conversa e acompanhar as pessoas que respondem. Tudo aqui é só seu: ninguém mais vê a sua conta.</p>
+              <Suspense fallback={<Carregar />}><ManyHub /></Suspense>
+            </div>)}
 
         {aba === "links" && (!links ? <Carregar /> : !links.length ? <Vazio texto="Seus links ainda não foram liberados." /> : (
           <div className="space-y-3">
