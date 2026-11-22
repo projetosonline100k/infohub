@@ -7,9 +7,9 @@ SLUG = 'instalivros-v3'
 VISUAL = {
     'fundo_css': 'linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px) 0 0/44px 44px, linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px) 0 0/44px 44px, #0a1226',
     'base': '#0a1226', 'barra': '#0a1226',
-    'texto': '#eef2fb', 'texto_2': '#a9b4cc',
+    'texto': '#eef2fb', 'texto_2': '#bcc6dc',
     'card': '#18284d', 'borda_card': 'rgba(255,255,255,.13)',
-    'botao': '#f4b942', 'botao_texto': '#1b1300', 'destaque': '#f4b942',
+    'botao': '#22c55e', 'botao_texto': '#04210f', 'destaque': '#f4b942',
     'fontes_url': 'https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap',
     'fonte_titulo': '"Fraunces", Georgia, "Times New Roman", serif',
     'fonte_texto': '"Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',

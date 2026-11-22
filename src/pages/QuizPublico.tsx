@@ -152,6 +152,13 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
     return () => configurarServidor(null);
   }, [quiz, previa, slug]);
   useEffect(() => { if (quiz) registrar("visita"); }, [quiz, registrar]);
+  // Sem zoom automático ao tocar num campo (iPhone/Instagram): trava a escala enquanto o quiz está aberto e devolve o original ao sair.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    const antes = meta?.getAttribute("content") ?? null;
+    meta?.setAttribute("content", "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover");
+    return () => { if (meta && antes) meta.setAttribute("content", antes); };
+  }, []);
 
   return (
     <div ref={rolagem}

@@ -1365,7 +1365,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                     const Opcao = editar ? "div" : "button";
                     return (
                       <Opcao key={k} type={editar ? undefined : "button"} onClick={() => (q.multipla ? alternar(q.id, k) : q.botao ? setEscolhas((x) => ({ ...x, [q.id]: k })) : escolher(q.id, k))}
-                        className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md", skin && "qs-opt",
+                        className={cn("group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-3 text-left text-[15px] transition-all hover:-translate-y-0.5 hover:shadow-md", skin && "qs-opt", skin && marcada && "qs-sel",
                           escuro ? "border-white/15 bg-white/5 hover:border-white/40" : "hover:border-foreground/30",
                           (cartoes || livro) && "flex-col justify-center text-center", v3 && "py-4 font-semibold", livro && "py-3 text-base font-semibold", fotos && "gap-1 border-0 px-0 py-1 hover:translate-y-0 hover:shadow-none", marcada && !fotos && "scale-[1.02] text-white")}
                         style={marcada ? (fotos ? { color: cor, fontWeight: 700 } : { background: cor, borderColor: cor }) : undefined}>
@@ -1563,11 +1563,11 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   <Txt caminho={`captura.rotulos.${c}`} valor={e.captura?.rotulos?.[c] || ROTULO_CAMPO[c].rotulo} className={cn(suave, skin && "qs-label")} />
                   <Input type={ROTULO_CAMPO[c].tipo} value={contato[c] ?? ""} placeholder={e.captura?.exemplos?.[c] ?? ROTULO_CAMPO[c].exemplo}
                     inputMode={c === "whatsapp" ? "tel" : undefined} autoComplete={c === "nome" ? "given-name" : c === "whatsapp" ? "tel" : "email"}
-                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5")}
+                    className={cn("h-12 text-base", escuro && "border-white/20 bg-white/5", skin && "qs-input")}
                     onChange={(ev) => setContato({ ...contato, [c]: ev.target.value })} />
                 </label>
               ))}
-              <Button type={editar ? "button" : "submit"} size="lg" className={cn("h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white", skin && "qs-cta")} style={{ background: cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(skin && v?.botao_texto ? { color: v.botao_texto } : {}) }} disabled={!editar && ((!contatoOk && !skin) || enviando)}>
+              <Button type={editar ? "button" : "submit"} size="lg" className={cn("h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold text-white", skin && "qs-cta")} style={{ background: skin && v?.botao ? v.botao : cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(skin && v?.botao_texto ? { color: v.botao_texto } : {}) }} disabled={!editar && ((!contatoOk && !skin) || enviando)}>
                 {enviando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}<Txt caminho="captura.botao" valor={e.captura?.botao || "Ver meu resultado"} />
               </Button>
               {(e.captura?.pular || (editar && v3)) && (
