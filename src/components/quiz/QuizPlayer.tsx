@@ -2517,13 +2517,19 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
     return (
       <div className={(editar ? "relative min-h-[640px]" : "fixed inset-0 z-40") + " flex flex-col overflow-hidden bg-[#0a1020] text-white"}>
         {video && <video src={video} poster={o.video?.poster} autoPlay loop muted playsInline preload="auto" className="absolute inset-x-0 top-0 h-[120%] w-full -translate-y-[14%] object-cover object-top" />}
-        {imagem && <img src={imagem} alt="" draggable={false} className="pointer-events-none absolute inset-x-0 top-0 w-full select-none" />}
-        <div className={"absolute inset-0 " + (imagem ? "bg-gradient-to-b from-transparent from-40% via-[#0a1020]/55 via-65% to-[#0a1020] to-85%" : "bg-gradient-to-b from-black/40 via-black/50 to-black/90")} />
+        {!imagem && <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/50 to-black/90" />}
         <div className={"relative flex flex-1 flex-col justify-between"}>
           <div className="space-y-3 p-5 pt-6">
             {topo}
             {!imagem && <Txt caminho="oferta.titulo" valor={tit} mostrar={f(tit)} as="h2" className="block text-center text-3xl font-extrabold leading-tight drop-shadow" />}
           </div>
+          {imagem && (
+            <div className="relative -mt-14 min-h-0 flex-1 overflow-hidden">
+              <img src={imagem} alt="" draggable={false} className="absolute inset-0 h-full w-full select-none object-cover object-bottom" />
+              <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#0a1020] to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#0a1020] to-transparent" />
+            </div>
+          )}
           <div className={"mx-auto w-full max-w-xl space-y-3 px-4 pb-5 pt-6 " + (imagem ? "" : "rounded-t-3xl bg-[#14110d]/95 backdrop-blur")} role="radiogroup" aria-label="Planos">
             {lista.map(cartao)}
             {planos.length > 2 && !folha && <button type="button" onClick={() => setFolha(true)} className="block w-full text-center text-xs font-bold uppercase tracking-wide text-white/70 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
