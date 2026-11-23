@@ -96,7 +96,7 @@ EST = {
                 'exemplos': {'nome': 'Seu nome', 'email': 'seu@email.com', 'whatsapp': '(00) 00000-0000'}},
     'oferta': {'titulo': 'Destrave o seu inglês.', 'preco_rotulo': 'BLACK FRIDAY · ACESSO ANUAL', 'preco': 'R$ 97,00', 'preco_detalhe': 'por ano',
                'preco_sub': 'de R$ 297 por R$ 97,00', 'cta_texto': 'Quero o Instalingo por R$ 97,00', 'cta_url': LINK,
-               'garantia': 'Garantia de 7 dias. Se por qualquer motivo você não gostar, devolvemos todo o seu investimento.',
+               'video_antes': True, 'garantia': 'Garantia de 7 dias. Se por qualquer motivo você não gostar, devolvemos todo o seu investimento.',
                'selos': ['Pagamento seguro', '7 dias de garantia'],
                'faq': [{'pergunta': 'É mensalidade?', 'resposta': 'Não. O acesso é anual: R$ 97,00 por ano (de R$ 297) na condição de Black Friday.'},
                        {'pergunta': 'E se eu não gostar?', 'resposta': 'Você tem 7 dias de garantia. Se por qualquer motivo não gostar, devolvemos todo o seu investimento.'},

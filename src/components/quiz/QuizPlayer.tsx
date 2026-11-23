@@ -991,6 +991,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
   const f = (t?: string) => preencher(t, e, escolhas, perfil, contato.nome, numeros);
   const v3 = !!e.indice;   // quiz V3 (Índice de Leitor): abertura, perguntas, captura e resultado no visual novo
   const temTelaResultado = telas.some((t) => t.tipo === "resultado");
+  const laminaVideo = !!(e.oferta?.video_antes && e.oferta.video?.url && ofertaMensalUnica(e));
 
   // Depois da abertura, baixa as imagens das próximas telas: a troca de tela não fica esperando a imagem.
   useEffect(() => {
@@ -1109,7 +1110,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
     setEscolhas((x) => { const y = { ...x }; if (k >= 0) y[q.id] = k; else delete y[q.id]; return y; });
   };
   const [verOferta, setVerOferta] = useState(false);
-  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setRejeitados([]); setVerOferta(false); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
+  // Oferta única com `video_antes`: resultado → lâmina do vídeo → oferta (0, 1, 2).
+  const [faseFim, setFaseFim] = useState(0);
+  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setRejeitados([]); setVerOferta(false); setFaseFim(0); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
 
   // Resumo do plano em números (tela "perfil" com plano_numeros): só entram as linhas que a pessoa já respondeu.
   const linhasDoPlano = (c: NonNullable<TelaQuiz["plano_numeros"]>): LinhaDoPlano[] => {
@@ -1686,12 +1689,20 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
 
           {passo.tipo === "fim" && (
             <div className="space-y-8">
-              {(!temTelaResultado && !e.sem_resultado && !(v3 && e.oferta?.modo === "direto" && verOferta)) && (
+              {laminaVideo && faseFim === 1 && !editar && (
+                <div className="space-y-5 py-2 text-center">
+                  <Txt caminho="oferta.video.titulo" valor={e.oferta?.video?.titulo ?? "Veja por dentro do app"} as="h2" className={cn("block text-2xl font-extrabold leading-tight", skin && "qs-h1")} />
+                  <VideoVsl grande url={e.oferta!.video!.url} poster={e.oferta!.video!.poster} />
+                  <Botao onClick={() => { setFaseFim(2); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.video_botao" valor={e.oferta?.video_botao ?? "Continuar"} /></Botao>
+                </div>
+              )}
+              {(!(laminaVideo && faseFim === 1 && !editar) && !temTelaResultado && !e.sem_resultado && !(v3 && e.oferta?.modo === "direto" && verOferta)) && (
                 v3 ? <ResultadoIndice e={e} perfil={perfil} escolhas={escolhas} f={f} suave={suave} />
                   : <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
-              {e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} marcadas={marcadas} curtidos={curtidos} aoAvancar={() => { setVerOferta(true); window.scrollTo({ top: 0 }); }} />
-                : ofertaMensalUnica(e) ? <OfertaMensal e={e} f={f} suave={suave} />
+              {laminaVideo && faseFim === 0 && !editar && <Botao onClick={() => { setFaseFim(1); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.continuar_resultado" valor={e.oferta?.continuar_resultado ?? "Continuar"} /></Botao>}
+              {laminaVideo && faseFim < 2 && !editar ? null : e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} marcadas={marcadas} curtidos={curtidos} aoAvancar={() => { setVerOferta(true); window.scrollTo({ top: 0 }); }} />
+                : ofertaMensalUnica(e) ? <OfertaMensal e={e} f={f} suave={suave} semVideo={laminaVideo && !editar} />
                 : e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
                 : perfil?.cta_texto && (
                   perfil.cta_url ? <Botao href={perfil.cta_url}>{perfil.cta_texto}</Botao>
@@ -2287,7 +2298,7 @@ function CartaoDepoimento({ d, k }: { d: Depoimento; k: number }) {
 }
 
 // Oferta mensal única da V3 (22/11): título, aviso honesto, cartão do preço, botão, selos, o que recebe, perguntas e fechamento com o botão de novo.
-function OfertaMensal({ e, f, suave }: { e: EstruturaQuiz; f: (s?: string) => string; suave: string }) {
+function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: string) => string; suave: string; semVideo?: boolean }) {
   const { cor, escuro, editar, skin } = useContext(QuizCtx);
   const o = e.oferta!;
   const icones = [Lock, ShieldCheck, BookOpen, Headphones];
@@ -2319,7 +2330,7 @@ function OfertaMensal({ e, f, suave }: { e: EstruturaQuiz; f: (s?: string) => st
             </div>
           )}
         </section>
-        {o.video?.url && (
+        {o.video?.url && !semVideo && (
           <div className="qs-video">
             <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
             <VideoVsl url={o.video.url} poster={o.video.poster} />
