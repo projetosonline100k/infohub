@@ -31,6 +31,7 @@ import {
   agruparRespostas, calcularPainel, estadoDosLeads, estatisticaDoLink, etapaDoLead, insightDoPior, leadsParaCsv, origens, porcento, resumoConversao, variacao, vendasDoLink,
   type EstadoCompra, type EventoQuiz, type LeadQuiz, type PassoInfo, type ResumoConversao, type StatusLead, type VendaPlataforma,
 } from "@/lib/quiz/painel";
+import { paginar } from "@/lib/quiz/paginar";
 
 // Painel do quiz (11/11/2026, Davi: "uma visualização desse tipo, até com essas funções"): Métricas (números com
 // tendência, funil, maior abandono, insight, leads e visitas por dia), Leads (busca, filtro, status, planilha),
@@ -86,8 +87,8 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
       if (lista.length < 2) { if (vivo) setFamilia(null); return; }   // sem versões: os dados do próprio quiz bastam
       const ids = lista.map((x) => x.id);
       const [e, l] = await Promise.all([
-        db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm, detalhe").in("quiz_id", ids).order("criado_em", { ascending: false }).limit(100000),
-        db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").in("quiz_id", ids).order("criada_em", { ascending: false }).limit(10000),
+        paginar<EventoQuiz>((de, ate) => db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm, detalhe").in("quiz_id", ids).order("criado_em", { ascending: false }).order("id").range(de, ate)),
+        paginar<LeadQuiz>((de, ate) => db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").in("quiz_id", ids).order("criada_em", { ascending: false }).order("id").range(de, ate)),
       ]);
       if (vivo) setFamilia({ eventos: (e.data ?? []) as EventoQuiz[], leads: ((l.data ?? []) as LeadQuiz[]).map((x) => ({ ...x, respostas: x.respostas ?? [], status: x.status ?? "novo" })) });
     })();
@@ -97,8 +98,8 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
   const carregar = useCallback(async () => {
     setCarregando(true);
     const [e, l] = await Promise.all([
-      db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm, detalhe").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).limit(50000),
-      db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).limit(5000),
+      paginar<EventoQuiz>((de, ate) => db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm, detalhe").eq("quiz_id", quiz.id).order("criado_em", { ascending: false }).order("id").range(de, ate)),
+      paginar<LeadQuiz>((de, ate) => db.from("quiz_respostas").select("id, perfil, nome, email, whatsapp, criada_em, respostas, status, utm, sessao").eq("quiz_id", quiz.id).order("criada_em", { ascending: false }).order("id").range(de, ate)),
     ]);
     setEventos((e.data ?? []) as EventoQuiz[]);
     setLeads(((l.data ?? []) as LeadQuiz[]).map((x) => ({ ...x, respostas: x.respostas ?? [], status: x.status ?? "novo" })));

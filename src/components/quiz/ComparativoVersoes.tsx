@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { estadoDosLeads, type EventoQuiz, type LeadQuiz, type VendaPlataforma } from "@/lib/quiz/painel";
+import { paginar } from "@/lib/quiz/paginar";
 
 const db = supabase as unknown as SupabaseClient;
 export interface VersaoQuiz { id: string; versao: number; slug: string; status: string; ab_ativo: boolean }
@@ -20,8 +21,8 @@ export function ComparativoVersoes({ aberto, onFechar, clienteId, versoes }: { a
     void (async () => {
       const ids = versoes.map((v) => v.id);
       const [e, l] = await Promise.all([
-        db.from("quiz_eventos").select("quiz_id, sessao, tipo, passo, criado_em").in("quiz_id", ids).limit(100000),
-        db.from("quiz_respostas").select("quiz_id, id, email, whatsapp, criada_em, sessao").in("quiz_id", ids).limit(10000),
+        paginar<EventoQuiz & { quiz_id: string }>((de, ate) => db.from("quiz_eventos").select("quiz_id, sessao, tipo, passo, criado_em").in("quiz_id", ids).order("criado_em").order("id").range(de, ate)),
+        paginar<any>((de, ate) => db.from("quiz_respostas").select("quiz_id, id, email, whatsapp, criada_em, sessao").in("quiz_id", ids).order("criada_em").order("id").range(de, ate)),
       ]);
       const por: Record<string, { eventos: EventoQuiz[]; leads: LeadQuiz[] }> = Object.fromEntries(ids.map((i) => [i, { eventos: [], leads: [] }]));
       for (const x of (e.data ?? []) as (EventoQuiz & { quiz_id: string })[]) por[x.quiz_id]?.eventos.push(x);

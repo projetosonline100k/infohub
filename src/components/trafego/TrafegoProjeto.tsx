@@ -18,6 +18,7 @@ import { GeradorUtm } from "./GeradorUtm";
 import { PainelResultados } from "./PainelResultados";
 import { RankingCriativos } from "./RankingCriativos";
 import { brl, campo, nf, painel, pct } from "./formato";
+import { paginar } from "@/lib/quiz/paginar";
 
 const db = supabase as unknown as SupabaseClient;
 interface Status { conectado: boolean; nome: string | null; expira_em: string | null; configurado: boolean }
@@ -104,8 +105,8 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
     const quizIds = quizList.map((q) => q.id);
     const [vs, ev, ld] = await Promise.all([
       prodIds.current.length ? db.from("vendas_plataforma_eventos").select(COLUNAS_VENDA).in("produto_id", prodIds.current).gte("data", de).order("recebido_em", { ascending: false }).limit(20000) : Promise.resolve({ data: [] }),
-      quizIds.length ? db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").in("quiz_id", quizIds).gte("criado_em", `${de}T00:00:00Z`).order("criado_em", { ascending: false }).limit(100000) : Promise.resolve({ data: [] }),
-      quizIds.length ? db.from("quiz_respostas").select("criada_em, utm").in("quiz_id", quizIds).gte("criada_em", `${de}T00:00:00Z`).limit(20000) : Promise.resolve({ data: [] }),
+      quizIds.length ? paginar<any>((a, b) => db.from("quiz_eventos").select("sessao, tipo, passo, criado_em, utm").in("quiz_id", quizIds).gte("criado_em", `${de}T00:00:00Z`).order("criado_em", { ascending: false }).order("id").range(a, b)) : Promise.resolve({ data: [] }),
+      quizIds.length ? paginar<any>((a, b) => db.from("quiz_respostas").select("criada_em, utm").in("quiz_id", quizIds).gte("criada_em", `${de}T00:00:00Z`).order("criada_em").order("id").range(a, b)) : Promise.resolve({ data: [] }),
     ]);
     const publicado = quizList.find((q) => !q.variante_de && q.status === "publicado") ?? quizList.find((q) => !q.variante_de) ?? null;
     setBase({
