@@ -1169,7 +1169,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
   return (
     <QuizCtx.Provider value={ctx}>
-      {skin && v?.marca && (
+      {skin && v?.marca && !(passo.tipo === "tela" && telas[passo.indice]?.tipo === "curtir_livros") && (
         <div className="mx-auto mb-4 mt-2 w-full max-w-[480px] text-center" style={{ fontFamily: v.fonte_texto }}>
           {v.marca.imagem
             ? <img src={v.marca.imagem} alt={`${v.marca.antes}${v.marca.destaque ?? ""}`} className="mx-auto h-[46px] w-auto" draggable={false} />
@@ -1681,8 +1681,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                 v3 ? <ResultadoIndice e={e} perfil={perfil} escolhas={escolhas} f={f} suave={suave} />
                   : <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
-              {e.oferta?.modo === "direto" && v3 && !temTelaResultado && !e.sem_resultado && !verOferta ? <Botao onClick={() => { setVerOferta(true); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.continuar_resultado" valor={e.oferta.continuar_resultado || "Continuar"} /></Botao>
-                : e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} marcadas={marcadas} curtidos={curtidos} />
+              {e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} marcadas={marcadas} curtidos={curtidos} aoAvancar={() => { setVerOferta(true); window.scrollTo({ top: 0 }); }} />
                 : ofertaMensalUnica(e) ? <OfertaMensal e={e} f={f} suave={suave} />
                 : e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
                 : perfil?.cta_texto && (
@@ -2427,7 +2426,7 @@ function OfertaMensal({ e, f, suave }: { e: EstruturaQuiz; f: (s?: string) => st
 // anual na cara do gol, com "Ver outros planos" abrindo uma folha de baixo com os planos.
 const slugBonus = (b: { id?: string; titulo: string }) => b.id ?? b.titulo.replace(/^\s*b[ôo]nus\s*\d*\s*[:\-–]?\s*/i, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; f: (s?: string) => string; marcadas: Record<string, number[]>; curtidos: number[] }) {
+function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; f: (s?: string) => string; marcadas: Record<string, number[]>; curtidos: number[]; aoAvancar?: () => void }) {
   const { aoClicarOferta, editar, linkDeCompra } = useContext(QuizCtx);
   const o = e.oferta!;
   const bonus = o.bonus ?? [];
@@ -2525,18 +2524,6 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; 
       </div>
     );
   }
-  if (etapa === 1 && o.sete_dias) {
-    // Tela cheia (como a do plano): os 7 dias e o botão cabem sem rolar.
-    return (
-      <div className={(editar ? "relative min-h-[640px]" : "fixed inset-0 z-40 overflow-y-auto") + " flex flex-col justify-center px-4 py-4 text-white"} style={{ background: e.visual?.base ?? "#0a1020" }}>
-        <div className="mx-auto w-full max-w-md space-y-2">
-          {topo}
-          <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
-            rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Continuar</button>} />
-        </div>
-      </div>
-    );
-  }
   const casca = "flex min-h-[78dvh] flex-col justify-center gap-5 p-5 text-white " + (!e.visual ? "bg-[#0a1020] [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]" : "");
   return (
     <div className={casca}>
@@ -2561,8 +2548,12 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; 
               );
             })}
           </div>
-          <button type="button" className={btn} style={{ background: verde }} disabled={!editar && escolhido == null} onClick={() => setEtapa(1)}>Avançar</button>
+          <button type="button" className={btn} style={{ background: verde }} disabled={!editar && escolhido == null} onClick={() => { setEtapa(1); aoAvancar?.(); }}>Avançar</button>
         </>
+      )}
+      {etapa === 1 && o.sete_dias && (
+        <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
+          rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Continuar</button>} />
       )}
       {etapa === 1 && !o.sete_dias && (
         <>

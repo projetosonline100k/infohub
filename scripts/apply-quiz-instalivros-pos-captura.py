@@ -31,8 +31,6 @@ est['telas'] = [t for t in (est.get('telas') or []) if t['id'] not in velhas] + 
      'texto': '87% das pessoas que usam o app Instalivros fizeram mudanças positivas em suas vidas.', 'botao': 'Continuar', 'depoimentos': [BRUNO]},
     {'id': 'curtir_livros', 'depois_de': 'aprender', 'tipo': 'curtir_livros', 'titulo': 'Este título parece interessante para você?',
      'texto': 'Títulos que você gostar serão salvos na sua biblioteca para aproveitar depois.', 'curtir': {'pergunta': 'aprender', 'quantidade': 5, 'etapa': 'Etapa 3 de 3'}},
-    {'id': 'preparando_conteudo', 'depois_de': 'aprender', 'tipo': 'carregando', 'titulo': 'Preparando seu conteúdo', 'duracao': 6,
-     'itens': ['Salvando títulos na sua Biblioteca', 'Selecionando recomendações de títulos', 'Criando coleções que você pode gostar']},
 ]
 q.execute("update quizzes set estrutura=%s where id=%s", (json.dumps(est, ensure_ascii=False), qid))
 c.commit()

@@ -850,9 +850,9 @@ html.jarvis-window #root {
 .quiz-skin .qs-cl-card.qs-cl-sim { transform: translateX(60px) rotate(6deg); opacity: 0; }
 .quiz-skin .qs-cl-card.qs-cl-nao { transform: translateX(-60px) rotate(-6deg); opacity: 0; }
 @keyframes qs-cl-entra { from { transform: scale(.96); opacity: .4; } to { transform: none; opacity: 1; } }
-.quiz-skin .qs-cl-capa { position: relative; height: clamp(104px, 18dvh, 170px); display: flex; align-items: flex-end; justify-content: center; padding-top: 14px; overflow: hidden; }
+.quiz-skin .qs-cl-capa { position: relative; height: clamp(150px, 28dvh, 250px); display: flex; align-items: flex-end; justify-content: center; padding-top: 14px; overflow: hidden; }
 .quiz-skin .qs-cl-capa::before { content: ""; position: absolute; bottom: 0; left: 50%; width: 76%; aspect-ratio: 2 / 1; transform: translateX(-50%); border-radius: 999px 999px 0 0; background: rgba(255,255,255,.88); }
-.quiz-skin .qs-cl-capa img { position: relative; height: clamp(90px, 16dvh, 148px); width: auto; max-width: 56%; object-fit: cover; border-radius: 4px; box-shadow: 0 10px 24px rgba(0,0,0,.4); margin-bottom: 0; }
+.quiz-skin .qs-cl-capa img { position: relative; height: clamp(130px, 24dvh, 218px); width: auto; max-width: 62%; object-fit: cover; border-radius: 4px; box-shadow: 0 10px 24px rgba(0,0,0,.4); margin-bottom: 0; }
 .quiz-skin .qs-cl-info { padding: 10px 14px 8px; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .quiz-skin .qs-cl-info b { font-size: 19px; line-height: 1.2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .quiz-skin .qs-cl-info span { font-size: 15px; opacity: .85; }
@@ -881,12 +881,3 @@ html.jarvis-window #root {
 .quiz-skin .qs-cl .qs-sub { font-size: 14px; line-height: 1.35; margin-bottom: 4px !important; }
 .quiz-skin .qs-cl-pilha { margin: 8px 10px 12px; padding-top: 12px; }
 .quiz-skin .qs-cl-bt { margin-top: 0; }
-/* 7 dias em tela cheia: tudo à vista, sem rolar. */
-.qs-sd-t { font-size: clamp(21px, 6vw, 26px); margin: 0 0 6px; }
-.qs-sd-s { font-size: 13.5px; line-height: 1.35; margin-bottom: 10px; }
-.qs-sd-l { gap: 5px; margin-bottom: 12px; }
-.qs-sd-l li { padding: 5px 10px 5px 6px; gap: 10px; border-radius: 12px; }
-.qs-sd-l img { width: 30px; height: 42px; }
-.qs-sd-l b { font-size: 14px; -webkit-line-clamp: 1; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qs-sd-l span { font-size: 12.5px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-.qs-sd-l em { font-size: 10px; margin-right: 7px; }
