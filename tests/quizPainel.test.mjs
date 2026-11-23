@@ -154,3 +154,13 @@ test('estadoDosLeads: lead só com WhatsApp é ligado à venda pelo telefone (20
   assert.deepEqual(e.get('L1'), { clicouCheckout: true, compra: { valor: 39.9, data: '2026-11-20' } });
   assert.equal(e.get('L2').compra, null);
 });
+
+test('intro pulada: a 1ª pergunta abre sozinha (passo 1) e só conta como "começou" quem passou dela', () => {
+  const eventos = [
+    ...['a', 'b', 'c'].map((s) => ev(s, 'visita', 0, 1)),
+    ...['a', 'b', 'c'].map((s) => ev(s, 'passo', 1, 1)),
+    ev('a', 'passo', 2, 1),
+  ];
+  assert.equal(m.calcularPainel({ passos, eventos, leads: [], dias: 14, agora: AGORA }).atual.comecaram, 3);
+  assert.equal(m.calcularPainel({ passos, eventos, leads: [], dias: 14, agora: AGORA, pulouIntro: true }).atual.comecaram, 1);
+});

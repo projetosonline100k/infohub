@@ -27,12 +27,13 @@ const DIA = 86_400_000;
 const dia = (t: number) => new Date(t).toLocaleDateString("sv-SE");
 
 /** `dias` = 0 → desde sempre (sem período anterior). `dias` fracionado (< 1) = "hoje": da meia-noite até agora, comparando com o mesmo trecho de ontem. */
-export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; leads: LeadQuiz[]; dias: number; agora?: number; /** Período escolhido (ms): de (inclusive) até (exclusivo). Vale no lugar de `dias`. */ de?: number; ate?: number }): Painel {
+export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; leads: LeadQuiz[]; dias: number; agora?: number; /** Período escolhido (ms): de (inclusive) até (exclusivo). Vale no lugar de `dias`. */ de?: number; ate?: number; /** Intro pulada: a 1ª pergunta já abre sozinha (registra "passo 1" na hora), então só conta como começou quem passou dela. */ pulouIntro?: boolean }): Painel {
   const agora = p.ate !== undefined ? p.ate : (p.agora ?? Date.now());
   const custom = p.de !== undefined && p.ate !== undefined;
   const dur = custom ? Math.max(1, p.ate! - p.de!) : p.dias * DIA;
   const inicio = custom ? p.de! : (p.dias ? agora - p.dias * DIA : 0);
   const inicioAnterior = custom ? p.de! - dur : (p.dias ? agora - 2 * p.dias * DIA : 0);
+  const minimo = p.pulouIntro ? 2 : 1;   // passo mínimo para valer "começou"
   // Cada sessão vale no dia do primeiro evento dela.
   const sessoes = new Map<string, { t: number; visita: boolean; max: number; fim: boolean; cta: boolean }>();
   for (const e of p.eventos) {
@@ -49,7 +50,7 @@ export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; 
     const dentro = [...sessoes.values()].filter((s) => s.visita && s.t >= de && s.t < ate);
     return {
       j: {
-        visitas: dentro.length, comecaram: dentro.filter((s) => s.max >= 1).length, terminaram: dentro.filter((s) => s.fim).length,
+        visitas: dentro.length, comecaram: dentro.filter((s) => s.max >= minimo).length, terminaram: dentro.filter((s) => s.fim).length,
         cta: dentro.filter((s) => s.cta).length,
         leads: p.leads.filter((l) => { const t = Date.parse(l.criada_em); return t >= de && t < ate; }).length,
       },
@@ -71,7 +72,7 @@ export function calcularPainel(p: { passos: PassoInfo[]; eventos: EventoQuiz[]; 
   const porDia = dias.map((d) => ({ dia: d, n: visitaveis.filter((s) => dia(s.t) === d).length }));
   const diario: LinhaDia[] = dias.map((d) => {
     const ss = visitaveis.filter((s) => dia(s.t) === d);
-    return { dia: d, visitas: ss.length, comecaram: ss.filter((s) => s.max >= 1).length, terminaram: ss.filter((s) => s.fim).length, cta: ss.filter((s) => s.cta).length,
+    return { dia: d, visitas: ss.length, comecaram: ss.filter((s) => s.max >= minimo).length, terminaram: ss.filter((s) => s.fim).length, cta: ss.filter((s) => s.cta).length,
       leads: p.leads.filter((l) => dia(Date.parse(l.criada_em)) === d).length };
   });
   const umDia = (p.dias > 0 && p.dias < 1) || (custom && dur <= DIA + 1);

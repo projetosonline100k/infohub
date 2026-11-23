@@ -158,7 +158,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
     return null;
   }, [periodo]);
   const dias = useMemo(() => (janela ? (janela.ate - janela.de) / DIA_MS : periodo === "hoje" ? fracaoDeHoje() : (periodo as number)), [periodo, janela, eventos]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const painel = useMemo(() => (eventos && leads ? calcularPainel({ passos, eventos, leads, dias: janela ? 0 : dias, de: janela?.de, ate: janela?.ate }) : null), [passos, eventos, leads, dias, janela]);
+  const painel = useMemo(() => (eventos && leads ? calcularPainel({ passos, eventos, leads, dias: janela ? 0 : dias, de: janela?.de, ate: janela?.ate, pulouIntro: !!estrutura?.intro?.pular }) : null), [passos, eventos, leads, dias, janela, estrutura]);
   const estados = useMemo(() => (eventos && leads ? estadoDosLeads(leads, eventos, vendas) : new Map<string, EstadoCompra>()), [eventos, leads, vendas]);
   const conversao = useMemo(() => (leads ? resumoConversao(leads, estados, janela ? 0 : dias, undefined, janela ?? undefined) : null), [leads, estados, dias, janela]);
 
