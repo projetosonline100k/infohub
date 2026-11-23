@@ -1833,7 +1833,7 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
 // "Analisando…": barra enchendo e as etapas sendo marcadas; passa sozinha.
 /** Vídeo no estilo do vturb: começa mudo e em loop assim que aparece, com o aviso "Clique para ouvir";
  * ao clicar recomeça do zero com som, sem pausar nem avançar, e vai até o fim. */
-function VideoVsl({ url, poster }: { url: string; poster?: string }) {
+function VideoVsl({ url, poster, grande }: { url: string; poster?: string; grande?: boolean }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [ouvindo, setOuvindo] = useState(false);
   const [progresso, setProgresso] = useState(0);
@@ -1854,7 +1854,7 @@ function VideoVsl({ url, poster }: { url: string; poster?: string }) {
     void v.play().catch(() => {});
   };
   return (
-    <div className="relative mx-auto aspect-[9/16] max-h-[70dvh] w-full max-w-[280px] select-none overflow-hidden rounded-2xl bg-black" onContextMenu={(e) => e.preventDefault()}>
+    <div className={"relative mx-auto aspect-[9/16] w-full select-none overflow-hidden rounded-2xl bg-black " + (grande ? "max-h-[64dvh] max-w-[380px]" : "max-h-[70dvh] max-w-[280px]")} onContextMenu={(e) => e.preventDefault()}>
       <video
         ref={ref}
         src={url}
@@ -2562,7 +2562,7 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
         <>
           <Txt caminho="oferta.app_demo.titulo" valor={o.app_demo.titulo ?? "Veja o Instalivros por dentro"} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />
           {o.app_demo.texto && <Txt caminho="oferta.app_demo.texto" valor={o.app_demo.texto} as="p" className="block text-center text-sm leading-snug text-white/80" />}
-          <video src={o.app_demo.url || o.video?.url} poster={o.app_demo.poster || o.video?.poster} autoPlay loop muted playsInline controls preload="auto" className="mx-auto max-h-[52dvh] w-full max-w-xs rounded-2xl bg-black object-contain" />
+          <VideoVsl grande url={(o.app_demo.url || o.video?.url) ?? ""} poster={o.app_demo.poster || o.video?.poster} />
           <button type="button" className={btn} style={{ background: verde }} onClick={() => { setVerApp(false); setEtapa(2); window.scrollTo({ top: 0 }); }}>Continuar</button>
         </>
       )}
