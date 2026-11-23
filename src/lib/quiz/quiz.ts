@@ -164,6 +164,8 @@ export interface OfertaQuiz {
   /** Modo "direto": linha miúda no fim da lâmina (ex.: "CNPJ 00.000.000/0001-00"). */
   rodape_legal?: string;
   app_demo?: { titulo?: string; texto?: string; url?: string; poster?: string };   // vídeo do app antes do preço (sempre com Continuar liberado)
+  /** Depois do bônus mostra "O que você recebe" (itens + bônus escolhido) em vez da lâmina de 7 dias. */
+  mostrar_recebe?: boolean;
   sete_dias?: { titulo?: string; texto?: string; pergunta?: string };
   bonus_escolha_titulo?: string; bonus_escolhido_rotulo?: string; preco_descricao?: string; outros_planos_texto?: string;
   /** Oferta mensal única (V3, 22/11): sem `planos` e sem `modo`, com estes textos. `aviso` e `fechamento_titulo` aceitam **negrito**; `selos` = 4 textos (cadeado, escudo, livro, fone). */

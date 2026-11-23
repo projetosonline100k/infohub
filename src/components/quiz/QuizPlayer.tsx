@@ -2572,11 +2572,11 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
           <button type="button" className={btn} style={{ background: verde }} onClick={() => { setVerApp(false); setEtapa(2); window.scrollTo({ top: 0 }); }}>Continuar</button>
         </>
       )}
-      {etapa === 1 && !verApp && o.sete_dias && (
+      {etapa === 1 && !verApp && o.sete_dias && !o.mostrar_recebe && (
         <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
           rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => { if (o.app_demo) { setVerApp(true); window.scrollTo({ top: 0 }); } else setEtapa(2); }}>Continuar</button>} />
       )}
-      {etapa === 1 && !o.sete_dias && (
+      {etapa === 1 && !verApp && (!o.sete_dias || o.mostrar_recebe) && (
         <>
           {titulo("oferta.recebe_titulo", o.recebe_titulo ?? "Confira o que você vai receber")}
           <ul className="space-y-2.5">
@@ -2594,7 +2594,7 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
               <p className="line-clamp-3 text-sm leading-snug text-white/80">{b.texto}</p>
             </div>
           )}
-          <button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Avançar</button>
+          <button type="button" className={btn} style={{ background: verde }} onClick={() => { if (o.app_demo) { setVerApp(true); window.scrollTo({ top: 0 }); } else setEtapa(2); }}>Avançar</button>
         </>
       )}
     </div>
