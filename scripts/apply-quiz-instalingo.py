@@ -6,6 +6,7 @@ import json
 from migration_db import connect
 
 SLUG = 'instalingo'
+ATIVIDADE = '816f44d0-1acf-4d89-8549-b63ed0520461'   # tarefa "Criar quiz de vendas": é por ela que o editor abre o quiz
 CLIENTE = '09d84886-647f-4daf-932f-b9e3878d1907'   # clientes.nome_especialista = INSTALINGO
 USER = '751fbfbc-af4d-4ad2-83a0-3ad6ca65fb51'
 LINK = 'https://pay.kiwify.com.br/7aIamCT'
@@ -113,8 +114,8 @@ if ex:
     q.execute("update quizzes set estrutura=%s::jsonb where id=%s returning previa_token", (json.dumps(EST, ensure_ascii=False), ex[0]))
     print('ATUALIZADO', SLUG, q.fetchone()[0])
 else:
-    q.execute("""insert into quizzes (cliente_id,user_id,titulo,pedido,slug,status,estrutura)
-      values (%s,%s,%s,%s,%s,'revisar',%s::jsonb) returning previa_token""",
+    q.execute("""insert into quizzes (cliente_id,user_id,atividade_id,titulo,pedido,slug,status,estrutura)
+      values (%s,%s,'816f44d0-1acf-4d89-8549-b63ed0520461',%s,%s,%s,'revisar',%s::jsonb) returning previa_token""",
       (CLIENTE, USER, 'Quiz do Instalingo (diagnóstico de nível de inglês)', 'Recriar no Hub o quiz do Instalingo (professora Mariah), igual ao HTML do Davi.', SLUG, json.dumps(EST, ensure_ascii=False)))
     print('CRIADO', SLUG, q.fetchone()[0])
 c.commit()
