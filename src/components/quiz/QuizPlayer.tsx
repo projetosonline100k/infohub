@@ -2450,7 +2450,7 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; 
   const nomeCurto = (t: string) => t.replace(/^\s*b[ôo]nus\s*\d*\s*[:\-–]?\s*/i, "");
   // O bônus que a pessoa escolheu aparece só como "Bônus escolhido" (editável em `oferta.bonus_escolhido_rotulo`); o outro mostra o nome.
   const rotuloEscolhido = o.bonus_escolhido_rotulo || "Bônus escolhido";
-  const nomeNoPlano = (x: (typeof bonus)[number]) => (b && x === b ? rotuloEscolhido : nomeCurto(x.titulo));
+  const nomeNoPlano = (x: (typeof bonus)[number]) => (b && x === b && !o.bonus_mostrar_nome ? rotuloEscolhido : nomeCurto(x.titulo));
   const irPara = (p?: PlanoOferta) => {
     const base = p ? p.cta_url : (o.cta_url || perfil?.cta_url);
     if (!base) return undefined;
@@ -2525,6 +2525,18 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; 
       </div>
     );
   }
+  if (etapa === 1 && o.sete_dias) {
+    // Tela cheia (como a do plano): os 7 dias e o botão cabem sem rolar.
+    return (
+      <div className={(editar ? "relative min-h-[640px]" : "fixed inset-0 z-40 overflow-y-auto") + " flex flex-col justify-center px-4 py-4 text-white"} style={{ background: e.visual?.base ?? "#0a1020" }}>
+        <div className="mx-auto w-full max-w-md space-y-2">
+          {topo}
+          <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
+            rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Continuar</button>} />
+        </div>
+      </div>
+    );
+  }
   const casca = "flex min-h-[78dvh] flex-col justify-center gap-5 p-5 text-white " + (!e.visual ? "bg-[#0a1020] [box-shadow:0_0_0_100vmax_#0a1020] [clip-path:inset(-100vmax)]" : "");
   return (
     <div className={casca}>
@@ -2551,10 +2563,6 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; 
           </div>
           <button type="button" className={btn} style={{ background: verde }} disabled={!editar && escolhido == null} onClick={() => setEtapa(1)}>Avançar</button>
         </>
-      )}
-      {etapa === 1 && o.sete_dias && (
-        <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
-          rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Continuar</button>} />
       )}
       {etapa === 1 && !o.sete_dias && (
         <>

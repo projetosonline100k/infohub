@@ -19,6 +19,7 @@ o['sete_dias'] = {'pergunta': 'aprender', 'titulo': 'Você só vai precisar de 7
                   'texto': 'Com base nas suas escolhas, estes são os livros que o Instalivros selecionou para você:'}
 o['titulo'] = '{nome}, seu plano personalizado está pronto!'
 o['preco_descricao'] = 'por mês'
+o['bonus_mostrar_nome'] = True
 o['rodape_legal'] = 'CNPJ 34.278.071/0001-72'
 o['cancele_texto'] = 'Garantia de 30 dias, cancele quando quiser'
 o['planos'] = [{'id': 'mensal', 'nome': 'Instalivros', 'selo': 'LEVA 1 BÔNUS', 'preco': 'R$ 24,90', 'cta_url': 'https://chk.eduzz.com/7WXGJG1Y0A',

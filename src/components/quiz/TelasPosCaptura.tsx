@@ -89,7 +89,7 @@ export function SeteDias({ e, o, marcadas, curtidos, f, rodape, onBotao }: {
           return (
             <li key={l.id}>
               <img src={l.capa} alt="" draggable={false} />
-              <div><em>Dia {k + 1}</em><b>{tituloLivro(l.titulo)}</b><span>{frase}</span></div>
+              <div><b><em>Dia {k + 1}</em>{tituloLivro(l.titulo)}</b><span>{frase}</span></div>
             </li>
           );
         })}

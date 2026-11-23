@@ -159,6 +159,8 @@ export interface OfertaQuiz {
   continuar_resultado?: string;
   /** Modo "direto": linha pequena embaixo do preço (ex.: "Cancele quando quiser"). */
   cancele_texto?: string;
+  /** Modo "direto": mostra o nome do bônus escolhido no cartão do plano (padrão: "Bônus escolhido"). */
+  bonus_mostrar_nome?: boolean;
   /** Modo "direto": linha miúda no fim da lâmina (ex.: "CNPJ 00.000.000/0001-00"). */
   rodape_legal?: string;
   sete_dias?: { titulo?: string; texto?: string; pergunta?: string };
