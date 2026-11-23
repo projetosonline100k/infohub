@@ -37,6 +37,7 @@ export function jornadaDoLead(lead: Pick<LeadQuiz, "respostas" | "sessao" | "cri
   const perguntasIdx = passos.map((p, i) => (p.tipo === "pergunta" ? i : -1)).filter((i) => i >= 0);
   const respostaDe = new Map<number, { pergunta: string; resposta: string | null }>();
   perguntasIdx.forEach((idx, k) => { const r = lead.respostas?.[k]; if (r) respostaDe.set(idx, r); });
+  const livrosCurtidos = lead.respostas?.find((r) => r.pergunta === "Livros que curtiu")?.resposta ?? null;
   // Sem eventos (lead antigo): só dá para saber até qual pergunta respondeu.
   let ultimoPasso = temEventos ? Math.max(-1, ...abriu.keys()) : -1;
   if (!temEventos && respostaDe.size) ultimoPasso = Math.max(...respostaDe.keys());
@@ -47,7 +48,7 @@ export function jornadaDoLead(lead: Pick<LeadQuiz, "respostas" | "sessao" | "cri
     const proximo = [...abriu.entries()].filter(([k]) => k > i).sort((a, b) => a[0] - b[0])[0];
     const segundos = em && proximo ? Math.max(0, Math.round((Date.parse(proximo[1]) - Date.parse(em)) / 1000)) : null;
     const r = respostaDe.get(i);
-    return { indice: i, rotulo: p.rotulo, tipo: p.tipo, alcancou: temEventos ? i <= ultimoPasso : i <= ultimoPasso, em, segundos, resposta: r ? r.resposta ?? "—" : null, pergunta: r?.pergunta ?? null };
+    return { indice: i, rotulo: p.rotulo, tipo: p.tipo, alcancou: temEventos ? i <= ultimoPasso : i <= ultimoPasso, em, segundos, resposta: r ? r.resposta ?? "—" : p.livros && livrosCurtidos ? livrosCurtidos : null, pergunta: r?.pergunta ?? null };
   });
   const comTempo = lista.filter((p) => p.segundos != null);
   const maisLenta = comTempo.length ? comTempo.reduce((a, b) => ((b.segundos ?? 0) > (a.segundos ?? 0) ? b : a)).indice : null;

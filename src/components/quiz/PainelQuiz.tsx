@@ -144,7 +144,7 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
   const estrutura = quiz.estrutura as EstruturaQuiz | null;
   const passos = useMemo<PassoInfo[]>(() => {
     if (!estrutura) return [];
-    return montarPassos(estrutura, (estrutura.captura?.ativa !== false) && !!estrutura.captura?.pedir?.length).map((p) => ({ rotulo: rotuloDoPasso(estrutura, p), tipo: p.tipo }));
+    return montarPassos(estrutura, (estrutura.captura?.ativa !== false) && !!estrutura.captura?.pedir?.length).map((p) => ({ rotulo: rotuloDoPasso(estrutura, p), tipo: p.tipo, livros: p.tipo === "tela" && estrutura.telas?.[p.indice]?.tipo === "curtir_livros" }));
   }, [estrutura]);
   const perguntas = useMemo(() => (estrutura?.perguntas ?? []).map((q) => q.texto), [estrutura]);
   // Período escolhido (19/11, Davi: "preciso filtrar: o dia que estava ruim, dias melhores, se teve alteração"): "Ontem" e datas viram uma janela fixa [de, ate).

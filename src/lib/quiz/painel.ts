@@ -8,7 +8,7 @@ export interface LeadQuiz {
   id: string; perfil: string | null; nome: string | null; email: string | null; whatsapp: string | null; criada_em: string;
   respostas: { pergunta: string; resposta: string | null }[]; status: StatusLead; utm?: UtmLida; sessao?: string | null;
 }
-export interface PassoInfo { rotulo: string; tipo: "intro" | "pergunta" | "tela" | "captura" | "fim" | "nome" }
+export interface PassoInfo { rotulo: string; tipo: "intro" | "pergunta" | "tela" | "captura" | "fim" | "nome"; /** Tela de livros para curtir: a jornada mostra aqui o que o lead curtiu. */ livros?: boolean }
 export interface Janela { visitas: number; comecaram: number; terminaram: number; leads: number; cta: number }
 export interface Painel {
   atual: Janela; anterior: Janela | null;
