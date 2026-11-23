@@ -98,7 +98,7 @@ test('dados do lead vão para o checkout da Eduzz (nome, e-mail, celular sem o 5
 
 test('dados do lead só vão para a Eduzz: outros sites e links inválidos ficam como estão; e-mail ruim e telefone vazio são ignorados', () => {
   const { comDadosDoLead } = u;
-  assert.equal(comDadosDoLead('https://pay.kiwify.com.br/abc', { nome: 'A', email: 'a@b.co' }), 'https://pay.kiwify.com.br/abc');
+  assert.equal(comDadosDoLead('https://pay.hotmart.com/abc', { nome: 'A', email: 'a@b.co' }), 'https://pay.hotmart.com/abc');
   assert.equal(comDadosDoLead('https://site-falso-eduzz.com.evil.com/x', { nome: 'A', email: 'a@b.co' }), 'https://site-falso-eduzz.com.evil.com/x');
   assert.equal(comDadosDoLead('#', { nome: 'A' }), '#');
   const r = new URL(comDadosDoLead('https://chk.eduzz.com/X', { nome: 'Ana', email: 'nao-e-email', whatsapp: '' }));
@@ -128,4 +128,12 @@ test('telefone de outro país (+351…) não vai para o checkout; +55 e número 
   const url = u.comDadosDoLead('https://chk.eduzz.com/X', { nome: 'Ana Souza', email: 'a@b.co', whatsapp: '+351 912345678' });
   assert.doesNotMatch(url, /phone=/);
   assert.match(url, /name=Ana\+Souza/);
+});
+
+test('comDadosDoLead também preenche o checkout da Kiwify', () => {
+  const r = new URL(u.comDadosDoLead('https://pay.kiwify.com.br/hyppqCh', { nome: 'Maria Souza', email: 'Maria@Exemplo.com', whatsapp: '+55 (11) 98765-4321' }));
+  assert.equal(r.searchParams.get('name'), 'Maria Souza');
+  assert.equal(r.searchParams.get('email'), 'maria@exemplo.com');
+  assert.equal(r.searchParams.get('phone'), '11987654321');
+  assert.equal(u.comDadosDoLead('https://outro-site.com/x', { nome: 'A' }), 'https://outro-site.com/x');
 });

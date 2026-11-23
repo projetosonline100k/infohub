@@ -69,7 +69,7 @@ export function telefoneNacional(v: string | null | undefined): string {
 }
 
 /**
- * Leva o que a pessoa já preencheu no quiz (nome, e-mail, WhatsApp) para o checkout da Eduzz, que preenche sozinho os campos
+ * Leva o que a pessoa já preencheu no quiz (nome, e-mail, WhatsApp) para o checkout da Eduzz ou da Kiwify, que preenchem sozinho os campos
  * (13/11/2026, Davi: "ao ir para a Eduzz, os dados que ela já preencheu já vão sendo preenchidos"). Testado em chk.eduzz.com:
  * `name` → Nome completo, `email` → E-mail, `phone`/`cellphone` → Celular. Só mexe em endereços da Eduzz e não troca o que já estiver na URL.
  */
@@ -77,7 +77,7 @@ export function comDadosDoLead(url: string, dados: { nome?: string; email?: stri
   if (!/^https?:\/\//i.test(url)) return url;
   try {
     const u = new URL(url);
-    if (!/(^|\.)eduzz\.com$/i.test(u.hostname)) return url;
+    if (!/(^|\.)(eduzz\.com|kiwify\.com\.br)$/i.test(u.hostname)) return url;   // Kiwify (23/11/2026): `name`, `email` e `phone` preenchem Nome, E-mail e Celular (testado em pay.kiwify.com.br)
     const nome = (dados.nome ?? "").trim().slice(0, 120);
     const email = (dados.email ?? "").trim().toLowerCase().slice(0, 160);
     const fone = telefoneNacional(dados.whatsapp);
