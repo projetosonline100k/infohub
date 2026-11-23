@@ -2509,7 +2509,8 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
     );
   };
   if (etapa === 2) {
-    const video = o.video?.url;
+    const imagem = o.imagem_planos;
+    const video = imagem ? undefined : o.video?.url;
     const lista = folha ? planos : [anual, ...planos.filter((x) => x.id !== anual?.id).slice(0, 1)].filter(Boolean) as PlanoOferta[];
     const sel = plano ?? anual;
     const tit = o.titulo ?? "{nome}, seu plano personalizado está pronto!";
@@ -2517,11 +2518,12 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
       <div className={(editar ? "relative min-h-[640px]" : "fixed inset-0 z-40") + " flex flex-col overflow-hidden bg-[#0a1020] text-white"}>
         {video && <video src={video} poster={o.video?.poster} autoPlay loop muted playsInline preload="auto" className="absolute inset-x-0 top-0 h-[120%] w-full -translate-y-[14%] object-cover object-top" />}
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-black/50 to-black/90" />
-        <div className="relative flex flex-1 flex-col justify-between">
+        <div className={"relative flex flex-1 flex-col " + (imagem ? "min-h-0" : "justify-between")}>
           <div className="space-y-3 p-5 pt-6">
             {topo}
             <Txt caminho="oferta.titulo" valor={tit} mostrar={f(tit)} as="h2" className="block text-center text-3xl font-extrabold leading-tight drop-shadow" />
           </div>
+          {imagem && <div className="flex min-h-0 flex-1 items-center justify-center px-5 pb-3"><img src={imagem} alt="" draggable={false} className="max-h-full w-auto max-w-full rounded-2xl object-contain" /></div>}
           <div className="mx-auto w-full max-w-xl space-y-3 rounded-t-3xl bg-[#14110d]/95 px-4 pb-5 pt-6 backdrop-blur" role="radiogroup" aria-label="Planos">
             {lista.map(cartao)}
             {planos.length > 2 && !folha && <button type="button" onClick={() => setFolha(true)} className="block w-full text-center text-xs font-bold uppercase tracking-wide text-white/70 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
