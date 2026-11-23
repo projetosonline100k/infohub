@@ -22,7 +22,7 @@ VISUAL = {
     'fonte_titulo': '"Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif',
     'fonte_texto': '"DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
     'ok': '#3DDC97', 'oferta_fundo': 'linear-gradient(180deg,#2B1A12,#121212)',
-    'marca': {'antes': 'Insta', 'destaque': 'lingo', 'subtitulo': '✦ Quiz de inglês', 'rodape': ''},
+    'marca': {'antes': 'Insta', 'destaque': 'lingo', 'subtitulo': '', 'rodape': ''},
     'cartao': {'fundo': '#121212', 'borda': '#2A2A2A', 'raio': 24, 'sombra': '0 18px 50px rgba(0,0,0,.45)'},
 }
 
@@ -42,7 +42,7 @@ def op(texto, icone, resumo=None, nota=None, beneficio=None, emoji=None):
     return o
 
 PERGUNTAS = [
-    {'id': 'motivo', 'texto': 'Por que você quer aprender inglês?', 'subtitulo': 'Toque na opção que mais combina com você', 'estilo': 'cartoes', 'opcoes': [
+    {'id': 'motivo', 'sem_mascote': True, 'cabecalho': {'selo': 'Quiz de inglês', 'titulo': 'Descubra seu nível de inglês e por onde começar no Instalingo', 'subtitulo': 'Responda 6 perguntas rápidas e receba seu diagnóstico personalizado.'}, 'texto': 'Por que você quer aprender inglês?', 'subtitulo': 'Toque na opção que mais combina com você', 'estilo': 'cartoes', 'opcoes': [
         op('Viajar com mais segurança', 'Plane', 'quer viajar com mais segurança', beneficio=REELS),
         op('Crescer na carreira', 'Briefcase', 'quer crescer na carreira', beneficio=REELS),
         op('Entender filmes e séries', 'Film', 'quer entender filmes e séries sem legenda', beneficio=REELS),
@@ -80,14 +80,13 @@ EST = {
     'cor': '#DD2A7B', 'tema': 'escuro', 'visual': VISUAL, 'progresso': 'linear',
     'intro': {'titulo': 'Descubra seu nível de inglês e por onde começar no Instalingo',
               'subtitulo': 'Responda 6 perguntas rápidas e receba seu diagnóstico personalizado.',
-              'botao': 'Começar o Quiz', 'rodape': 'Leva menos de 1 minuto'},
+              'botao': 'Começar o Quiz', 'rodape': 'Leva menos de 1 minuto', 'pular': True},
     'perguntas': PERGUNTAS, 'perfis': PERFIS,
     'indice': {'max': 7, 'base': 0, 'teto': 7, 'anel': 'nivel', 'nivel_titulo': 'Seu nível:', 'titulo': 'Seu nível', 'falta': '',
                'recap': 'Você contou que {resposta:motivo}, {resposta:tempo} e {resposta:escuta}. O que mais te trava hoje: **{resposta:trava}**. Isso tem jeito.',
                'faixas': [{'ate': 2, 'perfil': 'aprendiz'}, {'ate': 5, 'perfil': 'intermediario'}, {'ate': 7, 'perfil': 'avancado'}],
                'beneficios_titulo': 'O que o app faz com isso', 'beneficios_de': ['trava', 'motivo']},
     'telas': [
-        {'id': 'preparando', 'depois_de': 'intro', 'tipo': 'carregando', 'titulo': 'Preparando suas perguntas…', 'duracao': 1.2, 'itens': []},
         {'id': 'diagnostico', 'depois_de': 'trava', 'tipo': 'carregando', 'titulo': 'Montando o seu diagnóstico…', 'duracao': 1.4, 'itens': []},
     ],
     'captura': {'ativa': True, 'depois_de': 'trava', 'pedir': ['nome', 'email', 'whatsapp'], 'selo': 'QUIZ COMPLETO!', 'titulo': 'Falta pouco!',
