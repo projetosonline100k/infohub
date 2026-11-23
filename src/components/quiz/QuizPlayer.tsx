@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 // carregando no meio) → captura → resultado e oferta. Na página pública envia
 // a resposta; no Infopro (teste) não grava nada. Com `editar`, o Davi clica num
 // texto pra mudar a palavra e numa imagem pra enviar (onMudar/onImagem).
-export interface FimDoQuiz { escolhas: Record<string, number>; /** Respostas em número (roleta/régua), por id da pergunta. */ numeros: Record<string, number>; perfil: PerfilQuiz | null; contato: Partial<Record<CampoCaptura, string>> }
+export interface FimDoQuiz { escolhas: Record<string, number>; /** Respostas em número (roleta/régua), por id da pergunta. */ numeros: Record<string, number>; perfil: PerfilQuiz | null; contato: Partial<Record<CampoCaptura, string>>; /** Perguntas de "escolha quantas quiser": índices marcados por id da pergunta. */ marcadas: Record<string, number[]>; /** Livros que a pessoa curtiu (ids do catálogo do Instalivros). */ curtidos: number[] }
 
 const ROTULO_CAMPO: Record<CampoCaptura, { rotulo: string; tipo: string; exemplo: string }> = {
   nome: { rotulo: "Seu nome", tipo: "text", exemplo: "Como você se chama?" },
@@ -934,8 +934,8 @@ function Botao({ children, onClick, href }: { children: React.ReactNode; onClick
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
-export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, onPasso, irPara, passoFixo, perfilFixo, respostas }: {
-  titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; teste?: boolean;
+export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, editar = false, onMudar, onImagem, telaCheia = false, onTrocarTela, onEvento, onPasso, irPara, passoFixo, perfilFixo, respostas }: {
+  titulo: string; estrutura: EstruturaQuiz; onFim?: (r: FimDoQuiz) => Promise<void> | void; /** Depois que o lead já foi gravado (contato no meio do quiz), avisa cada resposta nova para completar o lead. */ onAtualizar?: (r: FimDoQuiz) => void; teste?: boolean;
   editar?: boolean; onMudar?: (e: EstruturaQuiz) => void; onImagem?: (arquivo: File) => Promise<string>;
   // Link público no celular (15/10): ocupa a tela toda, barra de progresso fixa no
   // topo e o conteúdo centralizado; a cada tela nova o pai volta a rolagem pro início.
@@ -970,6 +970,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const respostasChave = JSON.stringify(respostas ?? {});
   useEffect(() => { if (respostas) setEscolhas((x) => ({ ...x, ...respostas })); }, [respostasChave]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [marcadas, setMarcadas] = useState<Record<string, number[]>>({});   // perguntas de "escolha quantas quiser"
+  const [curtidos, setCurtidos] = useState<number[]>([]);
   const [numeros, setNumeros] = useState<Record<string, number>>({});   // perguntas de número (roleta/régua); escolhas guarda a faixa do número, para o perfil
   const [desenhou, setDesenhou] = useState(false);   // tela "compromisso": segurou o botão até o fim e já passou ~1,5 s (o botão vira Continuar)
   const [comprometeu, setComprometeu] = useState(false);   // tela "compromisso": acabou de completar (botão ✓ verde + cartão)
@@ -1063,8 +1064,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
   const gravar = async (dados: Partial<Record<CampoCaptura, string>>) => {
     if (enviado.current) return;
     setEnviando(true);
-    try { await onFim?.({ escolhas, numeros, perfil, contato: dados }); enviado.current = true; } finally { setEnviando(false); }
+    try { await onFim?.({ escolhas, numeros, perfil, contato: dados, marcadas, curtidos }); enviado.current = true; } finally { setEnviando(false); }
   };
+  // Lead já gravado e a pessoa seguiu respondendo (objetivos, livros curtidos…): completa o lead com as respostas novas.
+  useEffect(() => {
+    if (editar || !enviado.current) return;
+    onAtualizar?.({ escolhas, numeros, perfil, contato, marcadas, curtidos });
+  }, [escolhas, numeros, marcadas, curtidos]);   // eslint-disable-line react-hooks/exhaustive-deps
   const terminar = async (dados: Partial<Record<CampoCaptura, string>>) => {
     await gravar(dados);
     setPos(passos.length - 1);
@@ -1100,7 +1106,6 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     const k = faixaDoNumero(q, n);
     setEscolhas((x) => { const y = { ...x }; if (k >= 0) y[q.id] = k; else delete y[q.id]; return y; });
   };
-  const [curtidos, setCurtidos] = useState<number[]>([]);
   const [verOferta, setVerOferta] = useState(false);
   const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setVerOferta(false); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
 

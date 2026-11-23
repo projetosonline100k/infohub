@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { QuizPlayer } from "@/components/quiz/QuizPlayer";
 import type { EstruturaQuiz } from "@/lib/quiz/quiz";
+import type { FimDoQuiz } from "@/components/quiz/QuizPlayer";
 import { textoDoNumero } from "@/lib/quiz/numeros";
 import { propagarUtm, utmDaUrl, type Utm } from "@/lib/quiz/utm";
 import { configurarServidor, eventoPixel, iniciarPixels, type EventoPixel } from "@/lib/quiz/pixels";
@@ -32,6 +33,24 @@ function buscarQuiz(slug: string, previa: boolean): Promise<DadosQuiz> {
     buscas.set(k, p);
   }
   return p;
+}
+
+/** Respostas do lead, na ordem das perguntas. Número (roleta/régua) vai como "20 min/dia"; "escolha quantas quiser" vai com as opções separadas por vírgula;
+ * os livros que a pessoa curtiu entram no fim como "Livros que curtiu". */
+async function montarRespostas(est: EstruturaQuiz, r: FimDoQuiz): Promise<{ pergunta: string; resposta: string | null }[]> {
+  const lista = est.perguntas.map((q) => {
+    const marcadas = (r.marcadas?.[q.id] ?? []).map((k) => q.opcoes[k]?.texto).filter(Boolean) as string[];
+    const resposta = r.numeros[q.id] !== undefined ? textoDoNumero(q.numero, r.numeros[q.id]) : marcadas.length ? marcadas.join(", ") : q.opcoes[r.escolhas[q.id]]?.texto ?? null;
+    return { pergunta: q.texto, resposta };
+  });
+  if (r.curtidos?.length) {
+    try {
+      const { default: catalogo } = await import("@/data/livros-instalivros.json");
+      const nomes = r.curtidos.map((id) => (catalogo as { id: number; titulo: string }[]).find((l) => l.id === id)?.titulo).filter(Boolean) as string[];
+      if (nomes.length) lista.push({ pergunta: "Livros que curtiu", resposta: nomes.join(", ") });
+    } catch { /* sem o catálogo: segue só com as perguntas */ }
+  }
+  return lista;
 }
 
 export default function QuizPublico({ previa = false }: { previa?: boolean }) {
@@ -171,9 +190,15 @@ function QuizPublicoConteudo({ slug, previa }: { slug: string; previa: boolean }
         ) : !quiz ? (
           <p className="my-auto text-center opacity-70">Este quiz não está disponível.</p>
         ) : (
-          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={estrutura ?? quiz.estrutura} onFim={async ({ escolhas, numeros, perfil, contato }) => {
-            // Pergunta de número (roleta/régua): vai o número que a pessoa escolheu ("20 min/dia"), não a faixa.
-            const respostas = quiz.estrutura.perguntas.map((q) => ({ pergunta: q.texto, resposta: numeros[q.id] !== undefined ? textoDoNumero(q.numero, numeros[q.id]) : q.opcoes[escolhas[q.id]]?.texto ?? null }));
+          <QuizPlayer telaCheia onTrocarTela={voltarAoTopo} onEvento={registrar} titulo={quiz.titulo} estrutura={estrutura ?? quiz.estrutura}
+            onAtualizar={async (r) => {
+              if (previa) return;
+              const respostas = await montarRespostas(quiz.estrutura, r);
+              await supabase.rpc("atualizar_respostas_quiz" as never, { p_slug: slug, p_sessao: sessao.current, p_respostas: respostas } as never);
+            }}
+            onFim={async (r) => {
+            const { perfil, contato } = r;
+            const respostas = await montarRespostas(quiz.estrutura, r);
             if (previa) return;
             contatoRef.current = contato;
             if (contato.nome || contato.email || contato.whatsapp) eventoPixel(quiz.pixels, "lead", undefined, contato);
