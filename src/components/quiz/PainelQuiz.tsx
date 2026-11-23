@@ -52,7 +52,7 @@ const diaLocal = (t: number) => new Date(t).toLocaleDateString("sv-SE");
 const fracaoDeHoje = () => { const i = new Date(); i.setHours(0, 0, 0, 0); return Math.max(0.01, (Date.now() - i.getTime()) / 86_400_000); };
 const cartao = "rounded-2xl border border-cyan-400/15 bg-gradient-to-br from-[#0c1b27] to-[#08121c] p-4";
 
-export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> & { variante_de?: string | null }; preencher?: boolean }) {
+export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo, "id" | "titulo" | "slug" | "status" | "estrutura"> & { variante_de?: string | null; estrutura_publicada?: EstruturaQuiz | null }; preencher?: boolean }) {
   const [aba, setAba] = useState<Aba>("metricas");
   const [periodo, setPeriodo] = useState<Periodo>(14);
   const [escolhendoDatas, setEscolhendoDatas] = useState(false);
@@ -141,7 +141,8 @@ export function PainelQuiz({ quiz, preencher = false }: { quiz: Pick<QuizResumo,
     setAlvoCheia((dlg) => { if (dlg) dlg.style.overflow = overflowAntes.current; return null; });
     setX1Cheia(false);
   }, []);
-  const estrutura = quiz.estrutura as EstruturaQuiz | null;
+  // As telas e as respostas dos leads vêm da versão PUBLICADA (é a que as pessoas veem); o rascunho pode ter outra ordem e desalinhar a jornada.
+  const estrutura = ((quiz.status === "publicado" && quiz.estrutura_publicada) || quiz.estrutura) as EstruturaQuiz | null;
   const passos = useMemo<PassoInfo[]>(() => {
     if (!estrutura) return [];
     return montarPassos(estrutura, (estrutura.captura?.ativa !== false) && !!estrutura.captura?.pedir?.length).map((p) => ({ rotulo: rotuloDoPasso(estrutura, p), tipo: p.tipo, livros: p.tipo === "tela" && estrutura.telas?.[p.indice]?.tipo === "curtir_livros" }));
