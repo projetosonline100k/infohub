@@ -164,7 +164,7 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
                     {q.estrutura && !esperandoVoce && (
                       <Button size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => setTestando(q)}><Eye className="h-4 w-4" />Testar</Button>
                     )}
-                    {(q.status === "publicado" || q.status === "pausado") && q.atividade_id && !esperandoVoce && (
+                    {(q.status === "publicado" || q.status === "pausado" || q.status === "revisar") && q.atividade_id && !esperandoVoce && (
                       <Button size="sm" variant="outline" className="h-8 gap-1.5" title="Abrir o quiz para editar e conversar com o Roy"
                         onClick={() => setRevisando({ id: q.atividade_id!, titulo: q.titulo })}><Pencil className="h-4 w-4" />Editar</Button>
                     )}
