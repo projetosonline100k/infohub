@@ -2525,9 +2525,9 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
           </div>
           {imagem && (
             <div className="relative -mt-14 min-h-0 flex-1 overflow-hidden">
-              <img src={imagem} alt="" draggable={false} className="absolute inset-0 h-full w-full select-none object-cover object-bottom" />
-              <div className="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-[#0a1020] to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#0a1020] to-transparent" />
+              <img src={imagem} alt="" draggable={false} className="absolute inset-x-0 -bottom-12 top-0 h-[calc(100%+3rem)] w-full select-none object-cover object-bottom" />
+              <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-[#0a1020] to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[#0a1020] to-transparent" />
             </div>
           )}
           <div className={"mx-auto w-full max-w-xl space-y-3 px-4 pb-5 pt-6 " + (imagem ? "" : "rounded-t-3xl bg-[#14110d]/95 backdrop-blur")} role="radiogroup" aria-label="Planos">
