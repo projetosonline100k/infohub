@@ -4,6 +4,8 @@
 export interface ConfigIndice {
   max?: number; base?: number; teto?: number;
   titulo?: string; recap?: string; falta?: string;
+  /** "nivel": o anel mostra o nível do perfil (1 de 3), o selo vira `resumo` do perfil, a linha de baixo vira `frase` do perfil e `nivel_titulo` + `descricao` do perfil viram um cartão (Instalingo, 23/11). */
+  anel?: "nivel"; nivel_titulo?: string;
   faixas: { ate: number; perfil: string }[];
   beneficios_titulo?: string; beneficios_de?: string[];
 }

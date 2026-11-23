@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
 import { DepoimentoCartao, CurtirLivros, SeteDias } from "./TelasPosCaptura";
 import type { LucideIcon } from "lucide-react";
-import { Ban, Calendar, CheckCircle2, Compass, MessageCircle, Moon, RefreshCw, Smartphone, Target, User, Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Lightbulb, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, Headphones, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
+import { Ban, Calendar, CheckCircle2, Compass, MessageCircle, Moon, RefreshCw, Smartphone, Target, User, Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Lightbulb, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, Headphones, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X, Plane, Briefcase, Film, Sprout, Leaf, TreeDeciduous, Crown, Volume1, Volume2, Play, Ear, CircleHelp } from "lucide-react";
 import confetti from "canvas-confetti";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -906,6 +906,7 @@ function ContinuarTravavel({ liberado, falta, onClick, rotulo = "Continuar" }: {
 /** Ícones de linha das opções (opcao.icone). */
 const ICONES_OPCAO: Record<string, LucideIcon> = {
   Lightbulb, Target, MessageCircle, RefreshCw, BookOpen, Calendar, Clock, Ban, Smartphone, Moon, CheckCircle2, User, Compass, Star, Zap, Headphones, ShieldCheck, Lock,
+  Plane, Briefcase, Film, Sparkles, Sprout, Leaf, TreeDeciduous, Crown, VolumeX, Volume1, Volume2, Play, Ear, Mic, CircleHelp,
 };
 
 // Variáveis CSS da identidade visual (usadas por .quiz-visual em index.css).
@@ -2206,7 +2207,9 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
 function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; escolhas: Record<string, number>; f: (s?: string) => string; suave: string }) {
   const { cor, escuro, editar, skin } = useContext(QuizCtx);
   const ind = e.indice!;
-  const nota = notaDoIndice(e, escolhas) ?? 0, max = ind.max ?? 10;
+  const nivel = ind.anel === "nivel";   // anel mostra o nível (1 de 3), não os pontos
+  const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
+  const nota = nivel ? Math.max(0, iPerfil + 1) : (notaDoIndice(e, escolhas) ?? 0), max = nivel ? e.perfis.length : (ind.max ?? 10);
   const [cheio, setCheio] = useState(false);
   useEffect(() => { const t = setTimeout(() => setCheio(true), 150); return () => clearTimeout(t); }, []);
   const R = 52, C = 2 * Math.PI * R;
@@ -2218,7 +2221,8 @@ function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; 
     return b ? [{ titulo: b.titulo ?? "", texto: b.texto ?? "", caminho: `perguntas.${qi}.opcoes.${k}.beneficio` }] : [];
   }) : [];
   const cartoes: { titulo: string; texto: string; caminho?: string }[] = editar ? cartoesEditor : beneficiosDoIndice(ind, e.perguntas, escolhas);
-  const iPerfil = perfil ? e.perfis.findIndex((p) => p.id === perfil.id) : -1;
+  // Com `nivel_titulo`, o cartão "Seu nível" (descrição do perfil) entra em 2º lugar entre os benefícios.
+  if (nivel && ind.nivel_titulo && perfil?.descricao) cartoes.splice(Math.min(1, cartoes.length), 0, { titulo: ind.nivel_titulo, texto: perfil.descricao });
   return (
     <div className={cn("space-y-5", skin && "qs-res")}>
       <div className="text-center">
@@ -2237,13 +2241,15 @@ function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; 
           </div>
         </div>
         <div className="min-w-0 flex-1 space-y-1.5 text-left">
-          <Txt caminho="indice.titulo" valor={ind.titulo} as="p" className={cn("block text-[11px] font-bold uppercase tracking-wider", suave, skin && "qs-kick")} />
+          {nivel && perfil?.resumo
+            ? <Txt caminho={`perfis.${iPerfil}.resumo`} valor={perfil.resumo} as="p" className={cn("block text-[11px] font-bold uppercase tracking-wider", suave, skin && "qs-kick")} />
+            : <Txt caminho="indice.titulo" valor={ind.titulo} as="p" className={cn("block text-[11px] font-bold uppercase tracking-wider", suave, skin && "qs-kick")} />}
           <h2 className={cn("text-2xl font-extrabold leading-tight", skin && "qs-res-h")} style={skin ? undefined : { color: cor }}>{perfil ? <Txt caminho={`perfis.${iPerfil}.nome`} valor={perfil.nome} /> : "Obrigado!"}</h2>
           <TxtNegrito caminho="indice.recap" valor={ind.recap} mostrar={f(ind.recap)} as="p" className={cn("block text-sm leading-snug", skin && "qs-res-p")} />
         </div>
       </div>
-      {(ind.falta || editar) && (
-        <TxtNegrito caminho="indice.falta" valor={ind.falta} mostrar={f(ind.falta)} as="p" className={cn("block rounded-xl px-4 py-3 text-center text-sm font-semibold", skin && "qs-gap")} />
+      {(ind.falta || editar || (nivel && perfil?.frase)) && (
+        <TxtNegrito caminho={!ind.falta && nivel && perfil?.frase ? `perfis.${iPerfil}.frase` : "indice.falta"} valor={!ind.falta && nivel ? perfil?.frase : ind.falta} mostrar={f(!ind.falta && nivel ? perfil?.frase : ind.falta)} as="p" className={cn("block rounded-xl px-4 py-3 text-center text-sm font-semibold", skin && "qs-gap")} />
       )}
       {!!cartoes.length && (
         <section className="space-y-3">
