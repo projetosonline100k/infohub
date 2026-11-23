@@ -2267,7 +2267,7 @@ function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; 
           {cartoes.map((c, k) => (
             <div key={k} className={cn("rounded-2xl border p-4 text-left", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]", skin && "qs-do")}>
               <p className="flex items-center gap-2 text-base font-extrabold">{!skin && <Check className="h-5 w-5 shrink-0" style={{ color: cor }} strokeWidth={3} />}{c.caminho ? <Txt caminho={`${c.caminho}.titulo`} valor={c.titulo} /> : c.titulo}</p>
-              <p className={cn("mt-1 text-sm leading-relaxed", suave)}>{c.caminho ? <Txt caminho={`${c.caminho}.texto`} valor={c.texto} /> : c.texto}</p>
+              <p className={cn("mt-1 whitespace-pre-line text-sm leading-relaxed", suave)}>{c.caminho ? <Txt caminho={`${c.caminho}.texto`} valor={c.texto} /> : c.texto}</p>
             </div>
           ))}
         </section>
