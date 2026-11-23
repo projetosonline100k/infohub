@@ -37,7 +37,7 @@ export interface EntradaPlano {
 export interface LivroDoDia { dia: number; livro: LivroPlano; porque: string[]; pontos: number; /** o tema que ligou o livro a ela: a área que marcou, o livro que curtiu ou o perfil */ tema: string }
 export interface PlanoMontado { dias: LivroDoDia[]; ocultos: number; total: number; temas: string[] }
 
-const titulo = (t: string) => (t === t.toUpperCase() && /[A-ZÀ-Ý]{3}/.test(t) ? t.toLowerCase().replace(/(^|[\s(\-:])([a-zà-ÿ])/g, (_m, a: string, b: string) => a + b.toUpperCase()).replace(/\b(De|Da|Do|Das|Dos|E|A|O|Em|Para|Com|Um|Uma|Por)\b/g, (m) => m.toLowerCase()).replace(/^./, (c) => c.toUpperCase()) : t);
+export const titulo = (t: string) => (t === t.toUpperCase() && /[A-ZÀ-Ý]{3}/.test(t) ? t.toLowerCase().replace(/(^|[\s(\-:])([a-zà-ÿ])/g, (_m, a: string, b: string) => a + b.toUpperCase()).replace(/\b(De|Da|Do|Das|Dos|E|A|O|Em|Para|Com|Um|Uma|Por)\b/g, (m) => m.toLowerCase()).replace(/^./, (c) => c.toUpperCase()) : t);
 export const tituloBonito = titulo;
 
 /** Pontos de um livro para esta pessoa: área marcada pesa mais, depois livro curtido, depois o perfil; a nota do livro desempata. */

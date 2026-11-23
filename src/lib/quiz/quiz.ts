@@ -29,6 +29,8 @@ export interface OpcaoQuiz {
 }
 export interface PerguntaQuiz {
   id: string; texto: string; subtitulo?: string; opcoes: OpcaoQuiz[];
+  /** Texto de cima da pergunta no visual "skin" (padrão "Pergunta N"): ex. "Etapa 1 de 3". */
+  kicker?: string;
   /** Cabeçalho em cima da pergunta (21/11): imagem e título da abertura na mesma tela da 1ª pergunta, sem tela de "Começar" no meio. */
   cabecalho?: { imagem?: string; selo?: string; titulo?: string; subtitulo?: string };
   /** Sem o mascote falando a pergunta (21/11): a pergunta vira título simples, como na abertura do 12min. */
@@ -89,7 +91,7 @@ export interface BarraFixa { rotulo: string; valor: number; legenda?: string; de
 export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
-  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil";
+  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil" | "depoimento" | "curtir_livros";
   /** Tela "amostra" (18/11): "Seu primeiro livro chegou" — toca no livro, abre com Ouvir/Ler e um trecho grátis. */
   amostra?: ConfigAmostra;
   /** Tela "barras_mentores" (15/11): barras de livros por ano dos mentores que a pessoa escolheu. */
@@ -104,6 +106,8 @@ export interface TelaQuiz {
   plano_numeros?: ConfigPlanoNumeros;
   /** Tela "plano_livros" (13/11): como escolher os livros do plano (ver src/lib/quiz/plano.ts). */
   plano?: ConfigPlano;
+  /** Tela "curtir_livros" (V3, 22/11): pilha de livros do catálogo do Instalivros para curtir ou não (👍/👎), como no Blinkist. `pergunta` = id da pergunta (de áreas) que filtra os livros pelo tema escolhido; `quantidade` = quantos cartões (padrão 5). */
+  curtir?: { pergunta?: string; quantidade?: number; etapa?: string };
   titulo?: string; texto?: string; botao?: string;
   /** Tela "previa_perfil" (19/11): o Instalivros comenta no chat o que já deu para notar da pessoa; `perfis` tem as mensagens de cada perfil (id → lista), `padrao` vale quando não há perfil. {nome} e {perfil} funcionam. */
   previa?: { perfis?: Record<string, string[]>; padrao?: string[] };
@@ -150,6 +154,14 @@ export interface OfertaQuiz {
   planos?: PlanoOferta[];
   /** "direto" (18/11, V2): o fim vira 3 lâminas (escolher 1 bônus → o que vai receber → plano anual na cara do gol com "Ver outros planos"). Sem isso, a página completa. */
   modo?: "direto";
+  /** V3 (22/11): no modo "direto" a 2ª lâmina vira "7 dias": um livro por dia (os que a pessoa curtiu e os dos temas de `pergunta`) com o benefício. */
+  /** V3 + modo "direto": texto do botão que sai do resultado (Índice de Leitor) para as lâminas da oferta. */
+  continuar_resultado?: string;
+  /** Modo "direto": linha pequena embaixo do preço (ex.: "Cancele quando quiser"). */
+  cancele_texto?: string;
+  /** Modo "direto": linha miúda no fim da lâmina (ex.: "CNPJ 00.000.000/0001-00"). */
+  rodape_legal?: string;
+  sete_dias?: { titulo?: string; texto?: string; pergunta?: string };
   bonus_escolha_titulo?: string; bonus_escolhido_rotulo?: string; preco_descricao?: string; outros_planos_texto?: string;
   /** Oferta mensal única (V3, 22/11): sem `planos` e sem `modo`, com estes textos. `aviso` e `fechamento_titulo` aceitam **negrito**; `selos` = 4 textos (cadeado, escudo, livro, fone). */
   /** Linha de prova social abaixo do título da oferta (ex.: "Mais de 36 mil leitores já baixaram o Instalivros."). */

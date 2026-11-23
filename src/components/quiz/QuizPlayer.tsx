@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType, type ReactNode } from "react";
+import { DepoimentoCartao, CurtirLivros, SeteDias } from "./TelasPosCaptura";
 import type { LucideIcon } from "lucide-react";
 import { Ban, Calendar, CheckCircle2, Compass, MessageCircle, Moon, RefreshCw, Smartphone, Target, User, Award, BookOpen, BookCopy, Clock, Crosshair, Gamepad2, Lightbulb, Sparkles, Star, Zap, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, Copy, Headphones, ImagePlus, Loader2, Lock, Mic, Plus, Quote, ShieldCheck, Trash2, VolumeX, X } from "lucide-react";
 import confetti from "canvas-confetti";
@@ -1099,7 +1100,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
     const k = faixaDoNumero(q, n);
     setEscolhas((x) => { const y = { ...x }; if (k >= 0) y[q.id] = k; else delete y[q.id]; return y; });
   };
-  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
+  const [curtidos, setCurtidos] = useState<number[]>([]);
+  const [verOferta, setVerOferta] = useState(false);
+  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setVerOferta(false); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
 
   // Resumo do plano em números (tela "perfil" com plano_numeros): só entram as linhas que a pessoa já respondeu.
   const linhasDoPlano = (c: NonNullable<TelaQuiz["plano_numeros"]>): LinhaDoPlano[] => {
@@ -1410,7 +1413,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
                   : quadrosM && livro
                     // 19/11 (Davi: "o título poderia ser a pergunta do Insta, só que maior"): a pergunta vai no balão do mascote, em letra de título, sem título repetido embaixo.
                     ? <MascoteCanto key={passo.indice} quadros={quadrosM}><Txt caminho={`${base}.texto`} valor={q.texto || q.subtitulo || ""} mostrar={f(q.texto || q.subtitulo)} as="h2" className="block text-xl font-bold leading-snug" /></MascoteCanto>
-                    : <>{skin && !q.cabecalho && <div className="qs-kicker">Pergunta {nPergunta}</div>}<Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className={cn("block font-bold leading-snug", q.cabecalho ? "pt-1 text-center text-lg" : "text-2xl", skin && "qs-q")} /></>}
+                    : <>{skin && !q.cabecalho && <div className="qs-kicker">{q.kicker || `Pergunta ${nPergunta}`}</div>}<Txt caminho={`${base}.texto`} valor={q.texto} mostrar={f(q.texto)} as="h2" className={cn("block font-bold leading-snug", q.cabecalho ? "pt-1 text-center text-lg" : "text-2xl", skin && "qs-q")} /></>}
                 {!(quadrosM && livro) && <Txt caminho={`${base}.subtitulo`} valor={q.subtitulo} as="p" className={cn("block text-sm", suave, skin && "qs-hint")} />}
                 {(fotoPergunta || q.imagem_nota) && (livro
                   ? <Img caminho={`${base}.imagem`} url={fotoPergunta} nota={q.imagem_nota} inteira className="mx-auto aspect-[2/3] h-[34dvh] max-h-[320px] shadow-lg" />
@@ -1539,6 +1542,8 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
               const msgs = ((perfil && t.previa?.perfis?.[perfil.id]) || t.previa?.padrao || []).map((m) => f(m).replace(/\{perfil\}/g, perfil?.nome ?? ""));
               return <ChatMensagens key={`${t.id}-${perfil?.id ?? ""}`} avatar={quadrosMascote?.[Q.PARADO]} cor={cor} escuro={escuro} mensagens={msgs} botao={t.botao || "Continuar"} aoContinuar={avancar} atraso={editar ? 0 : 1100} />;
             }
+            if (t.tipo === "depoimento") return <DepoimentoCartao key={t.id} t={t} f={f} rodape={<Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
+            if (t.tipo === "curtir_livros") return <CurtirLivros key={t.id} t={t} e={e} marcadas={marcadas} f={f} onSeguir={avancar} parado={editar} corBotao={v?.botao ?? cor} onCurtir={(id) => setCurtidos((x) => (x.includes(id) ? x : [...x, id]))} />;
             if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar || travado ? undefined : avancar} suave={suave} />;
             if (t.tipo === "perfil") {
               const razoes = razoesDoPerfil(perguntas, escolhas, perfil?.id ?? "");
@@ -1672,11 +1677,12 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
 
           {passo.tipo === "fim" && (
             <div className="space-y-8">
-              {!temTelaResultado && !e.sem_resultado && (
+              {(!temTelaResultado && !e.sem_resultado && !(v3 && e.oferta?.modo === "direto" && verOferta)) && (
                 v3 ? <ResultadoIndice e={e} perfil={perfil} escolhas={escolhas} f={f} suave={suave} />
                   : <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
-              {e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} />
+              {e.oferta?.modo === "direto" && v3 && !temTelaResultado && !e.sem_resultado && !verOferta ? <Botao onClick={() => { setVerOferta(true); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.continuar_resultado" valor={e.oferta.continuar_resultado || "Continuar"} /></Botao>
+                : e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} marcadas={marcadas} curtidos={curtidos} />
                 : ofertaMensalUnica(e) ? <OfertaMensal e={e} f={f} suave={suave} />
                 : e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
                 : perfil?.cta_texto && (
@@ -2421,7 +2427,7 @@ function OfertaMensal({ e, f, suave }: { e: EstruturaQuiz; f: (s?: string) => st
 // anual na cara do gol, com "Ver outros planos" abrindo uma folha de baixo com os planos.
 const slugBonus = (b: { id?: string; titulo: string }) => b.id ?? b.titulo.replace(/^\s*b[ôo]nus\s*\d*\s*[:\-–]?\s*/i, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; f: (s?: string) => string }) {
+function OfertaDireta({ e, perfil, f, marcadas, curtidos }: { e: EstruturaQuiz; perfil: PerfilQuiz | null; f: (s?: string) => string; marcadas: Record<string, number[]>; curtidos: number[] }) {
   const { aoClicarOferta, editar, linkDeCompra } = useContext(QuizCtx);
   const o = e.oferta!;
   const bonus = o.bonus ?? [];
@@ -2485,7 +2491,7 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
         </span>
         <span className="shrink-0 text-right">
           <span className="block text-lg font-extrabold leading-tight">{p.parcelas ? p.parcelas.valor.replace(/^R\$\s*/, "R$ ") : p.preco}</span>
-          <span className="block text-[11px] text-white/60">{p.parcelas ? (o.preco_descricao || "por mês") : "à vista"}</span>
+          <span className="block text-[11px] text-white/60">{p.parcelas ? (o.preco_descricao || "por mês") : (o.preco_descricao || "à vista")}</span>
         </span>
       </button>
     );
@@ -2509,8 +2515,10 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
             {planos.length > 2 && !folha && <button type="button" onClick={() => setFolha(true)} className="block w-full text-center text-xs font-bold uppercase tracking-wide text-white/70 underline underline-offset-4"><Txt caminho="oferta.outros_planos_texto" valor={o.outros_planos_texto ?? "Ver outros planos"} /></button>}
             <button type="button" onClick={() => abrir(sel)} className="flex min-h-14 w-full items-center justify-center rounded-full bg-[#f4efe6] px-6 text-base font-extrabold uppercase tracking-[0.2em] text-[#14110d] transition-transform active:scale-[0.98]">CONTINUAR</button>
             <p className="text-center text-xs text-white/70">
-              {sel?.parcelas ? `${sel.preco} à vista ou ${sel.parcelas.n}x de ${sel.parcelas.valor}` : sel?.preco}
+              {sel?.parcelas ? `${sel.preco} à vista ou ${sel.parcelas.n}x de ${sel.parcelas.valor}` : (planos.length > 1 ? `${sel?.preco ?? ""} ${o.preco_descricao ?? ""}`.trim() : null)}
+              {o.cancele_texto && <span className="mt-0.5 block text-white/70"><Txt caminho="oferta.cancele_texto" valor={o.cancele_texto} /></span>}
               {bonusDoPlano(sel).length > 0 && <span className="mt-0.5 block font-semibold" style={{ color: verde }}>🎁 {bonusDoPlano(sel).length > 1 ? "com os seus bônus" : "com o seu bônus"}: {bonusDoPlano(sel).map(nomeNoPlano).join(" + ")}</span>}
+              {o.rodape_legal && <span className="mt-1.5 block text-[10px] text-white/45"><Txt caminho="oferta.rodape_legal" valor={o.rodape_legal} /></span>}
             </p>
           </div>
         </div>
@@ -2544,7 +2552,11 @@ function OfertaDireta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz |
           <button type="button" className={btn} style={{ background: verde }} disabled={!editar && escolhido == null} onClick={() => setEtapa(1)}>Avançar</button>
         </>
       )}
-      {etapa === 1 && (
+      {etapa === 1 && o.sete_dias && (
+        <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
+          rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Continuar</button>} />
+      )}
+      {etapa === 1 && !o.sete_dias && (
         <>
           {titulo("oferta.recebe_titulo", o.recebe_titulo ?? "Confira o que você vai receber")}
           <ul className="space-y-2.5">
