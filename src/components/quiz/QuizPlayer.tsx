@@ -1195,10 +1195,12 @@ export function QuizPlayer({ titulo, estrutura, onFim, teste, editar = false, on
         ) : skin && v3 && passo.tipo === "pergunta" ? (
           <div className="qs-prog">
             {!editar && !travado && nPergunta > 1 && <button type="button" onClick={voltar} className="qs-back"><span aria-hidden>‹</span> Voltar</button>}
-            <div className="qs-prog-in">
-              <small>Pergunta {nPergunta} de {perguntas.length}</small>
-              <div className="qs-bar"><i style={{ width: `${Math.round((nPergunta / Math.max(1, perguntas.length)) * 100)}%` }} /></div>
-            </div>
+            {!perguntas[passo.indice]?.kicker && (
+              <div className="qs-prog-in">
+                <small>Pergunta {nPergunta} de {perguntas.length}</small>
+                <div className="qs-bar"><i style={{ width: `${Math.round((nPergunta / Math.max(1, perguntas.length)) * 100)}%` }} /></div>
+              </div>
+            )}
           </div>
         ) : v3 && passo.tipo === "pergunta" ? (
           <div className="shrink-0 space-y-2">
@@ -2434,6 +2436,7 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
   const [etapa, setEtapa] = useState(bonus.length ? 0 : 1);
   const [escolhido, setEscolhido] = useState<number | null>(null);
   const [folha, setFolha] = useState(false);
+  const [verApp, setVerApp] = useState(false);
   const [planoId, setPlanoId] = useState<string | null>(null);
   const anual = planos.find((p) => p.destaque) ?? planos[0];
   const plano = planos.find((p) => p.id === planoId) ?? anual;
@@ -2464,7 +2467,11 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
     aoClicarOferta?.(`${p?.nome ?? "Plano"}${lb.length ? ` + bônus ${lb.map(slugBonus).join(",")}` : ""}`);
     if (u && !editar) window.open(u, "_blank", "noopener");
   };
-  const voltar = () => setEtapa((x) => Math.max(bonus.length ? 0 : 1, x - 1));
+  const voltar = () => {
+    if (verApp) { setVerApp(false); return; }
+    if (etapa === 2 && o.app_demo) { setVerApp(true); setEtapa(1); return; }
+    setEtapa((x) => Math.max(bonus.length ? 0 : 1, x - 1));
+  };
   const titulo = (c: string, v: string, m?: string) => <Txt caminho={c} valor={v} mostrar={m} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />;
   const btn = "flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform active:scale-[0.98] disabled:opacity-40";
   const topo = etapa > (bonus.length ? 0 : 1) && (
@@ -2551,9 +2558,17 @@ function OfertaDireta({ e, perfil, f, marcadas, curtidos, aoAvancar }: { e: Estr
           <button type="button" className={btn} style={{ background: verde }} disabled={!editar && escolhido == null} onClick={() => { setEtapa(1); aoAvancar?.(); }}>Avançar</button>
         </>
       )}
-      {etapa === 1 && o.sete_dias && (
+      {etapa === 1 && verApp && o.app_demo && (
+        <>
+          <Txt caminho="oferta.app_demo.titulo" valor={o.app_demo.titulo ?? "Veja o Instalivros por dentro"} as="h2" className="block text-center text-2xl font-extrabold leading-tight" />
+          {o.app_demo.texto && <Txt caminho="oferta.app_demo.texto" valor={o.app_demo.texto} as="p" className="block text-center text-sm leading-snug text-white/80" />}
+          <video src={o.app_demo.url || o.video?.url} poster={o.app_demo.poster || o.video?.poster} autoPlay loop muted playsInline controls preload="auto" className="mx-auto max-h-[52dvh] w-full max-w-xs rounded-2xl bg-black object-contain" />
+          <button type="button" className={btn} style={{ background: verde }} onClick={() => { setVerApp(false); setEtapa(2); window.scrollTo({ top: 0 }); }}>Continuar</button>
+        </>
+      )}
+      {etapa === 1 && !verApp && o.sete_dias && (
         <SeteDias e={e} o={o} marcadas={marcadas} curtidos={curtidos} f={f}
-          rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => setEtapa(2)}>Continuar</button>} />
+          rodape={<button type="button" className={btn} style={{ background: verde }} onClick={() => { if (o.app_demo) { setVerApp(true); window.scrollTo({ top: 0 }); } else setEtapa(2); }}>Continuar</button>} />
       )}
       {etapa === 1 && !o.sete_dias && (
         <>
