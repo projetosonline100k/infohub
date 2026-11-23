@@ -158,7 +158,7 @@ export interface LeadSimples { criada_em: string; utm?: UtmBruta | null }
 const diaDe = (iso: string) => new Date(Date.parse(iso) - 3 * 3600_000).toISOString().slice(0, 10);
 
 /** Funil por origem resolvida: sessões (pelo dia do primeiro evento), leads (pelo dia do lead) e compras (vendas líquidas do período). */
-export function funilPorOrigem(eventos: EventoSimples[], leads: LeadSimples[], vendas: VendasAtribuidas, est: Estrutura, de: string, ate: string) {
+export function funilPorOrigem(eventos: EventoSimples[], leads: LeadSimples[], vendas: VendasAtribuidas, est: Estrutura, de: string, ate: string, minimoComecou = 1) {
   const acum: Record<Nivel, Map<string, Funil>> = { campanha: new Map(), conjunto: new Map(), anuncio: new Map() };
   const extra: Record<"sem_origem" | "nao_identificada" | "ambiguo", Funil> = { sem_origem: funilZero(), nao_identificada: funilZero(), ambiguo: funilZero() };
   const total = funilZero();
@@ -187,7 +187,7 @@ export function funilPorOrigem(eventos: EventoSimples[], leads: LeadSimples[], v
     if (dia < de || dia > ate) continue;
     const o = resolverOrigem(s.utm, est);
     aplicar(o, "visitas");
-    if (s.max >= 1) aplicar(o, "comecaram");
+    if (s.max >= minimoComecou) aplicar(o, "comecaram");
     if (s.fim) aplicar(o, "terminaram");
     if (s.cta) aplicar(o, "cliquesOferta");
   }
@@ -202,12 +202,14 @@ export interface EntradaTabela {
   insights: Record<Nivel, InsightDia[]>;
   vendas: VendaTrafego[]; eventos: EventoSimples[]; leads: LeadSimples[];
   de: string; ate: string;
+  /** Passo mínimo para valer "começou": 2 quando o quiz pula a abertura (a 1ª pergunta já registra passo 1 sozinha). */
+  minimoComecou?: number;
 }
 export interface Tabela { linhas: LinhaTrafego[]; extras: LinhaTrafego[]; total: LinhaTrafego; atribuidas: VendasAtribuidas }
 
 export function montarTabela(e: EntradaTabela): Tabela {
   const atrib = atribuirVendas(e.vendas, e.est, e.de, e.ate);
-  const fun = funilPorOrigem(e.eventos, e.leads, atrib, e.est, e.de, e.ate);
+  const fun = funilPorOrigem(e.eventos, e.leads, atrib, e.est, e.de, e.ate, e.minimoComecou);
   const gastos: Record<Nivel, Map<string, { gasto: number; impressoes: number; cliques: number }>> = { campanha: new Map(), conjunto: new Map(), anuncio: new Map() };
   for (const nivel of ["campanha", "conjunto", "anuncio"] as const) {
     for (const i of e.insights[nivel] ?? []) {

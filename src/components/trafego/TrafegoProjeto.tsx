@@ -34,6 +34,7 @@ interface Base {
   insights: Record<Nivel, InsightDia[]>;
   vendas: EventoVenda[]; eventos: EventoSimples[]; leads: LeadSimples[];
   slugQuiz: string | null;
+  minimoComecou: number;
 }
 
 /** Aba Tráfego do Escritório (20/11/2026, Davi: "UTMify Hub"): gasto da Meta + vendas por UTM + funil por anúncio + gerador de UTM + controles. */
@@ -92,7 +93,7 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
     const [meta, prods, quizzes, custosRes] = await Promise.all([
       metaP,
       db.from("produtos_cliente").select("id").eq("cliente_id", clienteId),
-      db.from("quizzes").select("id, slug, status, variante_de").eq("cliente_id", clienteId).neq("status", "cancelado"),
+      db.from("quizzes").select("id, slug, status, variante_de, intro:estrutura->intro").eq("cliente_id", clienteId).neq("status", "cancelado"),
       db.from("trafego_custos").select("taxa_plataforma_pct, imposto_pct, outros_custos_dia").eq("cliente_id", clienteId).maybeSingle(),
     ]);
     if (custosRes.error) setCustosDisponivel(false);
@@ -101,7 +102,7 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
     const insights: Base["insights"] = { campanha: [], conjunto: [], anuncio: [] };
     for (const x of (ins?.data ?? []) as (InsightDia & { nivel: Nivel })[]) insights[x.nivel]?.push({ ref: x.ref, dia: x.dia, gasto: +x.gasto, impressoes: +x.impressoes, cliques: +x.cliques, resultados: +x.resultados });
     prodIds.current = ((prods.data ?? []) as { id: string }[]).map((p) => p.id);
-    const quizList = (quizzes.data ?? []) as { id: string; slug: string; status: string; variante_de: string | null }[];
+    const quizList = (quizzes.data ?? []) as { id: string; slug: string; status: string; variante_de: string | null; intro?: { pular?: boolean } | null }[];
     const quizIds = quizList.map((q) => q.id);
     const [vs, ev, ld] = await Promise.all([
       prodIds.current.length ? db.from("vendas_plataforma_eventos").select(COLUNAS_VENDA).in("produto_id", prodIds.current).gte("data", de).order("recebido_em", { ascending: false }).limit(20000) : Promise.resolve({ data: [] }),
@@ -115,6 +116,7 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
       anuncios: ((anu?.data ?? []) as { anuncio_ref: string; conjunto_ref: string; campanha_ref: string; nome: string; status: string | null; miniatura: string | null }[]).map((x) => ({ ref: x.anuncio_ref, nome: x.nome, conjunto_ref: x.conjunto_ref, campanha_ref: x.campanha_ref, status: x.status, miniatura: x.miniatura })),
       insights, vendas: (vs.data ?? []) as EventoVenda[], eventos: (ev.data ?? []) as EventoSimples[], leads: (ld.data ?? []) as LeadSimples[],
       slugQuiz: publicado?.slug ?? null,
+      minimoComecou: quizList.length > 0 && quizList.every((q) => q.intro?.pular) ? 2 : 1,
     });
     setAtualizadoEm(Date.now());
   }, [contaRef, clienteId]);
@@ -164,12 +166,12 @@ export function TrafegoProjeto({ clienteId }: { clienteId: string }) {
     for (const c of base.campanhas) statusDe[`campanha:${c.ref}`] = { status: c.status, orcamento: c.orcamento };
     for (const c of base.conjuntos) statusDe[`conjunto:${c.ref}`] = { status: c.status, orcamento: c.orcamento };
     for (const a of base.anuncios) statusDe[`anuncio:${a.ref}`] = { status: a.status, orcamento: null };
-    return montarTabela({ est: { campanhas: base.campanhas, conjuntos: base.conjuntos, anuncios: base.anuncios, statusDe }, insights: base.insights, vendas: base.vendas, eventos: base.eventos, leads: base.leads, de, ate });
+    return montarTabela({ est: { campanhas: base.campanhas, conjuntos: base.conjuntos, anuncios: base.anuncios, statusDe }, insights: base.insights, vendas: base.vendas, eventos: base.eventos, leads: base.leads, de, ate, minimoComecou: base.minimoComecou });
   }, [base, de, ate]);
   const tabelaAnt: Tabela | null = useMemo(() => {   // só para comparar o funil com o período anterior
     if (!base) return null;
     const ant = periodoAnterior(de, ate);
-    return montarTabela({ est: { campanhas: [], conjuntos: [], anuncios: [] }, insights: { campanha: [], conjunto: [], anuncio: [] }, vendas: base.vendas, eventos: base.eventos, leads: base.leads, de: ant.de, ate: ant.ate });
+    return montarTabela({ est: { campanhas: [], conjuntos: [], anuncios: [] }, insights: { campanha: [], conjunto: [], anuncio: [] }, vendas: base.vendas, eventos: base.eventos, leads: base.leads, de: ant.de, ate: ant.ate, minimoComecou: base.minimoComecou });
   }, [base, de, ate]);
   const estrutura = useMemo(() => ({ campanhas: base?.campanhas ?? [], conjuntos: base?.conjuntos ?? [], anuncios: base?.anuncios ?? [] }), [base]);
   const miniaturas = useMemo(() => Object.fromEntries((base?.anuncios ?? []).map((a) => [a.ref, a.miniatura])), [base]);
