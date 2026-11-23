@@ -104,7 +104,7 @@ const CAPAS = ["#e4005a", "#2f6fed", "#e8861a", "#17a673", "#7a45e0"];
 
 /** Pilha de livros do catálogo do Instalivros para curtir ou não (como no Blinkist). Mostra os livros dos temas que a pessoa marcou. */
 export function CurtirLivros({ t, e, marcadas, f, onSeguir, parado, corBotao, onCurtir }: {
-  t: TelaQuiz; e: EstruturaQuiz; marcadas: Record<string, number[]>; f: (s?: string) => string; onSeguir: () => void; parado: boolean; corBotao: string; onCurtir?: (id: number) => void;
+  t: TelaQuiz; e: EstruturaQuiz; marcadas: Record<string, number[]>; f: (s?: string) => string; onSeguir: () => void; parado: boolean; corBotao: string; onCurtir?: (id: number, curtiu: boolean) => void;
 }) {
   const [catalogo, setCatalogo] = useState<LivroPlano[] | null>(null);
   const [i, setI] = useState(0);
@@ -117,7 +117,7 @@ export function CurtirLivros({ t, e, marcadas, f, onSeguir, parado, corBotao, on
   const decidir = (r: "sim" | "nao") => {
     if (saindo) return;
     setSaindo(r);
-    if (r === "sim" && l) onCurtir?.(l.id);
+    if (l) onCurtir?.(l.id, r === "sim");
     window.setTimeout(() => { setSaindo(null); if (i + 1 >= livros.length) onSeguir(); else setI(i + 1); }, 260);
   };
   const tema = l?.temas.find((x) => areas.includes(x as Tema)) ?? l?.temas[0];

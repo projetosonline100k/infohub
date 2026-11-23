@@ -43,11 +43,13 @@ async function montarRespostas(est: EstruturaQuiz, r: FimDoQuiz): Promise<{ perg
     const resposta = r.numeros[q.id] !== undefined ? textoDoNumero(q.numero, r.numeros[q.id]) : marcadas.length ? marcadas.join(", ") : q.opcoes[r.escolhas[q.id]]?.texto ?? null;
     return { pergunta: q.texto, resposta };
   });
-  if (r.curtidos?.length) {
+  if (r.curtidos?.length || r.rejeitados?.length) {
     try {
       const { default: catalogo } = await import("@/data/livros-instalivros.json");
-      const nomes = r.curtidos.map((id) => (catalogo as { id: number; titulo: string }[]).find((l) => l.id === id)?.titulo).filter(Boolean) as string[];
-      if (nomes.length) lista.push({ pergunta: "Livros que curtiu", resposta: nomes.join(", ") });
+      const nomes = (ids: number[]) => ids.map((id) => (catalogo as { id: number; titulo: string }[]).find((l) => l.id === id)?.titulo).filter(Boolean) as string[];
+      const sim = nomes(r.curtidos ?? []), nao = nomes(r.rejeitados ?? []);
+      if (sim.length) lista.push({ pergunta: "Livros que curtiu", resposta: sim.join(", ") });
+      if (nao.length) lista.push({ pergunta: "Livros que não curtiu", resposta: nao.join(", ") });
     } catch { /* sem o catálogo: segue só com as perguntas */ }
   }
   return lista;

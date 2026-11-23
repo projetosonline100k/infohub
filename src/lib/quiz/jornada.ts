@@ -37,7 +37,9 @@ export function jornadaDoLead(lead: Pick<LeadQuiz, "respostas" | "sessao" | "cri
   const perguntasIdx = passos.map((p, i) => (p.tipo === "pergunta" ? i : -1)).filter((i) => i >= 0);
   const respostaDe = new Map<number, { pergunta: string; resposta: string | null }>();
   perguntasIdx.forEach((idx, k) => { const r = lead.respostas?.[k]; if (r) respostaDe.set(idx, r); });
-  const livrosCurtidos = lead.respostas?.find((r) => r.pergunta === "Livros que curtiu")?.resposta ?? null;
+  const sim = lead.respostas?.find((r) => r.pergunta === "Livros que curtiu")?.resposta ?? null;
+  const nao = lead.respostas?.find((r) => r.pergunta === "Livros que não curtiu")?.resposta ?? null;
+  const livrosCurtidos = sim || nao ? [sim ? `👍 ${sim}` : "", nao ? `👎 ${nao}` : ""].filter(Boolean).join("  ·  ") : null;
   // Sem eventos (lead antigo): só dá para saber até qual pergunta respondeu.
   let ultimoPasso = temEventos ? Math.max(-1, ...abriu.keys()) : -1;
   if (!temEventos && respostaDe.size) ultimoPasso = Math.max(...respostaDe.keys());
