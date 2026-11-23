@@ -166,7 +166,7 @@ export interface OfertaQuiz {
   app_demo?: { titulo?: string; texto?: string; url?: string; poster?: string };   // vídeo do app antes do preço (sempre com Continuar liberado)
   /** Depois do bônus mostra "O que você recebe" (itens + bônus escolhido) em vez da lâmina de 7 dias. */
   mostrar_recebe?: boolean;
-  /** Oferta única: o vídeo vira uma lâmina própria entre o resultado e a oferta (com botão `video_botao`; o do resultado é `continuar_resultado`). */
+  /** Oferta única: o vídeo vira uma lâmina própria antes da página que junta o diagnóstico e a oferta (botão `video_botao`). */
   video_antes?: boolean; video_botao?: string;
   /** Imagem acima dos planos; quando existe, substitui o vídeo de fundo. */
   imagem_planos?: string;

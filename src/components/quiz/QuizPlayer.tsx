@@ -1110,9 +1110,9 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
     setEscolhas((x) => { const y = { ...x }; if (k >= 0) y[q.id] = k; else delete y[q.id]; return y; });
   };
   const [verOferta, setVerOferta] = useState(false);
-  // Oferta única com `video_antes`: resultado → lâmina do vídeo → oferta (0, 1, 2).
-  const [faseFim, setFaseFim] = useState(0);
-  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setRejeitados([]); setVerOferta(false); setFaseFim(0); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
+  // Oferta única com `video_antes`: lâmina do vídeo (1) → página com o diagnóstico e a oferta juntos (2).
+  const [faseFim, setFaseFim] = useState(1);
+  const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setRejeitados([]); setVerOferta(false); setFaseFim(1); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
 
   // Resumo do plano em números (tela "perfil" com plano_numeros): só entram as linhas que a pessoa já respondeu.
   const linhasDoPlano = (c: NonNullable<TelaQuiz["plano_numeros"]>): LinhaDoPlano[] => {
@@ -1700,7 +1700,6 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
                 v3 ? <ResultadoIndice e={e} perfil={perfil} escolhas={escolhas} f={f} suave={suave} />
                   : <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
-              {laminaVideo && faseFim === 0 && !editar && <Botao onClick={() => { setFaseFim(1); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.continuar_resultado" valor={e.oferta?.continuar_resultado ?? "Continuar"} /></Botao>}
               {laminaVideo && faseFim < 2 && !editar ? null : e.oferta?.modo === "direto" ? <OfertaDireta e={e} perfil={perfil} f={f} marcadas={marcadas} curtidos={curtidos} aoAvancar={() => { setVerOferta(true); window.scrollTo({ top: 0 }); }} />
                 : ofertaMensalUnica(e) ? <OfertaMensal e={e} f={f} suave={suave} semVideo={laminaVideo && !editar} />
                 : e.oferta ? <Oferta e={e} perfil={perfil} iPerfil={iPerfil} f={f} suave={suave} />
