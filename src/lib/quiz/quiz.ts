@@ -170,8 +170,8 @@ export interface OfertaQuiz {
   video_antes?: boolean; video_botao?: string;
   /** Imagem acima dos planos; quando existe, substitui o vídeo de fundo. */
   imagem_planos?: string;
-  /** Foto redonda de quem apresenta a oferta (Mariah no Instalingo), acima do título; `texto` é a frase ao lado. */
-  mentora?: { foto: string; nome?: string; texto?: string };
+  /** Bloco "Quem é …" depois da oferta, com a foto redonda (Mariah no Instalingo). */
+  mentora?: { foto: string; nome?: string; rotulo?: string; titulo?: string; texto?: string; chips?: string[] };
   sete_dias?: { titulo?: string; texto?: string; pergunta?: string };
   bonus_escolha_titulo?: string; bonus_escolhido_rotulo?: string; preco_descricao?: string; outros_planos_texto?: string;
   /** Oferta mensal única (V3, 22/11): sem `planos` e sem `modo`, com estes textos. `aviso` e `fechamento_titulo` aceitam **negrito**; `selos` = 4 textos (cadeado, escudo, livro, fone). */

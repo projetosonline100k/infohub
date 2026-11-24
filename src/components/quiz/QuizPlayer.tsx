@@ -2308,12 +2308,6 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
     return (
       <div className="qs-oferta">
         <section className="qs-offer" id="oferta" style={e.visual?.oferta_fundo ? { background: e.visual.oferta_fundo } : undefined}>
-          {o.mentora?.foto && (
-            <div className="mx-auto mb-3 flex items-center justify-center gap-3 text-left">
-              <img src={o.mentora.foto} alt={o.mentora.nome ?? ""} draggable={false} className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-white/30" />
-              <div className="text-sm leading-snug">{o.mentora.nome && <b className="block">{o.mentora.nome}</b>}{o.mentora.texto && <span className="opacity-80">{o.mentora.texto}</span>}</div>
-            </div>
-          )}
           <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="qs-offer-h block" />
           {(o.prova_social || editar) && <Txt caminho="oferta.prova_social" valor={o.prova_social} as="p" className="qs-soc block" />}
           {(o.aviso || editar) && (
@@ -2335,6 +2329,16 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
             </div>
           )}
         </section>
+        {o.mentora?.foto && (
+          <section className="mx-auto mt-4 w-full max-w-xl space-y-3 rounded-2xl border border-white/15 bg-white/5 p-4">
+            <div className="flex items-center gap-3">
+              <img src={o.mentora.foto} alt={o.mentora.nome ?? ""} draggable={false} className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-white/30" />
+              <div><p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">{o.mentora.rotulo ?? "Sua professora"}</p><h3 className="text-lg font-extrabold leading-tight"><Txt caminho="oferta.mentora.titulo" valor={o.mentora.titulo ?? `Quem é a ${o.mentora.nome ?? ""}`} /></h3></div>
+            </div>
+            <Txt caminho="oferta.mentora.texto" valor={o.mentora.texto} as="p" className="block text-sm leading-relaxed opacity-90" />
+            {!!o.mentora.chips?.length && <div className="flex flex-wrap gap-2">{o.mentora.chips.map((c, k) => <span key={k} className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold"><Txt caminho={`oferta.mentora.chips.${k}`} valor={c} /></span>)}</div>}
+          </section>
+        )}
         {o.video?.url && !semVideo && (
           <div className="qs-video">
             <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
