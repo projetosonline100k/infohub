@@ -2308,6 +2308,12 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
     return (
       <div className="qs-oferta">
         <section className="qs-offer" id="oferta" style={e.visual?.oferta_fundo ? { background: e.visual.oferta_fundo } : undefined}>
+          {o.mentora?.foto && (
+            <div className="mx-auto mb-3 flex items-center justify-center gap-3 text-left">
+              <img src={o.mentora.foto} alt={o.mentora.nome ?? ""} draggable={false} className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-white/30" />
+              <div className="text-sm leading-snug">{o.mentora.nome && <b className="block">{o.mentora.nome}</b>}{o.mentora.texto && <span className="opacity-80">{o.mentora.texto}</span>}</div>
+            </div>
+          )}
           <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="qs-offer-h block" />
           {(o.prova_social || editar) && <Txt caminho="oferta.prova_social" valor={o.prova_social} as="p" className="qs-soc block" />}
           {(o.aviso || editar) && (
