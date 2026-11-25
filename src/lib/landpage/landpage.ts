@@ -46,9 +46,24 @@ export function blocoNovo(tipo: TipoBloco): Bloco {
 
 export const modeloLandpage = (): ConfigLandpage => ({ escuro: true, cor: "#16a34a", blocos: (["titulo", "vsl", "lista", "apresentacao", "depoimentos", "preco", "faq"] as TipoBloco[]).map(blocoNovo) });
 
-/** Vídeo que dá para embutir: YouTube e Vimeo viram iframe; o resto (mp4, Backblaze) toca no player da página. */
-export function videoEmbutido(url: string): { tipo: "iframe" | "arquivo"; src: string } {
+/** Vídeo que dá para embutir: Vturb vira o player dela; YouTube e Vimeo viram iframe; o resto (mp4, Backblaze) toca no player da página. */
+export type VideoEmbutido = { tipo: "iframe" | "arquivo"; src: string } | { tipo: "vturb"; conta: string; id: string };
+
+/** Código do player da Vturb (o trecho <vturb-smartplayer…> que ela entrega, ou só o link player.js) → conta e id. Só aceita o formato oficial. */
+export function vturbDoTexto(texto: string): { conta: string; id: string } | null {
+  const m = texto.match(/scripts\.converteai\.net\/([0-9a-f-]{36})\/players\/([0-9a-f]{24})\//i);
+  return m ? { conta: m[1].toLowerCase(), id: m[2].toLowerCase() } : null;
+}
+/** Ao colar o código inteiro da Vturb no campo, guarda só o link do player (curto e sem HTML solto). */
+export function normalizarVideo(texto: string): string {
+  const v = vturbDoTexto(texto);
+  return v ? `https://scripts.converteai.net/${v.conta}/players/${v.id}/v4/player.js` : texto;
+}
+
+export function videoEmbutido(url: string): VideoEmbutido {
   const u = url.trim();
+  const vt = vturbDoTexto(u);
+  if (vt) return { tipo: "vturb", ...vt };
   const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,15})/);
   if (yt) return { tipo: "iframe", src: `https://www.youtube.com/embed/${yt[1]}?rel=0&modestbranding=1` };
   const vm = u.match(/vimeo\.com\/(?:video\/)?(\d{5,12})/);

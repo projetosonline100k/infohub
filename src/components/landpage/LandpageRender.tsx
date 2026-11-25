@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { createElement, useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
+import { isDesktop } from "@/lib/platform";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 import { comUtm, type Utm } from "@/lib/quiz/utm";
 import { formatar } from "@/lib/landpage/formato";
@@ -42,7 +44,7 @@ function Temporizado({ b, mostrarTudo, children }: { b: Bloco; mostrarTudo?: boo
 function Botao({ texto, url, cor, utm, onEvento }: { texto?: string; url?: string; cor: string; utm: Utm; onEvento?: Props["onEvento"] }) {
   const href = linkSeguro(url);
   return (
-    <a href={href === "#" ? href : comUtm(href, utm)} onClick={() => onEvento?.("cta")} className="mx-auto block w-full max-w-md rounded-xl px-6 py-4 text-center text-lg font-bold text-white shadow-lg transition-transform hover:scale-[1.02]" style={{ background: cor, boxShadow: `0 8px 28px -10px ${cor}` }}>
+    <a href={href === "#" ? href : comUtm(href, utm)} onClick={(ev) => { onEvento?.("cta"); if (isDesktop() && href !== "#") { ev.preventDefault(); void abrirLinkExterno(comUtm(href, utm)); } }} className="mx-auto block w-full max-w-md rounded-xl px-6 py-4 text-center text-lg font-bold text-white shadow-lg transition-transform hover:scale-[1.02]" style={{ background: cor, boxShadow: `0 8px 28px -10px ${cor}` }}>
       {texto || "Quero começar"}
     </a>
   );
@@ -50,6 +52,19 @@ function Botao({ texto, url, cor, utm, onEvento }: { texto?: string; url?: strin
 
 function Paragrafos({ texto, className, grifo }: { texto?: string; className?: string; grifo?: string }) {
   return <div className={cn("space-y-3 text-base leading-relaxed", className)}>{(texto ?? "").split(/\n\s*\n/).map((p, i) => <p key={i} className="whitespace-pre-line">{formatar(p, grifo)}</p>)}</div>;
+}
+
+/** Player da Vturb: o elemento <vturb-smartplayer id="vid-…"> mais o player.js da conta dela, carregado uma vez por vídeo. */
+function VturbPlayer({ conta, id }: { conta: string; id: string }) {
+  useEffect(() => {
+    const src = `https://scripts.converteai.net/${conta}/players/${id}/v4/player.js`;
+    if (document.querySelector(`script[src="${src}"]`)) return;
+    const sc = document.createElement("script");
+    sc.src = src; sc.async = true;
+    document.head.appendChild(sc);
+  }, [conta, id]);
+  return createElement("vturb-smartplayer", { id: `vid-${id}`, style: { display: "block", margin: "0 auto", width: "100%" } },
+    createElement("div", { style: { position: "relative", width: "100%", padding: "56.25% 0 0", zIndex: 0, backgroundColor: "black" } }));
 }
 
 function Vsl({ b, cor, grifoVsl, utm, onEvento }: { b: Bloco; cor: string; grifoVsl?: string; utm: Utm; onEvento?: Props["onEvento"] }) {
@@ -66,8 +81,9 @@ function Vsl({ b, cor, grifoVsl, utm, onEvento }: { b: Bloco; cor: string; grifo
   return (
     <section className="space-y-5">
       {b.titulo && <h2 className="text-center text-2xl font-extrabold leading-tight">{formatar(b.titulo, grifoVsl)}</h2>}
-      <div className="mx-auto aspect-video w-full max-w-3xl overflow-hidden rounded-2xl bg-black">
+      <div className={cn("mx-auto w-full max-w-3xl overflow-hidden rounded-2xl bg-black", v?.tipo !== "vturb" && "aspect-video")}>
         {!v ? <div className="flex h-full items-center justify-center text-sm text-white/50">Cole o link do vídeo no editor</div>
+          : v.tipo === "vturb" ? <VturbPlayer key={v.id} conta={v.conta} id={v.id} />
           : v.tipo === "iframe" ? <iframe src={v.src} title="Vídeo" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="h-full w-full border-0" onLoad={() => undefined} />
           : (
             <video src={v.src} poster={b.poster || undefined} controls playsInline preload="metadata" className="h-full w-full"

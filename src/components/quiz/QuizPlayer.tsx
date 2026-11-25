@@ -19,6 +19,8 @@ import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
 import { OrbitaTrio } from "./OrbitaQuiz";
 import { ChatMensagens, ChatPergunta, type HistoricoChat } from "./ChatPergunta";
 import { BotaoSegurar, CartaoCompromisso, BarrasMentores, DepoimentoAnimado, PlanoEmNumeros, ProjecaoLivros, ReguaNumero, RoletaNumero, type BarraMentor, type LinhaDoPlano } from "./NumerosQuiz";
+import { isDesktop } from "@/lib/platform";
+import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 
 // O quiz rodando: abertura → perguntas (com telas de respiro, especialista e
@@ -925,13 +927,16 @@ function useFontesDoVisual(url?: string) {
   }, [url]);
 }
 
+/** No app desktop um link com target="_blank" abre uma janela do próprio Infopro (sem barra, presa dentro do app: 25/11, checkout da Eduzz). Lá o clique vai para o navegador padrão. */
+const noApp = (url: string) => (ev: React.MouseEvent) => { if (isDesktop()) { ev.preventDefault(); void abrirLinkExterno(url); } };
+
 function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
   const { cor: corQuiz, editar, aoClicarOferta, linkDeCompra, botao } = useContext(QuizCtx);
   const cor = botao?.fundo ?? corQuiz;
   const cls = cn("qs-cta h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]", !botao && "text-white");
   const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(botao && { color: botao.texto }) };
   if (editar) return <div className={cn(cls, "flex items-center justify-center px-4 py-3")} style={estilo}>{children}</div>;
-  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.()}>{children}</a></Button>;
+  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={(ev) => { aoClicarOferta?.(); noApp(linkDeCompra ? linkDeCompra(href) : href)(ev); }}>{children}</a></Button>;
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
@@ -2122,7 +2127,7 @@ function Oferta({ e, perfil, f }: { e: EstruturaQuiz; perfil: PerfilQuiz | null;
         )}
       </div>}
       {url
-        ? <a href={url} target="_blank" rel="noreferrer" onClick={() => aoClicarOferta?.(plano?.nome)} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
+        ? <a href={url} target="_blank" rel="noreferrer" onClick={(ev) => { aoClicarOferta?.(plano?.nome); noApp(url)(ev); }} className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: verde, boxShadow: `0 8px 24px -8px ${verde}` }}><Txt caminho="oferta.cta_texto" valor={texto} /></a>
         : <div className="flex min-h-12 w-full items-center justify-center rounded-xl px-4 py-3 text-base font-bold text-[#0a1020] opacity-90" style={{ background: verde }}><Txt caminho="oferta.cta_texto" valor={texto} />{!editar && <span className="ml-2 text-xs font-medium">(link ainda não definido)</span>}</div>}
       {o.garantia && (
         <div className="flex items-start gap-3 rounded-2xl border p-4 text-sm" style={{ borderColor: `${verde}55`, background: `${verde}10` }}>

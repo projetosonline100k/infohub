@@ -11,7 +11,7 @@ import { LandpageRender } from "@/components/landpage/LandpageRender";
 import { aplicarMarca, type Marca } from "@/lib/landpage/formato";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
-import { ROTULO_BLOCO, blocoNovo, linkDaLandpage, modeloLandpage, type Bloco, type ConfigLandpage, type LandpageResumo, type TipoBloco } from "@/lib/landpage/landpage";
+import { ROTULO_BLOCO, blocoNovo, normalizarVideo, linkDaLandpage, modeloLandpage, type Bloco, type ConfigLandpage, type LandpageResumo, type TipoBloco } from "@/lib/landpage/landpage";
 
 // Páginas → Land page (25/11/2026, Davi): página comprida montada em blocos, com VSL no topo, publicada em /p/<slug>. As tabelas ainda não estão nos tipos gerados.
 const db = supabase as unknown as SupabaseClient;
@@ -220,12 +220,12 @@ function CamposBloco({ b, mudar }: { b: Bloco; mudar: (f: (b: Bloco) => void) =>
   const t = (k: "titulo" | "subtitulo" | "url" | "video" | "poster" | "botao_texto" | "botao_url" | "de" | "por" | "detalhe" | "garantia" | "nome" | "foto", r: string, ph?: string) => (
     <Rotulo r={r}>{k === "titulo" || k === "subtitulo" || k === "detalhe" || k === "garantia"
       ? <CampoFormatado valor={b[k] ?? ""} placeholder={ph} onChange={(v) => mudar((x) => { x[k] = v; })} />
-      : <input className={campo} placeholder={ph} value={b[k] ?? ""} onChange={(e) => mudar((x) => { x[k] = e.target.value; })} />}</Rotulo>
+      : <input className={campo} placeholder={ph} value={b[k] ?? ""} onChange={(e) => mudar((x) => { x[k] = k === "video" ? normalizarVideo(e.target.value) : e.target.value; })} />}</Rotulo>
   );
   switch (b.tipo) {
     case "vsl": return <>
       {t("titulo", "Título acima do vídeo")}
-      {t("video", "Link do vídeo (mp4, Backblaze, YouTube ou Vimeo)", "https://…")}
+      {t("video", "Vídeo: cole o código da Vturb (ou o link mp4, YouTube ou Vimeo)", "<vturb-smartplayer …> ou https://…")}
       {t("poster", "Capa do vídeo (link da imagem, opcional)", "https://…")}
       {t("botao_texto", "Texto do botão")}{t("botao_url", "Link de compra", "https://pay.kiwify.com.br/…")}
       <Rotulo r="Botão aparece após quantos minutos de vídeo? (0 = já aparece)"><input type="number" min={0} step={0.5} className={campo} value={minutosDe(b.botao_apos)} onChange={(e) => mudar((x) => { x.botao_apos = Math.round(Math.max(0, Number(e.target.value) || 0) * 60); })} /></Rotulo>
