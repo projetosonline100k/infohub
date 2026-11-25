@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { comUtm, type Utm } from "@/lib/quiz/utm";
+import { formatar } from "@/lib/landpage/formato";
 import { linkSeguro, videoEmbutido, type Bloco, type ConfigLandpage } from "@/lib/landpage/landpage";
 
 export type EventoLandpage = "play" | "metade" | "fim_video" | "cta";
@@ -13,8 +14,8 @@ export function LandpageRender({ config, utm = {}, onEvento, className, mostrarT
   const escuro = config.escuro !== false;
   const cor = config.cor || "#16a34a";
   return (
-    <div className={cn("mx-auto w-full space-y-10 px-5 py-8", escuro ? "bg-[#0b0b0f] text-white" : "bg-white text-neutral-900", className)} style={{ ["--lp-cor" as string]: cor }}>
-      {config.blocos.map((b) => <Temporizado key={b.id} b={b} mostrarTudo={mostrarTudo}><BlocoView b={b} escuro={escuro} cor={cor} utm={utm} onEvento={onEvento} /></Temporizado>)}
+    <div className={cn("mx-auto w-full space-y-10 px-5 py-8", !config.fundo && (escuro ? "bg-[#0b0b0f]" : "bg-white"), escuro ? "text-white" : "text-neutral-900", className)} style={{ ["--lp-cor" as string]: cor, ...(config.fundo ? { background: config.fundo } : {}) }}>
+      {config.blocos.map((b) => <Temporizado key={b.id} b={b} mostrarTudo={mostrarTudo}><BlocoView b={b} escuro={escuro} cor={cor} grifo={config.grifo} utm={utm} onEvento={onEvento} /></Temporizado>)}
     </div>
   );
 }
@@ -31,7 +32,7 @@ function Temporizado({ b, mostrarTudo, children }: { b: Bloco; mostrarTudo?: boo
   }, [apos]);
   if (!mostrarTudo && !passou) return null;
   return (
-    <div className={passou || apos === 0 ? "animate-in fade-in duration-500" : ""}>
+    <div className={cn(passou || apos === 0 ? "animate-in fade-in duration-500" : "", b.fundo && "-mx-5 px-5 py-8")} style={b.fundo ? { background: b.fundo } : undefined}>
       {mostrarTudo && apos > 0 && <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-500">Aparece depois de {Math.round((apos / 60) * 100) / 100} min</p>}
       {children}
     </div>
@@ -47,11 +48,11 @@ function Botao({ texto, url, cor, utm, onEvento }: { texto?: string; url?: strin
   );
 }
 
-function Paragrafos({ texto, className }: { texto?: string; className?: string }) {
-  return <div className={cn("space-y-3 text-base leading-relaxed", className)}>{(texto ?? "").split(/\n\s*\n/).map((p, i) => <p key={i} className="whitespace-pre-line">{p}</p>)}</div>;
+function Paragrafos({ texto, className, grifo }: { texto?: string; className?: string; grifo?: string }) {
+  return <div className={cn("space-y-3 text-base leading-relaxed", className)}>{(texto ?? "").split(/\n\s*\n/).map((p, i) => <p key={i} className="whitespace-pre-line">{formatar(p, grifo)}</p>)}</div>;
 }
 
-function Vsl({ b, cor, utm, onEvento }: { b: Bloco; cor: string; utm: Utm; onEvento?: Props["onEvento"] }) {
+function Vsl({ b, cor, grifoVsl, utm, onEvento }: { b: Bloco; cor: string; grifoVsl?: string; utm: Utm; onEvento?: Props["onEvento"] }) {
   const v = b.video ? videoEmbutido(b.video) : null;
   const apos = Math.max(0, b.botao_apos ?? 0);
   const [mostrar, setMostrar] = useState(apos === 0);
@@ -64,7 +65,7 @@ function Vsl({ b, cor, utm, onEvento }: { b: Bloco; cor: string; utm: Utm; onEve
   }, [apos, v?.tipo]);   // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <section className="space-y-5">
-      {b.titulo && <h2 className="text-center text-2xl font-extrabold leading-tight">{b.titulo}</h2>}
+      {b.titulo && <h2 className="text-center text-2xl font-extrabold leading-tight">{formatar(b.titulo, grifoVsl)}</h2>}
       <div className="mx-auto aspect-video w-full max-w-3xl overflow-hidden rounded-2xl bg-black">
         {!v ? <div className="flex h-full items-center justify-center text-sm text-white/50">Cole o link do vídeo no editor</div>
           : v.tipo === "iframe" ? <iframe src={v.src} title="Vídeo" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen className="h-full w-full border-0" onLoad={() => undefined} />
@@ -84,32 +85,33 @@ function Vsl({ b, cor, utm, onEvento }: { b: Bloco; cor: string; utm: Utm; onEve
   );
 }
 
-function BlocoView({ b, escuro, cor, utm, onEvento }: { b: Bloco; escuro: boolean; cor: string; utm: Utm; onEvento?: Props["onEvento"] }) {
+function BlocoView({ b, escuro, cor, grifo, utm, onEvento }: { b: Bloco; escuro: boolean; cor: string; grifo?: string; utm: Utm; onEvento?: Props["onEvento"] }) {
+  const F = (t?: string) => formatar(t, grifo);
   const suave = escuro ? "text-white/70" : "text-neutral-600";
   const cartao = escuro ? "border-white/15 bg-white/5" : "border-neutral-200 bg-neutral-50";
   switch (b.tipo) {
-    case "vsl": return <Vsl b={b} cor={cor} utm={utm} onEvento={onEvento} />;
+    case "vsl": return <Vsl b={b} cor={cor} grifoVsl={grifo} utm={utm} onEvento={onEvento} />;
     case "titulo": return (
       <header className="mx-auto max-w-3xl space-y-3 text-center">
-        <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">{b.titulo}</h1>
-        {b.subtitulo && <p className={cn("text-lg", suave)}>{b.subtitulo}</p>}
+        <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">{F(b.titulo)}</h1>
+        {b.subtitulo && <p className={cn("text-lg", suave)}>{F(b.subtitulo)}</p>}
       </header>
     );
-    case "texto": return <Paragrafos texto={b.texto} className="mx-auto max-w-2xl" />;
+    case "texto": return <Paragrafos texto={b.texto} grifo={grifo} className="mx-auto max-w-2xl" />;
     case "imagem": return b.url ? <figure className="mx-auto max-w-3xl"><img src={b.url} alt={b.titulo ?? ""} draggable={false} className="w-full rounded-2xl" /></figure> : <div className={cn("mx-auto max-w-3xl rounded-2xl border border-dashed p-8 text-center text-sm", suave)}>Cole o link da imagem no editor</div>;
     case "lista": return (
       <section className="mx-auto max-w-2xl space-y-4">
-        {b.titulo && <h2 className="text-center text-2xl font-extrabold">{b.titulo}</h2>}
-        <ul className="space-y-3">{(b.itens ?? []).map((it, i) => <li key={i} className={cn("flex items-start gap-3 rounded-xl border p-3", cartao)}><span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white" style={{ background: cor }}><Check className="h-4 w-4" /></span><span>{it}</span></li>)}</ul>
+        {b.titulo && <h2 className="text-center text-2xl font-extrabold">{F(b.titulo)}</h2>}
+        <ul className="space-y-3">{(b.itens ?? []).map((it, i) => <li key={i} className={cn("flex items-start gap-3 rounded-xl border p-3", cartao)}><span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-white" style={{ background: cor }}><Check className="h-4 w-4" /></span><span>{F(it)}</span></li>)}</ul>
       </section>
     );
     case "depoimentos": return (
       <section className="mx-auto max-w-3xl space-y-4">
-        {b.titulo && <h2 className="text-center text-2xl font-extrabold">{b.titulo}</h2>}
+        {b.titulo && <h2 className="text-center text-2xl font-extrabold">{F(b.titulo)}</h2>}
         <div className="grid gap-3 sm:grid-cols-2">
           {(b.depoimentos ?? []).map((d, i) => (
             <figure key={i} className={cn("space-y-3 rounded-2xl border p-4", cartao)}>
-              <blockquote className="text-sm leading-relaxed">“{d.texto}”</blockquote>
+              <blockquote className="text-sm leading-relaxed">“{F(d.texto)}”</blockquote>
               <figcaption className="flex items-center gap-2 text-sm font-semibold">{d.foto && <img src={d.foto} alt="" draggable={false} className="h-9 w-9 rounded-full object-cover" />}{d.nome}</figcaption>
             </figure>
           ))}
@@ -122,28 +124,28 @@ function BlocoView({ b, escuro, cor, utm, onEvento }: { b: Bloco; escuro: boolea
           {b.foto && <img src={b.foto} alt={b.nome ?? ""} draggable={false} className="h-20 w-20 shrink-0 rounded-full object-cover" />}
           <div><p className={cn("text-xs font-semibold uppercase tracking-wider", suave)}>{b.titulo}</p>{b.nome && <h3 className="text-xl font-extrabold">{b.nome}</h3>}</div>
         </div>
-        <Paragrafos texto={b.texto} className={cn("text-sm", suave)} />
+        <Paragrafos texto={b.texto} grifo={grifo} className={cn("text-sm", suave)} />
       </section>
     );
     case "preco": return (
       <section className={cn("mx-auto max-w-md space-y-4 rounded-3xl border p-6 text-center", cartao)}>
-        {b.titulo && <h2 className="text-2xl font-extrabold">{b.titulo}</h2>}
+        {b.titulo && <h2 className="text-2xl font-extrabold">{F(b.titulo)}</h2>}
         <div>
           {b.de && <p className={cn("text-sm line-through", suave)}>de {b.de}</p>}
           <p className="text-4xl font-extrabold" style={{ color: cor }}>{b.por}</p>
-          {b.detalhe && <p className={cn("text-sm", suave)}>{b.detalhe}</p>}
+          {b.detalhe && <p className={cn("text-sm", suave)}>{F(b.detalhe)}</p>}
         </div>
         <Botao texto={b.botao_texto} url={b.botao_url} cor={cor} utm={utm} onEvento={onEvento} />
-        {b.garantia && <p className={cn("text-xs", suave)}>{b.garantia}</p>}
+        {b.garantia && <p className={cn("text-xs", suave)}>{F(b.garantia)}</p>}
       </section>
     );
     case "faq": return (
       <section className="mx-auto max-w-2xl space-y-3">
-        {b.titulo && <h2 className="text-center text-2xl font-extrabold">{b.titulo}</h2>}
+        {b.titulo && <h2 className="text-center text-2xl font-extrabold">{F(b.titulo)}</h2>}
         {(b.faq ?? []).map((f, i) => (
           <details key={i} className={cn("group rounded-xl border p-4", cartao)}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold">{f.p}<ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" /></summary>
-            <Paragrafos texto={f.r} className={cn("mt-2 text-sm", suave)} />
+            <Paragrafos texto={f.r} grifo={grifo} className={cn("mt-2 text-sm", suave)} />
           </details>
         ))}
       </section>

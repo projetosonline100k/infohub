@@ -4,6 +4,7 @@ import { PUBLIC_SITE_URL } from "@/lib/shareUrl";
 export type TipoBloco = "vsl" | "titulo" | "texto" | "imagem" | "lista" | "depoimentos" | "apresentacao" | "preco" | "faq" | "botao";
 export interface Bloco {
   id: string; tipo: TipoBloco;
+  fundo?: string;                            // qualquer bloco: cor de fundo só dele (vazio = a da página)
   aparecer_apos?: number;                    // qualquer bloco: segundos depois de abrir a página até ele aparecer (0 ou vazio = já aparece)
   titulo?: string; subtitulo?: string; texto?: string;
   url?: string;                              // imagem
@@ -16,7 +17,7 @@ export interface Bloco {
   depoimentos?: { nome: string; texto: string; foto?: string }[];
   faq?: { p: string; r: string }[];
 }
-export interface ConfigLandpage { cor?: string; escuro?: boolean; blocos: Bloco[] }
+export interface ConfigLandpage { cor?: string; escuro?: boolean; fundo?: string; grifo?: string; blocos: Bloco[] }
 export interface LandpageResumo { id: string; nome: string; slug: string; status: "rascunho" | "publicado" | "pausado"; config: ConfigLandpage; publicada: ConfigLandpage | null; publicado_em: string | null; criado_em: string }
 
 export const linkDaLandpage = (slug: string) => `${PUBLIC_SITE_URL}/p/${slug}`;

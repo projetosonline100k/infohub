@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { ArrowDown, ArrowLeft, ArrowUp, Copy, ExternalLink, FileText, Loader2, Pause, Play, Plus, Rocket, Trash2 } from "lucide-react";
+import { Bold, Highlighter, ArrowDown, ArrowLeft, ArrowUp, Copy, ExternalLink, FileText, Loader2, Pause, Play, Plus, Rocket, Trash2, Type } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { confirmar } from "@/components/DialogosGlobais";
 import { LandpageRender } from "@/components/landpage/LandpageRender";
+import { aplicarMarca, type Marca } from "@/lib/landpage/formato";
 import { abrirLinkExterno } from "@/lib/abrirLink";
 import { cn } from "@/lib/utils";
 import { ROTULO_BLOCO, blocoNovo, linkDaLandpage, modeloLandpage, type Bloco, type ConfigLandpage, type LandpageResumo, type TipoBloco } from "@/lib/landpage/landpage";
@@ -148,9 +149,11 @@ function EditorLandpage({ lp, onVoltar }: { lp: LandpageResumo; onVoltar: () => 
 
       <div className="grid gap-4 lg:grid-cols-[minmax(320px,440px)_1fr]">
         <div className="space-y-2">
-          <div className="flex items-center gap-3 rounded-lg border bg-card p-2.5 text-sm">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card p-2.5 text-sm">
             <label className="flex items-center gap-2">Cor do botão<input type="color" value={config.cor || "#16a34a"} onChange={(e) => setConfig((c) => ({ ...c, cor: e.target.value }))} className="h-7 w-9 cursor-pointer rounded border bg-transparent" /></label>
-            <label className="flex items-center gap-2"><input type="checkbox" checked={config.escuro !== false} onChange={(e) => setConfig((c) => ({ ...c, escuro: e.target.checked }))} />Fundo escuro</label>
+            <label className="flex items-center gap-2">Fundo da página<input type="color" value={config.fundo || (config.escuro === false ? "#ffffff" : "#0b0b0f")} onChange={(e) => setConfig((c) => ({ ...c, fundo: e.target.value }))} className="h-7 w-9 cursor-pointer rounded border bg-transparent" />{config.fundo && <button type="button" className="text-xs text-muted-foreground underline" onClick={() => setConfig((c) => ({ ...c, fundo: undefined }))}>padrão</button>}</label>
+            <label className="flex items-center gap-2">Cor do grifo<input type="color" value={config.grifo || "#fde047"} onChange={(e) => setConfig((c) => ({ ...c, grifo: e.target.value }))} className="h-7 w-9 cursor-pointer rounded border bg-transparent" /></label>
+            <label className="flex items-center gap-2"><input type="checkbox" checked={config.escuro !== false} onChange={(e) => setConfig((c) => ({ ...c, escuro: e.target.checked }))} />Letra clara (fundo escuro)</label>
           </div>
           {config.blocos.map((b, i) => (
             <div key={b.id} className="rounded-lg border bg-card">
@@ -162,6 +165,7 @@ function EditorLandpage({ lp, onVoltar }: { lp: LandpageResumo; onVoltar: () => 
               </div>
               {aberto === b.id && <div className="space-y-2 border-t p-2.5">
                 <CamposBloco b={b} mudar={(f) => mudarBloco(b.id, f)} />
+                <label className="flex items-center gap-2 text-xs font-medium text-muted-foreground">Cor de fundo só deste bloco<input type="color" value={b.fundo || "#000000"} onChange={(e) => mudarBloco(b.id, (x) => { x.fundo = e.target.value; })} className="h-7 w-9 cursor-pointer rounded border bg-transparent" />{b.fundo && <button type="button" className="underline" onClick={() => mudarBloco(b.id, (x) => { delete x.fundo; })}>usar a da página</button>}</label>
                 <Rotulo r="Este bloco aparece depois de quantos minutos? (0 = já aparece)"><input type="number" min={0} step={0.5} className={campo} value={minutosDe(b.aparecer_apos)} onChange={(e) => mudarBloco(b.id, (x) => { x.aparecer_apos = Math.round(Math.max(0, Number(e.target.value) || 0) * 60); })} /></Rotulo>
               </div>}
             </div>
@@ -183,13 +187,40 @@ function EditorLandpage({ lp, onVoltar }: { lp: LandpageResumo; onVoltar: () => 
   );
 }
 
+/** Campo de texto com os botões de negrito, grifar e menor: marcam a seleção (as marcas viram formatação na página). */
+function CampoFormatado({ valor, onChange, linhas, placeholder, onBlur }: { valor: string; onChange: (v: string) => void; linhas?: number; placeholder?: string; onBlur?: () => void }) {
+  const ref = useRef<HTMLTextAreaElement & HTMLInputElement>(null);
+  const marcar = (m: Marca) => {
+    const el = ref.current;
+    if (!el) return;
+    const r = aplicarMarca(valor, el.selectionStart ?? 0, el.selectionEnd ?? 0, m);
+    if (r.texto === valor) { toast.message("Selecione as palavras primeiro"); return; }
+    onChange(r.texto);
+    requestAnimationFrame(() => { el.focus(); el.setSelectionRange(r.ini, r.fim); });
+  };
+  const botao = "flex h-6 items-center gap-1 rounded border px-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground";
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1">
+        <button type="button" title="Negrito" className={botao} onMouseDown={(e) => e.preventDefault()} onClick={() => marcar("negrito")}><Bold className="h-3.5 w-3.5" /></button>
+        <button type="button" title="Grifar (marca-texto)" className={botao} onMouseDown={(e) => e.preventDefault()} onClick={() => marcar("grifo")}><Highlighter className="h-3.5 w-3.5" />Grifar</button>
+        <button type="button" title="Diminuir as palavras" className={botao} onMouseDown={(e) => e.preventDefault()} onClick={() => marcar("menor")}><Type className="h-3 w-3" />Menor</button>
+      </div>
+      {linhas ? <Textarea ref={ref} rows={linhas} className="text-sm" placeholder={placeholder} value={valor} onChange={(e) => onChange(e.target.value)} onBlur={onBlur} />
+        : <input ref={ref} className={campo} placeholder={placeholder} value={valor} onChange={(e) => onChange(e.target.value)} />}
+    </div>
+  );
+}
+
 function Rotulo({ r, children }: { r: string; children: React.ReactNode }) {
   return <label className="block space-y-1"><span className="text-xs font-medium text-muted-foreground">{r}</span>{children}</label>;
 }
 
 function CamposBloco({ b, mudar }: { b: Bloco; mudar: (f: (b: Bloco) => void) => void }) {
   const t = (k: "titulo" | "subtitulo" | "url" | "video" | "poster" | "botao_texto" | "botao_url" | "de" | "por" | "detalhe" | "garantia" | "nome" | "foto", r: string, ph?: string) => (
-    <Rotulo r={r}><input className={campo} placeholder={ph} value={b[k] ?? ""} onChange={(e) => mudar((x) => { x[k] = e.target.value; })} /></Rotulo>
+    <Rotulo r={r}>{k === "titulo" || k === "subtitulo" || k === "detalhe" || k === "garantia"
+      ? <CampoFormatado valor={b[k] ?? ""} placeholder={ph} onChange={(v) => mudar((x) => { x[k] = v; })} />
+      : <input className={campo} placeholder={ph} value={b[k] ?? ""} onChange={(e) => mudar((x) => { x[k] = e.target.value; })} />}</Rotulo>
   );
   switch (b.tipo) {
     case "vsl": return <>
@@ -200,29 +231,29 @@ function CamposBloco({ b, mudar }: { b: Bloco; mudar: (f: (b: Bloco) => void) =>
       <Rotulo r="Botão aparece após quantos minutos de vídeo? (0 = já aparece)"><input type="number" min={0} step={0.5} className={campo} value={minutosDe(b.botao_apos)} onChange={(e) => mudar((x) => { x.botao_apos = Math.round(Math.max(0, Number(e.target.value) || 0) * 60); })} /></Rotulo>
     </>;
     case "titulo": return <>{t("titulo", "Título")}{t("subtitulo", "Subtítulo")}</>;
-    case "texto": return <Rotulo r="Texto (linha em branco separa parágrafos)"><Textarea rows={6} className="text-sm" value={b.texto ?? ""} onChange={(e) => mudar((x) => { x.texto = e.target.value; })} /></Rotulo>;
+    case "texto": return <Rotulo r="Texto (linha em branco separa parágrafos)"><CampoFormatado linhas={6} valor={b.texto ?? ""} onChange={(v) => mudar((x) => { x.texto = v; })} /></Rotulo>;
     case "imagem": return t("url", "Link da imagem", "https://…");
-    case "lista": return <>{t("titulo", "Título")}<Rotulo r="Itens (um por linha)"><Textarea rows={5} className="text-sm" value={(b.itens ?? []).join("\n")} onChange={(e) => mudar((x) => { x.itens = e.target.value.split("\n"); })} onBlur={() => mudar((x) => { x.itens = (x.itens ?? []).filter((i) => i.trim()); })} /></Rotulo></>;
+    case "lista": return <>{t("titulo", "Título")}<Rotulo r="Itens (um por linha)"><CampoFormatado linhas={5} valor={(b.itens ?? []).join("\n")} onChange={(v) => mudar((x) => { x.itens = v.split("\n"); })} onBlur={() => mudar((x) => { x.itens = (x.itens ?? []).filter((i) => i.trim()); })} /></Rotulo></>;
     case "depoimentos": return <>
       {t("titulo", "Título")}
       {(b.depoimentos ?? []).map((d, i) => (
         <div key={i} className="space-y-1.5 rounded-md border p-2">
           <input className={campo} placeholder="Nome" value={d.nome} onChange={(e) => mudar((x) => { x.depoimentos![i].nome = e.target.value; })} />
           <input className={campo} placeholder="Link da foto (opcional)" value={d.foto ?? ""} onChange={(e) => mudar((x) => { x.depoimentos![i].foto = e.target.value; })} />
-          <Textarea rows={3} className="text-sm" placeholder="Depoimento" value={d.texto} onChange={(e) => mudar((x) => { x.depoimentos![i].texto = e.target.value; })} />
+          <CampoFormatado linhas={3} placeholder="Depoimento" valor={d.texto} onChange={(v) => mudar((x) => { x.depoimentos![i].texto = v; })} />
           <button type="button" className="text-xs text-rose-600 hover:underline" onClick={() => mudar((x) => { x.depoimentos!.splice(i, 1); })}>Remover depoimento</button>
         </div>
       ))}
       <Button variant="outline" size="sm" className="gap-1" onClick={() => mudar((x) => { (x.depoimentos ??= []).push({ nome: "", texto: "" }); })}><Plus className="h-3.5 w-3.5" />Depoimento</Button>
     </>;
-    case "apresentacao": return <>{t("titulo", "Rótulo (ex.: Sua professora)")}{t("nome", "Nome")}{t("foto", "Link da foto", "https://…")}<Rotulo r="Texto"><Textarea rows={4} className="text-sm" value={b.texto ?? ""} onChange={(e) => mudar((x) => { x.texto = e.target.value; })} /></Rotulo></>;
+    case "apresentacao": return <>{t("titulo", "Rótulo (ex.: Sua professora)")}{t("nome", "Nome")}{t("foto", "Link da foto", "https://…")}<Rotulo r="Texto"><CampoFormatado linhas={4} valor={b.texto ?? ""} onChange={(v) => mudar((x) => { x.texto = v; })} /></Rotulo></>;
     case "preco": return <>{t("titulo", "Título")}{t("de", "Preço antigo (opcional)", "R$ 297,00")}{t("por", "Preço", "R$ 97,00")}{t("detalhe", "Detalhe do preço")}{t("botao_texto", "Texto do botão")}{t("botao_url", "Link de compra", "https://pay.kiwify.com.br/…")}{t("garantia", "Garantia")}</>;
     case "faq": return <>
       {t("titulo", "Título")}
       {(b.faq ?? []).map((f, i) => (
         <div key={i} className="space-y-1.5 rounded-md border p-2">
           <input className={campo} placeholder="Pergunta" value={f.p} onChange={(e) => mudar((x) => { x.faq![i].p = e.target.value; })} />
-          <Textarea rows={3} className="text-sm" placeholder="Resposta" value={f.r} onChange={(e) => mudar((x) => { x.faq![i].r = e.target.value; })} />
+          <CampoFormatado linhas={3} placeholder="Resposta" valor={f.r} onChange={(v) => mudar((x) => { x.faq![i].r = v; })} />
           <button type="button" className="text-xs text-rose-600 hover:underline" onClick={() => mudar((x) => { x.faq!.splice(i, 1); })}>Remover pergunta</button>
         </div>
       ))}
