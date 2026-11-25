@@ -158,7 +158,10 @@ function EditorLandpage({ lp, onVoltar }: { lp: LandpageResumo; onVoltar: () => 
                 <button type="button" title="Descer" disabled={i === config.blocos.length - 1} onClick={() => mover(i, 1)} className="rounded p-1 text-muted-foreground hover:bg-muted disabled:opacity-30"><ArrowDown className="h-4 w-4" /></button>
                 <button type="button" title="Remover" onClick={() => remover(b.id)} className="rounded p-1 text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>
               </div>
-              {aberto === b.id && <div className="space-y-2 border-t p-2.5"><CamposBloco b={b} mudar={(f) => mudarBloco(b.id, f)} /></div>}
+              {aberto === b.id && <div className="space-y-2 border-t p-2.5">
+                <CamposBloco b={b} mudar={(f) => mudarBloco(b.id, f)} />
+                <Rotulo r="Este bloco aparece depois de quantos segundos? (0 = já aparece)"><input type="number" min={0} className={campo} value={b.aparecer_apos ?? 0} onChange={(e) => mudarBloco(b.id, (x) => { x.aparecer_apos = Math.max(0, Number(e.target.value) || 0); })} /></Rotulo>
+              </div>}
             </div>
           ))}
           <DropdownMenu>
@@ -170,7 +173,7 @@ function EditorLandpage({ lp, onVoltar }: { lp: LandpageResumo; onVoltar: () => 
         <div className="min-w-0 space-y-2">
           <div className="flex gap-1 text-xs"><button type="button" onClick={() => setCelular(true)} className={cn("rounded-full border px-3 py-1", celular && "bg-primary text-primary-foreground")}>Celular</button><button type="button" onClick={() => setCelular(false)} className={cn("rounded-full border px-3 py-1", !celular && "bg-primary text-primary-foreground")}>Computador</button><span className="ml-2 self-center text-muted-foreground">Prévia do rascunho</span></div>
           <div className="max-h-[78vh] overflow-y-auto rounded-xl border bg-muted/20">
-            <div className={cn("mx-auto", celular ? "max-w-[390px]" : "max-w-5xl")}><LandpageRender config={config} /></div>
+            <div className={cn("mx-auto", celular ? "max-w-[390px]" : "max-w-5xl")}><LandpageRender config={config} mostrarTudo /></div>
           </div>
         </div>
       </div>

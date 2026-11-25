@@ -6,15 +6,34 @@ import { linkSeguro, videoEmbutido, type Bloco, type ConfigLandpage } from "@/li
 
 export type EventoLandpage = "play" | "metade" | "fim_video" | "cta";
 
-interface Props { config: ConfigLandpage; utm?: Utm; onEvento?: (tipo: EventoLandpage) => void; className?: string }
+interface Props { mostrarTudo?: boolean; config: ConfigLandpage; utm?: Utm; onEvento?: (tipo: EventoLandpage) => void; className?: string }
 
 // A mesma página serve o editor (prévia) e o link público (/p/<slug>). No editor `onEvento` não existe: nada é gravado.
-export function LandpageRender({ config, utm = {}, onEvento, className }: Props) {
+export function LandpageRender({ config, utm = {}, onEvento, className, mostrarTudo }: Props) {
   const escuro = config.escuro !== false;
   const cor = config.cor || "#16a34a";
   return (
     <div className={cn("mx-auto w-full space-y-10 px-5 py-8", escuro ? "bg-[#0b0b0f] text-white" : "bg-white text-neutral-900", className)} style={{ ["--lp-cor" as string]: cor }}>
-      {config.blocos.map((b) => <BlocoView key={b.id} b={b} escuro={escuro} cor={cor} utm={utm} onEvento={onEvento} />)}
+      {config.blocos.map((b) => <Temporizado key={b.id} b={b} mostrarTudo={mostrarTudo}><BlocoView b={b} escuro={escuro} cor={cor} utm={utm} onEvento={onEvento} /></Temporizado>)}
+    </div>
+  );
+}
+
+/** Bloco com hora marcada (`aparecer_apos`): fica escondido até passar esse tempo desde que a página abriu. No editor (`mostrarTudo`) aparece sempre, com a etiqueta. */
+function Temporizado({ b, mostrarTudo, children }: { b: Bloco; mostrarTudo?: boolean; children: React.ReactNode }) {
+  const apos = Math.max(0, b.aparecer_apos ?? 0);
+  const [passou, setPassou] = useState(apos === 0);
+  useEffect(() => {
+    if (apos === 0) { setPassou(true); return; }
+    setPassou(false);
+    const t = window.setTimeout(() => setPassou(true), apos * 1000);
+    return () => window.clearTimeout(t);
+  }, [apos]);
+  if (!mostrarTudo && !passou) return null;
+  return (
+    <div className={passou || apos === 0 ? "animate-in fade-in duration-500" : ""}>
+      {mostrarTudo && apos > 0 && <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-500">Aparece depois de {apos}s</p>}
+      {children}
     </div>
   );
 }
