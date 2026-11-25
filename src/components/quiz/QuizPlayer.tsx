@@ -965,7 +965,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
   const travado = passoFixo != null;
   // intro.pular: o quiz já abre na primeira tela seguinte (pedido do Davi, 10/11: abre direto na cena do foguete).
   // Só no quiz rodando; nas vistas fixas e no editor a abertura continua existindo como lâmina.
-  const [pos, setPos] = useState(passoFixo ?? (estrutura.intro?.pular && !editar ? 1 : 0));
+  const [pos, setPos] = useState(passoFixo ?? (estrutura.intro?.pular ? 1 : 0));
   useEffect(() => { if (passoFixo != null) setPos(passoFixo); }, [passoFixo]);
   const [escolhas, setEscolhas] = useState<Record<string, number>>(respostas ?? {});
   const respostasChave = JSON.stringify(respostas ?? {});
