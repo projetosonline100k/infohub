@@ -14,6 +14,8 @@ import { ROTULO_BLOCO, blocoNovo, linkDaLandpage, modeloLandpage, type Bloco, ty
 
 // Páginas → Land page (25/11/2026, Davi): página comprida montada em blocos, com VSL no topo, publicada em /p/<slug>. As tabelas ainda não estão nos tipos gerados.
 const db = supabase as unknown as SupabaseClient;
+/** O tempo fica guardado em segundos; a tela mostra em minutos (1,5 = 1 min 30 s). */
+const minutosDe = (seg?: number) => Math.round(((seg ?? 0) / 60) * 100) / 100;
 const campo = "w-full rounded-md border bg-background px-2.5 py-1.5 text-sm";
 
 export function LandpagesView({ clienteId, sinalCriar }: { clienteId: string; sinalCriar?: number }) {
@@ -160,7 +162,7 @@ function EditorLandpage({ lp, onVoltar }: { lp: LandpageResumo; onVoltar: () => 
               </div>
               {aberto === b.id && <div className="space-y-2 border-t p-2.5">
                 <CamposBloco b={b} mudar={(f) => mudarBloco(b.id, f)} />
-                <Rotulo r="Este bloco aparece depois de quantos segundos? (0 = já aparece)"><input type="number" min={0} className={campo} value={b.aparecer_apos ?? 0} onChange={(e) => mudarBloco(b.id, (x) => { x.aparecer_apos = Math.max(0, Number(e.target.value) || 0); })} /></Rotulo>
+                <Rotulo r="Este bloco aparece depois de quantos minutos? (0 = já aparece)"><input type="number" min={0} step={0.5} className={campo} value={minutosDe(b.aparecer_apos)} onChange={(e) => mudarBloco(b.id, (x) => { x.aparecer_apos = Math.round(Math.max(0, Number(e.target.value) || 0) * 60); })} /></Rotulo>
               </div>}
             </div>
           ))}
@@ -195,7 +197,7 @@ function CamposBloco({ b, mudar }: { b: Bloco; mudar: (f: (b: Bloco) => void) =>
       {t("video", "Link do vídeo (mp4, Backblaze, YouTube ou Vimeo)", "https://…")}
       {t("poster", "Capa do vídeo (link da imagem, opcional)", "https://…")}
       {t("botao_texto", "Texto do botão")}{t("botao_url", "Link de compra", "https://pay.kiwify.com.br/…")}
-      <Rotulo r="Botão aparece após quantos segundos de vídeo? (0 = já aparece)"><input type="number" min={0} className={campo} value={b.botao_apos ?? 0} onChange={(e) => mudar((x) => { x.botao_apos = Math.max(0, Number(e.target.value) || 0); })} /></Rotulo>
+      <Rotulo r="Botão aparece após quantos minutos de vídeo? (0 = já aparece)"><input type="number" min={0} step={0.5} className={campo} value={minutosDe(b.botao_apos)} onChange={(e) => mudar((x) => { x.botao_apos = Math.round(Math.max(0, Number(e.target.value) || 0) * 60); })} /></Rotulo>
     </>;
     case "titulo": return <>{t("titulo", "Título")}{t("subtitulo", "Subtítulo")}</>;
     case "texto": return <Rotulo r="Texto (linha em branco separa parágrafos)"><Textarea rows={6} className="text-sm" value={b.texto ?? ""} onChange={(e) => mudar((x) => { x.texto = e.target.value; })} /></Rotulo>;

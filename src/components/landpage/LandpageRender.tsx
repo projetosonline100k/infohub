@@ -32,7 +32,7 @@ function Temporizado({ b, mostrarTudo, children }: { b: Bloco; mostrarTudo?: boo
   if (!mostrarTudo && !passou) return null;
   return (
     <div className={passou || apos === 0 ? "animate-in fade-in duration-500" : ""}>
-      {mostrarTudo && apos > 0 && <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-500">Aparece depois de {apos}s</p>}
+      {mostrarTudo && apos > 0 && <p className="mb-2 text-center text-[11px] font-semibold uppercase tracking-wider text-amber-500">Aparece depois de {Math.round((apos / 60) * 100) / 100} min</p>}
       {children}
     </div>
   );
