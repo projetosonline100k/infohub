@@ -28,12 +28,14 @@ import {
 const db = supabase as unknown as SupabaseClient;   // chatbots ainda não está nos tipos gerados
 const campo = "w-full rounded-lg border bg-background px-2.5 py-1.5 text-sm outline-none focus:border-primary/50";
 
-export function ChatbotView({ clienteId }: { clienteId: string }) {
+export function ChatbotView({ clienteId, sinalCriar }: { clienteId: string; sinalCriar?: number }) {
   const [bots, setBots] = useState<ChatbotResumo[]>([]);
   const [contagem, setContagem] = useState<Record<string, number>>({});
   const [carregando, setCarregando] = useState(true);
   const [aberto, setAberto] = useState<string | null>(null);
   const [novo, setNovo] = useState(false);
+  const ultimoSinal = useRef(sinalCriar ?? 0);   // Páginas: o "+" da tela mãe manda um sinal novo a cada clique
+  useEffect(() => { if (sinalCriar && sinalCriar !== ultimoSinal.current) { ultimoSinal.current = sinalCriar; setNovo(true); } }, [sinalCriar]);
 
   const carregar = useCallback(async () => {
     const [{ data: b }, { data: l }] = await Promise.all([
@@ -73,7 +75,7 @@ export function ChatbotView({ clienteId }: { clienteId: string }) {
           <h1 className="flex items-center gap-2 text-2xl font-bold"><Bot className="h-6 w-6 text-primary" />Chatbot</h1>
           <p className="text-sm text-muted-foreground">Monte uma conversa que qualifica quem chega pelo Instagram: pergunta, pontua e leva cada pessoa para o caminho certo. Cada resposta vira um lead aqui.</p>
         </div>
-        <Button className="gap-1.5" onClick={() => setNovo(true)}><Plus className="h-4 w-4" />Criar novo chatbot</Button>
+        <Button className={cn("gap-1.5", sinalCriar !== undefined && "hidden")} onClick={() => setNovo(true)}><Plus className="h-4 w-4" />Criar novo chatbot</Button>
       </header>
 
       {carregando ? <div className="flex justify-center py-10"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>

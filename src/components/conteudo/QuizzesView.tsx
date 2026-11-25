@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -36,13 +36,16 @@ const COR_STATUS: Record<StatusQuiz, string> = {
   pausado: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300", cancelado: "bg-zinc-500/15 text-zinc-500",
 };
 
-export function QuizzesView({ clienteId }: { clienteId: string }) {
+export function QuizzesView({ clienteId, sinalCriar }: { clienteId: string; sinalCriar?: number }) {
   const [roy, setRoy] = useState<{ id: string; nome: string } | null>(null);
   const [quizzes, setQuizzes] = useState<QuizResumo[]>([]);
   const [tarefas, setTarefas] = useState<Record<string, Tarefa>>({});
   const [respostas, setRespostas] = useState<Resposta[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [criando, setCriando] = useState(false);
+  // Páginas: o "+" da tela mãe manda um sinal novo a cada clique (e esconde o botão daqui).
+  const ultimoSinal = useRef(sinalCriar ?? 0);
+  useEffect(() => { if (sinalCriar && sinalCriar !== ultimoSinal.current) { ultimoSinal.current = sinalCriar; setCriando(true); } }, [sinalCriar]);
   const [revisando, setRevisando] = useState<{ id: string; titulo: string } | null>(null);
   const [testando, setTestando] = useState<QuizResumo | null>(null);
   const [vendoRespostas, setVendoRespostas] = useState<QuizResumo | null>(null);
@@ -127,7 +130,7 @@ export function QuizzesView({ clienteId }: { clienteId: string }) {
         </p>
       </header>
 
-      <div className="flex justify-end">
+      <div className={cn("flex justify-end", sinalCriar !== undefined && "hidden")}>
         <Button className="gap-1.5" disabled={!roy} onClick={() => setCriando(true)}><Plus className="h-4 w-4" />Criar novo quiz</Button>
       </div>
 

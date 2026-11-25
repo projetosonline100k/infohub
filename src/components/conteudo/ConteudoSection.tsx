@@ -1,8 +1,7 @@
 import { WhatsappDoProjeto } from "./WhatsappDoProjeto";
 import { BrainstormView } from "./BrainstormView";
 import { FonteConhecimento } from "./FonteConhecimento";
-import { QuizzesView } from "./QuizzesView";
-import { ChatbotView } from "./ChatbotView";
+import { PaginasView } from "./PaginasView";
 import { CronogramaView } from "./CronogramaView";
 import { CrmView } from "@/components/crm/CrmView";
 import { TrafegoProjeto } from "@/components/trafego/TrafegoProjeto";
@@ -31,12 +30,13 @@ export function ConteudoSection({ clienteId, subAba, onIrPara, onAbrirAtividades
       
       {subAba === "cronograma" && <CronogramaView clienteId={clienteId} />}
       {subAba === "conhecimento" && <FonteConhecimento clienteId={clienteId} />}
-      {subAba === "quiz" && <QuizzesView clienteId={clienteId} />}
+      {/* "quiz" e "chatbot" são os nomes antigos das abas: links e guias salvos caem na lista certa dentro de Páginas */}
+      {(subAba === "paginas" || subAba === "quiz") && <PaginasView clienteId={clienteId} inicial="quiz" />}
+      {subAba === "chatbot" && <PaginasView clienteId={clienteId} inicial="chatbot" />}
       {subAba === "whatsapp" && <WhatsappDoProjeto clienteId={clienteId} />}
       {subAba === "crm" && <CrmView clienteId={clienteId} />}
       {subAba === "embaixadores" && <EmbaixadoresProjeto clienteId={clienteId} />}
       {subAba === "trafego" && <TrafegoProjeto clienteId={clienteId} />}
-      {subAba === "chatbot" && <ChatbotView clienteId={clienteId} />}
     </div>
   );
 }

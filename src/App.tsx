@@ -6,6 +6,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import FormularioPublico from "./pages/FormularioPublico";
 import ChatbotPublico from "./pages/ChatbotPublico";
+import LandpagePublica from "./pages/LandpagePublica";
 import Login from "./pages/Login";
 import RedefinirSenha from "./pages/RedefinirSenha";
 import JarvisWindow from "./pages/JarvisWindow";
@@ -56,6 +57,7 @@ const App = () => (
           <Route path="/quiz/:slug" element={<QuizPublico />} />
           <Route path="/quiz-previa/:token" element={<QuizPublico previa />} />
           <Route path="/chatbot/:slug" element={<ChatbotPublico />} />
+          <Route path="/p/:slug" element={<LandpagePublica />} />
           <Route path="/compartilhado/:token" element={<DocumentoCompartilhado />} />
           <Route path="/embaixador" element={<Embaixador />} />
           <Route path="/embaixador/convite/:token" element={<EmbaixadorConvite />} />

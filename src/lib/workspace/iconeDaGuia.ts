@@ -1,6 +1,6 @@
 import {
   BookOpen, Bot, Brain, Building2, CalendarDays, CalendarRange, Clapperboard, FileText, Folder, HelpCircle, Info, LayoutDashboard,
-  Contact, Globe, Handshake, Lightbulb, Megaphone, ListChecks, MessageCircle, PenTool, Timer, ShieldCheck, StickyNote, Target, Users, Youtube, Zap, type LucideIcon,
+  Contact, Globe, Handshake, LayoutTemplate, Lightbulb, Megaphone, ListChecks, MessageCircle, PenTool, Timer, ShieldCheck, StickyNote, Target, Users, Youtube, Zap, type LucideIcon,
 } from "lucide-react";
 
 // Ícone de cada guia pelo que está aberto nela (24/10, Davi: "quero que as guias tenham ícones, para identificar
@@ -9,7 +9,7 @@ import {
 const SECOES: Record<string, LucideIcon> = {
   "conteudo:visao-geral": Building2, informacoes: Info, atividades: ListChecks, documentos: Folder, pesquisa: HelpCircle,
   cerebro: Brain, "conteudo:vertical": Clapperboard, "conteudo:youtube": Youtube, "conteudo:brainstorm": Lightbulb,
-  "conteudo:cronograma": CalendarRange, "conteudo:conhecimento": BookOpen, "conteudo:quiz": HelpCircle, "conteudo:whatsapp": MessageCircle, "conteudo:chatbot": Bot, "conteudo:crm": Contact, "conteudo:embaixadores": Handshake, "conteudo:trafego": Megaphone,
+  "conteudo:cronograma": CalendarRange, "conteudo:conhecimento": BookOpen, "conteudo:quiz": HelpCircle, "conteudo:whatsapp": MessageCircle, "conteudo:chatbot": Bot, "conteudo:paginas": LayoutTemplate, "conteudo:crm": Contact, "conteudo:embaixadores": Handshake, "conteudo:trafego": Megaphone,
 };
 const PAGINAS: [RegExp, LucideIcon][] = [
   [/^\/$/, LayoutDashboard], [/^\/agenda/, CalendarDays], [/^\/atividades/, ListChecks], [/^\/notas/, StickyNote],
@@ -38,7 +38,7 @@ export function nomeDaSecao(caminho: string): string | null {
     "conteudo:visao-geral": "Escritório", informacoes: "Informações", atividades: "Atividades", documentos: "Documentos",
     pesquisa: "Pesquisa", cerebro: "Cérebro", "conteudo:vertical": "Vertical", "conteudo:youtube": "Youtube",
     "conteudo:brainstorm": "Brainstorm", "conteudo:cronograma": "Cronograma", "conteudo:conhecimento": "Fonte",
-    "conteudo:quiz": "Quiz", "conteudo:whatsapp": "WhatsApp", "conteudo:chatbot": "Chatbot", "conteudo:crm": "CRM", "conteudo:embaixadores": "Embaixadores", "conteudo:trafego": "Tráfego",
+    "conteudo:quiz": "Quiz", "conteudo:whatsapp": "WhatsApp", "conteudo:chatbot": "Chatbot", "conteudo:paginas": "Páginas", "conteudo:crm": "CRM", "conteudo:embaixadores": "Embaixadores", "conteudo:trafego": "Tráfego",
   };
   return nomes[params.get("secao") ?? "conteudo:visao-geral"] ?? null;
 }
