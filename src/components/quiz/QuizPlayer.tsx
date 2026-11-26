@@ -1779,6 +1779,11 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
   const maior = Math.max(1, ...(t.grafico?.barras ?? []).map((b) => b.valor));
   const [iFala, setIFala] = useState(0);
   const raiz = useRef<HTMLDivElement>(null);
+  const depois = !!t.imagem_apos_titulo;
+  const foto = (t.imagem || t.imagem_nota) ? (
+    <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
+      className={especialista ? cn("mx-auto", depois ? "h-40 w-40" : "h-28 w-28") : "aspect-[16/9] max-h-[30dvh] w-full"} />
+  ) : null;
   const seguir = () => {
     const v = t.animada ? raiz.current?.querySelector("[data-voo]") : null;
     if (v) ORIGEM_MASCOTE = { rect: v.getBoundingClientRect(), em: performance.now() };
@@ -1794,11 +1799,9 @@ function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (
       : t.loop?.length ? <MascoteLoop frames={t.loop} />
       : t.mapa && t.imagem ? <MapaConectado url={t.imagem} pontos={t.mapa.pontos} cor={cor} />
       : t.imagem_mascote && t.imagem ? <img src={t.imagem} alt="" draggable={false} className="mx-auto h-52 w-52 object-contain motion-safe:animate-empolgado" />
-      : (t.imagem || t.imagem_nota) && (
-        <Img caminho={`${base}.imagem`} url={t.imagem} nota={t.imagem_nota} redonda={especialista}
-          className={especialista ? "mx-auto h-28 w-28" : "aspect-[16/9] max-h-[30dvh] w-full"} />
-      )}
+      : !depois && foto}
       <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className={cn("block leading-snug", t.imagem_cheia && t.imagem ? "-mt-2 text-xl font-semibold" : "text-2xl font-bold")} />
+      {depois && foto}
       {!!t.credenciais?.length && (
         <div className="flex flex-wrap justify-center gap-1.5">
           {t.credenciais.map((c, k) => <Txt key={k} caminho={`${base}.credenciais.${k}`} valor={c} className="rounded-full border px-2.5 py-0.5 text-xs" />)}

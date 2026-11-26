@@ -114,6 +114,8 @@ export interface TelaQuiz {
   /** Tela "carregando": quanto dura, em segundos (padrão 9,5; a de "salvando" é curta). */
   duracao?: number;
   imagem?: string; imagem_nota?: string;
+  /** `imagem` logo abaixo do título (na "especialista", a foto redonda fica um pouco maior). Vale só para a imagem simples, sem mascote/mapa. */
+  imagem_apos_titulo?: boolean;
   animada?: boolean; fala?: string; quadros?: string[];
   pose?: number;   // mostra só este quadro (ex.: 12 = comemorando), sem o ciclo de aceno e fala
   abertura?: { paraquedas: string };   // cena de entrada: o mascote desce de paraquedas e pousa
