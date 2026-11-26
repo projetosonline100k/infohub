@@ -2312,18 +2312,69 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
   const cta = (
     <Botao href={o.cta_url}><Txt caminho="oferta.cta_texto" valor={o.cta_texto || "Quero o Instalivros"} /></Botao>
   );
+  const topo = !!o.video_e_itens_no_topo;
+  const videoEItens = (
+    <>
+        {o.video?.url && !semVideo && (
+          <div className="qs-video">
+            <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
+            <VideoVsl url={o.video.url} poster={o.video.poster} />
+          </div>
+        )}
+        {!!o.itens?.length && (
+          <>
+            <Txt caminho="oferta.recebe_titulo" valor={o.recebe_titulo ?? "O que você recebe"} as="div" className="qs-sec-t block" />
+            <ul className="qs-give">{o.itens.map((it, k) => <li key={k}><span className="qs-ok" aria-hidden>✓</span><Txt caminho={`oferta.itens.${k}`} valor={it} /></li>)}</ul>
+          </>
+        )}
+        {skin && !!o.bonus?.length && (
+          <>
+            <Txt caminho="oferta.bonus_titulo" valor={o.bonus_titulo ?? "Bônus"} as="div" className="qs-sec-t block" />
+            <div className="qs-bonus">
+              {o.bonus.map((b, k) => (
+                <div key={k}>
+                  {b.capa && <img src={b.capa} alt={`Capa: ${b.titulo}`} loading="lazy" draggable={false} className="qs-bonus-capa" />}
+                  <p className="qs-bonus-selo">🎁 Bônus {k + 1}</p>
+                  <Txt caminho={`oferta.bonus.${k}.titulo`} valor={b.titulo} as="h3" className="block" />
+                  <Txt caminho={`oferta.bonus.${k}.texto`} valor={b.texto} as="p" className="block" />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+    </>
+  );
   if (skin) {
     return (
       <div className="qs-oferta">
         <section className="qs-offer" id="oferta" style={e.visual?.oferta_fundo ? { background: e.visual.oferta_fundo } : undefined}>
           <Txt caminho="oferta.titulo" valor={o.titulo} mostrar={f(o.titulo)} as="h2" className="qs-offer-h block" />
           {(o.prova_social || editar) && <Txt caminho="oferta.prova_social" valor={o.prova_social} as="p" className="qs-soc block" />}
-          {(o.aviso || editar) && (
+          {topo && <div className="mb-5">{videoEItens}</div>}
+          {o.comparativo ? (
+            <div className="qs-versus">
+              <Txt caminho="oferta.comparativo.titulo" valor={o.comparativo.titulo} as="h3" className="qs-versus-t block" />
+              <Txt caminho="oferta.comparativo.texto" valor={o.comparativo.texto} as="p" className="qs-versus-p block" />
+              {o.comparativo.linhas?.length ? (
+                <div className="qs-versus-grade">
+                  {(["comum", "nosso"] as const).map((lado) => (
+                    <div key={lado} className={`qs-versus-${lado}`}>
+                      <Txt caminho={`oferta.comparativo.colunas.${lado}`} valor={o.comparativo!.colunas?.[lado]} as="h4" className="block" />
+                      <ul>{o.comparativo!.linhas!.map((l, k) => <li key={k}><span aria-hidden>{lado === "comum" ? "❌" : "✅"}</span><Txt caminho={`oferta.comparativo.linhas.${k}.${lado}`} valor={l[lado]} as="p" className="block" /></li>)}</ul>
+                    </div>
+                  ))}
+                </div>
+              ) : <ul>{(o.comparativo.itens ?? []).map((it, k) => <li key={k}><Txt caminho={`oferta.comparativo.itens.${k}`} valor={it} /></li>)}</ul>}
+              {o.comparativo.fecho && <Txt caminho="oferta.comparativo.fecho" valor={o.comparativo.fecho} as="p" className="qs-versus-fecho block" />}
+            </div>
+          ) : (o.aviso || editar) && (
             <div className="qs-honest"><Headphones className="qs-dot" strokeWidth={1.8} aria-hidden /><TxtNegrito caminho="oferta.aviso" valor={o.aviso} mostrar={f(o.aviso)} as="div" className="block" /></div>
           )}
           <div className="qs-price">
             <Txt caminho="oferta.preco_rotulo" valor={o.preco_rotulo} as="small" className="block" />
-            <div className="qs-price-v"><Txt caminho="oferta.preco" valor={o.preco} as="span" />{" "}<Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe} as="span" className="qs-price-d" /></div>
+            {o.parcelas
+              ? <div className="qs-price-v"><span className="qs-price-d">{o.parcelas.n}x de </span><Txt caminho="oferta.parcelas.valor" valor={o.parcelas.valor} as="span" /></div>
+              : <div className="qs-price-v"><Txt caminho="oferta.preco" valor={o.preco} as="span" />{" "}<Txt caminho="oferta.preco_detalhe" valor={o.preco_detalhe} as="span" className="qs-price-d" /></div>}
             <Txt caminho="oferta.preco_sub" valor={o.preco_sub} as="p" className="block" />
           </div>
           {cta}
@@ -2347,18 +2398,7 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
             {!!o.mentora.chips?.length && <div className="flex flex-wrap gap-2">{o.mentora.chips.map((c, k) => <span key={k} className="rounded-full border border-white/20 px-3 py-1 text-xs font-semibold"><Txt caminho={`oferta.mentora.chips.${k}`} valor={c} /></span>)}</div>}
           </section>
         )}
-        {o.video?.url && !semVideo && (
-          <div className="qs-video">
-            <Txt caminho="oferta.video.titulo" valor={o.video.titulo ?? "Veja por dentro do app"} as="h3" className="block text-center text-lg font-extrabold" />
-            <VideoVsl url={o.video.url} poster={o.video.poster} />
-          </div>
-        )}
-        {!!o.itens?.length && (
-          <>
-            <Txt caminho="oferta.recebe_titulo" valor={o.recebe_titulo ?? "O que você recebe"} as="div" className="qs-sec-t block" />
-            <ul className="qs-give">{o.itens.map((it, k) => <li key={k}><span className="qs-ok" aria-hidden>✓</span><Txt caminho={`oferta.itens.${k}`} valor={it} /></li>)}</ul>
-          </>
-        )}
+        {!topo && videoEItens}
         {!!o.depoimentos?.length && (
           <>
             <Txt caminho="oferta.depoimentos_titulo" valor={o.depoimentos_titulo ?? "Os usuários adoram o Instalivros!"} as="div" className="qs-sec-t block" />

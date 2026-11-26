@@ -149,7 +149,7 @@ export interface OfertaQuiz {
   // Oferta no visual do 12min (Davi, 10/11): lista do que recebe, cupom, preço De/Por, botão, garantia, depoimentos, perguntas e o bloco de compra repetido no fim.
   parcelas?: { n: number; valor: string };   // "12x de R$ …" no lugar do preço cheio (Davi, 11/11: o preço cheio a pessoa descobre no checkout)
   video?: { url: string; poster?: string; titulo?: string };   // vídeo no fim da oferta (arquivo leve, só carrega quando a pessoa aperta o play)
-  depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { id?: string; titulo: string; texto: string; preco_de?: string; preco_por?: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
+  depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { id?: string; /** Capa pequena ao lado do texto (visual com `skin`). */ capa?: string; titulo: string; texto: string; preco_de?: string; preco_por?: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;
   headline?: string;   // headline no topo da oferta; ==trecho== vira grifo
   faq?: { pergunta: string; resposta: string }[];   // perguntas frequentes antes do preço e do botão
   /** Planos para escolher (15/11, Davi: anual em destaque com bônus, semestral e trimestral sem bônus). Sem `planos`, vale o plano único acima. */
@@ -172,6 +172,12 @@ export interface OfertaQuiz {
   video_antes?: boolean; video_botao?: string;
   /** Imagem acima dos planos; quando existe, substitui o vídeo de fundo. */
   imagem_planos?: string;
+  /** Visual com `skin`: o vídeo e o "O que você recebe" sobem para logo abaixo do título da oferta. */
+  video_e_itens_no_topo?: boolean;
+  /** Visual com `skin`: cartão de comparação antes do preço, um item por linha. Quando existe, entra no lugar do `aviso`. */
+  comparativo?: { titulo?: string; texto?: string; itens?: string[];
+    /** Duas colunas: o jeito comum (apagado, ❌) e o do produto (destacado, ✅). Cada linha é um par; no lugar de `itens`. */
+    colunas?: { comum: string; nosso: string }; linhas?: { comum: string; nosso: string }[]; fecho?: string };
   /** Bloco "Quem é …" depois da oferta, com a foto redonda (Mariah no Instalingo). */
   mentora?: { foto: string; nome?: string; rotulo?: string; titulo?: string; texto?: string; chips?: string[] };
   sete_dias?: { titulo?: string; texto?: string; pergunta?: string };

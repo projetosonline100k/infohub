@@ -771,11 +771,33 @@ html.jarvis-window #root {
 .quiz-skin .qs-honest { display: flex; gap: 10px; background: rgba(255,255,255,.06); border: 1px solid var(--qv-borda); border-radius: 12px; padding: 12px 14px; font-size: 15px; line-height: 1.5; margin: 14px 0 16px; text-align: left; }
 .quiz-skin .qs-dot { color: var(--qv-destaque); }
 .quiz-skin .qs-honest strong { color: var(--qv-destaque); font-weight: 700; }
+.quiz-skin .qs-versus { margin: 22px 0 16px; text-align: center; }
+.quiz-skin .qs-versus-t { font-family: var(--qv-fonte-titulo); font-size: 21px; line-height: 1.2; font-weight: 700; }
+.quiz-skin .qs-versus-p { color: var(--qv-destaque); font-weight: 700; font-size: 16px; margin: 6px 0 12px; }
+.quiz-skin .qs-versus ul { list-style: none; display: grid; gap: 8px; margin: 0; padding: 0; text-align: left; }
+.quiz-skin .qs-versus li { background: rgba(255,255,255,.06); border: 1px solid var(--qv-borda); border-radius: 12px; padding: 12px 14px; font-size: 15.5px; line-height: 1.35; }
+.quiz-skin .qs-bonus { display: grid; gap: 10px; margin-top: 8px; text-align: left; }
+.quiz-skin .qs-bonus > div { background: rgba(255,255,255,.05); border: 1px dashed color-mix(in srgb, var(--qv-destaque) 60%, transparent); border-radius: 14px; padding: 14px; }
+.quiz-skin .qs-bonus > div { display: flow-root; }
+.quiz-skin .qs-bonus-capa { float: left; width: 88px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; margin: 0 12px 4px 0; box-shadow: 0 8px 20px -6px rgba(0,0,0,.7); }
+.quiz-skin .qs-bonus-selo { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--qv-destaque); font-weight: 700; }
+.quiz-skin .qs-bonus h3 { font-family: var(--qv-fonte-titulo); font-size: 19px; line-height: 1.2; font-weight: 700; margin: 2px 0 4px; }
+.quiz-skin .qs-bonus p:not(.qs-bonus-selo) { font-size: 15px; line-height: 1.45; color: var(--qv-sub); }
+.quiz-skin .qs-versus-grade { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+.quiz-skin .qs-versus-grade > div { border: 1px solid var(--qv-borda); border-radius: 14px; padding: 12px 10px; }
+.quiz-skin .qs-versus-grade h4 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; text-align: center; margin-bottom: 10px; }
+.quiz-skin .qs-versus-grade ul { gap: 0; }
+.quiz-skin .qs-versus-grade li { background: none; border: 0; border-top: 1px solid var(--qv-borda); border-radius: 0; padding: 10px 0; min-height: 84px; display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; font-size: 14px; }
+.quiz-skin .qs-versus-comum { color: var(--qv-texto-2); }
+.quiz-skin .qs-versus-nosso { border-color: var(--qv-destaque) !important; background: color-mix(in srgb, var(--qv-destaque) 12%, transparent); font-weight: 600; }
+.quiz-skin .qs-versus-nosso h4 { color: var(--qv-destaque); }
+.quiz-skin .qs-versus-fecho { font-size: 16px; font-weight: 600; margin-top: 12px; }
 .quiz-skin .qs-price { background: var(--qv-base); border: 1px solid var(--qv-borda); border-radius: 16px; padding: 18px; text-align: center; margin-bottom: 14px; }
 .quiz-skin .qs-price small { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--qv-destaque); font-weight: 600; }
 .quiz-skin .qs-price-v { font-family: var(--qv-fonte-titulo); font-weight: 700; font-size: 50px; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .quiz-skin .qs-price-v > span:first-child { white-space: nowrap; }
 .quiz-skin .qs-price-d { font-family: var(--qv-fonte-texto); font-size: 17px; font-weight: 400; color: var(--qv-texto-2); }
+.quiz-skin .qs-price-v > span.qs-price-d:first-child { display: block; }
 .quiz-skin .qs-price p { color: var(--qv-texto-2); font-size: 15px; margin-top: 2px; }
 .quiz-skin .qs-note { text-align: center; font-size: 15px; color: var(--qv-texto-2); margin-top: 12px; }
 .quiz-skin .qs-badges { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 16px 0 4px; }
