@@ -1116,7 +1116,11 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
   };
   const [verOferta, setVerOferta] = useState(false);
   // Oferta única com `video_antes`: lâmina do vídeo (1) → página com o diagnóstico e a oferta juntos (2).
-  const [faseFim, setFaseFim] = useState(1);
+  const [faseFim, setFaseFim] = useState(1);   // com `video_antes`: 1 vídeo · 1.5 tela depois do vídeo (se houver) · 2 resultado e oferta
+  const telaAposVideo = e.oferta?.tela_apos_video ? (e.telas ?? []).findIndex((t) => t.id === e.oferta!.tela_apos_video) : -1;
+  // Vídeo → tela seguinte → oferta não muda o `pos`: sem avisar o pai, o link público (que rola num contêiner
+  // próprio, não na janela) mantinha a rolagem antiga e a oferta abria lá embaixo. Roda depois da tela nova montada.
+  useEffect(() => { trocou.current?.(); }, [faseFim]);
   const reiniciar = () => { setPos(0); setEscolhas({}); setMarcadas({}); setCurtidos([]); setRejeitados([]); setVerOferta(false); setFaseFim(1); setNumeros({}); setDesenhou(false); setComprometeu(false); setContato({}); enviado.current = false; };
 
   // Resumo do plano em números (tela "perfil" com plano_numeros): só entram as linhas que a pessoa já respondeu.
@@ -1698,10 +1702,13 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
                 <div className="space-y-5 py-2 text-center">
                   <Txt caminho="oferta.video.titulo" valor={e.oferta?.video?.titulo ?? "Veja por dentro do app"} as="h2" className={cn("block text-2xl font-extrabold leading-tight", skin && "qs-h1")} />
                   <VideoVsl grande url={e.oferta!.video!.url} poster={e.oferta!.video!.poster} />
-                  <Botao onClick={() => { setFaseFim(2); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.video_botao" valor={e.oferta?.video_botao ?? "Continuar"} /></Botao>
+                  <Botao onClick={() => { setFaseFim(telaAposVideo >= 0 ? 1.5 : 2); window.scrollTo({ top: 0 }); }}><Txt caminho="oferta.video_botao" valor={e.oferta?.video_botao ?? "Continuar"} /></Botao>
                 </div>
               )}
-              {(!(laminaVideo && faseFim === 1 && !editar) && !temTelaResultado && !e.sem_resultado && !(v3 && e.oferta?.modo === "direto" && verOferta)) && (
+              {laminaVideo && telaAposVideo >= 0 && (faseFim === 1.5 || editar) && (
+                <Tela t={e.telas![telaAposVideo]} base={`telas.${telaAposVideo}`} f={f} onSeguir={() => { if (editar) return; setFaseFim(2); window.scrollTo({ top: 0 }); }} suave={suave} />
+              )}
+              {(!(laminaVideo && faseFim < 2 && !editar) && !temTelaResultado && !e.sem_resultado && !(v3 && e.oferta?.modo === "direto" && verOferta)) && (
                 v3 ? <ResultadoIndice e={e} perfil={perfil} escolhas={escolhas} f={f} suave={suave} />
                   : <Resultado e={e} base="" perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} suave={suave} />
               )}
@@ -2273,9 +2280,10 @@ function ResultadoIndice({ e, perfil, escolhas, f, suave }: { e: EstruturaQuiz; 
         <section className="space-y-3">
           <Txt caminho="indice.beneficios_titulo" valor={ind.beneficios_titulo} as="h3" className={cn("block text-center text-lg font-extrabold", skin && "qs-sec-t")} />
           {cartoes.map((c, k) => (
-            <div key={k} className={cn("rounded-2xl border p-4 text-left", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]", skin && "qs-do")}>
+            <div key={k} className={cn("rounded-2xl border p-4 text-left", escuro ? "border-white/15 bg-white/5" : "bg-black/[0.02]", skin && "qs-do", ind.cartoes_destaque && !editar && "motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500 motion-safe:fill-mode-both")}
+              style={ind.cartoes_destaque && !editar ? { animationDelay: `${600 + k * 450}ms` } : undefined}>
               <p className="flex items-center gap-2 text-base font-extrabold">{!skin && <Check className="h-5 w-5 shrink-0" style={{ color: cor }} strokeWidth={3} />}{c.caminho ? <Txt caminho={`${c.caminho}.titulo`} valor={c.titulo} /> : c.titulo}</p>
-              <p className={cn("mt-1 whitespace-pre-line text-sm leading-relaxed", suave)}>{c.caminho ? <Txt caminho={`${c.caminho}.texto`} valor={c.texto} /> : c.texto}</p>
+              <p className={cn("mt-1 whitespace-pre-line text-sm leading-relaxed", suave, ind.cartoes_destaque && "qs-destaque")}>{c.caminho ? <Txt caminho={`${c.caminho}.texto`} valor={c.texto} /> : ind.cartoes_destaque ? comNegrito(c.texto) : c.texto}</p>
             </div>
           ))}
         </section>

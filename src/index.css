@@ -792,6 +792,8 @@ html.jarvis-window #root {
 .quiz-skin .qs-versus-nosso { border-color: var(--qv-destaque) !important; background: color-mix(in srgb, var(--qv-destaque) 12%, transparent); font-weight: 600; }
 .quiz-skin .qs-versus-nosso h4 { color: var(--qv-destaque); }
 .quiz-skin .qs-versus-fecho { font-size: 16px; font-weight: 600; margin-top: 12px; }
+.quiz-skin .qs-destaque { font-size: 15.5px; line-height: 2; }
+.quiz-skin .qs-destaque strong { color: var(--qv-destaque); font-weight: 700; }
 .quiz-skin .qs-price { background: var(--qv-base); border: 1px solid var(--qv-borda); border-radius: 16px; padding: 18px; text-align: center; margin-bottom: 14px; }
 .quiz-skin .qs-price small { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--qv-destaque); font-weight: 600; }
 .quiz-skin .qs-price-v { font-family: var(--qv-fonte-titulo); font-weight: 700; font-size: 50px; line-height: 1.1; font-variant-numeric: tabular-nums; }

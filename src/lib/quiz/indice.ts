@@ -8,6 +8,8 @@ export interface ConfigIndice {
   anel?: "nivel"; nivel_titulo?: string;
   faixas: { ate: number; perfil: string }[];
   beneficios_titulo?: string; beneficios_de?: string[];
+  /** Cartões do resultado com **negrito** na cor de destaque e entrada um de cada vez. */
+  cartoes_destaque?: boolean;
 }
 interface PerguntaIndice { id: string; opcoes: { nota?: number; beneficio?: { titulo?: string; texto?: string } }[] }
 

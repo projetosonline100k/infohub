@@ -170,6 +170,8 @@ export interface OfertaQuiz {
   mostrar_recebe?: boolean;
   /** Oferta única: o vídeo vira uma lâmina própria antes da página que junta o diagnóstico e a oferta (botão `video_botao`). */
   video_antes?: boolean; video_botao?: string;
+  /** Com `video_antes`: id de uma tela mostrada sozinha entre o vídeo e o resultado. Dê a ela `depois_de: "apos_video"` para não aparecer no meio das perguntas. */
+  tela_apos_video?: string;
   /** Imagem acima dos planos; quando existe, substitui o vídeo de fundo. */
   imagem_planos?: string;
   /** Visual com `skin`: o vídeo e o "O que você recebe" sobem para logo abaixo do título da oferta. */
