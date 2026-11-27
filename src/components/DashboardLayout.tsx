@@ -18,6 +18,7 @@ import { EquipeGlobal } from "@/components/empresa/EquipeGlobal";
 import { OrbeVivo } from "@/components/empresa/OrbeVivo";
 import { AgenteOrbeNativa } from "@/components/empresa/AgenteOrbeNativa";
 import { SomDeVenda } from "@/components/vendas/SomDeVenda";
+import { SomDeQuiz } from "@/components/quiz/SomDeQuiz";
 import { SinoImplementacoes } from "@/components/layout/SinoImplementacoes";
 
 // Redesign visual (item 3/4): sidebar fixa à esquerda + topbar no
@@ -172,6 +173,7 @@ export const DashboardLayout = () => {
       <OrbeVivo />
       <AgenteOrbeNativa />
       <SomDeVenda />
+      <SomDeQuiz />
       <SinoImplementacoes />
 
       {/* Assistente virtual flutuante — única instância, visível em toda

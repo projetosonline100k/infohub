@@ -67,3 +67,17 @@ function vendaSintetizada(): void {
   tocarNota(ctx, 1568, t + 0.3, 0.35, 0.16);
   tocarNota(ctx, 2093, t + 0.42, 0.7, 0.18);
 }
+
+/** Libera o áudio: o navegador só toca depois que a pessoa clica ou digita na página. */
+export function destravarSom(): void {
+  obterAudioContext();
+}
+
+// Gente nova no quiz (27/11): "plim-plim" de campainha, bem diferente do som de venda.
+export function playEntrouNoQuizSound(): void {
+  const ctx = obterAudioContext();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  tocarNota(ctx, 987.8, t, 0.22, 0.22);
+  tocarNota(ctx, 1480, t + 0.16, 0.45, 0.24);
+}
