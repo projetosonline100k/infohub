@@ -172,6 +172,8 @@ export interface OfertaQuiz {
   video_antes?: boolean; video_botao?: string;
   /** Com `video_antes`: id de uma tela mostrada sozinha entre o vídeo e o resultado. Dê a ela `depois_de: "apos_video"` para não aparecer no meio das perguntas. */
   tela_apos_video?: string;
+  /** Oferta única: pop-up de saída com cupom (voltar do celular ou mouse saindo pelo topo), uma vez por visita. Sem `cupom` só aparece no teste. */
+  saida?: { cupom?: string; selo?: string; titulo: string; texto?: string; preco_de?: string; preco_por?: string; botao?: string; recusar?: string; nota?: string };
   /** Imagem acima dos planos; quando existe, substitui o vídeo de fundo. */
   imagem_planos?: string;
   /** Visual com `skin`: o vídeo e o "O que você recebe" sobem para logo abaixo do título da oferta. */

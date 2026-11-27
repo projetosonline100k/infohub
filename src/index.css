@@ -794,6 +794,16 @@ html.jarvis-window #root {
 .quiz-skin .qs-versus-fecho { font-size: 16px; font-weight: 600; margin-top: 12px; }
 .quiz-skin .qs-destaque { font-size: 15.5px; line-height: 2; }
 .quiz-skin .qs-destaque strong { color: var(--qv-destaque); font-weight: 700; }
+.quiz-skin .qs-saida { position: fixed; inset: 0; z-index: 60; display: flex; overflow-y: auto; padding: 20px; background: rgba(0,0,0,.78); }
+.quiz-skin .qs-saida-caixa { margin: auto; width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 12px; padding: 24px 20px; text-align: center; outline: none; color: var(--qv-texto); background: #14141b; border: 2px solid var(--qv-destaque); border-radius: 20px; }
+.quiz-skin .qs-saida-caixa h2 { font-family: var(--qv-fonte-titulo); font-size: 24px; font-weight: 700; line-height: 1.25; }
+.quiz-skin .qs-saida-selo { align-self: center; padding: 4px 14px; border-radius: 999px; background: var(--qv-destaque); color: #fff; font-size: 14px; font-weight: 700; }
+.quiz-skin .qs-saida-preco { display: flex; flex-direction: column; }
+.quiz-skin .qs-saida-preco s { font-size: 15px; opacity: .65; }
+.quiz-skin .qs-saida-preco strong { font-size: 30px; font-weight: 700; color: var(--qv-destaque); }
+.quiz-skin .qs-saida-nota { font-size: 12.5px; opacity: .75; }
+.quiz-skin .qs-saida-aviso { font-size: 12px; padding: 6px 8px; border-radius: 8px; background: rgba(245,158,11,.18); color: #fcd34d; }
+.quiz-skin .qs-saida-nao { font-size: 14px; opacity: .7; text-decoration: underline; text-underline-offset: 4px; padding: 6px; }
 .quiz-skin .qs-price { background: var(--qv-base); border: 1px solid var(--qv-borda); border-radius: 16px; padding: 18px; text-align: center; margin-bottom: 14px; }
 .quiz-skin .qs-price small { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--qv-destaque); font-weight: 600; }
 .quiz-skin .qs-price-v { font-family: var(--qv-fonte-titulo); font-weight: 700; font-size: 50px; line-height: 1.1; font-variant-numeric: tabular-nums; }

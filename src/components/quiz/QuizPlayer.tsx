@@ -13,6 +13,8 @@ import { alternarMarcada, metaDaSelecao } from "@/lib/quiz/selecao";
 import { beneficiosDoIndice } from "@/lib/quiz/indice";
 import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
 import { comDadosDoLead } from "@/lib/quiz/utm";
+import { comCupom } from "@/lib/quiz/saida";
+import { PopupSaida } from "./PopupSaida";
 import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
 import { AmostraTela, type LivroAmostra } from "./AmostraQuiz";
@@ -930,13 +932,13 @@ function useFontesDoVisual(url?: string) {
 /** No app desktop um link com target="_blank" abre uma janela do próprio Infopro (sem barra, presa dentro do app: 25/11, checkout da Eduzz). Lá o clique vai para o navegador padrão. */
 const noApp = (url: string) => (ev: React.MouseEvent) => { if (isDesktop()) { ev.preventDefault(); void abrirLinkExterno(url); } };
 
-function Botao({ children, onClick, href }: { children: React.ReactNode; onClick?: () => void; href?: string }) {
+function Botao({ children, onClick, href, plano }: { children: React.ReactNode; onClick?: () => void; href?: string; /** Nome que vai na métrica do clique. */ plano?: string }) {
   const { cor: corQuiz, editar, aoClicarOferta, linkDeCompra, botao } = useContext(QuizCtx);
   const cor = botao?.fundo ?? corQuiz;
   const cls = cn("qs-cta h-auto min-h-12 w-full whitespace-normal rounded-xl text-base font-semibold shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]", !botao && "text-white");
   const estilo = { background: cor, boxShadow: `0 8px 24px -8px ${cor}`, ...(botao && { color: botao.texto }) };
   if (editar) return <div className={cn(cls, "flex items-center justify-center px-4 py-3")} style={estilo}>{children}</div>;
-  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={(ev) => { aoClicarOferta?.(); noApp(linkDeCompra ? linkDeCompra(href) : href)(ev); }}>{children}</a></Button>;
+  if (href) return <Button asChild size="lg" className={cls} style={estilo}><a href={linkDeCompra ? linkDeCompra(href) : href} target="_blank" rel="noreferrer" onClick={(ev) => { aoClicarOferta?.(plano); onClick?.(); noApp(linkDeCompra ? linkDeCompra(href) : href)(ev); }}>{children}</a></Button>;
   return <Button size="lg" className={cls} style={estilo} onClick={onClick}>{children}<ArrowRight className="ml-2 h-4 w-4 shrink-0" /></Button>;
 }
 
@@ -1723,6 +1725,12 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
             </div>
           )}
         </div>
+        {/* Fora do bloco animado: o `fixed` do pop-up precisa valer para a janela toda. */}
+        {passo.tipo === "fim" && !editar && !(laminaVideo && faseFim < 2) && ofertaMensalUnica(e) && e.oferta?.saida && e.oferta.cta_url && (e.oferta.saida.cupom?.trim() || teste) && (
+          <PopupSaida lembrar={teste ? undefined : `quiz-saida:${e.oferta.saida.cupom}`}>
+            {(fechar) => <OfertaDeSaida saida={e.oferta!.saida!} url={e.oferta!.cta_url!} fechar={fechar} />}
+          </PopupSaida>
+        )}
       </div>
       {skin && v?.marca?.rodape && <p className="mx-auto mt-6 w-full max-w-[480px] text-center text-[13px]" style={{ color: v.texto_2, fontFamily: v.fonte_texto }}>{v.marca.rodape}</p>}
     </QuizCtx.Provider>
@@ -2309,6 +2317,27 @@ function CartaoDepoimento({ d, k }: { d: Depoimento; k: number }) {
       {longo && !editar && <button type="button" className="qs-mais" onClick={() => setAberto((x) => !x)}>{aberto ? "ler menos" : "ler mais"}</button>}
       <small><Txt caminho={`oferta.depoimentos.${k}.nome`} valor={d.nome} /></small>
     </div>
+  );
+}
+
+// Conteúdo do pop-up de saída. Sem cupom ele só existe no teste, com o aviso (o público não vê).
+function OfertaDeSaida({ saida, url, fechar }: { saida: NonNullable<NonNullable<EstruturaQuiz["oferta"]>["saida"]>; url: string; fechar: () => void }) {
+  return (
+    <>
+      {!saida.cupom?.trim() && <p className="qs-saida-aviso">Só no teste: falta o código do cupom. O cliente ainda não vê este aviso nem o pop-up.</p>}
+      {saida.selo && <p className="qs-saida-selo">{saida.selo}</p>}
+      <h2 id="qs-saida-titulo">{saida.titulo}</h2>
+      {saida.texto && <p>{saida.texto}</p>}
+      {saida.preco_por && (
+        <div className="qs-saida-preco">
+          {saida.preco_de && <s>{saida.preco_de}</s>}
+          <strong>{saida.preco_por}</strong>
+        </div>
+      )}
+      <Botao href={comCupom(url, saida.cupom)} plano="Pop-up de saída" onClick={fechar}>{saida.botao || "Quero meu desconto"}</Botao>
+      {saida.nota && <p className="qs-saida-nota">{saida.nota}</p>}
+      <button type="button" className="qs-saida-nao" onClick={fechar}>{saida.recusar || "Agora não"}</button>
+    </>
   );
 }
 
