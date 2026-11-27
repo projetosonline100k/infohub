@@ -92,8 +92,8 @@ export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
   tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil" | "depoimento" | "curtir_livros" | "desafio";
-  /** Tela "desafio": uma frase em inglês, opções de significado e o retorno na hora. `acerto`, `erro` e `depois` aceitam **negrito**. */
-  desafio?: { video?: { url: string; poster?: string; credito?: string }; frase: string; pergunta?: string; opcoes: { texto: string; certa?: boolean }[]; acerto: string; erro: string; depois?: string };
+  /** Tela "desafio": uma frase em inglês e opções de significado; tenta até acertar. `explica`, `acerto` e `depois` aceitam **negrito**. */
+  desafio?: { video?: { url: string; poster?: string; credito?: string }; frase: string; pergunta?: string; opcoes: { texto: string; certa?: boolean; /** Aparece embaixo da opção errada quando tocada. */ explica?: string }[]; acerto: string; erro?: string; depois?: string };
   /** Tela "amostra" (18/11): "Seu primeiro livro chegou" — toca no livro, abre com Ouvir/Ler e um trecho grátis. */
   amostra?: ConfigAmostra;
   /** Tela "barras_mentores" (15/11): barras de livros por ano dos mentores que a pessoa escolheu. */

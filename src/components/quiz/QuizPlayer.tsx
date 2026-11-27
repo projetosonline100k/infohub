@@ -15,6 +15,7 @@ import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosP
 import { comDadosDoLead } from "@/lib/quiz/utm";
 import { comCupom } from "@/lib/quiz/saida";
 import { linkWhatsapp } from "@/lib/quiz/whatsapp";
+import { tocarSomDeAcerto } from "@/lib/quiz/somAcerto";
 import { PopupSaida } from "./PopupSaida";
 import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
@@ -1817,19 +1818,25 @@ function TrechoDoTreino({ v, onFim }: { v: { url: string; poster?: string; credi
   );
 }
 
-// Treino de uma frase: a pessoa escolhe o significado, vê na hora se acertou (errar também anima) e só então segue.
-// A primeira escolha vale. No editor aparecem os dois retornos, para editar.
+// Treino de uma frase: a pessoa tenta até acertar. Cada erro explica só a opção tocada (como seria em inglês),
+// sem entregar a certa; o acerto solta confete e som, e só então dá para seguir. No editor aparece tudo, para editar.
 function DesafioTela({ d, t, base, f, suave, onSeguir }: { d: NonNullable<TelaQuiz["desafio"]>; t: TelaQuiz; base: string; f: (s?: string) => string; suave: string; onSeguir: () => void }) {
   const { editar } = useContext(QuizCtx);
-  const [escolha, setEscolha] = useState<number | null>(null);
+  const [tentadas, setTentadas] = useState<number[]>([]);
   const retorno = useRef<HTMLDivElement>(null);
-  const respondeu = escolha !== null;
+  const acertou = tentadas.some((k) => d.opcoes[k]?.certa);
   const [ouviu, setOuviu] = useState(false);
   const liberado = !d.video?.url || ouviu || editar;   // com vídeo, a legenda e as opções só aparecem depois da fala
   const pergunta = useRef<HTMLDivElement>(null);
   useEffect(() => { if (ouviu) pergunta.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [ouviu]);
-  const acertou = respondeu && !!d.opcoes[escolha]?.certa;
-  useEffect(() => { if (respondeu) retorno.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [respondeu]);
+  useEffect(() => { if (acertou) retorno.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [acertou]);
+  const tocar = (k: number) => {
+    if (acertou || tentadas.includes(k)) return;
+    setTentadas((x) => [...x, k]);
+    if (!d.opcoes[k]?.certa) return;
+    tocarSomDeAcerto();
+    void confetti({ particleCount: 130, spread: 80, startVelocity: 38, origin: { y: 0.7 }, zIndex: 70, disableForReducedMotion: true });
+  };
   return (
     <div className="qs-desafio space-y-4">
       <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className="block text-2xl font-extrabold leading-tight" />
@@ -1839,21 +1846,28 @@ function DesafioTela({ d, t, base, f, suave, onSeguir }: { d: NonNullable<TelaQu
       <Txt caminho={`${base}.desafio.pergunta`} valor={d.pergunta} as="p" className={cn("block text-base font-semibold", suave)} />
       <div className="space-y-2.5">
         {d.opcoes.map((o, k) => {
-          const estado = !respondeu ? "" : o.certa ? "certa" : k === escolha ? "errada" : "apagada";
+          const tocada = tentadas.includes(k);
+          const estado = tocada ? (o.certa ? "certa" : "errada") : acertou ? "apagada" : "";
           const texto = <Txt caminho={`${base}.desafio.opcoes.${k}.texto`} valor={o.texto} />;
-          return editar
-            ? <div key={k} className="qs-desafio-op" data-estado={o.certa ? "certa" : ""}>{texto}</div>
-            : <button key={k} type="button" className="qs-desafio-op" data-estado={estado} aria-pressed={k === escolha} disabled={respondeu} onClick={() => setEscolha(k)}>
-                <span>{texto}</span>{estado === "certa" ? <span aria-label="resposta certa">✅</span> : estado === "errada" ? <span aria-label="resposta errada">❌</span> : null}
-              </button>;
+          return (
+            <div key={k}>
+              {editar
+                ? <div className="qs-desafio-op" data-estado={o.certa ? "certa" : ""}>{texto}</div>
+                : <button type="button" className="qs-desafio-op" data-estado={estado} aria-pressed={tocada} disabled={acertou || tocada} onClick={() => tocar(k)}>
+                    <span>{texto}</span>{estado === "certa" ? <span aria-label="resposta certa">✅</span> : estado === "errada" ? <span aria-label="resposta errada">❌</span> : null}
+                  </button>}
+              {!o.certa && (editar || tocada) && (
+                <div aria-live="polite"><TxtNegrito caminho={`${base}.desafio.opcoes.${k}.explica`} valor={o.explica} as="p" className="qs-desafio-explica block motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-1" /></div>
+              )}
+            </div>
+          );
         })}
       </div>
       </div>}
       <div ref={retorno} aria-live="polite" className="space-y-4">
-        {(respondeu || editar) && (
+        {(acertou || editar) && (
           <>
-            {(acertou || editar) && <TxtNegrito caminho={`${base}.desafio.acerto`} valor={d.acerto} as="p" className="qs-desafio-retorno block motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95" />}
-            {(!acertou || editar) && <TxtNegrito caminho={`${base}.desafio.erro`} valor={d.erro} as="p" className="qs-desafio-retorno block motion-safe:animate-in motion-safe:fade-in" />}
+            <TxtNegrito caminho={`${base}.desafio.acerto`} valor={d.acerto} as="p" className="qs-desafio-retorno block motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95" />
             <TxtNegrito caminho={`${base}.desafio.depois`} valor={d.depois} as="p" className="block text-base leading-relaxed" />
             <Botao onClick={editar ? undefined : onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>
           </>
