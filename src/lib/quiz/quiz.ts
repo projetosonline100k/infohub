@@ -91,7 +91,9 @@ export interface BarraFixa { rotulo: string; valor: number; legenda?: string; de
 export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
-  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil" | "depoimento" | "curtir_livros";
+  tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil" | "depoimento" | "curtir_livros" | "desafio";
+  /** Tela "desafio": uma frase em inglês, opções de significado e o retorno na hora. `acerto`, `erro` e `depois` aceitam **negrito**. */
+  desafio?: { video?: { url: string; poster?: string; credito?: string }; frase: string; pergunta?: string; opcoes: { texto: string; certa?: boolean }[]; acerto: string; erro: string; depois?: string };
   /** Tela "amostra" (18/11): "Seu primeiro livro chegou" — toca no livro, abre com Ouvir/Ler e um trecho grátis. */
   amostra?: ConfigAmostra;
   /** Tela "barras_mentores" (15/11): barras de livros por ano dos mentores que a pessoa escolheu. */
@@ -174,6 +176,8 @@ export interface OfertaQuiz {
   tela_apos_video?: string;
   /** Oferta única: pop-up de saída com cupom (voltar do celular ou mouse saindo pelo topo), uma vez por visita. Sem `cupom` só aparece no teste. */
   saida?: { cupom?: string; selo?: string; titulo: string; texto?: string; preco_de?: string; preco_por?: string; botao?: string; recusar?: string; nota?: string };
+  /** Visual com `skin`: "Ficou com alguma dúvida?" + botão do WhatsApp no fim da oferta, depois do último botão de compra. */
+  whatsapp?: { numero: string; mensagem?: string; titulo?: string; botao?: string };
   /** Imagem acima dos planos; quando existe, substitui o vídeo de fundo. */
   imagem_planos?: string;
   /** Visual com `skin`: o vídeo e o "O que você recebe" sobem para logo abaixo do título da oferta. */

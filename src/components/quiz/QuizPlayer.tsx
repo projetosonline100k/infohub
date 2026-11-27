@@ -14,6 +14,7 @@ import { beneficiosDoIndice } from "@/lib/quiz/indice";
 import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
 import { comDadosDoLead } from "@/lib/quiz/utm";
 import { comCupom } from "@/lib/quiz/saida";
+import { linkWhatsapp } from "@/lib/quiz/whatsapp";
 import { PopupSaida } from "./PopupSaida";
 import { montarPlano, razoesDoPerfil, temaDaOpcao, tituloBonito, ROTULO_TEMA, type LivroPlano, type PlanoMontado, type Tema } from "@/lib/quiz/plano";
 import { PerfilTela, PlanoLivrosTela } from "./PlanoQuiz";
@@ -1567,6 +1568,7 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
             }
             if (t.tipo === "depoimento") return <DepoimentoCartao key={t.id} t={t} f={f} rodape={<Botao onClick={avancar}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>} />;
             if (t.tipo === "curtir_livros") return <CurtirLivros key={t.id} t={t} e={e} marcadas={marcadas} f={f} onSeguir={avancar} parado={editar} corBotao={v?.botao ?? cor} onCurtir={(id, sim) => (sim ? setCurtidos : setRejeitados)((x) => (x.includes(id) ? x : [...x, id]))} />;
+            if (t.tipo === "desafio" && t.desafio) return <DesafioTela key={t.id} d={t.desafio} t={t} base={base} f={f} suave={suave} onSeguir={avancar} />;
             if (t.tipo === "carregando") return <Carregando key={t.id} t={t} base={base} f={f} onPronto={editar || travado ? undefined : avancar} suave={suave} />;
             if (t.tipo === "perfil") {
               const razoes = razoesDoPerfil(perguntas, escolhas, perfil?.id ?? "");
@@ -1783,6 +1785,80 @@ function Enfeite({ en, k }: { en: NonNullable<TelaQuiz["enfeites"]>[number]; k: 
       style={{ left: `${en.x}%`, top: `${en.y}%`, width: tam, height: tam, transform: `translate(-50%,-50%) rotate(${en.rot ?? 0}deg)`, animationDelay: `${(k % 4) * -1.1}s` }}>
       {en.imagem ? <img src={en.imagem} alt="" draggable={false} className="h-full w-full object-contain" />
         : Ic && <Ic className="h-full w-full drop-shadow-md" style={{ color: en.cor ?? "#2f6fe4", fill: en.icone === "estrela" || en.icone === "trofeu" ? en.cor ?? "#2f6fe4" : "none" }} strokeWidth={en.icone === "estrela" ? 1.5 : 2} />}
+    </div>
+  );
+}
+
+// Trecho do treino: toca com som no toque da pessoa e avisa quando a fala termina (aí aparecem as opções).
+// Se o vídeo não carregar ou não tocar, avisa do mesmo jeito para ninguém ficar preso.
+function TrechoDoTreino({ v, onFim }: { v: { url: string; poster?: string; credito?: string }; onFim: () => void }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [estado, setEstado] = useState<"parado" | "tocando" | "fim">("parado");
+  const terminou = () => { setEstado("fim"); onFim(); };
+  const tocar = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.currentTime = 0;
+    setEstado("tocando");
+    void el.play().catch(terminou);
+  };
+  return (
+    <figure>
+      <div className="qs-desafio-video">
+        <video ref={ref} src={v.url} poster={v.poster} playsInline preload="auto" onEnded={terminou} onError={terminou} onContextMenu={(ev) => ev.preventDefault()} />
+        {estado !== "tocando" && (
+          <button type="button" onClick={tocar} aria-label={estado === "fim" ? "Ouvir a frase de novo" : "Assistir ao trecho com som"}>
+            <span>{estado === "fim" ? "🔁 Ouvir de novo" : "▶ Toque para ouvir"}</span>
+          </button>
+        )}
+      </div>
+      {v.credito && <figcaption>{v.credito}</figcaption>}
+    </figure>
+  );
+}
+
+// Treino de uma frase: a pessoa escolhe o significado, vê na hora se acertou (errar também anima) e só então segue.
+// A primeira escolha vale. No editor aparecem os dois retornos, para editar.
+function DesafioTela({ d, t, base, f, suave, onSeguir }: { d: NonNullable<TelaQuiz["desafio"]>; t: TelaQuiz; base: string; f: (s?: string) => string; suave: string; onSeguir: () => void }) {
+  const { editar } = useContext(QuizCtx);
+  const [escolha, setEscolha] = useState<number | null>(null);
+  const retorno = useRef<HTMLDivElement>(null);
+  const respondeu = escolha !== null;
+  const [ouviu, setOuviu] = useState(false);
+  const liberado = !d.video?.url || ouviu || editar;   // com vídeo, a legenda e as opções só aparecem depois da fala
+  const pergunta = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (ouviu) pergunta.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [ouviu]);
+  const acertou = respondeu && !!d.opcoes[escolha]?.certa;
+  useEffect(() => { if (respondeu) retorno.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [respondeu]);
+  return (
+    <div className="qs-desafio space-y-4">
+      <Txt caminho={`${base}.titulo`} valor={t.titulo} mostrar={f(t.titulo)} as="h2" className="block text-2xl font-extrabold leading-tight" />
+      {d.video?.url && <TrechoDoTreino v={d.video} onFim={() => setOuviu(true)} />}
+      {liberado && <div ref={pergunta} className="space-y-4 pb-2">
+      <Txt caminho={`${base}.desafio.frase`} valor={d.frase} as="p" className="qs-desafio-frase block" />
+      <Txt caminho={`${base}.desafio.pergunta`} valor={d.pergunta} as="p" className={cn("block text-base font-semibold", suave)} />
+      <div className="space-y-2.5">
+        {d.opcoes.map((o, k) => {
+          const estado = !respondeu ? "" : o.certa ? "certa" : k === escolha ? "errada" : "apagada";
+          const texto = <Txt caminho={`${base}.desafio.opcoes.${k}.texto`} valor={o.texto} />;
+          return editar
+            ? <div key={k} className="qs-desafio-op" data-estado={o.certa ? "certa" : ""}>{texto}</div>
+            : <button key={k} type="button" className="qs-desafio-op" data-estado={estado} aria-pressed={k === escolha} disabled={respondeu} onClick={() => setEscolha(k)}>
+                <span>{texto}</span>{estado === "certa" ? <span aria-label="resposta certa">✅</span> : estado === "errada" ? <span aria-label="resposta errada">❌</span> : null}
+              </button>;
+        })}
+      </div>
+      </div>}
+      <div ref={retorno} aria-live="polite" className="space-y-4">
+        {(respondeu || editar) && (
+          <>
+            {(acertou || editar) && <TxtNegrito caminho={`${base}.desafio.acerto`} valor={d.acerto} as="p" className="qs-desafio-retorno block motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95" />}
+            {(!acertou || editar) && <TxtNegrito caminho={`${base}.desafio.erro`} valor={d.erro} as="p" className="qs-desafio-retorno block motion-safe:animate-in motion-safe:fade-in" />}
+            <TxtNegrito caminho={`${base}.desafio.depois`} valor={d.depois} as="p" className="block text-base leading-relaxed" />
+            <Botao onClick={editar ? undefined : onSeguir}><Txt caminho={`${base}.botao`} valor={t.botao || "Continuar"} /></Botao>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -2320,6 +2396,20 @@ function CartaoDepoimento({ d, k }: { d: Depoimento; k: number }) {
   );
 }
 
+// Contato para dúvidas no fim da oferta: botão discreto, para não disputar com o de compra. Não conta como clique de compra.
+function DuvidaWhatsapp({ w }: { w: NonNullable<NonNullable<EstruturaQuiz["oferta"]>["whatsapp"]> }) {
+  const { editar } = useContext(QuizCtx);
+  const url = linkWhatsapp(w.numero, w.mensagem);
+  return (
+    <div className="qs-zap">
+      <Txt caminho="oferta.whatsapp.titulo" valor={w.titulo ?? "Ficou com alguma dúvida?"} as="p" className="block" />
+      <a href={editar ? undefined : url} target="_blank" rel="noreferrer" onClick={editar ? undefined : noApp(url)}>
+        <MessageCircle className="h-5 w-5 shrink-0" aria-hidden /><Txt caminho="oferta.whatsapp.botao" valor={w.botao ?? "Falar no WhatsApp"} />
+      </a>
+    </div>
+  );
+}
+
 // Conteúdo do pop-up de saída. Sem cupom ele só existe no teste, com o aviso (o público não vê).
 function OfertaDeSaida({ saida, url, fechar }: { saida: NonNullable<NonNullable<EstruturaQuiz["oferta"]>["saida"]>; url: string; fechar: () => void }) {
   return (
@@ -2462,6 +2552,7 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
           <Txt caminho="oferta.fechamento" valor={o.fechamento} mostrar={f(o.fechamento)} as="p" className="block" />
           {cta}
         </div>
+        {o.whatsapp && linkWhatsapp(o.whatsapp.numero) && <DuvidaWhatsapp w={o.whatsapp} />}
       </div>
     );
   }
