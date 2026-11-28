@@ -92,6 +92,8 @@ export interface TelaQuiz {
   id: string;
   depois_de: string;   // "intro" ou o id da pergunta
   tipo: "respiro" | "especialista" | "carregando" | "resultado" | "perfil" | "plano_livros" | "barras_mentores" | "depoimento_animado" | "projecao" | "compromisso" | "amostra" | "previa_perfil" | "depoimento" | "curtir_livros" | "desafio";
+  /** Respiro que muda conforme a resposta (ver espelho.ts); sem resposta, vale o conteúdo comum da tela. */
+  espelho?: import("./espelho").ConfigEspelho;
   /** Tela "desafio": uma frase em inglês e opções de significado; tenta até acertar. `explica`, `acerto` e `depois` aceitam **negrito**. */
   desafio?: { video?: { url: string; poster?: string; credito?: string }; frase: string; pergunta?: string; opcoes: { texto: string; certa?: boolean; /** Aparece embaixo da opção errada quando tocada. */ explica?: string }[]; acerto: string; erro?: string; depois?: string };
   /** Tela "amostra" (18/11): "Seu primeiro livro chegou" — toca no livro, abre com Ouvir/Ler e um trecho grátis. */
@@ -149,6 +151,8 @@ export interface OfertaQuiz {
   imagem?: string; imagem_nota?: string;
   cta_texto?: string; cta_url?: string;
   // Oferta no visual do 12min (Davi, 10/11): lista do que recebe, cupom, preço De/Por, botão, garantia, depoimentos, perguntas e o bloco de compra repetido no fim.
+  /** Bloco antes do preço para quem já gastou com inglês e não viu resultado: convida a testar dentro da garantia. */
+  objecao?: { titulo: string; texto?: string; passos?: string[]; garantia?: string };
   parcelas?: { n: number; valor: string };   // "12x de R$ …" no lugar do preço cheio (Davi, 11/11: o preço cheio a pessoa descobre no checkout)
   video?: { url: string; poster?: string; titulo?: string };   // vídeo no fim da oferta (arquivo leve, só carrega quando a pessoa aperta o play)
   depoimentos_titulo?: string; recebe_titulo?: string; bonus_titulo?: string; bonus?: { id?: string; /** Capa pequena ao lado do texto (visual com `skin`). */ capa?: string; titulo: string; texto: string; preco_de?: string; preco_por?: string }[]; cupom?: { codigo: string; desconto?: string }; preco_de?: string; preco_por?: string; repetir?: boolean;

@@ -14,6 +14,7 @@ import { beneficiosDoIndice } from "@/lib/quiz/indice";
 import { faixaDoNumero, limitesDoNumero, listaEmTexto, livrosEm12Meses, resumosPorSemana, textoDoNumero } from "@/lib/quiz/numeros";
 import { comDadosDoLead } from "@/lib/quiz/utm";
 import { comCupom } from "@/lib/quiz/saida";
+import { versaoDoEspelho, type ConfigEspelho, type VersaoEspelho } from "@/lib/quiz/espelho";
 import { linkWhatsapp } from "@/lib/quiz/whatsapp";
 import { tocarSomDeAcerto } from "@/lib/quiz/somAcerto";
 import { PopupSaida } from "./PopupSaida";
@@ -1581,6 +1582,10 @@ export function QuizPlayer({ titulo, estrutura, onFim, onAtualizar, teste, edita
             if (t.tipo === "plano_livros") return <PlanoLivros key={t.id} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} />;
             if (t.tipo === "amostra") return <AmostraLivro key={t.id} teste={teste} t={t} base={base} e={e} perfil={perfil} escolhas={escolhas} marcadas={marcadas} f={f} cor={cor} escuro={escuro} suave={suave} onSeguir={avancar} onEvento={(d) => evento.current?.("amostra", undefined, d)} pular={!editar && !travado} chaveQuiz={titulo} cheia={amostraCheia} onVoltar={pos > 1 && !editar && !travado ? voltar : undefined} />;
             if (t.tipo === "resultado") return <Resultado e={e} t={t} base={base} perfil={perfil} iPerfil={iPerfil} escolhas={escolhas} nome={contato.nome} f={f} onSeguir={avancar} suave={suave} />;
+            if (t.espelho) {
+              const escolhida = versaoDoEspelho(t.espelho, escolhas);
+              if (editar || escolhida) return <EspelhoTela key={t.id} c={t.espelho} escolhida={escolhida} base={base} onSeguir={avancar} />;
+            }
             return <Tela t={t} base={base} f={f} onSeguir={avancar} suave={suave} />;
           })()}
 
@@ -1878,6 +1883,36 @@ function DesafioTela({ d, t, base, f, suave, onSeguir }: { d: NonNullable<TelaQu
 }
 
 // Tela de respiro (dado, frase, prova social) ou de apresentação do especialista.
+// Tela "espelho": mostra a transformação ligada à resposta da pessoa. No editor aparecem todas as versões, para editar cada uma.
+function EspelhoTela({ c, escolhida, base, onSeguir }: { c: ConfigEspelho; escolhida: { i: number; v: VersaoEspelho } | null; base: string; onSeguir: () => void }) {
+  const { editar } = useContext(QuizCtx);
+  const versoes = editar || !escolhida ? c.opcoes.map((v, i) => ({ v, i })) : [escolhida];
+  return (
+    <div className="qs-espelho">
+      {versoes.map(({ v, i }) => {
+        const k = `${base}.espelho.opcoes.${i}`;
+        return (
+          <div key={i} className="qs-espelho-versao">
+            {v.imagem ? <img src={v.imagem} alt="" draggable={false} className="qs-espelho-img" /> : v.icone && <div className="qs-espelho-icone" aria-hidden>{v.icone}</div>}
+            <Txt caminho={`${k}.titulo`} valor={v.titulo} as="h2" className="block" />
+            {(v.texto || editar) && <TxtNegrito caminho={`${k}.texto`} valor={v.texto} as="p" className="qs-espelho-texto block" />}
+            {(v.hoje || v.chegar) && (
+              <div className="qs-espelho-virada">
+                <div className="qs-espelho-hoje"><small>Você antes</small><b aria-hidden>😕</b><Txt caminho={`${k}.hoje`} valor={v.hoje} as="p" className="block" /><i aria-hidden /></div>
+                <span aria-hidden>➜</span>
+                <div className="qs-espelho-chegar"><small>Você depois</small><b aria-hidden>🤩</b><Txt caminho={`${k}.chegar`} valor={v.chegar} as="p" className="block" /><i aria-hidden /></div>
+              </div>
+            )}
+            {(v.como || editar) && <TxtNegrito caminho={`${k}.como`} valor={v.como} as="p" className="qs-espelho-como block" />}
+          </div>
+        );
+      })}
+      {(c.fecho || editar) && <TxtNegrito caminho={`${base}.espelho.fecho`} valor={c.fecho} as="p" className="qs-espelho-fecho block" />}
+      <Botao onClick={onSeguir}><Txt caminho={`${base}.espelho.botao`} valor={c.botao || "Quero chegar lá"} /></Botao>
+    </div>
+  );
+}
+
 function Tela({ t, base, f, onSeguir, suave }: { t: TelaQuiz; base: string; f: (s?: string) => string; onSeguir: () => void; suave: string }) {
   const { cor } = useContext(QuizCtx);
   const especialista = t.tipo === "especialista";
@@ -2510,6 +2545,16 @@ function OfertaMensal({ e, f, suave, semVideo }: { e: EstruturaQuiz; f: (s?: str
             </div>
           ) : (o.aviso || editar) && (
             <div className="qs-honest"><Headphones className="qs-dot" strokeWidth={1.8} aria-hidden /><TxtNegrito caminho="oferta.aviso" valor={o.aviso} mostrar={f(o.aviso)} as="div" className="block" /></div>
+          )}
+          {o.objecao && (
+            <div className="qs-objecao">
+              <Txt caminho="oferta.objecao.titulo" valor={o.objecao.titulo} as="h3" className="block" />
+              <TxtNegrito caminho="oferta.objecao.texto" valor={o.objecao.texto} as="p" className="block" />
+              {!!o.objecao.passos?.length && (
+                <ol>{o.objecao.passos.map((t, k) => <li key={k}><span aria-hidden>{k + 1}</span><Txt caminho={`oferta.objecao.passos.${k}`} valor={t} as="p" className="block" /></li>)}</ol>
+              )}
+              {o.objecao.garantia && <p className="qs-objecao-garantia"><ShieldCheck aria-hidden /><TxtNegrito caminho="oferta.objecao.garantia" valor={o.objecao.garantia} /></p>}
+            </div>
           )}
           <div className="qs-price">
             <Txt caminho="oferta.preco_rotulo" valor={o.preco_rotulo} as="small" className="block" />
